@@ -1,6 +1,7 @@
 import { installIosNextScheduleBridge } from "../../web/src/utils/iosNextScheduleBridge";
 import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore } from "./adapters";
 import { installHarmonyEditor } from './editor';
+import { installHarmonySharing } from './sharing';
 import { installHarmonyShellObserver } from './shell';
 import { installHarmonyHeader } from './header';
 import { installHarmonyNavigation } from './navigation';
@@ -8,6 +9,7 @@ import { installHarmonyNavigation } from './navigation';
 if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   installHarmonyShellObserver();
   installHarmonyEditor();
+  installHarmonySharing();
   let attempts = 0;
   const install = () => {
     const host = window as any;

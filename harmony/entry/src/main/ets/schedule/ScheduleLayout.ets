@@ -2,7 +2,8 @@ import { mixScheduleColor, schedulePalette } from './ScheduleVisuals';
 
 // Sizes follow the iOS and Android native timetables (see android ScheduleScreen.kt): a 36 vp date
 // row, small grid gaps and 9–10 vp course names. Colours still come from the web palettes.
-// Dimensions are vp.
+// The dark values are the neutral greys of the site's dark theme, as on iOS 4.14; course
+// colours are unchanged. Dimensions are vp.
 export interface ScheduleGridMetrics {
   inset: number;
   axis: number;
@@ -51,7 +52,7 @@ export function scheduleTint(color: string, alpha: number): string {
 }
 
 /** Track behind the day/week switch and other recessed controls. */
-export function scheduleSoftSurface(dark: boolean): string { return dark ? '#B80D1815' : '#E8EDF3'; }
+export function scheduleSoftSurface(dark: boolean): string { return dark ? '#B80E1012' : '#E8EDF3'; }
 
 export function scheduleAccent(key: string, dark: boolean): string {
   const palette = schedulePalette(key);
@@ -64,19 +65,19 @@ export function scheduleAccentFill(key: string, dark: boolean): string {
 }
 
 export function scheduleSurface(dark: boolean, background: boolean = false): string {
-  return dark ? (background ? '#9E1A2925' : '#F01A2925') : (background ? '#99FFFFFF' : '#FFFFFF');
+  return dark ? (background ? '#9E23272C' : '#F023272C') : (background ? '#99FFFFFF' : '#FFFFFF');
 }
 
 export function scheduleCell(dark: boolean, strong: boolean = false): string {
-  return dark ? (strong ? '#AD263A34' : '#851E302B') : (strong ? '#8FFFFFFF' : '#5CFFFFFF');
+  return dark ? (strong ? '#AD2A2F35' : '#851E2226') : (strong ? '#8FFFFFFF' : '#5CFFFFFF');
 }
 
 export function scheduleCellBorder(dark: boolean): string {
-  return dark ? '#33A3BAB3' : '#D1DAE3EF';
+  return dark ? '#33B0B7C1' : '#D1DAE3EF';
 }
 
-export function scheduleText(dark: boolean): string { return dark ? '#EEF8F5' : '#172033'; }
-export function scheduleSecondaryText(dark: boolean): string { return dark ? '#ABC5BE' : '#667085'; }
+export function scheduleText(dark: boolean): string { return dark ? '#ECEEF1' : '#172033'; }
+export function scheduleSecondaryText(dark: boolean): string { return dark ? '#B0B7C1' : '#667085'; }
 
 export function scheduleControlText(key: string, dark: boolean): string {
   return key === 'color-glass' ? (dark ? scheduleText(true) : '#334155') : '#FFFFFF';

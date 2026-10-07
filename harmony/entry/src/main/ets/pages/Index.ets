@@ -10,6 +10,9 @@ import window from '@ohos.window';
 import fs from '@ohos.file.fs';
 import { systemShare } from '@kit.ShareKit';
 import { scheduleText, scheduleCalendar } from '../schedule/ScheduleExport';
+import { SCHEDULE_STYLES, normalizeScheduleStyle, scheduleStyleSubtitle, scheduleStyleTitle } from '../schedule/ScheduleStyle';
+import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
+import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
 import { schedulePalette } from '../schedule/ScheduleVisuals';
 import common from '@ohos.app.ability.common';
 import webview from '@ohos.web.webview';
@@ -40,6 +43,16 @@ interface NativeLoginPending {
   timeoutId: number;
 }
 
+interface NativeWebTaskPending {
+  resolve: (payload: string) => void;
+  timeoutId: number;
+}
+
+interface SchedulePriorityReply {
+  priority?: Record<string, number>;
+  error?: string;
+}
+
 @Entry
 @Component
 struct Index {
@@ -63,6 +76,14 @@ struct Index {
   @State private scheduleStore: NativeScheduleStore = new NativeScheduleStore();
   @State private editorModel: NativeCourseEditorModel = new NativeCourseEditorModel();
   @State private scheduleStyleVisible: boolean = false;
+  @State private sharingModel: NativeScheduleSharingModel = new NativeScheduleSharingModel();
+  // 别人共享的课表：只读，开在自己的 store 上，盖住整个页面。
+  @State private sharedStore: NativeScheduleStore = new NativeScheduleStore();
+  @State private sharedVisible: boolean = false;
+  private sharedFromSheet: boolean = false;
+  private webTaskSequence: number = 0;
+  private pendingWebTasks: Map<string, NativeWebTaskPending> = new Map();
+  private priorityRequestKey: string = '';
   @StorageLink('launchUrl') private launchUrl: string = APP_URL;
   @StorageLink('nativeTab') private selectedTab: number = 2;
   @StorageProp('systemTopInsetPx') private systemTopInsetPx: number = 0;
@@ -151,6 +172,7 @@ struct Index {
           this.widgetAutoSetupAttempted = true;
           this.configureScheduleWidget();
         }
+        this.refreshSchedulePriorities();
       }
     );
     if (context) {
@@ -161,7 +183,10 @@ struct Index {
         }).catch(() => undefined);
       });
       restoreNativeScheduleCache(context, this.scheduleStore);
+      this.restoreSharedSchedules(context);
     }
+    this.sharingModel.attach((request: ShareApiRequest) => this.shareApi(request),
+      (raw: string) => this.persistSharedSchedules(raw));
     this.editorModel.attach((id: string, payload: CourseEditorRequest) => {
       const requestId = JSON.stringify(id);
       const request = JSON.stringify(payload);
@@ -170,12 +195,20 @@ struct Index {
           .then(value => window.CPUHarmony.editorResult(${requestId}, JSON.stringify(value)))
           .catch(() => window.CPUHarmony.editorResult(${requestId}, JSON.stringify({error:'课程操作失败，请重试'})));
       `).catch(() => this.editorModel.accept(id, '{"error":"网页会话尚未就绪"}'));
-    }, () => this.scheduleStore.load(true));
+    }, () => this.scheduleStore.load(true),
+      (semester: string, priority: Record<string, number>) => this.scheduleStore.setPriorities(semester, priority));
     if (context) {
       void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
         this.scheduleStore.palette = String(await prefs.get('palette', 'color-glass'));
         this.scheduleStore.backgroundPath = String(await prefs.get('background', ''));
         this.scheduleStore.backgroundOpacity = Number(await prefs.get('opacity', 0.18));
+        this.scheduleStore.visualStyle = normalizeScheduleStyle(String(await prefs.get('style', 'classic')));
+        this.scheduleStore.showWeekend = Boolean(await prefs.get('weekend', true));
+        this.scheduleStore.showNowIndicator = Boolean(await prefs.get('now', true));
+        this.scheduleStore.restorePriorities(String(await prefs.get('priorities', '')));
+        this.scheduleStore.attachPriorityPersistence((raw: string) => {
+          void prefs.put('priorities', raw).then(() => prefs.flush()).catch(() => undefined);
+        });
       }).catch(() => undefined);
     }
     setNativeScheduleHostCallbacks({
@@ -183,7 +216,12 @@ struct Index {
       onAuthChanged: (scope: string) => {
         if (scope.trim()) this.resolveAuthenticated(false);
         else if (this.webHeader.contentReady && !this.webHeader.authenticated) this.scheduleLoginGate();
+        // 共享课表按账号分开存；换了身份（本科/研究生）还是同一个账号。
+        this.sharingModel.adopt(scope.split(':')[0]);
         if (!this.scheduleStore.handleAuthChanged(scope)) return;
+        this.priorityRequestKey = '';
+        this.closeSharedSchedule(false);
+        this.sharingModel.close();
         this.editorModel.cancel();
         this.widgetPreviewRevision += 1;
         this.widgetPreview = initialScheduleWidgetBinding(this.widgetDimension, this.widgetFormName);
@@ -225,7 +263,8 @@ struct Index {
       },
       onAppearanceChanged: (mode: string) => this.applyAppearance(mode, false),
       onEditorResult: (id: string, payload: string) => this.editorModel.accept(id, payload),
-      onNativeLoginResult: (id: string, payload: string) => this.acceptNativeLoginResult(id, payload)
+      onNativeLoginResult: (id: string, payload: string) => this.acceptNativeLoginResult(id, payload),
+      onWebTaskResult: (id: string, payload: string) => this.acceptWebTaskResult(id, payload)
     });
   }
 
@@ -252,6 +291,7 @@ struct Index {
       'headerChanged',
       'scheduleResult',
       'nativeLoginResult',
+      'webTaskResult',
       'schedulePrefetched',
       'scheduleWeekPrefetched',
       'widgetSetupFailed',
@@ -622,6 +662,175 @@ struct Index {
     });
   }
 
+  private acceptWebTaskResult(id: string, payload: string): void {
+    const pending = this.pendingWebTasks.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timeoutId);
+    this.pendingWebTasks.delete(id);
+    pending.resolve(payload);
+  }
+
+  private clearPendingWebTasks(): void {
+    for (const pending of this.pendingWebTasks.values()) {
+      clearTimeout(pending.timeoutId);
+      pending.resolve('');
+    }
+    this.pendingWebTasks.clear();
+  }
+
+  // 在已登录的网页会话里跑一段表达式，结果以 JSON 文本回来；失败或超时回空串。
+  private runWebTask(expression: string, timeoutMs: number = 40000): Promise<string> {
+    const id = `web-task-${++this.webTaskSequence}`;
+    const requestId = JSON.stringify(id);
+    return new Promise<string>((resolve) => {
+      const timeoutId = setTimeout(() => this.acceptWebTaskResult(id, ''), timeoutMs);
+      this.pendingWebTasks.set(id, { resolve, timeoutId });
+      const script = `
+        (() => {
+          const finish = (value) => {
+            let payload = '';
+            try { payload = JSON.stringify(value === undefined ? null : value); } catch (_) {}
+            window.CPUHarmony?.webTaskResult?.(${requestId}, payload);
+          };
+          try {
+            Promise.resolve(${expression}).then(finish).catch(() => finish(null));
+          } catch (_) {
+            finish(null);
+          }
+        })();
+      `;
+      void this.controller.runJavaScript(script).catch(() => this.acceptWebTaskResult(id, ''));
+    });
+  }
+
+  // JSON 文本直接当作脚本里的字面量用；U+2028/2029 在旧引擎里会断行。
+  private scriptLiteral(value: Object): string {
+    return JSON.stringify(value).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  }
+
+  private async shareApi(request: ShareApiRequest): Promise<ShareApiReply> {
+    const unavailable: ShareApiReply = { ok: false, status: 0, error: '共享课表服务尚未就绪，请稍后重试' };
+    const raw = await this.runWebTask(`typeof window.CPUHarmonyShares === 'function'
+      ? window.CPUHarmonyShares(${this.scriptLiteral(request)}) : null`);
+    try {
+      const reply = JSON.parse(raw || 'null') as ShareApiReply | null;
+      return reply && typeof reply.ok === 'boolean' ? reply : unavailable;
+    } catch (_) {
+      return unavailable;
+    }
+  }
+
+  // 重叠课程谁显示在前面，随个人修改存在服务端；每次拿到新的课表数据读一次。
+  private refreshSchedulePriorities(): void {
+    const store = this.scheduleStore;
+    const semester = store.prioritySemester();
+    if (store.status !== 'loaded' || !store.result || !store.bridgeReady || !semester || store.source === 'graduate') return;
+    const key = `${semester}|${store.lastUpdatedAt}`;
+    if (key === this.priorityRequestKey) return;
+    this.priorityRequestKey = key;
+    void this.runWebTask(`typeof window.CPUHarmonyEditor === 'function'
+      ? window.CPUHarmonyEditor({ action: 'priority', semester: ${JSON.stringify(semester)} }) : null`).then((raw: string) => {
+      let reply: SchedulePriorityReply | null = null;
+      try { reply = JSON.parse(raw || 'null') as SchedulePriorityReply | null; } catch (_) { reply = null; }
+      if (reply && reply.priority && !reply.error) {
+        if (this.priorityRequestKey === key) store.setPriorities(semester, reply.priority);
+      } else if (this.priorityRequestKey === key) {
+        // 读不到就保持已知的：课表只是把重叠的课并排显示。下次数据更新再试。
+        this.priorityRequestKey = '';
+      }
+    });
+  }
+
+  private sharedSchedulesPath(context: common.UIAbilityContext): string {
+    return context.filesDir + '/shared-schedules.json';
+  }
+
+  private restoreSharedSchedules(context: common.UIAbilityContext): void {
+    try {
+      const path = this.sharedSchedulesPath(context);
+      if (fs.accessSync(path) && fs.statSync(path).size <= 16 * 1024 * 1024) this.sharingModel.restore(fs.readTextSync(path));
+    } catch (_) {}
+  }
+
+  private persistSharedSchedules(raw: string): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    const path = this.sharedSchedulesPath(context);
+    try {
+      if (!raw) { if (fs.accessSync(path)) fs.unlinkSync(path); return; }
+      const temporary = path + '.tmp';
+      const file = fs.openSync(temporary, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+      try { fs.writeSync(file.fd, raw); } finally { fs.closeSync(file); }
+      fs.renameSync(temporary, path);
+    } catch (_) {
+      promptAction.showToast({ message: '共享课表保存失败，请重试' });
+    }
+  }
+
+  private openSharing(): void {
+    if (!this.scheduleStore.result) {
+      promptAction.showToast({ message: '请先加载课表' });
+      return;
+    }
+    this.sharingModel.open();
+  }
+
+  // 只读地打开一份共享课表：自己的 store，不请求网络，样式跟着自己的课表。
+  private openSharedSchedule(schedule: SharedSchedule): void {
+    const store = new NativeScheduleStore();
+    const snapshot = JSON.stringify(sharedScheduleSnapshot(schedule, Date.now()));
+    store.readOnly = true;
+    store.dark = this.scheduleStore.dark;
+    store.palette = this.scheduleStore.palette;
+    store.visualStyle = this.scheduleStore.visualStyle;
+    store.showWeekend = this.scheduleStore.showWeekend;
+    store.showNowIndicator = this.scheduleStore.showNowIndicator;
+    store.backgroundPath = this.scheduleStore.backgroundPath;
+    store.backgroundOpacity = this.scheduleStore.backgroundOpacity;
+    store.attach((request: NativeScheduleRequest) => {
+      if (request.id) store.acceptResult(request.id, snapshot);
+    }, () => undefined);
+    store.markBridgeReady();
+    this.sharedFromSheet = this.sharingModel.visible;
+    this.sharingModel.visible = false;
+    this.sharedStore = store;
+    this.sharedVisible = true;
+  }
+
+  private closeSharedSchedule(reopenSheet: boolean): void {
+    if (!this.sharedVisible) return;
+    this.sharedVisible = false;
+    this.sharedStore = new NativeScheduleStore();
+    if (reopenSheet && this.sharedFromSheet) this.sharingModel.visible = true;
+    this.sharedFromSheet = false;
+  }
+
+  private sharePublishBody(): SharePublishBody {
+    return sharePublishBody(this.scheduleStore.completeSnapshot(), this.scheduleStore.periods);
+  }
+
+  private sendText(content: string): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    try {
+      const data = new systemShare.SharedData({ utd: 'general.plain-text', content });
+      const controller = new systemShare.ShareController(data);
+      void controller.show(context, { selectionMode: systemShare.SelectionMode.SINGLE })
+        .catch(() => promptAction.showToast({ message: '分享面板暂时不可用' }));
+    } catch (_) {
+      promptAction.showToast({ message: '分享面板暂时不可用' });
+    }
+  }
+
+  private selectedSemesterLabel(): string {
+    const value = this.scheduleStore.prioritySemester();
+    const parts = value.split('-');
+    if (parts.length === 3 && parts[0].length === 4 && parts[1].length === 4) {
+      return `${parts[0]}–${parts[1].substring(2)} ${parts[2] === '1' ? '秋' : parts[2] === '2' ? '春' : '夏'}`;
+    }
+    return value;
+  }
+
   private handleNativeNavigation(path: string): void {
     if (this.requiresLogin) return;
     if (path === '/schedule' || path.startsWith('/schedule?')) {
@@ -881,7 +1090,8 @@ struct Index {
               onStyle: () => this.scheduleStyleVisible = true,
               onAppearance: () => this.chooseAppearance(),
               onShare: () => this.shareSchedule(),
-              onExport: () => { void this.exportSchedule(); }
+              onExport: () => { void this.exportSchedule(); },
+              onSharing: () => this.openSharing()
             }).opacity(this.nativeScheduleVisible ? 1 : 0)
               .translate({ y: this.nativeScheduleVisible ? 0 : 8 })
               .animation({ duration: 220, curve: Curve.EaseOut })
@@ -954,6 +1164,21 @@ struct Index {
         .padding({ bottom: this.bottomBarInset() })
         .visibility(!this.requiresLogin && (this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible)) ? Visibility.Visible : Visibility.Hidden)
         .hitTestBehavior(HitTestMode.Default)
+
+      if (this.sharedVisible && !this.requiresLogin) {
+        Column() {
+          NativeSchedulePage({
+            store: this.sharedStore,
+            bottomClearance: this.bottomBarInset() + 8,
+            onClose: () => this.closeSharedSchedule(true)
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .padding({ top: this.getUIContext().px2vp(this.systemTopInsetPx) })
+        .backgroundColor($r('app.color.app_background'))
+        .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.EaseOut }))
+      }
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
         Column() {
@@ -1192,10 +1417,13 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible, this.nativePanelSheet(), {
+    .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible || this.sharingModel.visible, this.nativePanelSheet(), {
       height: SheetSize.LARGE, showClose: true, dragBar: true,
       onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy) action.dismiss(); },
-      onDisappear: () => { this.editorModel.cancel(); this.scheduleStyleVisible = false; this.widgetPanelVisible = false; this.widgetPreviewRevision += 1; }
+      onDisappear: () => {
+        this.editorModel.cancel(); this.scheduleStyleVisible = false; this.widgetPanelVisible = false; this.widgetPreviewRevision += 1;
+        this.sharingModel.close();
+      }
     })
   }
 
@@ -1209,12 +1437,7 @@ struct Index {
     const revision = this.navigationRevision;
     setTimeout(() => {
       if (this.selectedTab !== 2 || revision !== this.navigationRevision || this.scheduleStore.result !== snapshot) return;
-      this.editorModel.open(this.scheduleStore, block);
-      if (day !== undefined && slot !== undefined) {
-        this.editorModel.day = day;
-        this.editorModel.startSlot = slot;
-        this.editorModel.endSlot = Math.min(11, slot + 1);
-      }
+      this.editorModel.open(this.scheduleStore, block, day, slot);
     }, 250);
   }
 
@@ -1224,6 +1447,18 @@ struct Index {
       this.widgetSettingsPanel()
     } else if (this.editorModel.visible) {
       NativeCourseEditor({ model: this.editorModel })
+    } else if (this.sharingModel.visible) {
+      NativeScheduleSharing({
+        model: this.sharingModel,
+        semester: this.scheduleStore.prioritySemester(),
+        semesterLabel: this.selectedSemesterLabel(),
+        canPublish: !!this.scheduleStore.result,
+        origin: APP_URL,
+        publishBody: (): SharePublishBody => this.sharePublishBody(),
+        onOpen: (schedule: SharedSchedule) => this.openSharedSchedule(schedule),
+        onCopy: (text: string) => { if (this.bridge.copyText(text)) promptAction.showToast({ message: '已复制，可以发给对方了' }); },
+        onSend: (text: string) => this.sendText(text)
+      })
     } else {
       this.scheduleStyleSheet()
     }
@@ -1266,6 +1501,44 @@ struct Index {
       Column({ space: 20 }) {
         Text('课表样式').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.app_text_primary')).width('100%')
         Column({ space: 8 }) {
+          Text('课表风格').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Column() {
+            ForEach(SCHEDULE_STYLES, (style: string, index: number) => {
+              Row({ space: 12 }) {
+                Column({ space: 3 }) {
+                  Text(scheduleStyleTitle(style)).fontSize(16).fontWeight(600).fontColor($r('app.color.app_text_primary')).width('100%')
+                  Text(scheduleStyleSubtitle(style)).fontSize(12).fontColor($r('app.color.app_text_secondary')).width('100%')
+                }.layoutWeight(1)
+                if (this.scheduleStore.visualStyle === style) {
+                  SymbolGlyph($r('sys.symbol.checkmark_circle_fill')).fontSize(20).fontColor([$r('app.color.app_accent')])
+                }
+              }.width('100%').padding({ left: 14, right: 14, top: 10, bottom: 10 })
+                .border({ width: { top: index > 0 ? 0.5 : 0 }, color: $r('app.color.app_divider') })
+                .accessibilityGroup(true).accessibilityText(scheduleStyleTitle(style) + '，' + scheduleStyleSubtitle(style))
+                .accessibilitySelected(this.scheduleStore.visualStyle === style)
+                .onClick(() => { this.scheduleStore.visualStyle = style; this.saveScheduleStyle(); })
+            }, (style: string) => style)
+          }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
+          Text('课表风格不改变课程数据、课程配色或背景图片。').fontSize(12).fontColor($r('app.color.app_text_tertiary')).width('100%')
+        }.width('100%')
+        Column() {
+          Row({ space: 12 }) {
+            Text('显示周末').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showWeekend }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('显示周末')
+              .onChange((value: boolean) => { this.scheduleStore.showWeekend = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+          Text('关闭后，周末有课或调休的那一周仍会显示。').fontSize(12).fontColor($r('app.color.app_text_secondary'))
+            .width('100%').padding({ left: 14, right: 14, bottom: 10 })
+          Row({ space: 12 }) {
+            Text('标出当前时间').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showNowIndicator }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('标出当前时间')
+              .onChange((value: boolean) => { this.scheduleStore.showNowIndicator = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+        }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
+        Column({ space: 8 }) {
           Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
           this.paletteChoices(this.scheduleStore.palette, false)
         }.width('100%')
@@ -1295,6 +1568,9 @@ struct Index {
       await prefs.put('palette', this.scheduleStore.palette);
       await prefs.put('background', this.scheduleStore.backgroundPath);
       await prefs.put('opacity', this.scheduleStore.backgroundOpacity);
+      await prefs.put('style', this.scheduleStore.visualStyle);
+      await prefs.put('weekend', this.scheduleStore.showWeekend);
+      await prefs.put('now', this.scheduleStore.showNowIndicator);
       await prefs.flush();
     }).catch(() => promptAction.showToast({ message: '样式保存失败，请重试' }));
   }
@@ -1372,6 +1648,7 @@ struct Index {
     }
     const dark = mode === 'dark' || (mode === 'system' && context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
     this.scheduleStore.dark = dark;
+    this.sharedStore.dark = dark;
     this.updateSystemBars();
     void preferences.getPreferences(context, { name: 'native_appearance' }).then(async (prefs) => {
       await prefs.put('mode', mode);
@@ -1670,6 +1947,19 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.sharingModel.visible) {
+      this.sharingModel.close();
+      return true;
+    }
+    if (this.sharedVisible) {
+      if (this.sharedStore.detailVisible || this.sharedStore.weekPickerVisible) {
+        this.sharedStore.detailVisible = false;
+        this.sharedStore.weekPickerVisible = false;
+      } else {
+        this.closeSharedSchedule(true);
+      }
+      return true;
+    }
     if (this.editorModel.visible || this.scheduleStyleVisible) {
       if (this.editorModel.busy) return true;
       this.editorModel.cancel();
@@ -1712,6 +2002,7 @@ struct Index {
     clearTimeout(this.scheduleRetireTimer);
     clearTimeout(this.startupTimer);
     this.clearPendingNativeLoginRequests();
+    this.clearPendingWebTasks();
     this.scheduleStore.markBridgeUnavailable();
     clearNativeScheduleHostCallbacks();
     setActiveHarmonyBridge(undefined);

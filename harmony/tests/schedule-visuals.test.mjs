@@ -56,7 +56,7 @@ test('native timetable cards preserve text contrast over cells in both appearanc
       for (const name of ['药物设计学', '药物化学', '药物分析', '天然药物化学实验', '人工智能药学', '药剂学',
         ...Array.from({ length: 360 }, (_, index) => `课程${index}`)]) {
         const tone = native.scheduleCardTone(name, key, dark);
-        const cell = composite(layout.scheduleCell(dark), dark ? '#101C19' : '#EDF4FF');
+        const cell = composite(layout.scheduleCell(dark), dark ? '#0E1012' : '#EDF4FF');
         for (const fill of [tone.top, tone.bottom]) {
           const background = composite(fill, cell);
           assert.ok(contrast(composite(tone.text, background), background) >= 4.5, `${key} ${dark}: ${JSON.stringify(tone)}`);

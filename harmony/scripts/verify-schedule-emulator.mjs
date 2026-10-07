@@ -27,6 +27,11 @@ function layout() {
   return flatten(JSON.parse(readFileSync(resolve(dir, 'current-layout.json'), 'utf8')));
 }
 function has(nodes, text) { return nodes.some(node => node.text === text); }
+function hasPart(nodes, ...parts) { return nodes.some(node => parts.every(part => String(node.text).includes(part))); }
+function hasId(nodes, id) { return nodes.some(node => node.id === id); }
+// Decorations hidden from screen readers report no text, only what they draw.
+function draws(nodes, text) { return nodes.some(node => node.originalText === text); }
+function rect(node) { return node.bounds.match(/-?\d+/g).map(Number); }
 async function waitFor(test, message) {
   const deadline = Date.now() + 8000;
   do {
@@ -42,16 +47,19 @@ function point(node) {
 }
 // `#name` selects a control by its ArkUI id (icon-only buttons have no text); anything else matches visible text.
 async function click(text) {
-  const nodes = layout();
-  const node = nodes.find(node => (text.startsWith('#') ? node.id === text.slice(1) : node.text === text) && node.visible !== 'false');
-  assert.ok(node, `Missing control: ${text}`);
+  const match = node => (text.startsWith('#') ? node.id === text.slice(1) : node.text === text) && node.visible !== 'false';
+  // A sheet that is still sliding in, or the keyboard coming up, can hide a control for a moment.
+  const nodes = await waitFor(nodes => nodes.some(match), `Missing control: ${text}`);
+  const node = nodes.find(match);
   shell('uitest', 'uiInput', 'click', ...point(node).map(String));
   await pause(350);
 }
-async function start({ dark = false, theme = 'color-glass', mode = 'week', state = 'loaded' } = {}) {
+// `extra` passes the harness's other launch parameters: style, weekend, now, priority, week, day, panel.
+async function start({ dark = false, theme = 'color-glass', mode = 'week', state = 'loaded', ...extra } = {}) {
   shell('aa', 'force-stop', 'cn.lizmt.cpuweb.scheduleqa');
   shell('aa', 'start', '-a', 'EntryAbility', '-b', 'cn.lizmt.cpuweb.scheduleqa',
-    '--ps', 'dark', String(dark), '--ps', 'theme', theme, '--ps', 'mode', mode, '--ps', 'state', state);
+    '--ps', 'dark', String(dark), '--ps', 'theme', theme, '--ps', 'mode', mode, '--ps', 'state', state,
+    ...Object.entries(extra).flatMap(([key, value]) => ['--ps', key, String(value)]));
   await pause(600);
 }
 function capture(name) {
@@ -103,32 +111,38 @@ assert.ok(dateLabel.bounds.match(/-?\d+/g).map(Number)[3] < firstPeriod.bounds.m
   'Date strip overlaps the first period');
 capture('day-light');
 await click('药物化学');
-await waitFor(nodes => has(nodes, '课程详情') && has(nodes, '示例教师'), 'Course details did not open');
+await waitFor(nodes => hasPart(nodes, '周二', '第 1–4 节', '08:00–11:45') && has(nodes, '示例教师') && hasId(nodes, 'schedule-course-edit'),
+  'Course quick look did not open');
 capture('course-detail');
 shell('uitest', 'uiInput', 'keyEvent', 'Back');
 await pause(400);
 await click('周一');
 await waitFor(nodes => has(nodes, '药物设计学') && !has(nodes, '药物化学'), 'Monday selection failed');
 capture('day-monday');
-pass('day mode, date selection, and course details');
+pass('day mode, date selection, and the course quick look');
 
 await click('周日');
 await waitFor(nodes => has(nodes, '这一天没有课程'), 'Empty-day state missing');
 capture('empty-day');
 await click('周六');
 await waitFor(nodes => has(nodes, '重叠课程'), 'Saturday fixture missing');
+// Overlapping courses sit side by side, each one tappable.
+nodes = layout();
+const overlapping = rect(nodes.find(node => node.text === '重叠课程'));
+const long = rect(nodes.find(node => String(node.text).startsWith('超长课程名称')));
+assert.ok(long[2] <= overlapping[0] || overlapping[2] <= long[0], 'Overlapping courses are drawn on top of each other');
 await click('重叠课程');
-await waitFor(nodes => has(nodes, '同一时段的课程'), 'Overlapping courses are not accessible');
+await waitFor(nodes => hasPart(nodes, '周六', '第 5–6 节') && has(nodes, 'B203'), 'An overlapping course did not open');
 capture('overlapping-courses');
 shell('uitest', 'uiInput', 'keyEvent', 'Back');
-pass('empty day, long name, single period, and overlapping-course chooser');
+pass('empty day, long name, single period, and overlapping courses in lanes');
 
 await pause(400);
 shell('uitest', 'uiInput', 'swipe', '850', '1700', '850', '850', '900');
 nodes = await waitFor(nodes => has(nodes, '12') && has(nodes, '19:45') && has(nodes, '第十二节课程'), 'Final daily period is missing');
 capture('day-last-period');
 await click('第十二节课程');
-await waitFor(nodes => has(nodes, '课程详情') && has(nodes, '12节') && has(nodes, '19:00-19:45'), 'Twelfth-period details use the wrong range or time');
+await waitFor(nodes => hasPart(nodes, '第 12 节', '19:00–19:45') && has(nodes, 'A112'), 'Twelfth-period details use the wrong range or time');
 capture('twelfth-period-detail');
 shell('uitest', 'uiInput', 'keyEvent', 'Back');
 pass('daily final period and configured-time details');
@@ -156,6 +170,86 @@ for (const [state, title] of [['loading', '正在加载课表'], ['unauthorized'
   capture(`state-${state}`);
 }
 pass('loading, authorization, and error states');
+for (const style of ['minimal', 'grid', 'table', 'paper', 'board']) {
+  await start({ style, now: '10:20' });
+  nodes = await waitFor(nodes => has(nodes, '药物设计学') && draws(nodes, '10:20'), `${style} week failed`);
+  assert.ok(point(nodes.find(node => node.text === '第十二节课程'))[1]
+    < point(nodes.find(node => node.text === '首页'))[1], `${style} week does not fit above the navigation bar`);
+  capture(`style-${style}-week`);
+  await start({ style, mode: 'day', day: 2, dark: style === 'paper' });
+  // The evening course may be below the fold where a style keeps a row for every period.
+  await waitFor(nodes => has(nodes, '药物化学') && !has(nodes, '药物设计学'), `${style} day failed`);
+  capture(`style-${style}-day`);
+}
+await start({ style: 'minimal', mode: 'day', day: 7 });
+await waitFor(nodes => has(nodes, '这天没有课程'), 'Rest card missing');
+capture('style-minimal-rest');
+pass('five more timetable styles in the week and day views');
+
+for (const style of ['classic', 'minimal', 'grid', 'table', 'paper', 'board']) {
+  await start({ style, mode: 'month' });
+  await waitFor(nodes => hasPart(nodes, '年', '月') && has(nodes, '日视图'), `${style} month failed`);
+  capture(`month-${style}`);
+}
+const month = layout().find(node => /^\d{4} 年 \d+ 月$/.test(node.text)).text;
+await click('#schedule-next-month');
+await waitFor(nodes => nodes.some(node => /^\d{4} 年 \d+ 月$/.test(node.text) && node.text !== month), 'Next month did not show');
+await click('#schedule-previous-month');
+await waitFor(nodes => has(nodes, month), 'Previous month did not show');
+await click('日视图');
+await waitFor(nodes => has(nodes, '周一') && nodes.some(node => /^第\d+周$/.test(node.text)), 'The month list did not open the day view');
+pass('month view in six styles, month arrows, and opening a day');
+
+await start({ week: 6 });
+nodes = await waitFor(nodes => has(nodes, '第6周') && draws(nodes, '休') && draws(nodes, '班'), 'Adjusted days are not marked');
+const monday = rect(nodes.find(node => node.text === '周一'));
+assert.ok(!nodes.some(node => node.text === '药物设计学' && rect(node)[0] < monday[2]), 'A day off still shows its courses');
+assert.equal(nodes.filter(node => node.text === '药事管理学').length, 2, 'The make-up day does not show the courses it takes over');
+capture('adjusted-week');
+await start({ weekend: false, priority: '重叠课程' });
+nodes = await waitFor(nodes => has(nodes, '重叠课程'), 'Hidden-weekend timetable failed');
+assert.ok(has(nodes, '周六') && !has(nodes, '周日'), 'A weekend day with classes must stay and an empty one must go');
+capture('weekend-hidden-priority');
+pass('days off, make-up days, hidden weekends and display priority');
+
+await start({ panel: 'editor', day: 1 });
+await waitFor(nodes => has(nodes, '编辑课程') && has(nodes, '保存课程') && has(nodes, '节次'), 'Course editor did not open');
+capture('editor');
+shell('uitest', 'uiInput', 'swipe', '540', '1700', '540', '700', '900');
+await click('＋ 添加上课时间');
+await waitFor(nodes => has(nodes, '上课时间 2'), 'A second meeting time was not added');
+await click('保存课程');
+await waitFor(nodes => has(nodes, '上课时间 2：请选择至少一节'), 'An empty meeting time was not refused');
+capture('editor-second-time');
+pass('course editor with several meeting times');
+
+await start({ panel: 'sharing' });
+await waitFor(nodes => has(nodes, '共享课表') && hasId(nodes, 'schedule-share-publish'), 'Sharing page did not open');
+await click('#schedule-share-publish');
+await waitFor(nodes => has(nodes, 'WXYZ 6789') && has(nodes, '已生成分享码'), 'Publishing did not show a share code');
+capture('sharing-published');
+const field = point(layout().find(node => node.id === 'schedule-share-code'));
+shell('uitest', 'uiInput', 'inputText', String(field[0]), String(field[1]), 'abcd-2345');
+await pause(600);
+await click('查看');
+await waitFor(nodes => has(nodes, '阿青 的课表') && has(nodes, '保存到本机'), 'A share was not previewed');
+capture('sharing-preview');
+await click('先看看');
+// The user's own timetable stays mounted underneath, so only the cover's own controls are checked.
+await waitFor(nodes => has(nodes, '只读') && has(nodes, '阿青') && hasId(nodes, 'schedule-close'), 'The shared timetable did not open read-only');
+capture('sharing-read-only');
+const shared = layout().filter(node => node.text === '药物设计学').pop();
+shell('uitest', 'uiInput', 'click', ...point(shared).map(String));
+await waitFor(nodes => has(nodes, '示例教师') && !hasId(nodes, 'schedule-course-edit'), 'A shared course must not be editable');
+shell('uitest', 'uiInput', 'keyEvent', 'Back');
+await pause(400);
+await click('#schedule-close');
+await waitFor(nodes => has(nodes, '保存到本机'), 'Closing a shared timetable did not return to the preview');
+await click('保存到本机');
+await waitFor(nodes => has(nodes, '已保存的课表') && has(nodes, '阿青'), 'The share was not saved');
+capture('sharing-saved');
+pass('publishing a share code, previewing, read-only viewing and saving a shared timetable');
+
 await start();
 await waitFor(nodes => has(nodes, '药物设计学'), 'Final loaded state missing');
 capture('final-week-light');

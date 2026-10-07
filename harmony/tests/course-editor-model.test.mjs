@@ -14,9 +14,12 @@ function harness() {
     setTimeout: callback => { const key=timers.size+1; timers.set(key,callback); return key; }, clearTimeout:key=>timers.delete(key) });
   vm.runInContext(transformSync(source,{loader:'ts',format:'cjs'}).code,context);
   const model = new context.module.exports.NativeCourseEditorModel();
-  model.attach((id,request)=>requests.push({id,request}),()=>saved++);
-  const store={selectedSemester:'fall',selectedWeek:'2',selectedDay:2,result:{cells:[]},weekOptions:()=>[1,2,3].map(value=>({value:String(value)})),slots:()=>Array.from({length:12},(_,i)=>i+1)};
-  return {model,store,requests,timers,get saved(){return saved;}};
+  const priorities=[];
+  model.attach((id,request)=>requests.push({id,request}),()=>saved++,(semester,priority)=>priorities.push({semester,priority}));
+  const store={selectedSemester:'fall',selectedWeek:'2',selectedDay:2,result:{cells:[]},weekOptions:()=>[1,2,3].map(value=>({value:String(value)})),
+    slots:()=>Array.from({length:12},(_,i)=>i+1),slotStart:slot=>`${String(slot+7).padStart(2,'0')}:00`,slotEnd:slot=>`${String(slot+7).padStart(2,'0')}:45`,
+    displayPriorities:()=>({})};
+  return {model,store,requests,timers,priorities,exports:context.module.exports,get saved(){return saved;}};
 }
 test('reopening within one millisecond rejects the previous editor reply',()=>{
   const h=harness(); h.model.open(h.store); const first=h.requests.at(-1).id;
@@ -44,8 +47,68 @@ test('editor exposes the configured final period and submits a twelfth-period co
   const h = harness(); h.model.open(h.store);
   h.model.accept(h.requests.at(-1).id, JSON.stringify({ session: 'current' }));
   assert.equal(h.model.slots.at(-1), 12);
-  h.model.name = '第十二节课程'; h.model.startSlot = 12; h.model.endSlot = 12;
+  const draft = h.model.arrangements[0];
+  [...draft.slots].forEach(slot => h.model.toggleSlot(draft.id, slot));
+  h.model.name = '第十二节课程'; h.model.toggleSlot(draft.id, 12);
   h.model.submit('save');
   assert.equal(h.requests.at(-1).request.form.startSlot, 12);
   assert.equal(h.requests.at(-1).request.form.endSlot, 12);
+});
+
+test('a tapped empty period opens a new course there, for this week only', () => {
+  const h = harness(); h.model.open(h.store, undefined, 4, 7);
+  const draft = h.model.arrangements[0];
+  assert.deepEqual([draft.day, [...draft.slots], draft.weekMode, [...h.model.weekList(draft)]], [4, [7, 8], 'current', [2]]);
+  h.model.cancel(); h.model.open(h.store, undefined, 6, 12);
+  assert.deepEqual([...h.model.arrangements[0].slots], [12]);
+});
+
+test('several meeting times and periods that are not consecutive are sent as arrangements', () => {
+  const h = harness(); h.model.open(h.store, undefined, 1, 1);
+  h.model.accept(h.requests.at(-1).id, JSON.stringify({ session: 'current', priority: {} }));
+  h.model.name = '实验课';
+  const first = h.model.arrangements[0];
+  h.model.toggleSlot(first.id, 5); h.model.toggleSlot(first.id, 6); h.model.toggleSlot(first.id, 9);
+  assert.equal(h.model.slotSummary(h.model.arrangements[0].slots), '第 1–2、5–6、9 节 · 08:00–09:45、12:00–13:45、16:00–16:45');
+  h.model.addArrangement();
+  const second = h.model.arrangements[1];
+  assert.deepEqual([second.day, [...second.slots], second.weekMode], [1, [], 'current']);
+  h.model.submit('save');
+  assert.match(h.model.error, /上课时间 2：请选择至少一节/); assert.equal(h.requests.length, 1);
+  h.model.setDay(second.id, 3); h.model.toggleSlot(second.id, 3); h.model.setWeekMode(second.id, 'custom');
+  h.model.setWeeks(second.id, []); h.model.submit('save');
+  assert.match(h.model.error, /上课时间 2：请选择至少一个周次/);
+  h.model.toggleWeek(second.id, 3); h.model.toggleWeek(second.id, 1); h.model.setWeekMode(first.id, 'all');
+  h.model.preferred = true; h.model.submit('save');
+  const form = h.requests.at(-1).request.form;
+  assert.deepEqual(JSON.parse(JSON.stringify(form.arrangements)), [
+    { day: 1, slots: [1, 2, 5, 6, 9], weekList: [1, 2, 3] }, { day: 3, slots: [3], weekList: [1, 3] }]);
+  assert.deepEqual([form.day, form.startSlot, form.endSlot, [...form.weekList], form.preferred], [1, 1, 2, [1, 2, 3], true]);
+  h.model.removeArrangement(second.id); assert.equal(h.model.arrangements.length, 1);
+  h.model.removeArrangement(first.id); assert.equal(h.model.arrangements.length, 1);
+});
+
+// Values built inside the vm context have another realm's prototypes.
+const same = (actual, expected) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);
+test('conflicts name the other courses that share a period and a week, never the course being edited', () => {
+  const h = harness();
+  const cells = [
+    { day: 2, bigSlot: 1, courses: [{ name: '药理学', weekList: [1, 2, 3], startSlot: 1, endSlot: 2, nativeId: 'a' }] },
+    { day: 2, bigSlot: 2, courses: [{ name: '单周课', weekList: [1, 3], startSlot: 3, endSlot: 4 }, { name: '全周课', weekList: [], startSlot: 3, endSlot: 3 }] },
+    { day: 3, bigSlot: 1, courses: [{ name: '别的天', weekList: [2], startSlot: 1, endSlot: 2 }] }];
+  const conflicts = h.exports.courseArrangementConflicts;
+  same([...conflicts(2, [2, 3], [2], cells)], ['药理学', '全周课']);
+  same([...conflicts(2, [3], [1], cells)], ['单周课', '全周课']);
+  same([...conflicts(2, [5], [1], cells)], []);
+  const original = { day: 2, bigSlot: 1, startSlot: 1, endSlot: 2, course: cells[0].courses[0] };
+  same([...conflicts(2, [1, 2], [], cells, original)], []);
+  h.store.result = { cells }; h.store.displayPriorities = () => ({ '药理学': 2 });
+  h.model.open(h.store, original);
+  assert.equal(h.model.preferred, true); assert.equal(h.model.arrangements[0].weekMode, 'all');
+  h.model.toggleSlot(h.model.arrangements[0].id, 3);
+  same([...h.model.overlappingNames()], ['单周课', '全周课']);
+  h.model.accept(h.requests.at(-1).id, JSON.stringify({ session: 's', priority: { '全周课': 3 } }));
+  assert.equal(h.model.preferred, false);
+  same(JSON.parse(JSON.stringify(h.priorities)), [{ semester: 'fall', priority: { '全周课': 3 } }]);
+  same(h.exports.courseSlotRuns([9, 1, 2, 6, 5, 2]).map(run => [...run]), [[1, 2], [5, 6], [9, 9]]);
 });

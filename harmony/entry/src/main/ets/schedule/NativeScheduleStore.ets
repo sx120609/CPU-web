@@ -132,6 +132,12 @@ export interface NativeCourseBlock {
   course: NativeScheduleCourse;
 }
 
+// 某一天在校历里的位置：第几教学周的星期几。
+export interface NativeScheduleDaySlot {
+  week: number;
+  day: number;
+}
+
 interface NativeScheduleCacheEntry {
   snapshot: NativeScheduleSnapshot;
   savedAt: number;
@@ -152,6 +158,8 @@ export type NativeScheduleRequester = (request: NativeScheduleRequest) => void;
 export type NativeScheduleChangeListener = () => void;
 // 拿到登录后的课表快照（整学期或单周）时收到快照；退出登录、换账号时收到 undefined。
 export type NativeScheduleSnapshotListener = (snapshot?: NativeScheduleSnapshot) => void;
+
+const VIEW_MODES: string[] = ['week', 'day', 'month'];
 
 const CACHE_LIFETIME_MS: number = 30 * 24 * 60 * 60 * 1000;
 const MAX_SEMESTERS: number = 4;
@@ -177,6 +185,19 @@ export class NativeScheduleStore {
   source: string = '';
   bridgeReady: boolean = false;
   dataRevision: number = 0;
+  // 只读：别人共享的课表。不加载也不保存个人修改，不写卡片和本地缓存。
+  readOnly: boolean = false;
+  // 课表风格（ScheduleStyle.ets），与配色、深浅色互不影响。
+  visualStyle: string = 'classic';
+  showWeekend: boolean = true;
+  showNowIndicator: boolean = true;
+  // 课表时区（Asia/Shanghai）里现在是当天第几分钟，由页面每分钟写入；-1 表示未知。
+  nowMinutes: number = -1;
+  completeSemester: boolean = false;
+  // 月视图：所选日期与所显示月份里的任意一天，yyyy-MM-dd。
+  selectedDate: string = '';
+  monthAnchor: string = '';
+  priorityRevision: number = 0;
 
   private requester?: NativeScheduleRequester;
   private listener?: NativeScheduleChangeListener;
@@ -192,6 +213,10 @@ export class NativeScheduleStore {
   private accountScope: string = '';
   private persistence?: (raw: string) => void;
   private snapshotListener?: NativeScheduleSnapshotListener;
+  // 重叠课程的显示优先级：学期 -> (课程名键 -> 优先级)。随个人修改一起读回来，
+  // 存在本机，下次打开时课表不会在修改到达后重新排一遍。
+  private prioritiesBySemester: Map<string, Record<string, number>> = new Map<string, Record<string, number>>();
+  private priorityPersistence?: (raw: string) => void;
 
   attachPersistence(writer: (raw: string) => void): void { this.persistence = writer; }
 
@@ -214,14 +239,14 @@ export class NativeScheduleStore {
       this.selectedSemester = saved.semester;
       this.selectedWeek = saved.week;
       this.selectedDay = saved.day >= 1 && saved.day <= 7 ? saved.day : (new Date().getDay() || 7);
-      this.viewMode = saved.viewMode === 'day' ? 'day' : 'week';
+      this.viewMode = VIEW_MODES.includes(saved.viewMode) ? saved.viewMode : 'week';
       this.applySnapshot(entry.snapshot, true);
       this.snapshotListener?.(entry.snapshot);
     } catch (_) { this.cache.clear(); }
   }
 
   private persistCache(): void {
-    if (!this.persistence) return;
+    if (!this.persistence || this.readOnly) return;
     const snapshots: NativeScheduleSnapshot[] = [];
     this.cache.forEach((entry: NativeScheduleCacheEntry) => snapshots.push(entry.snapshot));
     const saved: PersistedScheduleCache = { version: 1, accountScope: this.accountScope,
@@ -330,10 +355,75 @@ export class NativeScheduleStore {
   }
 
   setViewMode(mode: string): void {
-    const normalized = mode === 'day' ? 'day' : 'week';
+    const normalized = VIEW_MODES.includes(mode) ? mode : 'week';
     if (this.viewMode === normalized) return;
     this.viewMode = normalized;
+    if (normalized === 'month') this.seedMonthSelection(false);
     this.notify();
+  }
+
+  canEdit(): boolean {
+    return !this.readOnly && this.source !== 'graduate';
+  }
+
+  // ---- 显示优先级 ----
+
+  attachPriorityPersistence(writer: (raw: string) => void): void { this.priorityPersistence = writer; }
+
+  restorePriorities(raw: string): void {
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as Record<string, Record<string, number>>;
+      Object.keys(saved).forEach((semester: string) => {
+        const cleaned = this.cleanPriorities(saved[semester]);
+        if (Object.keys(cleaned).length) this.prioritiesBySemester.set(semester, cleaned);
+      });
+      this.priorityRevision += 1;
+    } catch (_) {}
+  }
+
+  prioritySemester(): string {
+    return this.selectedSemester || this.result?.currentSemester || '';
+  }
+
+  displayPriorities(): Record<string, number> {
+    const empty: Record<string, number> = {};
+    return this.prioritiesBySemester.get(this.prioritySemester()) ?? empty;
+  }
+
+  setPriorities(semester: string, priorities?: Record<string, number>): void {
+    if (this.readOnly || !semester) return;
+    const cleaned = this.cleanPriorities(priorities);
+    const empty: Record<string, number> = {};
+    if (JSON.stringify(this.prioritiesBySemester.get(semester) ?? empty) === JSON.stringify(cleaned)) return;
+    if (Object.keys(cleaned).length) this.prioritiesBySemester.set(semester, cleaned);
+    else this.prioritiesBySemester.delete(semester);
+    this.priorityRevision += 1;
+    this.persistPriorities();
+    this.listener?.();
+  }
+
+  private cleanPriorities(priorities?: Record<string, number>): Record<string, number> {
+    const cleaned: Record<string, number> = {};
+    if (!priorities || typeof priorities !== 'object') return cleaned;
+    Object.keys(priorities).sort().forEach((key: string) => {
+      const value = Number(priorities[key]);
+      if (key && Number.isInteger(value) && value > 0) cleaned[key] = value;
+    });
+    return cleaned;
+  }
+
+  private persistPriorities(): void {
+    if (!this.priorityPersistence) return;
+    const saved: Record<string, Record<string, number>> = {};
+    this.prioritiesBySemester.forEach((value: Record<string, number>, key: string) => { saved[key] = value; });
+    this.priorityPersistence(this.prioritiesBySemester.size ? JSON.stringify(saved) : '');
+  }
+
+  // 整学期快照：发布共享课表时用，只有单周数据时返回 undefined。
+  completeSnapshot(): NativeScheduleSnapshot | undefined {
+    const semester = this.prioritySemester();
+    return semester ? this.cache.get(`${semester}|*`)?.snapshot : undefined;
   }
 
   returnToCurrentWeek(): void {
@@ -440,6 +530,14 @@ export class NativeScheduleStore {
     this.errorMessage = '';
     this.lastUpdatedAt = 0;
     this.status = 'idle';
+    this.completeSemester = false;
+    this.selectedDate = '';
+    this.monthAnchor = '';
+    if (this.prioritiesBySemester.size) {
+      this.prioritiesBySemester.clear();
+      this.priorityRevision += 1;
+      this.persistPriorities();
+    }
     this.persistCache();
     this.snapshotListener?.(undefined);
     if (this.bridgeReady && this.requester) {
@@ -465,6 +563,119 @@ export class NativeScheduleStore {
 
   blocksForDay(day: number): NativeCourseBlock[] {
     return this.mergedBlocks(this.visibleCells(), day);
+  }
+
+  // ---- 校历：日期、调休与可见的星期 ----
+
+  weekNumber(): number {
+    return Number(this.selectedWeek || this.result?.currentWeek || 0);
+  }
+
+  // 当前所选周某天的完整日期（yyyy-MM-dd），校历没有时为空串。
+  rawDate(day: number): string {
+    const week = this.weekNumber();
+    return this.calendar?.weeks?.find((item: NativeCalendarWeek) => item.week === week)?.days?.[day - 1] ?? '';
+  }
+
+  dateSlot(date: string): NativeScheduleDaySlot | undefined {
+    if (!date) return undefined;
+    const weeks = this.calendar?.weeks ?? [];
+    for (let index = 0; index < weeks.length; index += 1) {
+      const day = (weeks[index].days ?? []).indexOf(date);
+      if (day >= 0) return { week: weeks[index].week, day: day + 1 };
+    }
+    return undefined;
+  }
+
+  adjustmentOnDate(date: string): NativeScheduleAdjustment | undefined {
+    if (!date) return undefined;
+    return (this.calendar?.adjustments ?? []).find((item: NativeScheduleAdjustment) => {
+      return item.date === date && (item.kind === 'off' || item.kind === 'swap');
+    });
+  }
+
+  adjustment(day: number): NativeScheduleAdjustment | undefined {
+    return this.adjustmentOnDate(this.rawDate(day));
+  }
+
+  // 调课日上的是别的日子的课：课程实际属于哪一周的星期几。添加、编辑课程按它算。
+  effectiveSlot(day: number): NativeScheduleDaySlot {
+    const adjustment = this.adjustment(day);
+    const source = adjustment?.kind === 'swap' ? this.dateSlot(adjustment.source ?? '') : undefined;
+    return source ?? { week: this.weekNumber(), day };
+  }
+
+  // 课表页上这一天实际显示的课：放假日为空，调课日是被调来那天的课。
+  displayBlocks(day: number): NativeCourseBlock[] {
+    if (!this.result) return [];
+    const adjustment = this.adjustment(day);
+    if (!adjustment) return this.blocksForDay(day);
+    if (adjustment.kind === 'off') return [];
+    const source = this.dateSlot(adjustment.source ?? '');
+    return source ? this.blocksInWeek(this.result.cells, source.day, source.week) : [];
+  }
+
+  // 任意日期的课（月视图用）；不在教学周内的日期没有课。
+  blocksOnDate(date: string): NativeCourseBlock[] {
+    if (!this.result) return [];
+    const slot = this.dateSlot(date);
+    if (!slot) return [];
+    const adjustment = this.adjustmentOnDate(date);
+    if (adjustment?.kind === 'off') return [];
+    if (adjustment?.kind === 'swap') {
+      const source = this.dateSlot(adjustment.source ?? '');
+      return source ? this.blocksInWeek(this.result.cells, source.day, source.week) : [];
+    }
+    return this.blocksInWeek(this.result.cells, slot.day, slot.week);
+  }
+
+  // 隐藏周末时，周末只要是调休日或者有课就仍然显示：藏起来等于把课藏了。
+  visibleDays(): number[] {
+    const days: number[] = [1, 2, 3, 4, 5];
+    [6, 7].forEach((day: number) => {
+      if (this.showWeekend || this.adjustment(day) || this.displayBlocks(day).length) days.push(day);
+    });
+    return days;
+  }
+
+  // ---- 月视图 ----
+
+  private todayDate(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+
+  // 进入月视图时默认选中：今天在本学期内就选今天，否则选所选周里当前选中的那一天。
+  seedMonthSelection(reset: boolean): void {
+    if (this.selectedDate && this.monthAnchor && !reset) return;
+    const today = this.todayDate();
+    this.selectedDate = this.dateSlot(today) ? today : (this.rawDate(this.selectedDay) || today);
+    this.monthAnchor = this.selectedDate;
+  }
+
+  selectDate(date: string): void {
+    if (!date || date === this.selectedDate) return;
+    this.selectedDate = date;
+    if (date.substring(0, 7) !== this.monthAnchor.substring(0, 7)) this.monthAnchor = date;
+    this.listener?.();
+  }
+
+  moveMonth(delta: number): void {
+    const anchor = this.monthAnchor || this.todayDate();
+    const next = new Date(Date.UTC(Number(anchor.substring(0, 4)), Number(anchor.substring(5, 7)) - 1 + delta, 1));
+    this.monthAnchor = next.toISOString().substring(0, 10);
+    this.listener?.();
+  }
+
+  // 月视图里点「日视图」：跳到那一天所在的教学周。学期外的日期不能跳。
+  openDate(date: string): boolean {
+    const slot = this.dateSlot(date);
+    if (!slot) return false;
+    this.viewMode = 'day';
+    this.selectedDay = slot.day;
+    if (String(slot.week) !== this.selectedWeek) this.selectWeek(String(slot.week));
+    else this.notify();
+    return true;
   }
 
   // 任意一周某天的课块，合并规则与课表页一致；小组件按日期展开整学期时用。
@@ -612,6 +823,9 @@ export class NativeScheduleStore {
     preview.calendar = this.calendar;
     preview.periods = this.periods;
     preview.source = this.source;
+    preview.readOnly = this.readOnly;
+    preview.showWeekend = this.showWeekend;
+    preview.completeSemester = this.completeSemester;
     // Adjacent pages may only display a matching cached week or a complete term.
     const cached = this.freshCache(this.selectedSemester, week);
     preview.result = week === this.selectedWeek ? this.result : cached?.snapshot.data;
@@ -693,6 +907,7 @@ export class NativeScheduleStore {
     this.result = snapshot.data;
     this.navigationWeeks = snapshot.data.weeks;
     this.calendar = snapshot.calendar;
+    this.completeSemester = snapshot.completeSemester === true;
     this.periods = this.snapshotPeriods(snapshot);
     if (!this.selectedSemester) this.selectedSemester = snapshot.data.currentSemester;
     if (!this.selectedWeek) {

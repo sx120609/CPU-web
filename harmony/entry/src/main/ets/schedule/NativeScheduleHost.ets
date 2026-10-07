@@ -9,6 +9,7 @@ export interface NativeScheduleHostCallbacks {
   onAppearanceChanged: (mode: string) => void;
   onEditorResult: (id: string, payload: string) => void;
   onNativeLoginResult: (id: string, payload: string) => void;
+  onWebTaskResult: (id: string, payload: string) => void;
   onWebOverlayChanged: (visible: boolean) => void;
   onHeaderChanged: (payload: string) => void;
 }
@@ -39,6 +40,7 @@ export class NativeScheduleHost {
   webOverlayChanged(visible: boolean): void { activeCallbacks?.onWebOverlayChanged(visible); }
   editorResult(id: string, payload: string): void { activeCallbacks?.onEditorResult(id, payload); }
   nativeLoginResult(id: string, payload: string): void { activeCallbacks?.onNativeLoginResult(id, payload); }
+  webTaskResult(id: string, payload: string): void { activeCallbacks?.onWebTaskResult(id ?? '', payload ?? ''); }
   appearanceChanged(mode: string): void {
     activeCallbacks?.onAppearanceChanged(mode);
   }

@@ -511,6 +511,10 @@ export class HarmonyJavaScriptProxy {
     this.nativeScheduleHost.nativeLoginResult(id, payload);
   }
 
+  webTaskResult(id: string, payload: string): void {
+    this.nativeScheduleHost.webTaskResult(id, payload);
+  }
+
   schedulePrefetched(payload: string): void {
     this.nativeScheduleHost.schedulePrefetched(payload);
   }
