@@ -38,6 +38,7 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
       description,
       topicTitle: topic.title,
       boardName: topic.board.name,
+      imageHeight: layoutTopicCard(topic).height,
     }));
   } catch (error) {
     next(error);
@@ -118,6 +119,7 @@ function renderTopicSharePage(input: {
   description: string;
   topicTitle: string;
   boardName: string;
+  imageHeight: number;
 }) {
   const title = escapeHtml(input.title);
   const description = escapeHtml(input.description);
@@ -141,7 +143,7 @@ function renderTopicSharePage(input: {
     <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="720" />
-    <meta property="og:image:height" content="980" />
+    <meta property="og:image:height" content="${input.imageHeight}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${description}" />
@@ -153,43 +155,42 @@ function renderTopicSharePage(input: {
         min-height: 100vh;
         display: grid;
         place-items: center;
-        background: linear-gradient(180deg, #eef6ff 0%, #ffffff 100%);
+        background: #f2f3f5;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-        color: #172033;
+        color: #16191d;
       }
       .card {
+        box-sizing: border-box;
         width: min(92vw, 520px);
-        padding: 28px 24px;
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.94);
-        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.12);
+        padding: 24px;
+        border-radius: 14px;
+        background: #ffffff;
       }
       .badge {
         display: inline-flex;
-        padding: 6px 10px;
+        padding: 3px 10px;
         border-radius: 999px;
-        background: #ecfdf5;
-        color: #0f766e;
+        background: #f2f3f5;
+        color: #4e5661;
         font-size: 12px;
-        font-weight: 700;
       }
       h1 {
-        margin: 14px 0 10px;
-        font-size: 24px;
-        line-height: 1.35;
+        margin: 12px 0 8px;
+        font-size: 20px;
+        line-height: 1.4;
       }
       p {
         margin: 0;
-        color: #667085;
+        color: #4e5661;
         line-height: 1.7;
         font-size: 14px;
       }
       a {
         display: inline-flex;
-        margin-top: 18px;
-        color: #168776;
+        margin-top: 16px;
+        color: #086f63;
         text-decoration: none;
-        font-weight: 700;
+        font-weight: 500;
       }
     </style>
   </head>
@@ -209,69 +210,78 @@ function renderTopicSharePage(input: {
 </html>`;
 }
 
+const CARD_WIDTH = 720;
+const CARD_INK = "#16191d";
+const CARD_INK_SECONDARY = "#4e5661";
+const CARD_INK_MUTED = "#666e7a";
+const CARD_PAGE = "#f2f3f5";
+const CARD_HAIRLINE = "#e4e6ea";
+
+// The card is as tall as its text: a one-line title without body text gives a short card, not a poster with a hole in it.
+export function layoutTopicCard(topic: any) {
+  const titleLines = wrapText(topic.title, 23, 3);
+  const excerptSource = stripText(topic.content);
+  const excerptLines = excerptSource ? wrapText(truncateText(excerptSource, 200), 42, 7 - titleLines.length) : [];
+  const titleY = 198;
+  const titleEnd = titleY + (titleLines.length - 1) * 64;
+  const excerptY = titleEnd + 58;
+  const textEnd = excerptLines.length ? excerptY + (excerptLines.length - 1) * 40 : titleEnd;
+  const metaY = textEnd + 62;
+  const dividerY = metaY + 34;
+  const footerY = dividerY + 36;
+  const height = footerY + 112 + 44 + 40;
+  return { titleLines, excerptLines, titleY, excerptY, metaY, dividerY, footerY, height };
+}
+
 export async function renderTopicCardSvg(topic: any, origin: string) {
   const boardName = topic.board?.name || "药大拾间";
-  const boardColor = topic.board?.color || "#168776";
+  const boardColor = normalizeHex(topic.board?.color) || "#086f63";
   const authorName = topic.isAnonymous ? presentAnonymousAlias(topic.anonymousAlias) : (topic.author?.nickname || "同学");
-  const subtitle = `${boardName} · ${authorName}`;
-  const footer = `${topic.replyCount || 0} 条回复 · ${topic.viewCount || 0} 浏览`;
-  const titleLines = wrapText(topic.title, 15, 3);
-  const titleSvg = titleLines
-    .map((line, index) => `<tspan x="360" dy="${index === 0 ? 0 : 60}">${escapeXml(line)}</tspan>`)
+  const meta = `${authorName} · ${topic.replyCount || 0} 回复 · ${topic.viewCount || 0} 浏览`;
+  const layout = layoutTopicCard(topic);
+  const lines = (items: string[], x: number, gap: number) => items
+    .map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : gap}">${escapeXml(line)}</tspan>`)
     .join("");
+  const chipWidth = 56 + textUnits(boardName) * 10;
+  const host = origin.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   const qrDataUrl = await QRCode.toDataURL(`${origin}/share/topic/${topic.id}`, {
-    margin: 1,
-    width: 220,
-    color: { dark: "#111827", light: "#ffffff" },
+    margin: 0,
+    width: 224,
+    color: { dark: CARD_INK, light: "#ffffff" },
   });
+  const excerpt = layout.excerptLines.length
+    ? `<text x="88" y="${layout.excerptY}" font-size="25" fill="${CARD_INK_SECONDARY}">${lines(layout.excerptLines, 88, 40)}</text>`
+    : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="720" height="980" viewBox="0 0 720 980" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeXml(topic.title)}">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f6f8fb" />
-      <stop offset="100%" stop-color="#edf2f7" />
-    </linearGradient>
-    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#0f172a" flood-opacity="0.10" />
-    </filter>
-  </defs>
-  <rect width="720" height="980" fill="url(#bg)" />
-  <circle cx="626" cy="110" r="126" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
-  <circle cx="674" cy="58" r="58" fill="${escapeXml(withOpacity(boardColor, 0.08))}" />
-  <rect x="52" y="48" width="616" height="884" rx="38" fill="#ffffff" filter="url(#cardShadow)" />
+<svg width="${CARD_WIDTH}" height="${layout.height}" viewBox="0 0 ${CARD_WIDTH} ${layout.height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeXml(topic.title)}">
+  <rect width="${CARD_WIDTH}" height="${layout.height}" fill="${CARD_PAGE}" />
+  <rect x="40" y="40" width="640" height="${layout.height - 80}" rx="28" fill="#ffffff" />
 
-  <image x="92" y="108" width="88" height="88" href="${siteLogoDataUrl()}" />
+  <rect x="88" y="88" width="${chipWidth}" height="40" rx="20" fill="${CARD_PAGE}" />
+  <circle cx="110" cy="108" r="6" fill="${escapeXml(boardColor)}" />
+  <text x="126" y="115" font-size="20" fill="${CARD_INK_SECONDARY}">${escapeXml(boardName)}</text>
 
-  <text x="208" y="138" font-size="19" font-weight="700" fill="#101828">${escapeXml(boardName)}</text>
-  <text x="208" y="166" font-size="16" fill="#667085">${escapeXml(subtitle)}</text>
-  <text x="208" y="194" font-size="16" fill="#98a2b3">${escapeXml(footer)}</text>
+  <text x="88" y="${layout.titleY}" font-size="46" font-weight="700" fill="${CARD_INK}">${lines(layout.titleLines, 88, 64)}</text>
+  ${excerpt}
+  <text x="88" y="${layout.metaY}" font-size="21" fill="${CARD_INK_MUTED}">${escapeXml(truncateText(meta, 40))}</text>
 
-  <rect x="92" y="250" width="536" height="328" rx="30" fill="${escapeXml(withOpacity(boardColor, 0.06))}" />
-  <circle cx="532" cy="334" r="112" fill="${escapeXml(withOpacity(boardColor, 0.12))}" />
-  <circle cx="594" cy="270" r="42" fill="${escapeXml(withOpacity(boardColor, 0.10))}" />
-  <rect x="132" y="302" width="140" height="16" rx="8" fill="${escapeXml(withOpacity(boardColor, 0.18))}" />
-  <text x="360" y="394" text-anchor="middle" font-size="60" font-weight="820" fill="#172033">${titleSvg}</text>
-  <text x="112" y="516" font-size="18" fill="#667085">${escapeXml(subtitle)}</text>
+  <rect x="88" y="${layout.dividerY}" width="544" height="1" fill="${CARD_HAIRLINE}" />
 
-  <rect x="92" y="650" width="536" height="1" fill="#edf2f7" />
-
-  <text x="92" y="724" font-size="40" font-weight="820" fill="#172033">药大拾间</text>
-  <text x="92" y="764" font-size="19" fill="#667085">扫描二维码，直接打开原帖</text>
-  <text x="92" y="816" font-size="16" font-weight="700" fill="${escapeXml(boardColor)}">${escapeXml(boardName)}</text>
-  <text x="92" y="842" font-size="16" fill="#98a2b3">cputime.cn</text>
-
-  <rect x="458" y="704" width="132" height="132" rx="20" fill="#ffffff" stroke="#dfe5ee" />
-  <image x="470" y="716" width="108" height="108" href="${escapeXml(qrDataUrl)}" />
+  <image x="88" y="${layout.footerY + 24}" width="64" height="64" href="${siteLogoDataUrl()}" />
+  <text x="170" y="${layout.footerY + 52}" font-size="28" font-weight="700" fill="${CARD_INK}">药大拾间</text>
+  <text x="170" y="${layout.footerY + 84}" font-size="19" fill="${CARD_INK_MUTED}">扫码看原帖 · ${escapeXml(host)}</text>
+  <image x="520" y="${layout.footerY}" width="112" height="112" href="${escapeXml(qrDataUrl)}" />
 </svg>`;
 }
 
 function renderFallbackCardSvg(title: string, description: string) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="720" height="980" viewBox="0 0 720 980" xmlns="http://www.w3.org/2000/svg">
-  <rect width="720" height="980" fill="#f8fafc" />
-  <text x="56" y="180" font-size="46" font-weight="800" fill="#172033">${escapeXml(title)}</text>
-  <text x="56" y="254" font-size="24" fill="#667085">${escapeXml(description)}</text>
+<svg width="${CARD_WIDTH}" height="400" viewBox="0 0 ${CARD_WIDTH} 400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="${CARD_WIDTH}" height="400" fill="${CARD_PAGE}" />
+  <rect x="40" y="40" width="640" height="320" rx="28" fill="#ffffff" />
+  <text x="88" y="190" font-size="46" font-weight="700" fill="${CARD_INK}">${escapeXml(title)}</text>
+  <text x="88" y="250" font-size="25" fill="${CARD_INK_SECONDARY}">${escapeXml(description)}</text>
 </svg>`;
 }
 
@@ -317,41 +327,55 @@ function renderNotFoundPage(origin: string, targetPath: string) {
 </html>`;
 }
 
-function wrapText(text: string, maxUnits: number, maxLines: number) {
-  const source = text.trim() || "药大拾间";
-  const lines: string[] = [];
-  let current = "";
-  let units = 0;
-  for (const ch of source) {
-    const width = /[\u0000-\u00ff]/.test(ch) ? 1 : 2;
-    if (units + width > maxUnits) {
-      lines.push(current.trim());
-      current = ch;
-      units = width;
-      if (lines.length >= maxLines) break;
-      continue;
-    }
-    current += ch;
-    units += width;
-  }
-  if (lines.length < maxLines && current.trim()) lines.push(current.trim());
-  if (lines.length > maxLines) return lines.slice(0, maxLines);
-  if (source.length > lines.join("").length && lines.length) {
-    lines[lines.length - 1] = truncateText(lines[lines.length - 1], Math.max(2, lines[lines.length - 1].length - 1));
-  }
-  return lines.slice(0, maxLines);
+// Estimated width in half-em units. The renderer cannot measure text, so Latin characters are counted by class:
+// a bold capital is much wider than a comma, and counting both as half a CJK character let English titles run
+// past the edge of the card.
+function charUnits(ch: string) {
+  if (!/[\u0000-ÿ]/.test(ch)) return 2;
+  if (/[A-Z@%&mw]/.test(ch)) return 1.45;
+  if (/[\s.,:;!|'"()\[\]\-ijlt]/.test(ch)) return 0.7;
+  return 1.15;
 }
 
-function withOpacity(hex: string, alpha: number) {
-  const normalized = normalizeHex(hex);
-  if (!normalized) return `rgba(22, 135, 118, ${alpha})`;
-  const value = normalized.slice(1);
-  const step = value.length === 3 ? 1 : 2;
-  const expand = (segment: string) => step === 1 ? segment.repeat(2) : segment;
-  const r = parseInt(expand(value.slice(0, step)), 16);
-  const g = parseInt(expand(value.slice(step, step * 2)), 16);
-  const b = parseInt(expand(value.slice(step * 2, step * 3)), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+function textUnits(text: string) {
+  let units = 0;
+  for (const ch of text) units += charUnits(ch);
+  return units;
+}
+
+// Break into at most maxLines lines of maxUnits each. Latin words move to the next line whole when they can, and
+// only text that really did not fit ends in an ellipsis.
+function wrapText(text: string, maxUnits: number, maxLines: number) {
+  const source = text.trim() || "药大拾间";
+  const isWordChar = (ch: string) => /[A-Za-z0-9]/.test(ch);
+  const lines: string[] = [];
+  let current = "";
+  let truncated = false;
+  for (const ch of source) {
+    if (textUnits(current) + charUnits(ch) > maxUnits && current) {
+      if (lines.length === maxLines - 1) {
+        truncated = true;
+        break;
+      }
+      let carry = "";
+      const lastSpace = current.lastIndexOf(" ");
+      if (isWordChar(ch) && isWordChar(current[current.length - 1]) && lastSpace > 0) {
+        carry = current.slice(lastSpace + 1);
+        current = current.slice(0, lastSpace);
+      }
+      lines.push(current.trim());
+      current = carry;
+      if (ch === " " && !current) continue;
+    }
+    current += ch;
+  }
+  if (truncated) {
+    const chars = Array.from(current.trimEnd());
+    while (chars.length > 1 && textUnits(chars.join("")) > maxUnits - 2) chars.pop();
+    current = `${chars.join("").trimEnd()}…`;
+  }
+  if (current.trim()) lines.push(current.trim());
+  return lines;
 }
 
 function normalizeHex(value: string | null | undefined) {
