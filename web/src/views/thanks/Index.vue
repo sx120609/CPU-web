@@ -104,6 +104,9 @@
               </li>
             </TransitionGroup>
           </div>
+          <p v-reveal class="thx-anon">
+            <template v-if="anonymousCount">榜上有 {{ anonymousCount }} 位同学选择了匿名，</template>还有一些支持者没有留名、没有上榜。名字不在这里，感谢是一样的。
+          </p>
         </template>
         <p v-else v-reveal class="thx-empty">鸣谢墙上的名字会出现在这里。</p>
         <div v-reveal class="thx-actions thx-actions--start">
@@ -247,6 +250,7 @@ const sponsorTotal = ref(0);
 const totalAmount = ref("0.00");
 const boardExpanded = ref(false);
 const flashKeys = reactive(new Set<string>());
+const anonymousCount = computed(() => ranking.value.filter((entry) => entry.anonymous).length);
 const shownRanking = computed(() => (boardExpanded.value ? ranking.value : ranking.value.slice(0, BOARD_COLLAPSED)));
 let refreshTimer = 0;
 let flashTimer = 0;
@@ -1032,6 +1036,13 @@ onBeforeUnmount(() => {
 
 .thx-rank-leave-active {
   position: absolute;
+}
+
+.thx-anon {
+  max-width: 720px;
+  margin-top: 24px;
+  font-size: clamp(16px, 2vw, 21px);
+  font-weight: 600;
 }
 
 .thx-empty {
