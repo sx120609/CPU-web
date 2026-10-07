@@ -94,6 +94,30 @@
   max-width: 100%;
   overflow-wrap: anywhere;
 }
+.response-head .response-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+}
+.response-chat {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.response-chat:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
 .choice-stats { display: flex; flex-direction: column; gap: 10px; }
 .choice-stat-row {
   display: grid;

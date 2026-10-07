@@ -696,7 +696,18 @@
             <article v-for="item in responses" :key="item.id" class="response-card">
               <div class="response-head">
                 <b>{{ item.respondent?.nickname || "匿名填写" }}</b>
-                <span>{{ fmtDate(item.createdAt) }}</span>
+                <span class="response-meta">
+                  <span>{{ fmtDate(item.createdAt) }}</span>
+                  <router-link
+                    v-if="canMessageRespondent(item)"
+                    class="response-chat"
+                    :to="respondentChatRoute(item)"
+                    :target="respondentChatTarget"
+                  >
+                    <el-icon aria-hidden="true"><ChatDotRound /></el-icon>
+                    私聊
+                  </router-link>
+                </span>
               </div>
               <div class="answer-list">
                 <div v-for="field in activeResponseFields" :key="field.id" class="answer-row">
@@ -723,6 +734,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Calendar,
+  ChatDotRound,
   CopyDocument,
   DataAnalysis,
   Delete,
@@ -753,6 +765,8 @@ import {
   type ToolManager,
   type ToolMeta,
 } from "@/api/tools";
+import { useAuthStore } from "@/stores/auth";
+import { detectClientPlatform } from "@/utils/clientInfo";
 import { fmtDate } from "@/utils/format";
 import {
   branchRuleAction,
@@ -792,6 +806,7 @@ const fieldTypeOptions: Array<{ value: QuestionnaireFieldType; label: string; hi
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const loading = ref(false);
 const allTools = ref<ToolMeta[]>([]);
 const manageableCodes = ref<ServiceToolCode[]>([]);
@@ -857,6 +872,19 @@ const gradeTotalRows = computed(() => gradeChecks.value.reduce((sum, item) => su
 
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
+// 桌面浏览器里另开标签页私聊，答卷列表留在原处；App 和手机上没有多标签，直接跳转。
+const respondentChatTarget = detectClientPlatform() === "web" && window.matchMedia?.("(hover: hover) and (pointer: fine)").matches
+  ? "_blank"
+  : undefined;
+
+function canMessageRespondent(item: QuestionnaireResponse) {
+  return !!item.respondent && item.respondent.id !== auth.user?.id && !auth.forumHidden;
+}
+
+function respondentChatRoute(item: QuestionnaireResponse) {
+  return { path: "/messages", query: { tab: "private", user: String(item.respondent?.id ?? "") } };
+}
+
 const responseStats = computed<FieldStat[]>(() => activeResponseFields.value.map((field) => buildQuestionnaireFieldStat(field, responses.value)));
 
 onMounted(init);

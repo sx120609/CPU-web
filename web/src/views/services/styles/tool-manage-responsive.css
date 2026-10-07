@@ -346,6 +346,10 @@
     align-items: flex-start;
     flex-direction: column;
   }
+  .response-head .response-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
   .questionnaire-row-card {
     display: flex;
     flex-direction: column;
