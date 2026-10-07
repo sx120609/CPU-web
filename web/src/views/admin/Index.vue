@@ -102,6 +102,7 @@
       <el-tab-pane name="deployment" v-if="auth.isAdmin"><template #label><AppIcon name="promotion" /> 更新部署</template><DeploymentPane v-if="tab === 'deployment'" /></el-tab-pane>
       <el-tab-pane name="database" v-if="auth.isAdmin"><template #label><AppIcon name="database" /> 数据备份</template><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
       <el-tab-pane name="ios-clients" v-if="auth.isAdmin"><template #label><AppIcon name="chart" /> iOS 客户端</template><IosClientsPane v-if="tab === 'ios-clients'" /></el-tab-pane>
+      <el-tab-pane name="android-clients" v-if="auth.isAdmin"><template #label><AppIcon name="mobile" /> 安卓客户端</template><AndroidClientsPane v-if="tab === 'android-clients'" /></el-tab-pane>
       <el-tab-pane name="desktop-installs" v-if="auth.isAdmin"><template #label><AppIcon name="desktop" /> 桌面端安装</template><DesktopInstallsPane v-if="tab === 'desktop-installs'" /></el-tab-pane>
       <el-tab-pane name="cloud-usage" v-if="auth.isAdmin"><template #label><AppIcon name="chart" /> 云资源用量</template><CloudUsagePane v-if="tab === 'cloud-usage'" /></el-tab-pane>
       <el-tab-pane name="media-storage" v-if="auth.isAdmin"><template #label><AppIcon name="folder" /> 媒体存储</template><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
@@ -144,6 +145,7 @@ const DeploymentPane = defineAsyncComponent(() => import("./DeploymentPane.vue")
 const DatabasePane = defineAsyncComponent(() => import("./DatabasePane.vue"));
 const CloudUsagePane = defineAsyncComponent(() => import("./CloudUsagePane.vue"));
 const IosClientsPane = defineAsyncComponent(() => import("./IosClientsPane.vue"));
+const AndroidClientsPane = defineAsyncComponent(() => import("./AndroidClientsPane.vue"));
 const DesktopInstallsPane = defineAsyncComponent(() => import("./DesktopInstallsPane.vue"));
 const MediaStoragePane = defineAsyncComponent(() => import("./MediaStoragePane.vue"));
 const FilestoreSettingsPane = defineAsyncComponent(() => import("./FilestoreSettingsPane.vue"));
@@ -178,6 +180,7 @@ function allowedAdminTab(value: string) {
   if (value === "schedule-terms") return auth.isAdmin;
   if (value === "apns") return auth.isAdmin;
   if (value === "ios-clients") return auth.isAdmin;
+  if (value === "android-clients") return auth.isAdmin;
   if (value === "desktop-installs") return auth.isAdmin;
   return isCoreStaff.value;
 }

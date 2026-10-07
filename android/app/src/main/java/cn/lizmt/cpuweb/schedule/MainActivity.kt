@@ -11,12 +11,15 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
+import android.os.SystemClock
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.doOnPreDraw
 import android.widget.FrameLayout
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
@@ -46,6 +49,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private set
     lateinit var sharing: ScheduleSharing
         private set
+    private lateinit var clientStats: ClientStats
+    private var reportsClientStats = false
     private lateinit var legacyBridge: CpuAndroidBridge
     lateinit var nativeWebLayer: NativeWebLayer
         private set
@@ -92,6 +97,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        val coldStart = savedInstanceState == null && ClientStats.claimColdStart()
         val preferences = getSharedPreferences(SHELL_PREFS, MODE_PRIVATE)
         welcomeSeen = preferences.getBoolean(KEY_WELCOME_SEEN, false)
         // Someone upgrading while signed in already knows the app: skip the first-run welcome.
@@ -117,7 +123,16 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         sharing = if (debugFixture) ScheduleSharing(lifecycleScope, null, { DebugScheduleFixture.shares(it) })
         else ScheduleSharing(lifecycleScope, java.io.File(noBackupFilesDir, "shared-schedules.json"), { web.shares(it) })
         shell = ShellCoordinator(lifecycleScope, web, schedule)
-        shell.onAccountChanged = { account -> widgets.handleAccountChanged(account) }
+        clientStats = ClientStats(this, lifecycleScope) {
+            ClientFeatureState(appearance.mode, style.visualStyle.id, style.background != null)
+        }
+        // The fixture is a development surface, not a real launch of the app.
+        reportsClientStats = !debugFixture
+        web.onRendererLost = { crashed -> if (reportsClientStats) clientStats.recordRendererLoss(crashed) }
+        shell.onAccountChanged = { account ->
+            widgets.handleAccountChanged(account)
+            if (reportsClientStats) clientStats.report(force = true)
+        }
         // Widgets read the timetable the app writes locally: follow every change of
         // the data shown (network, archive, prefetched weeks, edits) and of sign-in.
         lifecycleScope.launch {
@@ -167,6 +182,12 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                 AppRoot(this)
             }
         }
+        if (coldStart && reportsClientStats) {
+            chrome.doOnPreDraw {
+                // Posted so the first frame's own drawing is part of the launch.
+                chrome.post { clientStats.recordLaunch(SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()) }
+            }
+        }
         handleLaunchIntent(intent)
     }
 
@@ -194,6 +215,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         web.webView.onResume()
         legacyBridge.resumePendingInstall()
         widgets.refreshForNightMode()
+        if (reportsClientStats) clientStats.report()
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

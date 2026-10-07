@@ -116,6 +116,7 @@ import {
 } from "../../services/webStaticSwitch";
 import { getCloudUsageSummary, type CloudUsageRange } from "../../services/cloudUsage";
 import { getIosClientDiagnostic, getIosClientStats, parseIosClientStatsRange } from "../../services/iosClientStats";
+import { getAndroidClientDiagnostic, getAndroidClientStats } from "../../services/androidClientStats";
 import { getDesktopInstallReports, parseDesktopInstallReportRange } from "../../services/desktopInstallReports";
 import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
@@ -2356,6 +2357,24 @@ adminRouter.get("/ios-clients", adminOnly, async (req, res, next) => {
 adminRouter.get("/ios-clients/diagnostics/:id", adminOnly, async (req, res, next) => {
   try {
     const row = await getIosClientDiagnostic(String(req.params.id));
+    if (!row) return next(Errors.notFound("诊断记录不存在"));
+    ok(res, row);
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/android-clients", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await getAndroidClientStats(parseIosClientStatsRange(req.query.range)));
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/android-clients/diagnostics/:id", adminOnly, async (req, res, next) => {
+  try {
+    const row = await getAndroidClientDiagnostic(String(req.params.id));
     if (!row) return next(Errors.notFound("诊断记录不存在"));
     ok(res, row);
   } catch (e) {

@@ -123,6 +123,8 @@ class WebSession(
     var onSchedulePrefetched: ((String) -> Unit)? = null
     var onBridgeLost: ((String) -> Unit)? = null
     var onAppearanceReported: ((mode: String) -> Unit)? = null
+    /** The renderer process died; true for a crash, false when the system reclaimed it. */
+    var onRendererLost: ((crashed: Boolean) -> Unit)? = null
     /** The native appearance choice, pushed to each page once its bridge is ready. */
     var nativeAppearanceMode: (() -> String)? = null
 
@@ -646,7 +648,12 @@ class WebSession(
         override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
             // Returning true keeps the app alive, but this WebView is now
             // unusable: replace it and reopen the page the user was on.
-            if (view === webView) replaceAfterRendererLoss(view) else destroyDetached(view)
+            if (view === webView) {
+                onRendererLost?.invoke(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && detail.didCrash())
+                replaceAfterRendererLoss(view)
+            } else {
+                destroyDetached(view)
+            }
             return true
         }
     }

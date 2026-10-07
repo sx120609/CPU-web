@@ -342,6 +342,95 @@ export type IosClientStats = {
   }[];
 };
 
+export type AndroidClientVersionStability = {
+  version: string;
+  launches: number;
+  launchMsAvg: number | null;
+  crashExits: number;
+  nativeCrashExits: number;
+  crashRate: number | null;
+  anrExits: number;
+  foregroundKills: number;
+  rendererCrashes: number;
+  rendererKills: number;
+  crashReports: number;
+  crashInstalls: number;
+  anrReports: number;
+};
+
+export type AndroidClientDiagnosticGroup = {
+  signature: string;
+  kind: "crash" | "anr";
+  count: number;
+  installs: number;
+  versions: string[];
+  lastSeenAt: string | null;
+  summary: string;
+  topFrames: string[];
+  sampleId: string | null;
+};
+
+export type AndroidClientDiagnosticDetail = {
+  id: string;
+  kind: "crash" | "anr";
+  appVersion: string;
+  appBuild: string;
+  deviceBrand: string;
+  brandName: string;
+  deviceModel: string;
+  systemVersion: string;
+  summary: string;
+  occurredAt: string;
+  stackTrace: string;
+  topFrames: string[];
+};
+
+export type AndroidClientStats = {
+  range: IosClientStatsRange;
+  totals: { allTime: number; active1d: number; active7d: number; active30d: number };
+  installs: number;
+  signedInUsers: number;
+  byBrand: { brand: string; name: string; count: number }[];
+  byDeviceModel: { deviceModel: string; brand: string; count: number }[];
+  otherDeviceModels: { models: number; count: number };
+  byAppVersion: { version: string; count: number }[];
+  bySystemVersion: { version: string; count: number }[];
+  byWebView: { version: string; count: number }[];
+  features: {
+    widgets: {
+      reported: number;
+      installsWithWidget: number;
+      byKind: { kind: string; name: string; installs: number; count: number }[];
+    };
+    appearanceMode: { mode: string; count: number }[];
+    scheduleStyle: { style: string; name: string; count: number }[];
+    customBackground: IosClientFlagCounts;
+    installPermission: IosClientFlagCounts;
+  };
+  trend: {
+    dates: string[];
+    active: number[];
+    newInstalls: number[];
+    versions: { version: string; counts: number[] }[];
+  };
+  stability: {
+    byVersion: AndroidClientVersionStability[];
+    groups: AndroidClientDiagnosticGroup[];
+  };
+  recent: {
+    deviceBrand: string;
+    brandName: string;
+    deviceModel: string;
+    systemVersion: string;
+    appVersion: string;
+    appBuild: string;
+    webViewVersion: string | null;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    user: { id: number; nickname: string; username: string } | null;
+  }[];
+};
+
 export type DesktopInstallOutcome = "failed" | "retried" | "elevated";
 
 /** `failed` is the subset of `count` the installer could not recover from. */
@@ -1225,6 +1314,10 @@ export const adminApi = {
     request.get<IosClientStats>("/admin/ios-clients", { range }, { cacheTtlMs: 0, ...options }),
   iosClientDiagnostic: (id: string) =>
     request.get<IosClientDiagnosticDetail>(`/admin/ios-clients/diagnostics/${encodeURIComponent(id)}`, undefined, { cacheTtlMs: 0 }),
+  androidClientStats: (range: IosClientStatsRange, options?: RequestOptions) =>
+    request.get<AndroidClientStats>("/admin/android-clients", { range }, { cacheTtlMs: 0, ...options }),
+  androidClientDiagnostic: (id: string) =>
+    request.get<AndroidClientDiagnosticDetail>(`/admin/android-clients/diagnostics/${encodeURIComponent(id)}`, undefined, { cacheTtlMs: 0 }),
   desktopInstallReports: (range: IosClientStatsRange, options?: RequestOptions) =>
     request.get<DesktopInstallReports>("/admin/desktop-install-reports", { range }, { cacheTtlMs: 0, ...options }),
   cloudUsage: (range: CloudUsageRange, refresh = false, options?: RequestOptions) =>

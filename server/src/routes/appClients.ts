@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { securityRateLimit } from "../middleware/securityRateLimit";
+import { androidClientHeartbeatSchema, androidClientMetricsSchema, recordAndroidClientHeartbeat, recordAndroidClientMetrics } from "../services/androidClientStats";
 import { desktopInstallReportSchema, recordDesktopInstallReport } from "../services/desktopInstallReports";
 import { iosClientHeartbeatSchema, iosClientMetricsSchema, recordIosClientHeartbeat, recordIosClientMetrics } from "../services/iosClientStats";
 import { Errors, ok } from "../utils/response";
@@ -25,6 +26,30 @@ appClientRouter.post("/ios/metrics", securityRateLimit("ios-client-metrics", 20,
   if (!parsed.success) return next(Errors.badRequest("诊断数据格式不正确"));
   try {
     ok(res, await recordIosClientMetrics(parsed.data));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// The native Android shell: same contract as the iOS heartbeat above.
+appClientRouter.post("/android/heartbeat", securityRateLimit("android-client-heartbeat", 30, 60_000), async (req, res, next) => {
+  const parsed = androidClientHeartbeatSchema.safeParse(req.body);
+  if (!parsed.success) return next(Errors.badRequest("客户端信息格式不正确"));
+  try {
+    await recordAndroidClientHeartbeat(parsed.data, req.user?.userId ?? null);
+    ok(res, { recorded: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Daily launch / exit-reason summaries and crash / ANR stack traces. Idempotent,
+// so the client may retry a batch until it is acknowledged.
+appClientRouter.post("/android/metrics", securityRateLimit("android-client-metrics", 20, 60_000), async (req, res, next) => {
+  const parsed = androidClientMetricsSchema.safeParse(req.body);
+  if (!parsed.success) return next(Errors.badRequest("诊断数据格式不正确"));
+  try {
+    ok(res, await recordAndroidClientMetrics(parsed.data));
   } catch (error) {
     next(error);
   }

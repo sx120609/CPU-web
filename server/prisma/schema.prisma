@@ -97,6 +97,7 @@ model User {
   liveActivityRegistrations    LiveActivityRegistration[]
   liveActivityDevices           LiveActivityDevice[]
   iosClientInstalls            IosClientInstall[]
+  androidClientInstalls        AndroidClientInstall[]
   scheduleSharesOwned          ScheduleShare[]              @relation("ScheduleShareOwner")
   coupleMembership             CoupleMember?
   toolPermissions              ToolPermission[]
@@ -949,6 +950,99 @@ model IosClientDiagnostic {
   hangDurationMs Int?
   occurredAt     DateTime
   createdAt      DateTime  @default(now())
+
+  @@index([kind, occurredAt])
+  @@index([signature])
+  @@index([appVersion])
+}
+
+// 原生安卓客户端（android/）安装统计。installId 是 App 本地生成的随机 UUID，
+// 不是 Android ID / IMEI / 广告标识；只记录品牌、型号、系统版本、WebView 内核与客户端版本。
+model AndroidClientInstall {
+  id             String   @id @default(cuid())
+  installId      String   @unique
+  userId         Int?
+  deviceBrand    String
+  deviceModel    String
+  systemVersion  String
+  sdkInt         Int      @default(0)
+  appVersion     String
+  appBuild       String
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  // 以下为最近一次上报的状态；null 表示客户端未上报或系统暂不可读。
+  webViewVersion    String?
+  webViewPackage    String?
+  // widgets 为 JSON 数组：[{ kind }]，每个已添加的桌面小组件一项
+  widgets           String?
+  appearanceMode    String?
+  scheduleStyle     String?
+  customBackground  Boolean?
+  installPermission Boolean?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([lastSeenAt])
+  @@index([userId])
+  @@index([firstSeenAt])
+}
+
+// 每台安装每天一行（按北京时间日期），用于日活趋势与版本升级进度。
+model AndroidClientDailyActive {
+  date       String
+  installId  String
+  appVersion String
+  appBuild   String
+  createdAt  DateTime @default(now())
+
+  @@id([date, installId])
+  @@index([date])
+}
+
+// 客户端按天汇总的启动与进程退出统计；一天结束后才上传，所以通常次日送达。
+model AndroidClientMetricReport {
+  id               String   @id @default(cuid())
+  installId        String
+  date             String
+  appVersion       String
+  appBuild         String
+  deviceBrand      String
+  deviceModel      String
+  systemVersion    String
+  launchCount      Int      @default(0)
+  launchMsAvg      Float?
+  rendererCrashes  Int      @default(0)
+  rendererKills    Int      @default(0)
+  crashExits       Int      @default(0)
+  nativeCrashExits Int      @default(0)
+  anrExits         Int      @default(0)
+  foregroundKills  Int      @default(0)
+  // JSON：{ foreground: { reason: count }, background: { reason: count } }，来自 ApplicationExitInfo（Android 11+）
+  exitDetail       String   @default("{}")
+  createdAt        DateTime @default(now())
+
+  @@unique([installId, date, appBuild])
+  @@index([date])
+  @@index([appVersion])
+}
+
+// 未捕获的 Java/Kotlin 异常与系统记录的 ANR。安装包未混淆，调用栈自带类名与行号。
+model AndroidClientDiagnostic {
+  id            String   @id @default(cuid())
+  fingerprint   String   @unique
+  installId     String
+  kind          String
+  appVersion    String
+  appBuild      String
+  deviceBrand   String
+  deviceModel   String
+  systemVersion String
+  signature     String
+  summary       String
+  topFrames     String   @default("[]")
+  stackTrace    String
+  occurredAt    DateTime
+  createdAt     DateTime @default(now())
 
   @@index([kind, occurredAt])
   @@index([signature])

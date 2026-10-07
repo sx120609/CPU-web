@@ -291,16 +291,16 @@ export function parseIosClientStatsRange(value: unknown): IosClientStatsRange {
   return value === "1d" || value === "7d" || value === "90d" || value === "all" ? value : "30d";
 }
 
-const RANGE_DAYS: Record<Exclude<IosClientStatsRange, "all">, number> = { "1d": 1, "7d": 7, "30d": 30, "90d": 90 };
-const TREND_DAYS: Record<IosClientStatsRange, number> = { "1d": 14, "7d": 14, "30d": 30, "90d": 90, all: 90 };
+export const RANGE_DAYS: Record<Exclude<IosClientStatsRange, "all">, number> = { "1d": 1, "7d": 7, "30d": 30, "90d": 90 };
+export const TREND_DAYS: Record<IosClientStatsRange, number> = { "1d": 14, "7d": 14, "30d": 30, "90d": 90, all: 90 };
 
 type CountRow = { key: string; count: number };
 
-function sortedCounts(rows: Map<string, number>): CountRow[] {
+export function sortedCounts(rows: Map<string, number>): CountRow[] {
   return [...rows].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }
 
-function bump(map: Map<string, number>, key: string, by = 1) {
+export function bump(map: Map<string, number>, key: string, by = 1) {
   map.set(key, (map.get(key) ?? 0) + by);
 }
 
@@ -314,7 +314,7 @@ export function compareVersions(a: string, b: string) {
   return 0;
 }
 
-function flagCounts(values: (boolean | null)[]) {
+export function flagCounts(values: (boolean | null)[]) {
   return {
     yes: values.filter((value) => value === true).length,
     no: values.filter((value) => value === false).length,

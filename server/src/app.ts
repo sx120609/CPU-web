@@ -40,6 +40,7 @@ import { remoteGateway } from "./services/jwxtGatewayTransport";
 import { getQqBotDeploymentStatus } from "./services/qqbot/connection";
 import { startLiveActivityPushScheduler } from "./services/liveActivityPush";
 import { startIosClientStatsPrunePoller } from "./services/iosClientStats";
+import { startAndroidClientStatsPrunePoller } from "./services/androidClientStats";
 import { startDesktopInstallReportPrunePoller } from "./services/desktopInstallReports";
 import { startLogRetentionSweeper } from "./services/logRetention";
 
@@ -55,6 +56,7 @@ export function startAppWorkers() {
   startSponsorOrderExpiryPoller();
   startLiveActivityPushScheduler();
   startIosClientStatsPrunePoller();
+  startAndroidClientStatsPrunePoller();
   startDesktopInstallReportPrunePoller();
   startLogRetentionSweeper();
 }
