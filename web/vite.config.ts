@@ -34,7 +34,7 @@ export default defineConfig(({ command }) => ({
         assetFileNames(assetInfo) {
           const originalName = assetInfo.names?.[0] || assetInfo.name || "";
           if (/^HarmonyOS_Sans_SC_(Regular|Medium|Bold)_UI\.woff2$/u.test(originalName)) {
-            return "assets/fonts/harmonyos-sans-sc/v3/[name][extname]";
+            return "assets/fonts/harmonyos-sans-sc/v4/[name][extname]";
           }
           return "assets/[name]-[hash][extname]";
         },
