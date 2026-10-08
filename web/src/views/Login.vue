@@ -341,8 +341,10 @@ async function onDevSubmit() {
 
 .alt-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 0 8px;
   margin-top: 14px;
   color: var(--cpu-text-muted);
   font-size: var(--cpu-fs-xs);
