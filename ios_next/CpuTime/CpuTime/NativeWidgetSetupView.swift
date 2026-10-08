@@ -720,7 +720,7 @@ private final class NativeScheduleCalendarImporter {
                         event.title = course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "课程" : course.name
                         event.startDate = start
                         event.endDate = end
-                        event.location = course.location?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        event.location = course.location.map(ScheduleClassroom.only)
                         event.notes = notes(for: course, week: week.week, semester: semesterDisplayName)
                         event.alarms = remindersEnabled ? [EKAlarm(relativeOffset: -15 * 60)] : []
                         try eventStore.save(event, span: .thisEvent, commit: false)

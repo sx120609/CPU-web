@@ -43,7 +43,7 @@ enum NativeScheduleICSExporter {
                 lines.append("DTSTART;TZID=\(timeZone.identifier):\(format(start, zone: timeZone))")
                 lines.append("DTEND;TZID=\(timeZone.identifier):\(format(end, zone: timeZone))")
                 lines.append("SUMMARY:\(escape(trimmed(course.name) ?? "课程"))")
-                if let location = trimmed(course.location) { lines.append("LOCATION:\(escape(location))") }
+                if let location = trimmed(course.location) { lines.append("LOCATION:\(escape(ScheduleClassroom.only(location)))") }
                 let details = [trimmed(course.teacher), trimmed(course.slotNote)]
                     .compactMap { $0 }.joined(separator: " · ")
                 if !details.isEmpty { lines.append("DESCRIPTION:\(escape(details))") }

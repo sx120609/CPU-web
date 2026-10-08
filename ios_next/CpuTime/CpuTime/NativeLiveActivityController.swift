@@ -610,7 +610,7 @@ final class NativeLiveActivityController: ObservableObject {
                             guard segments.count == numbers.count, let first = segments.first else { continue }
                             let course = run[0].2
                             result.append(Occurrence(id: record.id, supersedes: record.supersedes,
-                                name: named ? (label.map { "\($0)：\(course.name)" } ?? course.name) : course.name, teacher: course.teacher ?? "", location: course.location ?? "",
+                                name: named ? (label.map { "\($0)：\(course.name)" } ?? course.name) : course.name, teacher: course.teacher ?? "", location: ScheduleClassroom.only(course.location ?? ""),
                                 periodLabel: Self.periodLabel(start: numbers[0], end: numbers.last!), dateKey: day, week: week.week,
                                 weekRangeLabel: course.weeks, adjustmentNote: resolved.note, segments: segments, plannedStart: first.startAt.addingTimeInterval(-leadTime)))
                         }

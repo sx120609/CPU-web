@@ -36,6 +36,7 @@ let package = Package(
             sources: [
                 "CpuTime/NativeScheduleStore.swift",
                 "CpuTime/PhoneWatchSchedule.swift",
+                "CpuTime/ScheduleDisplayRules.swift",
                 "WatchShared/AppGroupIdentifier.swift",
                 "WatchShared/CourseRepository.swift",
                 "WatchShared/ScheduleEnvelope.swift",

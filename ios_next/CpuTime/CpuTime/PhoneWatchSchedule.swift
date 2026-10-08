@@ -252,7 +252,7 @@ extension NativeScheduleSnapshot {
                     id: digest,
                     name: course.name,
                     teacher: course.teacher,
-                    room: course.location,
+                    room: course.location.map(ScheduleClassroom.only),
                     campus: nil,
                     weekday: cell.day,
                     startPeriod: startPeriod,

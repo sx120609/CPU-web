@@ -7,7 +7,7 @@ Added since build 72:
 - The couple timetable (情侣课表), drawn natively: binding and the manage sheet with the seven colours, the status line under the week title, one colour per person, the line at the foot of a course that says what the partner does meanwhile (「TA 课名」, 「一起」), the two-column day view, and the Live Activity with a row each in the colours the two picked. See [`docs/couple-schedule.md`](../../docs/couple-schedule.md).
 - The month view lists each day's courses inside its cell, for every style and with or without a partner; the list of the selected day under the calendar is gone, and tapping a day of the term opens its day view.
 - A notice, once per place, when two different courses of the user's own share a period in the shown week.
-- Classrooms are shown without 「教学楼」 before a block A–E and a room number.
+- Classrooms are shown without 「教学楼」 before a block A–E and a room number: in the timetable, the quick look, calendar export, widgets, the Live Activity and on the Watch. The course data keeps the full location.
 
 Found and fixed while checking: the status line used a `TimelineView` in the page header, and with a partner bound the week and day views re-laid themselves out without end (the process at 100% CPU, the classic week view never refreshing). It now runs on a minute clock of its own; every view idles at 0% in the simulator.
 

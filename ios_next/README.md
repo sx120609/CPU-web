@@ -67,7 +67,7 @@ Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=p
 
 「更多 → 情侣课表」绑定另一半后，对方的课和自己的课画在同一张课表里：一个人一种颜色，撞课时在自己的课下沿写一行「TA 课名」，一起上的课写「一起」；日视图分成「我｜节次｜TA」两列；月视图每天的格子直接列当天的课名，最下面一行「TA N 门」，点教学周内的一天进入那天的日视图。实时活动里两人的课各占一行。规则、接口和调试参数见 [`docs/couple-schedule.md`](../docs/couple-schedule.md)，检查脚本是 `bash ios_next/scripts/check-couple-schedule.sh`。
 
-自己的课表里，当前这一周有两门不同名的课并排显示时，弹一次提示框说明这多半是教务数据有误、先去教务系统核对；同一处（学期、星期、课程名）只提醒一次，记在本机。教室以「教学楼」加楼栋 A–E 和房号开头时只显示房号（「教学楼A102」→「A102」），课程数据和编辑表单里的地点不变。规则在 `ScheduleDisplayRules.swift`，检查脚本是 `bash ios_next/scripts/check-display-rules.sh`；Debug 构建用 `CPU_DEBUG_SCHEDULE_OVERLAP=1` 在示例课表里造出一处。
+自己的课表里，当前这一周有两门不同名的课并排显示时，弹一次提示框说明这多半是教务数据有误、先去教务系统核对；同一处（学期、星期、课程名）只提醒一次，记在本机。教室以「教学楼」加楼栋 A–E 和房号开头时只显示房号（「教学楼A102」→「A102」），课表格子、速览、日历导出与写入系统日历、桌面小组件、实时活动和手表都这样显示；课程数据、编辑表单和隐藏／编辑课程的匹配仍用原始地点。规则在 `ScheduleDisplayRules.swift`，检查脚本是 `bash ios_next/scripts/check-display-rules.sh`；Debug 构建用 `CPU_DEBUG_SCHEDULE_OVERLAP=1` 在示例课表里造出一处。
 
 服务端接口在 `/api/schedule-shares`：`POST /`（发布或更新，每账号每小时 30 次）、`GET /mine`、`GET /:code`、`GET /:code/meta`（只含更新时间等摘要，不缓存）、`DELETE /:code`（发布者本人登录即可，不再需要写入凭证）。
 

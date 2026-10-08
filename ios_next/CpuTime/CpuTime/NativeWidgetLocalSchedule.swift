@@ -98,7 +98,7 @@ enum NativeWidgetLocalSchedule {
                     return Course(
                         name: course.name,
                         teacher: course.teacher,
-                        location: course.location,
+                        location: course.location.map(ScheduleClassroom.only),
                         // 和服务端一样：先节次备注，没有就写上课周次。
                         note: slotNote ?? course.weeks.trimmedNonEmpty,
                         slotNote: slotNote,
