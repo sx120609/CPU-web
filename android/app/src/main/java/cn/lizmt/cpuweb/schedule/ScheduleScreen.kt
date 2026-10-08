@@ -280,6 +280,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                                 if (store.selectDate(date)) store.selectViewMode("day")
                             },
                             onCourse = { placed, _ -> sheet = ScheduleSheet.QuickLook(placed.block) },
+                            onMove = { monthAnchor = ScheduleMonth.shift(anchor, it) },
                         )
                     }
                 } else {
@@ -523,7 +524,9 @@ private fun SwitcherRow(
     val colors = LocalScheduleColors.current
     val glass = LocalScheduleGlass.current
     Row(
-        Modifier.fillMaxWidth().height(42.dp)
+        // A minimum, not a fixed height: with larger system text the two lines
+        // need more room, and a fixed row cut the date range off.
+        Modifier.fillMaxWidth().heightIn(min = 42.dp)
             .then(if (glass != null) Modifier.clip(RoundedCornerShape(18.dp)).background(glass) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {

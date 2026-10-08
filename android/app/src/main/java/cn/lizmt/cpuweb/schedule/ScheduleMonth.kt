@@ -1,6 +1,9 @@
 package cn.lizmt.cpuweb.schedule
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,13 +21,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +46,8 @@ import java.util.Calendar
 import java.util.GregorianCalendar
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.math.abs
+import kotlinx.coroutines.launch
 
 /** Month arithmetic for the month view, on `yyyy-MM-dd` strings. */
 object ScheduleMonth {
@@ -98,10 +109,19 @@ internal fun ScheduleMonthView(
     onSelect: (String) -> Unit,
     onOpenDay: (String) -> Unit,
     onCourse: (PlacedBlock, String) -> Unit,
+    /** Dragging the grid up or down turns the month: 1 is the next one, -1 the one before. */
+    onMove: (Int) -> Unit = {},
 ) {
     val colors = LocalScheduleColors.current
     val scope = LocalScheduleStyle.current
     val classic = scope.style == ScheduleVisualStyle.Classic
+    // The grid follows the finger; past the threshold it turns the month and
+    // the new one slides in from the side it was pulled from.
+    val move by rememberUpdatedState(onMove)
+    val pull = remember { Animatable(0f) }
+    val motion = rememberCoroutineScope()
+    val turnDistance = with(LocalDensity.current) { 44.dp.toPx() }
+    val enterDistance = with(LocalDensity.current) { 36.dp.toPx() }
     val glass = LocalScheduleGlass.current
     val today = ScheduleStore.todayKey()
     val calendar = store.calendar
@@ -135,6 +155,36 @@ internal fun ScheduleMonthView(
                         color = if (position >= 5) HolidayPink.copy(alpha = 0.8f) else colors.secondary, modifier = Modifier.weight(1f))
                 }
             }
+            Column(
+                Modifier.fillMaxWidth()
+                    .pointerInput(Unit) {
+                        var total = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { total = 0f },
+                            onDragCancel = { motion.launch { pull.animateTo(0f) } },
+                            onDragEnd = {
+                                val delta = if (total < 0) 1 else -1
+                                val turns = abs(total) >= turnDistance
+                                motion.launch {
+                                    if (turns) {
+                                        move(delta)
+                                        pull.snapTo(if (delta > 0) enterDistance else -enterDistance)
+                                    }
+                                    pull.animateTo(0f, tween(220))
+                                }
+                            },
+                        ) { change, amount ->
+                            change.consume()
+                            total += amount
+                            motion.launch { pull.snapTo(total * 0.55f) }
+                        }
+                    }
+                    .graphicsLayer {
+                        translationY = pull.value
+                        alpha = 1f - (abs(pull.value) / (enterDistance * 2.4f)).coerceIn(0f, 0.6f)
+                    },
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
             days.chunked(7).forEach { row ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(row.firstNotNullOfOrNull { index[it]?.first }?.toString().orEmpty(), fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
@@ -184,10 +234,12 @@ internal fun ScheduleMonthView(
                                     color = if (holiday) HolidayPink else if (info?.badge() != null) accent else colors.secondary,
                                     modifier = Modifier.alpha(if (inMonth) 1f else 0.4f),
                                 )
-                                Row(Modifier.height(6.dp).alpha(if (inMonth) 1f else 0.45f), verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    dayCourses.distinctBy { it.course.name }.take(3).forEach { block ->
-                                        Box(Modifier.size(4.dp).clip(CircleShape).background(Color(scope.course(block.course.name).accent(scope.dark))))
+                                // One bar under the date, as in the system calendar: a dot for
+                                // one class, longer with more.
+                                Box(Modifier.height(6.dp).alpha(if (inMonth) 1f else 0.45f), contentAlignment = Alignment.Center) {
+                                    if (dayCourses.isNotEmpty()) {
+                                        val length = if (dayCourses.size == 1) 4.dp else (dayCourses.size.coerceAtMost(4) * 5).dp
+                                        Box(Modifier.size(length, 4.dp).clip(CircleShape).background(accent.copy(alpha = 0.85f)))
                                     }
                                 }
                             }
@@ -197,6 +249,7 @@ internal fun ScheduleMonthView(
                         }
                     }
                 }
+            }
             }
         }
 
