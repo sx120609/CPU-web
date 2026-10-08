@@ -312,7 +312,7 @@
     <footer class="me-m-foot">
       <el-button type="danger" plain size="large" class="me-m-block-btn" :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       <p>{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
-      <p><a href="/privacy.html">隐私政策</a> · <a href="/terms.html">用户协议</a></p>
+      <p><a href="/privacy.html">隐私政策</a> · <a href="/terms.html">用户协议</a> · <a href="https://status.cputime.cn" target="_blank" rel="noopener noreferrer">服务状态</a></p>
     </footer>
 
     <el-drawer v-model="avatarSheetOpen" direction="btt" size="auto" title="头像" class="me-m-sheet cpu-sheet-above-native-bar" append-to-body>

@@ -23,6 +23,7 @@
           <h2>关于</h2>
           <a href="/about.html">了解我们</a>
           <router-link to="/thanks">致谢</router-link>
+          <a href="https://status.cputime.cn" target="_blank" rel="noopener noreferrer">服务状态</a>
           <a href="/terms.html">用户协议</a>
           <a href="/privacy.html">隐私政策</a>
           <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>

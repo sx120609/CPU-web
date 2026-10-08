@@ -52,7 +52,7 @@
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       </div>
-      <p class="profile-legal"><a href="/privacy.html">隐私政策</a><span aria-hidden="true">·</span><a href="/terms.html">用户协议</a></p>
+      <p class="profile-legal"><a href="/privacy.html">隐私政策</a><span aria-hidden="true">·</span><a href="/terms.html">用户协议</a><span aria-hidden="true">·</span><a href="https://status.cputime.cn" target="_blank" rel="noopener noreferrer">服务状态</a></p>
     </div>
     </aside>
 
