@@ -21,7 +21,7 @@ import promptAction from '@ohos.promptAction';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import picker from '@ohos.file.picker';
 import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
-import { APP_URL, USER_AGENT_SUFFIX, VERSION_CODE, VERSION_NAME, isAppOrigin, isHttpUrl, isInternalUrl } from '../common/AppConfig';
+import { APP_URL, USER_AGENT_SUFFIX, VERSION_CODE, VERSION_NAME, isAppOrigin, isHttpUrl, isInternalUrl, pageOwnsNavigation } from '../common/AppConfig';
 import { NATIVE_STARTUP_POLICY } from '../common/NativeStartupPolicy';
 import {
   HarmonyBridge,
@@ -96,6 +96,8 @@ struct Index {
   private startupTimer: number = -1;
   @State private failed: boolean = false;
   @State private webOverlayVisible: boolean = false;
+  // The page shown has its own navigation (药苑之声): no native top bar or tab bar over it.
+  @State private pageOwnsChrome: boolean = false;
   @State private webHeader: NativeWebHeaderState = new NativeWebHeaderState();
   @State private widgetPanelVisible: boolean = false;
   @State private widgetPreview: ScheduleWidgetBinding = initialScheduleWidgetBinding(2, 'schedule_upcoming');
@@ -260,6 +262,7 @@ struct Index {
       onHeaderChanged: (payload: string) => {
         try {
            this.webHeader = JSON.parse(payload) as NativeWebHeaderState;
+           this.setPageOwnsChrome(pageOwnsNavigation(this.webHeader.path));
            if (this.webHeader.contentReady) this.finishStartup();
            if (this.webHeader.authenticated) this.resolveAuthenticated(false);
            else if (this.webHeader.contentReady) this.scheduleLoginGate();
@@ -1062,7 +1065,7 @@ struct Index {
           Column() {
           NativeWebHeader({ state: this.webHeader, blocked: this.requiresLogin || this.webOverlayVisible || this.loading,
             onAction: (action: string) => this.handleHeaderAction(action) })
-            .visibility(this.webHeader.visible && !this.requiresLogin ? Visibility.Visible : Visibility.None)
+            .visibility(this.webHeader.visible && !this.requiresLogin && !this.pageOwnsChrome ? Visibility.Visible : Visibility.None)
           Web({
             src: this.launchUrl,
             controller: this.controller,
@@ -1098,14 +1101,16 @@ struct Index {
           methodList: this.bridgeMethods(),
           controller: this.controller
         })
-        .onPageBegin(() => {
+        .onPageBegin((event) => {
+          this.setPageOwnsChrome(pageOwnsNavigation(event?.url ?? ''));
           this.loading = true;
           this.beginStartupWait();
           this.failed = false;
           this.webOverlayVisible = false;
           this.scheduleStore.markBridgeUnavailable();
         })
-        .onPageEnd(() => {
+        .onPageEnd((event) => {
+          this.setPageOwnsChrome(pageOwnsNavigation(event?.url ?? this.controller.getUrl()));
           this.loading = false;
           this.applyHarmonyUxPolicy();
           this.reportClientStats();
@@ -1222,7 +1227,7 @@ struct Index {
         this.bottomNavigation()
       }.width('100%').height(NATIVE_TAB_BAR_HEIGHT + this.bottomBarInset()).align(Alignment.Bottom)
         .padding({ bottom: this.bottomBarInset() })
-        .visibility(!this.requiresLogin && (this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible)) ? Visibility.Visible : Visibility.Hidden)
+        .visibility(!this.requiresLogin && (this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible && !this.pageOwnsChrome)) ? Visibility.Visible : Visibility.Hidden)
         .hitTestBehavior(HitTestMode.Default)
 
       if (this.sharedVisible && !this.requiresLogin) {
@@ -1910,7 +1915,15 @@ struct Index {
   }
 
   private bottomContentClearance(): number {
+    // No tab bar over a page with its own navigation, so nothing to keep clear of.
+    if (this.pageOwnsChrome) return 0;
     return nativeNavigationClearance(this.getUIContext().px2vp(this.systemBottomInsetPx));
+  }
+
+  private setPageOwnsChrome(value: boolean): void {
+    if (value === this.pageOwnsChrome) return;
+    this.pageOwnsChrome = value;
+    this.updateWebNavigationClearance();
   }
 
   private updateWebNavigationClearance(): void {

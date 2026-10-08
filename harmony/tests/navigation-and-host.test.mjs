@@ -157,3 +157,18 @@ test('the native header and tabs still work on a page outside the site app (药�
   const pending = openWith(null)('/profile');
   assert.deepEqual(loaded, ['/profile']); assert.ok(pending instanceof Promise || typeof pending?.then === 'function');
 });
+
+test('药苑之声 owns its navigation, so the shell shows no top bar or tab bar over it', () => {
+  const config = compile('../entry/src/main/ets/common/AppConfig.ets');
+  for (const page of ['/voicehub', '/voicehub/', '/voicehub/songs?tab=1', '/services/tools/voicehub',
+    'https://cputime.cn/voicehub/', 'https://cputime.cn/voicehub/admin#top']) {
+    assert.equal(config.pageOwnsNavigation(page), true, page);
+  }
+  for (const page of ['', '/', '/services', '/services/tools', '/voicehubs', '/home?next=/voicehub/',
+    'https://cputime.cn/services', 'https://example.com/voicehub/', 'http://cputime.cn/voicehub/']) {
+    assert.equal(config.pageOwnsNavigation(page), false, page);
+  }
+  const source = readFileSync(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
+  assert.match(source, /this\.webHeader\.visible && !this\.requiresLogin && !this\.pageOwnsChrome \? Visibility\.Visible/);
+  assert.match(source, /!this\.webOverlayVisible && !this\.pageOwnsChrome\)\) \? Visibility\.Visible : Visibility\.Hidden/);
+});

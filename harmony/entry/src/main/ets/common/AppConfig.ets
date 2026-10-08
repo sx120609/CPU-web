@@ -92,3 +92,24 @@ export function destinationUrlForDeepLink(uri?: string): string {
   }
   return target;
 }
+
+// Pages that own their navigation: the shell hides its top bar and tab bar for them, as the
+// Android (`PageChrome`) and iOS (`NativePageChrome`) shells do. 药苑之声 is a separate app
+// with its own header and a 返回主站 button.
+const PAGE_NAVIGATION_PREFIXES: string[] = ['/services/tools/voicehub', '/voicehub'];
+
+export function pageOwnsNavigation(urlOrPath: string): boolean {
+  let path = urlOrPath.trim();
+  const schemeEnd = path.indexOf('://');
+  if (schemeEnd > 0) {
+    if (!isAppOrigin(path)) return false;
+    const rest = path.substring(schemeEnd + 3);
+    const slash = rest.indexOf('/');
+    path = slash >= 0 ? rest.substring(slash) : '/';
+  }
+  const query = path.indexOf('?');
+  if (query >= 0) path = path.substring(0, query);
+  const hash = path.indexOf('#');
+  if (hash >= 0) path = path.substring(0, hash);
+  return PAGE_NAVIGATION_PREFIXES.some((prefix: string) => path === prefix || path.startsWith(prefix + '/'));
+}
