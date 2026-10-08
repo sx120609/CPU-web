@@ -11,7 +11,7 @@ import { scheduleAlpha, scheduleCleanLocation, scheduleCourseAccent, scheduleMet
   scheduleThemeTint, scheduleWeekday } from './ScheduleStyle';
 import { ScheduleStyledDateHeader } from './ScheduleDateHeader';
 import { COUPLE_ACCENT, NativeScheduleCoupleModel } from './NativeScheduleCouple';
-import { coupleTone } from './ScheduleCouple';
+import { couplePersonTone } from './ScheduleCouple';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 // Height of the styled day strip: the date header of the styled week views, a little taller.
@@ -94,7 +94,7 @@ export struct NativeSchedulePage {
         if (this.store.errorMessage) this.messageBanner(this.store.errorMessage, this.surfaceColor(), this.textColor())
         Refresh({ refreshing: this.pullRefreshing && this.store.status === 'loading' }) {
           if (this.store.viewMode === 'month' && this.store.weekOptions().length && this.store.result) {
-            ScheduleMonthView({ store: this.store,
+            ScheduleMonthView({ store: this.store, couple: this.couple,
               onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay) })
           } else if (this.store.viewMode === 'day' && this.store.weekOptions().length) {
             Column() {
@@ -284,7 +284,7 @@ export struct NativeSchedulePage {
           .id('schedule-week-title').onClick(() => this.store.weekPickerVisible = true)
         Row({ space: 4 }) {
           Row({ space: 5 }) {
-            Circle().width(6).height(6).fill(coupleTone(this.couple.status.partner.color, '', this.store.dark).border)
+            Circle().width(6).height(6).fill(couplePersonTone(this.couple.status.partner.color, this.store.dark).border)
             Text(this.couple.nowText(this.store.nowMinutes)).fontSize(11).fontColor(this.navigatorSecondary()).maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
             if (this.couple.daysTogether() > 0) {

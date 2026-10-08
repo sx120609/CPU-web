@@ -1,8 +1,8 @@
 import { NativeCourseBlock, NativeScheduleRequest, NativeScheduleStore } from './NativeScheduleStore';
 import { RawShareDocument, readSharedSchedule, shareDateKey, SharedSchedule, SharePublishBody, sharedScheduleSnapshot } from './ScheduleSharing';
-import { coupleDaysTogether, coupleFingerprint, coupleInvitation, coupleNowText, coupleRelativeTime, CoupleStatus,
-  coupleStatusFrom, CoupleTimedCourse, CoupleTint, coupleTint, coupleTone, emptyCoupleStatus, RawCoupleParty,
-  RawCoupleStatus } from './ScheduleCouple';
+import { COUPLE_COLORS, coupleColorName, coupleDaysTogether, coupleFingerprint, coupleInvitation, coupleNowText,
+  couplePersonTone, coupleRelativeTime, CoupleStatus, coupleStatusFrom, CoupleTimedCourse, CoupleTint, emptyCoupleStatus,
+  RawCoupleParty, RawCoupleStatus } from './ScheduleCouple';
 
 // The couple timetable on the native grid: the binding, the partner's snapshot, the upload of the
 // user's own term, and the sheet that manages it (the Web's CoupleDialog). Requests go through the
@@ -114,8 +114,9 @@ export class NativeScheduleCoupleModel {
     return blocks;
   }
 
-  tint(owner: string, name: string, dark: boolean): CoupleTint {
-    return coupleTint(owner, name, this.status.me.color, this.status.partner.color, dark);
+  /** One person, one colour: the user's courses in the user's, the partner's in the partner's. */
+  tint(owner: string, dark: boolean): CoupleTint {
+    return couplePersonTone(owner === 'ta' ? this.status.partner.color : this.status.me.color, dark);
   }
 
   /** What the partner is doing right now: the status line (`short`) or the sheet's row. */
@@ -258,9 +259,10 @@ export class NativeScheduleCoupleModel {
     return this.change({ action: 'settings', body }, date ? '纪念日已保存' : '纪念日已清除');
   }
 
-  swapColors(): Promise<void> {
-    const body: CoupleSettingsBody = { myColor: this.status.me.color === 'blue' ? 'pink' : 'blue' };
-    return this.change({ action: 'settings', body }, '配色已互换');
+  /** Picking the colour the partner is using swaps the two (the server does it). */
+  setColor(color: string): Promise<void> {
+    const body: CoupleSettingsBody = { myColor: color };
+    return this.change({ action: 'settings', body }, color === this.status.partner.color ? '已和 TA 互换颜色' : '颜色已保存');
   }
 
   private async change(request: CoupleApiRequest, success: string): Promise<void> {
@@ -325,22 +327,30 @@ export struct NativeScheduleCouple {
   @Builder
   private person(name: string, color: string) {
     Column({ space: 6 }) {
-      Text(name.substring(0, 1)).fontSize(18).fontWeight(FontWeight.Bold).fontColor(coupleTone(color, '', this.dark).text)
+      Text(name.substring(0, 1)).fontSize(18).fontWeight(FontWeight.Bold).fontColor(couplePersonTone(color, this.dark).text)
         .width(46).height(46).textAlign(TextAlign.Center).borderRadius(23)
-        .backgroundColor(coupleTone(color, '', this.dark).fill)
-        .border({ width: 1, color: coupleTone(color, '', this.dark).border, radius: 23 })
+        .backgroundColor(couplePersonTone(color, this.dark).fill)
+        .border({ width: 1, color: couplePersonTone(color, this.dark).border, radius: 23 })
       Text(name).fontSize(13).fontWeight(600).fontColor($r('app.color.app_text_primary')).maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }.layoutWeight(1).alignItems(HorizontalAlign.Center)
   }
 
   @Builder
-  private swatch(label: string, color: string) {
-    Text(label).fontSize(11).fontWeight(FontWeight.Bold).fontColor(coupleTone(color, '', this.dark).text)
-      .padding({ left: 10, right: 10, top: 3, bottom: 3 }).borderRadius(11)
-      .backgroundColor(coupleTone(color, '', this.dark).fill)
-      .border({ width: 1, color: coupleTone(color, '', this.dark).border, radius: 11 })
-      .accessibilityText(label + (color === 'pink' ? '，粉色' : '，蓝色'))
+  private swatch(color: string) {
+    Stack() {
+      Text(color === this.model.status.me.color ? '我' : color === this.model.status.partner.color ? 'TA' : '')
+        .fontSize(10).fontWeight(FontWeight.Bold).fontColor(couplePersonTone(color, this.dark).text)
+        .width(28).height(28).textAlign(TextAlign.Center).borderRadius(14)
+        .backgroundColor(couplePersonTone(color, this.dark).fill)
+        .border({ width: 1, color: couplePersonTone(color, this.dark).border, radius: 14 })
+    }.width(36).height(36).borderRadius(18)
+      .border({ width: color === this.model.status.me.color ? 2 : 0, color: $r('app.color.app_text_primary'), radius: 18 })
+      .id('schedule-couple-color-' + color)
+      .accessibilityGroup(true).accessibilitySelected(color === this.model.status.me.color)
+      .accessibilityText(coupleColorName(color) + '色' + (color === this.model.status.me.color ? '，我的颜色'
+        : color === this.model.status.partner.color ? '，TA 正在用，选它就和 TA 互换' : ''))
+      .onClick(() => { if (!this.model.busy && color !== this.model.status.me.color) void this.model.setColor(color); })
   }
 
   @Builder
@@ -371,13 +381,13 @@ export struct NativeScheduleCouple {
       Divider().color($r('app.color.app_divider'))
       this.line('我的课表', this.syncedLabel(this.model.status.me.syncedAt, '打开课表后自动同步'))
       Divider().color($r('app.color.app_divider'))
-      Row({ space: 8 }) {
-        Text('配色').fontSize(14).fontColor($r('app.color.app_text_secondary')).layoutWeight(1)
-        this.swatch('我', this.model.status.me.color)
-        this.swatch('TA', this.model.status.partner.color)
-        Text('互换').fontSize(14).fontWeight(600).fontColor($r('app.color.app_accent')).padding({ left: 6, top: 8, bottom: 8 })
-          .id('schedule-couple-swap').onClick(() => { void this.model.swapColors(); })
-      }.width('100%').constraintSize({ minHeight: 44 })
+      // Seven colours, one for each person; the partner's is marked and picking it swaps the two.
+      Column({ space: 8 }) {
+        Text('我的颜色').fontSize(14).fontColor($r('app.color.app_text_secondary')).width('100%')
+        Row() {
+          ForEach(COUPLE_COLORS, (color: string) => { this.swatch(color) }, (color: string) => color)
+        }.width('100%').justifyContent(FlexAlign.SpaceBetween)
+      }.width('100%').padding({ top: 12, bottom: 12 })
       Divider().color($r('app.color.app_divider'))
       Row({ space: 12 }) {
         Text('在课表里显示 TA 的课').fontSize(14).fontColor($r('app.color.app_text_secondary')).layoutWeight(1)
@@ -396,7 +406,7 @@ export struct NativeScheduleCouple {
           .id('schedule-couple-anniversary').onClick(() => this.pickAnniversary())
       }.width('100%').constraintSize({ minHeight: 44 })
     }.width('100%').padding({ left: 14, right: 14 }).borderRadius(16).backgroundColor($r('app.color.app_control'))
-    Text('两人的课在同一张课表里：一起上的课合并成一格，时间撞在一起的课左边是你的、右边是 TA 的，其余各占整格。配色双方看到的一样，任意一方都可以互换。')
+    Text('课表里一个人一种颜色：你的课全是你选的颜色，TA 的课全是 TA 的颜色。颜色各选各的，双方看到的一样；选 TA 正在用的那个就是两人互换。')
       .fontSize(12).fontColor($r('app.color.app_text_tertiary')).width('100%')
     Text('解除绑定').fontSize(14).fontWeight(600).fontColor('#B42318').padding({ top: 8, bottom: 8 })
       .id('schedule-couple-unbind').onClick(() => this.confirmUnbind())

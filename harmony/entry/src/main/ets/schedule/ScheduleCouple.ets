@@ -1,4 +1,5 @@
-import { PlacedCourseBlock } from './SchedulePlacement';
+import { NativeCourseBlock } from './NativeScheduleStore';
+import { PlacedCourseBlock, placeScheduleBlocks } from './SchedulePlacement';
 import { RawShareDocument } from './ScheduleSharing';
 
 // The couple timetable ("情侣课表"): two bound accounts see each other's classes in one grid. The
@@ -7,7 +8,7 @@ import { RawShareDocument } from './ScheduleSharing';
 
 export interface CoupleMember {
   nickname: string;
-  // blue | pink
+  // One of COUPLE_COLORS.
   color: string;
   // When this side's timetable last reached the server; empty when it never did.
   syncedAt: string;
@@ -40,12 +41,11 @@ export interface RawCoupleStatus {
   partner?: RawCoupleParty | null;
 }
 
-/** The colours of one tile. `fillEnd` is set for a class both attend: the user's colour runs into the partner's. */
+/** One person's colours: every course of theirs is drawn in them. */
 export interface CoupleTint {
   fill: string;
   border: string;
   text: string;
-  fillEnd: string;
 }
 
 /** A course of one day with its clock times, for "what is TA doing now". */
@@ -55,6 +55,20 @@ export interface CoupleTimedCourse {
   end: string;
 }
 
+/** The colours a person can pick. The same seven as the Web and the server. */
+export const COUPLE_COLORS: string[] = ['blue', 'pink', 'purple', 'teal', 'green', 'amber', 'orange'];
+const COUPLE_HUES: number[] = [214, 338, 268, 178, 138, 42, 22];
+const COUPLE_COLOR_NAMES: string[] = ['蓝', '粉', '紫', '青', '绿', '黄', '橙'];
+
+/** A colour key as the server sent it; one this build does not know is blue. */
+export function coupleColorKey(value?: string): string {
+  return COUPLE_COLORS.includes(value ?? '') ? (value ?? 'blue') : 'blue';
+}
+
+export function coupleColorName(color: string): string {
+  return COUPLE_COLOR_NAMES[Math.max(0, COUPLE_COLORS.indexOf(color))];
+}
+
 function emptyMember(): CoupleMember { return { nickname: '', color: 'blue', syncedAt: '' }; }
 
 export function emptyCoupleStatus(kind: string = 'unknown'): CoupleStatus {
@@ -62,7 +76,7 @@ export function emptyCoupleStatus(kind: string = 'unknown'): CoupleStatus {
 }
 
 function memberFrom(raw?: RawCoupleParty | null): CoupleMember {
-  return { nickname: String(raw?.nickname ?? '').trim(), color: raw?.color === 'pink' ? 'pink' : 'blue',
+  return { nickname: String(raw?.nickname ?? '').trim(), color: coupleColorKey(raw?.color),
     syncedAt: String(raw?.snapshot?.syncedAt ?? '') };
 }
 
@@ -81,13 +95,6 @@ export function coupleStatusFrom(raw?: RawCoupleStatus | null): CoupleStatus {
   return status;
 }
 
-/** The Web's `nameHash`: an unsigned 32-bit value. */
-export function coupleNameHash(name: string): number {
-  let hash = 0;
-  for (let index = 0; index < name.length; index += 1) hash = (Math.imul(hash, 31) + name.charCodeAt(index)) >>> 0;
-  return hash;
-}
-
 /** CSS `hsl()` with whole-number hue, saturation and lightness, as `#RRGGBB`. */
 export function coupleHsl(hue: number, saturation: number, lightness: number): string {
   const h = ((hue % 360) + 360) % 360;
@@ -103,25 +110,14 @@ export function coupleHsl(hue: number, saturation: number, lightness: number): s
 }
 
 /**
- * One person's courses stay in one colour family; courses differ a little in hue and lightness so
- * neighbours can be told apart.
+ * One person, one colour: all of a person's courses are drawn in it, so the two timetables can
+ * be told apart at a glance (the Web's `couplePersonTone`).
  */
-export function coupleTone(color: string, name: string, dark: boolean): CoupleTint {
-  const pink = color === 'pink';
-  const hash = coupleNameHash(name);
-  const hue = (pink ? 338 : 214) + ((hash % 5) - 2) * (pink ? 5 : 7);
-  const shift = ((hash >>> 4) % 3) - 1;
+export function couplePersonTone(color: string, dark: boolean): CoupleTint {
+  const hue = COUPLE_HUES[Math.max(0, COUPLE_COLORS.indexOf(color))];
   return dark
-    ? { fill: coupleHsl(hue, 48, 29 + shift * 3), border: coupleHsl(hue, 62, 50 + shift * 3), text: '#F5F7FF', fillEnd: '' }
-    : { fill: coupleHsl(hue, 88, 93 - shift * 2), border: coupleHsl(hue, 72, 77 - shift * 3), text: coupleHsl(hue, 58, 27), fillEnd: '' };
-}
-
-/** A tile's colours by owner (me | ta | both). A class both attend keeps the user's text and border over a two-colour fill. */
-export function coupleTint(owner: string, name: string, myColor: string, partnerColor: string, dark: boolean): CoupleTint {
-  if (owner === 'ta') return coupleTone(partnerColor, name, dark);
-  const mine = coupleTone(myColor, name, dark);
-  if (owner === 'both') mine.fillEnd = coupleTone(partnerColor, name, dark).fill;
-  return mine;
+    ? { fill: coupleHsl(hue, 48, 29), border: coupleHsl(hue, 62, 50), text: '#F5F7FF' }
+    : { fill: coupleHsl(hue, 88, 93), border: coupleHsl(hue, 72, 77), text: coupleHsl(hue, 58, 27) };
 }
 
 /** Two blocks are the same class when they fill the same periods under the same name. */
@@ -129,32 +125,66 @@ export function coupleBlockKey(block: PlacedCourseBlock): string {
   return `${block.whole.startSlot}|${block.whole.endSlot}|${(block.course.name ?? '').replace(/\s+/g, '')}`;
 }
 
-function owned(block: PlacedCourseBlock, owner: string, lane: number, lanes: number): PlacedCourseBlock {
+function owned(block: PlacedCourseBlock, owner: string, notes: PlacedCourseBlock[]): PlacedCourseBlock {
   return { id: owner === 'ta' ? 'ta-' + block.id : block.id, day: block.day, bigSlot: block.bigSlot,
-    startSlot: block.startSlot, endSlot: block.endSlot, lane, lanes, course: block.course, whole: block.whole,
-    offWeek: block.offWeek, owner };
+    startSlot: block.startSlot, endSlot: block.endSlot, lane: block.lane, lanes: block.lanes, course: block.course,
+    whole: block.whole, offWeek: block.offWeek, owner, notes };
 }
 
 /**
- * One day of both timetables. A class both attend is drawn once. A course shares its width only
- * when it meets one of the other person's: then the user's is on the left half and the partner's
- * on the right. Everything else keeps the full column.
+ * One day of both timetables. A class both attend is the user's tile, drawn once. Courses never
+ * share a column with the other person's: one of the partner's that meets one of the user's gets
+ * no tile, it is written as a line under the user's course (`notes`). The rest of the partner's
+ * courses keep a full tile.
  */
 export function mergeCoupleBlocks(mine: PlacedCourseBlock[], theirs: PlacedCourseBlock[]): PlacedCourseBlock[] {
   const keys: string[] = mine.map((block: PlacedCourseBlock) => coupleBlockKey(block));
   const shared: string[] = theirs.map((block: PlacedCourseBlock) => coupleBlockKey(block)).filter((key: string) => keys.includes(key));
-  const partner: PlacedCourseBlock[] = theirs.filter((block: PlacedCourseBlock) => !keys.includes(coupleBlockKey(block)));
+  const none: PlacedCourseBlock[] = [];
+  const partner: PlacedCourseBlock[] = theirs.filter((block: PlacedCourseBlock) => !keys.includes(coupleBlockKey(block)))
+    .map((block: PlacedCourseBlock) => owned(block, 'ta', none));
   const meets = (a: PlacedCourseBlock, b: PlacedCourseBlock): boolean => a.startSlot <= b.endSlot && b.startSlot <= a.endSlot;
   const merged: PlacedCourseBlock[] = mine.map((block: PlacedCourseBlock) => {
-    const owner = shared.includes(coupleBlockKey(block)) ? 'both' : 'me';
-    return partner.some((other: PlacedCourseBlock) => meets(other, block))
-      ? owned(block, owner, block.lane, block.lanes * 2) : owned(block, owner, block.lane, block.lanes);
+    return owned(block, shared.includes(coupleBlockKey(block)) ? 'both' : 'me',
+      partner.filter((other: PlacedCourseBlock) => meets(other, block)));
   });
   partner.forEach((block: PlacedCourseBlock) => {
-    merged.push(mine.some((other: PlacedCourseBlock) => meets(other, block))
-      ? owned(block, 'ta', block.lanes + block.lane, block.lanes * 2) : owned(block, 'ta', block.lane, block.lanes));
+    if (!mine.some((other: PlacedCourseBlock) => meets(other, block))) merged.push(block);
   });
   return merged;
+}
+
+/** The line under one of the user's courses: the partner's course then, or how many. */
+export function coupleNoteLabel(notes: PlacedCourseBlock[]): string {
+  return notes.length > 1 ? `${notes.length} 门课` : (notes.length ? notes[0].course.name : '');
+}
+
+/** The partner's side of a day: their own tiles, the courses written as notes, and the classes both attend. */
+export function couplePartnerSide(merged: PlacedCourseBlock[]): PlacedCourseBlock[] {
+  const blocks: NativeCourseBlock[] = [];
+  const seen: string[] = [];
+  const add = (block: PlacedCourseBlock): void => {
+    const key = coupleBlockKey(block);
+    if (seen.includes(key)) return;
+    seen.push(key);
+    blocks.push(block.whole);
+  };
+  merged.forEach((block: PlacedCourseBlock) => {
+    if (block.owner === 'ta') add(block);
+    (block.notes ?? []).forEach((note: PlacedCourseBlock) => add(note));
+  });
+  const none: Record<string, number> = {};
+  const empty: PlacedCourseBlock[] = [];
+  const side: PlacedCourseBlock[] = placeScheduleBlocks(blocks, none).map((block: PlacedCourseBlock) => owned(block, 'ta', empty));
+  merged.forEach((block: PlacedCourseBlock) => {
+    if (block.owner !== 'both') return;
+    const copy = owned(block, 'both', empty);
+    copy.id = 'both-' + block.id;
+    copy.lane = 0;
+    copy.lanes = 1;
+    side.push(copy);
+  });
+  return side;
 }
 
 function epochDay(date: string): number {

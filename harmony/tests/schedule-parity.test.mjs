@@ -476,40 +476,39 @@ test('the board keeps its monospaced face for times and dates, and the day strip
 
 // ---- Couple timetable ----
 
-test('couple colours match the Web', () => {
-  // Values from `coupleCourseTone` in web/src/views/schedule/couple.ts.
-  assert.equal(couple.coupleNameHash('药理学'), 33278927);
-  assert.deepEqual(plain(couple.coupleTone('blue', '药理学', false)), { fill: '#D4E5FC', border: '#8DB6EC', text: '#1D406D', fillEnd: '' });
-  assert.deepEqual(plain(couple.coupleTone('pink', '高等数学', true)), { fill: '#792A47', border: '#D13D73', text: '#F5F7FF', fillEnd: '' });
-  assert.deepEqual(plain(couple.coupleTone('pink', '', false)), { fill: '#FDE7F3', border: '#F1A7CE', text: '#6D1D48', fillEnd: '' });
-  // A class both attend runs from the user's fill into the partner's.
-  const both = couple.coupleTint('both', '药理学', 'blue', 'pink', false);
-  assert.equal(both.fill, couple.coupleTone('blue', '药理学', false).fill);
-  assert.equal(both.fillEnd, couple.coupleTone('pink', '药理学', false).fill);
-  assert.equal(couple.coupleTint('me', '药理学', 'blue', 'pink', false).fillEnd, '');
-  assert.equal(couple.coupleTint('ta', '药理学', 'blue', 'pink', false).fill, couple.coupleTone('pink', '药理学', false).fill);
+test('one person, one colour, as on the Web', () => {
+  // Values from `couplePersonTone` in web/src/views/schedule/couple.ts.
+  assert.deepEqual(plain(couple.couplePersonTone('blue', false)), { fill: '#DDEBFD', border: '#9ABFEF', text: '#1D406D' });
+  assert.deepEqual(plain(couple.couplePersonTone('pink', true)), { fill: '#6D2640', border: '#CF306A', text: '#F5F7FF' });
+  assert.deepEqual(plain(couple.COUPLE_COLORS), ['blue', 'pink', 'purple', 'teal', 'green', 'amber', 'orange']);
+  assert.equal(new Set(couple.COUPLE_COLORS.map(color => couple.couplePersonTone(color, false).fill)).size, 7);
+  // A colour this build does not know is drawn as blue.
+  assert.equal(couple.coupleColorKey('rainbow'), 'blue');
+  assert.equal(couple.coupleColorKey('teal'), 'teal');
+  assert.equal(couple.coupleColorKey(undefined), 'blue');
 });
 
-test('courses share the column only where the two timetables meet', () => {
+test('a clash is written under the user\'s course', () => {
   const place = blocks => placement.placeScheduleBlocks(blocks, {});
   const merged = couple.mergeCoupleBlocks(place([block('药理学', 1, 2), block('大学英语', 3, 4), block('药物分析', 9, 10)]),
     place([block('药 理 学', 1, 2), block('高等数学', 4, 5), block('物理化学', 7, 8)]));
-  const row = name => { const piece = merged.find(item => item.course.name === name); return [piece.owner, piece.lane, piece.lanes]; };
-  // The same class in the same periods is drawn once, whatever the spacing of its name.
-  assert.equal(merged.length, 5);
-  assert.deepEqual(row('药理学'), ['both', 0, 1]);
-  // Overlapping courses: the user's on the left half, the partner's on the right.
-  assert.deepEqual(row('大学英语'), ['me', 0, 2]);
-  assert.deepEqual(row('高等数学'), ['ta', 1, 2]);
-  // Everything else keeps the whole column.
-  assert.deepEqual(row('药物分析'), ['me', 0, 1]);
-  assert.deepEqual(row('物理化学'), ['ta', 0, 1]);
-  // Two of the user's courses already side by side keep to the left half between them.
-  const crowded = couple.mergeCoupleBlocks(place([block('甲', 1, 2), block('乙', 1, 2)]), place([block('丙', 1, 2)]));
-  assert.deepEqual(plain(crowded.map(piece => [piece.lane, piece.lanes])), [[0, 4], [1, 4], [1, 2]]);
-  // The partner's tiles never share an id with the user's.
-  assert.equal(new Set(crowded.map(piece => piece.id)).size, 3);
+  // The partner's 高等数学 meets 大学英语: no tile of its own, a line under the user's course.
+  assert.deepEqual(plain(merged.map(piece => piece.course.name)), ['药理学', '大学英语', '药物分析', '物理化学']);
+  assert.deepEqual(plain(merged.map(piece => piece.owner)), ['both', 'me', 'me', 'ta']);
+  assert.deepEqual(plain(merged.map(piece => piece.notes.map(note => note.course.name))), [[], ['高等数学'], [], []]);
+  // Nobody gives up width: every tile keeps its own lanes.
+  assert.deepEqual(plain(merged.map(piece => piece.lanes)), [1, 1, 1, 1]);
+  assert.equal(couple.coupleNoteLabel(merged[1].notes), '高等数学');
+  assert.equal(couple.coupleNoteLabel(place([block('甲', 1, 2), block('乙', 1, 2)])), '2 门课');
+  // The partner's side of the day view has all of theirs: tiles, noted courses and shared classes.
+  const side = couple.couplePartnerSide(merged);
+  assert.deepEqual(plain(side.map(piece => piece.course.name).sort()), ['物理化学', '药理学', '高等数学'].sort());
+  assert.equal(new Set(side.map(piece => piece.id)).size, side.length);
   assert.deepEqual(plain(couple.mergeCoupleBlocks(place([block('甲', 1, 2)]), []).map(piece => piece.owner)), ['me']);
+  // A month cell: three lines, or two and a count.
+  assert.deepEqual(plain(month.scheduleMonthCourseLines(['a', 'b', 'c'], 3)), { shown: ['a', 'b', 'c'], more: 0 });
+  assert.deepEqual(plain(month.scheduleMonthCourseLines(['a', 'b', 'c', 'd', 'e'], 3)), { shown: ['a', 'b'], more: 3 });
+  assert.deepEqual(plain(month.scheduleMonthCourseNames([block('乙', 3, 4), block('甲', 1, 2), block('乙', 5, 6)])), ['甲', '乙']);
 });
 
 test('the couple status line and the binding read like the Web', () => {
@@ -534,9 +533,9 @@ test('the couple status line and the binding read like the Web', () => {
   const pending = couple.coupleStatusFrom({ status: 'pending', invite: { code: 'K7M2QX', expired: false } });
   assert.deepEqual([pending.kind, pending.code, pending.expired], ['pending', 'K7M2QX', false]);
   const active = couple.coupleStatusFrom({ status: 'active', anniversary: null,
-    me: { color: 'pink', nickname: ' 阿青 ', snapshot: null },
+    me: { color: 'teal', nickname: ' 阿青 ', snapshot: null },
     partner: { color: 'blue', nickname: '小鹿', snapshot: { syncedAt: '2026-10-08T01:30:00.000Z' } } });
   assert.deepEqual(plain(active), { kind: 'active', code: '', expired: false, anniversary: '',
-    me: { nickname: '阿青', color: 'pink', syncedAt: '' }, partner: { nickname: '小鹿', color: 'blue', syncedAt: '2026-10-08T01:30:00.000Z' } });
+    me: { nickname: '阿青', color: 'teal', syncedAt: '' }, partner: { nickname: '小鹿', color: 'blue', syncedAt: '2026-10-08T01:30:00.000Z' } });
   assert.match(couple.coupleInvitation('K7M2QX', 'https://cputime.cn/'), /https:\/\/cputime\.cn\/schedule\?couple=1&code=K7M2QX/);
 });

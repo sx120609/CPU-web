@@ -24,6 +24,9 @@ export interface PlacedCourseBlock {
   offWeek?: boolean;
   // Set while the couple timetable is drawn: whose course this is (me | ta | both).
   owner?: string;
+  // The partner's courses that meet this one of the user's: written as a line under it instead
+  // of tiles of their own.
+  notes?: PlacedCourseBlock[];
 }
 
 /** The saved key for a course name: trimmed, inner whitespace collapsed. */

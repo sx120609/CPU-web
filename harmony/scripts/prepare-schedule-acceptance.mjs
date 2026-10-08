@@ -100,15 +100,13 @@ const partnerCourses = [
   [5, 5, 6, '医用物理学', '理科楼A301'],
   [7, 3, 4, '周日社团：合唱', '大学生活动中心'],
 ];
-const coupleMember = (nickname, color) => ({ id: color === 'blue' ? 1 : 2, color, nickname, avatar: null,
+const coupleMember = (id, nickname) => ({ id, color: 'blue', nickname, avatar: null,
   snapshot: { semester, syncedAt: '2026-10-08T01:30:00.000Z', changedAt: '2026-10-07T02:00:00.000Z' } });
 const coupleStatus = {
   none: { status: 'none' },
   pending: { status: 'pending', invite: { code: 'K7M2QX', expiresAt: '2099-01-01T00:00:00.000Z', expired: false } },
   active: { status: 'active', since: '2026-09-01T02:00:00.000Z', anniversary: '2025-05-20',
-    me: coupleMember('阿青', 'blue'), partner: coupleMember('小鹿', 'pink') },
-  swapped: { status: 'active', since: '2026-09-01T02:00:00.000Z', anniversary: '2025-05-20',
-    me: coupleMember('阿青', 'pink'), partner: coupleMember('小鹿', 'blue') },
+    me: coupleMember(1, '阿青'), partner: coupleMember(2, '小鹿') },
 };
 const coupleSchedules = { me: null, partner: { semester, syncedAt: '2026-10-08T01:30:00.000Z', changedAt: '2026-10-07T02:00:00.000Z',
   schedule: { cells: partnerCourses.map(([day, startSlot, endSlot, name, location]) => ({ day, bigSlot: Math.ceil(startSlot / 2),
@@ -144,6 +142,10 @@ struct ScheduleAcceptance {
   @State private noCouple: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
   // none | pending | active: what the stand-in couple server answers.
   @StorageProp('qaCouple') private coupleState: string = '';
+  // "teal,amber": the user's colour, then the partner's.
+  @StorageProp('qaCoupleColors') private coupleColors: string = '';
+  private coupleMine: string = 'blue';
+  private coupleTheirs: string = 'pink';
   @StorageProp('qaStyle') @Watch('syncOptions') private style: string = 'classic';
   @StorageProp('qaWeekend') @Watch('syncOptions') private weekend: boolean = true;
   // Display settings, comma separated: sundayFirst, offWeek, teacher, compact, noTime, noSaturday,
@@ -231,6 +233,8 @@ struct ScheduleAcceptance {
     }, () => undefined);
     this.sharing.attach((request: ShareApiRequest) => this.shareApi(request), () => undefined);
     this.couple.attach((request: CoupleApiRequest) => this.coupleApi(request), () => undefined);
+    const picked = this.coupleColors.split(',');
+    if (picked.length === 2) { this.coupleMine = picked[0].trim(); this.coupleTheirs = picked[1].trim(); }
     if (this.coupleState) void this.couple.refresh(true);
     this.syncOptions();
   }
@@ -238,15 +242,22 @@ struct ScheduleAcceptance {
     if (request.action === 'invite') this.coupleState = 'pending';
     else if (request.action === 'cancelInvite' || request.action === 'unbind') this.coupleState = 'none';
     else if (request.action === 'accept') this.coupleState = 'active';
-    else if (request.action === 'settings' && JSON.stringify(request.body ?? '').includes('myColor')) {
-      this.coupleState = this.coupleState === 'swapped' ? 'active' : 'swapped';
+    else if (request.action === 'settings') {
+      // Picking the partner's colour swaps the two, as the server does.
+      const picked = (JSON.parse(JSON.stringify(request.body ?? {})) as Record<string, string>)['myColor'];
+      if (picked) {
+        if (picked === this.coupleTheirs) this.coupleTheirs = this.coupleMine;
+        this.coupleMine = picked;
+      }
     }
     const status = this.coupleState === 'pending' ? ${JSON.stringify(JSON.stringify(coupleStatus.pending))}
       : this.coupleState === 'active' ? ${JSON.stringify(JSON.stringify(coupleStatus.active))}
-      : this.coupleState === 'swapped' ? ${JSON.stringify(JSON.stringify(coupleStatus.swapped))}
       : ${JSON.stringify(JSON.stringify(coupleStatus.none))};
     const raw = request.action === 'schedules' ? ${JSON.stringify(JSON.stringify(coupleSchedules))} : request.action === 'sync' ? '{"changed":false}' : status;
-    const reply: CoupleApiReply = { ok: true, status: 200, data: JSON.parse(raw) as CoupleApiData };
+    const data = JSON.parse(raw) as CoupleApiData;
+    if (data.me) data.me.color = this.coupleMine;
+    if (data.partner && data.status === 'active') data.partner.color = this.coupleTheirs;
+    const reply: CoupleApiReply = { ok: true, status: 200, data };
     return reply;
   }
   // The editor and the sharing page talk to stand-ins for the Web bridge and the share server.
@@ -350,6 +361,7 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaDay', String(want.parameters?.day ?? ''));
     AppStorage.setOrCreate('qaPanel', String(want.parameters?.panel ?? ''));
     AppStorage.setOrCreate('qaCouple', String(want.parameters?.couple ?? ''));
+    AppStorage.setOrCreate('qaCoupleColors', String(want.parameters?.coupleColors ?? ''));
     AppStorage.setOrCreate('qaData', String(want.parameters?.data ?? ''));
     AppStorage.setOrCreate('qaClean', String(want.parameters?.clean ?? 'false') === 'true');
     const routedUrl =`);

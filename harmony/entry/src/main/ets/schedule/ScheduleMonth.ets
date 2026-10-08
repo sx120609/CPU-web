@@ -138,3 +138,26 @@ export function scheduleAdjustmentText(adjustment: NativeScheduleAdjustment): st
 export function scheduleMonthSlotLabel(startSlot: number, endSlot: number): string {
   return startSlot === endSlot ? `第 ${startSlot} 节` : `第 ${startSlot}-${endSlot} 节`;
 }
+
+/** The day's courses by name, each once, in the order they start. */
+export function scheduleMonthCourseNames(blocks: NativeCourseBlock[]): string[] {
+  const names: string[] = [];
+  blocks.slice().sort((left: NativeCourseBlock, right: NativeCourseBlock) => left.startSlot - right.startSlot || left.endSlot - right.endSlot)
+    .forEach((block: NativeCourseBlock) => { if (block.course.name && !names.includes(block.course.name)) names.push(block.course.name); });
+  return names;
+}
+
+export interface ScheduleMonthLines {
+  shown: string[];
+  more: number;
+}
+
+/**
+ * What a month cell writes: at most `limit` lines. When the day has more courses, the last line
+ * goes to "+N", so `limit - 1` names show and `more` is how many are left out.
+ */
+export function scheduleMonthCourseLines(names: string[], limit: number): ScheduleMonthLines {
+  if (names.length <= limit) return { shown: names, more: 0 };
+  const shown = names.slice(0, Math.max(1, limit - 1));
+  return { shown, more: names.length - shown.length };
+}

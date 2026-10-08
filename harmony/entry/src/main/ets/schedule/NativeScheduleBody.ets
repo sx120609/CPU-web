@@ -3,8 +3,8 @@ import { scheduleCardTone } from './ScheduleVisuals';
 import { scheduleAccent, scheduleCell, scheduleCellBorder, scheduleGridMetrics, ScheduleGridMetrics,
   scheduleSecondaryText, scheduleSurface, scheduleText, scheduleTint } from './ScheduleLayout';
 import { PlacedCourseBlock, placeScheduleBlocks } from './SchedulePlacement';
-import { NativeScheduleCoupleModel } from './NativeScheduleCouple';
-import { CoupleTint, mergeCoupleBlocks } from './ScheduleCouple';
+import { COUPLE_ACCENT, NativeScheduleCoupleModel } from './NativeScheduleCouple';
+import { coupleNoteLabel, couplePartnerSide, couplePersonTone, CoupleTint, mergeCoupleBlocks } from './ScheduleCouple';
 import { scheduleAdjustmentText } from './ScheduleMonth';
 import { ScheduleStyledDateHeader } from './ScheduleDateHeader';
 import { scheduleAlpha, scheduleCleanLocation, scheduleClockLabel, scheduleClockMinutes, scheduleCourseAccent,
@@ -21,6 +21,12 @@ const STYLED_SLOT_GAP: number = 3;
 const STYLED_HEADER: number = 48;
 const OFF_BADGE: string = '#E11D48';
 const SWAP_BADGE: string = '#C2410C';
+// The room a course leaves at its bottom for the line that says what the partner is doing then.
+const COUPLE_NOTE_SPACE: number = 17;
+// The couple day: row height, row gap and the width of the axis in the middle.
+const COUPLE_DAY_ROW: number = 50;
+const COUPLE_DAY_GAP: number = 3;
+const COUPLE_DAY_AXIS: number = 46;
 
 // How a period's cell relates to the courses drawn over it.
 interface SlotCover {
@@ -73,7 +79,10 @@ export struct NativeScheduleBody {
         } else if (this.view.status === 'failed' && !this.view.result) {
           this.stateCard('课表暂时无法加载', this.view.errorMessage || '请检查网络连接后重试', '重新加载', () => this.store.load(true))
         } else if (this.view.result) {
-          if (this.store.visualStyle !== 'classic') {
+          if (this.view.viewMode !== 'week' && this.couple.showing() && this.placed(this.view.selectedDay).length) {
+            // Two timetables in one day: the same layout in every style.
+            this.coupleDay()
+          } else if (this.store.visualStyle !== 'classic') {
             if (this.view.viewMode === 'week') this.styledWeek()
             else this.styledDay()
           } else if (this.view.viewMode === 'week') this.weekSchedule()
@@ -157,6 +166,7 @@ export struct NativeScheduleBody {
             }.width('100%')
             ForEach(this.tiles(day, false), (block: PlacedCourseBlock) => {
               Button() {
+              Stack({ alignContent: Alignment.Bottom }) {
               Column({ space: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 2 }) {
                 if (this.tileTag(block)) this.cardTag(this.tileTag(block), this.cardText(block))
                 Text(block.course.name).fontSize(this.fs(this.metrics().nameSize)).fontWeight(FontWeight.Bold)
@@ -180,7 +190,9 @@ export struct NativeScheduleBody {
               }.width('100%').height('100%')
                 .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
                 .padding({ left: 1, right: 1, top: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 3,
-                  bottom: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 3 })
+                  bottom: (block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 3) + (this.tileNoted(block) ? COUPLE_NOTE_SPACE : 0) })
+              if (this.tileNoted(block)) this.coupleNote(block, day)
+              }.width('100%').height('100%')
               }.type(ButtonType.Normal).width(this.weekColumn() / block.lanes - 2)
                 .height((block.endSlot - block.startSlot + 1) * this.weekStride() - this.metrics().gap - 2)
                 .padding(0).clip(true).borderRadius(this.metrics().courseRadius)
@@ -466,10 +478,6 @@ export struct NativeScheduleBody {
   @Builder
   private styledTile(block: PlacedCourseBlock, day: number, dayRow: boolean) {
     Stack({ alignContent: Alignment.TopStart }) {
-      if (this.coupleTintOf(block)?.fillEnd) {
-        // A class both attend: the user's colour on the left half, the partner's on the right.
-        Column().width('50%').height('100%').position({ x: '50%', y: 0 }).backgroundColor(this.coupleTintOf(block)?.fillEnd)
-      }
       Column({ space: this.tileTiny(block, dayRow) ? 0 : this.tileCompact(dayRow) ? 1 : this.tileSmall(block, dayRow) ? 2 : 4 }) {
         if (this.tileTag(block)) this.cardTag(this.tileTag(block), this.tileInk(block, day))
         if (scheduleStyleLayout(this.store.visualStyle).course === 'departure' && !this.tileTiny(block, dayRow)) {
@@ -509,7 +517,11 @@ export struct NativeScheduleBody {
         .padding({ left: this.tileStripe() + (dayRow ? 12 : this.tileSmall(block, dayRow) ? 3 : 7),
           right: (dayRow ? 12 : this.tileSmall(block, dayRow) ? 3 : 7) + (dayRow && block.lanes === 1 && this.tileStatus(block, day) ? 84 : 0),
           top: this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6,
-          bottom: this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6 })
+          bottom: (this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6)
+            + (this.tileNoted(block) ? COUPLE_NOTE_SPACE : 0) })
+      if (this.tileNoted(block)) {
+        Column() { this.coupleNote(block, day) }.width('100%').height('100%').justifyContent(FlexAlign.End)
+      }
       if (this.tileStripe() > 0) {
         Column().width(this.tileStripe()).height('100%').backgroundColor(this.tileAccent(block))
       }
@@ -529,6 +541,127 @@ export struct NativeScheduleBody {
       .opacity(block.offWeek ? 0.5 : 1)
       .accessibilityGroup(true).accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
       .onClick(() => this.openTile(block, day))
+  }
+
+  // Under a course of the user's: 一起 with a heart for a class both attend, or "TA 课名" in the
+  // partner's colour for a course of theirs then. Tapping the latter shows the partner's course.
+  @Builder
+  private coupleNote(block: PlacedCourseBlock, day: number) {
+    Row({ space: 2 }) {
+      if (block.owner === 'both') {
+        SymbolGlyph($r('sys.symbol.heart_fill')).fontSize(9).fontColor([COUPLE_ACCENT])
+        Text('一起').fontSize(9).fontWeight(600).fontColor(COUPLE_ACCENT).maxLines(1)
+      } else {
+        Text('TA').fontSize(8).fontWeight(FontWeight.Bolder).fontColor(this.couple.tint('ta', this.store.dark).text).maxLines(1)
+        Text(coupleNoteLabel(block.notes ?? [])).fontSize(9).fontWeight(600).fontColor(this.couple.tint('ta', this.store.dark).text)
+          .maxLines(1).textOverflow({ overflow: TextOverflow.Clip }).wordBreak(WordBreak.BREAK_ALL).layoutWeight(1)
+      }
+    }.height(15).padding({ left: 3, right: 1 }).borderRadius(8).margin({ left: 1, right: 1, bottom: 2 })
+      .backgroundColor(block.owner === 'both' ? (this.store.dark ? '#3D2530' : '#FDEDF3') : this.couple.tint('ta', this.store.dark).fill)
+      .border({ width: 0.5, radius: 8,
+        color: scheduleAlpha(block.owner === 'both' ? COUPLE_ACCENT : this.couple.tint('ta', this.store.dark).text, 0.25) })
+      .accessibilityGroup(true)
+      .accessibilityText(block.owner === 'both' ? '一起上' : 'TA ' + coupleNoteLabel(block.notes ?? []))
+      .onClick(() => {
+        const notes = block.notes ?? [];
+        if (block.owner !== 'both' && notes.length) this.onPeek(notes[0].whole, day, this.couple.partnerName() + ' 的课');
+        else this.openTile(block, day);
+      })
+  }
+
+  // ---- Couple day: the time axis in the middle, the user on its left, the partner on its right ----
+
+  @Builder
+  private coupleDay() {
+    Column() {
+      Row({ space: 6 }) {
+        Row() { this.couplePerson('我', 'me') }.layoutWeight(1).justifyContent(FlexAlign.Center)
+        Text('节次').fontSize(11).fontWeight(600).fontColor(this.coupleMeta()).width(COUPLE_DAY_AXIS).textAlign(TextAlign.Center)
+        Row() { this.couplePerson(this.couple.partnerName(), 'ta') }.layoutWeight(1).justifyContent(FlexAlign.Center)
+      }.width('100%').height(30)
+      Stack({ alignContent: Alignment.TopStart }) {
+        Row({ space: 6 }) {
+          this.coupleSide(false)
+          Column({ space: COUPLE_DAY_GAP }) {
+            ForEach(this.view.slots(), (slot: number) => {
+              // The period running now takes the theme colour.
+              Column({ space: 1 }) {
+                Text(String(slot)).fontSize(13).fontWeight(FontWeight.Bold)
+                  .fontColor(slot === this.coupleCurrentSlot() ? '#FFFFFF' : this.coupleInk())
+                Text(this.view.slotStart(slot) || '—').fontSize(10)
+                  .fontColor(slot === this.coupleCurrentSlot() ? '#FFFFFF' : this.coupleMeta())
+              }.width('100%').height(COUPLE_DAY_ROW).justifyContent(FlexAlign.Center).borderRadius(12)
+                .backgroundColor(slot === this.coupleCurrentSlot() ? scheduleThemeFill(this.store.palette) : scheduleAlpha(this.coupleInk(), 0.05))
+                .accessibilityGroup(true).accessibilityText(`第 ${slot} 节，${this.view.slotStart(slot)} 至 ${this.view.slotEnd(slot)}`)
+            }, (slot: number) => String(slot))
+          }.width(COUPLE_DAY_AXIS)
+          this.coupleSide(true)
+        }.width('100%').alignItems(VerticalAlign.Top)
+        if (this.dayNowY(COUPLE_DAY_ROW, COUPLE_DAY_GAP) >= 0) {
+          Column().width('100%').height(1.5).backgroundColor(scheduleAlpha(this.themeText(), 0.8))
+            .position({ x: 0, y: this.dayNowY(COUPLE_DAY_ROW, COUPLE_DAY_GAP) }).hitTestBehavior(HitTestMode.None)
+        }
+      }.width('100%')
+    }.width('100%').padding({ bottom: 8 })
+  }
+
+  @Builder
+  private couplePerson(name: string, owner: string) {
+    Text(name).fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.couple.tint(owner, this.store.dark).text).maxLines(1)
+      .textOverflow({ overflow: TextOverflow.Ellipsis }).padding({ left: 14, right: 14, top: 2, bottom: 2 }).borderRadius(12)
+      .backgroundColor(this.couple.tint(owner, this.store.dark).fill)
+      .border({ width: 1, color: this.couple.tint(owner, this.store.dark).border, radius: 12 })
+  }
+
+  // One person's side: a faint cell per period and that person's courses over them.
+  @Builder
+  private coupleSide(partner: boolean) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column({ space: COUPLE_DAY_GAP }) {
+        ForEach(this.view.slots(), (slot: number) => {
+          Column().width('100%').height(COUPLE_DAY_ROW).borderRadius(12).backgroundColor(scheduleAlpha(this.coupleInk(), 0.03))
+            .accessibilityText('第' + slot + '节，添加课程').accessibilityLevel(partner ? 'no' : 'auto')
+            .onClick(() => { if (!partner) this.addAt(this.view.selectedDay, slot); })
+        }, (slot: number) => String(slot))
+      }.width('100%')
+      ForEach(this.coupleSideBlocks(partner), (block: PlacedCourseBlock) => { this.coupleDayTile(block, partner) },
+        (block: PlacedCourseBlock) => block.id + '|' + block.lane + '|' + block.lanes)
+    }.layoutWeight(1).height(this.view.slotCount() * (COUPLE_DAY_ROW + COUPLE_DAY_GAP) - COUPLE_DAY_GAP)
+  }
+
+  @Builder
+  private coupleDayTile(block: PlacedCourseBlock, partner: boolean) {
+    Row({ space: 5 }) {
+      // A bar of the person's colour down the leading edge.
+      Column().width(3).height('100%').borderRadius(2).backgroundColor(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).border)
+      Column({ space: 2 }) {
+        Row({ space: 3 }) {
+          Text(block.course.name).fontSize(block.lanes > 1 ? 12 : 14).fontWeight(600)
+            .fontColor(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).text)
+            .maxLines(block.endSlot === block.startSlot ? 1 : 2).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+          if (block.owner === 'both') SymbolGlyph($r('sys.symbol.heart_fill')).fontSize(11).fontColor([COUPLE_ACCENT])
+        }.width('100%').alignItems(VerticalAlign.Top)
+        if (scheduleCleanLocation(block.course.location)) {
+          Text('@' + scheduleCleanLocation(block.course.location)).fontSize(11).opacity(0.86)
+            .fontColor(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).text).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+        }
+        if (block.endSlot > block.startSlot) {
+          Text(`${this.blockStart(block)}–${this.blockEnd(block)}`).fontSize(11).opacity(0.86)
+            .fontColor(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).text).maxLines(1).width('100%')
+        }
+      }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center)
+    }.padding({ left: 4, right: block.lanes > 1 ? 4 : 8, top: 5, bottom: 5 })
+      .width(this.coupleSideWidth() / block.lanes - (block.lanes > 1 ? 2 : 0))
+      .height((block.endSlot - block.startSlot + 1) * (COUPLE_DAY_ROW + COUPLE_DAY_GAP) - COUPLE_DAY_GAP)
+      .borderRadius(12).clip(true)
+      .backgroundColor(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).fill)
+      .border({ width: 0.5, radius: 12, color: scheduleAlpha(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).border, 0.55) })
+      .position({ x: block.lane * this.coupleSideWidth() / block.lanes, y: (block.startSlot - 1) * (COUPLE_DAY_ROW + COUPLE_DAY_GAP) })
+      .accessibilityGroup(true).accessibilityText((partner ? 'TA 的课，' : '') + this.spokenLabel(block, this.view.selectedDay))
+      .onClick(() => {
+        if (partner) this.onPeek(block.whole, this.view.selectedDay, this.couple.partnerName() + ' 的课');
+        else this.openTile(block, this.view.selectedDay);
+      })
   }
 
   // The small outlined label on a course: 非本周, or TA on the partner's.
@@ -926,6 +1059,28 @@ export struct NativeScheduleBody {
     return mergeCoupleBlocks(own, placeScheduleBlocks(this.couple.blocksOn(this.view.shownRawDate(day)), none));
   }
 
+  // The couple day: the user's side holds the user's courses, the partner's side everything of theirs.
+  private coupleSideBlocks(partner: boolean): PlacedCourseBlock[] {
+    const merged = this.placed(this.view.selectedDay);
+    return partner ? couplePartnerSide(merged) : merged.filter((block: PlacedCourseBlock) => block.owner !== 'ta');
+  }
+  private coupleSideWidth(): number { return Math.max(40, (this.bodyWidth() - COUPLE_DAY_AXIS - 12) / 2); }
+  private coupleInk(): string { return this.store.visualStyle === 'classic' ? this.textColor() : this.ink(); }
+  private coupleMeta(): string { return this.store.visualStyle === 'classic' ? this.secondaryColor() : scheduleMetaText(this.store.dark); }
+  // The period that is running right now on the day shown, or 0.
+  private coupleCurrentSlot(): number {
+    if (!this.view.shownIsToday(this.view.selectedDay) || !this.store.showNowIndicator || this.store.nowMinutes < 0) return 0;
+    const now = this.store.nowMinutes;
+    return this.view.slots().find((slot: number) => {
+      return scheduleClockMinutes(this.view.slotStart(slot)) <= now && now <= scheduleClockMinutes(this.view.slotEnd(slot));
+    }) ?? 0;
+  }
+  // What the partner is doing during this course goes on a line at its bottom. Three or more side
+  // by side leave two characters a line: no room for it there.
+  private tileNoted(block: PlacedCourseBlock): boolean {
+    return !block.offWeek && block.lanes < 3 && this.couple.showing() && (block.owner === 'both' || (block.notes ?? []).length > 0);
+  }
+
   // What a week column draws: the courses that do not run this week first, under the others.
   private tiles(day: number, dayRow: boolean): PlacedCourseBlock[] {
     const placed = this.placed(day);
@@ -1236,10 +1391,8 @@ export struct NativeScheduleBody {
 
   // The couple timetable colours by person, in every style, instead of the style's own course colour.
   private coupleTintOf(block: PlacedCourseBlock): CoupleTint | undefined {
-    return block.owner && !block.offWeek && this.couple.showing()
-      ? this.couple.tint(block.owner, block.course.name, this.store.dark) : undefined;
+    return block.owner && !block.offWeek && this.couple.showing() ? this.couple.tint(block.owner, this.store.dark) : undefined;
   }
-  // The TA label needs a whole column: half a column on a phone cuts it to one letter.
   private tileTag(block: PlacedCourseBlock): string {
     return block.offWeek ? '非本周' : block.owner === 'ta' && block.endSlot > block.startSlot && block.lanes === 1 ? 'TA' : '';
   }
@@ -1253,14 +1406,12 @@ export struct NativeScheduleBody {
   }
   private cardText(block: PlacedCourseBlock): string { return this.coupleTintOf(block)?.text ?? this.toneText(block.course.name); }
   private cardTop(block: PlacedCourseBlock): string { return this.coupleTintOf(block)?.fill ?? this.toneFill(block.course.name); }
-  private cardBottom(block: PlacedCourseBlock): string {
-    const tint = this.coupleTintOf(block);
-    return tint ? (tint.fillEnd || tint.fill) : this.toneBottom(block.course.name);
-  }
+  private cardBottom(block: PlacedCourseBlock): string { return this.coupleTintOf(block)?.fill ?? this.toneBottom(block.course.name); }
   private cardBorder(block: PlacedCourseBlock): string { return this.coupleTintOf(block)?.border ?? this.toneBorder(block.course.name); }
 
   private tileInverse(block: PlacedCourseBlock, day: number): boolean {
-    return this.store.visualStyle === 'board' && this.tileCurrent(block, day) && !this.coupleTintOf(block);
+    // Three or more side by side leave two characters a line: no inverted "now" tile there.
+    return this.store.visualStyle === 'board' && this.tileCurrent(block, day) && !this.coupleTintOf(block) && block.lanes < 3;
   }
   private tileInk(block: PlacedCourseBlock, day: number): string {
     if (this.coupleTintOf(block)) return this.coupleTintOf(block)?.text ?? this.ink();
