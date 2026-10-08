@@ -1,6 +1,6 @@
 # iOS 4.15 (73)
 
-Build 73 replaces build 72 as the TestFlight build, uploaded on 2026-10-09 while 4.14 (71) waits for App Review. It is not submitted for App Store review. It was archived from `db4541a6` and uploaded from Xcode's Organizer (the command-line upload could not use the signed-in account that day). It is available to the internal groups, and on the same day it was added to the external group Public Test, the one with the public link, and sent to Beta App Review: 正在等待审核. All four targets use version 4.15, build 73. The record of build 72 follows below and still describes what both builds share.
+Build 73 replaces build 72 as the TestFlight build, uploaded on 2026-10-09 while 4.14 (71) waits for App Review. Later that day 4.14 (71) was removed from review at the user's request and the App Store version was changed to 4.15 with build 73 and submitted: 正在等待审核, release settings unchanged. 「此版本的新增内容」 gained three lines (the couple timetable, the month view, the same-period notice and shorter classrooms) above those written for 4.14. It was archived from `db4541a6` and uploaded from Xcode's Organizer (the command-line upload could not use the signed-in account that day). It is available to the internal groups, and on the same day it was added to the external group Public Test, the one with the public link, and sent to Beta App Review: 正在等待审核. All four targets use version 4.15, build 73. The record of build 72 follows below and still describes what both builds share.
 
 Added since build 72:
 

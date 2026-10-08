@@ -72,3 +72,5 @@ Validation of build 71 on 2026-10-07:
 - Not exercised: saving from the editor against a live server, the calendar import, and a physical device.
 
 What came after build 71 is recorded in release-4.15.md.
+
+4.14 (71) was removed from review on 2026-10-09 before it was reviewed; its changes ship in 4.15 (73), see [release-4.15.md](release-4.15.md).
