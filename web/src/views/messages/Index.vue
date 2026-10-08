@@ -457,7 +457,6 @@ let disposed = false;
 let wechatQrPollTimer: ReturnType<typeof setTimeout> | null = null;
 let wechatQrPollSeq = 0;
 let disposeWechatSubscribeButton: (() => void) | null = null;
-let privateViewportQuery: MediaQueryList | null = null;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 const isWechatBrowser = detectWechatBrowser();
@@ -507,9 +506,6 @@ const qqBotAddFriendUrl = computed(() => {
 });
 onMounted(() => {
   disposed = false;
-  privateViewportQuery = window.matchMedia("(max-width: 720px)");
-  privateViewportQuery.addEventListener("change", syncPrivateScrollLock);
-  syncPrivateScrollLock();
   void loadPage();
   void loadQqBotProfile({ silent: true });
   void loadWechatProfile({ silent: true });
@@ -540,9 +536,6 @@ onBeforeUnmount(() => {
   stopWechatQrPolling();
   disposeWechatSubscribeButton?.();
   disposeWechatSubscribeButton = null;
-  privateViewportQuery?.removeEventListener("change", syncPrivateScrollLock);
-  privateViewportQuery = null;
-  setPrivateScrollLock(false);
 });
 
 watch(() => route.query.tab, (value) => {
@@ -555,7 +548,6 @@ watch(() => route.query.tab, (value) => {
 }, { immediate: true });
 
 watch(tab, (value) => {
-  syncPrivateScrollLock();
   const nextQuery = {
     ...route.query,
     tab: value === "all" ? undefined : value,
@@ -582,15 +574,6 @@ function directMessageQueryReset() {
     forumKind: undefined,
     forumId: undefined,
   };
-}
-
-function syncPrivateScrollLock() {
-  setPrivateScrollLock(tab.value === "private" && Boolean(privateViewportQuery?.matches));
-}
-
-function setPrivateScrollLock(active: boolean) {
-  document.documentElement.classList.toggle("messages-private-scroll-lock", active);
-  document.body.classList.toggle("messages-private-scroll-lock", active);
 }
 
 watch(qqBotAddFriendUrl, async (value) => {
@@ -1147,12 +1130,6 @@ function normalizeMessageSettings(value: any) {
 </script>
 
 <style scoped>
-:global(html.messages-private-scroll-lock),
-:global(body.messages-private-scroll-lock) {
-  overflow: hidden !important;
-  overscroll-behavior: none;
-}
-
 .msg-page { display: flex; flex-direction: column; gap: 10px; }
 .page-head {
   display: flex;
@@ -1824,16 +1801,13 @@ function normalizeMessageSettings(value: any) {
 }
 
 @media (max-width: 720px) {
+  /* 会话列表随页面滚动；打开会话后的全屏聊天窗口由 DirectMessages 自己定位 */
   .msg-page.is-private {
-    height: calc(100dvh - 160px - env(safe-area-inset-bottom));
-    min-height: 360px;
     gap: 8px;
-    overflow: hidden;
   }
 
   .msg-page.is-private .page-head {
     display: flex;
-    flex: 0 0 auto;
     padding: 8px;
     border-radius: var(--cpu-radius-l);
   }
@@ -1848,41 +1822,11 @@ function normalizeMessageSettings(value: any) {
   }
 
   .messages-tabs.is-private {
-    display: flex;
-    min-height: 0;
-    flex: 1;
-    flex-direction: column;
     margin: 0;
     padding: 0;
     border-radius: var(--cpu-radius-l);
     overflow: hidden;
-  }
-
-  .messages-tabs.is-private :deep(.el-tabs__header) {
-    display: none;
-  }
-
-  .messages-tabs.is-private :deep(.el-tabs__content),
-  .messages-tabs.is-private :deep(.el-tab-pane) {
-    min-height: 0;
-    height: 100%;
-  }
-
-  .messages-tabs.is-private :deep(.el-tabs__content) {
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .layout-root.keyboard-open .msg-page.is-private {
-    height: calc(100dvh - 84px);
-    min-height: 300px;
-  }
-
-  /* The app shell draws no top bar or tab bar. The second selector outranks the
-     keyboard rule above, which would otherwise leave an 84px gap over the keyboard. */
-  .layout-root--native-shell .msg-page.is-private,
-  .layout-root--native-shell.keyboard-open .msg-page.is-private {
-    height: 100dvh;
+    background: var(--cpu-card);
   }
 }
 
