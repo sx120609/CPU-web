@@ -119,3 +119,12 @@ test("periodic sweep removes expired local values of every kind and keeps live o
   assert.equal(await getEphemeralValue("test-sweep:live"), "live");
   assert.equal(await withCache("test-sweep", ["entry"], 60_000, async () => ++loads), 2);
 });
+
+test("claimOnce lets only the first caller handle an event until the claim expires", async () => {
+  const { claimOnce } = await import("../src/services/cache");
+  assert.equal(await claimOnce("test-claim:event-1", 20), true);
+  assert.equal(await claimOnce("test-claim:event-1", 20), false);
+  assert.equal(await claimOnce("test-claim:event-2", 20), true);
+  await wait(30);
+  assert.equal(await claimOnce("test-claim:event-1", 20), true);
+});

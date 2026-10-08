@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { parseMessageBindToken } from "./bindToken";
-import { runWithDistributedLock } from "./cache";
+import { claimOnce, runWithDistributedLock } from "./cache";
 import { ensureForumAccessEnabled } from "./forumAccess";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { getFeatures, getSiteConfig, getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
@@ -114,15 +114,20 @@ import {
   collectQqAtTargets,
   countRecentQqGroupAssistantAnswers,
   decideQqGroupAssistant,
+  isQqAssistantFillerMessage,
   isQqGroupProactiveCoolingDown,
   lookupQqGroupAssistantReply,
   markQqGroupProactiveReply,
+  normalizeQqAssistantQuestionKey,
   openQqGroupAssistantSession,
   parseQqBotNameCall,
+  QQBOT_GROUP_FOLLOW_UP_WINDOW_MS,
   QQBOT_GROUP_SUMMON_ACK,
   readQqGroupAssistantSession,
   recordQqGroupAssistantAnswer,
+  rememberQqAssistantAnsweredQuestion,
   rememberQqGroupAssistantReply,
+  wasQqAssistantQuestionAnswered,
   type QqGroupAssistantDecision,
   type QqGroupAssistantTrigger,
   type QqGroupQuotedMessage,
@@ -301,6 +306,11 @@ type QqBotDailyAssistantBatch = {
 };
 const qqBotDailyAssistantBatches = new Map<string, QqBotDailyAssistantBatch>();
 const QQBOT_ASSISTANT_HISTORY_TTL_MS = 30 * 60_000;
+/** A member asking the identical question again this soon double-sent it. */
+const QQBOT_ASSISTANT_REPEAT_WINDOW_MS = 60_000;
+/** One proactive answer per question per group, however many members ask it. */
+const QQBOT_GROUP_PROACTIVE_REPEAT_WINDOW_MS = 10 * 60_000;
+const QQBOT_INBOUND_CLAIM_TTL_MS = 10 * 60_000;
 const QQBOT_ASSISTANT_HISTORY_MAX_MESSAGES = 8;
 
 const CONFIG_ID = 1;
@@ -675,6 +685,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     }
     return { ignored: true };
   }
+  if (!(await claimQqBotInboundMessage(event))) return { ignored: true, duplicate: true };
 
   const qqId = normalizeQqBotIdentity(event.user_id);
   const groupId = normalizeQqBotIdentity(event.group_id) || undefined;
@@ -931,6 +942,19 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     rawPayload: event,
   });
   return { ignored: true };
+}
+
+/**
+ * NapCat can deliver one message twice: over HTTP and WebSocket at once, or
+ * to the old and the new release while a deploy overlaps. Handle it once.
+ */
+async function claimQqBotInboundMessage(event: OneBotEvent) {
+  const messageId = getQqBotMessageId(event);
+  if (!messageId) return true;
+  const chat = event.message_type === "group"
+    ? `group:${normalizeQqBotIdentity(event.group_id)}`
+    : `private:${normalizeQqBotIdentity(event.user_id)}`;
+  return claimOnce(`qqbot-inbound:${normalizeQqBotIdentity(event.self_id)}:${chat}:${messageId}`, QQBOT_INBOUND_CLAIM_TTL_MS);
 }
 
 async function handleQqBotRequestEvent(
@@ -2642,10 +2666,23 @@ async function maybeHandleQqBotPrivateAssistant(context: QqBotDailyAssistantCont
     message: context.event.message ?? context.event.raw_message ?? "",
   });
   if (!shouldHandle) return false;
-  enqueueQqBotDailyAssistant(qqBotDailyAssistantBatchKey(context.qqId), context, {
+  const batchKey = qqBotDailyAssistantBatchKey(context.qqId);
+  if (isRepeatOfAnsweredQuestion(batchKey, context, context.messageText)) return true;
+  enqueueQqBotDailyAssistant(batchKey, context, {
     trigger: "private",
     question: context.messageText,
   });
+  return true;
+}
+
+/**
+ * The same member sending the identical question right after it was
+ * answered (a double send, or an impatient repeat) gets no second answer.
+ */
+function isRepeatOfAnsweredQuestion(batchKey: string, context: QqBotDailyAssistantContext, question: string) {
+  if (qqBotDailyAssistantBatches.has(batchKey)) return false;
+  if (!wasQqAssistantQuestionAnswered(batchKey, question, QQBOT_ASSISTANT_REPEAT_WINDOW_MS)) return false;
+  void logHandledInboundMessage(context, "message", "assistant:repeat-skipped").catch(() => undefined);
   return true;
 }
 
@@ -2720,9 +2757,21 @@ function dispatchQqGroupAssistant(
     return true;
   }
   const trigger = decision.action === "proactive-candidate" ? "proactive" : decision.trigger;
+  // A question quoting something new is a new question even if the words match.
+  if (!plan.quoted && isRepeatOfAnsweredQuestion(batchKey, context, plan.question)) return true;
+  if (
+    trigger === "proactive"
+    && wasQqAssistantQuestionAnswered(qqGroupAnsweredScope(context.groupId), plan.question, QQBOT_GROUP_PROACTIVE_REPEAT_WINDOW_MS)
+  ) {
+    return false;
+  }
   if (trigger === "summoned") closeQqGroupAssistantSession(context.groupId, context.qqId);
   enqueueQqBotDailyAssistant(batchKey, context, { trigger, question: plan.question, quoted: plan.quoted });
   return true;
+}
+
+function qqGroupAnsweredScope(groupId: string) {
+  return `group:${groupId}`;
 }
 
 async function resolveQqGroupQuotedMessage(
@@ -2844,7 +2893,13 @@ async function flushQqBotDailyAssistantBatch(batchKey: string, batch: QqBotDaily
     console.warn("[qqbot] daily assistant batch failed", error instanceof Error ? error.message : error);
   } finally {
     batch.processing = false;
-    if (batch.messages.length) {
+    // Lines sent while the answer was being written ("？", "在吗", "快点", or
+    // the same question again) would only get the same answer a second time.
+    const answeredKey = normalizeQqAssistantQuestionKey(message);
+    batch.messages = batch.messages.filter((line) => (
+      !isQqAssistantFillerMessage(line) && normalizeQqAssistantQuestionKey(line) !== answeredKey
+    ));
+    if (batch.messages.length || batch.imageMessages.length) {
       scheduleQqBotDailyAssistantFlush(batchKey, batch);
     } else {
       qqBotDailyAssistantBatches.delete(batchKey);
@@ -2869,7 +2924,17 @@ async function processQqBotDailyAssistantBatch(
   options: { trigger: QqBotAssistantTrigger; quoted?: QqBotAssistantQuotedMessage | null } = { trigger: "private" },
 ) {
   const historyKey = `qqbot-assistant:${context.qqId}::${context.groupId || "private"}`;
-  const history = getQqBotAssistantHistory(historyKey);
+  // A fresh group question only carries history while the member is still
+  // mid-conversation; an old answer in the prompt gets re-answered or read
+  // in place of the new question.
+  const continuing = options.trigger === "private"
+    || options.trigger === "follow-up"
+    || options.trigger === "reply-to-bot"
+    || options.trigger === "continuation";
+  const history = getQqBotAssistantHistory(
+    historyKey,
+    continuing ? QQBOT_ASSISTANT_HISTORY_TTL_MS : QQBOT_GROUP_FOLLOW_UP_WINDOW_MS,
+  );
   // Quoting the answer the member is already talking about adds nothing the
   // history does not carry.
   const quoted = options.quoted && !(options.quoted.fromBot && history.some((entry) => (
@@ -2943,7 +3008,9 @@ async function processQqBotDailyAssistantBatch(
       qrCodeEnabled,
     });
   }
+  if (message) rememberQqAssistantAnsweredQuestion(qqBotDailyAssistantBatchKey(context.qqId, context.groupId), message);
   if (context.event.message_type === "group" && context.groupId) {
+    if (message) rememberQqAssistantAnsweredQuestion(qqGroupAnsweredScope(context.groupId), message);
     if (replyMessageId) rememberQqGroupAssistantReply(replyMessageId, context.groupId, response.answer);
     recordQqGroupAssistantAnswer(context.groupId, context.qqId);
     if (options.trigger === "proactive") markQqGroupProactiveReply(context.groupId);
@@ -2968,11 +3035,20 @@ export function buildQqBotGeneratedImageMessage(value: unknown, siteOrigin = get
   return `[CQ:image,file=${origin}${imageUrl}]`;
 }
 
+/**
+ * Strips image placeholders but keeps line breaks: a numbered list, a
+ * timetable or several merged messages read as one run-on line otherwise,
+ * and the model answers the wrong line.
+ */
 export function normalizeQqBotAssistantVisionMessage(message: string, imageCount: number) {
   const normalized = String(message || "")
     .replace(/!\[[^\]]*\]\([^\r\n)]*\)/gu, " ")
     .replace(/\[图片\]/gu, " ")
-    .replace(/\s+/gu, " ")
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/gu, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
     .trim();
   if (normalized) return normalized;
   if (imageCount > 1) return "请描述并分析这些图片中的内容。";
@@ -2992,12 +3068,13 @@ export function buildQqBotReplyMessage(message: string, messageId: unknown) {
   return `[CQ:reply,id=${escapedMessageId}]${normalizedMessage}`;
 }
 
-function getQqBotAssistantHistory(key: string): CampusAssistantMessage[] {
+function getQqBotAssistantHistory(key: string, maxAgeMs = QQBOT_ASSISTANT_HISTORY_TTL_MS): CampusAssistantMessage[] {
   const record = qqBotAssistantHistories.get(key);
   if (!record || Date.now() - record.updatedAt > QQBOT_ASSISTANT_HISTORY_TTL_MS) {
     qqBotAssistantHistories.delete(key);
     return [];
   }
+  if (Date.now() - record.updatedAt > maxAgeMs) return [];
   return record.messages.slice(-QQBOT_ASSISTANT_HISTORY_MAX_MESSAGES);
 }
 

@@ -6,10 +6,12 @@ import {
   collectQqAtTargets,
   countRecentQqGroupAssistantAnswers,
   decideQqGroupAssistant,
+  isQqAssistantFillerMessage,
   isQqGroupProactiveCoolingDown,
   looksLikeQqGroupFollowUpQuestion,
   lookupQqGroupAssistantReply,
   markQqGroupProactiveReply,
+  normalizeQqAssistantQuestionKey,
   openQqGroupAssistantSession,
   parseQqBotNameCall,
   QQBOT_GROUP_FOLLOW_UP_WINDOW_MS,
@@ -19,8 +21,10 @@ import {
   QQBOT_GROUP_SUMMON_WINDOW_MS,
   readQqGroupAssistantSession,
   recordQqGroupAssistantAnswer,
+  rememberQqAssistantAnsweredQuestion,
   rememberQqGroupAssistantReply,
   resetQqGroupAssistantState,
+  wasQqAssistantQuestionAnswered,
   type QqGroupAssistantSignals,
 } from "../src/services/qqbot/groupAssistantTrigger";
 
@@ -262,14 +266,14 @@ test("追问判断：问句和请求算，道谢和附和不算", () => {
   }
 });
 
-test("把被引用的消息放在问题前面，没有问题时请模型直接作答", () => {
+test("问题放在被引用的消息前面，没有问题时请模型直接作答", () => {
   const quoted = { messageId: "55", fromBot: false, senderName: "小王", text: "补考报名截止到什么时候？" };
   assert.equal(
     buildQqGroupAssistantQuestion("帮忙回答一下", quoted),
-    "【引用群友「小王」的消息】\n补考报名截止到什么时候？\n\n【提问】帮忙回答一下",
+    "【提问】帮忙回答一下\n\n【引用群友「小王」的消息】\n补考报名截止到什么时候？",
   );
-  assert.match(buildQqGroupAssistantQuestion("", quoted), /【提问】请针对这条引用消息作答/);
-  assert.match(buildQqGroupAssistantQuestion("这里不对", { ...quoted, fromBot: true }), /^【引用你之前的回复】/);
+  assert.match(buildQqGroupAssistantQuestion("", quoted), /^【提问】请针对下面这条引用消息作答/);
+  assert.match(buildQqGroupAssistantQuestion("这里不对", { ...quoted, fromBot: true }), /【引用你之前的回复】/);
   assert.equal(buildQqGroupAssistantQuestion("怎么查成绩", null), "怎么查成绩");
   assert.equal(buildQqGroupAssistantQuestion("怎么查成绩", { ...quoted, text: "" }), "怎么查成绩");
 });
@@ -305,4 +309,28 @@ test("记住已发出的回答，引用图片回复时能找回原文", () => {
   assert.equal(lookupQqGroupAssistantReply("900", "g2", 1), null);
   assert.equal(lookupQqGroupAssistantReply("901", "g1", 1), null);
   assert.equal(lookupQqGroupAssistantReply("900", "g1", 7 * 60 * 60_000), null);
+});
+
+test("等待回答时发的催促、问号和道谢不算新问题", () => {
+  for (const value of ["？", "？？？", "在吗", "快点", "人呢", "怎么还不回", "为什么不理我", "谢谢", "好的", "你好", "[图片]", ""]) {
+    assert.equal(isQqAssistantFillerMessage(value), true, value);
+  }
+  for (const value of ["对了我是大二的", "补考呢", "那选修课怎么算学分"]) {
+    assert.equal(isQqAssistantFillerMessage(value), false, value);
+  }
+});
+
+test("同一个问题换个标点或大小写仍视为同一问题", () => {
+  assert.equal(normalizeQqAssistantQuestionKey("怎么查 GPA？"), normalizeQqAssistantQuestionKey("怎么查gpa"));
+  assert.notEqual(normalizeQqAssistantQuestionKey("怎么查成绩"), normalizeQqAssistantQuestionKey("怎么查课表"));
+});
+
+test("刚回答过的问题在时间窗口内不再重复回答", () => {
+  resetQqGroupAssistantState();
+  const now = 4_000_000;
+  rememberQqAssistantAnsweredQuestion("u1::g1", "怎么查成绩？", now);
+  assert.equal(wasQqAssistantQuestionAnswered("u1::g1", "怎么查成绩", 60_000, now + 30_000), true);
+  assert.equal(wasQqAssistantQuestionAnswered("u1::g1", "怎么查成绩", 60_000, now + 60_000), false);
+  assert.equal(wasQqAssistantQuestionAnswered("u1::g1", "怎么查课表", 60_000, now + 1), false);
+  assert.equal(wasQqAssistantQuestionAnswered("u2::g1", "怎么查成绩", 60_000, now + 1), false);
 });

@@ -40,6 +40,8 @@ const ACKNOWLEDGEMENT_PATTERN = /^(?:谢谢|谢了|多谢|感谢|thx|thanks?|好
 const QUESTION_MARK_PATTERN = /[?？]/u;
 const QUESTION_ENDING_PATTERN = /(?:吗|嘛|呢)[\s!！~～。.…]*$/u;
 const INTERROGATIVE_PATTERN = /(?:怎么|怎样|咋|如何|为什么|为啥|为何|什么|啥|哪|谁|多少|多久|几点|几号|几天|几个|几次|几门|是否|能不能|能否|可不可以|可以吗|行不行|会不会|要不要|有没有|是不是|对不对|该不该)/u;
+// Nudges and pleasantries a member sends while waiting; they add no question.
+const FILLER_PATTERN = /^(?:[?？!！。.…~～]+|在吗|在不在|人呢|有人吗|快点|快回|回我|回复我|回一下|等等|稍等|好了吗|还没好吗|呢|你?(?:怎么|为什么|为啥)?还?(?:不|没)(?:理我|回复?|回答)我?)[\s?？!！。.…~～]*$/u;
 const REQUEST_PATTERN = /^(?:那|那么|还有|另外|再|然后|顺便)?\s*(?:帮我|帮忙|请|麻烦|给我|告诉我|教我|查一下|查查|推荐|解释|介绍|翻译|总结|详细说|展开说|继续)/u;
 
 export type QqGroupAssistantTrigger =
@@ -201,6 +203,24 @@ export function looksLikeQqGroupFollowUpQuestion(text: string) {
     || REQUEST_PATTERN.test(normalized);
 }
 
+/**
+ * True for lines that carry no question of their own: "？", "在吗",
+ * "快点", "谢谢". Sent while an answer is being written, they must not make
+ * the model answer the same question a second time.
+ */
+export function isQqAssistantFillerMessage(text: string) {
+  const normalized = cleanQqGroupAssistantText(text);
+  if (!normalized) return true;
+  return FILLER_PATTERN.test(normalized)
+    || ACKNOWLEDGEMENT_PATTERN.test(normalized)
+    || isGreetingMessage(normalized);
+}
+
+/** Compares questions regardless of spacing, punctuation and letter case. */
+export function normalizeQqAssistantQuestionKey(text: string) {
+  return cleanQqGroupAssistantText(text).toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
 /** Drops media placeholders and CQ codes so only what the member typed remains. */
 export function cleanQqGroupAssistantText(text: string) {
   return String(text || "")
@@ -218,7 +238,11 @@ export type QqGroupQuotedMessage = {
   text: string;
 };
 
-/** Puts the quoted message in front of the question so the model sees what "这个" refers to. */
+/**
+ * Adds the quoted message so the model sees what "这个" refers to. The
+ * question comes first: history keeps only the start of long turns, and the
+ * follow-up must still find what was asked.
+ */
 export function buildQqGroupAssistantQuestion(question: string, quoted?: QqGroupQuotedMessage | null) {
   const asked = String(question || "").trim();
   const quotedText = String(quoted?.text || "").trim().slice(0, QUOTED_CONTEXT_MAX_CHARS);
@@ -227,10 +251,10 @@ export function buildQqGroupAssistantQuestion(question: string, quoted?: QqGroup
     ? "你之前的回复"
     : `群友${quoted.senderName ? `「${quoted.senderName}」` : ""}的消息`;
   return [
+    asked ? `【提问】${asked}` : "【提问】请针对下面这条引用消息作答：如果它是问题就直接回答，否则简要解释。",
+    "",
     `【引用${source}】`,
     quotedText,
-    "",
-    asked ? `【提问】${asked}` : "【提问】请针对这条引用消息作答：如果它是问题就直接回答，否则简要解释。",
   ].join("\n");
 }
 
@@ -245,6 +269,8 @@ const sessions = new Map<string, { kind: QqGroupAssistantSessionKind; expiresAt:
 const answerTimes = new Map<string, number[]>();
 const proactiveCooldowns = new Map<string, number>();
 const assistantReplies = new Map<string, { groupId: string; answer: string; at: number }>();
+const answeredQuestions = new Map<string, Array<{ key: string; at: number }>>();
+const ANSWERED_QUESTIONS_PER_SCOPE = 20;
 
 function sessionKey(groupId: string, qqId: string) {
   return `${groupId}::${qqId}`;
@@ -339,8 +365,32 @@ export function lookupQqGroupAssistantReply(messageId: string, groupId: string, 
   return entry.groupId === groupId ? entry.answer : null;
 }
 
+/**
+ * Remembers that a question was answered in `scope` (a member's chat, or a
+ * whole group), so the same question is not answered twice in a row.
+ */
+export function rememberQqAssistantAnsweredQuestion(scope: string, question: string, now = Date.now()) {
+  const key = normalizeQqAssistantQuestionKey(question);
+  if (!key) return;
+  const entries = (answeredQuestions.get(scope) || []).filter((entry) => entry.key !== key);
+  answeredQuestions.delete(scope);
+  answeredQuestions.set(scope, [...entries, { key, at: now }].slice(-ANSWERED_QUESTIONS_PER_SCOPE));
+  while (answeredQuestions.size > SESSION_MAX_ENTRIES) {
+    const oldest = answeredQuestions.keys().next().value;
+    if (oldest === undefined) break;
+    answeredQuestions.delete(oldest);
+  }
+}
+
+export function wasQqAssistantQuestionAnswered(scope: string, question: string, withinMs: number, now = Date.now()) {
+  const key = normalizeQqAssistantQuestionKey(question);
+  if (!key) return false;
+  return (answeredQuestions.get(scope) || []).some((entry) => entry.key === key && now - entry.at < withinMs);
+}
+
 export function resetQqGroupAssistantState() {
   sessions.clear();
+  answeredQuestions.clear();
   answerTimes.clear();
   proactiveCooldowns.clear();
   assistantReplies.clear();

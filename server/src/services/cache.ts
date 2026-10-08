@@ -427,6 +427,27 @@ export async function runWithDistributedLock<T>(name: string, ttlMs: number, tas
   }
 }
 
+/**
+ * Claims `name` for `ttlMs` and never releases it early, so of several
+ * processes seeing the same event only the first one handles it. Falls back
+ * to this process when Redis is unavailable.
+ */
+export async function claimOnce(name: string, ttlMs: number) {
+  const key = lockKey(name);
+  const shared = await trySetRedisLock(key, ttlMs);
+  if (shared.available) return shared.acquired;
+  const now = Date.now();
+  const existing = localLocks.get(key);
+  if (existing && existing.expiresAt > now) return false;
+  if (localLocks.size >= 5_000) {
+    for (const [entryKey, entry] of localLocks) {
+      if (entry.expiresAt <= now) localLocks.delete(entryKey);
+    }
+  }
+  localLocks.set(key, { token: shared.token, expiresAt: now + ttlMs });
+  return true;
+}
+
 export async function setEphemeralValue(key: string, value: string, ttlMs: number) {
   const stored = await writeRedisString(key, value, ttlMs);
   const durableStored = isDurableEphemeralKey(key)

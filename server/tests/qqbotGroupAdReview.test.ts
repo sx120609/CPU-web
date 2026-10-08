@@ -244,6 +244,34 @@ test("keeps the group QR-code switch independent from campus recruitment", () =>
   assert.equal(detectQqGroupAdHardBlockReason("请扫描二维码查看通知", true), null);
 });
 
+test("does not hard-block ordinary messages where 加/联系 sits near a date, ticket or phone number", () => {
+  for (const content of [
+    "大家加油，考试时间 20241015",
+    "明天参加考试，准考证号 2024100801",
+    "有问题联系辅导员 13812345678",
+    "辅导员群里说 20241015 前交材料",
+    "加VIP会员后用学号2021089641登录",
+  ]) {
+    assert.equal(detectQqGroupAdHardBlockReason(content), null, content);
+  }
+});
+
+test("still hard-blocks explicit invitations to join a group or add a contact", () => {
+  for (const content of [
+    "加群 123456789",
+    "进群：123456789",
+    "欢迎加入我们的群 123456789",
+    "加我微信 123456789",
+    "加v 123456789",
+  ]) {
+    assert.equal(detectQqGroupAdHardBlockReason(content), "包含明确的加群/联系导流号码", content);
+  }
+});
+
+test("a real notice that cheers people on is not a fake official notice", () => {
+  assert.equal(detectQqUnofficialNoticeDiversionReason("重要通知：明天开学安排见通知群，大家加油"), null);
+});
+
 test("does not hard-block a normal message that only mentions QQ groups", () => {
   assert.equal(detectQqGroupAdHardBlockReason("班级 QQ 群今晚通知上课地点"), null);
 });
