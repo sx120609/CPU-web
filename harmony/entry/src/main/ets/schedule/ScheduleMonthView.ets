@@ -27,17 +27,33 @@ export struct ScheduleMonthView {
   private lunarKey: string = '';
   private cachedKey: string = '';
   private cachedDays: ScheduleMonthDay[] = [];
+  // 上下拖动换月：格子跟着手指走的距离。
+  @State private pull: number = 0;
 
   build() {
     Scroll() {
       Column({ space: this.store.visualStyle === 'classic' ? 12 : 0 }) {
         if (this.store.visualStyle === 'classic') {
-          this.classicGrid()
+          // The pan starts after 3 vp, sooner than the page's own scrolling, so a drag that
+          // begins on the calendar turns the month instead of scrolling or pulling to refresh.
+          Column() { this.classicGrid() }.width('100%')
+            .translate({ y: this.pull }).opacity(this.pullOpacity())
+            .gesture(PanGesture({ direction: PanDirection.Vertical, distance: 3 })
+              .onActionUpdate((event: GestureEvent) => { this.pull = event.offsetY * 0.55; })
+              .onActionEnd((event: GestureEvent) => this.finishPull(event.offsetY))
+              .onActionCancel(() => this.finishPull(0)))
           this.summary()
         } else {
           Column() {
-            if (this.store.visualStyle === 'minimal') this.minimalGrid()
-            else this.styledGrid()
+            Column() {
+              if (this.store.visualStyle === 'minimal') this.minimalGrid()
+              else this.styledGrid()
+            }.width('100%')
+              .translate({ y: this.pull }).opacity(this.pullOpacity())
+              .gesture(PanGesture({ direction: PanDirection.Vertical, distance: 3 })
+                .onActionUpdate((event: GestureEvent) => { this.pull = event.offsetY * 0.55; })
+                .onActionEnd((event: GestureEvent) => this.finishPull(event.offsetY))
+                .onActionCancel(() => this.finishPull(0)))
             // The table's frame already separates the calendar from the summary.
             if (this.store.visualStyle !== 'table') {
               Column().height(this.store.visualStyle === 'board' ? 2 : 0.7)
@@ -273,14 +289,27 @@ export struct ScheduleMonthView {
 
   @Builder
   private courseDots(day: ScheduleMonthDay) {
-    Row({ space: 3 }) {
-      ForEach(day.courses.slice(0, 3), (block: NativeCourseBlock) => {
-        Circle().width(4).height(4).fill(this.store.visualStyle === 'classic' ? this.classicAccent(block.course.name) : this.courseAccent(block.course.name))
-      })
-      if (day.courses.length > 3) {
-        Circle().width(3).height(3).fill(scheduleAlpha(scheduleMetaText(this.store.dark), 0.5))
+    // 日期下面只画一条，和系统日历一样：一节课是一个点，课越多越长。
+    Row() {
+      if (day.courses.length > 0) {
+        Column().width(day.courses.length === 1 ? 4 : Math.min(4, day.courses.length) * 5).height(4).borderRadius(2)
+          .backgroundColor(scheduleAlpha(this.store.visualStyle === 'classic' ? this.accent() : this.themeText(), 0.85))
       }
-    }.height(6).opacity(day.inMonth ? 1 : 0.5).accessibilityLevel('no')
+    }.height(6).justifyContent(FlexAlign.Center).opacity(day.inMonth ? 1 : 0.5).accessibilityLevel('no')
+  }
+
+  // 拖过一段距离就换月，新的一页从拖来的那一边滑进来；不够就弹回去。
+  private finishPull(offset: number): void {
+    const delta = offset < 0 ? 1 : -1;
+    if (Math.abs(offset) >= 44) {
+      this.store.moveMonth(delta);
+      this.pull = delta > 0 ? 36 : -36;
+    }
+    animateTo({ duration: 220, curve: Curve.EaseOut }, () => { this.pull = 0; });
+  }
+
+  private pullOpacity(): number {
+    return 1 - Math.min(0.6, Math.abs(this.pull) / 86);
   }
 
   @Builder
