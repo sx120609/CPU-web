@@ -24,8 +24,6 @@
           <a href="/about.html">了解我们</a>
           <router-link to="/thanks">致谢</router-link>
           <a href="https://status.cputime.cn" target="_blank" rel="noopener noreferrer">服务状态</a>
-          <a href="/terms.html">用户协议</a>
-          <a href="/privacy.html">隐私政策</a>
           <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
 
@@ -38,7 +36,11 @@
       </div>
 
       <div class="footer-bottom">
-        <span>© 2026 药大拾间 · 非学校官方站点</span>
+        <div class="footer-legal">
+          <span>© 2026 药大拾间 · 非学校官方站点</span>
+          <a href="/terms.html">用户协议</a>
+          <a href="/privacy.html">隐私政策</a>
+        </div>
         <a v-if="site.siteFilingNumber" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ site.siteFilingNumber }}</a>
       </div>
 
@@ -169,6 +171,13 @@ const site = useSiteStore();
   border-top: 1px solid var(--cpu-border-soft);
   color: var(--cpu-text-muted);
   font-size: var(--cpu-fs-xs);
+}
+
+.footer-legal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 20px;
 }
 
 .footer-bottom a {
