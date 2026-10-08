@@ -37,6 +37,12 @@ import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessio
 import { extractModernJwxtSsoRedirect, isModernJwxtLoginPage } from "./modernJwxtSso";
 import { isLegacyJwxtLoginPage } from "./legacyJwxtSso";
 import {
+  parsePortalNoticeResponse,
+  PORTAL_NOTICE_LIST_URL,
+  PORTAL_NOTICE_MAX_PAGE_SIZE,
+  type PortalNoticePage,
+} from "./portalNotices";
+import {
   buildCpuSsoSubmitBody,
   buildCpuSsoSubmitHeaders,
   parseCpuSsoPasswordForm,
@@ -1335,6 +1341,33 @@ export async function fetchIServiceApps(token: string): Promise<IServiceApp[]> {
         .map((s: string) => s.trim())
         .filter(Boolean),
     }));
+}
+
+/** 拉取融合门户“门户资讯聚合”列表（登录后才可见） */
+export async function fetchPortalNoticePage(
+  token: string,
+  opts: { pageSize?: number; beginIndex?: number } = {},
+): Promise<PortalNoticePage> {
+  const pageSize = Math.min(PORTAL_NOTICE_MAX_PAGE_SIZE, Math.max(1, Math.trunc(opts.pageSize ?? 100)));
+  const beginIndex = Math.max(0, Math.trunc(opts.beginIndex ?? 0));
+  const result = await fetchAnyCpuText(token, `${PORTAL_NOTICE_LIST_URL}&pageSize=${pageSize}&beginIndex=${beginIndex}`, {
+    allowSso: true,
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+  if (new URL(result.finalUrl).hostname.toLowerCase() !== "i.cpu.edu.cn") {
+    throw Errors.badRequest("融合门户登录态已失效，需要重新登录");
+  }
+  if (result.status < 200 || result.status >= 300) {
+    throw Errors.badRequest(`融合门户暂时不可用（HTTP ${result.status}）`);
+  }
+  try {
+    return parsePortalNoticeResponse(result.text);
+  } catch (error) {
+    throw Errors.badRequest(error instanceof Error ? error.message : "融合门户未返回资讯数据");
+  }
 }
 
 /** POST form 到 jsxsd 路径，返回 HTML */

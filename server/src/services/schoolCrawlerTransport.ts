@@ -12,3 +12,9 @@ export function crawlSchoolFeedSource(
   if (config.jwxtProxyUrl) return remote.crawlSchoolFeedSource(source, opts);
   return local.crawlSchoolFeedSource(source, opts);
 }
+
+export function fetchSchoolFeedDetails(urls: string[]) {
+  if (agentRemote.hasConfiguredCrawlAgent()) return agentRemote.fetchSchoolFeedDetails(urls);
+  if (config.jwxtProxyUrl) return remote.fetchSchoolFeedDetails(urls);
+  return local.fetchSchoolFeedDetails(urls);
+}

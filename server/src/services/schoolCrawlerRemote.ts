@@ -1,6 +1,6 @@
 import { config } from "../config";
 import { Errors, HttpError } from "../utils/response";
-import type { CrawlSchoolFeedResult, SchoolFeedSourceInput } from "./schoolCrawlerCore";
+import type { CrawlSchoolFeedResult, SchoolFeedDetail, SchoolFeedSourceInput } from "./schoolCrawlerCore";
 
 type ApiEnvelope<T> = {
   code: number;
@@ -53,4 +53,8 @@ export function crawlSchoolFeedSource(
   opts: { skipExternalIds?: string[]; dryRun?: boolean } = {},
 ): Promise<CrawlSchoolFeedResult> {
   return call("/v1/school-feed/crawl", { source, ...opts });
+}
+
+export function fetchSchoolFeedDetails(urls: string[]): Promise<SchoolFeedDetail[]> {
+  return call("/v1/school-feed/details", { urls });
 }

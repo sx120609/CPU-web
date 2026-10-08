@@ -20,12 +20,51 @@
       </template>
     </el-alert>
 
+    <section class="portal-card">
+      <div class="portal-head">
+        <div>
+          <b>融合门户资讯聚合</b>
+          <span>门户的资讯列表登录后才能看。用你自己的账号在本站登录教务，再点绑定，之后就用这个登录态定时同步各部门公告。</span>
+        </div>
+        <div class="portal-actions cpu-button-row">
+          <el-button type="primary" :loading="binding" :disabled="binding || unbinding" @click="bindPortal">
+            {{ portal?.sessionBound ? "换成我当前的登录" : "用我当前的教务登录绑定" }}
+          </el-button>
+          <el-button v-if="portal?.sessionBound" :loading="unbinding" :disabled="binding || unbinding" @click="unbindPortal">解除绑定</el-button>
+        </div>
+      </div>
+      <p class="portal-state">
+        <template v-if="portal?.sessionBound">
+          已绑定：{{ portal.sessionUser?.nickname || portal.sessionUser?.username || "未知账号" }}
+          <template v-if="portal.sessionBoundAt"> · {{ fmtRelative(portal.sessionBoundAt) }}绑定</template>
+          <template v-if="portal.lastRunAt">
+            · 上次同步{{ fmtRelative(portal.lastRunAt) }}
+            <b :style="{ color: portal.lastRunOk ? '#16a34a' : '#dc2626' }">{{ portal.lastRunOk ? "成功" : "失败" }}</b>
+          </template>
+        </template>
+        <template v-else>还没有绑定登录态，门户公告不会同步。</template>
+      </p>
+      <p v-if="portal?.sessionBound && portal.lastError" class="feed-error">{{ portal.lastError.slice(0, 160) }}</p>
+
+      <div v-if="departments.length" class="dept-list">
+        <div class="dept-title">部门默认显示（用户没自己选过部门时，“全部”和首页里有哪些部门）</div>
+        <label v-for="d in departments" :key="d.id" class="dept-row">
+          <el-switch :model-value="d.announceDefault" :disabled="departmentBusyId === d.id" size="small" @change="toggleDepartment(d)" />
+          <span>{{ d.name }}</span>
+          <em>{{ d.topicCount }} 帖</em>
+        </label>
+      </div>
+    </section>
+
     <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="slug" label="slug" width="140" />
       <el-table-column prop="name" label="名称" min-width="140" />
       <el-table-column label="板块" width="140">
-        <template #default="{ row }">{{ row.board?.name }} ({{ row.board?.topicCount }} 帖)</template>
+        <template #default="{ row }">
+          <template v-if="row.board">{{ row.board.name }} ({{ row.board.topicCount }} 帖)</template>
+          <span v-else class="muted">按部门分板块</span>
+        </template>
       </el-table-column>
       <el-table-column prop="cronMinutes" label="周期(分)" width="90" align="right" />
       <el-table-column prop="maxPages" label="最多页数" width="90" align="right" />
@@ -82,7 +121,8 @@
           <el-switch :model-value="row.enabled" :disabled="isFeedBusy(row) || runningAll" @change="toggleEnabled(row)" />
         </div>
         <div class="feed-meta">
-          <span>板块：{{ row.board?.name }}（{{ row.board?.topicCount }} 帖）</span>
+          <span v-if="row.board">板块：{{ row.board.name }}（{{ row.board.topicCount }} 帖）</span>
+          <span v-else>板块：按部门分板块</span>
           <span>周期：{{ row.cronMinutes }} 分 · 最多 {{ row.maxPages }} 页</span>
           <span>
             上次：
@@ -121,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Refresh, MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
@@ -135,6 +175,11 @@ const runningAll = ref(false);
 const runningId = ref<number | null>(null);
 const resettingId = ref<number | null>(null);
 const togglingId = ref<number | null>(null);
+const departments = ref<any[]>([]);
+const departmentBusyId = ref<number | null>(null);
+const binding = ref(false);
+const unbinding = ref(false);
+const portal = computed(() => list.value.find((row) => row.parser === "portal-notice-v1") ?? null);
 let feedLoadSeq = 0;
 
 onMounted(reload);
@@ -144,8 +189,14 @@ async function reload(force = false) {
   loading.value = true;
   loadError.value = "";
   try {
-    const next = await adminApi.feeds({ suppressErrorMessage: true });
-    if (seq === feedLoadSeq) list.value = next;
+    const [next, nextDepartments] = await Promise.all([
+      adminApi.feeds({ suppressErrorMessage: true }),
+      adminApi.feedDepartments({ suppressErrorMessage: true }),
+    ]);
+    if (seq === feedLoadSeq) {
+      list.value = next;
+      departments.value = nextDepartments;
+    }
   } catch (error) {
     if (seq === feedLoadSeq) {
       list.value = [];
@@ -154,6 +205,38 @@ async function reload(force = false) {
   } finally {
     if (seq === feedLoadSeq) loading.value = false;
   }
+}
+
+async function bindPortal() {
+  if (binding.value) return;
+  binding.value = true;
+  try {
+    const r = await adminApi.bindPortalFeedSession();
+    ElMessage.success(`绑定成功，门户里现有 ${r.total} 条资讯，稍后开始同步`);
+    await reload(true);
+  } finally { binding.value = false; }
+}
+
+async function unbindPortal() {
+  if (unbinding.value) return;
+  try {
+    await ElMessageBox.confirm("解除后门户公告停止同步，已同步的公告保留。", "解除绑定", { type: "warning", confirmButtonText: "解除", cancelButtonText: "取消" });
+  } catch { return; }
+  unbinding.value = true;
+  try {
+    await adminApi.unbindPortalFeedSession();
+    ElMessage.success("已解除绑定");
+    await reload(true);
+  } finally { unbinding.value = false; }
+}
+
+async function toggleDepartment(department: any) {
+  if (departmentBusyId.value !== null) return;
+  departmentBusyId.value = department.id;
+  try {
+    await adminApi.updateFeedDepartment(department.id, { announceDefault: !department.announceDefault });
+    department.announceDefault = !department.announceDefault;
+  } finally { departmentBusyId.value = null; }
 }
 
 function handleFeedCommand(command: string, row: any) {
@@ -192,7 +275,9 @@ async function resetRun(row: any) {
   resettingId.value = row.id;
   try {
     await ElMessageBox.confirm(
-      `删除「${row.name}」已抓取的 ${row.board?.topicCount ?? 0} 篇文章并重新抓取？\n用于切换到代理后重新获取正文，删除后不可恢复。`,
+      row.board
+        ? `删除「${row.name}」已抓取的 ${row.board.topicCount ?? 0} 篇文章并重新抓取？\n用于切换到代理后重新获取正文，删除后不可恢复。`
+        : `删除「${row.name}」同步来的全部文章并重新抓取？\n各部门板块保留，删除后不可恢复。`,
       "删除并重爬",
       { type: "warning", confirmButtonText: "删除重爬", cancelButtonText: "取消" }
     );
@@ -240,6 +325,17 @@ function requestMessage(error: unknown) {
   width: 100%;
 }
 .muted { color: #9ca3af; }
+.portal-card { padding: 14px; border: 1px solid #e7edf5; border-radius: 14px; background: #fff; }
+.portal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.portal-head b { display: block; color: #111827; font-size: 14px; }
+.portal-head span { display: block; margin-top: 2px; color: #6b7280; font-size: 12px; line-height: 1.5; }
+.portal-actions { display: flex; flex: none; gap: 8px; }
+.portal-state { margin: 10px 0 0; color: #374151; font-size: 12px; }
+.dept-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eef2f7; }
+.dept-title { grid-column: 1 / -1; color: #6b7280; font-size: 12px; }
+.dept-row { display: flex; min-height: 28px; align-items: center; gap: 8px; color: #111827; font-size: 13px; }
+.dept-row span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dept-row em { flex: none; color: #9ca3af; font-size: 12px; font-style: normal; }
 .admin-table { display: block; }
 .mobile-list {
   display: none;
@@ -306,6 +402,8 @@ function requestMessage(error: unknown) {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
+  .portal-head { flex-direction: column; }
+  .portal-actions { width: 100%; flex-wrap: wrap; }
   .ctrl-bar :deep(.el-button) {
     width: 100%;
     margin-left: 0;

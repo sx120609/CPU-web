@@ -226,6 +226,8 @@ export const topicApi = {
     board?: string;
     /** 不指定板块时，只列公告类板块的帖子（未登录也可读）。 */
     type?: "announce";
+    /** 配合 type=announce：只列这些公告板块（逗号分隔的 slug）。 */
+    boards?: string;
     page?: number;
     size?: number;
     sort?: "new" | "hot";

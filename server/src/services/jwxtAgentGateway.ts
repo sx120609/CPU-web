@@ -182,7 +182,7 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
   if (remoteGateway) return remoteGateway.request(agentId, action, payload, timeoutMs);
   const agent = getJwxtAgentRuntimeConfig().agents.find((item) => item.id === agentId);
   if (!agent || !agent.enabled) throw new HttpError(503, 5000, `教务 Agent ${agentId} 未配置或已禁用`);
-  const capability = action === "school-feed.crawl" ? "crawl" : "jwxt";
+  const capability = action === "school-feed.crawl" || action === "school-feed.details" ? "crawl" : "jwxt";
   if (capability === "jwxt" && !agent.jwxtEnabled) throw Errors.forbidden(`教务 Agent ${agent.name} 未启用教务服务能力`);
   if (capability === "crawl" && !agent.crawlEnabled) throw Errors.forbidden(`教务 Agent ${agent.name} 未启用公告抓取能力`);
 

@@ -32,6 +32,7 @@ export async function requestAccountDeletion(userId: number, currentJwxtToken?: 
     const changed = await tx.user.updateMany({ where: { id: userId, status: { notIn: ["deleting", "deleted"] } }, data: { status: "deleting", aiConsentVersion: null, aiConsentAgreedAt: null } });
     if (!changed.count) throw Errors.conflict("账户已提交删除");
     await tx.scheduleWidgetToken.updateMany({ where: { userId }, data: { revokedAt: new Date(), cachedPayload: null, cachedAt: null } });
+    await tx.announcementPreference.deleteMany({ where: { userId } });
     await tx.oAuthAccessToken.deleteMany({ where: { userId } });
     await tx.oAuthAuthorizationCode.deleteMany({ where: { userId } });
     if (sessions.tokens.length) await tx.accountRevokedCredential.createMany({ data: sessions.tokens.map((token) => ({ tokenHash: credentialHash(token) })), skipDuplicates: true });

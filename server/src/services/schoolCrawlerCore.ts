@@ -27,6 +27,16 @@ export interface CrawledSchoolFeedItem extends ParsedSchoolFeedListItem {
   isExternal: boolean;
 }
 
+export interface SchoolFeedDetail {
+  url: string;
+  content: string;
+  effectiveUrl: string;
+  isExternal: boolean;
+}
+
+/** 一次请求最多取多少篇正文；远端节点的单次请求有超时，不能一口气取太多。 */
+export const SCHOOL_FEED_DETAIL_BATCH = 5;
+
 export interface CrawlSchoolFeedResult {
   items: CrawledSchoolFeedItem[];
   pages: { page: number; listUrl: string; count: number }[];
@@ -141,8 +151,11 @@ async function fetchDetail(url: string): Promise<{ content: string; effectiveUrl
       };
     }
     const $ = cheerio.load(html);
+    // 站群（wp_articlecontent）和科研院等博达站点（v_news_content）的正文容器不同。
     let $body =
       $(".wp_articlecontent").first().length ? $(".wp_articlecontent").first()
+      : $(".v_news_content").first().length ? $(".v_news_content").first()
+      : $("#vsb_content").first().length ? $("#vsb_content").first()
       : $("div.article div.read").first().length ? $("div.article div.read").first()
       : $("div.read").first().length ? $("div.read").first()
       : $("div.article").first();
@@ -198,6 +211,28 @@ async function fetchDetail(url: string): Promise<{ content: string; effectiveUrl
   } catch {
     return { content: "", effectiveUrl: url, isExternal: false };
   }
+}
+
+function isSchoolHost(url: string) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "cpu.edu.cn" || host.endsWith(".cpu.edu.cn");
+  } catch {
+    return false;
+  }
+}
+
+/** 按地址取一批公告正文。地址来自门户列表，只抓学校域名；其余当外链处理，不发请求。 */
+export async function fetchSchoolFeedDetails(urls: string[]): Promise<SchoolFeedDetail[]> {
+  const details: SchoolFeedDetail[] = [];
+  for (const url of urls.slice(0, SCHOOL_FEED_DETAIL_BATCH)) {
+    if (!isSchoolHost(url) && !isWechatUrl(url)) {
+      details.push({ url, content: "", effectiveUrl: url, isExternal: true });
+      continue;
+    }
+    details.push({ url, ...(await fetchDetail(url)) });
+  }
+  return details;
 }
 
 export async function crawlSchoolFeedSource(

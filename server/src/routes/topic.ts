@@ -198,6 +198,10 @@ topicRouter.get("/", async (req, res, next) => {
     }
     if (boardType && boardType !== "announce") throw Errors.badRequest("板块类型不合法");
     if (boardType && boardSlug && boardSlug !== "all") throw Errors.badRequest("板块类型和板块不能同时指定");
+    // boards=a,b 只在 type=announce 下有效：公告页的“全部”按用户选的部门筛。
+    const announceSlugs = boardType && req.query.boards
+      ? [...new Set(String(req.query.boards).split(",").map((slug) => slug.trim()).filter((slug) => /^[\w-]{1,64}$/.test(slug)))].sort().slice(0, 100)
+      : [];
 
     let boardId: number | undefined;
     if (boardSlug && boardSlug !== "all") {
@@ -221,6 +225,7 @@ topicRouter.get("/", async (req, res, next) => {
     );
     const where: any = { ...forumContentVisibilityWhere(listViewerId) };
     if (boardId) where.boardId = boardId;
+    else if (boardType && announceSlugs.length) where.board = { type: boardType, AND: [visibleBoardSlugFilter(), { slug: { in: announceSlugs } }] };
     else if (boardType) where.board = { type: boardType, ...visibleBoardSlugFilter() };
     else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
@@ -273,6 +278,7 @@ topicRouter.get("/", async (req, res, next) => {
         marketCategory || "all-categories",
         marketCampus || "all-campuses",
         boardType || "all-types",
+        announceSlugs.join(",") || "all-sources",
       ],
       60_000,
       async () => {

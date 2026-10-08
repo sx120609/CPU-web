@@ -127,6 +127,10 @@ export function getIApps(token: string): ReturnType<typeof local.getIApps> {
     .then((r) => r.apps) as ReturnType<typeof local.getIApps>;
 }
 
+export function getPortalNotices(token: string, args?: Parameters<typeof local.getPortalNotices>[1]): ReturnType<typeof local.getPortalNotices> {
+  return call<Awaited<ReturnType<typeof local.getPortalNotices>>>("/v1/portal-notices", { token, ...(args ?? {}) }) as ReturnType<typeof local.getPortalNotices>;
+}
+
 export function getIAppIcon(path: string): ReturnType<typeof local.getIAppIcon> {
   return call<Awaited<ReturnType<typeof local.getIAppIcon>>>("/v1/iapps/icon", { path }) as ReturnType<typeof local.getIAppIcon>;
 }

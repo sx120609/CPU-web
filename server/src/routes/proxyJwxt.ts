@@ -19,11 +19,13 @@ import {
   getProgress,
   getPyfa,
   getIApps,
+  getPortalNotices,
   getIAppIcon,
   getGraduateSchedule,
   debugSnapshot,
 } from "../services/jwxtFacade";
-import { crawlSchoolFeedSource } from "../services/schoolCrawlerCore";
+import { crawlSchoolFeedSource, fetchSchoolFeedDetails, SCHOOL_FEED_DETAIL_BATCH } from "../services/schoolCrawlerCore";
+import { PORTAL_NOTICE_MAX_PAGE_SIZE } from "../services/portalNotices";
 import { I_SERVICE_ICON_PATH_PATTERN } from "../services/jwxtClient";
 
 export const proxyJwxtRouter = Router();
@@ -222,6 +224,30 @@ proxyJwxtRouter.get("/v1/stats", async (_req, res, next) => {
     ok(res, await sessionStats());
   } catch (e) { next(e); }
 });
+
+proxyJwxtRouter.post(
+  "/v1/portal-notices",
+  validate(tokenSchema.extend({
+    pageSize: z.number().int().min(1).max(PORTAL_NOTICE_MAX_PAGE_SIZE).optional(),
+    beginIndex: z.number().int().min(0).optional(),
+  })),
+  async (req, res, next) => {
+    try {
+      const { token, pageSize, beginIndex } = req.body;
+      ok(res, await getPortalNotices(token, { pageSize, beginIndex }));
+    } catch (e) { next(e); }
+  },
+);
+
+proxyJwxtRouter.post(
+  "/v1/school-feed/details",
+  validate(z.object({ urls: z.array(z.string().url().max(2048)).min(1).max(SCHOOL_FEED_DETAIL_BATCH) })),
+  async (req, res, next) => {
+    try {
+      ok(res, await fetchSchoolFeedDetails(req.body.urls));
+    } catch (e) { next(e); }
+  },
+);
 
 proxyJwxtRouter.post(
   "/v1/school-feed/crawl",

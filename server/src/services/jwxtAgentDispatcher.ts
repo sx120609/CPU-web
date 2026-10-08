@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { Errors } from "../utils/response";
 import * as jwxt from "./jwxtFacade";
-import { crawlSchoolFeedSource } from "./schoolCrawlerCore";
+import { crawlSchoolFeedSource, fetchSchoolFeedDetails, SCHOOL_FEED_DETAIL_BATCH } from "./schoolCrawlerCore";
+import { PORTAL_NOTICE_MAX_PAGE_SIZE } from "./portalNotices";
 import { queryDormElectricFromCampus } from "./dormElectricCampus";
 import { scheduleAgentSelfUpdate } from "./agentSelfUpdate";
 import type { JwxtAgentAction } from "./jwxtAgentProtocol";
@@ -86,6 +87,13 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
       return jwxt.getPyfa(tokenSchema.parse(payload).token);
     case "jwxt.iapps":
       return jwxt.getIApps(tokenSchema.parse(payload).token);
+    case "jwxt.portal-notices": {
+      const input = tokenSchema.extend({
+        pageSize: z.number().int().min(1).max(PORTAL_NOTICE_MAX_PAGE_SIZE).optional(),
+        beginIndex: z.number().int().min(0).max(100_000).optional(),
+      }).strict().parse(payload);
+      return jwxt.getPortalNotices(input.token, { pageSize: input.pageSize, beginIndex: input.beginIndex });
+    }
     case "jwxt.iapp-icon": {
       const input = z.object({ path: z.string().regex(I_SERVICE_ICON_PATH_PATTERN) }).strict().parse(payload);
       return jwxt.getIAppIcon(input.path);
@@ -110,6 +118,10 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
         skipExternalIds: input.skipExternalIds,
         dryRun: input.dryRun,
       });
+    }
+    case "school-feed.details": {
+      const input = z.object({ urls: z.array(z.string().url().max(2048)).min(1).max(SCHOOL_FEED_DETAIL_BATCH) }).strict().parse(payload);
+      return fetchSchoolFeedDetails(input.urls);
     }
     case "dorm-electric.query": {
       const input = z.object({

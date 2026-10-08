@@ -1,6 +1,6 @@
 import { config } from "../config";
 import { HttpError } from "../utils/response";
-import type { CrawlSchoolFeedResult, SchoolFeedSourceInput } from "./schoolCrawlerCore";
+import type { CrawlSchoolFeedResult, SchoolFeedDetail, SchoolFeedSourceInput } from "./schoolCrawlerCore";
 import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
 import { requestJwxtAgent } from "./jwxtAgentGateway";
 
@@ -20,4 +20,10 @@ export function crawlSchoolFeedSource(
     { source, ...opts },
     config.proxyTimeoutMs,
   );
+}
+
+export function fetchSchoolFeedDetails(urls: string[]): Promise<SchoolFeedDetail[]> {
+  const agentId = getJwxtAgentRuntimeConfig().crawlAgentId;
+  if (!agentId) throw new HttpError(503, 5000, "未指定公告抓取 Agent");
+  return requestJwxtAgent(agentId, "school-feed.details", { urls }, config.proxyTimeoutMs);
 }

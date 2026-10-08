@@ -43,6 +43,9 @@ export function getCalendar(token: string, args?: Parameters<typeof local.getCal
 export function getProgress(token: string) { return queryImpl().getProgress(token); }
 export function getPyfa(token: string) { return queryImpl().getPyfa(token); }
 export function getIApps(token: string) { return queryImpl().getIApps(token); }
+export function getPortalNotices(token: string, args?: Parameters<typeof local.getPortalNotices>[1]) {
+  return queryImpl().getPortalNotices(token, args);
+}
 export async function getIAppIcon(path: string) {
   if (agentRemote.hasRemoteJwxtAgent()) {
     try { return await agentRemote.getIAppIcon(path); }

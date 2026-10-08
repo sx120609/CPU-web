@@ -1,6 +1,6 @@
 import type * as jwxt from "./jwxtFacade";
 import type { JwxtSessionSnapshot, LoginHandoffAttempt, LoginSessionHandoff } from "./jwxtClient";
-import type { CrawlSchoolFeedResult, SchoolFeedSourceInput } from "./schoolCrawlerCore";
+import type { CrawlSchoolFeedResult, SchoolFeedDetail, SchoolFeedSourceInput } from "./schoolCrawlerCore";
 import type { DormElectricResult } from "./dormElectricCampus";
 import type { AgentEncryptedLoginCredentials, AgentEncryptedSessionReplica, AgentReplicaRecipient } from "./jwxtAgentReplicaCrypto";
 
@@ -77,6 +77,10 @@ export type JwxtAgentActionMap = {
   "jwxt.progress": { input: { token: string }; output: Awaited<ReturnType<typeof jwxt.getProgress>> };
   "jwxt.pyfa": { input: { token: string }; output: Awaited<ReturnType<typeof jwxt.getPyfa>> };
   "jwxt.iapps": { input: { token: string }; output: Awaited<ReturnType<typeof jwxt.getIApps>> };
+  "jwxt.portal-notices": {
+    input: { token: string; pageSize?: number; beginIndex?: number };
+    output: Awaited<ReturnType<typeof jwxt.getPortalNotices>>;
+  };
   "jwxt.iapp-icon": { input: { path: string }; output: Awaited<ReturnType<typeof jwxt.getIAppIcon>> };
   "jwxt.graduate-schedule": {
     input: { token: string; semester?: string; termcode?: string };
@@ -89,6 +93,10 @@ export type JwxtAgentActionMap = {
   "school-feed.crawl": {
     input: { source: SchoolFeedSourceInput; skipExternalIds?: string[]; dryRun?: boolean };
     output: CrawlSchoolFeedResult;
+  };
+  "school-feed.details": {
+    input: { urls: string[] };
+    output: SchoolFeedDetail[];
   };
   "dorm-electric.query": {
     input: { studentNo: string };

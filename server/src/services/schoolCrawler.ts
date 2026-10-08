@@ -9,12 +9,18 @@ import { isDev } from "../config";
 import { runWithDistributedLock } from "./cache";
 import { invalidateBoardCaches, invalidateForumCaches } from "./cacheInvalidation";
 import { crawlSchoolFeedSource } from "./schoolCrawlerTransport";
+import { PORTAL_NOTICE_PARSER } from "./portalNotices";
+import { clearPortalNoticeItems, portalNoticeExternalIds, runPortalNoticeSource } from "./portalNoticeCrawler";
 
 /** 单次抓取某个源 */
-export async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {}) {
+export async function runOnce(
+  sourceId: number,
+  opts: { dryRun?: boolean } = {},
+): Promise<{ ok: boolean; newCount?: number; error?: string | null }> {
   const source = await prisma.schoolFeedSource.findUnique({ where: { id: sourceId }, include: { board: true } });
   if (!source) return { ok: false, error: "source not found" };
   if (!source.enabled) return { ok: false, error: "disabled" };
+  if (source.parser === PORTAL_NOTICE_PARSER) return runPortalNoticeSource(source, opts);
 
   const board = source.board;
   if (!board) return { ok: false, error: "board not bound" };
@@ -32,7 +38,8 @@ export async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {})
       listUrl: source.listUrl,
       maxPages: source.maxPages,
     }, {
-      skipExternalIds: existing.map((x) => x.externalId),
+      // 门户聚合已经入库的同一篇文章不用再取正文。
+      skipExternalIds: [...existing.map((x) => x.externalId), ...await portalNoticeExternalIds()],
       dryRun: opts.dryRun,
     });
     if (isDev) {
@@ -40,9 +47,7 @@ export async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {})
     }
 
     for (const it of r.items) {
-      const exists = await prisma.schoolFeedItem.findUnique({
-        where: { sourceId_externalId: { sourceId: source.id, externalId: it.externalId } },
-      });
+      const exists = await prisma.schoolFeedItem.findFirst({ where: { externalId: it.externalId }, select: { id: true } });
       if (exists) continue;
       if (opts.dryRun) { totalNew++; continue; }
 
@@ -116,6 +121,10 @@ export async function runAllOnce(opts: { dryRun?: boolean } = {}) {
 export async function resetSourceAndRun(sourceId: number) {
   const source = await prisma.schoolFeedSource.findUnique({ where: { id: sourceId }, include: { board: true } });
   if (!source) return { ok: false, error: "source not found" };
+  if (source.parser === PORTAL_NOTICE_PARSER) {
+    await clearPortalNoticeItems(source);
+    return runOnce(source.id);
+  }
   const board = source.board;
   if (!board) return { ok: false, error: "board not bound" };
 

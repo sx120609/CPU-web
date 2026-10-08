@@ -18,6 +18,7 @@ import { adminOnly, modOrAbove, userDirectoryAccess } from "../../middleware/adm
 import { validate } from "../../middleware/validate";
 import { isModuleSuperAdmin } from "../../utils/moduleRoles";
 import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
+import { bindPortalNoticeSession, unbindPortalNoticeSession } from "../../services/portalNoticeCrawler";
 import {
   getFeatures,
   isGlobalPinnedTopic,
@@ -1585,7 +1586,56 @@ adminRouter.get("/feeds", adminOnly, async (_req, res, next) => {
       orderBy: { id: "asc" },
       include: { board: { select: { slug: true, name: true, topicCount: true } } },
     });
-    ok(res, list);
+    const sessionUsers = await prisma.user.findMany({
+      where: { id: { in: list.map((s) => s.sessionUserId).filter((id): id is number => typeof id === "number") } },
+      select: { id: true, nickname: true, username: true },
+    });
+    // 会话令牌（即使是密文）不出服务端，只告诉后台有没有绑定、是谁绑的。
+    ok(res, list.map(({ sessionToken, ...source }) => ({
+      ...source,
+      sessionBound: Boolean(sessionToken),
+      sessionUser: sessionUsers.find((u) => u.id === source.sessionUserId) ?? null,
+    })));
+  } catch (e) { next(e); }
+});
+
+/** 把管理员本人当前的教务登录绑定为融合门户资讯的登录态 */
+adminRouter.post("/feeds/portal/session", adminOnly, async (req, res, next) => {
+  try {
+    const token = (req as any).browserSession?.jwxtToken || (req.headers["x-jwxt-token"] as string) || "";
+    if (!token) throw Errors.badRequest("请先在本站用自己的账号登录教务，再回来绑定");
+    ok(res, await bindPortalNoticeSession(req.user!.userId, token));
+  } catch (e) { next(e); }
+});
+
+adminRouter.delete("/feeds/portal/session", adminOnly, async (_req, res, next) => {
+  try {
+    await unbindPortalNoticeSession();
+    ok(res, { ok: true });
+  } catch (e) { next(e); }
+});
+
+/** 公告部门（板块）以及它是否默认出现在“全部”里 */
+adminRouter.get("/feeds/departments", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await prisma.board.findMany({
+      where: { type: "announce" },
+      orderBy: [{ order: "asc" }, { id: "asc" }],
+      select: { id: true, slug: true, name: true, topicCount: true, feedDepartment: true, announceDefault: true, feedSourceId: true },
+    }));
+  } catch (e) { next(e); }
+});
+
+adminRouter.patch("/feeds/departments/:id", adminOnly, validate(z.object({
+  announceDefault: z.boolean(),
+})), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const board = await prisma.board.findUnique({ where: { id }, select: { type: true } });
+    if (board?.type !== "announce") throw Errors.notFound("公告部门不存在");
+    const updated = await prisma.board.update({ where: { id }, data: { announceDefault: req.body.announceDefault } });
+    await invalidateBoardCaches();
+    ok(res, updated);
   } catch (e) { next(e); }
 });
 

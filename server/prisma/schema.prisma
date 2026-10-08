@@ -91,6 +91,7 @@ model User {
   notificationReads            NotificationRead[]
   messageSetting               MessageSetting?
   feedSources                  SchoolFeedSource[]            @relation("BotUser")
+  announcementPreference       AnnouncementPreference?
   userCourses                  UserCourse[]
   scheduleEdits                UserScheduleEdit[]
   scheduleWidgetTokens         ScheduleWidgetToken[]
@@ -317,6 +318,10 @@ model Board {
   // 关联爬虫源（announce 类型板块独有）
   feedSourceId       Int?                @unique
   feedSource         SchoolFeedSource?   @relation(fields: [feedSourceId], references: [id])
+  // 融合门户资讯聚合里的发布部门名（如“教务处”）；该部门的门户公告归入本板块。
+  feedDepartment     String?             @unique
+  // 用户没有自己选过公告部门时，“全部”里是否默认包含本板块。
+  announceDefault    Boolean             @default(true)
 
   topics Topic[]
 
@@ -1143,6 +1148,10 @@ model SchoolFeedSource {
   lastRunAt   DateTime?
   lastRunOk   Boolean? // 上次是否成功
   lastError   String?
+  // 需要登录态的源（融合门户）：绑定的管理员及其教务会话令牌（密文）。
+  sessionUserId Int?
+  sessionToken  String?
+  sessionBoundAt DateTime?
 
   botUser User   @relation("BotUser", fields: [botUserId], references: [id])
   board   Board?
@@ -1163,6 +1172,16 @@ model SchoolFeedItem {
 
   @@unique([sourceId, externalId])
   @@index([sourceId])
+}
+
+// 用户自己选的公告部门。只记相对默认集合的增减，新出现的部门仍按默认处理。
+model AnnouncementPreference {
+  userId    Int      @id
+  include   String   @default("[]") // 额外加入的板块 slug（JSON 数组）
+  exclude   String   @default("[]") // 从默认集合里去掉的板块 slug（JSON 数组）
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ============ 服务导航卡片（学校原入口外链） ============

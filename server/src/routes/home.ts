@@ -65,7 +65,7 @@ homeRouter.get("/summary", async (req, res, next) => {
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const publicSummary = await withCache(
       "home",
-      ["summary-v7", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-v8", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
@@ -83,7 +83,8 @@ homeRouter.get("/summary", async (req, res, next) => {
             },
           }).then(compactTopicAuthors) : Promise.resolve([]),
           prisma.topic.findMany({
-            where: { hidden: false, board: { readOnly: true, ...visibleBoardSlugFilter() } },
+            // 首页只放默认部门的公告；面向教职工的部门要到公告页自己勾选。
+            where: { hidden: false, board: { readOnly: true, announceDefault: true, ...visibleBoardSlugFilter() } },
             orderBy: { createdAt: "desc" },
             take: 8,
             include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },

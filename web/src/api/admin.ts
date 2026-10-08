@@ -1726,6 +1726,11 @@ export const adminApi = {
   runFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/run`),
   resetRunFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/reset-run`),
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
+  bindPortalFeedSession: () => request.post<{ sourceId: number; total: number }>("/admin/feeds/portal/session"),
+  unbindPortalFeedSession: () => request.delete<any>("/admin/feeds/portal/session"),
+  feedDepartments: (options?: RequestOptions) => request.get<any[]>("/admin/feeds/departments", undefined, options),
+  updateFeedDepartment: (id: number, patch: { announceDefault: boolean }) =>
+    request.patch<any>(`/admin/feeds/departments/${id}`, patch),
   // 公告
   announcements: (options?: RequestOptions) => request.get<any[]>("/admin/announcements", undefined, options),
   createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" | "web" | Array<"ios" | "android" | "harmony" | "web"> }) =>

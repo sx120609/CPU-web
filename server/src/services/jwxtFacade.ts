@@ -12,6 +12,7 @@ import {
   jwxtPostForm,
   fetchIServiceApps,
   fetchIServiceIcon,
+  fetchPortalNoticePage,
   jwxtDebugSnapshot,
   exportSessionSnapshot,
   importSessionSnapshot,
@@ -357,6 +358,10 @@ export async function getPyfa(token: string) {
 
 export async function getIApps(token: string) {
   return fetchIServiceApps(token);
+}
+
+export async function getPortalNotices(token: string, args: { pageSize?: number; beginIndex?: number } = {}) {
+  return fetchPortalNoticePage(token, args);
 }
 
 export async function getIAppIcon(path: string) {
