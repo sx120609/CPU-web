@@ -6,144 +6,64 @@ import {
   mergeQqBotDailyAssistantMessages,
   QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS,
   QQBOT_DAILY_ASSISTANT_PROACTIVE_GROUP_DEBOUNCE_MS,
-  shouldHandleQqBotDailyAssistant,
+  shouldHandleQqBotPrivateAssistant,
 } from "../src/services/qqbot/dailyAssistant";
 
-test("QQBot 日常问答按消息入口选择等待时间", () => {
+test("QQBot 日常问答按触发方式选择等待时间", () => {
   assert.equal(QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS, 5_000);
   assert.equal(QQBOT_DAILY_ASSISTANT_PROACTIVE_GROUP_DEBOUNCE_MS, 20_000);
-  assert.equal(getQqBotDailyAssistantDebounceMs({
-    messageType: "private",
-    botMentioned: false,
-  }), 5_000);
-  assert.equal(getQqBotDailyAssistantDebounceMs({
-    messageType: "group",
-    botMentioned: true,
-  }), 5_000);
-  assert.equal(getQqBotDailyAssistantDebounceMs({
-    messageType: "group",
-    botMentioned: false,
-    proactiveGroupReply: true,
-  }), 20_000);
+  for (const trigger of ["private", "mention", "name", "reply-to-bot", "summoned", "continuation", "follow-up"] as const) {
+    assert.equal(getQqBotDailyAssistantDebounceMs(trigger), 5_000, trigger);
+  }
+  assert.equal(getQqBotDailyAssistantDebounceMs("proactive"), 20_000);
 });
 
-test("QQ 群日常聊天只有明确 @ 机器人时才进入拾间AI", () => {
-  const message = [{ type: "text", data: { text: "帮我看看课表怎么用" } }];
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "帮我看看课表怎么用",
-    botMentioned: false,
-    message,
-  }), false);
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "帮我看看课表怎么用",
-    botMentioned: true,
-    message: [{ type: "at", data: { qq: "10001" } }, ...message],
-  }), true);
-});
-
-test("QQ 群回复消息并同时 @ 机器人时仍进入拾间AI", () => {
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "这个问题怎么处理？",
-    botMentioned: true,
-    message: [
-      { type: "reply", data: { id: "123" } },
-      { type: "at", data: { qq: "10001" } },
-      { type: "text", data: { text: "这个问题怎么处理？" } },
-    ],
-  }), true);
-});
-
-test("开启群聊主动回答后只接受广告审核语义识别通过的纯文字消息", () => {
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "教务处页面没有反应怎么办？",
-    botMentioned: false,
-    proactiveGroupReply: true,
-    message: [{ type: "text", data: { text: "教务处页面没有反应怎么办？" } }],
-  }), true);
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "看看这个",
-    botMentioned: false,
-    proactiveGroupReply: true,
-    message: [{ type: "text", data: { text: "看看这个" } }, { type: "image", data: {} }],
-  }), false);
-});
-
-test("群聊首条消息已 @ 机器人后，短暂等待期间的后续纯文字会并入同一轮", () => {
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "密码一直错误怎么办",
-    botMentioned: false,
-    allowUnmentionedContinuation: true,
-    message: [{ type: "text", data: { text: "密码一直错误怎么办" } }],
-  }), true);
+test("同一轮里连续发送的多行会合并成一个问题", () => {
   assert.equal(
-    mergeQqBotDailyAssistantMessages(["密码一直错误怎么办", "为什么提示账号登不上去"]),
+    mergeQqBotDailyAssistantMessages(["密码一直错误怎么办", " ", "为什么提示账号登不上去"]),
     "密码一直错误怎么办\n为什么提示账号登不上去",
   );
 });
 
 test("QQ 私聊普通文字可以进入拾间AI，但斜杠命令不会进入", () => {
-  const message = [{ type: "text", data: { text: "教务处没有反应怎么办" } }];
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "private",
+  assert.equal(shouldHandleQqBotPrivateAssistant({
     messageText: "教务处没有反应怎么办",
-    botMentioned: false,
-    message,
+    message: [{ type: "text", data: { text: "教务处没有反应怎么办" } }],
   }), true);
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "private",
+  assert.equal(shouldHandleQqBotPrivateAssistant({
     messageText: "/帮助",
-    botMentioned: false,
     message: [{ type: "text", data: { text: "/帮助" } }],
   }), false);
 });
 
+test("QQ 私聊带表情的文字仍会进入拾间AI", () => {
+  assert.equal(shouldHandleQqBotPrivateAssistant({
+    messageText: "课表怎么导出",
+    message: [{ type: "text", data: { text: "课表怎么导出" } }, { type: "face", data: { id: "14" } }],
+  }), true);
+  assert.equal(shouldHandleQqBotPrivateAssistant({
+    messageText: "课表怎么导出",
+    message: "课表怎么导出[CQ:face,id=14]",
+  }), true);
+});
+
 test("QQ 私聊图片可以进入视觉问答，语音和转发仍不会进入", () => {
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "private",
+  assert.equal(shouldHandleQqBotPrivateAssistant({
     messageText: "看看这个",
-    botMentioned: false,
     message: [
       { type: "text", data: { text: "看看这个" } },
       { type: "image", data: { file: "question.png" } },
     ],
   }), true);
   for (const segment of ["record", "forward", "json"]) {
-    assert.equal(shouldHandleQqBotDailyAssistant({
-      messageType: "private",
+    assert.equal(shouldHandleQqBotPrivateAssistant({
       messageText: "看看这个",
-      botMentioned: false,
       message: [
         { type: "text", data: { text: "看看这个" } },
         { type: segment, data: {} },
       ],
     }), false, segment);
   }
-});
-
-test("QQ 群图片只有明确 @ 机器人时才进入视觉问答", () => {
-  const message = [
-    { type: "at", data: { qq: "10001" } },
-    { type: "image", data: { file: "question.png" } },
-  ];
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "[图片]",
-    botMentioned: true,
-    message,
-  }), true);
-  assert.equal(shouldHandleQqBotDailyAssistant({
-    messageType: "group",
-    messageText: "[图片]",
-    botMentioned: false,
-    proactiveGroupReply: true,
-    message: message.slice(1),
-  }), false);
 });
 
 test("QQ AI 回复会明确提示内容由 AI 生成", () => {
