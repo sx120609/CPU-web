@@ -2899,7 +2899,7 @@ async function flushQqBotDailyAssistantBatch(batchKey: string, batch: QqBotDaily
     batch.messages = batch.messages.filter((line) => (
       !isQqAssistantFillerMessage(line) && normalizeQqAssistantQuestionKey(line) !== answeredKey
     ));
-    if (batch.messages.length || batch.imageMessages.length) {
+    if (batch.messages.length || batch.imageMessages.length || batch.quoted) {
       scheduleQqBotDailyAssistantFlush(batchKey, batch);
     } else {
       qqBotDailyAssistantBatches.delete(batchKey);
@@ -2949,7 +2949,12 @@ async function processQqBotDailyAssistantBatch(
   const preparedImages = imageUrls.length
     ? await prepareQqGroupAdImagePayloads(imageUrls.slice(0, 4))
     : [];
-  if (imageMessages.length && !preparedImages.length) {
+  // A member's own image, or one in a quoted member message, is what they
+  // ask about; answering without it would describe a picture nobody saw. A
+  // quoted answer image of the bot's is only a rendering of text the history
+  // already carries.
+  const needsImage = imageMessages.length > 0 || Boolean(quoted?.imageMessage && !quoted.fromBot);
+  if (needsImage && !preparedImages.length) {
     await logHandledInboundMessage(context, "message", "assistant:vision-image-unavailable");
     await replyToEvent(context, appendQqBotAiDisclosure("图片暂时无法读取，请重新发送原图后再试。"), {
       renderMarkdownImage: true,
