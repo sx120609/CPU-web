@@ -38,12 +38,67 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             courseEnd: mode == .whole ? last.endAt : segment.endAt, finalEnd: last.endAt)
     }
 
+    /// A course of the partner's (情侣课表) that runs around one of the
+    /// user's: the activity shows both, one row each.
+    public struct Companion: Codable, Hashable {
+        /// The partner's name, the tag on their row.
+        public let label: String
+        public let name: String
+        public let teacher: String
+        public let location: String
+        public let periodLabel: String?
+        public let segments: [Segment]
+        /// The same class in the same periods as the user's: shown once.
+        public let together: Bool
+        /// The hues the two picked for the couple timetable, the partner's
+        /// and the user's. Optional: older snapshots have none.
+        public var hue: Int?
+        public var ownHue: Int?
+
+        public init(label: String, name: String, teacher: String, location: String, periodLabel: String?,
+                    segments: [Segment], together: Bool, hue: Int? = nil, ownHue: Int? = nil) {
+            self.hue = hue
+            self.ownHue = ownHue
+            self.label = label
+            self.name = name
+            self.teacher = teacher
+            self.location = location
+            self.periodLabel = periodLabel
+            self.segments = segments
+            self.together = together
+        }
+    }
+
+    /// The partner's course to show at `now`: the one in class first, else
+    /// the next to start. Nil once all of them are over.
+    public static func resolveCompanion(_ companions: [Companion]?, mode: TimingMode, now: Date) -> ContentState.Companion? {
+        var upcoming: ContentState.Companion?
+        for companion in companions ?? [] {
+            guard let timeline = resolveTimeline(companion.segments, mode: mode, now: now), timeline.phase != .finished else { continue }
+            if timeline.phase == .inClass {
+                return ContentState.Companion(label: companion.label, phase: .inProgress, courseName: companion.name,
+                    teacher: companion.teacher, location: companion.location, periodLabel: companion.periodLabel,
+                    startDate: timeline.start, endDate: timeline.courseEnd, together: companion.together,
+                    hue: companion.hue, ownHue: companion.ownHue, updatedAt: now)
+            }
+            // Before the course, or between two of its periods: count down to the start.
+            let next = ContentState.Companion(label: companion.label, phase: .upcoming, courseName: companion.name,
+                teacher: companion.teacher, location: companion.location, periodLabel: companion.periodLabel,
+                startDate: timeline.target, endDate: timeline.finalEnd, together: companion.together,
+                hue: companion.hue, ownHue: companion.ownHue, updatedAt: now)
+            if upcoming == nil || next.startDate < upcoming!.startDate { upcoming = next }
+        }
+        return upcoming
+    }
+
     public struct LocalCourse: Codable, Hashable {
         public var occurrenceId: String?
         public var accountScope: String?
         public var segments: [Segment]?
         public var mode: TimingMode?
         public var contentVersion: String?
+        /// The partner's courses around this one. Optional: older snapshots have none.
+        public var companions: [Companion]?
         public let dateKey: String
         public let period: Int
         public let name: String
@@ -79,6 +134,46 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             case inProgress
             case intermission
         }
+
+        /// The partner's course beside the user's (情侣课表). `.inProgress`
+        /// counts down to `endDate`, `.upcoming` to `startDate`.
+        public struct Companion: Codable, Hashable {
+            public let label: String
+            public let phase: Phase
+            public let courseName: String
+            public let teacher: String
+            public let location: String
+            public let periodLabel: String?
+            public let startDate: Date
+            public let endDate: Date
+            public let together: Bool
+            /// The partner's and the user's colour of the couple timetable, as hues.
+            public var hue: Int?
+            public var ownHue: Int?
+            /// When this state began, the origin of its countdown.
+            public let updatedAt: Date
+
+            public init(label: String, phase: Phase, courseName: String, teacher: String = "", location: String = "",
+                        periodLabel: String? = nil, startDate: Date, endDate: Date, together: Bool = false,
+                        hue: Int? = nil, ownHue: Int? = nil, updatedAt: Date = .now) {
+                self.hue = hue
+                self.ownHue = ownHue
+                self.label = label
+                self.phase = phase
+                self.courseName = courseName
+                self.teacher = teacher
+                self.location = location
+                self.periodLabel = periodLabel
+                self.startDate = startDate
+                self.endDate = endDate
+                self.together = together
+                self.updatedAt = updatedAt
+            }
+        }
+
+        /// Optional and never sent by the server: the widget fills it from the
+        /// timetable saved on the device, like the course text itself.
+        public var companion: Companion? = nil
 
         // Missing only when enumerating retired activities for cleanup. New content always encodes 2.
         public let protocolVersion: Int?
@@ -197,11 +292,13 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             }
             if timeline.phase == .finished { return Self(phase: .idle, courseName: "课程已结束", startDate: finalEnd, endDate: finalEnd, updatedAt: now) }
             let phase: Phase = timeline.phase == .upcoming ? .upcoming : timeline.phase == .intermission ? .intermission : .inProgress
-            return Self(phase: phase, courseName: course.name, teacher: course.teacher, location: course.location,
+            var resolved = Self(phase: phase, courseName: course.name, teacher: course.teacher, location: course.location,
                 periodLabel: course.periodLabel, dateLabel: attributes.dateKey, weekRangeLabel: course.weekRangeLabel,
                 startDate: phase == .inProgress ? timeline.start : timeline.target,
                 endDate: phase == .upcoming ? timeline.finalEnd : timeline.courseEnd,
                 adjustmentNote: course.adjustmentNote, updatedAt: now)
+            resolved.companion = ScheduleLiveActivityAttributes.resolveCompanion(course.companions, mode: course.mode ?? .whole, now: now)
+            return resolved
 
         }
     }

@@ -241,9 +241,51 @@ struct NativeLiveActivityChecks {
         precondition(ranked.conflicts.isEmpty, "someone else's overlaps are not the user's conflicts")
         ranked.setCompanion(nil, label: nil)
         precondition(ranked.remoteStartWindows().count == 3 && !plannedNames().contains("室友：体育"), "caring about nobody leaves the user's own classes")
+        // The partner of the couple timetable: their course rides along with the
+        // user's when the two run together, and stands alone when the user is free.
+        func planned() -> [ScheduleLiveActivityAttributes.LocalCourse] {
+            let data = defaults.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey) ?? Data()
+            return (try? JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self, from: data)) ?? []
+        }
+        let partnerTerm = NativeScheduleSnapshot(completeSemester: true, source: .shared,
+            data: NativeScheduleResult(currentSemester: "share:COUPLE", currentWeek: "3", cells: [
+                NativeScheduleCell(day: 3, bigSlot: 1, courses: [
+                    NativeScheduleCourse(name: "撞上的课", weeks: "3周", weekList: [3], location: "实验楼 301", startSlot: 1, endSlot: 1),
+                    NativeScheduleCourse(name: "课程  C", weeks: "3周", weekList: [3], startSlot: 3, endSlot: 3)]),
+                NativeScheduleCell(day: 4, bigSlot: 1, courses: [NativeScheduleCourse(name: "体育", weeks: "3周", weekList: [3], startSlot: 2, endSlot: 2)])]),
+            calendar: NativeScheduleCalendar(currentSemester: "share:COUPLE", currentWeek: 3, weeks: [NativeCalendarWeek(week: 3, days: ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-19", "2026-09-20"])]),
+            auth: NativeScheduleAuth(authenticated: true))
+        ranked.setPartner(partnerTerm, label: "小鹿")
+        precondition(ranked.remoteStartWindows().count == 4, "only the partner's class that meets none of the user's is planned on its own")
+        precondition(planned().contains { $0.name == "小鹿：体育" && $0.companions == nil }, "it is named after whose it is")
+        precondition(!planned().contains { $0.name.contains("撞上的课") }, "a class that meets the user's is not planned twice")
+        let beside = planned().first { $0.name == "课程 A" }?.companions ?? []
+        precondition(beside.map(\.name) == ["撞上的课"] && beside[0].label == "小鹿" && beside[0].location == "实验楼 301" && !beside[0].together,
+                     "the partner's class rides along with the user's")
+        precondition(planned().first { $0.name == "课程 C" }?.companions?.first?.together == true, "the same class in the same periods is taken together")
+        precondition(ranked.conflicts.isEmpty, "the partner's timetable raises no conflicts of the user's")
+        // What the widget shows of it at a given moment.
+        let during = ScheduleLiveActivityAttributes.resolveCompanion(beside, mode: .whole, now: start.addingTimeInterval(600))
+        precondition(during?.phase == .inProgress && during?.courseName == "撞上的课" && during?.endDate == start.addingTimeInterval(45 * 60))
+        let before = ScheduleLiveActivityAttributes.resolveCompanion(beside, mode: .whole, now: start.addingTimeInterval(-600))
+        precondition(before?.phase == .upcoming && before?.startDate == start, "before the class it counts down to the start")
+        // The colours the two picked travel with the row; picking another replans.
+        precondition(during?.hue == nil && during?.ownHue == nil, "no colours until the couple timetable supplies them")
+        ranked.setPartner(partnerTerm, label: "小鹿", hue: 268, ownHue: 42)
+        let tinted = ScheduleLiveActivityAttributes.resolveCompanion(
+            planned().first { $0.name == "课程 A" }?.companions, mode: .whole, now: start.addingTimeInterval(600))
+        precondition(tinted?.hue == 268 && tinted?.ownHue == 42, "the row carries the partner's hue and the user's")
+        precondition(ScheduleLiveActivityAttributes.resolveCompanion(beside, mode: .whole, now: start.addingTimeInterval(46 * 60)) == nil, "afterwards the row goes")
+        precondition(ScheduleLiveActivityAttributes.resolveCompanion(nil, mode: .whole, now: start) == nil)
+        // Content from before the partner existed still decodes.
+        let legacy = try! JSONDecoder().decode(ScheduleLiveActivityAttributes.ContentState.self, from: JSONEncoder().encode(
+            ScheduleLiveActivityAttributes.ContentState(phase: .upcoming, courseName: "课程 A", startDate: start, endDate: start)))
+        precondition(legacy.companion == nil)
+        ranked.setPartner(nil, label: nil)
+        precondition(ranked.remoteStartWindows().count == 3 && planned().allSatisfy { $0.companions == nil }, "unbound, the user's own classes are as before")
         ranked.reset()
         await settle()
-        print("Display priority and cared-timetable merging passed")
+        print("Display priority, cared-timetable and partner merging passed")
         print("Upgrade cache recovery: invalid timezone, duplicate/invalid periods and missing App Group passed")
         print("Live Activity v2 timeline, identity, conflict, reservation, dismissal and privacy checks passed")
     }

@@ -23,13 +23,14 @@ nonisolated enum ScheduleStyleTime {
         return labels.indices.contains(day - 1) ? labels[day - 1] : "周\(day)"
     }
 
-    /// The room without a leading "@": some rows carry one already and the
-    /// tiles add their own.
+    /// The room as it is shown: without a leading "@" (some rows carry one
+    /// already and the tiles add their own) and without 「教学楼」 before a
+    /// block and room number.
     static func location(_ raw: String?) -> String? {
         guard let location = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "@＠").union(.whitespaces)),
             !location.isEmpty else { return nil }
-        return location
+        return ScheduleClassroom.only(location)
     }
 
     /// Minutes since midnight in the timetable's time zone.
@@ -610,8 +611,12 @@ struct NativeScheduleStyledDayColumn: View {
     var completedBeforeMinutes: Int? = nil
     /// Courses that do not run this week, faded under the others.
     var offWeekBlocks: [NativeScheduleCourseBlock] = []
+    /// The partner's courses that meet one of the user's: named in a line
+    /// at the foot of that course instead of getting a tile.
+    var coupleClashes: [NativeScheduleCourseBlock] = []
 
     private var marksToday: Bool { isToday && !staticRendering }
+    @Environment(\.scheduleCouple) private var couple
 
     /// Lane count of each card's overlap cluster. Courses that overlap, directly
     /// or through a chain, share the width; everything else stays full width.
@@ -787,10 +792,11 @@ struct NativeScheduleStyledDayColumn: View {
         let reach = style == .table && block.endSlot < slotCount ? Self.slotGap : 0
         let height = CGFloat(block.endSlot - block.startSlot + 1) * rowHeight
             + CGFloat(block.endSlot - block.startSlot) * Self.slotGap + reach - inset * 2
+        let width = columnWidth / CGFloat(lanes)
         return CGRect(
-            x: inset + CGFloat(block.lane) * columnWidth / CGFloat(lanes),
+            x: inset + CGFloat(block.lane) * width,
             y: CGFloat(block.startSlot - 1) * (rowHeight + Self.slotGap) + inset,
-            width: max(12, columnWidth / CGFloat(lanes) - inset * 2),
+            width: max(12, width - inset * 2),
             height: max(34, height)
         )
     }
@@ -824,18 +830,25 @@ struct NativeScheduleStyledDayColumn: View {
                                              completedBefore: staticRendering ? nil : completedBeforeMinutes)
         let label = dayPresentation && lanes == 1 ? status.label(block) : nil
         let narrow = compactCards || columnWidth / CGFloat(lanes) < 70
+        // Three or more side by side: a tile two characters wide keeps the name only.
+        let tiny = lanes > 2
+        let note = ScheduleCoupleNote.kind(for: block, clashes: coupleClashes)
         return ZStack(alignment: .trailing) {
-            if style == .minimal {
+            if let owner = block.owner, let couple {
+                // One colour per person while the partner's courses are shown.
+                ScheduleCouplePersonTile(course: block.course, layer: couple, partner: owner == .partner,
+                                         compact: narrow, showLocation: showLocation, note: note, tiny: tiny)
+            } else if style == .minimal {
                 ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation)
             } else {
                 ScheduleStyledCourseTile(course: block.course, compact: narrow,
-                                         start: clocks.first { $0.number == block.startSlot }?.start,
-                                         current: status.phase(block) == .current,
-                                         showLocation: showLocation,
+                                         start: tiny ? nil : clocks.first { $0.number == block.startSlot }?.start,
+                                         current: !tiny && status.phase(block) == .current,
+                                         showLocation: showLocation && !tiny,
                                          trailingInset: label != nil ? 80 : 0,
                                          dayRow: dayPresentation)
             }
-            if let label, style != .minimal {
+            if let label, style != .minimal, block.owner == nil {
                 Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(.themeText)
                     .multilineTextAlignment(.trailing).frame(width: 76, alignment: .trailing).padding(.trailing, 10)
             }
@@ -851,7 +864,14 @@ struct NativeScheduleStyledDayColumn: View {
     }
 
     private func block(at point: CGPoint, _ laneCounts: [String: Int]) -> NativeScheduleCourseBlock? {
-        blocks.reversed().first { frame(of: $0, lanes: laneCounts[$0.id] ?? 1).contains(point) }
+        guard let block = blocks.reversed().first(where: { frame(of: $0, lanes: laneCounts[$0.id] ?? 1).contains(point) }) else { return nil }
+        // The line at the foot of the tile opens the partner's course.
+        let lanes = laneCounts[block.id] ?? 1
+        if couple != nil, lanes < 3, case .partner(let theirs) = ScheduleCoupleNote.kind(for: block, clashes: coupleClashes),
+           ScheduleCoupleNote.tapArea(in: frame(of: block, lanes: lanes)).contains(point) {
+            return theirs[0]
+        }
+        return block
     }
 
     private func slot(at point: CGPoint) -> Int? {
@@ -916,6 +936,8 @@ struct ScheduleStyledDay: Identifiable {
     let blocks: [NativeScheduleCourseBlock]
     /// Courses that do not run this week, for the periods left free.
     var offWeekBlocks: [NativeScheduleCourseBlock] = []
+    /// The partner's courses that meet one of the user's.
+    var coupleClashes: [NativeScheduleCourseBlock] = []
 
     var id: Int { day }
 }
@@ -996,7 +1018,8 @@ struct ScheduleStyledWeekRows: View {
                     onCourseSelected: { onCourseSelected(day, $0) },
                     onEmptySlot: { onEmptySlot(day, $0) },
                     nowMinutes: day.isToday ? now : nil,
-                    offWeekBlocks: day.offWeekBlocks
+                    offWeekBlocks: day.offWeekBlocks,
+                    coupleClashes: day.coupleClashes
                 )
             }
         }

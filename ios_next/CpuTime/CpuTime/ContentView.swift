@@ -84,6 +84,7 @@ struct ContentView: View {
                     watchSchedule.connect(to: scheduleStore)
                     NativeWidgetLocalSchedule.connect(to: scheduleStore)
                     NativeScheduleSharingService.shared.connect(to: scheduleStore)
+                    NativeCoupleService.shared.connect(to: scheduleStore)
                     guard url.scheme == "cputime-next", url.host == "schedule" else { return }
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
@@ -157,6 +158,7 @@ struct ContentView: View {
                 watchSchedule.connect(to: scheduleStore)
                 NativeWidgetLocalSchedule.connect(to: scheduleStore)
                 NativeScheduleSharingService.shared.connect(to: scheduleStore)
+                NativeCoupleService.shared.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
                 IosClientHeartbeat.shared.report()
             }
@@ -167,6 +169,8 @@ struct ContentView: View {
                     NativeLiveActivityController.shared.foreground()
                     // A timetable somebody shared may have changed while the app was away.
                     Task { await NativeScheduleSharingService.shared.refresh() }
+                    // The partner's timetable too; spaced out by the service itself.
+                    Task { await NativeCoupleService.shared.refresh() }
                     if #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
                 }
             }
@@ -198,6 +202,7 @@ struct ContentView: View {
             return try JSONSerialization.data(withJSONObject: envelope?["data"] ?? [String: Any]())
         }
         NativeScheduleSharingService.shared.connect(to: scheduleStore)
+        NativeCoupleService.shared.connect(to: scheduleStore)
     }
 
     /// The sample timetable on its own, or with `CPU_DEBUG_MOCK_TABS=1` inside
@@ -363,7 +368,10 @@ private enum NativeScheduleDebugFixture {
         if ProcessInfo.processInfo.environment["CPU_DEBUG_VISUAL_SCHEDULE"] == "1" {
             let names = ["高等数学", "大学英语", "有机化学", "药理学", "人体解剖生理学", "药物分析", "生物化学", "大学物理", "思想道德与法治", "体育", "药剂学", "中药学", "微生物学与免疫学", "分析化学", "药理学实验与实践", "高等数学", "大学英语", "药事管理学"]
             cells = names.enumerated().map { index, name in
-                let day = index % 6 + 1
+                // `CPU_DEBUG_SCHEDULE_OVERLAP=1` puts two courses in Monday's first
+                // periods and moves every class into a block of the teaching building.
+                let overlap = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_OVERLAP"] == "1"
+                let day = overlap && index == 1 ? 1 : index % 6 + 1
                 let start = index == 16 ? 12 : (index == 17 ? 11 : (index / 6) * 4 + 1)
                 return NativeScheduleCell(day: day, bigSlot: (start + 1) / 2, courses: [
                     NativeScheduleCourse(
@@ -372,7 +380,7 @@ private enum NativeScheduleDebugFixture {
                         teacher: "\(["李", "王", "张"][index % 3])老师",
                         weeks: "第 1 周",
                         weekList: [1],
-                        location: "教学楼 \(201 + index)",
+                        location: overlap ? "教学楼\(["A", "E"][index % 2])\(201 + index)" : "教学楼 \(201 + index)",
                         // `CPU_DEBUG_SCHEDULE_NOTE=带实验报告` gives the first course a written note.
                         slotNote: index == 0 ? ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_NOTE"] : nil,
                         startSlot: start,

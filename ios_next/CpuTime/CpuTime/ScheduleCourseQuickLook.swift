@@ -8,6 +8,8 @@ struct ScheduleCourseQuickLook: View {
     let course: NativeScheduleCourse
     /// "周一 · 第 1–2 节 · 08:00–09:40".
     var schedule: String? = nil
+    /// 「小鹿的课」 above the name of a course that is the partner's.
+    var ownerTitle: String? = nil
     /// nil hides the edit button.
     var onEdit: (() -> Void)? = nil
     var onHeightChange: (CGFloat) -> Void = { _ in }
@@ -105,6 +107,11 @@ struct ScheduleCourseQuickLook: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 6) {
+                if let ownerTitle {
+                    Text(ownerTitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.scheduleMeta)
+                }
                 Text(course.name)
                     .font(.title2.weight(.bold))
                     .fixedSize(horizontal: false, vertical: true)

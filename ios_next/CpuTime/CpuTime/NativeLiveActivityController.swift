@@ -136,6 +136,22 @@ final class NativeLiveActivityController: ObservableObject {
         companionLabel = label
         reconfigure()
     }
+    /// The partner's timetable of the couple view. Their courses that run
+    /// around one of the user's ride along in that activity; the others get
+    /// an activity of their own, named after `partnerLabel`.
+    private var partner: NativeScheduleSnapshot?
+    private var partnerLabel: String?
+    /// The colours the two picked, as hues: the partner's and the user's.
+    private var partnerHue: Int?
+    private var ownHue: Int?
+    func setPartner(_ snapshot: NativeScheduleSnapshot?, label: String?, hue: Int? = nil, ownHue: Int? = nil) {
+        guard snapshot != partner || label != partnerLabel || hue != partnerHue || ownHue != self.ownHue else { return }
+        partner = snapshot
+        partnerLabel = label
+        partnerHue = hue
+        self.ownHue = ownHue
+        reconfigure()
+    }
     func setDisplayPriorities(_ value: [String: [String: Int]]) {
         guard value != displayPriorities else { return }
         displayPriorities = value
@@ -154,6 +170,8 @@ final class NativeLiveActivityController: ObservableObject {
         let adjustmentNote: String
         let segments: [Attributes.Segment]
         var plannedStart: Date
+        /// The partner's courses shown beside this one.
+        var companions: [Attributes.Companion] = []
         var start: Date { segments.first!.startAt }
         var end: Date { segments.last!.endAt }
         var endPeriod: Int { segments.last!.period }
@@ -280,11 +298,13 @@ final class NativeLiveActivityController: ObservableObject {
     private func state(_ c: Occurrence) -> State {
         let timeline = Attributes.resolveTimeline(c.segments, mode: timingMode, now: now())!
         let phase: State.Phase = timeline.phase == .finished ? .idle : timeline.phase == .upcoming ? .upcoming : timeline.phase == .intermission ? .intermission : .inProgress
-        return State(phase: phase, courseName: c.name, teacher: c.teacher, location: c.location, periodLabel: c.periodLabel,
+        var state = State(phase: phase, courseName: c.name, teacher: c.teacher, location: c.location, periodLabel: c.periodLabel,
             dateLabel: Self.dateLabel(day: c.dateKey, week: c.week), weekRangeLabel: c.weekRangeLabel,
             startDate: phase == .inProgress ? timeline.start : timeline.target,
             endDate: phase == .upcoming ? timeline.finalEnd : timeline.courseEnd,
             adjustmentNote: c.adjustmentNote, updatedAt: now())
+        state.companion = Attributes.resolveCompanion(c.companions, mode: timingMode, now: now())
+        return state
     }
     private func attributes(_ c: Occurrence, channel: String?) -> Attributes {
         var a = Attributes(semester: lastSnapshot?.data?.currentSemester ?? "", dateKey: c.dateKey, week: c.week,
@@ -472,6 +492,7 @@ final class NativeLiveActivityController: ObservableObject {
             var r = Attributes.LocalCourse(dateKey: c.dateKey, period: c.segments[0].period, name: c.name, teacher: c.teacher, location: c.location,
                 periodLabel: c.periodLabel, startDate: c.start, endDate: c.end, weekRangeLabel: c.weekRangeLabel, adjustmentNote: c.adjustmentNote)
             r.occurrenceId = c.id; r.accountScope = loadedAccount; r.segments = c.segments; r.mode = timingMode; r.contentVersion = c.signature
+            r.companions = c.companions.isEmpty ? nil : c.companions
             return r
         }
         if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: Attributes.broadcastCoursesKey) }
@@ -512,7 +533,8 @@ final class NativeLiveActivityController: ObservableObject {
         // One timetable's classes. `label` names a timetable being cared about:
         // its conflicts and unsupported times are its publisher's business, so
         // they are skipped quietly instead of being reported to this user.
-        func collect(_ data: NativeScheduleResult, _ calendar: NativeScheduleCalendar, label: String?) -> [Occurrence] {
+        func collect(_ data: NativeScheduleResult, _ calendar: NativeScheduleCalendar, label: String?,
+                     named: Bool = true, scope: String = "") -> [Occurrence] {
             var result: [Occurrence] = []
             for week in calendar.weeks {
                 for (dayIndex, day) in week.days.enumerated() {
@@ -568,7 +590,8 @@ final class NativeLiveActivityController: ObservableObject {
                     }
                     let grouped = Dictionary(grouping: runs, by: { $0[0].1 })
                     for (source, sourceRuns) in grouped {
-                        let key = "\(data.currentSemester):\(day):\(source)"
+                        // `scope` keeps another person's identities apart from the user's own.
+                        let key = "\(scope)\(data.currentSemester):\(day):\(source)"
                         let old = identityRecords[key] ?? []
                         let unchanged = old.count == sourceRuns.count
                         var records: [IdentityRecord] = []
@@ -587,7 +610,7 @@ final class NativeLiveActivityController: ObservableObject {
                             guard segments.count == numbers.count, let first = segments.first else { continue }
                             let course = run[0].2
                             result.append(Occurrence(id: record.id, supersedes: record.supersedes,
-                                name: label.map { "\($0)：\(course.name)" } ?? course.name, teacher: course.teacher ?? "", location: course.location ?? "",
+                                name: named ? (label.map { "\($0)：\(course.name)" } ?? course.name) : course.name, teacher: course.teacher ?? "", location: course.location ?? "",
                                 periodLabel: Self.periodLabel(start: numbers[0], end: numbers.last!), dateKey: day, week: week.week,
                                 weekRangeLabel: course.weeks, adjustmentNote: resolved.note, segments: segments, plannedStart: first.startAt.addingTimeInterval(-leadTime)))
                         }
@@ -598,6 +621,33 @@ final class NativeLiveActivityController: ObservableObject {
             return result
         }
         var result = collect(data, calendar, label: nil)
+        if let partner, let theirData = partner.data, let theirCalendar = partner.calendar {
+            // The partner of the couple timetable. A course of theirs that runs
+            // around one of the user's is shown in that activity, on a row of
+            // its own; one that meets none gets an activity of its own.
+            let label = partnerLabel?.trimmedNonEmpty ?? "TA"
+            let theirs = collect(theirData, theirCalendar, label: label, named: false, scope: "ta:")
+            func clean(_ name: String) -> String { name.components(separatedBy: .whitespacesAndNewlines).joined() }
+            for index in result.indices {
+                let own = result[index]
+                result[index].companions = theirs
+                    .filter { $0.start < own.end && own.plannedStart < $0.end }
+                    .sorted { $0.start < $1.start }
+                    .map { other in
+                        Attributes.Companion(label: label, name: other.name, teacher: other.teacher, location: other.location,
+                            periodLabel: other.periodLabel, segments: other.segments,
+                            together: clean(other.name) == clean(own.name) && other.start == own.start && other.end == own.end,
+                            hue: partnerHue, ownHue: ownHue)
+                    }
+            }
+            let own = result
+            result += theirs.filter { other in !own.contains { $0.start < other.end && other.start < $0.end } }.map { other in
+                Occurrence(id: other.id, supersedes: other.supersedes, name: "\(label)：\(other.name)", teacher: other.teacher,
+                    location: other.location, periodLabel: other.periodLabel, dateKey: other.dateKey, week: other.week,
+                    weekRangeLabel: other.weekRangeLabel, adjustmentNote: other.adjustmentNote, segments: other.segments,
+                    plannedStart: other.plannedStart)
+            }
+        }
         if let companion, let label = companionLabel?.trimmedNonEmpty,
            let theirData = companion.data, let theirCalendar = companion.calendar {
             // The user's own class wins a clash: one activity shows at a time,
@@ -648,7 +698,7 @@ final class NativeLiveActivityController: ObservableObject {
 
         let start = now().addingTimeInterval(-20 * 60)
         let end = now().addingTimeInterval(55 * 60)
-        let state = ScheduleLiveActivityAttributes.ContentState(
+        var state = ScheduleLiveActivityAttributes.ContentState(
             phase: .inProgress,
             courseName: "药理学实验",
             teacher: "李老师",
@@ -668,6 +718,30 @@ final class NativeLiveActivityController: ObservableObject {
             nextCourseEnd: end.addingTimeInterval(130 * 60),
             updatedAt: .now
         )
+        // Bound to a partner, the demo shows their row as well: a class of
+        // theirs that started a little later and ends earlier.
+        if let label = partnerLabel, partner != nil {
+            state.companion = .init(label: label, phase: .inProgress, courseName: "临床药理学", teacher: "陈老师",
+                                    location: "实验楼 305", periodLabel: "第 3 节",
+                                    startDate: start.addingTimeInterval(5 * 60), endDate: now().addingTimeInterval(25 * 60),
+                                    hue: partnerHue, ownHue: ownHue)
+        }
+#if DEBUG
+        // `CPU_DEBUG_LIVE_PARTNER=together` shows a class both attend, `upcoming` a class of theirs still to start.
+        switch ProcessInfo.processInfo.environment["CPU_DEBUG_LIVE_PARTNER"] {
+        case "pair":
+            state.companion = .init(label: "小鹿", phase: .inProgress, courseName: "临床药理学", teacher: "陈老师", location: "实验楼 305",
+                                    periodLabel: "第 3 节", startDate: start.addingTimeInterval(5 * 60), endDate: now().addingTimeInterval(25 * 60),
+                                    hue: 268, ownHue: 42)
+        case "upcoming":
+            state.companion = .init(label: "小鹿", phase: .upcoming, courseName: "临床药理学", location: "实验楼 305",
+                                    periodLabel: "第 4 节", startDate: now().addingTimeInterval(12 * 60), endDate: end)
+        case "together":
+            state.companion = .init(label: "小鹿", phase: .inProgress, courseName: "药理学实验", location: "药学楼 302",
+                                    periodLabel: "第 3-4 节", startDate: start, endDate: end, together: true)
+        default: break
+        }
+#endif
         let attributes = ScheduleLiveActivityAttributes(
             semester: "__preview__",
             dateKey: "preview",

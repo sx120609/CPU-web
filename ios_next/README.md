@@ -65,7 +65,11 @@ Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=p
 - **共享给我的课表**：输入分享码（或粘贴分享链接）→ 预览 → 填备注 → 导入。导入的课表只保存在本机，按导入它的账号隔离，换账号后清空。轻点打开只读的课表页（周／日／月视图、课程速览、分享图和日历文件导出可用；添加、编辑、背景和设备设置不出现），用的是对方自己的校历和调休。回到前台和打开列表时检查更新：对方更新了就重新下载，对方撤销了就保留本机副本并标成「分享已撤销，不会再更新」。自己的分享码不能导入。
 - **关心**：点亮某份共享课表的爱心后，它的课会和自己的课一起进入实时活动，课名前带备注（「室友小王：体育」）。同一时间自己也有课时只保留自己的；对方课表内部的重叠不替对方选，直接略过。一次只能关心一份，取消后恢复只显示自己的课。小组件、Apple Watch、Apple 日历和冷启动存档始终只用自己的课表：只读课表页跑在独立的 `NativeScheduleStore(shared:)` 上，不经过这些通道。
 
-服务端接口在 `/api/schedule-shares`：`POST /`（发布或更新，每账号每小时 30 次）、`GET /mine`、`GET /:code`、`GET /:code/meta`（只含更新时间等摘要，不缓存）、`DELETE /:code`（发布者本人登录即可，不再需要写入凭证）。情侣课表和它的接口没有改动。
+「更多 → 情侣课表」绑定另一半后，对方的课和自己的课画在同一张课表里：一个人一种颜色，撞课时在自己的课下沿写一行「TA 课名」，一起上的课写「一起」；日视图分成「我｜节次｜TA」两列；月视图每天的格子直接列当天的课名，最下面一行「TA N 门」，点教学周内的一天进入那天的日视图。实时活动里两人的课各占一行。规则、接口和调试参数见 [`docs/couple-schedule.md`](../docs/couple-schedule.md)，检查脚本是 `bash ios_next/scripts/check-couple-schedule.sh`。
+
+自己的课表里，当前这一周有两门不同名的课并排显示时，弹一次提示框说明这多半是教务数据有误、先去教务系统核对；同一处（学期、星期、课程名）只提醒一次，记在本机。教室以「教学楼」加楼栋 A–E 和房号开头时只显示房号（「教学楼A102」→「A102」），课程数据和编辑表单里的地点不变。规则在 `ScheduleDisplayRules.swift`，检查脚本是 `bash ios_next/scripts/check-display-rules.sh`；Debug 构建用 `CPU_DEBUG_SCHEDULE_OVERLAP=1` 在示例课表里造出一处。
+
+服务端接口在 `/api/schedule-shares`：`POST /`（发布或更新，每账号每小时 30 次）、`GET /mine`、`GET /:code`、`GET /:code/meta`（只含更新时间等摘要，不缓存）、`DELETE /:code`（发布者本人登录即可，不再需要写入凭证）。
 
 Debug 构建的 `CPU_DEBUG_SCHEDULE_ACTION` 还支持 `sharing`、`shared-view`（用示例数据打开共享课表页或只读课表页）；配合 `CPU_DEBUG_MOCK_SCHEDULE=1`、`CPU_DEBUG_API_ORIGIN`、`CPU_DEBUG_API_TOKEN` 可以让示例课表直连一台本机服务端，用 `share-open`、`share-publish`、`share-import`、`share-import-view`（配 `CPU_DEBUG_SHARE_CODE`、`CPU_DEBUG_SHARE_REMARK`）把发布、导入、刷新和撤销实际走一遍。`style-picker` 打开课表风格页，`live-activity` 启动设备设置里那节演示课的实时活动；`CPU_DEBUG_MOCK_TABS=1` 给示例课表套上和登录后一样的底部标签栏（其余标签页是空的），用来截商店图。连本机服务端（`CPU_APP_URL`）拍课表以外的页面时，`CPU_DEBUG_LOGIN_USER`、`CPU_DEBUG_LOGIN_PASSWORD` 用种子数据里的示例账号自动登录，`CPU_DEBUG_TAB` 选标签页，`CPU_DEBUG_OPEN_PATH=/lost-found` 在首页标签里打开指定页面。`CPU_DEBUG_SCHEDULE_NOTE=带实验报告` 给示例课表（`CPU_DEBUG_VISUAL_SCHEDULE=1`）的第一门课加一条手写备注，`CPU_DEBUG_SCHEDULE_OVERLAP=1` 给示例课表加一门重叠的课，`CPU_DEBUG_SCHEDULE_PRIORITY=课名,课名` 按顺序指定优先显示的课。
 

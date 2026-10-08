@@ -10,6 +10,7 @@ struct NativeScheduleView: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var store: NativeScheduleStore
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
+    @ObservedObject private var couple = NativeCoupleService.shared
     @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
@@ -27,6 +28,11 @@ struct NativeScheduleView: View {
     @State private var backgroundEditorPresented = false
     @State private var stylePickerPresented = false
     @State private var sharingPresented = false
+    @State private var couplePresented = false
+    /// Two of the user's own courses in one period, to be pointed out once.
+    @State private var overlapNotice: ScheduleOverlapNotice?
+    /// The minute the partner's status line was last worked out for.
+    @State private var coupleClock = Date()
     @State private var viewedShare: NativeSharedSchedule?
     @State private var scheduleToolsContentHeight: CGFloat = 0
     @State private var sharePayload: NativeScheduleSharePayload?
@@ -146,6 +152,7 @@ struct NativeScheduleView: View {
         .environment(\.scheduleHasBackground, preferences.backgroundImage != nil)
         .environment(\.scheduleBackgroundVisibility, preferences.backgroundVisibility)
         .environment(\.scheduleStyle, style)
+        .environment(\.scheduleCouple, coupleLayer)
         .environment(\.schedulePalette, preferences.palette)
         .environment(\.scheduleThemeBrand, ScheduleStyle.themeBrand(palette: preferences.palette))
         .task {
@@ -164,6 +171,24 @@ struct NativeScheduleView: View {
             // (a sample shared timetable, read-only), or against a real server
             // (see `connectDebugShareAPI`) `share-open`, `share-publish`, and
             // `share-import` or `share-import-view` with `CPU_DEBUG_SHARE_CODE`.
+            // `CPU_DEBUG_COUPLE=active` binds the sample timetable to a sample
+            // partner (`pending` shows an invite); the `couple` action opens the sheet.
+            if !isBackgroundPreview, !isReadOnly,
+               let state = ProcessInfo.processInfo.environment["CPU_DEBUG_COUPLE"] {
+                for _ in 0..<40 where store.result == nil || store.calendar == nil {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                if state == "pending" {
+                    NativeCoupleService.shared.installDebugState(status: .pending(code: "K7M2QX", expired: false), partner: nil)
+                } else if let result = store.result {
+                    NativeCoupleService.shared.installDebugState(
+                        status: .active(anniversary: "2025-05-20",
+                                        me: CoupleMember(nickname: "阿青", color: "blue", syncedAt: "2026-10-08T01:30:00.000Z"),
+                                        partner: CoupleMember(nickname: "小鹿", color: "pink", syncedAt: "2026-10-08T03:10:00.000Z")),
+                        partner: debugPartnerSchedule(result)
+                    )
+                }
+            }
             if !isBackgroundPreview, !isReadOnly,
                let action = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_ACTION"] {
                 for _ in 0..<40 where store.result == nil {
@@ -178,6 +203,7 @@ struct NativeScheduleView: View {
                 }
                 if let result = store.result {
                     switch action {
+                    case "couple": couplePresented = true
                     case "share-image": exportScheduleImage(result)
                     case "calendar-file": exportWeekCalendarFile(result)
                     case "course-sheet", "course-editor":
@@ -233,6 +259,18 @@ struct NativeScheduleView: View {
         }
         .task(id: store.selectedSemester) {
             await store.refreshDisplayPriorities()
+        }
+        .task(id: overlapCheckID) {
+            // Once the week has settled on screen.
+            do { try await Task.sleep(for: .milliseconds(900)) } catch { return }
+            checkOverlapNotice()
+        }
+        .alert(ScheduleOverlapNotice.title, isPresented: Binding(
+            get: { overlapNotice != nil }, set: { if !$0 { overlapNotice = nil } }
+        ), presenting: overlapNotice) { _ in
+            Button("知道了", role: .cancel) {}
+        } message: { notice in
+            Text(notice.text)
         }
         .onChange(of: store.result?.currentSemester) { _, _ in
             adoptSelectionIfNeeded()
@@ -345,6 +383,10 @@ struct NativeScheduleView: View {
         .fullScreenCover(item: $viewedShare) { schedule in
             NativeSharedScheduleScreen(schedule: schedule)
         }
+        .sheet(isPresented: $couplePresented) {
+            NativeCoupleSheet(partnerNow: { coupleNowText(now: $0, short: false) ?? "" })
+                .presentationDragIndicator(.visible)
+        }
     }
 
     /// Somebody else's shared timetable: everything that would change it is off.
@@ -361,6 +403,36 @@ struct NativeScheduleView: View {
                 updatedAt: "2026-10-06T08:00:00.000Z"
             ),
             schedule: result, calendar: calendar, remark: "室友小王"
+        )
+    }
+
+    /// A partner for the sample timetable: every third course is taken
+    /// together, another third sits one period later so the two overlap, and
+    /// the rest moves into periods the user has free.
+    private func debugPartnerSchedule(_ result: NativeScheduleResult) -> NativeSharedSchedule? {
+        guard let calendar = store.calendar else { return nil }
+        let names = ["物理化学", "天然药物化学", "生药学", "药用植物学", "临床药理学", "药物毒理学"]
+        var index = 0
+        let cells = result.cells.map { cell in
+            NativeScheduleCell(day: cell.day, bigSlot: cell.bigSlot, courses: cell.courses.map { course in
+                defer { index += 1 }
+                let start = course.startSlot ?? cell.bigSlot * 2 - 1, end = course.endSlot ?? cell.bigSlot * 2
+                func copy(_ name: String, _ start: Int, _ end: Int) -> NativeScheduleCourse {
+                    NativeScheduleCourse(name: name, teacher: "陈老师", weeks: course.weeks, weekList: course.weekList,
+                                         location: "实验楼 \(301 + index)", startSlot: min(12, start), endSlot: min(12, end))
+                }
+                switch index % 3 {
+                case 0: return copy(course.name, start, end)
+                case 1: return copy(names[index % names.count], start + 1, end + 1)
+                default: return copy(names[index % names.count], start <= 2 ? 7 : 3, start <= 2 ? 8 : 4)
+                }
+            })
+        }
+        let schedule = NativeScheduleResult(source: result.source, semesters: result.semesters, weeks: result.weeks,
+                                            currentSemester: result.currentSemester, currentWeek: result.currentWeek, cells: cells)
+        return NativeSharedSchedule(
+            meta: NativeScheduleShareMeta(code: "COUPLE", owner: "小鹿", semester: result.currentSemester),
+            schedule: schedule, calendar: calendar, remark: ""
         )
     }
 #endif
@@ -455,6 +527,35 @@ struct NativeScheduleView: View {
                     moveWeek(-1, result: result)
                 }
 
+                if isCoupleBound {
+                    // Bound: the week and its dates share the first line, and
+                    // the partner's status takes the second. No extra row.
+                    VStack(spacing: 3) {
+                        Button {
+                            weekPickerPresented = true
+                        } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(weekTitle(result))
+                                    .font(.headline)
+                                    .fontDesign(navigatorTitleDesign)
+                                if let range = weekRange(result), !range.isEmpty {
+                                    Text(range)
+                                        .font(.caption)
+                                        .fontDesign(navigatorDateDesign)
+                                        .foregroundStyle(navigatorSecondary)
+                                }
+                            }
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("选择周次")
+                        coupleStatusLine
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 42)
+                } else {
                 Button {
                     weekPickerPresented = true
                 } label: {
@@ -476,6 +577,7 @@ struct NativeScheduleView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("选择周次")
+                }
 
                 weekStepButton(
                     systemName: "chevron.right",
@@ -515,36 +617,20 @@ struct NativeScheduleView: View {
     private func monthCalendar(_ result: NativeScheduleResult) -> some View {
         NativeScheduleMonthView(
             monthAnchor: monthAnchor.isEmpty ? (Self.todayDate ?? "") : monthAnchor,
-            selectedDate: selectedMonthDate,
             todayDate: Self.todayDate,
             dateIndex: monthDateIndex,
             blocks: { day, week in blocks(for: day, week: week, result: result) },
             adjustments: Dictionary((store.calendar?.adjustments ?? []).map { ($0.date, $0) }, uniquingKeysWith: { _, latest in latest }),
             palette: preferences.palette,
-            periods: store.calendar?.periods.isEmpty == false
-                ? (store.calendar?.periods ?? NativeSchedulePeriod.bundledTimetable)
-                : NativeSchedulePeriod.bundledTimetable,
-            showLocation: preferences.showLocation,
-            showTeacher: preferences.showTeacher,
+            partnerCourses: { date in
+                guard let layer = coupleLayer else { return 0 }
+                return NativeScheduleMonthView.courseNames(Self.partnerBlocks(on: date, layer: layer) ?? []).count
+            },
             canOpenDay: { date in
                 guard let slot = monthDateIndex[date] else { return false }
                 return visibleDays(week: slot.week, result: result).contains(slot.day)
             },
-            onSelect: { selectMonthDate($0, result: result) },
             onOpenDay: openDayView,
-            onCourseSelected: { block, date in
-                guard let slot = monthDateIndex[date] else { return }
-                let effective = effectiveSlot(day: slot.day, week: slot.week, result: result)
-                if let sourceWeek = effective.week, store.selectedWeek != String(sourceWeek) {
-                    store.commitWeekSelection(String(sourceWeek))
-                }
-                let block = block.whole
-                courseEditorPresentation = .preview(SelectedCourse(
-                    id: block.id, course: block.course, day: effective.day,
-                    bigSlot: block.bigSlot, startSlot: block.startSlot, endSlot: block.endSlot,
-                    schedule: scheduleText(block, day: slot.day)
-                ))
-            },
             onMoveMonth: { moveMonth($0) }
         )
     }
@@ -751,6 +837,10 @@ struct NativeScheduleView: View {
                             scheduleToolsPresented = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sharingPresented = true }
                         }
+                        scheduleToolRow("情侣课表", systemImage: "heart") {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
+                        }
                     }
                 }
             }
@@ -832,18 +922,20 @@ struct NativeScheduleView: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
+                // Bound to a partner, the words give their width to the status line.
+                let arrowOnly = isCoupleBound && viewMode != .month
                 if systemName == "chevron.right" {
-                    Text(label)
+                    if !arrowOnly { Text(label) }
                     Image(systemName: systemName)
                 } else {
                     Image(systemName: systemName)
-                    Text(label)
+                    if !arrowOnly { Text(label) }
                 }
             }
             .font(.caption.weight(.medium))
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .frame(minWidth: 68, minHeight: 42)
+            .frame(minWidth: isCoupleBound && viewMode != .month ? 36 : 68, minHeight: 42)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1022,7 +1114,8 @@ struct NativeScheduleView: View {
             days: days.map { day in
                 // With Sunday first, the Sunday column belongs to the week before.
                 let dayWeek = columnWeek(day, week: week, days: days)
-                let shown = columnBlocks(for: day, week: week, days: days, result: result)
+                let shown = columnBlocks(for: day, week: week, days: days, result: result, couple: !isStatic)
+                let clashes = isStatic ? [] : coupleClashes(for: day, week: week, days: days, result: result)
                 return ScheduleStyledDay(
                     day: day,
                     dateText: dayDate(day, week: dayWeek, result: result),
@@ -1030,7 +1123,8 @@ struct NativeScheduleView: View {
                     isToday: dayIsToday(day, week: dayWeek, result: result),
                     adjustmentKind: adjustment(day: day, week: dayWeek, result: result)?.kind,
                     blocks: shown,
-                    offWeekBlocks: isStatic ? [] : offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown)
+                    offWeekBlocks: isStatic ? [] : offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown + clashes),
+                    coupleClashes: clashes
                 )
             },
             columnWidth: ScheduleStyledWeekRows.columnWidth(contentWidth: contentWidth, dayCount: days.count, style: style),
@@ -1059,10 +1153,12 @@ struct NativeScheduleView: View {
         let sundayWeek = preferences.sundayFirst ? week.map { $0 - 1 } : week
         var kept = Set<Int>()
         if adjustment(day: 6, week: week, result: result) != nil
-            || !blocks(for: 6, week: week, result: result).isEmpty { kept.insert(6) }
+            || !blocks(for: 6, week: week, result: result).isEmpty
+            || partnerHasCourse(day: 6, week: week, result: result) { kept.insert(6) }
         if adjustment(day: 7, week: sundayWeek, result: result) != nil
             || ((sundayWeek == week || hasCalendarWeek(sundayWeek))
-                && !blocks(for: 7, week: sundayWeek, result: result).isEmpty) { kept.insert(7) }
+                && (!blocks(for: 7, week: sundayWeek, result: result).isEmpty
+                    || partnerHasCourse(day: 7, week: sundayWeek, result: result))) { kept.insert(7) }
         return preferences.weekColumns(adjustedDays: kept)
     }
 
@@ -1081,10 +1177,165 @@ struct NativeScheduleView: View {
     /// The courses a week-view column shows. The Sunday before the term's
     /// first week has none.
     private func columnBlocks(for day: Int, week: Int?, days: [Int],
-                              result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+                              result: NativeScheduleResult, couple: Bool = true) -> [NativeScheduleCourseBlock] {
         let dayWeek = columnWeek(day, week: week, days: days)
         if dayWeek != week, !hasCalendarWeek(dayWeek) { return [] }
-        return blocks(for: day, week: dayWeek, result: result)
+        let mine = blocks(for: day, week: dayWeek, result: result)
+        return couple ? coupleBlocks(mine, date: rawDayDate(day, week: dayWeek, result: result)) : mine
+    }
+
+    // MARK: Couple timetable
+
+    /// The partner's timetable while it is drawn here. Somebody else's shared
+    /// timetable is shown on its own.
+    private var coupleLayer: NativeCoupleLayer? { isReadOnly ? nil : couple.layer }
+
+    /// The partner's courses on `date`, laid out with their own calendar, so
+    /// a make-up day or a different week numbering on their side still lands
+    /// on the right column. Nil when the date is outside their term.
+    private static func partnerBlocks(on date: String?, layer: NativeCoupleLayer) -> [NativeScheduleCourseBlock]? {
+        guard let date, date.count == 10,
+              let week = layer.partner.calendar.weeks.first(where: { $0.days.contains(date) }),
+              let index = week.days.firstIndex(of: date) else { return nil }
+        return dayBlocks(day: index + 1, week: week.week, result: layer.partner.schedule,
+                         calendar: layer.partner.calendar, priorities: [:], idPrefix: "ta:")
+    }
+
+    /// The user's courses of `date` as the week view draws them beside the
+    /// partner's: `tiles` are whole cells (the user's courses, and the
+    /// partner's that meet none of them), `clashes` are the partner's courses
+    /// that do meet one, named in a line at the foot of that course.
+    private func coupleColumn(_ mine: [NativeScheduleCourseBlock], date: String?)
+        -> (tiles: [NativeScheduleCourseBlock], clashes: [NativeScheduleCourseBlock]) {
+        guard let layer = coupleLayer else { return (mine, []) }
+        let theirs = Self.partnerBlocks(on: date, layer: layer) ?? []
+        func piece(_ block: NativeScheduleCourseBlock) -> CoupleRules.Piece {
+            .init(startSlot: block.courseStartSlot, endSlot: block.courseEndSlot, name: block.course.name)
+        }
+        var tiles: [NativeScheduleCourseBlock] = [], clashes: [NativeScheduleCourseBlock] = []
+        for placed in CoupleRules.merge(mine: mine.map(piece), theirs: theirs.map(piece)) {
+            var block = (placed.fromPartner ? theirs : mine)[placed.index]
+            block.owner = placed.owner
+            block.coupleMeets = placed.meets
+            if placed.fromPartner && placed.meets { clashes.append(block) } else { tiles.append(block) }
+        }
+        return (tiles, clashes)
+    }
+
+    private func coupleBlocks(_ mine: [NativeScheduleCourseBlock], date: String?) -> [NativeScheduleCourseBlock] {
+        coupleColumn(mine, date: date).tiles
+    }
+
+    /// The partner's courses of a week-view column that meet one of the user's.
+    private func coupleClashes(for day: Int, week: Int?, days: [Int], result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+        guard coupleLayer != nil else { return [] }
+        let dayWeek = columnWeek(day, week: week, days: days)
+        if dayWeek != week, !hasCalendarWeek(dayWeek) { return [] }
+        return coupleColumn(blocks(for: day, week: dayWeek, result: result),
+                            date: rawDayDate(day, week: dayWeek, result: result)).clashes
+    }
+
+    /// Whether the partner has a course on that column's date: a hidden
+    /// weekend day still shows then.
+    private func partnerHasCourse(day: Int, week: Int?, result: NativeScheduleResult) -> Bool {
+        guard let layer = coupleLayer else { return false }
+        return Self.partnerBlocks(on: rawDayDate(day, week: week, result: result), layer: layer)?.isEmpty == false
+    }
+
+    /// What the partner is doing now, for the line under the week title; nil
+    /// when the user is not bound.
+    private func coupleNowText(now: Date, short: Bool = true) -> String? {
+        guard !isReadOnly, let other = couple.partnerMember else { return nil }
+        guard let partner = couple.partner, let me = couple.me else {
+            return short ? CoupleRules.nowText(name: other.nickname, hasData: false, courses: nil, minutes: 0) : "还没有同步课表"
+        }
+        let layer = NativeCoupleLayer(partner: partner, myColor: me.color, partnerColor: other.color, partnerName: other.nickname)
+        let periods = partner.calendar.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : partner.calendar.periods
+        func time(_ slot: Int, end: Bool) -> String {
+            let period = periods.first { $0.number == slot }
+            return (end ? period?.endTime : period?.startTime) ?? ""
+        }
+        let courses = Self.partnerBlocks(on: Self.todayDate, layer: layer)?.map { block in
+            CoupleRules.TimedCourse(
+                name: block.course.name,
+                start: block.course.customStartTime?.trimmedNonEmpty ?? time(block.courseStartSlot, end: false),
+                end: block.course.customEndTime?.trimmedNonEmpty ?? time(block.courseEndSlot, end: true)
+            )
+        }
+        let text = CoupleRules.nowText(name: other.nickname, hasData: true, courses: courses,
+                                       minutes: ScheduleStyleTime.minutes(now), short: short)
+        // The long form sits beside 「TA 此刻」, so it does not repeat the name.
+        let who = (other.nickname.isEmpty ? "TA" : other.nickname) + " "
+        return !short && text.hasPrefix(who) ? String(text.dropFirst(who.count)) : text
+    }
+
+    /// Bound to a partner, and this is the user's own timetable.
+    private var isCoupleBound: Bool { !isReadOnly && couple.isActive }
+
+    /// The second line of the week title: what the partner is doing, the days
+    /// together, and the switch for their courses in the grid. Tapping the
+    /// text opens the manage sheet.
+    private var coupleStatusLine: some View {
+        // A clock of its own rather than a `TimelineView`: one in this header
+        // kept the whole page re-laying itself out without end.
+        coupleStatusLine(now: coupleClock)
+            .task {
+                while !Task.isCancelled {
+                    let seconds = 60 - Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+                    do { try await Task.sleep(for: .seconds(seconds + 0.2)) } catch { return }
+                    coupleClock = Date()
+                }
+            }
+    }
+
+    private func coupleStatusLine(now: Date) -> some View {
+        HStack(spacing: 6) {
+            Button {
+                couplePresented = true
+            } label: {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.pink).frame(width: 6, height: 6).accessibilityHidden(true)
+                    Text(coupleNowText(now: now) ?? "")
+                        .font(.caption)
+                        .foregroundStyle(navigatorSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+                    if let days = CoupleRules.daysTogether(couple.anniversary, today: Self.todayDate ?? "") {
+                        HStack(spacing: 2) {
+                            Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(.pink)
+                            Text("\(days) 天").font(.caption2.weight(.semibold)).monospacedDigit()
+                                .foregroundStyle(navigatorSecondary)
+                        }
+                        .fixedSize()
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("在一起第 \(days) 天")
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("打开情侣课表")
+            Button {
+                withAnimation(.snappy(duration: 0.18)) { couple.setVisible(!couple.visible) }
+            } label: {
+                // A small switch: a 28×16 track, with a larger area to tap.
+                Capsule()
+                    .fill(couple.visible ? AnyShapeStyle(CoupleRGB.heart.color) : AnyShapeStyle(Color.secondary.opacity(0.35)))
+                    .frame(width: 28, height: 16)
+                    .overlay(alignment: couple.visible ? .trailing : .leading) {
+                        Circle().fill(.white).frame(width: 12, height: 12).padding(2)
+                            .shadow(color: .black.opacity(0.15), radius: 1, y: 0.5)
+                    }
+                    .frame(width: 40, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("在课表里显示 TA 的课")
+            .accessibilityValue(couple.visible ? "开" : "关")
+        }
+        .frame(maxWidth: .infinity)
     }
 
     /// The courses of a weekday that do not run in `week`, for the periods
@@ -1097,7 +1348,7 @@ struct NativeScheduleView: View {
         var candidates: [(block: NativeScheduleCourseBlock, distance: Int)] = []
         for cell in result.cells where cell.day == day {
             for (index, course) in cell.courses.enumerated() {
-                let weeks = nativeCourseWeekList(course)
+                let weeks = Self.nativeCourseWeekList(course)
                 guard !weeks.isEmpty, !weeks.contains(week) else { continue }
                 let upcoming = weeks.filter { $0 > week }.min()
                 let past = weeks.filter { $0 < week }.max()
@@ -1171,7 +1422,9 @@ struct NativeScheduleView: View {
             bigSlot: block.bigSlot,
             startSlot: block.startSlot,
             endSlot: block.endSlot,
-            schedule: scheduleText(block, day: day)
+            schedule: scheduleText(block, day: day),
+            // The partner's course can be looked at, not edited.
+            ownerTitle: block.owner == .partner ? coupleLayer?.ownerTitle : nil
         ))
     }
 
@@ -1189,7 +1442,13 @@ struct NativeScheduleView: View {
             GeometryReader { proxy in
                 let columnWidth = max(220, proxy.size.width - Self.slotAxisWidth - Self.columnGap)
                 dayPager(result: result, width: proxy.size.width) { page in
-                    if style == .classic {
+                    if let pair = coupleDay(page, result: result) {
+                        // Bound to a partner, every style shows the day as two columns.
+                        coupleDayPage(pair, page: page, result: result)
+                            .padding(.vertical, Self.styledDayInset)
+                            .padding(.horizontal, Self.contentInset)
+                            .frame(width: proxy.size.width, height: dayGridHeight(result), alignment: .top)
+                    } else if style == .classic {
                         scheduleRows(
                             result: result,
                             week: page.week.flatMap(Int.init),
@@ -1219,6 +1478,54 @@ struct NativeScheduleView: View {
     /// The day pager has a fixed cross axis, so it takes the tallest of the
     /// three pages it can show.
     private func dayGridHeight(_ result: NativeScheduleResult) -> CGFloat {
+        let own = ownDayGridHeight(result)
+        return coupleLayer == nil ? own : max(own, ScheduleCoupleDayView.height() + 2 * Self.styledDayInset)
+    }
+
+    /// The user's and the partner's courses of a day page; nil while the
+    /// couple timetable is off, or when neither has a class that day, which
+    /// keeps the style's own empty day.
+    private func coupleDay(_ page: NativeScheduleDayPage, result: NativeScheduleResult)
+        -> (layer: NativeCoupleLayer, mine: [NativeScheduleCourseBlock], theirs: [NativeScheduleCourseBlock])? {
+        guard let layer = coupleLayer else { return nil }
+        let week = page.week.flatMap(Int.init)
+        let mine = blocks(for: page.day, week: week, result: result)
+        let theirs = (Self.partnerBlocks(on: rawDayDate(page.day, week: week, result: result), layer: layer) ?? []).map {
+            var block = $0
+            block.owner = .partner
+            return block
+        }
+        return mine.isEmpty && theirs.isEmpty ? nil : (layer, mine, theirs)
+    }
+
+    private func coupleDayPage(
+        _ pair: (layer: NativeCoupleLayer, mine: [NativeScheduleCourseBlock], theirs: [NativeScheduleCourseBlock]),
+        page: NativeScheduleDayPage, result: NativeScheduleResult
+    ) -> some View {
+        let week = page.week.flatMap(Int.init)
+        let isToday = dayIsToday(page.day, week: week, result: result)
+        func view(_ now: Date?) -> ScheduleCoupleDayView {
+            ScheduleCoupleDayView(
+                layer: pair.layer, mine: pair.mine, theirs: pair.theirs,
+                nowMinutes: preferences.showNowIndicator ? now.map { ScheduleStyleTime.minutes($0) } : nil,
+                showLocation: preferences.showLocation,
+                onCourseSelected: { block in selectCourse(block, day: page.day, week: week, result: result) },
+                onEmptySlot: { slot in
+                    let effective = effectiveSlot(day: page.day, week: week, result: result)
+                    presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
+                }
+            )
+        }
+        return Group {
+            if isToday {
+                TimelineView(.everyMinute) { context in view(context.date) }
+            } else {
+                view(nil)
+            }
+        }
+    }
+
+    private func ownDayGridHeight(_ result: NativeScheduleResult) -> CGFloat {
         guard style != .classic else {
             return Self.scheduleGridHeight(
                 rowHeight: dayRowHeight,
@@ -1304,6 +1611,7 @@ struct NativeScheduleView: View {
         let adjustedDays = Set((6...7).filter {
             adjustment(day: $0, week: week, result: result) != nil
                 || !blocks(for: $0, week: week, result: result).isEmpty
+                || partnerHasCourse(day: $0, week: week, result: result)
         })
         return preferences.visibleDays(adjustedDays: adjustedDays)
     }
@@ -1489,6 +1797,7 @@ struct NativeScheduleView: View {
                 let dayWeek = columnWeek(day, week: week, days: days)
                 let effective = effectiveSlot(day: day, week: dayWeek, result: result)
                 let shown = columnBlocks(for: day, week: week, days: days, result: result)
+                let clashes = days.count > 1 ? coupleClashes(for: day, week: week, days: days, result: result) : []
                 NativeScheduleDayColumn(
                     day: day,
                     dateText: dayDate(day, week: dayWeek, result: result),
@@ -1515,7 +1824,8 @@ struct NativeScheduleView: View {
                         presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
                     },
                     offWeekBlocks: days.count > 1 && showsNow
-                        ? offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown) : []
+                        ? offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown + clashes) : [],
+                    coupleClashes: clashes
                 )
             }
         }
@@ -2174,6 +2484,33 @@ struct NativeScheduleView: View {
         Int(value.trimmingCharacters(in: .whitespaces))
     }
 
+    // MARK: Two courses in one period
+
+    /// Changes whenever the week on screen or what is in it does.
+    private var overlapCheckID: String {
+        "\(store.selectedSemester)|\(store.selectedWeek)|\(store.result?.cells.reduce(0) { $0 + $1.courses.count } ?? -1)|\(store.displayPriorities.count)"
+    }
+
+    /// Points out, once per place, two different courses of the user's own
+    /// that the shown week draws side by side. Somebody else's timetable and
+    /// the partner's courses are left out, and nothing is raised over another sheet.
+    private func checkOverlapNotice() {
+        guard !isBackgroundPreview, !isReadOnly, overlapNotice == nil, let result = store.result,
+              let week = weekNumber(store.selectedWeek),
+              courseEditorPresentation == nil, !weekPickerPresented, !scheduleToolsPresented, !backgroundEditorPresented,
+              !stylePickerPresented, !sharingPresented, !couplePresented else { return }
+        let pieces = (1...7).flatMap { day in
+            blocks(for: day, week: week, result: result).map {
+                ScheduleOverlapNotice.Piece(day: day, startSlot: $0.startSlot, endSlot: $0.endSlot, lane: $0.lane, name: $0.course.name)
+            }
+        }
+        guard let notice = ScheduleOverlapNotice.find(pieces) else { return }
+        let key = notice.key(semester: store.selectedSemester)
+        guard !ScheduleOverlapNotice.seen(key) else { return }
+        ScheduleOverlapNotice.remember(key)
+        overlapNotice = notice
+    }
+
     private func shortDate(_ value: String) -> String {
         let pieces = value.split(separator: "-")
         guard pieces.count >= 3 else { return value }
@@ -2187,10 +2524,18 @@ struct NativeScheduleView: View {
     }
 
     private func blocks(for day: Int, week: Int?, result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+        Self.dayBlocks(day: day, week: week, result: result, calendar: store.calendar, priorities: store.displayPriorities)
+    }
+
+    /// The courses of one weekday of a timetable, placed in lanes. `calendar`
+    /// resolves days off and make-up days. Also used for the partner's
+    /// timetable of the couple view, with their own calendar.
+    private static func dayBlocks(day: Int, week: Int?, result: NativeScheduleResult, calendar: NativeScheduleCalendar?,
+                                  priorities: [String: Int], idPrefix: String = "") -> [NativeScheduleCourseBlock] {
         var sourceDay = day
         var sourceWeek = week
         if let week,
-           let calendar = store.calendar,
+           let calendar,
            let targetWeek = calendar.weeks.first(where: { $0.week == week }),
            targetWeek.days.indices.contains(day - 1),
            let adjustment = calendar.adjustments.first(where: { $0.date == targetWeek.days[day - 1] }) {
@@ -2221,7 +2566,7 @@ struct NativeScheduleView: View {
                     // Falling back to that row here splits one occurrence into
                     // two adjacent cards and makes it look duplicated.
                     return NativeScheduleCourseBlockRecord(
-                        id: "\(week.map(String.init) ?? "-")-\(day)-\(cell.bigSlot)-\(index)-\(course.name)",
+                        id: "\(idPrefix)\(week.map(String.init) ?? "-")-\(day)-\(cell.bigSlot)-\(index)-\(course.name)",
                         course: course,
                         bigSlot: cell.bigSlot,
                         startSlot: start,
@@ -2238,7 +2583,7 @@ struct NativeScheduleView: View {
         // others; without any priority this is the plain side-by-side layout.
         return NativeSchedulePriority.place(
             NativeScheduleCourseBlockMerger.merge(rawBlocks),
-            priorities: store.displayPriorities
+            priorities: priorities
         ).map { placed in
             NativeScheduleCourseBlock(
                 id: placed.id,
@@ -2258,7 +2603,7 @@ struct NativeScheduleView: View {
     /// with Web's `courseMatchesWeek` so a course never disappears from (or
     /// reappears in) a selected week just because the bridge was deployed
     /// before the normalized list was added.
-    private func nativeCourseWeekList(_ course: NativeScheduleCourse) -> [Int] {
+    private static func nativeCourseWeekList(_ course: NativeScheduleCourse) -> [Int] {
         let text = course.weeks
             .unicodeScalars
             .map { scalar -> String in
@@ -2389,6 +2734,11 @@ struct NativeScheduleCourseBlock: Identifiable {
     /// `endSlot` only when a course shown in front hides part of this one.
     let courseStartSlot: Int
     let courseEndSlot: Int
+    /// Set while the couple timetable is drawn: whose course this is.
+    var owner: CoupleOwner? = nil
+    /// The couple timetable: this course of the user's meets one of the
+    /// partner's and names it in a line at its foot.
+    var coupleMeets = false
 
     init(
         id: String, course: NativeScheduleCourse, bigSlot: Int, startSlot: Int, endSlot: Int, lane: Int = 0,
@@ -2405,14 +2755,19 @@ struct NativeScheduleCourseBlock: Identifiable {
     }
 
     func withLane(_ lane: Int) -> NativeScheduleCourseBlock {
-        NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot, startSlot: startSlot, endSlot: endSlot,
-                                  lane: lane, courseStartSlot: courseStartSlot, courseEndSlot: courseEndSlot)
+        var copy = NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot, startSlot: startSlot, endSlot: endSlot,
+                                             lane: lane, courseStartSlot: courseStartSlot, courseEndSlot: courseEndSlot)
+        copy.owner = owner
+        copy.coupleMeets = coupleMeets
+        return copy
     }
 
     /// The whole course, for the quick look and the editor.
     var whole: NativeScheduleCourseBlock {
-        NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot,
-                                  startSlot: courseStartSlot, endSlot: courseEndSlot, lane: lane)
+        var copy = NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot,
+                                             startSlot: courseStartSlot, endSlot: courseEndSlot, lane: lane)
+        copy.owner = owner
+        return copy
     }
 }
 
@@ -2444,6 +2799,8 @@ private struct SelectedCourse: Identifiable {
     let endSlot: Int
     /// "周三 · 第 5–6 节 · 13:30–15:10", shown in the quick look.
     var schedule: String? = nil
+    /// 「小鹿的课」 for a course of the partner's, which cannot be edited here.
+    var ownerTitle: String? = nil
 }
 
 private struct AddCourseContext: Identifiable {
@@ -2503,6 +2860,7 @@ private struct NativeAdjustmentBadge: View {
 
 @available(iOS 17.0, *)
 private struct NativeScheduleDayColumn: View {
+    @Environment(\.scheduleCouple) private var couple
     @Environment(\.colorScheme) private var colorScheme
     // Web's compact mobile grid uses 44px rows. Keeping that rhythm here
     // gives the week view enough breathing room while all eleven rows still
@@ -2535,6 +2893,8 @@ private struct NativeScheduleDayColumn: View {
     let onEmptySlot: (Int) -> Void
     /// Courses that do not run this week, faded under the others.
     let offWeekBlocks: [NativeScheduleCourseBlock]
+    /// The partner's courses that meet one of the user's: named at the foot of that course.
+    var coupleClashes: [NativeScheduleCourseBlock] = []
 
     init(
         day: Int,
@@ -2553,9 +2913,11 @@ private struct NativeScheduleDayColumn: View {
         showWeeks: Bool = true,
         onCourseSelected: @escaping (NativeScheduleCourseBlock) -> Void,
         onEmptySlot: @escaping (Int) -> Void,
-        offWeekBlocks: [NativeScheduleCourseBlock] = []
+        offWeekBlocks: [NativeScheduleCourseBlock] = [],
+        coupleClashes: [NativeScheduleCourseBlock] = []
     ) {
         self.offWeekBlocks = offWeekBlocks
+        self.coupleClashes = coupleClashes
         self.day = day
         self.dateText = dateText
         self.isToday = isToday
@@ -2671,16 +3033,28 @@ private struct NativeScheduleDayColumn: View {
                     Button {
                         onCourseSelected(block)
                     } label: {
-                        NativeScheduleCourseCard(
-                            course: block.course,
-                            palette: palette,
-                            showLocation: showLocation,
-                            showTeacher: showTeacher,
-                            showPeriod: showPeriod,
-                            showWeeks: showWeeks,
-                            compact: compactCards || columnWidth < 70
-                        )
+                        if let owner = block.owner, let couple {
+                            // One colour per person while the partner's courses are shown.
+                            ScheduleCouplePersonTile(
+                                course: block.course, layer: couple, partner: owner == .partner,
+                                compact: compactCards || laneWidth < 70, showLocation: showLocation,
+                                note: ScheduleCoupleNote.kind(for: block, clashes: coupleClashes), tiny: blockLaneCount > 2
+                            )
                             .frame(width: cardWidth, height: cardHeight)
+                        } else {
+                            // Three or more side by side: a card two characters wide keeps the name only.
+                            let tiny = blockLaneCount > 2
+                            NativeScheduleCourseCard(
+                                course: block.course,
+                                palette: palette,
+                                showLocation: showLocation && !tiny,
+                                showTeacher: showTeacher && !tiny,
+                                showPeriod: showPeriod && !tiny,
+                                showWeeks: showWeeks && !tiny,
+                                compact: compactCards || columnWidth < 70
+                            )
+                            .frame(width: cardWidth, height: cardHeight)
+                        }
                     }
                     .buttonStyle(.plain)
                     // Fix the button's layout and hit rectangle at the same
@@ -2737,7 +3111,14 @@ private struct NativeScheduleDayColumn: View {
                 width: width,
                 height: height
             )
-            if rect.contains(point) { return block }
+            guard rect.contains(point) else { continue }
+            // The line at the foot of the card opens the partner's course.
+            if couple != nil, blockLaneCount < 3,
+               case .partner(let theirs) = ScheduleCoupleNote.kind(for: block, clashes: coupleClashes),
+               ScheduleCoupleNote.tapArea(in: rect).contains(point) {
+                return theirs[0]
+            }
+            return block
         }
         return nil
     }
@@ -2884,7 +3265,7 @@ private struct NativeScheduleCourseCard: View {
     var body: some View {
         GeometryReader { geometry in
             let shortCard = geometry.size.height < 64
-            let location = showLocation ? clean(course.location) : nil
+            let location = showLocation ? ScheduleStyleTime.location(course.location) : nil
             let teacher = showTeacher ? clean(course.teacher) : nil
             let details = [
                 showPeriod ? clean(course.slotNote) : nil,
@@ -2996,7 +3377,8 @@ private struct NativeCourseQuickLookSheet: View {
                 ScheduleCourseQuickLook(
                     course: selection.course,
                     schedule: selection.schedule,
-                    onEdit: store.isReadOnly ? nil : {
+                    ownerTitle: selection.ownerTitle,
+                    onEdit: store.isReadOnly || selection.ownerTitle != nil ? nil : {
                         withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) {
                             detent = .large
                             editing = true

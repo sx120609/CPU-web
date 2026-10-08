@@ -17,6 +17,7 @@
 原生课表页自己画 TA 的课，规则和网页一致：按日期对齐、一个人一种颜色（自己的课全用自己的颜色、TA 的课全用 TA 的颜色）、撞课时在自己的课下沿写一行「TA 课名」、一起上的课写「一起」、日视图时间轴居中、月视图每天一行「TA N 门」。状态行在周次条的第二行，「更多 → 情侣课表」是原生的管理面板（邀请、输入邀请码、互换配色、纪念日、显示开关、解除绑定）。原生端也会上传自己的课表：课表稳定几秒后把当前学期的整学期课表（含个人修改）发给 `PUT /api/couple/schedule`，内容没变时 12 小时内不重复上传。
 
 - 鸿蒙：请求经过随包的页面桥 `window.CPUHarmonyCouple`（`harmony/bridge/couple.ts`）；规则在 `ScheduleCouple.ets`，模型和面板在 `NativeScheduleCouple.ets`，课下方的小字条和日视图在 `NativeScheduleBody.ets`，月视图在 `ScheduleMonthView.ets`。验收脚手架 `prepare-schedule-acceptance.mjs` 接受 `--ps couple active|pending|none`、`--ps coupleColors teal,amber` 和 `--ps panel couple`。隐藏周末时，只有 TA 有课的周末列不会单独显示出来（安卓会显示）。
+- iOS：请求直接走已登录的网页会话（`NativeScheduleStore.api`），没有页面桥；规则在 `NativeCoupleRules.swift`，状态与同步在 `NativeCoupleService.swift`，面板在 `NativeCoupleSheet.swift`，课程块和撞课字条在 `NativeCoupleTile.swift`，日视图在 `NativeCoupleDayView.swift`。「在课表里显示 TA 的课」只保存在本机。实时活动里 TA 的课和自己的课各占一行，各用本人选的颜色（色相随课程快照带给小组件，服务端推送不含课程内容）；同名同节次的课只显示一行并标「一起上」。Debug 构建用 `CPU_DEBUG_COUPLE=active|pending` 配合 `CPU_DEBUG_MOCK_SCHEDULE=1` 不登录看效果，`CPU_DEBUG_SCHEDULE_ACTION=couple` 打开面板，`CPU_DEBUG_LIVE_PARTNER=pair|upcoming|together` 看实时活动的三种状态。
 - 安卓：请求经过随包的页面桥 `window.CPUAndroidCouple`（`android/bridge/couple.ts`），用网页会话的登录态；逻辑在 `ScheduleCouple.kt`，面板和课下方的小字条在 `ScheduleCoupleSheet.kt`，日视图在 `ScheduleCoupleDay.kt`，月视图在 `ScheduleMonth.kt`。「在课表里显示 TA 的课」只保存在本机。调试参数 `--es debugCouple active|pending` 配合 `--ez debugMockSchedule true` 可以不登录看效果。
 
 ## 绑定
@@ -62,6 +63,7 @@
 
 - `server/tests/coupleSchedule.test.ts`、`web/tests/coupleSchedule.test.ts`、`web/tests/coupleSync.test.ts` 随 `npm test` 运行。
 - 鸿蒙：`harmony/tests/editor-bridge.test.mjs`（页面桥）和 `harmony/tests/schedule-parity.test.mjs` 里的情侣课表用例。模型和面板（`NativeScheduleCouple.ets`）只在模拟器的验收脚手架里走过，没有单元测试。
+- iOS：`bash ios_next/scripts/check-couple-schedule.sh`（配色与网页一致、合并规则、状态行文字、在一起天数、绑定状态解析）；实时活动里 TA 的行和颜色在 `check-live-activity.sh` 里。界面只在模拟器里用示例数据看过，没有连真实服务端走过绑定流程。
 - 安卓：`android/tests/native-bridge.test.mjs`（页面桥）和 `ScheduleParityTest` 里的情侣课表用例（配色与网页一致、合并规则、状态行文字、按日期取 TA 的课）。
 - `server/tests/coupleSchedule.integration.test.ts` 需要独立的 PostgreSQL，默认跳过：
 

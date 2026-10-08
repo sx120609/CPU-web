@@ -3,19 +3,9 @@ import SwiftUI
 /// 月视图：课表界面的第三种视图，和「日」「周」共用同一个顶栏切换。
 ///
 /// 周视图和日视图都是按节次画网格的课表；月视图不再画网格，而是一张日历：每天一
-/// 格，格子里是公历日、农历/节日和当天课程的彩色圆点，下面跟着所选那天的课程清
-/// 单。教学周信息保留在每行左侧的「周」栏里，这样月历和学期周次仍能对上。
-/// 日期下面的那一条：没有课不画，一节课是一个圆点，四节以上到头。
-struct ScheduleMonthLoadBar: View {
-    let count: Int
-
-    var body: some View {
-        Capsule()
-            .frame(width: count <= 1 ? 4 : CGFloat(min(4, count)) * 5, height: 4)
-            .opacity(count > 0 ? 1 : 0)
-            .accessibilityHidden(true)
-    }
-}
+/// 格，格子里是公历日、农历/节日，下面直接列出当天的课，一门一行，放不下的收成
+/// 「+N」。点教学周内的一天进入那天的日视图。教学周信息保留在每行左侧的「周」栏
+/// 里，这样月历和学期周次仍能对上。
 
 /// 上下拖动月历换月：格子跟着手指走，拖过一段距离就翻到下一个月或上一个月，
 /// 新的一页从拖来的那一边滑进来；不够就弹回去。
@@ -52,7 +42,6 @@ struct ScheduleMonthSwipe: ViewModifier {
 struct NativeScheduleMonthView: View {
     /// 所显示月份里的任意一天（`yyyy-MM-dd`）。
     let monthAnchor: String
-    let selectedDate: String
     let todayDate: String?
     /// 日期 -> (教学周, 星期几)。来自课表日历，学期外的日期查不到。
     let dateIndex: [String: NativeScheduleMonthView.DaySlot]
@@ -61,14 +50,10 @@ struct NativeScheduleMonthView: View {
     /// 日期 -> 这一天的调休安排。
     let adjustments: [String: NativeScheduleAdjustment]
     let palette: String
-    let periods: [NativeSchedulePeriod]
-    let showLocation: Bool
-    let showTeacher: Bool
+    /// 情侣课表：日期 -> TA 这一天有几门不同的课。
+    var partnerCourses: (String) -> Int = { _ in 0 }
     let canOpenDay: (String) -> Bool
-    let onSelect: (String) -> Void
     let onOpenDay: (String) -> Void
-    /// 第二个参数是被点的那一天，调课时课程归属要按它换算。
-    let onCourseSelected: (NativeScheduleCourseBlock, String) -> Void
     /// 上下拖动月历换月：1 是下一个月，-1 是上一个月。
     var onMoveMonth: (Int) -> Void = { _ in }
 
@@ -79,6 +64,7 @@ struct NativeScheduleMonthView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scheduleStyle) private var style
+    @Environment(\.scheduleCouple) private var couple
 
     private static let weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"]
     private static let gutterWidth: CGFloat = 26
@@ -89,47 +75,35 @@ struct NativeScheduleMonthView: View {
         // 每月铺满整周；农历与课程数据只构建一次。
         let days = buildDays()
         if style == .classic {
-            VStack(alignment: .leading, spacing: 12) {
-                GeometryReader { geometry in
-                    let dayWidth = max(1, (geometry.size.width - 2 * Self.gridInset - Self.gutterWidth - 7 * Self.columnSpacing) / 7)
-                    monthGrid(days, dayWidth: dayWidth)
-                }
-                .frame(height: CGFloat(weeks(days).count) * 56 + 38)
-                .modifier(ScheduleMonthSwipe(onMove: onMoveMonth))
-                selectedDayCard(days)
+            GeometryReader { geometry in
+                let dayWidth = max(1, (geometry.size.width - 2 * Self.gridInset - Self.gutterWidth - 7 * Self.columnSpacing) / 7)
+                monthGrid(days, dayWidth: dayWidth)
             }
+            .frame(height: CGFloat(weeks(days).count) * (rowHeight + 6) + 38)
+            .modifier(ScheduleMonthSwipe(onMove: onMoveMonth))
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            styledPage(days)
+            ScheduleStyledMonthPage(
+                days: days, todayDate: todayDate, accessibilityLabel: accessibilityLabel,
+                onDay: open, onMoveMonth: onMoveMonth
+            )
         }
     }
 
-    /// The other styles draw the calendar and the selected day in one panel.
-    private func styledPage(_ days: [Day]) -> some View {
-        let courses = days.first { $0.date == selectedDate }?.courses ?? []
-        let emptyText: String? = {
-            if dateIndex[selectedDate] == nil { return "这一天不在当前学期的教学周内。" }
-            guard courses.isEmpty else { return nil }
-            return adjustments[selectedDate]?.kind == "off" ? "这一天放假，没有课程。" : "这一天没有课程。"
-        }()
-        return ScheduleStyledMonthPage(
-            days: days,
-            selectedDate: selectedDate,
-            todayDate: todayDate,
-            periods: periods,
-            showLocation: showLocation,
-            showTeacher: showTeacher,
-            selectedTitle: selectedTitle(days),
-            selectedSubtitle: selectedSubtitle,
-            emptyText: emptyText,
-            adjustmentText: adjustments[selectedDate].map(adjustmentText),
-            canOpenDay: canOpenDay(selectedDate),
-            accessibilityLabel: accessibilityLabel,
-            onSelect: onSelect,
-            onOpenDay: { onOpenDay(selectedDate) },
-            onCourseSelected: { onCourseSelected($0, selectedDate) },
-            onMoveMonth: onMoveMonth
-        )
+    /// 双人模式下多一行「TA N 门」，格子高一点。
+    private var rowHeight: CGFloat { couple == nil ? 88 : 104 }
+
+    /// 教学周内的一天进日视图；学期外的日期点了没有反应。
+    private func open(_ day: Day) {
+        if canOpenDay(day.date) { onOpenDay(day.date) }
+    }
+
+    /// 一天的课名：同名的只算一门，按上课先后。
+    static func courseNames(_ blocks: [NativeScheduleCourseBlock]) -> [String] {
+        var seen = Set<String>()
+        return blocks.sorted { ($0.startSlot, $0.endSlot) < ($1.startSlot, $1.endSlot) }
+            .map { $0.course.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     // MARK: 月历
@@ -169,25 +143,42 @@ struct NativeScheduleMonthView: View {
     }
 
     private func dayCell(_ day: Day) -> some View {
-        let isSelected = day.date == selectedDate
         let isToday = day.date == todayDate
+        let dark = colorScheme == .dark
+        let mine = couple.map { CoupleRules.personTone(color: $0.myColor, dark: dark) }
+        let lines = Self.courseNames(day.courses).map { name -> ScheduleMonthCourseLines.Line in
+            if let mine { return .init(name: name, text: mine.text.color, fill: mine.fill.color) }
+            let tone = NativeSchedulePalette.tone(name: name, palette: palette, dark: dark)
+            return .init(name: name, text: tone.text.color, fill: tone.top.color)
+        }
+        let partner = couple.flatMap { layer in
+            day.partnerCourses > 0
+                ? ScheduleMonthCourseLines.Partner(count: day.partnerCourses, tint: CoupleRules.personTone(color: layer.partnerColor, dark: dark))
+                : nil
+        }
         return Button {
-            onSelect(day.date)
+            open(day)
         } label: {
             VStack(spacing: 1) {
                 Text("\(day.number)")
-                    .font(.system(size: 16, weight: isToday || isSelected ? .bold : .medium, design: .rounded))
-                    .foregroundStyle(numberColor(day, isSelected: isSelected, isToday: isToday))
-                Text(day.subtitle)
+                    .font(.system(size: 14, weight: isToday ? .bold : .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(isToday ? Color.white : numberColor(day))
+                    .frame(minWidth: 22, minHeight: 22)
+                    // 今天的日期放在主题色的圆里。
+                    .background { if isToday { Circle().fill(Color.cpuBrand) } }
+                Text(day.subtitle.isEmpty ? " " : day.subtitle)
                     .font(.system(size: 9, weight: day.isFestival ? .bold : .regular))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .foregroundStyle(subtitleColor(day, isSelected: isSelected))
-                    .opacity(day.inMonth ? 1 : 0.4)
-                courseDots(day)
+                    .foregroundStyle(subtitleColor(day))
+                ScheduleMonthCourseLines(lines: lines, partner: partner).padding(.top, 1)
+                Spacer(minLength: 0)
             }
+            .padding(.top, 2)
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
+            .frame(height: rowHeight, alignment: .top)
+            .opacity(day.inMonth ? 1 : 0.45)
             .overlay(alignment: .topTrailing) {
                 if let adjustment = day.adjustment {
                     Text(adjustment.kind == "off" ? "休" : "班")
@@ -201,43 +192,22 @@ struct NativeScheduleMonthView: View {
                             (adjustment.kind == "off" ? Color.pink : Color.orange).opacity(0.9),
                             in: RoundedRectangle(cornerRadius: 3, style: .continuous)
                         )
-                        .padding(.top, 1)
-                        .padding(.trailing, 1)
                         .opacity(day.inMonth ? 1 : 0.45)
-                }
-            }
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.cpuBrand.opacity(0.16))
-                } else if isToday {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.cpuBrand.opacity(0.45), lineWidth: 1)
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel(day))
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
+        .accessibilityAddTraits(.isButton)
     }
 
-    /// 日期下面只画一条，和系统日历一样：一节课是一个点，课越多越长。
-    private func courseDots(_ day: Day) -> some View {
-        ScheduleMonthLoadBar(count: day.courses.count)
-            .foregroundStyle(Color.cpuBrand.opacity(0.85))
-            .frame(height: 5)
-            .opacity(day.inMonth ? 1 : 0.45)
-    }
-
-    private func numberColor(_ day: Day, isSelected: Bool, isToday: Bool) -> Color {
-        guard day.inMonth else { return .secondary.opacity(0.45) }
-        if isToday || isSelected { return Color.cpuBrand }
+    private func numberColor(_ day: Day) -> Color {
         if day.isStatutoryHoliday { return .pink }
         return day.weekday >= 6 ? Color.pink.opacity(0.85) : .primary
     }
 
-    private func subtitleColor(_ day: Day, isSelected: Bool) -> Color {
+    private func subtitleColor(_ day: Day) -> Color {
         if day.isStatutoryHoliday { return .pink }
         if day.isFestival { return Color.cpuBrand }
         return .secondary
@@ -247,7 +217,9 @@ struct NativeScheduleMonthView: View {
         var parts = ["\(day.number) 日", day.subtitle]
         if let slot = dateIndex[day.date] { parts.append("第 \(slot.week) 周") }
         if let adjustment = day.adjustment { parts.append(adjustmentText(adjustment)) }
-        parts.append(day.courses.isEmpty ? "没有课程" : "\(day.courses.count) 门课程")
+        let names = Self.courseNames(day.courses)
+        parts.append(names.isEmpty ? "没有课程" : names.joined(separator: "、"))
+        if couple != nil, day.partnerCourses > 0 { parts.append("TA \(day.partnerCourses) 门课") }
         return parts.joined(separator: "，")
     }
 
@@ -259,128 +231,6 @@ struct NativeScheduleMonthView: View {
         guard let source = adjustment.source else { return "调课" }
         let parts = source.split(separator: "-")
         return parts.count == 3 ? "上 \(parts[1]).\(parts[2]) 的课" : "调课"
-    }
-
-    // MARK: 选中那天
-
-    private func selectedDayCard(_ days: [Day]) -> some View {
-        let day = days.first { $0.date == selectedDate }
-        let courses = day?.courses ?? []
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(selectedTitle(days))
-                        .font(.headline)
-                    Text(selectedSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if canOpenDay(selectedDate) {
-                    Button {
-                        onOpenDay(selectedDate)
-                    } label: {
-                        Label("日视图", systemImage: "calendar.day.timeline.left")
-                            .font(.caption.weight(.semibold))
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.cpuBrand)
-                }
-            }
-
-            if let adjustment = adjustments[selectedDate] {
-                Label(adjustmentText(adjustment), systemImage: "calendar.badge.exclamationmark")
-                    .font(.caption)
-                    .foregroundStyle(adjustment.kind == "off" ? Color.pink : Color.orange)
-            }
-
-            if dateIndex[selectedDate] == nil {
-                Text("这一天不在当前学期的教学周内。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if courses.isEmpty {
-                Text(adjustments[selectedDate]?.kind == "off" ? "这一天放假，没有课程。" : "这一天没有课程。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(courses) { block in
-                    agendaRow(block)
-                }
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background { NativeScheduleBackgroundSurface() }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func agendaRow(_ block: NativeScheduleCourseBlock) -> some View {
-        let tone = NativeSchedulePalette.tone(name: block.course.name, palette: palette, dark: colorScheme == .dark)
-        return Button {
-            onCourseSelected(block, selectedDate)
-        } label: {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(NativeScheduleThemeColor.accent(for: block.course.name, palette: palette, scheme: colorScheme))
-                    .frame(width: 4, height: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(block.course.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    Text(metadata(block))
-                        .font(.caption)
-                        .foregroundStyle(tone.text.color.opacity(0.85))
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                Text(timeRange(block))
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(tone.text.color.opacity(0.85))
-                    .multilineTextAlignment(.trailing)
-            }
-            .foregroundStyle(tone.text.color)
-            .padding(10)
-            .background(LinearGradient(colors: [tone.top.color, tone.bottom.color], startPoint: .top, endPoint: .bottom))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(tone.border.color, lineWidth: 1) }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint(Text("查看课程详情"))
-    }
-
-    private func metadata(_ block: NativeScheduleCourseBlock) -> String {
-        let values = [
-            showLocation ? block.course.location?.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-            showTeacher ? block.course.teacher?.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-            block.startSlot == block.endSlot ? "第 \(block.startSlot) 节" : "第 \(block.startSlot)-\(block.endSlot) 节",
-        ].compactMap { $0 }.filter { !$0.isEmpty }
-        return values.joined(separator: " · ")
-    }
-
-    private func timeRange(_ block: NativeScheduleCourseBlock) -> String {
-        guard let start = periods.first(where: { $0.number == block.startSlot }) else { return "--:--" }
-        let end = periods.first(where: { $0.number == block.endSlot }) ?? start
-        return "\(start.startTime)\n\(end.endTime)"
-    }
-
-    private func selectedTitle(_ days: [Day]) -> String {
-        let pieces = selectedDate.split(separator: "-")
-        guard pieces.count == 3, let month = Int(pieces[1]), let day = Int(pieces[2]) else { return selectedDate }
-        let weekday = days.first { $0.date == selectedDate }?.weekday ?? 1
-        let labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        return "\(month) 月 \(day) 日 · \(labels[min(max(weekday, 1), 7) - 1])"
-    }
-
-    private var selectedSubtitle: String {
-        var parts: [String] = []
-        if let slot = dateIndex[selectedDate] { parts.append("第 \(slot.week) 周") }
-        if let info = ChineseCalendarInfo.info(forDate: selectedDate) {
-            parts.append(info.lunar.fullLabel)
-            if let badge = info.badge { parts.append(badge) }
-        }
-        return parts.joined(separator: " · ")
     }
 
     // MARK: 月份网格数据
@@ -396,6 +246,8 @@ struct NativeScheduleMonthView: View {
         let isStatutoryHoliday: Bool
         let adjustment: NativeScheduleAdjustment?
         let courses: [NativeScheduleCourseBlock]
+        /// 情侣课表：TA 这一天有几门不同的课。
+        var partnerCourses = 0
 
         var id: String { date }
     }
@@ -430,7 +282,8 @@ struct NativeScheduleMonthView: View {
                 isFestival: info?.badge != nil,
                 isStatutoryHoliday: info?.isStatutoryHoliday ?? false,
                 adjustment: adjustments[key],
-                courses: slot.map { blocks($0.day, $0.week) } ?? []
+                courses: slot.map { blocks($0.day, $0.week) } ?? [],
+                partnerCourses: partnerCourses(key)
             )
         }
     }
