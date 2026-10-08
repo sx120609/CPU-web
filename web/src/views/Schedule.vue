@@ -12,9 +12,11 @@
     'view-week': viewMode === 'week',
     'view-month': viewMode === 'month',
     'has-style-canvas': hasStyleCanvas,
+    'sd-compact': display.compact,
+    'sd-no-slot-time': !display.showSlotTime,
     [`schedule-style-${scheduleStyle}`]: true,
   }"
-  :style="pageStyle"
+  :style="[pageStyle, displayStyle]"
 >
     <IosAppRecommendation style="--ios-app-recommendation-max-width: 720px" />
     <header class="top">
@@ -47,7 +49,7 @@
           <button type="button" :class="{ active: viewMode === 'month' }" :disabled="loading" @click="setViewMode('month')">月</button>
         </div>
         <button
-          v-if="parsed"
+          v-if="parsed && display.showBackToWeek"
           type="button"
           class="icon-btn"
           :class="{ active: isViewingToday }"
@@ -115,6 +117,11 @@
               <button type="button" class="more-action" @click="moreMenuView = 'style'">
                 <el-icon><Brush /></el-icon>
                 <span>课表风格 · {{ currentStyleTitle }}</span>
+                <el-icon class="more-chevron"><ArrowRight /></el-icon>
+              </button>
+              <button type="button" class="more-action" @click="moreMenuView = 'display'">
+                <el-icon><Operation /></el-icon>
+                <span>显示设置</span>
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
               <button type="button" class="more-action" @click="moreMenuView = 'theme'">
@@ -192,6 +199,69 @@
                   <span class="more-theme-swatch" :style="{ background: themeOption.preview }" />
                   <span>{{ themeOption.label }}</span>
                 </button>
+              </div>
+            </template>
+
+            <template v-else-if="moreMenuView === 'display'">
+              <button type="button" class="more-back" @click="moreMenuView = 'menu'">
+                <el-icon><ArrowLeft /></el-icon>
+                <span>显示设置</span>
+              </button>
+              <div class="display-panel">
+                <p class="display-group">课程格子</p>
+                <label class="background-control">
+                  <span class="background-control-head">
+                    <b>格子高度</b>
+                    <em>{{ display.rowHeight }}%</em>
+                  </span>
+                  <input
+                    type="range"
+                    :min="SCHEDULE_ROW_HEIGHT_MIN"
+                    :max="SCHEDULE_ROW_HEIGHT_MAX"
+                    :step="SCHEDULE_ROW_HEIGHT_STEP"
+                    :value="display.rowHeight"
+                    aria-label="格子高度"
+                    @input="onDisplayRowHeightInput"
+                  />
+                </label>
+                <div class="display-row">
+                  <b>文字大小</b>
+                  <div class="display-segment" role="radiogroup" aria-label="文字大小">
+                    <button
+                      v-for="option in scheduleTextSizeOptions"
+                      :key="option.key"
+                      type="button"
+                      role="radio"
+                      :class="{ active: display.textSize === option.key }"
+                      :aria-checked="display.textSize === option.key"
+                      @click="updateDisplay({ textSize: option.key })"
+                    >
+                      {{ option.label }}
+                    </button>
+                  </div>
+                </div>
+                <div v-for="item in displayCourseSwitches" :key="item.key" class="display-row">
+                  <b>{{ item.label }}</b>
+                  <el-switch
+                    size="small"
+                    :model-value="display[item.key]"
+                    :aria-label="item.label"
+                    @update:model-value="(value: unknown) => updateDisplay({ [item.key]: Boolean(value) })"
+                  />
+                </div>
+                <p class="display-group">课表网格</p>
+                <div v-for="item in displayGridSwitches" :key="item.key" class="display-row">
+                  <b>{{ item.label }}</b>
+                  <el-switch
+                    size="small"
+                    :model-value="display[item.key]"
+                    :disabled="item.key === 'sundayFirst' && !display.showSunday"
+                    :aria-label="item.label"
+                    @update:model-value="(value: unknown) => updateDisplay({ [item.key]: Boolean(value) })"
+                  />
+                </div>
+                <p class="background-note">这些设置用在周视图上，只保存在当前设备。关掉的周六、周日如果有课或补班，那一天仍会显示。</p>
+                <button type="button" class="more-subaction" :disabled="displayIsDefault" @click="resetDisplay">恢复默认</button>
               </div>
             </template>
 
@@ -425,11 +495,17 @@
             :aria-hidden="page.delta !== 0"
           >
             <div class="schedule-body-scroll">
-              <section v-if="viewMode === 'week' && scheduleStyle === 'classic'" class="week-overview" :class="{ 'couple-on': couple.active.value }" aria-label="整周课表">
+              <section
+                v-if="viewMode === 'week' && scheduleStyle === 'classic'"
+                class="week-overview"
+                :class="{ 'couple-on': couple.active.value }"
+                :style="{ '--sd-columns': columnsFor(page).length }"
+                aria-label="整周课表"
+              >
                 <div class="week-grid-head">
                   <div class="time-head">节次</div>
                   <div
-                    v-for="d in page.dayTabs"
+                    v-for="d in visibleTabsFor(page)"
                     :key="d.day"
                     class="week-day-head"
                     :class="{ today: d.isToday }"
@@ -447,32 +523,46 @@
                       <span>{{ slot.end }}</span>
                     </div>
                     <div
-                      v-for="day in 7"
+                      v-for="(day, column) in columnsFor(page)"
                       :key="`bg-${page.key}-${slot.no}-${day}`"
                       class="week-slot-cell"
-                      :style="{ gridColumn: `${day + 1} / ${day + 2}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
+                      :style="{ gridColumn: `${column + 2} / ${column + 3}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
                       :class="{ today: page.dayTabs[day - 1]?.isToday }"
-                      @click="onWeekSlotClick($event, day, slot.no, page.weekValue)"
+                      @click="onWeekPageSlotClick($event, page, day, slot.no)"
                     />
                   </template>
+                  <!-- 非本周的课：淡淡地画在本周空着的节次里。 -->
+                  <article
+                    v-for="piece in offWeekPiecesFor(page)"
+                    :key="`off-${page.weekValue}-${piece.id}`"
+                    class="week-course off-week"
+                    :style="courseBlockStyle(piece, 'me', false, page)"
+                    :title="courseTitle(piece.block.course)"
+                    @click.stop="onOffWeekCourseClick($event, piece.block, page)"
+                  >
+                    <i class="off-week-tag">非本周</i>
+                    <strong>{{ piece.block.course.name }}</strong>
+                    <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
+                  </article>
                   <article
                     v-for="piece in piecesFor(page)"
                     :key="`${page.weekValue}-${piece.id}`"
                     class="week-course"
                     :class="{ 'couple-shared': isCoupleShared(page, piece.block) }"
-                    :style="courseBlockStyle(piece, 'me', isCoupleShared(page, piece.block))"
+                    :style="courseBlockStyle(piece, 'me', isCoupleShared(page, piece.block), page)"
                     :title="courseTitle(piece.block.course)"
-                    @click.stop="onCourseBlockClick($event, piece.block, page.weekValue)"
+                    @click.stop="onWeekPageCourseClick($event, page, piece.block)"
                   >
                     <strong>{{ piece.block.course.name }}</strong>
                     <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
+                    <span v-if="display.showTeacher && piece.block.course.teacher" class="week-course-teacher">{{ piece.block.course.teacher }}</span>
                     <em>{{ piece.block.course.slotNote || piece.block.course.weeks }}</em>
                   </article>
                   <article
                     v-for="block in coupleDataFor(page).partnerBlocks"
                     :key="`ta-${page.weekValue}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
                     class="week-course couple-partner"
-                    :style="courseBlockStyle(block, 'ta')"
+                    :style="courseBlockStyle(block, 'ta', false, page)"
                     :title="`TA · ${courseTitle(block.course)}`"
                     @click.stop="onPartnerCourseClick($event, block)"
                   >
@@ -499,10 +589,14 @@
                 :has-background="hasScheduleBackground"
                 :days="styledDaysFor(page)"
                 :clocks="smallSlots"
-                :now-minutes="nowMinutes"
+                :now-minutes="displayNowMinutes"
                 :tone-resolver="coupleToneResolver"
-                @course="(block, owner, source) => onStyledCourseClick(source, block, owner, page.weekValue)"
-                @slot="(day, slot) => onStyledSlotClick(day, slot, page.weekValue)"
+                :show-teacher="display.showTeacher"
+                :show-slot-time="display.showSlotTime"
+                :compact="display.compact"
+                @course="(block, owner, source) => onStyledPageCourseClick(source, block, owner, page)"
+                @off-week="(block, source) => onOffWeekCourseClick(source, block, page)"
+                @slot="(day, slot) => onWeekPageSlotClick(null, page, day, slot)"
                 @day="(day) => page.delta === 0 && onDayClick(day)"
               />
 
@@ -515,7 +609,7 @@
                 :day="page.day"
                 :pieces="dayPiecesFor(page)"
                 :clocks="smallSlots"
-                :now-minutes="pageIsToday(page) ? nowMinutes : null"
+                :now-minutes="pageIsToday(page) ? displayNowMinutes : null"
                 :completed-before="pageIsPast(page) ? 24 * 60 : null"
                 :empty-note="dayEmptyNote(page)"
                 @course="(block, source) => onCourseBlockClick(source, block, page.weekValue)"
@@ -964,7 +1058,7 @@ import ScheduleUsageNotice from "@/components/jwxt/ScheduleUsageNotice.vue";
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Brush, Calendar, CirclePlus, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, Plus, QuestionFilled, Refresh, Share, Tools, WarningFilled } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Brush, Calendar, CirclePlus, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Operation, Picture, Plus, QuestionFilled, Refresh, Share, Tools, WarningFilled } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
 import { coupleCourseTone } from "@/views/schedule/couple";
@@ -1080,6 +1174,7 @@ import {
   type CourseEditAction,
 } from "@/views/schedule/courseEditor";
 import {
+  addDaysToCalendarYmd,
   buildGraduateFallbackCalendar,
   dayOfWeek,
   extendScheduleWeeksToCalendar,
@@ -1089,8 +1184,24 @@ import {
   resolveGraduateActiveDay,
   resolveGraduateInitialWeek,
   resolveScheduleCurrentWeek,
+  shortDate,
   todayKey,
 } from "@/views/schedule/calendar";
+import {
+  DEFAULT_SCHEDULE_DISPLAY,
+  SCHEDULE_ROW_HEIGHT_MAX,
+  SCHEDULE_ROW_HEIGHT_MIN,
+  SCHEDULE_ROW_HEIGHT_STEP,
+  isDefaultScheduleDisplay,
+  normalizeScheduleDisplay,
+  readStoredScheduleDisplay,
+  scheduleDisplayTextScale,
+  scheduleTextSizeOptions,
+  scheduleWeekColumns,
+  selectOffWeekBlocks,
+  writeStoredScheduleDisplay,
+  type ScheduleDisplaySettings,
+} from "@/views/schedule/displaySettings";
 import { buildScriptableWidgetScript } from "@/views/schedule/scriptableWidget";
 import { resolveSwipeIntent, type SwipeIntent } from "@/views/schedule/swipeGesture";
 import {
@@ -1140,6 +1251,7 @@ const viewMode = ref<PageViewMode>(DEFAULT_SCHEDULE_VIEW_MODE);
 const scheduleTheme = ref<ScheduleThemeKey>(DEFAULT_SCHEDULE_THEME);
 // 课表风格和课程配色、深浅色无关：切换它不动课程数据、所选周次或编辑权限。
 const scheduleStyle = ref<ScheduleStyleKey>(DEFAULT_SCHEDULE_STYLE);
+const display = ref<ScheduleDisplaySettings>({ ...DEFAULT_SCHEDULE_DISPLAY });
 // 重叠课程的显示优先级，课程名 → 正整数，和课表编辑一起读取和保存。
 const schedulePriority = ref<SchedulePriorityMap>({});
 // 读到过服务端的优先级之后保存时才带上这个字段；没读到就不带，服务端会沿用已保存的。
@@ -1309,7 +1421,7 @@ const graduateSourceMeta = ref<{
 } | null>(null);
 const scheduleSource = ref<"jwxt" | "graduate" | "graduate-debug">("jwxt");
 const moreMenuOpen = ref(false);
-const moreMenuView = ref<"menu" | "style" | "theme" | "background">("menu");
+const moreMenuView = ref<"menu" | "style" | "display" | "theme" | "background">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const widgetInstalling = ref(false);
@@ -1922,6 +2034,7 @@ onMounted(() => {
   syncNetworkStatus();
   restoreScheduleTheme();
   scheduleStyle.value = readStoredScheduleStyle();
+  display.value = readStoredScheduleDisplay();
   tickNow();
   nowTimer = window.setInterval(tickNow, 20000);
   document.addEventListener("visibilitychange", tickNow);
@@ -2174,10 +2287,33 @@ const activePageScrollKey = computed(() => (
       ? `week:${currentWeekValue()}`
       : `day:${currentWeekValue()}:${activeDay.value}`
 ));
-const carouselPages = computed<SchedulePageModel[]>(() => {
+/** 周日排在首列时，周日那一列是上一个教学周的周日；`sundayWeek` 记下它属于哪一周（没有上一周时是空字符串）。 */
+type WeekPage = SchedulePageModel & { sundayWeek?: string };
+
+function withLeadingSunday(page: SchedulePageModel): WeekPage {
+  const previous = nextWeekValueFrom(page.weekValue, -1);
+  const sunday = previous
+    ? weekCourseBlocksFor(Number(previous), scheduleForWeek(previous)).filter((block) => block.day === 7)
+    : [];
+  const blocks = [...page.weekCourseBlocks.filter((block) => block.day !== 7), ...sunday]
+    .sort((a, b) => a.startSlot - b.startSlot || a.day - b.day || a.index - b.index);
+  const leading: WeekPage = { ...page, sundayWeek: previous, weekCourseBlocks: blocks, courseCount: blocks.length };
+  const date = pageDate(leading, 7);
+  leading.dayTabs = page.dayTabs.map((tab) => (
+    tab.day === 7 ? { ...tab, date: shortDate(date), isToday: Boolean(date) && date === todayYmd.value } : tab
+  ));
+  return leading;
+}
+
+function weekValueFor(page: WeekPage, day: number) {
+  return day === 7 && page.sundayWeek !== undefined ? page.sundayWeek : page.weekValue;
+}
+
+const carouselPages = computed<WeekPage[]>(() => {
   const deltas = useStaticWeekSwipe.value ? [0] : [-1, 0, 1];
   return deltas.map((delta) => {
-    const page = viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta);
+    const model = viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta);
+    const page = viewMode.value === "week" && display.value.sundayFirst ? withLeadingSunday(model) : model;
     // 合并连续节次时备注会被换成节次范围；把自己写的备注放回去，给速览和编辑器用。
     return {
       ...page,
@@ -2198,11 +2334,11 @@ const couplePageData = computed(() => {
   if (!couple.active.value) return pages;
   const reader = couple.partnerReader.value;
   for (const page of carouselPages.value) {
-    const dates = normalizeCalendarWeekDays(weekInfoFor(page.weekValue)?.days ?? []).slice(0, 7);
     const days = viewMode.value === "week" ? [1, 2, 3, 4, 5, 6, 7] : [page.day];
     const data: CouplePageData = { partnerBlocks: [], shared: new Set() };
     for (const day of days) {
-      const theirs = dates[day - 1] ? reader.blocksForDate(dates[day - 1]) : null;
+      const date = pageDate(page, day);
+      const theirs = date ? reader.blocksForDate(date) : null;
       if (!theirs) continue;
       const mine = page.weekCourseBlocks.filter((block) => block.day === day);
       const mineKeys = new Set(mine.map(coupleBlockKey));
@@ -3391,11 +3527,14 @@ function laneStyle(item: DrawnBlock) {
   };
 }
 
-function courseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false) {
+function courseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false, page?: WeekPage) {
   const block = drawnBlockOf(item);
   const colors = coupleTone(owner, block.course.name, shared);
+  // 关掉周末或把周日挪到首列以后，星期几不再等于第几列。
+  const column = page ? columnsFor(page).indexOf(block.day) + 2 : block.day + 1;
   return {
-    gridColumn: `${block.day + 1} / ${block.day + 2}`,
+    ...(column < 2 ? { display: "none" } : {}),
+    gridColumn: `${column} / ${column + 1}`,
     gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
     ...laneStyle(item),
     "--course-bg": colors.bg,
@@ -3599,13 +3738,15 @@ const nowClockText = computed(() => (nowMinutes.value === null ? "" : formatCloc
 
 /** 经典周视图里「现在」的位置：今天在这一页时才有。 */
 function classicNowFor(page: SchedulePageModel) {
-  if (nowMinutes.value === null) return null;
+  if (displayNowMinutes.value === null) return null;
   const today = page.dayTabs.find((tab) => tab.isToday);
   if (!today) return null;
-  const position = nowRowPosition(nowMinutes.value, smallSlots);
+  const column = columnsFor(page).indexOf(today.day);
+  if (column < 0) return null;
+  const position = nowRowPosition(displayNowMinutes.value, smallSlots);
   if (!position) return null;
   return {
-    column: today.day,
+    column: column + 1,
     row: position.row,
     style: { top: position.inGap ? "-2px" : `${position.fraction * 100}%` },
   };
@@ -3631,9 +3772,151 @@ function dayPiecesFor(page: SchedulePageModel) {
   return piecesFor(page).filter((piece) => piece.block.day === page.day);
 }
 
-function pageDate(page: SchedulePageModel, day = page.day) {
-  const value = normalizeCalendarWeekDays(weekInfoFor(page.weekValue)?.days ?? [])[day - 1] ?? "";
-  return /^\d{4}-\d{2}-\d{2}$/u.test(value) ? value : "";
+function pageDate(page: WeekPage, day = page.day) {
+  const days = normalizeCalendarWeekDays(weekInfoFor(page.weekValue)?.days ?? []);
+  const valid = (value: string) => (/^\d{4}-\d{2}-\d{2}$/u.test(value) ? value : "");
+  // 排在首列的周日是周一的前一天。
+  if (day === 7 && page.sundayWeek !== undefined) {
+    const monday = valid(days[0] ?? "");
+    return monday ? addDaysToCalendarYmd(monday, -1) : "";
+  }
+  return valid(days[day - 1] ?? "");
+}
+
+// MARK: 显示设置
+
+const displayCourseSwitches: Array<{ key: "compact" | "showTeacher" | "showOffWeek"; label: string }> = [
+  { key: "compact", label: "紧凑排版" },
+  { key: "showTeacher", label: "显示老师" },
+  { key: "showOffWeek", label: "显示非本周课程" },
+];
+const displayGridSwitches: Array<{
+  key: "showSlotTime" | "highlightNow" | "showBackToWeek" | "showSaturday" | "showSunday" | "sundayFirst";
+  label: string;
+}> = [
+  { key: "showSlotTime", label: "显示节次时间" },
+  { key: "highlightNow", label: "高亮当前节次" },
+  { key: "showBackToWeek", label: "显示回到本周按钮" },
+  { key: "showSaturday", label: "显示周六" },
+  { key: "showSunday", label: "显示周日" },
+  { key: "sundayFirst", label: "周日排在首列" },
+];
+const displayIsDefault = computed(() => isDefaultScheduleDisplay(display.value));
+const displayNowMinutes = computed(() => (display.value.highlightNow ? nowMinutes.value : null));
+const displayStyle = computed(() => ({
+  "--sd-row-scale": String(display.value.rowHeight / 100),
+  "--sd-text-scale": String(scheduleDisplayTextScale(display.value)),
+}));
+
+function updateDisplay(patch: Partial<ScheduleDisplaySettings>) {
+  display.value = normalizeScheduleDisplay({ ...display.value, ...patch });
+  writeStoredScheduleDisplay(display.value);
+}
+
+function resetDisplay() {
+  updateDisplay({ ...DEFAULT_SCHEDULE_DISPLAY });
+}
+
+function onDisplayRowHeightInput(event: Event) {
+  updateDisplay({ rowHeight: Number((event.target as HTMLInputElement).value) });
+}
+
+/** 每一页从左到右画哪几天。 */
+const pageColumns = computed(() => {
+  const pages = new Map<string, number[]>();
+  const adjustments = calendar.value?.adjustments ?? [];
+  for (const page of carouselPages.value) {
+    const partner = coupleDataFor(page).partnerBlocks;
+    pages.set(page.key, scheduleWeekColumns(display.value, (day) => {
+      if (page.weekCourseBlocks.some((block) => block.day === day)) return true;
+      if (partner.some((block) => block.day === day)) return true;
+      const date = pageDate(page, day);
+      return Boolean(date) && adjustments.some((item) => item.kind === "swap" && item.date === date);
+    }));
+  }
+  return pages;
+});
+
+const ALL_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
+
+function columnsFor(page: SchedulePageModel) {
+  return pageColumns.value.get(page.key) ?? ALL_WEEKDAYS;
+}
+
+function visibleTabsFor(page: SchedulePageModel) {
+  return columnsFor(page).map((day) => page.dayTabs[day - 1]).filter(Boolean);
+}
+
+// 非本周的课只有拿到整学期课表时才挑得出来；按周返回的旧数据里没有别的周，这里自然是空的。
+const pageOffWeekPieces = computed(() => {
+  const pages = new Map<string, PlacedCourseBlock[]>();
+  if (!display.value.showOffWeek || viewMode.value !== "week") return pages;
+  const adjustments = calendar.value?.adjustments ?? [];
+  for (const page of carouselPages.value) {
+    const source = scheduleForWeek(page.weekValue);
+    if (!source) continue;
+    const all = withOwnCourseNotes(weekCourseBlocksFor(0, source), scheduleEdits.value);
+    const taken = [...page.weekCourseBlocks, ...coupleDataFor(page).partnerBlocks];
+    const blocks = selectOffWeekBlocks(all, taken, (day) => {
+      // 放假和补班的那一天按日期另有安排，不往里填别的周的课。
+      const date = pageDate(page, day);
+      if (date && adjustments.some((item) => item.date === date)) return 0;
+      return Number(weekValueFor(page, day) || 0);
+    });
+    pages.set(page.key, placeCourseBlocks(blocks));
+  }
+  return pages;
+});
+
+function offWeekPiecesFor(page: SchedulePageModel) {
+  return pageOffWeekPieces.value.get(page.key) ?? [];
+}
+
+function clickSuppressed() {
+  return dragState.suppressClick || dragState.dragging || dragState.settling;
+}
+
+function onWeekPageCourseClick(event: Event, page: WeekPage, block: WeekCourseBlock) {
+  const target = weekValueFor(page, block.day);
+  if (target === page.weekValue) {
+    onCourseBlockClick(event, block, target);
+    return;
+  }
+  // 首列的周日属于上一周：打开它，但不把整页翻到上一周去。
+  event.stopPropagation();
+  if (clickSuppressed()) {
+    event.preventDefault();
+    return;
+  }
+  if (target) openQuickLook(block, target);
+}
+
+function onWeekPageSlotClick(event: MouseEvent | null, page: WeekPage, day: number, slot: number) {
+  const target = weekValueFor(page, day);
+  if (target === page.weekValue) {
+    if (event) onWeekSlotClick(event, day, slot, target);
+    else onStyledSlotClick(day, slot, target);
+    return;
+  }
+  if (clickSuppressed() || !target || !ensureScheduleEditEnabled()) return;
+  void openAddCourse(day, slot, target);
+}
+
+function onStyledPageCourseClick(source: Event, block: WeekCourseBlock, owner: TileOwner, page: WeekPage) {
+  if (owner === "ta") {
+    onPartnerCourseClick(source, block);
+    return;
+  }
+  onWeekPageCourseClick(source, page, block);
+}
+
+function onOffWeekCourseClick(event: Event, block: WeekCourseBlock, page: WeekPage) {
+  event.stopPropagation();
+  if (clickSuppressed()) {
+    event.preventDefault();
+    return;
+  }
+  openQuickLook(block, page.weekValue, { canEdit: false, ownerLabel: "这门课本周不上" });
 }
 
 function pageIsToday(page: SchedulePageModel) {
@@ -3661,7 +3944,8 @@ const styledPageDays = computed(() => {
   for (const page of carouselPages.value) {
     const pieces = piecesFor(page);
     const coupleData = coupleDataFor(page);
-    pages.set(page.key, page.dayTabs.map((tab) => {
+    const offWeek = offWeekPiecesFor(page);
+    pages.set(page.key, visibleTabsFor(page).map((tab) => {
       const rawDate = pageDate(page, tab.day);
       const adjustment = rawDate ? adjustments.find((item) => item.date === rawDate) : undefined;
       const own = pieces.filter((piece) => piece.block.day === tab.day);
@@ -3672,6 +3956,7 @@ const styledPageDays = computed(() => {
         isToday: tab.isToday,
         adjustmentKind: adjustment?.kind ?? null,
         pieces: own,
+        offWeekPieces: offWeek.filter((piece) => piece.block.day === tab.day),
         ...(coupled ? {
           partnerPieces: placeCourseBlocks(coupleData.partnerBlocks.filter((block) => block.day === tab.day)),
           sharedIds: new Set(own

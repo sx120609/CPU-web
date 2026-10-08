@@ -419,6 +419,59 @@
   width: 100%;
   accent-color: var(--schedule-accent);
 }
+.display-panel {
+  display: grid;
+  gap: 8px;
+  max-height: min(62vh, 520px);
+  padding: 0 4px 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.display-group {
+  margin: 6px 0 0;
+  color: var(--schedule-text-secondary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 600;
+}
+.display-row {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  --el-switch-on-color: var(--schedule-accent);
+}
+.display-row b {
+  min-width: 0;
+  color: var(--schedule-text);
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
+}
+.display-segment {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--cpu-radius-m);
+  background: var(--schedule-surface-bg);
+}
+.display-segment button {
+  min-width: 40px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--cpu-radius-s);
+  background: transparent;
+  color: var(--schedule-text-secondary);
+  font: inherit;
+  font-size: var(--cpu-fs-xs);
+  cursor: pointer;
+}
+.display-segment button.active {
+  background: var(--schedule-accent-pale);
+  color: var(--schedule-accent-strong);
+  font-weight: 600;
+}
 .more-theme-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

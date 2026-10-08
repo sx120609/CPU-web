@@ -13,6 +13,8 @@ export interface StyledDay {
   /** 这一天被调休时是 "off"（放假）或 "swap"（补班）。 */
   adjustmentKind: "off" | "swap" | null;
   pieces: PlacedCourseBlock[];
+  /** 这一周不上的课，淡显在空着的节次里。 */
+  offWeekPieces?: PlacedCourseBlock[];
   /** 情侣课表：TA 这一天的课，和我的课左右各占半格。 */
   partnerPieces?: PlacedCourseBlock[];
   /** 两人一起上的课（`pieces` 里的标识），占满整格。 */

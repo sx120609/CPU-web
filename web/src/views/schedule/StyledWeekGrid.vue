@@ -10,6 +10,8 @@
         'ss-no-header': !showsDateHeader,
         'ss-coupled': coupled,
         'ss-framed': framesPanel,
+        'ss-compact': compact,
+        'ss-no-slot-time': !showSlotTime,
       },
     ]"
     :style="gridStyle"
@@ -108,20 +110,23 @@
         partner: tile.owner === 'ta',
         shared: tile.shared,
         narrow: tile.lanes > 1 || coupled,
+        'off-week': tile.offWeek,
       }"
       :style="tile.style"
       :title="tile.title"
       role="button"
       tabindex="0"
-      @click.stop="emit('course', tile.block, tile.owner, $event)"
-      @keydown.enter.prevent="emit('course', tile.block, tile.owner, $event)"
+      @click.stop="openTile(tile, $event)"
+      @keydown.enter.prevent="openTile(tile, $event)"
     >
+      <i v-if="tile.offWeek" class="ss-off-tag">非本周</i>
       <div v-if="layout.course === 'departure'" class="ss-tile-time">
         <i class="ss-mark" />
         <b>{{ tile.start }}</b>
       </div>
       <strong>{{ tile.block.course.name }}</strong>
       <span v-if="tile.location">@{{ tile.location }}</span>
+      <span v-if="tile.teacher">{{ tile.teacher }}</span>
       <em v-if="tile.status" class="ss-tile-status">{{ tile.status }}</em>
     </article>
 
@@ -184,7 +189,14 @@ const props = withDefaults(defineProps<{
   /** 过去的日期：到这个分钟为止结束的课算已结束。 */
   completedBefore?: number | null;
   toneResolver?: TileToneResolver | null;
+  showTeacher?: boolean;
+  /** 关掉以后节次栏只写第几节。 */
+  showSlotTime?: boolean;
+  compact?: boolean;
 }>(), {
+  showTeacher: false,
+  showSlotTime: true,
+  compact: false,
   hasBackground: false,
   nowMinutes: null,
   showsDateHeader: true,
@@ -195,6 +207,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (event: "course", block: WeekCourseBlock, owner: TileOwner, source: Event): void;
+  (event: "offWeek", block: WeekCourseBlock, source: Event): void;
   (event: "slot", day: number, slot: number): void;
   (event: "day", day: number): void;
 }>();
@@ -282,10 +295,12 @@ interface Tile {
   block: WeekCourseBlock;
   owner: TileOwner;
   shared: boolean;
+  offWeek: boolean;
   current: boolean;
   lanes: number;
   start: string;
   location: string | null;
+  teacher: string | null;
   status: string | null;
   title: string;
   style: Record<string, string | number>;
@@ -301,7 +316,12 @@ function toneFor(block: WeekCourseBlock, owner: TileOwner, shared: boolean) {
   return scheduleStyleCourseTone(block.course.name, props.palette, props.dark, props.hasBackground);
 }
 
-function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, owner: TileOwner): Tile | null {
+function openTile(tile: Tile, source: Event) {
+  if (tile.offWeek) emit("offWeek", tile.block, source);
+  else emit("course", tile.block, tile.owner, source);
+}
+
+function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, owner: TileOwner, offWeek = false): Tile | null {
   const first = rowIndex.value.get(piece.startSlot);
   const last = rowIndex.value.get(piece.endSlot);
   if (first === undefined && last === undefined) return null;
@@ -317,14 +337,16 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
   const offset = half ? (owner === "ta" ? 50 : 0) : (100 / piece.lanes) * piece.lane;
   const single = !half && piece.lanes === 1;
   return {
-    key: `${owner}-${item.day}-${piece.id}`,
+    key: `${offWeek ? "off" : owner}-${item.day}-${piece.id}`,
     block: piece.block,
     owner,
     shared,
-    current: owner === "me" && blockPhase(status, display) === "current",
+    offWeek,
+    current: !offWeek && owner === "me" && blockPhase(status, display) === "current",
     lanes: piece.lanes,
     start: rows.value[startRow]?.start ?? "",
     location: cleanLocation(piece.block.course.location),
+    teacher: props.showTeacher && !props.dayPresentation ? (piece.block.course.teacher?.trim() || null) : null,
     status: props.dayPresentation && single && owner === "me" ? blockStatusLabel(status, display) : null,
     title: [
       owner === "ta" ? `TA · ${piece.block.course.name}` : piece.block.course.name,
@@ -349,6 +371,11 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
 const tiles = computed(() => {
   const list: Tile[] = [];
   props.days.forEach((item, column) => {
+    // 非本周的课先画，压在本周的课下面。
+    for (const piece of item.offWeekPieces ?? []) {
+      const tile = buildTile(item, column, piece, "me", true);
+      if (tile) list.push(tile);
+    }
     for (const piece of item.pieces) {
       const tile = buildTile(item, column, piece, "me");
       if (tile) list.push(tile);
@@ -389,7 +416,8 @@ const nowPlacement = computed(() => {
   --ss-axis-width: 42px;
   --ss-header-height: 48px;
   --ss-row-gap: 3px;
-  --ss-row-min: 48px;
+  // 显示设置里的格子高度：页面没给这个变量时就是 1。
+  --ss-row-min: calc(48px * var(--sd-row-scale, 1));
   --ss-tile-inset: 1px;
   --ss-panel-padding: 6px;
   --ss-panel-radius: 20px;
@@ -398,7 +426,7 @@ const nowPlacement = computed(() => {
   display: grid;
   width: 100%;
   max-width: 720px;
-  min-height: 100%;
+  min-height: calc(100% * var(--sd-row-scale, 1));
   margin: 0 auto;
   padding: var(--ss-panel-padding);
   column-gap: var(--ss-column-gap);
@@ -416,6 +444,7 @@ const nowPlacement = computed(() => {
 .ss-week.ss-day-presentation {
   --ss-axis-width: 48px;
   --ss-row-min: 56px;
+  min-height: 100%;
   column-gap: 8px;
 }
 .ss-table {
@@ -662,6 +691,19 @@ const nowPlacement = computed(() => {
 .ss-classic .ss-slot-label b {
   color: var(--schedule-text);
 }
+.ss-no-slot-time .ss-slot-label span {
+  display: none;
+}
+// 站牌的节次栏以时间为主；不显示时间时改成只写第几节。
+.ss-board.ss-no-slot-time .ss-slot-label b,
+.ss-board.ss-no-slot-time .ss-slot-label small {
+  display: none;
+}
+.ss-board.ss-no-slot-time .ss-slot-label span {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+}
 
 // 空节次
 .ss-cell {
@@ -772,6 +814,38 @@ const nowPlacement = computed(() => {
 }
 .ss-tile-status {
   display: none;
+}
+// 文字大小：整段文字一起缩放，行数限制照旧。
+.ss-week:not(.ss-day-presentation) .ss-tile strong,
+.ss-week:not(.ss-day-presentation) .ss-tile span {
+  zoom: var(--sd-text-scale, 1);
+}
+.ss-compact:not(.ss-day-presentation) .ss-tile {
+  padding: 2px 3px;
+  gap: 1px;
+  line-height: 1.12;
+}
+.ss-compact:not(.ss-day-presentation) .ss-tile strong {
+  -webkit-line-clamp: 5;
+}
+// 非本周：压在本周课程下面，褪色，带一个小标记。
+.ss-tile.off-week {
+  z-index: 1;
+  opacity: 0.5;
+  filter: saturate(0.55);
+}
+.ss-off-tag {
+  flex: 0 0 auto;
+  max-width: 100%;
+  padding: 0 3px;
+  overflow: hidden;
+  border: 0.5px solid currentColor;
+  border-radius: 3px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 // 列够宽、课够高时用正常的阅读字号。
 @container (min-width: 70px) and (min-height: 64px) {

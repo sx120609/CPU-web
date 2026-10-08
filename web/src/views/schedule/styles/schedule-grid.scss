@@ -87,7 +87,8 @@
 .week-overview {
   width: 100%;
   max-width: 720px;
-  min-height: 100%;
+  // 显示设置里的格子高度：100% 时刚好铺满一屏。
+  min-height: calc(100% * var(--sd-row-scale, 1));
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -96,7 +97,7 @@
 .week-grid-head,
 .week-grid-body {
   display: grid;
-  grid-template-columns: 44px repeat(7, minmax(0, 1fr));
+  grid-template-columns: 44px repeat(var(--sd-columns, 7), minmax(0, 1fr));
   gap: 4px;
 }
 .week-grid-head {
@@ -164,7 +165,7 @@ body[data-cpu-native-app="1"] .schedule-page .week-grid-head {
 .week-grid-body {
   flex: 1 0 auto;
   position: relative;
-  grid-template-rows: repeat(12, minmax(48px, 1fr));
+  grid-template-rows: repeat(12, minmax(calc(48px * var(--sd-row-scale, 1)), 1fr));
   align-items: stretch;
 }
 .slot-axis {
@@ -321,6 +322,49 @@ body[data-cpu-native-app="1"] .schedule-page .week-grid-head {
   line-height: 1.1;
   font-style: normal;
   opacity: 0.86;
+}
+// 显示设置：文字大小是整段文字一起缩放，行数限制照旧。
+.week-course strong,
+.week-course span,
+.week-course em {
+  zoom: var(--sd-text-scale, 1);
+}
+.week-course .week-course-teacher {
+  -webkit-line-clamp: 1;
+  font-weight: 600;
+}
+.schedule-page.sd-compact .week-course {
+  gap: 1px;
+  padding: 2px 1px;
+}
+.schedule-page.sd-compact .week-course strong {
+  -webkit-line-clamp: 5;
+  line-height: 1.12;
+}
+.schedule-page.sd-no-slot-time .week-grid-body .slot-axis span {
+  display: none;
+}
+// 非本周：压在本周课程下面，褪色，带一个小标记。
+.week-course.off-week {
+  z-index: 1;
+  opacity: 0.5;
+  filter: saturate(0.55);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.off-week-tag {
+  align-self: center;
+  max-width: 100%;
+  padding: 0 3px;
+  overflow: hidden;
+  border: 0.5px solid currentColor;
+  border-radius: 3px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 .empty-day {
   min-height: 240px;

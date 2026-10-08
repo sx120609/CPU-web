@@ -140,7 +140,7 @@
 
   .week-grid-head,
   .week-grid-body {
-    grid-template-columns: 38px repeat(7, minmax(0, 1fr));
+    grid-template-columns: 38px repeat(var(--sd-columns, 7), minmax(0, 1fr));
     gap: 3px;
   }
 
@@ -162,7 +162,7 @@
   }
 
   .week-grid-body {
-    grid-template-rows: repeat(12, minmax(44px, 1fr));
+    grid-template-rows: repeat(12, minmax(calc(44px * var(--sd-row-scale, 1)), 1fr));
   }
 
   .slot-axis b {
@@ -240,7 +240,7 @@
   }
   .week-grid-head,
   .week-grid-body {
-    grid-template-columns: 34px repeat(7, minmax(0, 1fr));
+    grid-template-columns: 34px repeat(var(--sd-columns, 7), minmax(0, 1fr));
     gap: 2px;
   }
   .day-grid-body {
@@ -261,7 +261,7 @@
     font-size: 10px;
   }
   .week-grid-body {
-    grid-template-rows: repeat(12, minmax(40px, 1fr));
+    grid-template-rows: repeat(12, minmax(calc(40px * var(--sd-row-scale, 1)), 1fr));
   }
   .slot-axis b {
     font-size: 11px;
