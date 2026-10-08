@@ -109,19 +109,18 @@
   opacity: 1;
 }
 
-// TA 的课右上角一个小标记，颜色之外再给一个能认出来的记号。
+// TA 的课在课名上面一行有一个小标记，颜色之外再给一个能认出来的记号。
 .couple-ta-tag {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  padding: 0 2px;
-  border-radius: 3px;
-  background: var(--course-border);
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--course-text);
   color: var(--course-bg);
-  font-size: 7px;
+  font-size: 9px;
   font-style: normal;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 13px;
 }
 .week-course.couple-partner,
 .day-course-block.couple-partner {
@@ -134,42 +133,38 @@
   font-size: 10px;
 }
 
-// 周视图：两人的课撞在同一时段时，TA 的课收成这一列右边的一条色带，我的课让出这一条；
-// 其余的课和一起上的课都占满整格。
-.week-overview {
-  --couple-strip: 9px;
-}
-.week-overview.couple-on .week-course.couple-partner.couple-split {
-  justify-self: end;
-  width: calc(var(--couple-strip) - 2px);
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 3px;
-  background: var(--course-border);
-}
-.week-overview.couple-on .week-course.couple-partner.couple-split > * {
-  display: none;
-}
-.week-course.couple-shared,
-.day-course-block.couple-shared {
+// 周视图：我的课下面的一行，写这节课 TA 在做什么。一起上就写「一起上」，TA 这时有别的课
+// 就写「TA 课名」（TA 的那门课不再另画一格）。
+.week-course.couple-noted {
   position: relative;
+  padding-bottom: 18px;
 }
-.week-course.couple-shared::after,
-.day-course-block.couple-shared::after {
-  content: "";
+.couple-notes {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 9px;
-  height: 9px;
-  background: var(--couple-accent);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z'/%3E%3C/svg%3E") center / contain no-repeat;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
-.day-course-block.couple-shared::after {
-  top: 8px;
-  right: 8px;
-  width: 13px;
-  height: 13px;
+.couple-note {
+  box-sizing: border-box;
+  height: 14px;
+  padding: 0 3px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.couple-note.together {
+  border-color: color-mix(in srgb, var(--couple-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--couple-accent) 14%, var(--schedule-surface-bg, #fff));
+  color: var(--couple-accent);
+  cursor: inherit;
 }

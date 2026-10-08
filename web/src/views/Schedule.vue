@@ -461,6 +461,8 @@
           :clocks="smallSlots"
           :priorities="schedulePriority"
           can-open-day
+          :partner-counts="monthPartnerCounts"
+          :partner-tone="monthPartnerTone"
           :can-shift-previous="canChangeMonth(-1)"
           :can-shift-next="canChangeMonth(1)"
           @shift="changeMonth"
@@ -550,7 +552,7 @@
                     v-for="piece in piecesFor(page)"
                     :key="`${page.weekValue}-${piece.id}`"
                     class="week-course"
-                    :class="{ 'couple-shared': isCoupleShared(page, piece.block), 'couple-split': isCoupleSplit(page, piece.block, 'me') }"
+                    :class="{ 'couple-noted': isCoupleShared(page, piece.block) || coupleClashesFor(page, piece.block).length > 0 }"
                     :style="courseBlockStyle(piece, 'me', isCoupleShared(page, piece.block), page)"
                     :title="courseTitle(piece.block.course)"
                     @click.stop="onWeekPageCourseClick($event, page, piece.block)"
@@ -559,12 +561,22 @@
                     <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
                     <span v-if="display.showTeacher && piece.block.course.teacher" class="week-course-teacher">{{ piece.block.course.teacher }}</span>
                     <em>{{ piece.block.course.slotNote || piece.block.course.weeks }}</em>
+                    <div v-if="isCoupleShared(page, piece.block) || coupleClashesFor(page, piece.block).length" class="couple-notes">
+                      <b v-if="isCoupleShared(page, piece.block)" class="couple-note together">一起上</b>
+                      <b
+                        v-for="other in coupleClashesFor(page, piece.block).slice(0, 1)"
+                        :key="`${other.startSlot}-${other.course.name}`"
+                        class="couple-note"
+                        :style="coupleNoteStyle(other)"
+                        role="button"
+                        @click.stop="onPartnerCourseClick($event, other)"
+                      >TA {{ coupleClashesFor(page, piece.block).length > 1 ? `${coupleClashesFor(page, piece.block).length} 门课` : other.course.name }}</b>
+                    </div>
                   </article>
                   <article
-                    v-for="block in coupleDataFor(page).partnerBlocks"
+                    v-for="block in couplePartnerTilesFor(page)"
                     :key="`ta-${page.weekValue}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
                     class="week-course couple-partner"
-                    :class="{ 'couple-split': isCoupleSplit(page, block, 'ta') }"
                     :style="courseBlockStyle(block, 'ta', false, page)"
                     :title="`TA · ${courseTitle(block.course)}`"
                     @click.stop="onPartnerCourseClick($event, block)"
@@ -2376,6 +2388,21 @@ function isCoupleShared(page: SchedulePageModel, block: WeekCourseBlock) {
 function isCoupleSplit(page: SchedulePageModel, block: WeekCourseBlock, owner: "me" | "ta") {
   return coupleDataFor(page).split.has(`${owner}|${coupleBlockKey(block)}`);
 }
+/** TA 和我这门课撞在同一时段的课：不另画一格，写在我的课下面。 */
+function coupleClashesFor(page: SchedulePageModel, block: WeekCourseBlock) {
+  if (!isCoupleSplit(page, block, "me")) return [];
+  return coupleDataFor(page).partnerBlocks.filter((other) => (
+    other.day === block.day && other.startSlot <= block.endSlot && block.startSlot <= other.endSlot
+  ));
+}
+/** TA 单独占一格的课：和我的课撞在一起的那些已经写在我的课下面了。 */
+function couplePartnerTilesFor(page: SchedulePageModel) {
+  return coupleDataFor(page).partnerBlocks.filter((block) => !isCoupleSplit(page, block, "ta"));
+}
+function coupleNoteStyle(block: WeekCourseBlock) {
+  const tone = coupleTone("ta", block.course.name);
+  return { background: tone.bg, color: tone.text, borderColor: tone.border };
+}
 const coupleBound = computed(() => couple.status.value?.status === "active");
 const coupleBarStyle = computed(() => {
   const value = couple.status.value;
@@ -3523,6 +3550,22 @@ function coupleTone(owner: "me" | "ta", name: string) {
   if (owner !== "ta" || value?.status !== "active") return toneFor(name);
   return coupleCourseTone(value.partner.color, name, appearance.isDark);
 }
+/** 月视图里 TA 每天有几门课。 */
+const monthPartnerCounts = computed(() => {
+  const counts: Record<string, number> = {};
+  if (!couple.active.value || viewMode.value !== "month") return counts;
+  const reader = couple.partnerReader.value;
+  for (const item of monthDays.value) {
+    const total = new Set((reader.blocksForDate(item.date) ?? []).map((block) => block.course.name)).size;
+    if (total) counts[item.date] = total;
+  }
+  return counts;
+});
+const monthPartnerTone = computed(() => {
+  if (!couple.active.value) return null;
+  const tone = coupleTone("ta", "");
+  return { accent: tone.text, fill: tone.bg };
+});
 const couplePartnerName = computed(() => {
   const value = couple.status.value;
   return value?.status === "active" ? value.partner.nickname || "TA" : "TA";
@@ -3539,31 +3582,26 @@ function drawnBlockOf(item: DrawnBlock) {
 }
 
 // 并排的重叠课程按所在的道分宽度。
-// `strip`：这门课和 TA 的课撞在一起时，右边给 TA 留出一条色带的宽度。
-function laneStyle(item: DrawnBlock, strip = false) {
-  const lanes = "block" in item ? item.lanes : 1;
-  const lane = "block" in item ? item.lane : 0;
-  if (lanes <= 1 && !strip) return {};
-  const room = strip ? "(100% - var(--couple-strip))" : "100%";
+function laneStyle(item: DrawnBlock) {
+  if (!("block" in item) || item.lanes <= 1) return {};
+  const share = 100 / item.lanes;
   return {
     justifySelf: "start",
-    width: `calc(${room} / ${lanes} - 2px)`,
-    marginLeft: `calc(${room} / ${lanes} * ${lane} + 1px)`,
+    width: `calc(${share}% - 2px)`,
+    marginLeft: `calc(${share * item.lane}% + 1px)`,
   };
 }
 
 function courseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false, page?: WeekPage) {
   const block = drawnBlockOf(item);
   const colors = coupleTone(owner, block.course.name);
-  const split = Boolean(page && !shared && isCoupleSplit(page, block, owner));
   // 关掉周末或把周日挪到首列以后，星期几不再等于第几列。
   const column = page ? columnsFor(page).indexOf(block.day) + 2 : block.day + 1;
   return {
     ...(column < 2 ? { display: "none" } : {}),
     gridColumn: `${column} / ${column + 1}`,
     gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
-    // 撞在一起时 TA 的课收成右边一条色带（宽度在样式里），我的课让出这一条。
-    ...(split && owner === "ta" ? {} : laneStyle(item, split)),
+    ...laneStyle(item),
     "--course-bg": colors.bg,
     "--course-border": colors.border,
     "--course-text": colors.text,

@@ -1,7 +1,7 @@
 <template>
   <!-- 月视图不画节次网格，而是一张日历：每天一格，格子里是公历日、农历或节日，
        下面直接列出当天的课，一门一行，放不下的收成「+N」。点一天进入那天的日视图。 -->
-  <section class="sm" :class="[`sm-${visualStyle}`, { 'sm-dark': dark }]">
+  <section class="sm" :class="[`sm-${visualStyle}`, { 'sm-dark': dark, 'sm-coupled': coupled }]">
     <div class="sm-calendar">
       <h3 v-if="visualStyle === 'paper'" class="sm-month-title">{{ paperTitle }}</h3>
       <div class="sm-weekdays">
@@ -41,6 +41,8 @@
           <span class="sm-courses">
             <i v-for="entry in courseLines(item).shown" :key="entry.name" :style="{ color: entry.accent, background: entry.fill }">{{ entry.name }}</i>
             <u v-if="courseLines(item).more">+{{ courseLines(item).more }}</u>
+            <!-- 情侣课表：TA 这一天有几门课，单独一行，用 TA 的颜色。 -->
+            <i v-if="partnerCounts[item.date]" class="sm-ta" :style="partnerStyle">TA {{ partnerCounts[item.date] }} 门</i>
           </span>
           <em v-if="item.adjustment" class="sm-badge" :class="item.adjustment.kind">{{ item.adjustment.kind === "off" ? "休" : "班" }}</em>
         </button>
@@ -71,6 +73,10 @@ const props = withDefaults(defineProps<{
   priorities?: SchedulePriorityMap;
   /** 能不能从这里跳到所选那天的日视图。 */
   canOpenDay?: boolean;
+  /** 情侣课表：日期 → TA 这一天的课程门数；没开双人模式时是空的。 */
+  partnerCounts?: Record<string, number>;
+  /** TA 那一行的颜色。 */
+  partnerTone?: { accent: string; fill: string } | null;
   /** 还有没有上一个月、下一个月可以翻。 */
   canShiftPrevious?: boolean;
   canShiftNext?: boolean;
@@ -78,6 +84,8 @@ const props = withDefaults(defineProps<{
   hasBackground: false,
   priorities: () => ({}),
   canOpenDay: false,
+  partnerCounts: () => ({}),
+  partnerTone: null,
   canShiftPrevious: false,
   canShiftNext: false,
 });
@@ -196,6 +204,9 @@ function courseLines(item: MonthDay) {
   return monthCourseLines(courseMarks(item), MAX_COURSE_LINES);
 }
 
+const coupled = computed(() => Object.keys(props.partnerCounts).length > 0);
+const partnerStyle = computed(() => (props.partnerTone ? { color: props.partnerTone.accent, background: props.partnerTone.fill } : {}));
+
 /** 点一天：教学周里的日子进入那天的日视图，其余只是选中。 */
 function onDayClick(item: MonthDay) {
   if (props.canOpenDay && item.slot) emit("open-day", item.date);
@@ -204,11 +215,13 @@ function onDayClick(item: MonthDay) {
 
 function dayLabel(item: MonthDay) {
   const names = courseMarks(item).map((entry) => entry.name);
+  const theirs = props.partnerCounts[item.date] ?? 0;
   return [
     monthDayTitle(item.date),
     item.subtitle,
     item.adjustment ? (item.adjustment.kind === "off" ? "休息" : "补班") : "",
     names.length ? `${names.length} 门课：${names.join("、")}` : "没有课",
+    theirs ? `TA ${theirs} 门课` : "",
   ].filter(Boolean).join("，");
 }
 </script>
@@ -376,6 +389,15 @@ function dayLabel(item: MonthDay) {
   line-height: 14px;
   text-align: left;
   white-space: nowrap;
+}
+// TA 的那一行排在最下面，和上面我的课隔开一点。
+.sm-courses .sm-ta {
+  margin-top: 1px;
+  border-radius: 7px;
+  text-align: center;
+}
+.sm.sm-coupled {
+  --sm-row-height: 108px;
 }
 .sm-courses u {
   height: 12px;

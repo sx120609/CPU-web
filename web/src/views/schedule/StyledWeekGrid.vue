@@ -110,7 +110,8 @@
         partner: tile.owner === 'ta',
         shared: tile.shared,
         narrow: tile.lanes > 1,
-        strip: tile.strip,
+        tiny: tile.lanes > 2,
+        'has-notes': tile.shared || tile.notes.length > 0,
         'off-week': tile.offWeek,
       }"
       :style="tile.style"
@@ -120,19 +121,30 @@
       @click.stop="openTile(tile, $event)"
       @keydown.enter.prevent="openTile(tile, $event)"
     >
-      <!-- 和我的课撞在一起的 TA 的课只是一条色带，不放字；点开看详情。 -->
-      <template v-if="!tile.strip">
-        <i v-if="tile.offWeek" class="ss-off-tag">非本周</i>
-        <i v-else-if="tile.owner === 'ta'" class="ss-ta-tag">TA</i>
-        <div v-if="layout.course === 'departure'" class="ss-tile-time">
-          <i class="ss-mark" />
-          <b>{{ tile.start }}</b>
-        </div>
-        <strong>{{ tile.block.course.name }}</strong>
-        <span v-if="tile.location">@{{ tile.location }}</span>
-        <span v-if="tile.teacher">{{ tile.teacher }}</span>
-        <em v-if="tile.status" class="ss-tile-status">{{ tile.status }}</em>
-      </template>
+      <i v-if="tile.offWeek" class="ss-off-tag">非本周</i>
+      <i v-else-if="tile.owner === 'ta'" class="ss-ta-tag">TA</i>
+      <div v-if="layout.course === 'departure'" class="ss-tile-time">
+        <i class="ss-mark" />
+        <b>{{ tile.start }}</b>
+      </div>
+      <strong>{{ tile.block.course.name }}</strong>
+      <span v-if="tile.location">@{{ tile.location }}</span>
+      <span v-if="tile.teacher">{{ tile.teacher }}</span>
+      <em v-if="tile.status" class="ss-tile-status">{{ tile.status }}</em>
+      <!-- 情侣课表：这节课 TA 在做什么，用一行字写在我的课下面。一起上就写「一起上」，
+           TA 这时有别的课就写「TA 课名」，点它看 TA 那门课。 -->
+      <div v-if="tile.shared || tile.notes.length" class="ss-couple-notes">
+        <b v-if="tile.shared" class="ss-couple-note together">一起上</b>
+        <b
+          v-for="note in tile.notes"
+          :key="note.key"
+          class="ss-couple-note"
+          :style="note.style"
+          role="button"
+          :title="note.title"
+          @click.stop="emit('course', note.block, 'ta', $event)"
+        >TA {{ note.name }}</b>
+      </div>
     </article>
 
     <!-- 「现在」：节次栏上一个胶囊，今天那一列一条线，在同一个高度。 -->
@@ -269,11 +281,11 @@ function allPieces(item: StyledDay) {
   return item.partnerPieces?.length ? [...item.pieces, ...item.partnerPieces] : item.pieces;
 }
 
-/** 双人模式下，这门课是不是和对方的课撞在同一时段：撞在一起时 TA 的课收成一条色带，我的课让出这一条。 */
-function sharesSlotWithOther(item: StyledDay, piece: PlacedCourseBlock, owner: TileOwner) {
-  if (!coupled.value) return false;
+/** 双人模式下和这门课撞在同一时段的对方的课。 */
+function clashesWith(item: StyledDay, piece: PlacedCourseBlock, owner: TileOwner) {
+  if (!coupled.value) return [];
   const others = owner === "ta" ? item.pieces : (item.partnerPieces ?? []);
-  return others.some((other) => other.startSlot <= piece.endSlot && piece.startSlot <= other.endSlot);
+  return others.filter((other) => other.startSlot <= piece.endSlot && piece.startSlot <= other.endSlot);
 }
 
 function cellClass(item: StyledDay, slot: number, row: number) {
@@ -307,8 +319,8 @@ interface Tile {
   block: WeekCourseBlock;
   owner: TileOwner;
   shared: boolean;
-  /** TA 的课和我的课撞在一起：只画右边一条色带。 */
-  strip: boolean;
+  /** 这节课 TA 另有别的课：写在我的课下面的一行。 */
+  notes: { key: string; name: string; title: string; block: WeekCourseBlock; style: Record<string, string> }[];
   offWeek: boolean;
   current: boolean;
   lanes: number;
@@ -345,20 +357,31 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
   const display = displayBlockOf(piece);
   const status = statusFor(item);
   const tone = toneFor(piece.block, owner, shared);
-  // 双人模式下两人的课撞在同一时段时，TA 的课收成右边一条色带，我的课让出这一条；
-  // 其余的和平时一样按重叠簇的道数分宽度。
-  const clash = !shared && !offWeek && sharesSlotWithOther(item, piece, owner);
-  const strip = clash && owner === "ta";
-  const room = clash ? "(100% - var(--ss-couple-strip))" : "100%";
-  const single = !clash && piece.lanes === 1;
+  // 双人模式下 TA 的课和我的课撞在同一时段时，不另画一格，而是在我的课下面写一行「TA 课名」。
+  const clashes = offWeek || shared ? [] : clashesWith(item, piece, owner);
+  if (owner === "ta" && clashes.length) return null;
+  const notes = owner === "me" ? clashes.slice(0, 1).map((other) => {
+    const noteTone = toneFor(other.block, "ta", false);
+    return {
+      key: other.id,
+      name: clashes.length > 1 ? `${clashes.length} 门课` : other.block.course.name,
+      title: clashes.map((entry) => `TA · ${entry.block.course.name}`).join("\n"),
+      block: other.block,
+      style: { background: noteTone.fill, color: noteTone.accent, borderColor: noteTone.border },
+    };
+  }) : [];
+  const width = 100 / piece.lanes;
+  const offset = width * piece.lane;
+  const single = piece.lanes === 1;
   return {
     key: `${offWeek ? "off" : owner}-${item.day}-${piece.id}`,
     block: piece.block,
     owner,
     shared,
-    strip,
+    notes,
     offWeek,
-    current: !offWeek && owner === "me" && blockPhase(status, display) === "current",
+    // 三门以上并排时格子只有两个字宽，不再套「正在上」的反色。
+    current: !offWeek && owner === "me" && piece.lanes < 3 && blockPhase(status, display) === "current",
     lanes: piece.lanes,
     start: rows.value[startRow]?.start ?? "",
     location: cleanLocation(piece.block.course.location),
@@ -373,11 +396,9 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
     style: {
       gridColumn: column + 2,
       gridRow: `${startRow + rowBase.value} / ${endRow + rowBase.value + 1}`,
-      width: single ? "auto" : strip ? "calc(var(--ss-couple-strip) - 2px)"
-        : `calc(${room} / ${piece.lanes} - var(--ss-tile-inset) * 2)`,
-      marginLeft: single ? "var(--ss-tile-inset)" : strip ? "0"
-        : `calc(${room} / ${piece.lanes} * ${piece.lane} + var(--ss-tile-inset))`,
-      justifySelf: single ? "stretch" : strip ? "end" : "start",
+      width: single ? "auto" : `calc(${width}% - var(--ss-tile-inset) * 2)`,
+      marginLeft: single ? "var(--ss-tile-inset)" : `calc(${offset}% + var(--ss-tile-inset))`,
+      justifySelf: single ? "stretch" : "start",
       "--tile-accent": tone.accent,
       "--tile-fill": tone.fill,
       "--tile-border": tone.border,
@@ -943,44 +964,66 @@ const nowPlacement = computed(() => {
 .ss-board .ss-tile.current .ss-mark {
   background: var(--tile-accent-inverse);
 }
-// 情侣课表：和我的课撞在一起的 TA 的课，只是这一列右边的一条色带。
-.ss {
-  --ss-couple-strip: 9px;
+// 情侣课表：我的课下面的一行，写这节课 TA 在做什么。
+.ss-couple-notes {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
-.ss-tile.strip {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 3px;
-  background: var(--tile-border);
+.ss-couple-note {
+  box-sizing: border-box;
+  height: 14px;
+  padding: 0 3px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.ss-tile.strip::before,
-.ss-tile.strip::after {
-  content: none;
+.ss-couple-note.together {
+  border-color: color-mix(in srgb, var(--couple-accent, #e2568a) 45%, transparent);
+  background: color-mix(in srgb, var(--couple-accent, #e2568a) 14%, var(--ss-panel));
+  color: var(--couple-accent, #e2568a);
+  cursor: inherit;
+}
+.ss-tile.has-notes {
+  padding-bottom: 18px;
+}
+// 三门以上并排：一格只有两个字宽，只留课名。
+.ss-tile.tiny .ss-tile-time,
+.ss-tile.tiny span,
+.ss-tile.tiny em,
+.ss-tile.tiny .ss-couple-notes {
+  display: none;
+}
+.ss-tile.tiny.has-notes {
+  padding-bottom: 2px;
 }
 // 情侣课表：TA 的课右上角一个小标记，颜色之外再给一个能认出来的记号。
+// 标记放进排版里、排在课名上面一行，不盖住课名。
 .ss-ta-tag {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  padding: 0 2px;
-  border-radius: 3px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 0 3px;
+  border-radius: 4px;
   background: var(--tile-accent);
   color: var(--tile-fill);
-  font-size: 7px;
+  font-size: 9px;
   font-style: normal;
   font-weight: 700;
-  line-height: 1.4;
-  opacity: 0.82;
+  line-height: 13px;
 }
 .ss-board .ss-ta-tag,
 .ss-paper .ss-ta-tag {
   color: var(--ss-panel);
-}
-.ss-board .ss-ta-tag {
-  // 站牌的课程第一行是开始时间，标记放进排版里，免得盖住时间。
-  position: static;
-  align-self: flex-start;
 }
 .ss-day-presentation .ss-ta-tag {
   top: 6px;
@@ -988,19 +1031,6 @@ const nowPlacement = computed(() => {
   padding: 0 4px;
   font-size: 10px;
 }
-// 情侣课表：一起上的课右上角一颗小爱心。
-.ss-tile.shared::after {
-  content: "";
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 9px;
-  height: 9px;
-  background: var(--couple-accent, #e2568a);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z'/%3E%3C/svg%3E") center / contain no-repeat;
-}
-
 // 日视图里的单列
 .ss-day-presentation .ss-tile {
   flex-direction: column;
