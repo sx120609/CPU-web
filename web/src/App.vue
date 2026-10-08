@@ -627,6 +627,8 @@ function openStrongNoticeLink() {
 </script>
 
 <style lang="scss">
+@use "./styles/compact" as *;
+
 html, body, #app {
   height: 100%;
   margin: 0;
@@ -660,8 +662,9 @@ html[data-cpu-ios-next] #app {
  * message boxes by subtracting its measured scrollbar width from <body>.
  * Android WebView uses overlay scrollbars, so that desktop compensation makes
  * the page visibly narrower even though no layout space needs to be reserved.
+ * iPadOS also uses overlay scrollbars, so compact tablet layouts get the same fix.
  */
-@media (max-width: 768px) {
+@include compact-layout {
   body.el-popup-parent--hidden,
   body.el-message-box-parent--hidden,
   body.el-image-viewer-parent--hidden,

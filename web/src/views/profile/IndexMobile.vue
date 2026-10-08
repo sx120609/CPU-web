@@ -495,7 +495,7 @@ import {
   payTypeLabels,
   sponsorDisplayOptions,
   topicReviewLabel,
-  useProfilePage,
+  useInjectedProfilePage,
   vipFrameOptions,
   vipThemeOptions,
 } from "./profilePage";
@@ -560,7 +560,7 @@ const {
   removeAvatar,
   retryAvatarPreview,
   openMyTopic,
-} = useProfilePage();
+} = useInjectedProfilePage();
 
 const messages = useMessageStore();
 const avatarSheetOpen = ref(false);

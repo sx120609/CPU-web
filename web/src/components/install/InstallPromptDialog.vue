@@ -62,7 +62,29 @@
           <AppIcon name="arrow-down" />
         </summary>
         <p>{{ iosAppInstallable ? "也可" : "" }}通过 Safari 分享菜单添加到主屏幕：</p>
-        <ol class="steps">
+        <!-- iPad Safari has no bottom toolbar: the share button sits in the top bar, right of the address field. -->
+        <ol v-if="isIpad" class="steps">
+          <li>
+            <span class="num">1</span>
+            <span class="step-text">
+              点击顶部地址栏右侧的 <strong>共享按钮</strong>
+              <svg class="ic" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 1.5l3 3-1 1-1.3-1.3V10H7.3V4.2L6 5.5l-1-1z" fill="currentColor"/>
+                <path d="M3 7h2v6h6V7h2v8H3z" fill="currentColor"/>
+              </svg>
+              <span class="step-hint">（若未显示，先点地址栏中的 <strong>「…」</strong>）</span>
+            </span>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <span class="step-text">选择 <strong>「添加到主屏幕」</strong></span>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <span class="step-text">确认名称后点击 <strong>「添加」</strong></span>
+          </li>
+        </ol>
+        <ol v-else class="steps">
           <li>
             <span class="num">1</span>
             <span class="step-text">
@@ -149,6 +171,8 @@ import {
   isIosNativeApp,
   isLikelyAndroidDevice,
   isLikelyHarmonyDevice,
+  isLikelyIosDevice,
+  isLikelyIpadDevice,
 } from "@/utils/clientInfo";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -167,15 +191,14 @@ let disposed = false;
 
 const platform = computed<"ios" | "android" | "harmony" | "desktop">(() => {
   if (isLikelyHarmonyDevice()) return "harmony";
-  const ua = navigator.userAgent.toLowerCase();
-  // iPadOS 13+ 在桌面模式下 UA 是 macOS；但 maxTouchPoints > 1 可判
-  if (/iphone|ipod/.test(ua) || (/ipad/.test(ua)) || (ua.includes("mac") && navigator.maxTouchPoints > 1)) {
-    return "ios";
-  }
+  // Shared iOS check: also covers desktop-class iPadOS Safari, whose UA claims Macintosh.
+  if (isLikelyIosDevice()) return "ios";
   if (isLikelyAndroidDevice()) return "android";
   return "desktop";
 });
 const desktopDownloadPlatform = computed<"windows" | "macos" | null>(() => {
+  // An iPad is never offered the Windows / macOS client.
+  if (isLikelyIosDevice()) return null;
   const ua = navigator.userAgent.toLowerCase();
   const looksLikeDesktopMac = ua.includes("mac") && navigator.maxTouchPoints <= 1;
   if (looksLikeDesktopMac) return "macos";
@@ -184,6 +207,8 @@ const desktopDownloadPlatform = computed<"windows" | "macos" | null>(() => {
 });
 
 const iosAppInstallable = computed(() => canInstallIosNativeApp());
+// The UA and screen size do not change during a visit, so a constant is enough.
+const isIpad = isLikelyIpadDevice();
 
 const title = computed(() => {
   if (inAppBrowser.value.isInApp) return "建议使用外部浏览器打开";
@@ -336,6 +361,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 .home-screen-steps[open] summary .cpu-app-icon { transform: rotate(180deg); }
 .home-screen-steps summary:focus-visible { outline: 2px solid var(--cpu-button-primary); outline-offset: 2px; border-radius: var(--cpu-radius-s); }
 .steps .step-text { min-width: 0; }
+.steps .step-hint { color: var(--cpu-text-secondary); }
 @media (prefers-reduced-motion: reduce) {
   .home-screen-steps summary .cpu-app-icon { transition: none; }
 }

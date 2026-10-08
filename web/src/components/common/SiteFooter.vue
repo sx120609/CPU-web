@@ -1,6 +1,6 @@
 <template>
   <!-- 原生壳按 .layout-root > .footer 注入样式；根节点类名和 footer-main / footer-bottom / footer-app-filing 不能改。 -->
-  <footer class="footer" :class="{ 'footer--app': appFiling, 'footer--compact': compact }">
+  <footer class="footer" :class="{ 'footer--app': appFiling, 'footer--compact': compact, 'footer--fab-gutter': fabGutter }">
     <div class="footer-inner">
       <div class="footer-main">
         <div class="footer-brand-block">
@@ -53,16 +53,19 @@ import { useSiteStore } from "@/stores/site";
 import { USER_QQ_GROUP, USER_QQ_GROUP_JOIN_URL } from "@/utils/userGroup";
 import { APP_FILING_NUMBER, APP_FILING_URL } from "../../../../shared/appFiling";
 
-// appFiling：已备案的移动端壳内显示 APP 备案号；compact：旧 Flutter 壳只保留备案号一行。
-defineProps<{ appFiling?: boolean; compact?: boolean }>();
+// appFiling：已备案的移动端壳内显示 APP 备案号；compact：旧 Flutter 壳只保留备案号一行；
+// fabGutter：右下角有悬浮按钮，宽屏下给它们让出一列。
+defineProps<{ appFiling?: boolean; compact?: boolean; fabGutter?: boolean }>();
 
 const site = useSiteStore();
 </script>
 
-<style scoped>
-/* --footer-clearance 由 MainLayout 按底部标签栏 / 原生壳占位设置。 */
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
+/* --footer-clearance 由 MainLayout 按底部标签栏 / 原生壳占位设置；--footer-post-fab-clearance 让开投稿按钮。 */
 .footer {
-  padding: 30px 20px calc(16px + var(--footer-clearance, 0px));
+  padding: 30px 20px calc(16px + var(--footer-clearance, 0px) + var(--footer-post-fab-clearance, 0px));
   border-top: 1px solid var(--cpu-border-soft);
   background: var(--cpu-surface);
   color: var(--cpu-text-secondary);
@@ -188,15 +191,28 @@ const site = useSiteStore();
   overflow-wrap: anywhere;
 }
 
-/* 桌面端右下角有悬浮按钮，窗口不够宽时给它们让出位置。 */
+/* 桌面端右下角有悬浮按钮，窗口不够宽时给它们让出位置；紧凑布局（如 961–1023px 的平板）不显示这些按钮。 */
 @media (min-width: 961px) and (max-width: 1439px) {
-  .footer-inner { padding-right: 76px; }
+  @include expanded-only {
+    .footer--fab-gutter .footer-inner { padding-right: 76px; }
+  }
+}
+
+/* 折叠顶栏时投稿按钮变成右下角的胶囊（52px 高、距底 12px），页脚最后一行要能滚到它上方。 */
+@include compact-header {
+  .layout-root--post-fab .footer { --footer-post-fab-clearance: 64px; }
+}
+
+/* 平板横屏用桌面页脚，但手指点按需要更高的链接。 */
+@include expanded-touch {
+  .footer-col a,
+  .footer-bottom a { min-height: 44px; }
 }
 
 /* 移动端只保留品牌、条款、联系方式和版权信息，各占一行。 */
-@media (max-width: 768px) {
+@include compact-layout {
   .footer {
-    padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(10px + var(--footer-clearance, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(10px + var(--footer-clearance, 0px) + var(--footer-post-fab-clearance, 0px)) max(16px, env(safe-area-inset-left, 0px));
     font-size: var(--cpu-fs-xs);
   }
 

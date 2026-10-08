@@ -325,6 +325,7 @@ import {
   type CampusAssistantSource,
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
+import { getFormFactor } from "@/utils/formFactor";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
 import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
 import { openImageGallery } from "@/utils/imageViewer";
@@ -396,6 +397,9 @@ let conversationAnchorBottomGap: number | null = null;
 let conversationAnchorLockUntil = 0;
 let conversationAnchorFrame = 0;
 let conversationAnchorReleaseTimer = 0;
+// Visual-viewport height when the composer gained focus; restores wait until it really changes.
+let composerViewportHeight: number | null = null;
+let composerViewportMoved = false;
 const composerFocused = ref(false);
 let conversationAnchorRestoring = false;
 const conversationAnchorTimers: number[] = [];
@@ -709,15 +713,20 @@ function handleComposerFocus() {
   if (!isMobileComposerViewport()) return;
   if (conversationAnchorScrollTop === null) captureConversationAnchor();
   composerFocused.value = true;
-  conversationAnchorLockUntil = performance.now() + 520;
   window.clearTimeout(conversationAnchorReleaseTimer);
-  scheduleConversationAnchorRestore();
+  // No restore yet: a touch laptop with a hardware keyboard never moves the viewport, and
+  // pulling the thread back right after focus would fight its wheel scroll. The keyboard's
+  // visualViewport resize starts the restore instead (handleComposerViewportChange).
+  composerViewportHeight = readComposerViewportHeight();
 }
 
 function handleComposerBlur() {
   if (!composerFocused.value) return;
-  conversationAnchorLockUntil = performance.now() + 420;
-  scheduleConversationAnchorRestore();
+  // Only re-anchor on blur when this focus actually opened an on-screen keyboard.
+  if (composerViewportMoved) {
+    conversationAnchorLockUntil = performance.now() + 420;
+    scheduleConversationAnchorRestore();
+  }
   window.clearTimeout(conversationAnchorReleaseTimer);
   conversationAnchorReleaseTimer = window.setTimeout(() => {
     releaseConversationAnchor();
@@ -726,7 +735,16 @@ function handleComposerBlur() {
 
 function handleComposerViewportChange() {
   if (!composerFocused.value || conversationAnchorScrollTop === null) return;
+  const height = readComposerViewportHeight();
+  if (composerViewportHeight !== null && Math.abs(height - composerViewportHeight) < 1) return;
+  composerViewportHeight = height;
+  composerViewportMoved = true;
+  conversationAnchorLockUntil = performance.now() + 520;
   scheduleConversationAnchorRestore();
+}
+
+function readComposerViewportHeight() {
+  return window.visualViewport?.height ?? window.innerHeight;
 }
 
 function handleConversationScroll() {
@@ -782,6 +800,8 @@ function restoreConversationAnchor() {
 
 function releaseConversationAnchor() {
   composerFocused.value = false;
+  composerViewportHeight = null;
+  composerViewportMoved = false;
   conversationAnchorScrollTop = null;
   conversationAnchorBottomGap = null;
   conversationAnchorLockUntil = 0;
@@ -799,8 +819,11 @@ function clearConversationAnchorTimers() {
   }
 }
 
+// Any touch-first device can raise an on-screen keyboard (iPad in landscape, the floating
+// widget included), not only the compact layout.
 function isMobileComposerViewport() {
-  return window.matchMedia("(max-width: 768px)").matches;
+  const formFactor = getFormFactor();
+  return formFactor.compact || formFactor.touchPrimary;
 }
 
 async function startNewConversation() {
@@ -2400,6 +2423,11 @@ html[data-theme="dark"] .sj-scrim {
   }
 }
 
+/* The on-screen keyboard leaves little room on the full page; drop the footnote while it is open. */
+:global(.layout-root.keyboard-geometry-open .sj:not(.sj--embedded) .sj-footnote) {
+  display: none;
+}
+
 /* ---------- 窄屏 ---------- */
 @media (max-width: 860px) {
   .sj-prompts {
@@ -2506,9 +2534,6 @@ html[data-theme="dark"] .sj-scrim {
     font-size: var(--cpu-fs-xs);
     line-height: 14px;
     white-space: nowrap;
-  }
-  .sj.is-composer-focused .sj-footnote {
-    display: none;
   }
   .sj-history--overlay {
     width: min(320px, 88%);

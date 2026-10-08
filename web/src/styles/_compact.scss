@@ -1,0 +1,59 @@
+// Layout mixins that follow the shared form-factor classifier (web/src/utils/formFactor.ts), which writes
+// html[data-cpu-layout="compact" | "expanded"]. Pull them in with a relative `@use "…/styles/compact" as *;`.
+//
+// compact-layout emits its content twice: once under the unchanged phone media query, so phones render the
+// same before and after JavaScript runs, and once under :where(html[data-cpu-layout="compact"]), which
+// adds touch tablets below 1024 px and native shells with zero extra specificity.
+//
+// Rules for content inside these mixins:
+// - no :global(); write a global rule separately as :global(:where(html[data-cpu-layout="compact"]) .x …)
+// - :deep() only after a local class (html[…] :deep(.x) would put the scope attribute on <html>)
+// - no :root
+
+@mixin -layout-scope($scope) {
+  @if & {
+    #{$scope} & {
+      @content;
+    }
+  } @else {
+    #{$scope} {
+      @content;
+    }
+  }
+}
+
+/// Phone widths, touch tablets below 1024 px and native shells: the phone component tree is rendered.
+@mixin compact-layout {
+  @media (max-width: 768px) {
+    @content;
+  }
+  @include -layout-scope(':where(html[data-cpu-layout="compact"])') {
+    @content;
+  }
+}
+
+/// The collapsed header (drawer menu instead of the top navigation): up to 960 px, or any compact layout.
+@mixin compact-header {
+  @media (max-width: 960px) {
+    @content;
+  }
+  @include -layout-scope(':where(html[data-cpu-layout="compact"])') {
+    @content;
+  }
+}
+
+/// The desktop component tree. Also matches before the classifier has run.
+@mixin expanded-only {
+  @include -layout-scope(':where(html:not([data-cpu-layout="compact"]))') {
+    @content;
+  }
+}
+
+/// The desktop component tree on a touch-first device (iPad and Android tablets in landscape).
+@mixin expanded-touch {
+  @media (pointer: coarse) {
+    @include -layout-scope(':where(html[data-cpu-layout="expanded"])') {
+      @content;
+    }
+  }
+}

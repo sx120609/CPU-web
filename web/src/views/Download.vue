@@ -48,6 +48,7 @@ import {
   canInstallIosNativeApp,
   isLikelyAndroidDevice,
   isLikelyIosDevice,
+  isLikelyIpadDevice,
   isLikelyHarmonyDevice,
   isAndroidNativeApp,
 } from "@/utils/clientInfo";
@@ -110,6 +111,10 @@ function desktopVersionLabel(info: DesktopDownloadInfo) {
 
 // The App Store build supports iOS 15+; older devices keep the Safari home-screen path.
 const iosNativeUnavailable = isLikelyIosDevice() && !canInstallIosNativeApp();
+// iPad Safari keeps the share button in the top bar; iPhone Safari puts it behind the bottom "…" on newer versions.
+const iosShareStep = isLikelyIpadDevice()
+  ? "点击顶部地址栏右侧的共享按钮（若未显示，先点地址栏中的“…”），然后选择“添加到主屏幕”。"
+  : "根据 Safari 版本，点击底部的“…”后再点共享按钮，或直接点击分享按钮，然后选择“查看更多”→“添加到主屏幕”。";
 
 const iosCard: PlatformCard = iosNativeUnavailable ? {
   key: "ios",
@@ -122,7 +127,7 @@ const iosCard: PlatformCard = iosNativeUnavailable ? {
   steps: [
     "必须使用 Safari 打开本页，再点击“打开课表并添加到主屏幕”；微信、QQ 等内置浏览器不支持添加到主屏幕。",
     "进入课表后，在页面顶部操作栏找到向下箭头形状的下载按钮，点击即可打开安装教程。",
-    "根据 Safari 版本，点击底部的“…”后再点共享按钮，或直接点击分享按钮，然后选择“查看更多”→“添加到主屏幕”。",
+    iosShareStep,
     "确认名称并点击“添加”，之后即可从桌面图标进入药大拾间课表。",
   ],
   actionLabel: "打开课表并添加到主屏幕",

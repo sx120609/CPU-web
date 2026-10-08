@@ -111,14 +111,6 @@
               <el-checkbox v-model="remember">
                 保持登录状态并保存到本浏览器
               </el-checkbox>
-              <el-tooltip placement="top">
-                <template #content>
-                  勾选后会在当前浏览器加密保存学校账号密码，<br/>
-                  用于会话过期后自动重新登录。<br/>
-                  共享电脑请不要勾选。
-                </template>
-                <el-icon class="hint-icon"><InfoFilled /></el-icon>
-              </el-tooltip>
             </div>
             <el-button v-if="jwxt.rememberSaved" text type="danger" size="small" class="forget-saved-btn" :loading="forgetBusy" :disabled="jwxt.loading || forgetBusy" @click="onForget">
               忘记已保存账号
@@ -127,6 +119,8 @@
               改用账号密码
             </el-button>
           </div>
+          <!-- 直接写出来而不是放进悬停提示：触屏设备上悬停提示既不好打开也不好关闭。 -->
+          <p class="remember-hint">勾选后会在当前浏览器加密保存学校账号密码，用于会话过期后自动重新登录。共享电脑请不要勾选。</p>
         </el-form-item>
 
         <el-form-item v-if="jwxt.error">
@@ -238,9 +232,9 @@ import "@/styles/page-kit.css";
 import AppIcon from "@/components/common/AppIcon.vue";
 import ScheduleUsageNotice from "@/components/jwxt/ScheduleUsageNotice.vue";
 import { defineAsyncComponent } from "vue";
-import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
+import { Lock, User, Refresh, CircleCheckFilled, CircleClose } from "@element-plus/icons-vue";
 import PrivacyConsent from "@/components/common/PrivacyConsent.vue";
-import { useJwxtPage } from "./jwxtPage";
+import { useInjectedJwxtPage } from "./jwxtPage";
 const SchedulePane = defineAsyncComponent(() => import("@/components/jwxt/SchedulePane.vue"));
 const GradesPane = defineAsyncComponent(() => import("@/components/jwxt/GradesPane.vue"));
 // const MidtermGradesPane = defineAsyncComponent(() => import("@/components/jwxt/MidtermGradesPane.vue"));
@@ -292,7 +286,7 @@ const {
   onProbe,
   onManualReauthorize,
   useManualCredentials,
-} = useJwxtPage("desktop");
+} = useInjectedJwxtPage();
 </script>
 
 <style scoped lang="scss">
@@ -463,7 +457,13 @@ const {
 .remember-tag {
   margin-right: 0;
 }
-.hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; }
+.remember-hint {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.6;
+}
 
 /* 标签页改成分段样式，内容区不再带下划线。 */
 .jwxt-tabs { padding: 14px 20px 20px; }

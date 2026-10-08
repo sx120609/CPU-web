@@ -167,7 +167,9 @@ async function loadAd() {
 .boards-content { display: flex; min-height: 120px; flex-direction: column; gap: 8px; }
 .forum-error { padding: 24px 16px; }
 .latest-entry { display: flex; width: 100%; align-items: center; gap: 12px; padding: 14px 16px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.latest-entry:hover { background: var(--cpu-surface-soft); }
+/* Touch screens keep :hover after a tap, so the tint is for mice only; taps get :active feedback. */
+@media (hover: hover) { .latest-entry:hover { background: var(--cpu-surface-soft); } }
+.latest-entry:active { background: var(--cpu-surface-soft); }
 .latest-entry:focus-visible, .board-card:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .latest-entry-icon { display: grid; width: 40px; height: 40px; flex-shrink: 0; place-items: center; border-radius: var(--cpu-radius-m); background: var(--cpu-hue-brand-bg); color: var(--cpu-hue-brand-ink); font-size: 20px; }
 .latest-entry-body { min-width: 0; flex: 1; }
@@ -177,7 +179,8 @@ async function loadAd() {
 .cluster-title { display: flex; align-items: center; gap: 6px; margin: 16px 4px 6px; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); font-weight: 500; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; }
 .board-card { display: flex; gap: 12px; padding: 14px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); cursor: pointer; }
-.board-card:hover { background: var(--cpu-surface-soft); }
+@media (hover: hover) { .board-card:hover { background: var(--cpu-surface-soft); } }
+.board-card:active { background: var(--cpu-surface-soft); }
 .icon { display: grid; width: 40px; height: 40px; flex-shrink: 0; place-items: center; border-radius: var(--cpu-radius-m); color: #fff; font-size: 20px; }
 .body { min-width: 0; flex: 1; }
 .name { font-weight: 500; overflow-wrap: anywhere; }

@@ -156,15 +156,15 @@
                             <small :title="file.originalName">{{ file.originalName }} · {{ formatBytes(file.size) }}</small>
                           </div>
                           <div class="fs-d-file-actions">
-                            <el-tooltip content="查看" placement="top"><el-button text :icon="View" aria-label="查看" @click="previewFile(file)" /></el-tooltip>
-                            <el-tooltip content="下载" placement="top"><el-button text :icon="Download" aria-label="下载" @click="downloadFile(file)" /></el-tooltip>
-                            <el-tooltip content="删除文件" placement="top"><el-button text type="danger" :icon="Delete" aria-label="删除文件" @click="deleteFile(file)" /></el-tooltip>
+                            <el-tooltip content="查看" placement="top" :disabled="!canHover"><el-button text :icon="View" aria-label="查看" @click="previewFile(file)" /></el-tooltip>
+                            <el-tooltip content="下载" placement="top" :disabled="!canHover"><el-button text :icon="Download" aria-label="下载" @click="downloadFile(file)" /></el-tooltip>
+                            <el-tooltip content="删除文件" placement="top" :disabled="!canHover"><el-button text type="danger" :icon="Delete" aria-label="删除文件" @click="deleteFile(file)" /></el-tooltip>
                           </div>
                         </div>
                       </td>
                       <td class="fs-d-time">{{ formatDateTime(submission.createdAt) }}</td>
                       <td>
-                        <el-tooltip content="删除提交" placement="top">
+                        <el-tooltip content="删除提交" placement="top" :disabled="!canHover">
                           <el-button text type="danger" :icon="CircleClose" aria-label="删除提交" @click="deleteSubmission(submission)" />
                         </el-tooltip>
                       </td>
@@ -206,6 +206,7 @@ import {
   WarningFilled,
 } from "@element-plus/icons-vue";
 import { formatBytes } from "@/views/services/fileCollectExport";
+import { useFormFactor } from "@/utils/formFactor";
 import FileBadge from "./components/FileBadge.vue";
 import TaskChecklist from "./components/TaskChecklist.vue";
 import TaskMetrics from "./components/TaskMetrics.vue";
@@ -217,6 +218,9 @@ import { useInjectedFilestoreWorkspace } from "./workspace";
 type PanelTab = "records" | "check" | "rules";
 
 const router = useRouter();
+const formFactor = useFormFactor();
+// Tap-only devices (iPad, Android tablets) would leave these hover tooltips hanging after a tap; the buttons carry aria-labels.
+const canHover = computed(() => formFactor.value.canHover);
 const {
   loading,
   denied,
@@ -290,6 +294,8 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
   top: 84px;
   display: flex;
   max-height: calc(100vh - 108px);
+  /* dvh tracks the visible viewport; the reserve is 0 unless a web tab bar is showing. Old engines keep the vh line. */
+  max-height: calc(100dvh - 108px - var(--layout-mobile-tabbar-reserve, 0px));
   flex-direction: column;
   gap: 10px;
   padding: 14px 10px 10px;

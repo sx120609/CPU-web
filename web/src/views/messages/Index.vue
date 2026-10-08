@@ -1129,7 +1129,9 @@ function normalizeMessageSettings(value: any) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 .msg-page { display: flex; flex-direction: column; gap: 10px; }
 .page-head {
   display: flex;
@@ -1471,7 +1473,7 @@ function normalizeMessageSettings(value: any) {
   margin-top: 14px;
 }
 
-@media (max-width: 768px) {
+@include compact-layout {
   .qq-bind-guide {
     align-items: stretch;
     flex-direction: column;
@@ -1757,6 +1759,28 @@ function normalizeMessageSettings(value: any) {
     font-size: var(--cpu-fs-l);
   }
 
+  .notice-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 118px), 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .notice-actions :deep(.el-button) {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+    padding-inline: 10px;
+  }
+
+  .notice-actions :deep(.el-button > span) {
+    white-space: nowrap;
+  }
+}
+
+/* Kept on the plain phone query: a bare :deep() cannot sit under the compact-layout :where(html) copy
+   (the scope attribute would land on <html>). */
+@media (max-width: 768px) {
   :deep(.notice-dialog) {
     width: 100% !important;
     max-width: 100% !important;
@@ -1780,27 +1804,9 @@ function normalizeMessageSettings(value: any) {
   :deep(.notice-dialog .el-dialog__footer) {
     padding: 0 16px 16px;
   }
-
-  .notice-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 118px), 1fr));
-    gap: 8px;
-    width: 100%;
-  }
-
-  .notice-actions :deep(.el-button) {
-    width: 100%;
-    min-width: 0;
-    margin-left: 0;
-    padding-inline: 10px;
-  }
-
-  .notice-actions :deep(.el-button > span) {
-    white-space: nowrap;
-  }
 }
 
-@media (max-width: 720px) {
+@include compact-layout {
   /* 会话列表随页面滚动；打开会话后的全屏聊天窗口由 DirectMessages 自己定位 */
   .msg-page.is-private {
     gap: 8px;
@@ -1827,6 +1833,13 @@ function normalizeMessageSettings(value: any) {
     border-radius: var(--cpu-radius-l);
     overflow: hidden;
     background: var(--cpu-card);
+  }
+}
+
+/* Compact tablets above phone width: keep the single-pane chat phone-sized rather than 860px wide. */
+@media (min-width: 769px) {
+  :where(html[data-cpu-layout="compact"]) .msg-page.is-private {
+    max-width: 760px;
   }
 }
 
@@ -1859,8 +1872,9 @@ function normalizeMessageSettings(value: any) {
   }
 }
 
-/* 桌面端和移动端用同一套导航：先选私聊 / 通知 / 设置，通知再按分类筛选；不再露出一排原生标签页。 */
-@media (min-width: 769px) {
+/* 桌面端和移动端用同一套导航：先选私聊 / 通知 / 设置，通知再按分类筛选；不再露出一排原生标签页。
+   Follows the rendered tree rather than width, so compact tablets above 768px keep the phone styles. */
+@include expanded-only {
   .msg-page { width: 100%; max-width: 1080px; margin: 0 auto; gap: 14px; }
   .page-head { flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 0 2px; }
   .page-title { font-size: var(--cpu-fs-xl); font-weight: 700; letter-spacing: -.01em; }

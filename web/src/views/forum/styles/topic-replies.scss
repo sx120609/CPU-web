@@ -1,3 +1,5 @@
+@use "../../../styles/compact" as *;
+
 .replies {
   overflow: hidden;
   padding: 0;
@@ -118,4 +120,16 @@
     border-top: 1px solid var(--cpu-border-soft);
   }
   .reply-actions :deep(.el-button) { min-width: 0; margin-left: 0; }
+}
+
+// Desktop layout on a touch tablet: more room between 回复 / 举报 / 屏蔽作者 and finger-sized 私聊 / 备注 links.
+@include expanded-touch {
+  .replies {
+    .reply-actions { gap: 8px; }
+
+    .post-private-chat-button {
+      min-height: 36px;
+      padding: 6px 8px;
+    }
+  }
 }

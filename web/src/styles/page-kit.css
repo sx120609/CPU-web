@@ -303,3 +303,10 @@ a.pk-row:active { background: var(--cpu-surface-soft); }
   .pk-card--flush { padding: 0; }
   .pk-row { padding: 10px 12px; }
 }
+
+/* 触屏平板（1024 以下）和原生壳走手机布局，见 styles/_compact.scss；:where 不增加优先级。 */
+:where(html[data-cpu-layout="compact"]) .pk-page { gap: 12px; }
+:where(html[data-cpu-layout="compact"]) .pk-title h1 { font-size: 22px; }
+:where(html[data-cpu-layout="compact"]) .pk-card { padding: 14px; }
+:where(html[data-cpu-layout="compact"]) .pk-card--flush { padding: 0; }
+:where(html[data-cpu-layout="compact"]) .pk-row { padding: 10px 12px; }

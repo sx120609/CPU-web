@@ -157,6 +157,7 @@
 import { computed, onMounted, ref } from "vue";
 import { Close, Connection, CopyDocument, Download, Monitor, Notebook } from "@element-plus/icons-vue";
 import { getDesktopDownload, getMacDesktopDownload, type DesktopDownloadInfo } from "@/api/site";
+import { isLikelyIosDevice } from "@/utils/clientInfo";
 
 const emit = defineEmits<{
   (event: "close"): void;
@@ -173,9 +174,10 @@ const activePlatform = ref<DesktopPlatform>(detectPreferredPlatform());
 const copied = ref(false);
 const activeDownload = computed(() => activePlatform.value === "windows" ? download.value : macDownload.value);
 
+// Desktop-class iPadOS Safari also reports Macintosh, so rule out iOS with the shared check.
 function detectPreferredPlatform(): DesktopPlatform {
-  const looksLikeDesktopMac = navigator.platform.toLowerCase().includes("mac") && navigator.maxTouchPoints <= 1;
-  return looksLikeDesktopMac ? "macos" : "windows";
+  const ua = navigator.userAgent;
+  return /macintosh/i.test(ua) && !isLikelyIosDevice(ua) ? "macos" : "windows";
 }
 
 function openDownload() {

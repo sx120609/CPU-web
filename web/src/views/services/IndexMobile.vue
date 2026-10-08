@@ -150,7 +150,7 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServiceMobilePane from "@/components/jwxt/IServiceMobilePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import ToolRowMobile from "./components/ToolRowMobile.vue";
-import { publicServiceLinks, useServicesPage } from "./servicesPage";
+import { publicServiceLinks, useInjectedServicesPage } from "./servicesPage";
 
 const router = useRouter();
 const {
@@ -166,9 +166,9 @@ const {
   isLoginRequired,
   toolBadge,
   openTool,
-} = useServicesPage();
+  keyword,
+} = useInjectedServicesPage();
 
-const keyword = ref("");
 const appMatches = ref(0);
 const appMatchCount = computed(() => (jwxt.isLoggedIn ? appMatches.value : 0));
 const needle = computed(() => keyword.value.trim().toLowerCase());

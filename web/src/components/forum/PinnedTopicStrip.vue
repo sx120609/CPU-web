@@ -119,7 +119,9 @@ function openTopic(id: number) {
 .pinned-count { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .pinned-topic { display: grid; width: 100%; min-height: 44px; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 0 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .pinned-topic + .pinned-topic { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
-.pinned-topic:hover { background: var(--cpu-surface-soft); }
+/* Touch screens keep :hover after a tap, so the tint is for mice only; taps get :active feedback. */
+@media (hover: hover) { .pinned-topic:hover { background: var(--cpu-surface-soft); } }
+.pinned-topic:active { background: var(--cpu-surface-soft); }
 .pinned-topic:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
 .pinned-index { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); font-weight: 500; text-align: center; font-variant-numeric: tabular-nums; }
 .pinned-title { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }

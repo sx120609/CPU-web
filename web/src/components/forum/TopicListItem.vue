@@ -253,7 +253,7 @@ const reviewState = computed(() => {
   if (status === "rejected_manual") return { label: "人工复核未通过", type: "danger" as const };
   return { label: "仅自己可见", type: "info" as const };
 });
-const restorableRouteNames = new Set(["board", "market", "forum-latest", "forum-hot", "site-search"]);
+const restorableRouteNames = new Set(["home", "board", "market", "forum-latest", "forum-hot", "site-search"]);
 
 watch(() => [props.topic.id, props.topic.viewCount], ([id, viewCount]) => {
   displayedViewCount.value = knownTopicViewCount(Number(id), Number(viewCount) || 0);
@@ -326,7 +326,9 @@ function openTopic() {
 <style scoped>
 /* 列表里的一行帖子。三种形态（默认、simple、二手卡片）共用同一套字号、标签和次要信息的写法。 */
 .topic-row { display: flex; min-width: 0; align-items: flex-start; gap: 12px; padding: 12px 16px; overflow: hidden; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.5; cursor: pointer; }
-.topic-row:hover { background: var(--cpu-surface-soft); }
+/* Touch screens keep :hover after a tap, so the tint is for mice only; taps get :active feedback. */
+@media (hover: hover) { .topic-row:hover { background: var(--cpu-surface-soft); } }
+.topic-row:active { background: var(--cpu-surface-soft); }
 .topic-row:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
 .topic-row + .topic-row { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
 .avatar { flex-shrink: 0; }
@@ -376,7 +378,8 @@ function openTopic() {
 
 /* 二手卡片 */
 .topic-row--card { display: block; width: 100%; margin: 0 0 12px; padding: 0; break-inside: avoid; border-radius: var(--cpu-radius-l); background: var(--cpu-card); box-shadow: none; }
-.topic-row--card:hover { background: var(--cpu-card); }
+.topic-row--card:hover,
+.topic-row--card:active { background: var(--cpu-card); }
 .market-card-image { display: block; width: 100%; max-height: 220px; object-fit: cover; background: var(--cpu-surface-subtle); }
 .market-card-body { padding: 12px 14px 14px; }
 .market-card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

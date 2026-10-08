@@ -794,6 +794,7 @@ import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge"
 import { openImageGallery } from "@/utils/imageViewer";
 import { useMobileLayout } from "@/utils/mobileLayout";
 import { promptDirectMessageRemark } from "@/utils/directMessageRemark";
+import { topicBackLabel, topicBackStep } from "./topicBack";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -1130,24 +1131,19 @@ const sourceNotice = computed(() => {
 });
 
 const isAnnouncementTopic = computed(() => topic.value?.board?.type === "announce");
-const backTargetFromQuery = computed(() => {
-  const text = String(route.query.from ?? "").trim();
-  return text.startsWith("/") ? text : "";
-});
-const backLabel = computed(() => {
-  if (backTargetFromQuery.value.includes("/search/results")) return "返回搜索";
-  if (backTargetFromQuery.value.includes("/forum/latest")) return "返回最新";
-  if (backTargetFromQuery.value.includes("/forum/hot")) return "返回热榜";
-  if (isAnnouncementTopic.value) return "返回上页";
-  return "返回最新";
-});
+const backLabel = computed(() => topicBackLabel(route.query.from, isAnnouncementTopic.value));
 
 function goBackFromTopic() {
-  if (backTargetFromQuery.value) {
-    router.push(backTargetFromQuery.value);
+  const step = topicBackStep(route.query.from, router.options.history.state?.back, isAnnouncementTopic.value);
+  if (step.kind === "history-back") {
+    router.back();
     return;
   }
-  if (isAnnouncementTopic.value) {
+  if (step.kind === "push") {
+    router.push(step.to);
+    return;
+  }
+  if (step.kind === "announcement") {
     if (window.history.length > 1) router.back();
     else router.replace("/announcements");
     return;
@@ -1157,7 +1153,8 @@ function goBackFromTopic() {
 
 function updateMainPostAuthorMode() {
   const floor = mainFloorRef.value;
-  if (!floor || typeof window === "undefined" || window.innerWidth <= 700) {
+  // The phone layout keeps the author inline; same switch as the rest of the page instead of a 700 px query.
+  if (!floor || typeof window === "undefined" || isMobileLayout.value) {
     mainPostUsesStickyAuthor.value = false;
     return;
   }
@@ -1178,6 +1175,7 @@ watch(mainFloorRef, (element) => {
 }, { flush: "post" });
 
 if (typeof window !== "undefined") window.addEventListener("resize", updateMainPostAuthorMode);
+watch(isMobileLayout, () => updateMainPostAuthorMode());
 
 watch(() => route.params.id, () => {
   pendingReplyMonitorSeq += 1;

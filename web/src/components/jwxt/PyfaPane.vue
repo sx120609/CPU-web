@@ -161,8 +161,8 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 }
 </script>
 
-<style scoped>
-.pyfa-pane { display: flex; flex-direction: column; gap: 12px; }
+<style scoped lang="scss">
+.pyfa-pane { display: flex; flex-direction: column; gap: 12px; container: pyfa-pane / inline-size; }
 
 .data-note {
   display: flex;
@@ -282,7 +282,9 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   line-height: 1.4;
 }
 
-@media (max-width: 760px) {
+// 卡片列表：视口不超过 760px 时（旧浏览器的兜底），或面板放不下 1000px 的表格时。
+// 按面板宽度判断，竖屏 iPad 等中等宽度下不再需要横向拖动表格。
+@mixin pyfa-cards {
   .ctrl-bar {
     align-items: stretch;
     flex-direction: column;
@@ -322,6 +324,22 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+}
+
+@media (max-width: 760px) {
+  @include pyfa-cards;
+}
+
+@container pyfa-pane (max-width: 999px) {
+  @include pyfa-cards;
+}
+
+// iPadOS 15 (still served by the legacy iOS app) has no container queries, and a compact iPad at
+// 820/834 px is wider than the 760 px fallback, so give it the cards from the layout decision instead.
+@supports not (container-type: inline-size) {
+  :where(html[data-cpu-layout="compact"]) {
+    @include pyfa-cards;
   }
 }
 

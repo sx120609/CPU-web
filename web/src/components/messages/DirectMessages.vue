@@ -271,6 +271,7 @@
 </template>
 
 <script setup lang="ts">
+import { useMobileLayout } from "@/utils/mobileLayout";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import {
@@ -325,7 +326,8 @@ const targetError = ref("");
 const messageError = ref("");
 const messageScroller = ref<HTMLElement | null>(null);
 const messageThread = ref<HTMLElement | null>(null);
-const isNarrow = ref(false);
+// Phones, touch tablets below 1024 px and app shells share one layout decision with the rest of the site.
+const isNarrow = useMobileLayout();
 const composerFocused = ref(false);
 const reportDialogOpen = ref(false);
 const reportOverviewOpen = ref(false);
@@ -392,7 +394,6 @@ const activeCounterpart = computed(() => activeConversation.value?.counterpart |
 const floatChat = computed(() => isNarrow.value
   && route.query.tab === "private"
   && Boolean(activeCounterpart.value || targetLoading.value || targetError.value));
-let narrowQuery: MediaQueryList | null = null;
 let stickObserver: ResizeObserver | null = null;
 let pinnedToBottom = true;
 async function blockCounterpart() {
@@ -447,9 +448,6 @@ const composerHint = computed(() => {
 
 onMounted(async () => {
   disposed = false;
-  narrowQuery = window.matchMedia("(max-width: 720px)");
-  narrowQuery.addEventListener("change", syncNarrow);
-  syncNarrow();
   await loadConversationList();
   await applyRouteTarget();
   if (disposed) return;
@@ -466,8 +464,6 @@ onBeforeUnmount(() => {
   messageSeq += 1;
   if (refreshTimer) window.clearInterval(refreshTimer);
   document.removeEventListener("visibilitychange", handleVisibilityChange);
-  narrowQuery?.removeEventListener("change", syncNarrow);
-  narrowQuery = null;
   stickObserver?.disconnect();
   stickObserver = null;
   setPageScrollLock(false);
@@ -478,9 +474,6 @@ function handleVisibilityChange() {
   if (!document.hidden) void refreshVisibleConversation();
 }
 
-function syncNarrow() {
-  isNarrow.value = Boolean(narrowQuery?.matches);
-}
 
 function setPageScrollLock(active: boolean) {
   document.documentElement.classList.toggle("messages-private-scroll-lock", active);
@@ -1025,7 +1018,9 @@ function errorMessage(error: unknown, fallback: string) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 /* 按钮统一清掉浏览器默认样式；:where 保持零特异性，后面的具体类可以直接覆盖。 */
 :where(.dm, .dm-chat) :where(button) {
   margin: 0;
@@ -1725,7 +1720,8 @@ html[data-theme="dark"] .dm-chat {
   overscroll-behavior: none;
 }
 
-@media (max-width: 720px) {
+/* Same switch as the rest of the site, so iPad portrait gets the full-screen chat too. */
+@include compact-layout {
   .dm {
     display: block;
     width: 100%;

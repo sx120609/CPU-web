@@ -402,7 +402,9 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 .image-cell img,.detail :deep(.el-carousel__item img){cursor:zoom-in}
 </style>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 .mobile-lost-intro,
 .mobile-lost-search,
 .mobile-lost-feed {
@@ -837,7 +839,8 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   margin: 0;
 }
 
-@media (max-width: 768px) {
+// The phone tree is also rendered on touch tablets below 1024 px; keep its styles there.
+@include compact-layout {
   .lost-found-page {
     max-width: 860px;
     gap: 10px;

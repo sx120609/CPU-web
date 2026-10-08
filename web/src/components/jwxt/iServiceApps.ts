@@ -177,8 +177,9 @@ export function useIServiceApps(options: { keyword?: Ref<string> } = {}) {
       ElMessage.warning("该应用链接格式暂不支持");
       return;
     }
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) ElMessage.warning("浏览器阻止了新窗口，请允许弹窗后重试");
+    // 带 noopener / noreferrer 时 window.open 按规范总是返回 null，即使新页面已经打开，
+    // 所以这里不能用返回值判断是否被拦截，否则每次都会误报“浏览器阻止了新窗口”。
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return {

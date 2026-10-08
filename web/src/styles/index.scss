@@ -1,5 +1,6 @@
 @use "sass:color";
 @use "./variables.scss" as *;
+@use "./compact" as *;
 
 :root {
   --cpu-font-sans: "Inter Variable", "HarmonyOS Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
@@ -417,6 +418,13 @@ html[data-cpu-ios-next] .el-drawer.btt.cpu-sheet-above-native-bar {
   bottom: var(--cpu-ios-bottom-clearance, 96px) !important;
   max-height: calc(92dvh - var(--cpu-ios-bottom-clearance, 96px)) !important;
   border-radius: 18px 18px 0 0;
+}
+
+// Full-height side drawers (desktop-width pages in the iPad app) would put their footer buttons under the
+// native tab bar. The Android shell also sets data-cpu-ios-next but has no overlapping bar.
+html[data-cpu-ios-next]:not([data-cpu-android-native]) .el-drawer.rtl,
+html[data-cpu-ios-next]:not([data-cpu-android-native]) .el-drawer.ltr {
+  padding-bottom: var(--cpu-ios-bottom-clearance, 96px);
 }
 
 html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-dialog,
@@ -927,13 +935,16 @@ html[data-theme="dark"] {
     --el-tag-text-color: var(--cpu-text-secondary);
   }
 
-  .topic-row:hover,
-  .list-row:hover,
-  .list-item:hover,
-  .ann-item:hover,
-  .board-card:hover,
-  .item-card:hover {
-    background: var(--cpu-surface-soft) !important;
+  // Touch browsers keep :hover on the last tapped row; the !important fill would stick after a tap.
+  @media (hover: hover) {
+    .topic-row:hover,
+    .list-row:hover,
+    .list-item:hover,
+    .ann-item:hover,
+    .board-card:hover,
+    .item-card:hover {
+      background: var(--cpu-surface-soft) !important;
+    }
   }
 
   table,
@@ -1111,11 +1122,13 @@ html[data-theme="dark"] {
     border-color: var(--cpu-border-soft) !important;
   }
 
-  .search-page :is(.course-row:hover, .svc-row:hover),
-  .grade-lookup-page .record-row:hover,
-  .tool-manage-page :is(.file-tool-action:hover, .file-menu-action:hover, .rename-token:hover, .file-download-list button:hover),
-  .responsive-tool-dialog .file-manager-actions button:hover {
-    background: var(--cpu-surface-subtle) !important;
+  @media (hover: hover) {
+    .search-page :is(.course-row:hover, .svc-row:hover),
+    .grade-lookup-page .record-row:hover,
+    .tool-manage-page :is(.file-tool-action:hover, .file-menu-action:hover, .rename-token:hover, .file-download-list button:hover),
+    .responsive-tool-dialog .file-manager-actions button:hover {
+      background: var(--cpu-surface-subtle) !important;
+    }
   }
 
   .tool-manage-page :is(.file-menu-action, .file-tool-action:disabled, .file-menu-action:disabled),
@@ -1199,7 +1212,8 @@ html[data-theme="dark"] {
 
 }
 
-@media (max-width: 768px) {
+// Phone widths, plus touch tablets below 1024 px and native shells (the phone component tree).
+@include compact-layout {
   body {
     font-size: 13px;
   }
@@ -1265,13 +1279,6 @@ html[data-theme="dark"] {
     -webkit-overflow-scrolling: touch;
   }
 
-  :root {
-    --cpu-dialog-radius: 14px;
-    --cpu-dialog-side-gap: 12px;
-    --cpu-dialog-viewport-width: calc(100dvw - 24px);
-    --cpu-dialog-max-height: calc(var(--cpu-overlay-viewport-height, 100dvh) - 24px);
-  }
-
   .el-overlay-dialog,
   .el-overlay-message-box {
     padding: 12px var(--cpu-dialog-side-gap);
@@ -1310,4 +1317,23 @@ html[data-theme="dark"] {
     right: 12px !important;
     max-width: calc(100dvw - 24px);
   }
+}
+
+// The dialog tokens sit on the root element itself, which compact-layout cannot select (its copy nests
+// under html), so they get their own pair. :root:where(…) keeps the specificity of the :root defaults.
+@mixin compact-dialog-tokens {
+  --cpu-dialog-radius: 14px;
+  --cpu-dialog-side-gap: 12px;
+  --cpu-dialog-viewport-width: calc(100dvw - 24px);
+  --cpu-dialog-max-height: calc(var(--cpu-overlay-viewport-height, 100dvh) - 24px);
+}
+
+@media (max-width: 768px) {
+  :root {
+    @include compact-dialog-tokens;
+  }
+}
+
+:root:where([data-cpu-layout="compact"]) {
+  @include compact-dialog-tokens;
 }

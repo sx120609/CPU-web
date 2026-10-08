@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch, type InjectionKey, type Ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -17,9 +17,13 @@ import {
 export type DataTab = Exclude<JwxtDataTab, "midterm">; // 期中暂时停用；恢复时移除 Exclude。
 export type JwxtTab = DataTab | "debug";
 
+export type JwxtPageLayout = "desktop" | "mobile";
+
 // 桌面端与移动端教务页共用的登录、会话与数据加载；两套页面只负责各自的排版。
-// 移动端课表放在独立的课表页，因此由调用方声明当前布局，决定是否提供课表标签。
-export function useJwxtPage(layout: "desktop" | "mobile") {
+// 移动端课表放在独立的课表页，因此由调用方传入当前布局，决定是否提供课表标签。
+// jwxt/Index.vue 只调用一次并 provide 给两套页面：iPad 旋转跨过布局切换点时，
+// 已输入的学号、密码和验证码不会因为换了一套页面而丢失，也不会重复初始化。
+export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
   const jwxt = useJwxtStore();
   const auth = useAuthStore();
   const route = useRoute();
@@ -33,8 +37,8 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
     password: [{ required: true, message: "请输入密码" }],
   };
   const isGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
-  const showScheduleTab = layout === "desktop";
-  const tab = ref<JwxtTab>(showScheduleTab ? "schedule" : "grades");
+  const showScheduleTab = computed(() => layout.value === "desktop");
+  const tab = ref<JwxtTab>(showScheduleTab.value ? "schedule" : "grades");
   const schedule = ref<any>(null);
   const grades = ref<any>(null);
   // const midtermGrades = ref<any>(null);
@@ -61,9 +65,9 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
   const isDev = computed(() => import.meta.env.DEV);
   const availableDataTabs = computed<DataTab[]>(() => {
     if (isGraduateIdentity.value && !auth.academicIdentityUnavailable) {
-      return showScheduleTab ? ["schedule"] : [];
+      return showScheduleTab.value ? ["schedule"] : [];
     }
-    return showScheduleTab
+    return showScheduleTab.value
       ? ["schedule", "grades", /* "midterm", */ "progress", "pyfa"]
       : ["grades", /* "midterm", */ "progress", "pyfa"];
   });
@@ -83,20 +87,20 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
     academicDataUnavailable.value
       ? "当前账号已通过学校登录，但教务数据尚未开通。"
       : isGraduateIdentity.value
-      ? showScheduleTab
+      ? showScheduleTab.value
         ? "通过学校统一认证查看研究生课表，信息会整理成更方便阅读的样子。"
         : "通过学校统一认证连接研究生入口，移动端课表请使用单独课表页。"
-      : showScheduleTab
+      : showScheduleTab.value
         ? "通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。"
         : "通过学校统一认证查看成绩和培养方案，移动端课表请使用单独课表页。"
   ));
   const loginCardHintText = computed(() => (
-    showScheduleTab
+    showScheduleTab.value
       ? "登录后会自动识别你可用的教务入口。本科生会显示完整教务数据，研究生当前会直接进入课表。"
       : "登录后会自动识别你可用的教务入口。本科生会显示成绩等教务数据，课表请使用移动端单独入口。"
   ));
   const scopeTipText = computed(() => (
-    showScheduleTab
+    showScheduleTab.value
       ? "登录后会根据这次实际读取到的数据自动选择可用入口，不需要手动切换。本科生默认显示完整教务，研究生当前显示课表。"
       : "登录后会根据这次实际读取到的数据自动选择可用入口。移动端课表请从单独课表入口查看。"
   ));
@@ -124,7 +128,7 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
     if (auth.academicIdentityDetecting && !auth.academicIdentityResolved) {
       return "正在识别当前账号可用的教务入口…";
     }
-    if (isGraduateIdentity.value && !showScheduleTab) {
+    if (isGraduateIdentity.value && !showScheduleTab.value) {
       return "已自动识别到研究生入口，课表请从移动端独立课表页查看。";
     }
     return isGraduateIdentity.value
@@ -186,6 +190,15 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
     showLoginOverride.value = false;
     loadCurrentTab(false);
   }
+
+  // 布局切换（课表标签出现或消失）时保留登录表单和已加载的数据，只校正当前标签。
+  watch(showScheduleTab, () => {
+    if (disposed) return;
+    const previous = tab.value;
+    ensureVisibleTab();
+    restoreAllTabCaches();
+    if (tab.value !== previous && (jwxt.isLoggedIn || hasCachedData.value)) void loadCurrentTab(false);
+  });
 
   watch(() => auth.academicIdentity, async (next, prev) => {
     if (!next || next === prev) return;
@@ -545,4 +558,13 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
     onManualReauthorize,
     useManualCredentials,
   };
+}
+
+export type JwxtPage = ReturnType<typeof useJwxtPage>;
+export const jwxtPageKey: InjectionKey<JwxtPage> = Symbol("jwxt-page");
+
+export function useInjectedJwxtPage() {
+  const page = inject(jwxtPageKey);
+  if (!page) throw new Error("jwxt page state is not provided");
+  return page;
 }

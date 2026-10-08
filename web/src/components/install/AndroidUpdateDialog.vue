@@ -52,6 +52,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { parseAndroidUpdateState } from "@/utils/androidUpdateState";
 import { fetchAndroidRelease } from "@/utils/androidReleaseCheck";
 import { isAndroidUpdateAvailable } from "@/utils/androidUpdatePolicy";
@@ -72,6 +73,7 @@ import {
   ANDROID_APP_DOWNLOAD_URL,
   ANDROID_APP_LATEST_VERSION_CODE,
   ANDROID_APP_LATEST_VERSION_NAME,
+  canInstallAndroidApk,
   getAndroidNativeVersionCode,
   getAndroidNativeVersionName,
   isAndroidLegacyMajorUpgrade,
@@ -91,6 +93,7 @@ interface AndroidBridge {
   retryApkUpdate?: () => boolean;
 }
 
+const router = useRouter();
 const open = ref(false);
 function notifyNativeUpdateVisibility(visible: boolean) {
   if (isAndroidNativeApp()) (window as any).CPUTimeNative?.postNative?.({ type: "androidUpdatePrompt", visible });
@@ -243,6 +246,11 @@ function autoPromptIfNeeded() {
 
 function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
   if (kind !== "install" && !isAndroidNativeApp()) return;
+  // An APK cannot be installed on iOS/iPadOS or HarmonyOS NEXT; the download page offers their store builds.
+  if (kind === "install" && !isAndroidNativeApp() && !canInstallAndroidApk()) {
+    void router.push("/download");
+    return;
+  }
   readUpdateStatus();
   if (kind === "app" && !updateAvailable.value && !hasPendingUpdate.value) {
     if (!auto) ElMessage.success(`当前已是最新版 ${currentVersionLabel.value}`);

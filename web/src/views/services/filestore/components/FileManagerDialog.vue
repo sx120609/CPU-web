@@ -40,13 +40,13 @@
           <span>{{ item.owner }}<template v-if="item.identifier"> · {{ item.identifier }}</template> · {{ formatBytes(item.file.size) }}</span>
         </div>
         <div class="fs-files-actions">
-          <el-tooltip content="查看" placement="top" :disabled="isMobileLayout">
+          <el-tooltip content="查看" placement="top" :disabled="isMobileLayout || !canHover">
             <el-button text :icon="View" aria-label="查看" @click="previewFile(item.file)" />
           </el-tooltip>
-          <el-tooltip content="下载" placement="top" :disabled="isMobileLayout">
+          <el-tooltip content="下载" placement="top" :disabled="isMobileLayout || !canHover">
             <el-button text :icon="Download" aria-label="下载" @click="downloadFile(item.file)" />
           </el-tooltip>
-          <el-tooltip content="删除" placement="top" :disabled="isMobileLayout">
+          <el-tooltip content="删除" placement="top" :disabled="isMobileLayout || !canHover">
             <el-button text type="danger" :icon="Delete" aria-label="删除" @click="deleteFile(item.file)" />
           </el-tooltip>
         </div>
@@ -56,13 +56,18 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { Delete, Download, Search, Tools, View } from "@element-plus/icons-vue";
 import { formatBytes } from "@/views/services/fileCollectExport";
 import { useMobileLayout } from "@/utils/mobileLayout";
+import { useFormFactor } from "@/utils/formFactor";
 import { useInjectedFilestoreWorkspace } from "../workspace";
 import FileBadge from "./FileBadge.vue";
 
 const isMobileLayout = useMobileLayout();
+const formFactor = useFormFactor();
+// Tap-only devices open tooltips on the emulated mouseenter and leave them hanging; the buttons carry aria-labels.
+const canHover = computed(() => formFactor.value.canHover);
 const {
   fileManagerVisible,
   fileQuery,
@@ -83,7 +88,9 @@ function onRepair(command: "local" | "remote") {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../../../styles/compact" as *;
+
 .fs-files-head { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .fs-files-head b { font-size: var(--cpu-fs-l); font-weight: 700; }
 .fs-files-head span { overflow: hidden; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
@@ -107,7 +114,7 @@ function onRepair(command: "local" | "remote") {
 :global(.fs-files-dialog.is-fullscreen .fs-files-list) { max-height: none; }
 :global(.fs-files-dialog.is-fullscreen .el-dialog__body) { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 
-@media (max-width: 768px) {
+@include compact-layout {
   .fs-files-tools .el-button { padding-inline: 10px; }
 }
 </style>

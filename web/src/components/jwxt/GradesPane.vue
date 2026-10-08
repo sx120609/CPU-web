@@ -1,5 +1,5 @@
 <template>
-  <div class="grades-pane">
+  <div ref="paneRef" class="grades-pane" :class="`is-${layoutTier}`">
     <!-- 桌面端把统计口径做成一排卡片；移动端仍用筛选栏里的紧凑统计。 -->
     <dl v-if="parsed" class="grade-summary">
       <div><dt>显示课程</dt><dd>{{ filteredList.length }}<small>/ {{ parsed.list.length }} 门</small></dd></div>
@@ -44,7 +44,8 @@
           · 加权 GPA <b>{{ statGpa.toFixed(2) }}</b> / 5.0
         </span>
         <span class="stat mobile-stat">{{ compactStatsText }}</span>
-        <el-tooltip placement="top">
+        <!-- 真正的按钮：触屏设备没有悬停，提示改为点按打开，再点一次或点别处关闭。 -->
+        <el-tooltip placement="top" :trigger="canHover ? 'hover' : 'click'">
           <template #content>
             GPA 按学校电子证明成绩单的汇总口径统计：普通考试只统计通过成绩，并按课程取一条有效记录后按学分加权<br/>
             <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0；普通考试 0–59 分不计入学分分母<br/>
@@ -52,7 +53,9 @@
             补考成绩无论分数高低，绩点均按 1.0 计算；同一学期同一课程代码存在补考时优先保留补考记录<br/>
             明细行绩点与汇总均采用学校电子成绩单口径
           </template>
-          <el-icon class="hint-icon"><InfoFilled /></el-icon>
+          <button data-cpu-button="icon" type="button" class="hint-button" aria-label="GPA 统计口径说明">
+            <el-icon class="hint-icon"><InfoFilled /></el-icon>
+          </button>
         </el-tooltip>
       </div>
     </div>
@@ -187,8 +190,14 @@
                   />
                 </template>
               </el-table-column>
-              <el-table-column v-if="!isMobile" prop="courseCode" label="课程代码" width="110" />
-              <el-table-column prop="courseName" label="课程名称" min-width="200" />
+              <el-table-column v-if="layoutTier === 'full'" prop="courseCode" label="课程代码" width="110" />
+              <el-table-column label="课程名称" min-width="200">
+                <template #default="{ row }">
+                  {{ row.courseName }}
+                  <!-- 紧凑表格省掉的列并到课程名下面，信息不丢。 -->
+                  <small v-if="layoutTier === 'compact' && compactCourseMeta(row)" class="course-cell-meta">{{ compactCourseMeta(row) }}</small>
+                </template>
+              </el-table-column>
               <el-table-column label="总成绩" width="88" align="right">
                 <template #default="{ row }">
                   <span :style="{ color: scoreColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
@@ -199,8 +208,8 @@
                   <span :style="{ color: gpaColor(row.gpa) }">{{ row.gpa?.toFixed(1) ?? "—" }}</span>
                 </template>
               </el-table-column>
-              <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
-              <el-table-column v-if="!isMobile" prop="hours" label="学时" width="70" align="right" />
+              <el-table-column prop="credits" label="学分" width="70" align="right" />
+              <el-table-column v-if="layoutTier === 'full'" prop="hours" label="学时" width="70" align="right" />
               <el-table-column label="平时" width="94" align="right">
                 <template #default="{ row }">{{ componentScore(row.usual, row.usualWeight) }}</template>
               </el-table-column>
@@ -210,14 +219,14 @@
               <el-table-column label="期末" width="94" align="right">
                 <template #default="{ row }">{{ componentScore(row.final, row.finalWeight) }}</template>
               </el-table-column>
-              <el-table-column label="性质" width="80">
+              <el-table-column v-if="layoutTier === 'full'" label="性质" width="80">
                 <template #default="{ row }">
                   <el-tag v-if="row.courseAttr" size="small" :type="attrTagType(row.courseAttr)" effect="plain">
                     {{ row.courseAttr }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="examType" label="考试" width="100" />
+              <el-table-column v-if="layoutTier === 'full'" prop="examType" label="考试" width="100" />
             </el-table>
           </div>
         </div>
@@ -234,6 +243,8 @@ import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vu
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
 import { collapseTranscriptGrades, transcriptGradePoint, transcriptGradeStats } from "@/utils/jwxtGradeStats";
+import { useFormFactor } from "@/utils/formFactor";
+import { GRADES_CARDS_FALLBACK_QUERY, gradesLayoutTier, type GradesLayoutTier } from "./gradesLayout";
 
 interface GradeRow {
   semester: string;
@@ -277,22 +288,54 @@ const loadError = ref("");
 let loadSeq = 0;
 let disposed = false;
 
-const isMobile = ref(typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches);
+const formFactor = useFormFactor();
+const canHover = computed(() => formFactor.value.canHover);
+
+// 卡片 / 紧凑表格 / 完整表格按面板自身宽度选择：同样的视口宽度可能是手机、竖屏 iPad 或窄窗口桌面，
+// 只有面板宽度能说明表格放不放得下。不支持 ResizeObserver 时退回原先的 760px 视口断点。
+const paneRef = ref<HTMLElement | null>(null);
+const layoutTier = ref<GradesLayoutTier>(fallbackLayoutTier());
+const isMobile = computed(() => layoutTier.value === "cards");
+let resizeObserver: ResizeObserver | null = null;
 let mql: MediaQueryList | null = null;
-function onMqlChange(e: MediaQueryListEvent) {
-  isMobile.value = e.matches;
+
+function fallbackLayoutTier(): GradesLayoutTier {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "full";
+  return window.matchMedia(GRADES_CARDS_FALLBACK_QUERY).matches ? "cards" : "full";
 }
+
+function measurePane(width = paneRef.value?.clientWidth ?? 0) {
+  layoutTier.value = gradesLayoutTier(width, layoutTier.value);
+}
+
+function onMqlChange(e: MediaQueryListEvent) {
+  layoutTier.value = e.matches ? "cards" : "full";
+}
+
 onMounted(() => {
   disposed = false;
-  if (typeof window === "undefined" || !window.matchMedia) return;
-  mql = window.matchMedia("(max-width: 760px)");
-  isMobile.value = mql.matches;
+  if (typeof window === "undefined") return;
+  if (typeof ResizeObserver === "function" && paneRef.value) {
+    // 先同步量一次，首帧就是正确的布局。
+    measurePane();
+    resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      measurePane(entry?.contentRect.width ?? 0);
+    });
+    resizeObserver.observe(paneRef.value);
+    return;
+  }
+  if (typeof window.matchMedia !== "function") return;
+  mql = window.matchMedia(GRADES_CARDS_FALLBACK_QUERY);
+  layoutTier.value = mql.matches ? "cards" : "full";
   mql.addEventListener?.("change", onMqlChange);
 });
 onBeforeUnmount(() => {
   disposed = true;
   loadSeq += 1;
   loading.value = false;
+  resizeObserver?.disconnect();
+  resizeObserver = null;
   mql?.removeEventListener?.("change", onMqlChange);
   mql = null;
 });
@@ -544,6 +587,10 @@ function hasPublishedScore(row: GradeRow) {
   return Boolean(String(row.score ?? "").trim());
 }
 
+function compactCourseMeta(row: GradeRow) {
+  return [row.courseCode, row.hours ? `${row.hours} 学时` : "", row.courseAttr, row.examType].filter(Boolean).join(" · ");
+}
+
 function componentScore(score?: string, weight?: string) {
   const value = String(score ?? "").trim();
   const ratio = String(weight ?? "").trim();
@@ -643,10 +690,17 @@ function requestMessage(error: unknown) {
 .grade-summary small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-weight: 500; }
 .grade-summary .is-accent { border-color: var(--cpu-border-soft); background: var(--cpu-primary-soft); }
 .grade-summary .is-accent dd { color: var(--cpu-primary); }
-@media (max-width: 768px) {
-  .grade-summary { display: none; }
+/* 卡片布局在筛选栏里显示紧凑统计，不再重复这一排统计卡片。 */
+.grades-pane.is-cards .grade-summary { display: none; }
+.hint-button { padding: 0; cursor: help; }
+.hint-icon { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-m); }
+.course-cell-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.4;
 }
-.hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; font-size: var(--cpu-fs-m); }
 code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: var(--cpu-radius-s); }
 
 .gpa-tool {
@@ -846,9 +900,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: var(
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
-.table-scroll :deep(.el-table) {
-  min-width: 1060px;
-}
+/* 不再强制 1060px：紧凑表格只保留放得下的列，完整表格只在面板足够宽时使用。 */
 .mobile-grade-list { display: none; }
 
 .grade-card {
@@ -919,131 +971,130 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: var(
   max-width: 112px;
 }
 
-@media (max-width: 760px) {
-  .ctrl-bar {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 10px;
-  }
+/* 卡片布局（面板窄于表格时）：由面板上的 is-cards 类驱动，而不是视口宽度。 */
+.grades-pane.is-cards .ctrl-bar {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+}
 
-  .ctrl-left {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
+.grades-pane.is-cards .ctrl-left {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
 
-  .ctrl-left .wide {
-    grid-column: auto;
-  }
+.grades-pane.is-cards .ctrl-left .wide {
+  grid-column: auto;
+}
 
-  .ctrl-left .keyword-filter {
-    grid-column: 1 / -1;
-  }
+.grades-pane.is-cards .ctrl-left .keyword-filter {
+  grid-column: 1 / -1;
+}
 
-  .filter-field {
-    gap: 3px;
-  }
+.grades-pane.is-cards .filter-field {
+  gap: 3px;
+}
 
-  .ctrl-right {
-    width: 100%;
-    justify-content: space-between;
-    gap: 8px;
-    line-height: 1.4;
-  }
+.grades-pane.is-cards .ctrl-right {
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  line-height: 1.4;
+}
 
-  .desktop-stat {
-    display: none;
-  }
+.grades-pane.is-cards .desktop-stat {
+  display: none;
+}
 
-  .mobile-stat {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    padding: 0;
-    background: transparent;
-    white-space: nowrap;
-  }
+.grades-pane.is-cards .mobile-stat {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  white-space: nowrap;
+}
 
-  .gpa-tool {
-    gap: 8px;
-    padding: 10px;
-    background: var(--cpu-surface-subtle);
-  }
+.grades-pane.is-cards .gpa-tool {
+  gap: 8px;
+  padding: 10px;
+  background: var(--cpu-surface-subtle);
+}
 
-  .calc-head,
-  .calc-controls {
-    align-items: stretch;
-    grid-template-columns: 1fr;
-  }
+.grades-pane.is-cards .calc-head,
+.grades-pane.is-cards .calc-controls {
+  align-items: stretch;
+  grid-template-columns: 1fr;
+}
 
-  .course-picker {
-    display: none;
-  }
+.grades-pane.is-cards .course-picker {
+  display: none;
+}
 
-  .calc-head {
-    flex-direction: column;
-  }
+.grades-pane.is-cards .calc-head {
+  flex-direction: column;
+}
 
-  .calc-mode-switch {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-  }
+.grades-pane.is-cards .calc-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
 
-  .calc-mode-btn {
-    height: 34px;
-    padding-inline: 4px;
-    font-size: var(--cpu-fs-s);
-  }
+.grades-pane.is-cards .calc-mode-btn {
+  height: 34px;
+  padding-inline: 4px;
+  font-size: var(--cpu-fs-s);
+}
 
-  .quick-actions {
-    justify-content: flex-start;
-  }
+.grades-pane.is-cards .quick-actions {
+  justify-content: flex-start;
+}
 
-  .quick-actions :deep(.el-button) {
-    flex: 1 1 calc(50% - 4px);
-    min-width: 0;
-  }
+.grades-pane.is-cards .quick-actions :deep(.el-button) {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
+}
 
-  .service-reco {
-    padding: 9px 11px;
-    align-items: center;
-    flex-direction: row;
-    border-radius: var(--cpu-radius-m);
-  }
+.grades-pane.is-cards .service-reco {
+  padding: 9px 11px;
+  align-items: center;
+  flex-direction: row;
+  border-radius: var(--cpu-radius-m);
+}
 
-  .service-reco .reco-kicker,
-  .service-reco p {
-    display: none;
-  }
+.grades-pane.is-cards .service-reco .reco-kicker,
+.grades-pane.is-cards .service-reco p {
+  display: none;
+}
 
-  .service-reco b {
-    margin: 0;
-    font-size: var(--cpu-fs-s);
-  }
+.grades-pane.is-cards .service-reco b {
+  margin: 0;
+  font-size: var(--cpu-fs-s);
+}
 
-  .reco-link {
-    border: 0;
-    padding: 4px 0;
-    text-align: center;
-  }
+.grades-pane.is-cards .reco-link {
+  border: 0;
+  padding: 4px 0;
+  text-align: center;
+}
 
-  .sem-head {
-    align-items: baseline;
-    flex-direction: row;
-    gap: 8px;
-  }
+.grades-pane.is-cards .sem-head {
+  align-items: baseline;
+  flex-direction: row;
+  gap: 8px;
+}
 
-  .sem-sum {
-    text-align: right;
-  }
+.grades-pane.is-cards .sem-sum {
+  text-align: right;
+}
 
-  .table-scroll { display: none; }
+.grades-pane.is-cards .table-scroll { display: none; }
 
-  .mobile-grade-list {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
+.grades-pane.is-cards .mobile-grade-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 @media (max-width: 430px) {
@@ -1054,10 +1105,11 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: var(
 }
 
 @media (max-width: 380px) {
-  .ctrl-left {
+  /* 与上面的 is-cards 规则同等优先级，才能在最窄的屏幕上覆盖它们。 */
+  .grades-pane.is-cards .ctrl-left {
     grid-template-columns: 1fr;
   }
-  .ctrl-left .keyword-filter {
+  .grades-pane.is-cards .ctrl-left .keyword-filter {
     grid-column: auto;
   }
   .score-badges {

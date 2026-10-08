@@ -386,7 +386,9 @@ function requestMessage(requestError: unknown) {
 .load-sentinel.is-error { color: var(--cpu-danger); }
 .board-grid { display: grid; min-height: 120px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .board-choice { display: grid; min-width: 0; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border: 0; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); color: var(--cpu-text); font: inherit; text-align: left; cursor: pointer; }
-.board-choice:hover { background: var(--cpu-surface-subtle); }
+/* Touch screens keep :hover after a tap, so the tint is for mice only; taps get :active feedback. */
+@media (hover: hover) { .board-choice:hover { background: var(--cpu-surface-subtle); } }
+.board-choice:active { background: var(--cpu-surface-subtle); }
 .board-choice:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .board-icon { display: grid; height: 40px; place-items: center; border-radius: var(--cpu-radius-m); color: #fff; font-size: 19px; }
 .board-copy { min-width: 0; }

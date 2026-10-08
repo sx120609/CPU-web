@@ -185,7 +185,8 @@ html[data-theme="dark"] {
 }
 .cpu-button-row > .el-button:where(:not([data-cpu-button-theme="schedule"])) + .el-button:where(:not([data-cpu-button-theme="schedule"])) { margin-left: 0; }
 
-@media (max-width: 768px) {
+// 触屏平板和横屏手机同样按手指尺寸放大，不只看宽度。
+@media (max-width: 768px), (pointer: coarse) {
   :root { --cpu-button-height: 44px; }
   .el-button--small:where(:not([data-cpu-button-theme="schedule"])):not(.is-link) { min-height: 36px; padding: 7px 10px; }
   [data-cpu-button="icon"] { min-width: 40px; min-height: 40px; }

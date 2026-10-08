@@ -1,4 +1,7 @@
-@media (min-width: 769px) {
+@use "../../../styles/compact" as *;
+
+// Desktop component tree: the toolbar tabs render as a button row.
+@include expanded-only {
   .desktop-same-toolbar .mobile-toolbar-tabs {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 88px), 1fr));
   }
@@ -35,7 +38,8 @@
   }
 }
 
-@media (max-width: 768px) {
+// Phone component tree, including touch tablets below 1024 px and native shells.
+@include compact-layout {
   .rich-editor {
     border-radius: var(--cpu-radius-l);
   }
@@ -283,5 +287,24 @@
 
   .rich-editor.toolbar-static .editor-foot {
     border-radius: 0 0 16px 16px;
+  }
+}
+
+// Tablets and touchscreens: let a drag that reaches the end of the editor's own scroll move the page, so the
+// toolbar, title and 发布 stay reachable while the keyboard covers half the screen.
+@media (min-width: 769px) and (any-pointer: coarse) {
+  .editor-surface {
+    overscroll-behavior-y: auto;
+  }
+}
+
+// Landscape touch tablets: size the editor from the small viewport height (unaffected by the keyboard) so it
+// never grows far past the visible area. The phone tree keeps its own heights above.
+@media (min-width: 769px) and (max-height: 900px) and (pointer: coarse) {
+  @include expanded-only {
+    .editor-surface {
+      min-height: min(320px, 36svh);
+      max-height: min(620px, 60svh);
+    }
   }
 }

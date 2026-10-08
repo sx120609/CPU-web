@@ -25,6 +25,7 @@ import { pruneForumViewCache } from "./utils/forumCache";
 import { sweepPageViewCaches } from "./utils/viewCache";
 import { isForumDestination } from "./utils/nativeForumVisibility";
 import { useMessageStore } from "./stores/message";
+import { installFormFactor, isCompactLayoutNow } from "./utils/formFactor";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
@@ -144,7 +145,7 @@ function installFeedbackLayerGuard() {
     const messages = Array.from(document.querySelectorAll<HTMLElement>(".el-message"));
     if (!messages.length) return;
 
-    const topBase = window.matchMedia("(max-width: 768px)").matches ? 132 : 86;
+    const topBase = isCompactLayoutNow() ? 132 : 86;
     const gap = 10;
     let nextTop = topBase;
 
@@ -152,7 +153,7 @@ function installFeedbackLayerGuard() {
       const top = `${nextTop}px`;
       if (message.style.top !== top) message.style.top = top;
       message.style.left = "auto";
-      message.style.right = window.matchMedia("(max-width: 768px)").matches ? "12px" : "18px";
+      message.style.right = isCompactLayoutNow() ? "12px" : "18px";
       message.style.transform = "none";
       nextTop += message.offsetHeight + gap;
     }
@@ -162,7 +163,7 @@ function installFeedbackLayerGuard() {
     const notifications = Array.from(document.querySelectorAll<HTMLElement>(".el-notification.right"));
     if (!notifications.length) return;
 
-    const topBase = window.matchMedia("(max-width: 768px)").matches ? 132 : 86;
+    const topBase = isCompactLayoutNow() ? 132 : 86;
     const gap = 12;
     let nextTop = topBase;
 
@@ -427,6 +428,10 @@ const disposeOverlayViewport = installOverlayViewport();
 if (import.meta.hot) import.meta.hot.dispose(disposeOverlayViewport);
 installIosNativeImageBridge();
 installNativeAppMarker();
+// Before the first render, so CSS and the component tree agree on phone vs desktop layout from the start.
+installFormFactor();
+// An empty touch listener makes WebKit apply :active to tapped elements, the touch counterpart of :hover.
+document.addEventListener("touchstart", () => {}, { passive: true });
 installDesktopWebReleaseRefresh();
 applyInitialAppearance();
 

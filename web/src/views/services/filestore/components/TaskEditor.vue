@@ -306,7 +306,9 @@ function go(step: number) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../../../styles/compact" as *;
+
 .fs-ed { display: flex; height: 100%; flex-direction: column; background: var(--cpu-bg); color: var(--cpu-text); }
 
 .fs-ed-head {
@@ -438,7 +440,8 @@ function go(step: number) {
 :global(.fs-editor .el-drawer__body) { padding: 0; }
 :global(.fs-editor.el-drawer.btt) { border-radius: 0; }
 
-@media (max-width: 768px) {
+// The phone sheet layout follows the rendered tree, so touch tablets below 1024 px get it too.
+@include compact-layout {
   .fs-ed-head { padding-left: 16px; }
   .fs-ed-steps { display: flex; overflow-x: auto; padding: 2px 12px 10px; scrollbar-width: none; }
   .fs-ed-steps::-webkit-scrollbar { display: none; }
@@ -451,7 +454,7 @@ function go(step: number) {
   .fs-ed-foot { flex-direction: column-reverse; align-items: stretch; gap: 6px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
   .fs-ed-foot-main .el-button { flex: 1; }
   .fs-ed-foot-extra { justify-content: center; }
-  /* 16px 以下 iOS 会在聚焦时放大页面 */
+  // 16px 以下 iOS 会在聚焦时放大页面
   .fs-ed-body :deep(.el-input__inner),
   .fs-ed-body :deep(.el-textarea__inner) { font-size: var(--cpu-fs-l); }
 }

@@ -238,7 +238,7 @@ import {
   WarningFilled,
 } from "@element-plus/icons-vue";
 import PrivacyConsent from "@/components/common/PrivacyConsent.vue";
-import { useJwxtPage, type DataTab, type JwxtTab } from "./jwxtPage";
+import { useInjectedJwxtPage, type DataTab, type JwxtTab } from "./jwxtPage";
 const GradesPane = defineAsyncComponent(() => import("@/components/jwxt/GradesPane.vue"));
 const ProgressPane = defineAsyncComponent(() => import("@/components/jwxt/ProgressPane.vue"));
 const PyfaPane = defineAsyncComponent(() => import("@/components/jwxt/PyfaPane.vue"));
@@ -277,7 +277,7 @@ const {
   onTabChange,
   onManualReauthorize,
   useManualCredentials,
-} = useJwxtPage("mobile");
+} = useInjectedJwxtPage();
 
 // 移动端课表在独立课表页，这里只提供成绩、学业与培养方案。
 const tabMeta: Record<Exclude<DataTab, "schedule">, { label: string; icon: unknown }> = {

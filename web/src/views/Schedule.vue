@@ -976,6 +976,7 @@ import { useAppearanceStore } from "@/stores/appearance";
 import { useJwxtStore } from "@/stores/jwxt";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
+  canInstallAndroidApk,
   detectClientPlatform,
   isAndroidAppUpdateAvailable,
   isAndroidNativeApp,
@@ -985,6 +986,7 @@ import {
   isIosStandalone,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
+import { useFormFactor } from "@/utils/formFactor";
 import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
 import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
@@ -1154,8 +1156,7 @@ const offlineMode = ref(typeof navigator !== "undefined" ? navigator.onLine === 
 const scheduleSavedAt = ref(0);
 const scheduleEdits = ref<ScheduleEditState>(emptyScheduleEdits());
 const viewportHeight = ref(0);
-const viewportWidth = ref(0);
-const touchLikeViewport = ref(false);
+const formFactor = useFormFactor();
 const compactViewport = ref(false);
 // v2 intentionally resets earlier saved choices once so everyone sees the new colorful default.
 const THEME_KEY = SCHEDULE_THEME_STORAGE_KEY;
@@ -1681,6 +1682,8 @@ const androidUpdateMenuLabel = computed(() => (
 ));
 const canShowAndroidClientDownload = computed(() => {
   if (isAndroidNativeApp() || isFlutterNativeShell()) return false;
+  // iPad/iPhone Safari and HarmonyOS NEXT report a plain "web" platform but cannot install an APK.
+  if (!canInstallAndroidApk()) return false;
   const platform = detectClientPlatform();
   if (platform === "desktop" || platform === "ios" || platform === "harmony" || isIosStandalone()) return false;
   return true;
@@ -2038,11 +2041,9 @@ const isViewingToday = computed(() => {
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
-const scheduleHasBottomTabbar = computed(() => {
-  if (isFlutterNativeShell()) return false;
-  if (viewportWidth.value <= 768) return true;
-  return touchLikeViewport.value && viewportHeight.value >= viewportWidth.value;
-});
+// MainLayout shows its web tab bar exactly on compact layouts, and native shells (always compact) own
+// the chrome. The Flutter shell has no tab bar over /schedule, so it keeps the 退出 button.
+const scheduleHasBottomTabbar = computed(() => !isFlutterNativeShell() && formFactor.value.compact);
 const showScheduleExitButton = computed(() => !scheduleHasBottomTabbar.value);
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
@@ -2983,17 +2984,7 @@ function updateViewportHeight() {
   const height = Math.min(visualHeight, window.innerHeight);
   const width = Math.min(visualWidth, window.innerWidth);
   viewportHeight.value = Math.max(0, Math.round(height || 0));
-  viewportWidth.value = Math.max(0, Math.round(width || 0));
-  touchLikeViewport.value = isTouchLikeViewport();
   compactViewport.value = window.matchMedia?.("(max-width: 760px)").matches ?? width <= 760;
-}
-
-function isTouchLikeViewport() {
-  return Boolean(
-    window.matchMedia?.("(pointer: coarse)").matches
-    || window.matchMedia?.("(hover: none)").matches
-    || navigator.maxTouchPoints > 0
-  );
 }
 
 function syncNetworkStatus() {

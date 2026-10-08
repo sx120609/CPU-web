@@ -101,8 +101,10 @@ function returnToDraft() {
   if (router.currentRoute.value.fullPath !== target) void router.push(target);
 }
 
+// Phones and touch tablets start with the small pill, so the card never opens over the tab bar or the page.
+// Kept inline without other globals: harmony/tests/forum-visibility.test.mjs runs this script in a sandbox.
 function isCompactViewport() {
-  return window.matchMedia("(max-width: 640px)").matches;
+  return window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
 }
 </script>
 
@@ -291,5 +293,26 @@ function isCompactViewport() {
     max-height: min(72dvh, 520px);
     overflow: auto;
   }
+}
+
+/*
+ * The card is rendered outside .layout-root, so MainLayout publishes the web tab bar and the compact 投稿
+ * button on <html>. Unlike a :global() rule these keep the scope attribute, which also beats the 640px rule.
+ */
+html[data-cpu-web-tabbar] .smart-post-task-card {
+  bottom: calc(var(--cpu-web-tabbar-reserve) + 12px);
+}
+
+html[data-cpu-web-tabbar][data-cpu-post-fab] .smart-post-task-card {
+  bottom: calc(var(--cpu-web-tabbar-reserve) + 76px);
+}
+
+html[data-cpu-web-tabbar] .smart-post-task-card:not(.is-collapsed) {
+  max-height: calc(100dvh - var(--cpu-web-tabbar-reserve) - 36px);
+  overflow: auto;
+}
+
+html[data-cpu-web-tabbar][data-cpu-post-fab] .smart-post-task-card:not(.is-collapsed) {
+  max-height: calc(100dvh - var(--cpu-web-tabbar-reserve) - 100px);
 }
 </style>

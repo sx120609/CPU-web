@@ -43,7 +43,7 @@ defineProps<{ title: string; subtitle?: string }>();
 const emit = defineEmits<{ home: [] }>();
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .auth-wrap {
   display: grid;
   min-height: 100vh;
@@ -116,7 +116,7 @@ const emit = defineEmits<{ home: [] }>();
 .auth-head h1 { margin: 0; color: var(--cpu-text); font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.35; }
 .auth-head p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.6; }
 
-@media (max-width: 820px) {
+@mixin auth-single-column {
   .auth-wrap { align-items: start; padding: calc(16px + var(--cpu-safe-area-inset-top, 0px)) 12px 18px; }
   .auth-shell { width: min(480px, 100%); grid-template-columns: minmax(0, 1fr); border-radius: var(--cpu-radius-l); box-shadow: var(--cpu-shadow-md); }
   .auth-aside { display: none; }
@@ -124,5 +124,15 @@ const emit = defineEmits<{ home: [] }>();
   .auth-nav { margin-bottom: 12px; }
   .auth-head img { display: block; }
   .auth-head h1 { font-size: var(--cpu-fs-xl); }
+}
+
+@media (max-width: 820px) {
+  @include auth-single-column;
+}
+
+// Touch tablets in the compact layout (iPad Pro 11 portrait is 834 px) get the same single-column login
+// as the 820 px iPad Air, instead of the two-column desktop card.
+:where(html[data-cpu-layout="compact"]) {
+  @include auth-single-column;
 }
 </style>
