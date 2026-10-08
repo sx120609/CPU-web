@@ -4,6 +4,30 @@ import { spawn } from "node:child_process";
 
 const UPDATE_LOCK_STALE_MS = 30 * 60_000;
 
+// A root-owned systemd.path unit handles artifact-only installations. The Agent
+// writes only a request marker; neither payloads nor commands cross this boundary.
+export function queueManagedAgentUpdate(requestFile: string, now = Date.now()) {
+  if (!path.isAbsolute(requestFile) || path.basename(requestFile) !== "agent-remote-update.request") {
+    throw new Error("Agent 托管更新请求路径无效");
+  }
+  const requestedAt = new Date(now).toISOString();
+  if (existsSync(requestFile)) {
+    if (now - statSync(requestFile).mtimeMs < UPDATE_LOCK_STALE_MS) {
+      return { accepted: true as const, alreadyScheduled: true, requestedAt };
+    }
+    unlinkSync(requestFile);
+  }
+  try {
+    writeFileSync(requestFile, `${requestedAt}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+      return { accepted: true as const, alreadyScheduled: true, requestedAt };
+    }
+    throw error;
+  }
+  return { accepted: true as const, alreadyScheduled: false, requestedAt };
+}
+
 function findRepositoryRoot() {
   const starts = [
     process.cwd(),
@@ -26,6 +50,11 @@ function findRepositoryRoot() {
 }
 
 export function scheduleAgentSelfUpdate() {
+  const managedRequestFile = process.env.JWXT_AGENT_UPDATE_REQUEST_FILE;
+  if (managedRequestFile) {
+    if (process.platform !== "linux") throw new Error("Agent 托管更新只支持 Linux systemd");
+    return queueManagedAgentUpdate(managedRequestFile);
+  }
   const requestedAt = new Date().toISOString();
   const repositoryRoot = findRepositoryRoot();
   const runnerPath = path.resolve(__dirname, "..", "agentUpdateRunner.js");

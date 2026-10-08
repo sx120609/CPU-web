@@ -366,7 +366,7 @@ async function resetIdentity(agent: EditableAgent) {
 
 async function updateAgent(agent: EditableAgent) {
   await ElMessageBox.confirm(
-    `${agent.name} 将在后台拉取最新代码、构建并重启，期间会短暂离线，完成后自动重连。`,
+    `${agent.name} 将在后台下载并校验 GitHub 构建制品，然后重启。期间会短暂离线，完成后自动重连。`,
     "确认远程更新 Agent",
     {
       type: "warning",
