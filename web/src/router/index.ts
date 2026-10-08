@@ -18,6 +18,8 @@ import {
 import { preloadScheduleBackgroundAsset } from "@/utils/scheduleBackgroundStorage";
 import { readForumListRestoreState } from "@/utils/forumListRestore";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
+import { isCompactLayoutNow } from "@/utils/formFactor";
+import { forumListTarget, installForumListLayoutSync } from "@/utils/forumListRoute";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
 export const loadHomeView = () => import("@/views/Home.vue");
@@ -102,21 +104,20 @@ function firstRouteValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function mobileForumFeedRedirect(channel?: "hot"): NavigationGuard {
-  return (to) => {
-    const mobile = typeof window !== "undefined" && (window.matchMedia?.("(max-width: 768px)").matches ?? window.innerWidth <= 768);
-    if (!mobile) return true;
-    const query = { ...to.query };
-    if (channel) query.channel = channel;
-    return { name: "forum", query };
-  };
+function forumMarketEnabled() {
+  const site = useSiteStore();
+  return site.loaded ? Boolean(site.features.market) : null;
 }
 
-function mobileMarketBoardRedirect(to: Parameters<NavigationGuard>[0]) {
-  const mobile = typeof window !== "undefined" && (window.matchMedia?.("(max-width: 768px)").matches ?? window.innerWidth <= 768);
-  if (!mobile) return true;
-  return { name: "forum", query: { ...to.query, channel: "market" } };
+/** Options for forumListTarget; the market channel only maps to its board while the feature is on. */
+function forumListRouteOptions() {
+  return { marketEnabled: forumMarketEnabled() };
 }
+
+// 手机 / 平板竖屏的论坛把最新、热榜、二手等做成 /forum?channel=…，桌面布局用独立路由；进入时按当前布局对齐。
+const forumListLayoutGuard: NavigationGuard = (to) => (
+  forumListTarget(to, isCompactLayoutNow(), forumListRouteOptions()) ?? true
+);
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -159,10 +160,10 @@ export const router = createRouter({
       children: [
         { path: "home", name: "home", component: loadHomeView, meta: { title: "首页", public: true } },
         { path: "home/services", name: "native-restricted-home", component: loadHomeView, meta: { title: "首页", public: true } },
-        { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), meta: { title: "论坛", public: true } },
-        { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect("hot"), meta: { title: "热榜", public: true } },
-        { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect(), meta: { title: "最新内容", public: true } },
-        { path: "forum/b/market", name: "market", component: () => import("@/views/forum/Board.vue"), beforeEnter: mobileMarketBoardRedirect, meta: { title: "二手交流", public: true } },
+        { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), beforeEnter: forumListLayoutGuard, meta: { title: "论坛", public: true } },
+        { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), beforeEnter: forumListLayoutGuard, meta: { title: "热榜", public: true } },
+        { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), beforeEnter: forumListLayoutGuard, meta: { title: "最新内容", public: true } },
+        { path: "forum/b/market", name: "market", component: () => import("@/views/forum/Board.vue"), beforeEnter: forumListLayoutGuard, meta: { title: "二手交流", public: true } },
         { path: "forum/b/:slug", name: "board", component: () => import("@/views/forum/Board.vue"), meta: { title: "板块", public: true } },
         { path: "forum/topic/:id", name: "topic", component: () => import("@/views/forum/Topic.vue"), meta: { nativeChrome: "page", title: "帖子", public: true } },
         { path: "post", name: "post", component: () => import("@/views/forum/Post.vue"), meta: { nativeChrome: "page", title: "发帖" } },
@@ -231,6 +232,9 @@ export const router = createRouter({
     { path: "/:pathMatch(.*)*", component: () => import("@/views/NotFound.vue"), meta: { public: true } },
   ],
 });
+
+// Registered ahead of the guard below, so a layout flip while that guard awaits never cancels the navigation.
+installForumListLayoutSync(router, forumListRouteOptions);
 
 router.beforeEach(async (to) => {
   if (hidesNativeCommerce() && /^\/(vip|sponsor|sponsor-wall)(\/|$)/.test(to.path)) {

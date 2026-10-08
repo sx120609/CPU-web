@@ -15,13 +15,14 @@ const compiled = buildSync({
 const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
 const ipad = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15";
 
-function client(ua, { standalone = false, touch = 0, bridge, override = "" } = {}) {
+function client(ua, { standalone = false, touch = 0, bridge, override = "", screen = [1440, 900], desktop } = {}) {
   const module = { exports: {} };
   const storage = new Map();
   runInNewContext(compiled, {
     module, exports: module.exports, URLSearchParams,
     navigator: { userAgent: ua, maxTouchPoints: touch, standalone },
-    window: { location: { search: override }, matchMedia: () => ({ matches: standalone }), CPUIOS: bridge },
+    screen: { width: screen[0], height: screen[1] },
+    window: { location: { search: override }, matchMedia: () => ({ matches: standalone }), CPUIOS: bridge, CPUDesktop: desktop },
     sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
   });
   return module.exports;
@@ -102,4 +103,44 @@ test("the Android native shell shares CPUTimeNative without being treated as iOS
   assert.equal(api.detectClientPlatform(), "android");
   assert.equal(api.getAndroidNativeVersionCode(), 39);
   assert.equal(api.getAndroidNativeVersionName(), "4.0.0");
+});
+
+test("iPad, desktop-client and APK offers follow the device rather than the browser token", () => {
+  const windows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36";
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0 Safari/537.36";
+  const androidTablet = "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/130.0 Safari/537.36";
+  const harmony4 = "Mozilla/5.0 (Linux; Android 12; HarmonyOS; NOH-AN00) AppleWebKit/537.36 Chrome/99.0 Mobile Safari/537.36 HuaweiBrowser/15.0";
+  const harmonyNext = "Mozilla/5.0 (Phone; OpenHarmony 5.0) AppleWebKit/537.36 Chrome/114.0 Safari/537.36 ArkWeb/4.1.6.1 Mobile HuaweiBrowser/5.0";
+  const electron = `${windows} CPUWebDesktopApp/2.0.0 Electron/31.0.0`;
+  const cases = [
+    // [label, ua, options, isLikelyIpadDevice, canOfferDesktopClient, canInstallAndroidApk]
+    ["iPad Safari", ipad, { touch: 5, screen: [820, 1180] }, true, false, false],
+    ["iPad UA", iphone.replace("iPhone; CPU iPhone OS", "iPad; CPU OS"), { touch: 5, screen: [820, 1180] }, true, false, false],
+    ["iPad legacy app", `${ipad} CPUWebIOSApp/1 CPUTimeLegacy/1`, { touch: 5, screen: [1024, 1366] }, true, false, false],
+    ["iPad native app", `${ipad} CPUWebIOSApp/1 CPUTimeNative/1`, { touch: 5, screen: [1024, 1366] }, true, false, false],
+    ["iPhone", iphone, { touch: 5, screen: [390, 844] }, false, false, false],
+    ["iPhone desktop-site mode", ipad, { touch: 5, screen: [390, 844] }, false, false, false],
+    ["Mac Safari", ipad, { touch: 0 }, false, true, true],
+    ["Mac Chrome", mac, { touch: 0 }, false, true, true],
+    ["Windows touch laptop", windows, { touch: 10, screen: [1366, 768] }, false, true, true],
+    ["Android tablet", androidTablet, { touch: 10, screen: [800, 1280] }, false, false, true],
+    ["HarmonyOS 4 Huawei Browser", harmony4, { touch: 10, screen: [360, 780] }, false, false, true],
+    ["OpenHarmony NEXT", harmonyNext, { touch: 10, screen: [360, 780] }, false, false, false],
+    ["Harmony native app", "Mozilla/5.0 (Phone; OpenHarmony 5.0) CPUWebHarmonyApp/20 CPUTimeNative/1", { touch: 10 }, false, false, false],
+    ["Electron by UA", electron, {}, false, false, true],
+    ["Electron by bridge", windows, { desktop: {} }, false, false, true],
+  ];
+  for (const [label, ua, options, ipadDevice, desktopClient, apk] of cases) {
+    const api = client(ua, options);
+    assert.equal(api.isLikelyIpadDevice(), ipadDevice, `${label}: isLikelyIpadDevice`);
+    assert.equal(api.canOfferDesktopClient(), desktopClient, `${label}: canOfferDesktopClient`);
+    assert.equal(api.canInstallAndroidApk(), apk, `${label}: canInstallAndroidApk`);
+  }
+});
+
+test("native shells that draw their own chrome are recognised by UA token", () => {
+  assert.equal(client(`${iphone} CPUWebIOSApp/1 CPUTimeNative/1`).nativeShellOwnsChrome(), true);
+  assert.equal(client(`${iphone} CPUWebIOSApp/1`).nativeShellOwnsChrome(), false);
+  assert.equal(client(`${iphone} CPUWebFlutterApp/1`).nativeShellOwnsChrome(), true);
+  assert.equal(client(iphone).nativeShellOwnsChrome(), false);
 });

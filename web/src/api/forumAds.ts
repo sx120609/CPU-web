@@ -1,4 +1,5 @@
 import { getCsrfToken, request, type RequestOptions } from "./request";
+import { isCompactLayoutNow } from "@/utils/formFactor";
 
 export type ForumAdPlacement = "home-mobile-top" | "compose-mobile-campaign" | "forum-index-top" | "forum-home-pinned" | "forum-home-hot" | "forum-feed-inline" | "forum-board-top";
 
@@ -18,8 +19,9 @@ export type ForumAd = {
 export type ForumAdDevice = "mobile" | "desktop";
 export type ForumAdEventType = "impression" | "click";
 
+/** Follows the rendered component tree, so a tablet showing the phone pages reports as mobile. */
 export function currentForumAdDevice(): ForumAdDevice {
-  return window.matchMedia?.("(max-width: 768px)").matches || window.innerWidth <= 768 ? "mobile" : "desktop";
+  return isCompactLayoutNow() ? "mobile" : "desktop";
 }
 
 function trackForumAdEvent(ad: ForumAd, type: ForumAdEventType) {

@@ -9,7 +9,9 @@
       'layout-root--assistant': route.name === 'search',
       'layout-root--native-shell': useFlutterShell,
       'layout-root--ios-next': useIosNextShell,
-      'layout-root--tabbar-fallback': useTabbarFallback,
+      'layout-root--tabbar-fallback': showWebTabbar,
+      'layout-root--no-tools-fab': !showToolsFab,
+      'layout-root--post-fab': showForumPostFab,
       'layout-root--android-insets': isAndroidNativeApp(),
     }"
     :style="layoutStyle"
@@ -71,7 +73,7 @@
         </nav>
 
         <div class="top-right">
-          <el-tooltip content="刷新页面">
+          <el-tooltip content="刷新页面" :disabled="!ff.canHover">
             <el-button text class="page-refresh-btn" aria-label="刷新页面" @click="reloadPage">
               <el-icon size="20"><Refresh /></el-icon>
             </el-button>
@@ -95,21 +97,22 @@
             </template>
           </el-dropdown>
           <template v-if="auth.isLoggedIn">
-            <el-tooltip v-if="msg.directUnreadCount" :content="`${msg.directUnreadCount} 条未读私信`">
+            <el-tooltip v-if="msg.directUnreadCount" :content="`${msg.directUnreadCount} 条未读私信`" :disabled="!ff.canHover">
               <el-button class="direct-message-shortcut" text @click="$router.push('/messages?tab=private')">
                 <el-icon><Message /></el-icon>
                 <span>私信</span>
                 <span class="direct-message-count">{{ Math.min(msg.directUnreadCount, 99) }}</span>
               </el-button>
             </el-tooltip>
-            <el-tooltip :content="messageAriaLabel">
+            <el-tooltip :content="messageAriaLabel" :disabled="!ff.canHover">
               <el-button class="message-entry" :class="{ 'has-direct': msg.directUnreadCount }" text :aria-label="messageAriaLabel" @click="$router.push('/messages')">
                 <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
                   <el-icon size="20"><Bell /></el-icon>
                 </el-badge>
               </el-button>
             </el-tooltip>
-            <el-dropdown @command="onUserCmd">
+            <!-- Hover opens it with a mouse; a tap has no hover, so touch devices open and close it by tapping. -->
+            <el-dropdown :trigger="ff.canHover ? 'hover' : 'click'" @command="onUserCmd">
               <span class="user-info">
                 <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="displayName" :seed="auth.user?.id" alt="用户头像" />
                 <span class="user-name">{{ displayName }}</span>
@@ -165,7 +168,7 @@
         'main--mobile-topic': mobileTopicChrome,
       }"
     >
-      <IosAppRecommendation v-if="route.name === 'home'" />
+      <IosAppRecommendation v-if="route.name === 'home'" style="--ios-app-recommendation-max-width: 1120px" />
       <router-view v-slot="{ Component }">
         <transition name="page-route" :css="!auth.forumHidden && (!useIosRouteTransition || (iosRouteTransitionEnabled && !useIosNextShell))"
           @before-leave="freezeRoutePage" @after-leave="releaseRoutePage" @leave-cancelled="releaseRoutePage">
@@ -178,6 +181,7 @@
       <aside
         v-if="assistantWidgetOpen && showFloatingActions && assistantEntryVisible"
         class="assistant-widget"
+        :class="{ 'is-keyboard-pinned': assistantKeyboardPinned }"
         role="dialog"
         aria-label="拾间AI"
       >
@@ -250,10 +254,11 @@
       v-if="!hideChrome && !fullHeightContent && !mobileTopicChrome && (!useFlutterShell || showAppFiling)"
       :app-filing="showAppFiling"
       :compact="useFlutterShell"
+      :fab-gutter="showToolsFab || showForumPostFab || (showFloatingActions && assistantEntryVisible)"
     />
 
     <MobileTabbar
-      v-if="!useNativeShell && !mobileTopicChrome"
+      v-if="showWebTabbar"
       class="mobile-tabbar"
       :hidden="keyboardOpen"
       :items="mobileNavItems.map(item => ({ ...item, to: resolveMobileTo(item) }))"
@@ -346,7 +351,7 @@
 
 <script setup lang="ts">
 import IosAppRecommendation from "@/components/install/IosAppRecommendation.vue";
-import { ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
+import { ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import MobileTabbar from "../components/common/MobileTabbar.vue";
 import SiteFooter from "../components/common/SiteFooter.vue";
@@ -387,7 +392,19 @@ import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { iosRouteTransitionEnabled } from "@/router";
 import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
-import { isAndroidNativeApp, isCampusAssistantDestination, isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
+import { canOfferDesktopClient, isAndroidNativeApp, isCampusAssistantDestination, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
+import { useFormFactor } from "@/utils/formFactor";
+import {
+  assumesKeyboardOnFocus,
+  closeKeyboardAfterBlur,
+  initialKeyboardViewportState,
+  KEYBOARD_BLUR_CLOSE_MS,
+  reduceKeyboardBaseline,
+  reduceKeyboardGeometry,
+  settleKeyboardGeometryClose,
+  type KeyboardViewportState,
+  type ViewportSample,
+} from "@/utils/keyboardViewport";
 import { isRegisteredMobileApp } from "../../../shared/appFiling";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
@@ -400,6 +417,7 @@ const site = useSiteStore();
 const appearance = useAppearanceStore();
 const router = useRouter();
 const route = useRoute();
+const ff = useFormFactor();
 const mobileMenuOpen = ref(false);
 const logoutPending = ref(false);
 const assistantWidgetOpen = ref(false);
@@ -408,24 +426,25 @@ const downloadSafetyGuideVisible = ref(false);
 const keyboardOpen = ref(false);
 const keyboardGeometryOpen = ref(false);
 const mobileViewportHeight = ref(0);
-const mobileViewportWidth = ref(0);
 const mobileViewportOffsetTop = ref(0);
 const virtualKeyboardInset = ref(0);
-const touchLikeViewport = ref(false);
 const editableFocused = ref(false);
 const editorFocused = ref(false);
+const assistantFocused = ref(false);
 const mobileViewportBaseHeight = ref(0);
-const isMobileViewport = ref(false);
-const KEYBOARD_INSET_THRESHOLD = 96;
+const headerCollapsedViewport = ref(false);
+// Keyboard detection runs wherever a software keyboard can cover the page; it never decides the layout.
+const isMobileViewport = computed(() => ff.value.compact || ff.value.touchPrimary);
 const KEYBOARD_FOCUS_GRACE_MS = 1200;
 const KEYBOARD_GEOMETRY_CLOSE_DELAY_MS = 240;
+const HEADER_COLLAPSED_QUERY = "(max-width: 960px)";
 const NICKNAME_REVIEW_POLL_MIN_MS = 5_000;
 const NICKNAME_REVIEW_POLL_MAX_MS = 60_000;
-const viewportBaseHeights = new Map<string, number>();
-let viewportBaselineOrientation = "";
+let keyboardViewport: KeyboardViewportState = initialKeyboardViewportState;
 let focusOutTimer = 0;
 let focusKeyboardGraceTimer = 0;
 let keyboardGeometryCloseTimer = 0;
+let keyboardBlurCloseTimer = 0;
 let nicknameReviewPollTimer = 0;
 let nicknameReviewPollDelay = NICKNAME_REVIEW_POLL_MIN_MS;
 let focusKeyboardGraceUntil = 0;
@@ -467,24 +486,33 @@ const showFloatingActions = computed(() => (
 ));
 const assistantEntryVisible = computed(() => site.features.assistantEntry
   && !shouldHideHarmonyAssistant(auth.isLoggedIn, auth.user?.username));
-// 桌面客户端把这些工具做成了应用自己的标签页，站内再挂一个悬浮球就是重复入口
-const showToolsFab = computed(() => showFloatingActions.value && !isDesktopNativeApp());
+// PC 小工具只对真正的 Windows / macOS 桌面有用：桌面客户端里已是独立标签页，iPad、手机和各 App 壳都装不了。
+const desktopToolsOffered = canOfferDesktopClient();
+const showToolsFab = computed(() => showFloatingActions.value && desktopToolsOffered);
 const desktopForumRouteNames = new Set(["forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
 const mobileForumRouteNames = new Set(["home", ...desktopForumRouteNames]);
-const effectiveViewportWidth = computed(() => (
-  mobileViewportWidth.value || (typeof window !== "undefined" ? window.innerWidth : 0)
-));
-const useMobileForumLayout = computed(() => effectiveViewportWidth.value > 0 && effectiveViewportWidth.value <= 768);
+// Pages, the router and this shell share one classifier, so the phone tree always gets phone chrome.
+const useMobileForumLayout = computed(() => ff.value.compact);
 const mobileTopicChrome = computed(() => useMobileForumLayout.value && route.name === "topic");
-const showForumPostFab = computed(() => (
-  !hideChrome.value
-  && !useNativeShell.value
-  && !mobileTopicChrome.value
-  && site.features.forum
-  && auth.canAccessForum
-  && (useMobileForumLayout.value
-    ? auth.canAccessForum && mobileForumRouteNames.has(String(route.name || ""))
-    : desktopForumRouteNames.has(String(route.name || "")))
+const showWebTabbar = computed(() => ff.value.compact && !useNativeShell.value && !mobileTopicChrome.value);
+const showForumPostFab = computed(() => {
+  const routeName = String(route.name || "");
+  return !hideChrome.value
+    && !useNativeShell.value
+    && !mobileTopicChrome.value
+    && site.features.forum
+    && auth.canAccessForum
+    && (useMobileForumLayout.value
+      ? auth.canAccessForum && mobileForumRouteNames.has(routeName)
+      // On a touch tablet in landscape the button would cover the topic's own reply controls.
+      : desktopForumRouteNames.has(routeName) && !(ff.value.device === "tablet" && routeName === "topic"));
+});
+// The pill-shaped 投稿 button sits just above the tab bar; content outside .layout-root reads it from <html>.
+const compactPostFabVisible = computed(() => (
+  showForumPostFab.value && !keyboardOpen.value && (ff.value.compact || headerCollapsedViewport.value)
+));
+const assistantKeyboardPinned = computed(() => (
+  assistantWidgetOpen.value && keyboardGeometryOpen.value && assistantFocused.value
 ));
 
 function openForumPost() {
@@ -514,12 +542,6 @@ const showDesktopDownloadGuide = () => {
   toolsWidgetOpen.value = false;
   downloadSafetyGuideVisible.value = true;
 };
-const isPortraitViewport = computed(() => mobileViewportHeight.value >= mobileViewportWidth.value);
-const useTabbarFallback = computed(() => (
-  touchLikeViewport.value
-  && !useNativeShell.value
-  && isPortraitViewport.value
-));
 const layoutStyle = computed(() => {
   if (!mobileViewportHeight.value) return {};
   const baseHeight = Math.max(
@@ -683,11 +705,26 @@ watch(() => auth.user?.nicknameReview?.status, (status) => {
   }
 }, { immediate: true });
 
+// Measure before the first render so the layout never starts from an empty viewport height.
+syncViewportMetrics();
+
+// Elements outside .layout-root (teleported cards, overlays) position themselves from these values.
+watchEffect(() => {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (showWebTabbar.value && !keyboardOpen.value) root.setAttribute("data-cpu-web-tabbar", "");
+  else root.removeAttribute("data-cpu-web-tabbar");
+  if (compactPostFabVisible.value) root.setAttribute("data-cpu-post-fab", "");
+  else root.removeAttribute("data-cpu-post-fab");
+  root.style.setProperty(
+    "--cpu-web-tabbar-reserve",
+    isAndroidNativeApp() ? "56px" : "calc(56px + env(safe-area-inset-bottom, 0px))",
+  );
+});
+
 onMounted(async () => {
   disposed = false;
-  if (auth.token && !auth.user) await auth.fetchMe();
-  if (disposed) return;
-  if (auth.isLoggedIn) msg.refresh();
+  // Listeners first: the session check can take seconds, and a rotation or keyboard in that time must not be missed.
   syncViewportMetrics();
   if (typeof window !== "undefined") {
     window.addEventListener("resize", handleViewportMetricsChange, { passive: true });
@@ -698,6 +735,9 @@ onMounted(async () => {
     document.addEventListener("focusout", handleFocusOut);
     document.addEventListener("visibilitychange", handleNicknameReviewVisibilityChange);
   }
+  if (auth.token && !auth.user) await auth.fetchMe();
+  if (disposed) return;
+  if (auth.isLoggedIn) msg.refresh();
 });
 
 onBeforeUnmount(() => {
@@ -705,7 +745,14 @@ onBeforeUnmount(() => {
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
   window.clearTimeout(keyboardGeometryCloseTimer);
+  window.clearTimeout(keyboardBlurCloseTimer);
   stopNicknameReviewPoll();
+  if (typeof document !== "undefined") {
+    const root = document.documentElement;
+    root.removeAttribute("data-cpu-web-tabbar");
+    root.removeAttribute("data-cpu-post-fab");
+    root.style.removeProperty("--cpu-web-tabbar-reserve");
+  }
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
@@ -723,13 +770,25 @@ watch(() => route.fullPath, () => {
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
   window.clearTimeout(keyboardGeometryCloseTimer);
+  window.clearTimeout(keyboardBlurCloseTimer);
   keyboardGeometryCloseTimer = 0;
+  keyboardBlurCloseTimer = 0;
   focusKeyboardGraceUntil = 0;
-  keyboardOpen.value = false;
-  keyboardGeometryOpen.value = false;
-  editableFocused.value = false;
-  editorFocused.value = false;
+  // A query-only navigation (拾间AI sending from the keyboard) keeps the field focused and the keyboard up,
+  // and no focusin follows, so read focus from the page instead of assuming it was lost.
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  editableFocused.value = isEditableElement(active);
+  editorFocused.value = Boolean(active?.closest(".rich-editor"));
+  assistantFocused.value = Boolean(active?.closest(".assistant-widget"));
+  if (editableFocused.value) {
+    // The leaving page can still hold focus; removing it fires no focusout, so check again shortly.
+    scheduleKeyboardBlurClose();
+  } else {
+    keyboardOpen.value = false;
+    applyKeyboardViewport({ ...keyboardViewport, geometryOpen: false });
+  }
   syncViewportMetrics();
+  updateKeyboardState();
 });
 
 watch(assistantEntryVisible, (visible) => {
@@ -748,7 +807,13 @@ function handleFocusIn(event: FocusEvent) {
   keyboardGeometryCloseTimer = 0;
   const target = event.target instanceof HTMLElement ? event.target : null;
   editableFocused.value = isEditableElement(target);
+  // Focus on a button or dialog brings no software keyboard, so the blur safety net keeps running.
+  if (editableFocused.value) {
+    window.clearTimeout(keyboardBlurCloseTimer);
+    keyboardBlurCloseTimer = 0;
+  }
   editorFocused.value = Boolean(target?.closest(".rich-editor"));
+  assistantFocused.value = Boolean(target?.closest(".assistant-widget"));
   focusKeyboardGraceUntil = editableFocused.value
     ? performance.now() + KEYBOARD_FOCUS_GRACE_MS
     : 0;
@@ -759,11 +824,12 @@ function handleFocusIn(event: FocusEvent) {
     }, KEYBOARD_FOCUS_GRACE_MS + 50);
   }
   syncViewportMetrics();
-  if (fullHeightContent.value && editableFocused.value && isMobileViewport.value) {
+  // Only phones can assume a keyboard before the viewport shrinks; tablets often use a hardware keyboard.
+  if (fullHeightContent.value && editableFocused.value && ff.value.device === "phone") {
     keyboardOpen.value = true;
     return;
   }
-  if (editorFocused.value && isMobileViewport.value) {
+  if (editorFocused.value && ff.value.device === "phone") {
     keyboardOpen.value = true;
     requestAnimationFrame(() => {
       syncViewportMetrics();
@@ -782,9 +848,28 @@ function handleFocusOut() {
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     editableFocused.value = isEditableElement(active);
     editorFocused.value = Boolean(active?.closest(".rich-editor"));
+    assistantFocused.value = Boolean(active?.closest(".assistant-widget"));
     syncViewportMetrics();
     updateKeyboardState();
   }, 120);
+  scheduleKeyboardBlurClose();
+}
+
+// Without a focused editable no software keyboard can be up, whatever a rotation left in the geometry.
+function scheduleKeyboardBlurClose() {
+  window.clearTimeout(keyboardBlurCloseTimer);
+  keyboardBlurCloseTimer = window.setTimeout(() => {
+    keyboardBlurCloseTimer = 0;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (isEditableElement(active)) return;
+    window.clearTimeout(keyboardGeometryCloseTimer);
+    keyboardGeometryCloseTimer = 0;
+    editableFocused.value = false;
+    editorFocused.value = false;
+    assistantFocused.value = false;
+    applyKeyboardViewport(closeKeyboardAfterBlur(keyboardViewport, readViewportSample()));
+    keyboardOpen.value = false;
+  }, KEYBOARD_BLUR_CLOSE_MS);
 }
 
 function isEditableElement(target: HTMLElement | null) {
@@ -794,38 +879,48 @@ function isEditableElement(target: HTMLElement | null) {
   return tag === "INPUT" || tag === "TEXTAREA" || Boolean(target.closest("[contenteditable='true']"));
 }
 
-function syncViewportMetrics() {
-  if (typeof window === "undefined") return;
-  const visualHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
-  const visualWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
-  const orientation = getScreenOrientation();
-  if (orientation !== viewportBaselineOrientation) {
-    viewportBaselineOrientation = orientation;
-    mobileViewportBaseHeight.value = Math.max(
-      viewportBaseHeights.get(orientation) || 0,
-      visualHeight,
-      window.innerHeight,
-    );
-  }
-  mobileViewportOffsetTop.value = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
-  mobileViewportHeight.value = visualHeight;
-  mobileViewportWidth.value = visualWidth;
-  virtualKeyboardInset.value = getVirtualKeyboardInset();
-  touchLikeViewport.value = isTabletTouchViewport(visualWidth, visualHeight);
-  isMobileViewport.value = isTouchNavigationViewport(visualWidth, visualHeight);
-  const measuredInset = Math.max(0, mobileViewportBaseHeight.value - visualHeight);
-  if (!editableFocused.value && measuredInset <= KEYBOARD_INSET_THRESHOLD) {
-    const stableHeight = Math.max(mobileViewportBaseHeight.value, visualHeight, window.innerHeight);
-    mobileViewportBaseHeight.value = stableHeight;
-    viewportBaseHeights.set(orientation, Math.max(viewportBaseHeights.get(orientation) || 0, stableHeight));
-  }
+function readViewportSample(): ViewportSample {
+  const viewport = window.visualViewport;
+  return {
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    visualHeight: viewport?.height ?? window.innerHeight,
+    visualScale: viewport?.scale ?? 1,
+    keyboardInset: getVirtualKeyboardInset(),
+  };
 }
 
-function getScreenOrientation() {
-  const type = window.screen.orientation?.type || "";
-  if (type.startsWith("portrait")) return "portrait";
-  if (type.startsWith("landscape")) return "landscape";
-  return window.screen.height >= window.screen.width ? "portrait" : "landscape";
+function applyKeyboardViewport(next: KeyboardViewportState) {
+  keyboardViewport = next;
+  mobileViewportBaseHeight.value = next.baseHeight;
+  keyboardGeometryOpen.value = next.geometryOpen;
+}
+
+function keyboardClosePending() {
+  return keyboardViewport.geometryOpen || keyboardGeometryCloseTimer !== 0 || keyboardBlurCloseTimer !== 0;
+}
+
+function keyboardAssumedFromFocus() {
+  return assumesKeyboardOnFocus(ff.value.device, {
+    editableFocused: editableFocused.value,
+    withinFocusGrace: performance.now() < focusKeyboardGraceUntil,
+    fullHeightContent: fullHeightContent.value,
+    editorFocused: editorFocused.value,
+  });
+}
+
+function syncViewportMetrics() {
+  if (typeof window === "undefined") return;
+  const sample = readViewportSample();
+  mobileViewportOffsetTop.value = Math.max(0, Math.round(window.visualViewport?.offsetTop ?? 0));
+  mobileViewportHeight.value = Math.round(sample.visualHeight);
+  virtualKeyboardInset.value = sample.keyboardInset ?? 0;
+  headerCollapsedViewport.value = window.matchMedia?.(HEADER_COLLAPSED_QUERY).matches ?? window.innerWidth <= 960;
+  applyKeyboardViewport(reduceKeyboardBaseline(keyboardViewport, sample, {
+    editableFocused: editableFocused.value,
+    closePending: keyboardClosePending(),
+    innerHeightIgnoresKeyboard: ff.value.appleTouch,
+  }));
 }
 
 function getVirtualKeyboard() {
@@ -837,53 +932,22 @@ function getVirtualKeyboardInset() {
   return Math.max(0, Math.round(getVirtualKeyboard()?.boundingRect?.height || 0));
 }
 
-function isTouchNavigationViewport(width: number, height: number) {
-  if (width <= 768) return true;
-  return isTabletTouchViewport(width, height);
-}
-
-function isTabletTouchViewport(width: number, height: number) {
-  const touchLike = window.matchMedia?.("(pointer: coarse)").matches
-    || window.matchMedia?.("(hover: none)").matches
-    || navigator.maxTouchPoints > 0;
-  const longestSide = Math.max(width, height);
-  return Boolean(touchLike && longestSide <= 1366);
-}
-
 function updateKeyboardState() {
   if (typeof window === "undefined") return;
-  const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
-  const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
-  const measuredInset = Math.max(
-    0,
-    baseHeight - currentHeight,
-    virtualKeyboardInset.value,
-  );
-  const focusedEditableNeedsKeyboard = isMobileViewport.value
-    && editableFocused.value
-    && performance.now() < focusKeyboardGraceUntil
-    && (fullHeightContent.value || editorFocused.value);
-  const geometryThreshold = keyboardGeometryOpen.value
-    ? 56
-    : KEYBOARD_INSET_THRESHOLD;
-  const viewportStillCovered = isMobileViewport.value
-    && measuredInset > geometryThreshold;
-  if (viewportStillCovered) {
-    window.clearTimeout(keyboardGeometryCloseTimer);
-    keyboardGeometryCloseTimer = 0;
-    keyboardGeometryOpen.value = true;
-  } else if (keyboardGeometryOpen.value) {
-    scheduleKeyboardGeometryClose();
-  }
-  const keyboardLikelyOpen = focusedEditableNeedsKeyboard || keyboardGeometryOpen.value;
-  keyboardOpen.value = keyboardLikelyOpen;
-  if (!keyboardLikelyOpen && !editableFocused.value) {
-    const stableHeight = Math.max(mobileViewportBaseHeight.value, currentHeight, window.innerHeight);
-    mobileViewportBaseHeight.value = stableHeight;
-    viewportBaseHeights.set(
-      viewportBaselineOrientation || getScreenOrientation(),
-      stableHeight,
-    );
+  const sample = readViewportSample();
+  const result = reduceKeyboardGeometry(keyboardViewport, sample, {
+    editableFocused: editableFocused.value,
+    enabled: isMobileViewport.value,
+  });
+  applyKeyboardViewport(result.state);
+  if (result.scheduleClose) scheduleKeyboardGeometryClose();
+  keyboardOpen.value = keyboardAssumedFromFocus() || keyboardGeometryOpen.value;
+  if (!keyboardOpen.value && !editableFocused.value) {
+    applyKeyboardViewport(reduceKeyboardBaseline(keyboardViewport, sample, {
+      editableFocused: false,
+      closePending: keyboardClosePending(),
+      innerHeightIgnoresKeyboard: ff.value.appleTouch,
+    }));
   }
 }
 
@@ -891,21 +955,9 @@ function scheduleKeyboardGeometryClose() {
   if (keyboardGeometryCloseTimer) return;
   keyboardGeometryCloseTimer = window.setTimeout(() => {
     keyboardGeometryCloseTimer = 0;
-    const currentHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
-    const baseHeight = Math.max(mobileViewportBaseHeight.value || 0, currentHeight, window.innerHeight);
-    const measuredInset = Math.max(
-      0,
-      baseHeight - currentHeight,
-      getVirtualKeyboardInset(),
-    );
-    if (measuredInset > 56) return;
-    keyboardGeometryOpen.value = false;
-    keyboardOpen.value = Boolean(
-      isMobileViewport.value
-      && editableFocused.value
-      && performance.now() < focusKeyboardGraceUntil
-      && (fullHeightContent.value || editorFocused.value),
-    );
+    applyKeyboardViewport(settleKeyboardGeometryClose(keyboardViewport, readViewportSample()));
+    if (keyboardGeometryOpen.value) return;
+    keyboardOpen.value = keyboardAssumedFromFocus();
   }, KEYBOARD_GEOMETRY_CLOSE_DELAY_MS);
 }
 
@@ -1010,6 +1062,8 @@ function releaseRoutePage(element: Element) {
 </script>
 
 <style scoped lang="scss">
+@use "../styles/compact" as *;
+
 .layout-root {
   /* 底栏贴底、通栏：56px 加上系统手势条的安全区 */
   --liquid-tabbar-reserve: calc(56px + env(safe-area-inset-bottom, 0px));
@@ -1120,7 +1174,10 @@ function releaseRoutePage(element: Element) {
   white-space: nowrap;
 }
 
-.top-nav a:hover { color: var(--cpu-text); }
+@media (hover: hover) {
+  .top-nav a:hover { color: var(--cpu-text); }
+}
+.top-nav a:active { color: var(--cpu-text); }
 .top-nav a.router-link-active { color: var(--cpu-text); background: var(--cpu-bg); }
 .top-nav a:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 1px; }
 .top-nav:not(:has(*)) { display: none; }
@@ -1277,9 +1334,10 @@ function releaseRoutePage(element: Element) {
   position: fixed;
   z-index: 1090;
   right: 96px;
-  bottom: 26px;
+  /* The tab-bar reserve is 0 wherever these show; it only guards against a future overlap. */
+  bottom: calc(var(--layout-mobile-tabbar-reserve) + 26px);
   width: min(clamp(440px, 32vw, 560px), calc(100vw - 122px));
-  height: min(clamp(560px, 82dvh, 860px), calc(100dvh - 52px));
+  height: min(clamp(560px, 82dvh, 860px), calc(100dvh - 52px - var(--layout-mobile-tabbar-reserve)));
   overflow: hidden;
   border: 1px solid var(--cpu-border);
   border-radius: 22px;
@@ -1308,12 +1366,12 @@ function releaseRoutePage(element: Element) {
   position: fixed;
   z-index: 1090;
   right: 96px;
-  bottom: 26px;
+  bottom: calc(var(--layout-mobile-tabbar-reserve) + 26px);
   display: flex;
   flex-direction: column;
   width: min(clamp(360px, 26vw, 420px), calc(100vw - 122px));
-  height: min(760px, calc(100dvh - 52px));
-  max-height: calc(100dvh - 52px);
+  height: min(760px, calc(100dvh - 52px - var(--layout-mobile-tabbar-reserve)));
+  max-height: calc(100dvh - 52px - var(--layout-mobile-tabbar-reserve));
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
   border-radius: 20px;
@@ -1332,7 +1390,7 @@ function releaseRoutePage(element: Element) {
   position: fixed;
   z-index: 1091;
   right: 26px;
-  bottom: 96px;
+  bottom: calc(var(--layout-mobile-tabbar-reserve) + 96px);
   display: grid;
   width: 58px;
   height: 58px;
@@ -1348,17 +1406,23 @@ function releaseRoutePage(element: Element) {
   .el-icon {
     font-size: 24px;
   }
+}
 
-  &:hover {
+@media (hover: hover) {
+  .tools-fab:hover {
     background: var(--cpu-surface-soft);
   }
+}
+
+.tools-fab:active {
+  background: var(--cpu-surface-soft);
 }
 
 .assistant-fab {
   position: fixed;
   z-index: 1091;
   right: 26px;
-  bottom: 26px;
+  bottom: calc(var(--layout-mobile-tabbar-reserve) + 26px);
   display: grid;
   width: 58px;
   height: 58px;
@@ -1376,11 +1440,14 @@ function releaseRoutePage(element: Element) {
   font-size: 27px;
 }
 
-.assistant-fab:hover {
-  background: var(--cpu-primary-dark);
+@media (hover: hover) {
+  .assistant-fab:hover {
+    background: var(--cpu-primary-dark);
+  }
 }
 
 .assistant-fab:active {
+  background: var(--cpu-primary-dark);
   transform: scale(0.96);
 }
 
@@ -1400,7 +1467,14 @@ function releaseRoutePage(element: Element) {
   font-weight: 650;
 }
 
-.direct-message-shortcut:hover {
+@media (hover: hover) {
+  .direct-message-shortcut:hover {
+    color: #fff;
+    background: var(--cpu-primary);
+  }
+}
+
+.direct-message-shortcut:active {
   color: #fff;
   background: var(--cpu-primary);
 }
@@ -1443,7 +1517,7 @@ function releaseRoutePage(element: Element) {
   position: fixed;
   z-index: 1092;
   right: 26px;
-  bottom: 166px;
+  bottom: calc(var(--layout-mobile-tabbar-reserve) + 166px);
   display: grid;
   width: 58px;
   height: 58px;
@@ -1460,11 +1534,50 @@ function releaseRoutePage(element: Element) {
 }
 .forum-post-fab .el-icon { font-size: 23px; }
 .forum-post-fab span { display: none; }
-.forum-post-fab:hover { background: var(--cpu-primary-dark); }
+@media (hover: hover) {
+  .forum-post-fab:hover { background: var(--cpu-primary-dark); }
+}
+.forum-post-fab:active { background: var(--cpu-primary-dark); }
 .forum-post-fab:focus-visible { outline: 3px solid color-mix(in srgb, var(--cpu-primary) 28%, transparent); outline-offset: 3px; }
 
 html[data-theme="dark"] .assistant-widget {
   box-shadow: 0 30px 78px rgba(0, 0, 0, 0.5);
+}
+
+/* A software keyboard covers the lower half of a tablet in landscape; keep the composer in view. */
+.assistant-widget.is-keyboard-pinned {
+  bottom: auto;
+  top: calc(var(--cpu-overlay-viewport-top, 0px) + 12px);
+  height: calc(var(--cpu-overlay-viewport-height, 100dvh) - 24px);
+}
+
+/* Without the PC tools button the 投稿 button takes its slot directly above 拾间AI. */
+@media (min-width: 961px) {
+  @include expanded-only {
+    .layout-root--no-tools-fab .forum-post-fab {
+      bottom: calc(var(--layout-mobile-tabbar-reserve) + 96px);
+    }
+  }
+}
+
+.layout-root.keyboard-open .forum-post-fab { display: none; }
+
+/* Desktop header on a touch tablet in landscape: finger-sized targets. */
+@include expanded-touch {
+  .top-nav a,
+  .top-nav-more-btn {
+    height: 44px;
+  }
+
+  .appearance-cycle-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .user-info {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
 }
 
 .mobile-login-btn {
@@ -1489,7 +1602,10 @@ html[data-theme="dark"] .assistant-widget {
   border-radius: 8px;
 }
 
-.user-info:hover { background: var(--cpu-bg); }
+@media (hover: hover) {
+  .user-info:hover { background: var(--cpu-bg); }
+}
+.user-info:active { background: var(--cpu-bg); }
 
 .user-avatar {
   background: var(--cpu-primary);
@@ -1698,12 +1814,44 @@ html[data-theme="dark"] .assistant-widget {
 
 .layout-root--tabbar-fallback .mobile-tabbar { display: block; }
 
+/* The drawer opens wherever the header is collapsed (up to 960 px and compact tablets), so its
+   sheet styling cannot depend on the phone media query. */
+:deep(.mobile-drawer) {
+  border-radius: 18px 18px 0 0;
+  height: auto !important;
+  max-height: min(92dvh, 640px);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+:deep(.mobile-drawer .el-drawer__header) {
+  margin-bottom: 6px;
+}
+
+:deep(.mobile-drawer .el-drawer__body) {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* 快捷入口用和服务页一致的图标宫格。 */
 .drawer-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: start;
   gap: 4px 0;
+}
+
+/* On tablets a full-width sheet stretches the four icons far apart; keep it phone-sized and centred. */
+@media (min-width: 700px) {
+  :deep(.mobile-drawer) {
+    max-width: 640px;
+    margin-inline: auto;
+  }
+
+  .drawer-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  }
 }
 
 .drawer-link {
@@ -1862,7 +2010,7 @@ html[data-theme="dark"] .assistant-widget {
 @media (max-width: 1040px) {
 }
 
-@media (max-width: 960px) {
+@include compact-header {
   .top-nav { display: none; }
   .top-right { display: none; }
   .mobile-actions {
@@ -1896,7 +2044,7 @@ html[data-theme="dark"] .assistant-widget {
   .forum-post-fab span { display: inline; }
 }
 
-@media (max-width: 768px) {
+@include compact-layout {
   .layout-root:not(.layout-root--native-shell):not(.layout-root--ios-next) {
     --layout-mobile-tabbar-reserve: var(--liquid-tabbar-reserve);
   }
@@ -1904,8 +2052,6 @@ html[data-theme="dark"] .assistant-widget {
   .layout-root.keyboard-open .main {
     padding-bottom: 12px;
   }
-
-  .layout-root.keyboard-open .forum-post-fab { display: none; }
 
   .forum-post-fab {
     right: 14px;
@@ -1982,7 +2128,7 @@ html[data-theme="dark"] .assistant-widget {
     max-width: none;
   }
 
-  /* 移动端裸壳模式：去掉 top/side padding，仅保留 tabbar 底部空间，让子组件自己管 */
+  // 移动端裸壳模式：去掉 top/side padding，仅保留 tabbar 底部空间，让子组件自己管
   .main--bare {
     padding: 0 0 calc(var(--liquid-tabbar-reserve) + 20px) !important;
   }
@@ -2006,62 +2152,9 @@ html[data-theme="dark"] .assistant-widget {
 
   .mobile-tabbar { display: block; }
 
-  :deep(.mobile-drawer) {
-    border-radius: 18px 18px 0 0;
-    height: auto !important;
-    max-height: min(92dvh, 640px);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  :deep(.mobile-drawer .el-drawer__header) {
-    margin-bottom: 6px;
-  }
-
-  :deep(.mobile-drawer .el-drawer__body) {
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
   .dlg-tip {
     font-size: 14px;
   }
-}
-
-@media (min-width: 769px) and (max-width: 1366px) and (orientation: portrait) and (pointer: coarse),
-       (min-width: 769px) and (max-width: 1366px) and (orientation: portrait) and (hover: none) {
-  .main {
-    padding-bottom: calc(var(--liquid-tabbar-reserve) + 20px);
-  }
-
-  .main--bare {
-    padding-bottom: calc(var(--liquid-tabbar-reserve) + 20px) !important;
-  }
-
-  .main--full-width {
-    padding: 0;
-  }
-
-  .footer {
-    --footer-clearance: var(--liquid-tabbar-reserve);
-  }
-
-  .layout-root--native-shell .main {
-    padding: 0;
-  }
-
-  .layout-root--native-shell .main--bare,
-  .layout-root--native-shell .main--full-width {
-    padding-bottom: 0 !important;
-  }
-
-  .layout-root--native-shell .footer {
-    --footer-clearance: 0px;
-  }
-
-  .mobile-tabbar { display: block; }
-
 }
 
 @media (max-width: 360px) {

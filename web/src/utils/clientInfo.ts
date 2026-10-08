@@ -4,6 +4,7 @@ import {
 } from "@/utils/androidUpdatePolicy";
 import androidRelease from "../../../server/src/releases/android.json";
 import { hidesHarmonyForum, NATIVE_RESTRICTED_USERNAME } from "./nativeForumVisibility";
+import { isIpadUserAgent } from "./formFactorCore";
 
 export type ClientPlatform = "ios" | "android" | "harmony" | "desktop" | "web" | "unknown";
 
@@ -82,6 +83,13 @@ export function isIosStandalone(ua = navigator.userAgent) {
 
 export function isLikelyIosDevice(ua = navigator.userAgent) {
   return looksLikeIosUserAgent((ua || "").toLowerCase());
+}
+
+/** iPads, including desktop-class Safari, which only differs from an iPhone in desktop-site mode by screen size. */
+export function isLikelyIpadDevice(ua = navigator.userAgent) {
+  const screenSize = typeof screen === "undefined" ? null : screen;
+  const shortSide = Math.min(Number(screenSize?.width) || 0, Number(screenSize?.height) || 0);
+  return isIpadUserAgent(ua, currentMaxTouchPoints(), shortSide);
 }
 
 export function isLikelyHarmonyDevice(ua = navigator.userAgent) {
@@ -170,6 +178,34 @@ export function isNativeScheduleShell(ua = navigator.userAgent) {
 
 export function isIosNextNativeShell(ua = navigator.userAgent) {
   return isNativeScheduleShell(ua);
+}
+
+/** Native shells that draw their own header and tab bar; the Web page then always uses the phone design. */
+export function nativeShellOwnsChrome(ua = navigator.userAgent) {
+  return isNativeScheduleShell(ua) || isFlutterNativeShell(ua);
+}
+
+/** The Windows / macOS client only helps on a real desktop, never inside an app or on a phone or tablet. */
+export function canOfferDesktopClient(ua = navigator.userAgent) {
+  if (
+    isDesktopNativeApp(ua)
+    || nativeShellOwnsChrome(ua)
+    || isIosNativeApp(ua)
+    || isAndroidNativeApp(ua)
+    || isHarmonyNativeApp(ua)
+  ) {
+    return false;
+  }
+  if (isLikelyIosDevice(ua) || isLikelyAndroidDevice(ua) || isLikelyHarmonyDevice(ua)) return false;
+  const source = (ua || "").toLowerCase();
+  return source.includes("windows nt") || (source.includes("macintosh") && currentMaxTouchPoints() <= 1);
+}
+
+/** iOS / iPadOS cannot sideload an APK, and HarmonyOS NEXT no longer runs Android apps. */
+export function canInstallAndroidApk(ua = navigator.userAgent) {
+  if (isLikelyIosDevice(ua) || isIosNativeApp(ua)) return false;
+  if (isLikelyHarmonyDevice(ua) && !/android/i.test(ua || "")) return false;
+  return true;
 }
 
 export function isHarmonyNativeApp(ua = navigator.userAgent) {
@@ -357,7 +393,11 @@ function looksLikeIosUserAgent(source: string) {
   return source.includes("iphone")
     || source.includes("ipad")
     || source.includes("ipod")
-    || (source.includes("macintosh") && navigator.maxTouchPoints > 1);
+    || (source.includes("macintosh") && currentMaxTouchPoints() > 1);
+}
+
+function currentMaxTouchPoints() {
+  return typeof navigator === "undefined" ? 0 : Number(navigator.maxTouchPoints) || 0;
 }
 
 function safeSessionGet(key: string) {

@@ -11,7 +11,10 @@ test("移动端投稿入口显示明确文案并直接进入综合板块", () =>
 });
 
 test("窄屏投稿入口保留文字而不是退化为纯图标", () => {
-  const mobileStyles = layout.slice(layout.indexOf("@media (max-width: 768px)"));
+  // The phone media query now lives in styles/_compact.scss; the compact-layout block holds the phone shell.
+  const start = layout.indexOf("@include compact-layout");
+  assert.ok(start > 0);
+  const mobileStyles = layout.slice(start);
   assert.match(mobileStyles, /\.forum-post-fab\s*\{[\s\S]*?width:\s*auto;/u);
   assert.match(mobileStyles, /\.forum-post-fab span\s*\{\s*display:\s*inline;/u);
   assert.doesNotMatch(mobileStyles, /\.forum-post-fab span\s*\{\s*display:\s*none;/u);

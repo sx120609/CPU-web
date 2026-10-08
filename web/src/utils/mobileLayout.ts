@@ -1,26 +1,12 @@
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, type ComputedRef } from "vue";
+import { PHONE_MAX_QUERY } from "./formFactorCore";
+import { useFormFactor } from "./formFactor";
 
-const MOBILE_LAYOUT_QUERY = "(max-width: 768px)";
+/** The phone media query; touch tablets below 1024 px and native shells are compact as well (see formFactor). */
+export const MOBILE_LAYOUT_QUERY = PHONE_MAX_QUERY;
 
-export function useMobileLayout() {
-  const isMobileLayout = ref(typeof window !== "undefined" && window.matchMedia(MOBILE_LAYOUT_QUERY).matches);
-  let mediaQuery: MediaQueryList | null = null;
-
-  const sync = (event?: MediaQueryListEvent) => {
-    isMobileLayout.value = event?.matches ?? Boolean(mediaQuery?.matches);
-  };
-
-  onMounted(() => {
-    mediaQuery = window.matchMedia(MOBILE_LAYOUT_QUERY);
-    sync();
-    if (typeof mediaQuery.addEventListener === "function") mediaQuery.addEventListener("change", sync);
-    else mediaQuery.addListener(sync);
-  });
-
-  onBeforeUnmount(() => {
-    if (typeof mediaQuery?.removeEventListener === "function") mediaQuery.removeEventListener("change", sync);
-    else mediaQuery?.removeListener(sync);
-  });
-
-  return isMobileLayout;
+/** True while the phone component tree is rendered. Read-only: it follows the shared form-factor classifier. */
+export function useMobileLayout(): ComputedRef<boolean> {
+  const formFactor = useFormFactor();
+  return computed(() => formFactor.value.compact);
 }
