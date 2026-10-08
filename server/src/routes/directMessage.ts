@@ -39,10 +39,13 @@ const directUserSelect = {
   profileFrame: true,
 } as const;
 
-const directConversationInclude = {
-  participantLow: { select: directUserSelect },
-  participantHigh: { select: directUserSelect },
-} as const;
+function directConversationInclude(viewerId: number) {
+  return {
+    participantLow: { select: directUserSelect },
+    participantHigh: { select: directUserSelect },
+    messages: { where: directMessageVisibilityWhere(viewerId), orderBy: { id: "desc" as const }, take: 1 },
+  };
+}
 
 const sendSchema = z.object({
   content: z.string().trim().min(1, "消息不能为空").max(2000, "单条消息不能超过 2000 字"),
@@ -128,7 +131,10 @@ function serializeConversation(
     id: conversation.id,
     initiatedById: presentDirectParticipantId(conversation, viewerId, conversation.initiatedById),
     recipientRepliedAt: conversation.recipientRepliedAt,
-    lastMessageAt: conversation.lastMessageAt,
+    // Use the same visible message for every endpoint, including older-message pages.
+    // Stored conversation timestamps may predate the UTC SQL fix.
+    lastMessageAt: conversation.messages[0]?.createdAt || conversation.lastMessageAt,
+    lastMessage: serializeDirectMessage(conversation.messages[0], conversation, viewerId),
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     counterpart,
@@ -180,7 +186,7 @@ async function findConversationForUsers(
       scopeKey,
       messages: { some: directMessageVisibilityWhere(viewerId) },
     },
-    include: directConversationInclude,
+    include: directConversationInclude(viewerId),
   });
 }
 
@@ -290,7 +296,7 @@ async function sendDirectMessage(
       ) VALUES (
         ${pair.participantLowId}, ${pair.participantHighId}, ${scopeKey},
         ${participantLowAlias}, ${participantHighAlias}, ${senderId},
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
       )
       ON CONFLICT ("participantLowId", "participantHighId", "scopeKey")
       DO UPDATE SET "updatedAt" = "DirectConversation"."updatedAt"
@@ -359,7 +365,7 @@ async function sendDirectMessage(
 
   const conversation = await prisma.directConversation.findUnique({
     where: { id: result.conversationId },
-    include: directConversationInclude,
+    include: directConversationInclude(senderId),
   });
   if (!conversation) throw Errors.server("私聊会话读取失败");
   const counterpartId = directCounterpartId(conversation, senderId);
@@ -426,10 +432,7 @@ directMessageRouter.get("/conversations", async (req, res, next) => {
           { participantHighId: { notIn: req.user!.blockedUserIds || [] } },
         ],
       },
-      include: {
-        ...directConversationInclude,
-        messages: { where: directMessageVisibilityWhere(userId), orderBy: { id: "desc" }, take: 1 },
-      },
+      include: directConversationInclude(userId),
       orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
       take: 100,
     });
@@ -466,8 +469,6 @@ directMessageRouter.get("/conversations", async (req, res, next) => {
         unreadByConversation.get(conversation.id) || 0,
         remarkByUserId.get(directCounterpartId(conversation, userId)) || null,
       ),
-      lastMessageAt: conversation.messages[0]?.createdAt || conversation.lastMessageAt,
-      lastMessage: serializeDirectMessage(conversation.messages[0], conversation, userId),
     })).sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
     ok(res, {
       conversations,
@@ -558,7 +559,7 @@ directMessageRouter.get("/conversations/:id/messages", validate(pageQuerySchema,
     const conversationId = parsePositiveId(req.params.id, "会话");
     const conversation = await prisma.directConversation.findUnique({
       where: { id: conversationId },
-      include: directConversationInclude,
+      include: directConversationInclude(userId),
     });
     if (!conversation || (conversation.participantLowId !== userId && conversation.participantHighId !== userId)) {
       throw Errors.notFound("会话不存在");

@@ -299,7 +299,7 @@ import {
   type DirectMessageUser,
 } from "@/api/directMessage";
 import { useAuthStore } from "@/stores/auth";
-import { fmtDate } from "@/utils/format";
+import { clockTime, dayKey, dayLabel, messageTime, messageTimestamp, shortTime } from "@/utils/directMessageTime";
 import { promptDirectMessageRemark } from "@/utils/directMessageRemark";
 
 const emit = defineEmits<{ (event: "notices-read", conversationId: number): void }>();
@@ -745,7 +745,7 @@ async function sendMessage() {
     pendingForumTarget.value = null;
     activeConversation.value = result.conversation;
     mergeMessages([result.message]);
-    upsertConversation({ ...result.conversation, lastMessage: result.message });
+    upsertConversation(result.conversation);
     if (result.message.aiReviewStatus === "checking") ElMessage.info("消息已提交后台审核，通过后会自动发送给对方");
     await router.replace({
       query: {
@@ -863,7 +863,7 @@ function upsertConversation(conversation: DirectConversation) {
   } else {
     conversations.value.unshift(conversation);
   }
-  conversations.value.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+  conversations.value.sort((a, b) => messageTimestamp(b.lastMessageAt) - messageTimestamp(a.lastMessageAt));
 }
 
 function conversationDisplayName(conversation: DirectConversation) {
@@ -938,37 +938,10 @@ function forumKindQuery(value: unknown): ForumDirectMessageKind | null {
   return raw === "topic" || raw === "reply" ? raw : null;
 }
 
-function shortTime(value: string) {
-  const sameDay = new Date(value).toDateString() === new Date().toDateString();
-  return fmtDate(value, sameDay ? "HH:mm" : "MM-DD");
-}
-
-function messageTime(value: string) {
-  return fmtDate(value, "MM-DD HH:mm");
-}
-
 function sameGroup(a: DirectMessageItem, b: DirectMessageItem) {
   return a.senderId === b.senderId
     && dayKey(a.createdAt) === dayKey(b.createdAt)
-    && new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() < MESSAGE_GROUP_GAP_MS;
-}
-
-function dayKey(value: string) {
-  return fmtDate(value, "YYYY-MM-DD");
-}
-
-function dayLabel(value: string) {
-  const date = new Date(value);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return "今天";
-  if (date.toDateString() === yesterday.toDateString()) return "昨天";
-  return fmtDate(value, date.getFullYear() === today.getFullYear() ? "M月D日" : "YYYY年M月D日");
-}
-
-function clockTime(value: string) {
-  return fmtDate(value, "HH:mm");
+    && messageTimestamp(b.createdAt) - messageTimestamp(a.createdAt) < MESSAGE_GROUP_GAP_MS;
 }
 
 function isRejected(message: DirectMessageItem) {

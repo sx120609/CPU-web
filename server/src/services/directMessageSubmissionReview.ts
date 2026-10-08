@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { directCounterpartId, directParticipantAlias } from "./directMessagePolicy";
@@ -125,17 +126,7 @@ async function processDirectMessageSubmissionReview(messageId: number) {
     if (updated.count !== 1) return false;
     if (blocked) return true;
 
-    await tx.$executeRaw`
-      UPDATE "DirectConversation"
-      SET
-        "lastMessageAt" = GREATEST("lastMessageAt", ${message.createdAt}),
-        "recipientRepliedAt" = CASE
-          WHEN "initiatedById" <> ${message.senderId} AND "recipientRepliedAt" IS NULL THEN ${message.createdAt}
-          ELSE "recipientRepliedAt"
-        END,
-        "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "id" = ${message.conversationId}
-    `;
+    await updateDirectConversationAfterDelivery(tx, message);
     await tx.notification.create({
       data: {
         userId: recipientId,
@@ -157,6 +148,25 @@ async function processDirectMessageSubmissionReview(messageId: number) {
     link: `/messages?tab=private&conversation=${message.conversationId}`,
     payload: { type: "direct-message-review-blocked", conversationId: message.conversationId, messageId: message.id },
   });
+}
+
+export async function updateDirectConversationAfterDelivery(
+  tx: Pick<Prisma.TransactionClient, "$executeRaw">,
+  message: { createdAt: Date; senderId: number; conversationId: number },
+) {
+  // Prisma binds Date as timestamptz; these columns store UTC timestamp(3).
+  // Convert explicitly before GREATEST/CASE to avoid the session TimeZone cast.
+  await tx.$executeRaw`
+    UPDATE "DirectConversation"
+    SET
+      "lastMessageAt" = GREATEST("lastMessageAt", (${message.createdAt} AT TIME ZONE 'UTC')),
+      "recipientRepliedAt" = CASE
+        WHEN "initiatedById" <> ${message.senderId} AND "recipientRepliedAt" IS NULL THEN (${message.createdAt} AT TIME ZONE 'UTC')
+        ELSE "recipientRepliedAt"
+      END,
+      "updatedAt" = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+    WHERE "id" = ${message.conversationId}
+  `;
 }
 
 async function failDirectMessageSubmissionReview(messageId: number, error: unknown) {
