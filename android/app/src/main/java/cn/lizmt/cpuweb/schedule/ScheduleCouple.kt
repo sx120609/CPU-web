@@ -17,12 +17,12 @@ import kotlin.math.roundToInt
  * user's own and draws the partner's over the native grid by date.
  */
 
-/** Whose course a tile is. `Both`: the two attend the same class, drawn once. */
+/** Whose course a tile is. `Both`: the two attend the same class; it is the user's tile, marked 一起. */
 enum class CoupleOwner { Mine, Partner, Both }
 
 data class CoupleMember(
     val nickname: String = "",
-    /** "blue" or "pink". */
+    /** One of [CoupleRules.COLORS]. */
     val color: String = "blue",
     /** When this side's timetable last reached the server; empty when it never did. */
     val syncedAt: String = "",
@@ -47,7 +47,7 @@ sealed interface CoupleStatus {
 
         private fun member(json: JSONObject?) = CoupleMember(
             nickname = text(json, "nickname").trim(),
-            color = if (text(json, "color") == "pink") "pink" else "blue",
+            color = CoupleRules.color(text(json, "color")),
             syncedAt = text(json?.optJSONObject("snapshot"), "syncedAt"),
         )
 
@@ -58,8 +58,8 @@ sealed interface CoupleStatus {
 
 class CoupleRequestException(message: String, val status: Int) : Exception(message)
 
-/** The colours of one tile, as ARGB. `fillEnd` is set for a class both attend: the fill runs from one person's colour to the other's. */
-data class CoupleTint(val fill: Int, val border: Int, val text: Int, val fillEnd: Int? = null)
+/** One person's colours, as ARGB: every course of theirs is drawn in them. */
+data class CoupleTint(val fill: Int, val border: Int, val text: Int)
 
 /** A course of one day with its clock times, for "what is TA doing now". */
 data class CoupleTimedCourse(val name: String, val start: String, val end: String)
@@ -70,34 +70,25 @@ object CoupleRules {
     private val DATE = Regex("\\d{4}-\\d{2}-\\d{2}")
     private const val DAY_MS = 86_400_000L
 
-    /** The Web's `nameHash`, as an unsigned 32-bit value. */
-    fun nameHash(name: String): Long {
-        var hash = 0
-        for (character in name) hash = hash * 31 + character.code
-        return hash.toLong() and 0xFFFFFFFFL
-    }
+    /** The colours a person can pick, with their hue. The same seven as the Web and the server. */
+    val COLORS: List<Pair<String, Int>> = listOf(
+        "blue" to 214, "pink" to 338, "purple" to 268, "teal" to 178, "green" to 138, "amber" to 42, "orange" to 22,
+    )
+    val COLOR_NAMES: Map<String, String> = mapOf(
+        "blue" to "蓝", "pink" to "粉", "purple" to "紫", "teal" to "青", "green" to "绿", "amber" to "黄", "orange" to "橙",
+    )
+
+    /** A colour key as the server sent it; one this build does not know is blue. */
+    fun color(value: String): String = if (COLORS.any { it.first == value }) value else "blue"
 
     /**
-     * One person's courses stay in one colour family; courses differ a little
-     * in hue and lightness so neighbours can be told apart.
+     * One person, one colour: all of a person's courses are drawn in it, so the
+     * two timetables can be told apart at a glance (the Web's `couplePersonTone`).
      */
-    fun tone(color: String, name: String, dark: Boolean): CoupleTint {
-        val pink = color == "pink"
-        val hash = nameHash(name)
-        val hue = (if (pink) 338 else 214) + ((hash % 5).toInt() - 2) * (if (pink) 5 else 7)
-        val shift = ((hash shr 4) % 3).toInt() - 1
-        return if (dark) {
-            CoupleTint(hsl(hue, 48, 29 + shift * 3), hsl(hue, 62, 50 + shift * 3), 0xFFF5F7FF.toInt())
-        } else {
-            CoupleTint(hsl(hue, 88, 93 - shift * 2), hsl(hue, 72, 77 - shift * 3), hsl(hue, 58, 27))
-        }
-    }
-
-    /** A tile's colours by owner. A class both attend keeps the user's text and border over a two-colour fill. */
-    fun tint(owner: CoupleOwner, name: String, myColor: String, partnerColor: String, dark: Boolean): CoupleTint {
-        if (owner == CoupleOwner.Partner) return tone(partnerColor, name, dark)
-        val mine = tone(myColor, name, dark)
-        return if (owner == CoupleOwner.Both) mine.copy(fillEnd = tone(partnerColor, name, dark).fill) else mine
+    fun personTone(color: String, dark: Boolean): CoupleTint {
+        val hue = COLORS.firstOrNull { it.first == color }?.second ?: 214
+        return if (dark) CoupleTint(hsl(hue, 48, 29), hsl(hue, 62, 50), 0xFFF5F7FF.toInt())
+        else CoupleTint(hsl(hue, 88, 93), hsl(hue, 72, 77), hsl(hue, 58, 27))
     }
 
     /** CSS `hsl()` with whole-number hue, saturation and lightness, as opaque ARGB. */
@@ -125,26 +116,32 @@ object CoupleRules {
         "${block.block.startSlot}|${block.block.endSlot}|${block.course.name.replace(WHITESPACE, "")}"
 
     /**
-     * One day of both timetables. A class both attend is drawn once. A course
-     * shares its width only when it meets one of the other person's: then the
-     * user's is on the left half and the partner's on the right. Everything
-     * else keeps the full column.
+     * One day of both timetables. A class both attend is the user's tile, drawn
+     * once. Courses never share a column with the other person's: one of the
+     * partner's that meets one of the user's gets no tile, it is written as a
+     * line under the user's course ([PlacedBlock.notes]). The rest of the
+     * partner's courses keep a full tile.
      */
     fun merge(mine: List<PlacedBlock>, theirs: List<PlacedBlock>): List<PlacedBlock> {
         val keys = mine.map(::key).toSet()
         val shared = theirs.map(::key).filter { it in keys }.toSet()
-        val partner = theirs.filter { key(it) !in keys }
+        val partner = theirs.filter { key(it) !in keys }.map { it.copy(owner = CoupleOwner.Partner) }
         fun meets(a: PlacedBlock, b: PlacedBlock) = a.startSlot <= b.endSlot && b.startSlot <= a.endSlot
         val own = mine.map { block ->
-            val owner = if (key(block) in shared) CoupleOwner.Both else CoupleOwner.Mine
-            if (partner.any { meets(it, block) }) block.copy(owner = owner, lanes = block.lanes * 2) else block.copy(owner = owner)
+            block.copy(owner = if (key(block) in shared) CoupleOwner.Both else CoupleOwner.Mine, notes = partner.filter { meets(it, block) })
         }
-        val other = partner.map { block ->
-            if (mine.any { meets(it, block) }) {
-                block.copy(owner = CoupleOwner.Partner, lane = block.lanes + block.lane, lanes = block.lanes * 2)
-            } else block.copy(owner = CoupleOwner.Partner)
-        }
-        return own + other
+        return own + partner.filter { block -> mine.none { meets(it, block) } }
+    }
+
+    /** The line under one of the user's courses: the partner's course then, or how many. */
+    fun noteLabel(notes: List<PlacedBlock>): String = if (notes.size > 1) "${notes.size} 门课" else notes.firstOrNull()?.course?.name.orEmpty()
+
+    /** The partner's side of a day: their own tiles, the courses written as notes, and the classes both attend. */
+    fun partnerSide(merged: List<PlacedBlock>): List<PlacedBlock> {
+        val noted = merged.flatMap { it.notes }.distinctBy { key(it) }
+        val together = merged.filter { it.owner == CoupleOwner.Both }.map { it.copy(notes = emptyList()) }
+        return SchedulePriority.place((merged.filter { it.owner == CoupleOwner.Partner } + noted).map { it.block }, emptyMap())
+            .map { it.copy(owner = CoupleOwner.Partner) } + together.map { it.copy(lane = 0, lanes = 1) }
     }
 
     /** Day 1 is the anniversary itself. Null without one, or when it is not in the past. */
@@ -236,8 +233,12 @@ class CoupleLayer(
     /** The user's courses of `date` with the partner's beside them. */
     fun merge(mine: List<PlacedBlock>, date: String): List<PlacedBlock> = CoupleRules.merge(mine, blocksOn(date).orEmpty())
 
-    fun tint(block: PlacedBlock, dark: Boolean): CoupleTint? =
-        block.owner?.let { CoupleRules.tint(it, block.course.name, myColor, partnerColor, dark) }
+    /** One person, one colour: the user's courses in the user's, the partner's in the partner's. */
+    fun tint(block: PlacedBlock, dark: Boolean): CoupleTint? = when (block.owner) {
+        null -> null
+        CoupleOwner.Partner -> CoupleRules.personTone(partnerColor, dark)
+        else -> CoupleRules.personTone(myColor, dark)
+    }
 
     /** The status line: what the partner is doing right now. */
     fun nowText(today: String, minutes: Int, short: Boolean = true): String {
@@ -404,10 +405,8 @@ class ScheduleCouple(
     suspend fun setAnniversary(date: String) =
         change("settings", body = JSONObject().put("anniversary", if (date.isEmpty()) JSONObject.NULL else date))
 
-    suspend fun swapColors() {
-        val mine = active?.me?.color ?: return
-        change("settings", body = JSONObject().put("myColor", if (mine == "blue") "pink" else "blue"))
-    }
+    /** Picking the colour the partner is using swaps the two (the server does it). */
+    suspend fun setColor(color: String) = change("settings", body = JSONObject().put("myColor", color))
 
     private suspend fun change(action: String, code: String = "", body: JSONObject? = null) {
         apply(CoupleStatus.fromJson(request(action, code, body)))

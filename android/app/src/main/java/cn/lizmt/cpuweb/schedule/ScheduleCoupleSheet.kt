@@ -3,6 +3,7 @@ package cn.lizmt.cpuweb.schedule
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -45,10 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -67,10 +68,37 @@ import java.util.TimeZone
 /** The heart of the couple timetable; the same pink in both appearances, as on the Web. */
 internal val CoupleAccent = Color(0xFFE2568A)
 
-/** A tile's fill: one colour, or the user's running into the partner's for a class both attend. */
-internal fun CoupleTint.brush(): Brush = fillEnd?.let {
-    Brush.linearGradient(0f to Color(fill), 0.38f to Color(fill), 0.62f to Color(it), 1f to Color(it))
-} ?: SolidColor(Color(fill))
+/** The room a course leaves at its bottom for the line that says what the partner is doing then. */
+internal val CoupleNoteSpace = 17.dp
+
+/**
+ * The line under one of the user's courses: 一起 with a heart for a class both
+ * attend, or "TA 课名" in the partner's colour for a course of theirs then.
+ */
+@Composable
+internal fun CoupleNote(modifier: Modifier, label: String?, tint: CoupleTint?, onClick: (() -> Unit)?) {
+    val colors = LocalScheduleColors.current
+    val shape = RoundedCornerShape(8.dp)
+    val ink = tint?.let { Color(it.text) } ?: CoupleAccent
+    Row(
+        modifier.height(15.dp).clip(shape).background(colors.surface)
+            .background(tint?.let { Color(it.fill) } ?: CoupleAccent.copy(alpha = 0.12f))
+            .border(0.5.dp, ink.copy(alpha = 0.25f), shape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .semantics { contentDescription = if (label == null) "一起上" else "TA $label" }
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        if (label == null) {
+            Icon(Icons.Rounded.Favorite, contentDescription = null, tint = CoupleAccent, modifier = Modifier.size(9.dp))
+            Text("一起", fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = ink, maxLines = 1, softWrap = false)
+        } else {
+            Text("TA", fontSize = 8.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.ExtraBold, color = ink, maxLines = 1, softWrap = false)
+            Text(label, fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = ink, maxLines = 1,
+                softWrap = false, overflow = TextOverflow.Clip)
+        }
+    }
+}
 
 /**
  * "情侣课表": inviting and accepting while unbound, and the binding's settings
@@ -144,7 +172,7 @@ fun ScheduleCoupleSheet(activity: MainActivity, minute: Int, onDismiss: () -> Un
             }
             is CoupleStatus.Active -> BoundContent(
                 couple, status, minute, busy,
-                onSwap = { perform("配色已互换") { couple.swapColors() } },
+                onColor = { color -> perform(if (color == status.partner.color) "已和 TA 互换颜色" else "颜色已保存") { couple.setColor(color) } },
                 onAnniversary = { pickDate = true },
                 onUnbind = { confirmUnbind = true },
                 onDone = onDismiss,
@@ -178,7 +206,7 @@ private fun BoundContent(
     status: CoupleStatus.Active,
     minute: Int,
     busy: Boolean,
-    onSwap: () -> Unit,
+    onColor: (String) -> Unit,
     onAnniversary: () -> Unit,
     onUnbind: () -> Unit,
     onDone: () -> Unit,
@@ -206,13 +234,30 @@ private fun BoundContent(
     CoupleLine("我的课表") {
         CoupleValue(CoupleRules.relative(status.me.syncedAt, now).let { if (it.isEmpty()) "打开课表后自动同步" else "同步于 $it" })
     }
-    CoupleLine("配色") {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Swatch("我", status.me.color, dark)
-            Swatch("TA", status.partner.color, dark)
-            TextButton(onClick = onSwap, enabled = !busy) { Text("互换") }
+    // Seven colours, one for each person; the partner's is marked and picking it swaps the two.
+    Text("我的颜色", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        CoupleRules.COLORS.forEach { (color, _) ->
+            val tint = CoupleRules.personTone(color, dark)
+            val mine = color == status.me.color
+            val theirs = color == status.partner.color
+            Box(
+                Modifier.size(34.dp)
+                    .then(if (mine) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape).padding(4.dp) else Modifier.padding(2.dp))
+                    .clip(CircleShape).background(Color(tint.fill)).border(1.dp, Color(tint.border), CircleShape)
+                    .clickable(enabled = !busy && !mine) { onColor(color) }
+                    .semantics {
+                        selected = mine
+                        contentDescription = CoupleRules.COLOR_NAMES[color].orEmpty() + "色" +
+                            if (mine) "，我的颜色" else if (theirs) "，TA 正在用，选它就和 TA 互换" else ""
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (mine || theirs) Text(if (mine) "我" else "TA", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(tint.text))
+            }
         }
     }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
     CoupleLine("在课表里显示 TA 的课") {
         Switch(checked = couple.visible, onCheckedChange = couple::updateVisible)
     }
@@ -221,7 +266,7 @@ private fun BoundContent(
             Text(status.anniversary.ifEmpty { "未设置" }.replace('-', '.'))
         }
     }
-    CoupleNote("两人的课在同一张课表里：一起上的课合并成一格，时间撞在一起的课左边是你的、右边是 TA 的，其余各占整格。配色双方看到的一样，任意一方都可以互换。")
+    CoupleFootnote("课表里一个人一种颜色：你的课全是你选的颜色，TA 的课全是 TA 的颜色。颜色各选各的，双方看到的一样；选 TA 正在用的那个就是两人互换。")
     Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onUnbind, enabled = !busy) { Text("解除绑定", color = MaterialTheme.colorScheme.error) }
@@ -286,7 +331,7 @@ private fun UnboundContent(
 
 @Composable
 private fun Person(name: String, color: String, dark: Boolean, modifier: Modifier) {
-    val tint = CoupleRules.tone(color, "", dark)
+    val tint = CoupleRules.personTone(color, dark)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(
             Modifier.size(46.dp).clip(CircleShape).background(Color(tint.fill)).border(1.dp, Color(tint.border), CircleShape),
@@ -296,17 +341,6 @@ private fun Person(name: String, color: String, dark: Boolean, modifier: Modifie
         }
         Text(name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-}
-
-@Composable
-private fun Swatch(label: String, color: String, dark: Boolean) {
-    val tint = CoupleRules.tone(color, "", dark)
-    Text(
-        label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(tint.text),
-        modifier = Modifier.clip(CircleShape).background(Color(tint.fill)).border(1.dp, Color(tint.border), CircleShape)
-            .padding(horizontal = 10.dp, vertical = 3.dp)
-            .semantics { contentDescription = label + if (color == "pink") "，粉色" else "，蓝色" },
-    )
 }
 
 @Composable
@@ -334,7 +368,7 @@ private fun CoupleSection(text: String) {
 }
 
 @Composable
-private fun CoupleNote(text: String) {
+private fun CoupleFootnote(text: String) {
     Text(text, fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
 }
 

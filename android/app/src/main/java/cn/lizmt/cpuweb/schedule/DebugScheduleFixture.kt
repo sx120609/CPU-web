@@ -31,7 +31,8 @@ object DebugScheduleFixture {
     private var sheet = ""
     private var published = false
     private var coupleState = "none"
-    private var coupleSwapped = false
+    private var coupleMine = "blue"
+    private var coupleTheirs = "pink"
     private var coupleAnniversary = "2025-05-20"
 
     fun initialSheet(): ScheduleSheet? = when (sheet) {
@@ -71,6 +72,11 @@ object DebugScheduleFixture {
         }
         published = intent.getBooleanExtra("debugPublished", false)
         coupleState = intent.getStringExtra("debugCouple")?.takeIf { it == "active" || it == "pending" } ?: "none"
+        // "debugCoupleColors teal,amber": the user's colour, then the partner's.
+        intent.getStringExtra("debugCoupleColors")?.split(',')?.takeIf { it.size == 2 }?.let { (mine, theirs) ->
+            coupleMine = mine.trim()
+            coupleTheirs = theirs.trim()
+        }
         val friend = SharedSchedule.read(shareDocument(FRIEND_CODE, "小王"), System.currentTimeMillis()).copy(remark = "室友小王")
         activity.sharing.installDebugState(
             SharedScheduleLibrary(account = "debug", schedules = listOf(friend)),
@@ -112,8 +118,8 @@ object DebugScheduleFixture {
                 val synced = JSONObject().put("semester", SEMESTER).put("syncedAt", "2026-10-08T01:30:00.000Z").put("changedAt", "2026-10-07T02:00:00.000Z")
                 JSONObject().put("status", "active").put("since", "2026-09-01T02:00:00.000Z")
                     .put("anniversary", if (coupleAnniversary.isEmpty()) JSONObject.NULL else coupleAnniversary)
-                    .put("me", JSONObject().put("id", 1).put("color", if (coupleSwapped) "pink" else "blue").put("nickname", "阿青").put("snapshot", synced))
-                    .put("partner", JSONObject().put("id", 2).put("color", if (coupleSwapped) "blue" else "pink").put("nickname", "小鹿").put("snapshot", synced))
+                    .put("me", JSONObject().put("id", 1).put("color", coupleMine).put("nickname", "阿青").put("snapshot", synced))
+                    .put("partner", JSONObject().put("id", 2).put("color", coupleTheirs).put("nickname", "小鹿").put("snapshot", synced))
             }
             else -> JSONObject().put("status", "none")
         }
@@ -123,7 +129,12 @@ object DebugScheduleFixture {
             "accept" -> { coupleState = "active"; status() }
             "settings" -> {
                 val body = payload.optJSONObject("body") ?: JSONObject()
-                if (body.has("myColor")) coupleSwapped = !coupleSwapped
+                if (body.has("myColor")) {
+                    // Picking the partner's colour swaps the two, as the server does.
+                    val picked = body.optString("myColor")
+                    if (picked == coupleTheirs) coupleTheirs = coupleMine
+                    coupleMine = picked
+                }
                 if (body.has("anniversary")) coupleAnniversary = if (body.isNull("anniversary")) "" else body.optString("anniversary")
                 status()
             }

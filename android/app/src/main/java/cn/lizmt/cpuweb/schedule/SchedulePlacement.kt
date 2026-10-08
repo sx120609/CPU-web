@@ -13,6 +13,8 @@ data class PlacedBlock(
     val lanes: Int = 1,
     /** Set while the couple timetable is drawn: whose course this is. */
     val owner: CoupleOwner? = null,
+    /** The partner's courses that meet this one of the user's: written as a line under it instead of tiles of their own. */
+    val notes: List<PlacedBlock> = emptyList(),
 ) {
     val course: ScheduleCourse get() = block.course
     val day: Int get() = block.day

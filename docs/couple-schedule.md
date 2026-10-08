@@ -17,7 +17,7 @@
 原生课表页自己画 TA 的课，规则和网页一致：按日期对齐、一个人一种颜色（自己的课全用自己的颜色、TA 的课全用 TA 的颜色）、撞课时在自己的课下沿写一行「TA 课名」、一起上的课写「一起」、日视图时间轴居中、月视图每天一行「TA N 门」。状态行在周次条的第二行，「更多 → 情侣课表」是原生的管理面板（邀请、输入邀请码、互换配色、纪念日、显示开关、解除绑定）。原生端也会上传自己的课表：课表稳定几秒后把当前学期的整学期课表（含个人修改）发给 `PUT /api/couple/schedule`，内容没变时 12 小时内不重复上传。
 
 - 鸿蒙：请求经过随包的页面桥 `window.CPUHarmonyCouple`（`harmony/bridge/couple.ts`）；规则在 `ScheduleCouple.ets`，模型和面板在 `NativeScheduleCouple.ets`。双人模式的日视图在所有风格下都用网格画。验收脚手架 `prepare-schedule-acceptance.mjs` 接受 `--ps couple active|pending|none` 和 `--ps panel couple`。隐藏周末时，只有 TA 有课的周末列不会单独显示出来（安卓会显示）。
-- 安卓：请求经过随包的页面桥 `window.CPUAndroidCouple`（`android/bridge/couple.ts`），用网页会话的登录态；逻辑在 `ScheduleCouple.kt`，面板在 `ScheduleCoupleSheet.kt`。「在课表里显示 TA 的课」只保存在本机。调试参数 `--es debugCouple active|pending` 配合 `--ez debugMockSchedule true` 可以不登录看效果。
+- 安卓：请求经过随包的页面桥 `window.CPUAndroidCouple`（`android/bridge/couple.ts`），用网页会话的登录态；逻辑在 `ScheduleCouple.kt`，面板和课下方的小字条在 `ScheduleCoupleSheet.kt`，日视图在 `ScheduleCoupleDay.kt`，月视图在 `ScheduleMonth.kt`。「在课表里显示 TA 的课」只保存在本机。调试参数 `--es debugCouple active|pending` 配合 `--ez debugMockSchedule true` 可以不登录看效果。
 
 ## 绑定
 

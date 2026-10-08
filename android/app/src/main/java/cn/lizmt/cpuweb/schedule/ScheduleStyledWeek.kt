@@ -231,6 +231,8 @@ internal fun StyledCourseTile(
     tag: String? = null,
     /** The couple timetable's colours: by person, in every style, instead of the style's own course colour. */
     couple: CoupleTint? = null,
+    /** Room left at the bottom for the line that says what the partner is doing then. */
+    bottomInset: Dp = 0.dp,
 ) {
     val scope = LocalScheduleStyle.current
     val display = LocalScheduleDisplay.current
@@ -264,13 +266,14 @@ internal fun StyledCourseTile(
     val shape = RoundedCornerShape(style.cornerRadius.dp)
     val highlighted = current && !scope.static
     Box(
-        modifier.clip(shape).then(if (couple != null) Modifier.background(couple.brush()) else Modifier.background(background))
+        modifier.clip(shape).background(couple?.let { Color(it.fill) } ?: background)
             .then(if (style.borderWidth > 0f || couple != null) Modifier.border(
                 if (highlighted) 2.dp else max(style.borderWidth, 1f).dp, if (highlighted) scope.themeText else accent, shape) else Modifier)
             .drawBehind { if (stripe > 0.dp) drawRect(accent, size = Size(stripe.toPx(), size.height)) }
             .padding(start = stripe, end = trailingInset)
             .padding(horizontal = if (dayRow) 12.dp else if (small) 3.dp else 7.dp,
-                vertical = if (display.compact) 2.dp else if (short) 3.dp else 6.dp),
+                vertical = if (display.compact) 2.dp else if (short) 3.dp else 6.dp)
+            .padding(bottom = bottomInset),
         contentAlignment = if (centered) Alignment.Center else if (dayRow) Alignment.CenterStart else Alignment.TopStart,
     ) {
         ScheduleCardText {
@@ -335,6 +338,7 @@ internal fun ScheduleCardTag(text: String, color: Color) {
 internal fun MinimalCourseCard(
     course: ScheduleCourse, modifier: Modifier, height: Dp, compact: Boolean, showLocation: Boolean = true, tag: String? = null,
     couple: CoupleTint? = null,
+    bottomInset: Dp = 0.dp,
 ) {
     val scope = LocalScheduleStyle.current
     val display = LocalScheduleDisplay.current
@@ -345,8 +349,9 @@ internal fun MinimalCourseCard(
     ScheduleCardText {
     Column(
         modifier.clip(RoundedCornerShape(9.dp))
-            .then(if (couple != null) Modifier.background(couple.brush()) else Modifier.background(Color(tint.fill(scope.dark, scope.hasBackground))))
-            .padding(horizontal = if (compact) 3.dp else 7.dp, vertical = if (display.compact) 2.dp else if (short) 4.dp else 6.dp),
+            .background(couple?.let { Color(it.fill) } ?: Color(tint.fill(scope.dark, scope.hasBackground)))
+            .padding(horizontal = if (compact) 3.dp else 7.dp, vertical = if (display.compact) 2.dp else if (short) 4.dp else 6.dp)
+            .padding(bottom = bottomInset),
         verticalArrangement = Arrangement.spacedBy(if (display.compact) 0.dp else if (small) 1.dp else 3.dp),
     ) {
         if (tag != null) ScheduleCardTag(tag, accent)
@@ -515,19 +520,23 @@ internal fun StyledDayColumn(
         }
         (offWeek.map { it to true } + blocks.map { it to false }).forEach { (block, ghost) ->
             val lanes = block.lanes
+            val first = periods.indexOfFirst { it.number == block.startSlot }.coerceAtLeast(0)
+            val partner = if (ghost) null else couple?.tint(block, scope.dark)
+            // What the partner is doing during this course goes on a line at its bottom.
+            val noted = !ghost && lanes < 3 && (block.owner == CoupleOwner.Both || block.notes.isNotEmpty())
+            val room = columnWidth
             // Grid tiles are the cell itself, the same size as the empty cells beside
             // them; table tiles sit just inside the rules; the rest keep 1dp all round.
             val inset = if (style == ScheduleVisualStyle.Table) 0.5.dp else if (style == ScheduleVisualStyle.Grid && lanes == 1) 0.dp else 1.dp
             // Table rules sit at the top of each period, so a tile reaches across the row gap to the next one.
             val reach = if (style == ScheduleVisualStyle.Table && block.endSlot < (periods.lastOrNull()?.number ?: SLOT_COUNT)) gap else 0.dp
-            val first = periods.indexOfFirst { it.number == block.startSlot }.coerceAtLeast(0)
             val tileHeight = (rowHeight * block.span + gap * (block.span - 1) + reach - inset * 2).coerceAtLeast(rowHeight - inset * 2)
-            val tileWidth = (columnWidth / lanes - inset * 2).coerceAtLeast(12.dp)
+            val tileWidth = (room / lanes - inset * 2).coerceAtLeast(12.dp)
             val label = if (dayRow && lanes == 1) statusLabel?.invoke(block) else null
-            val narrow = compact || columnWidth / lanes < 70.dp
+            val narrow = compact || room / lanes < 70.dp
             // A lane this narrow holds two characters a line: the name takes all of it.
-            val showLocation = columnWidth / lanes >= 30.dp
-            val tile = Modifier.offset(x = inset + columnWidth / lanes * block.lane, y = step * first + inset)
+            val showLocation = room / lanes >= 30.dp
+            val tile = Modifier.offset(x = inset + room / lanes * block.lane, y = step * first + inset)
                 .width(tileWidth).height(tileHeight)
                 .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
                 .then(if (interactive) Modifier.clickable { if (ghost) onOffWeek(block) else onCourse(block) }.semantics {
@@ -535,16 +544,18 @@ internal fun StyledDayColumn(
                         courseAccessibility(block.block) + (statusLabel?.invoke(block)?.let { "，$it" } ?: "")
                 } else Modifier)
             val tag = if (ghost) "非本周" else if (block.owner == CoupleOwner.Partner && block.span > 1) "TA" else null
-            val tint = if (ghost) null else couple?.tint(block, scope.dark)
+            val tint = partner
+            val noteSpace = if (noted) CoupleNoteSpace else 0.dp
             if (style == ScheduleVisualStyle.Minimal) {
-                MinimalCourseCard(block.course, tile, tileHeight, narrow, showLocation, tag, tint)
+                MinimalCourseCard(block.course, tile, tileHeight, narrow, showLocation, tag, tint, noteSpace)
             } else {
                 Box(tile) {
                     StyledCourseTile(
                         block.course, Modifier.fillMaxSize(), tileHeight, compact = narrow,
-                        start = periods.firstOrNull { it.number == block.startSlot }?.startTime, current = !ghost && isCurrent(block),
+                        // Three or more side by side leave two characters a line: no inverted "now" tile there.
+                        start = periods.firstOrNull { it.number == block.startSlot }?.startTime, current = !ghost && lanes < 3 && isCurrent(block),
                         trailingInset = if (label != null) 80.dp else 0.dp, dayRow = dayRow, showLocation = showLocation, tag = tag,
-                        couple = tint,
+                        couple = tint, bottomInset = noteSpace,
                     )
                     if (label != null) {
                         Text(label, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End,
@@ -552,6 +563,13 @@ internal fun StyledDayColumn(
                             modifier = Modifier.align(Alignment.CenterEnd).width(86.dp).padding(end = 10.dp))
                     }
                 }
+            }
+            if (noted) {
+                // Under a course of the user's: 一起 for a class both attend, or the partner's course then.
+                val place = Modifier.offset(x = inset + room / lanes * block.lane + 2.dp, y = step * first + inset + tileHeight - CoupleNoteSpace)
+                    .width(tileWidth - 4.dp)
+                if (block.owner == CoupleOwner.Both) CoupleNote(place, null, null, null)
+                else CoupleNote(place, CoupleRules.noteLabel(block.notes), couple?.tint(block.notes[0], scope.dark)) { onCourse(block.notes[0]) }
             }
         }
     }

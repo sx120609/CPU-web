@@ -307,8 +307,8 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                             onOpenDay = { date ->
                                 if (store.selectDate(date)) store.selectViewMode("day")
                             },
-                            onCourse = { placed, _ -> sheet = ScheduleSheet.QuickLook(placed.block) },
                             onMove = { monthAnchor = ScheduleMonth.shift(anchor, it) },
+                            couple = layer,
                         )
                     }
                 } else {
@@ -549,7 +549,7 @@ private fun CoupleStatusLine(couple: ScheduleCouple, bound: CoupleStatus.Active,
     val today = ScheduleStore.todayKey()
     val text = couple.statusText(today, minute).orEmpty()
     val days = CoupleRules.daysTogether(bound.anniversary, today)
-    val dot = Color(CoupleRules.tone(bound.partner.color, "", colors.dark).border)
+    val dot = Color(CoupleRules.personTone(bound.partner.color, colors.dark).border)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = onOpen).padding(horizontal = 6.dp, vertical = 2.dp)
@@ -744,16 +744,12 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                     val adjustment = store.adjustment(day, week)
                     val canAdd = store.canEdit
                     if (adjustment != null && blocks.isNotEmpty()) AdjustmentNotice(store, adjustment, day, week)
-                    if (!classic && context.couple != null && blocks.isNotEmpty()) {
-                        // Two timetables in one day: the style's own grid, where a course
-                        // gives up half its width only to one of the other person's.
-                        StyledWeekGrid(
-                            days = listOf(StyledWeekDay(day, date, store.isToday(day, week), adjustment?.kind, blocks, week)),
-                            periods = periods,
-                            rowHeight = max(52f, styledWeekRowHeight(height.value + StyledHeaderHeight.value, scope.style)).dp,
-                            now = context.now, canAdd = canAdd,
-                            onCourse = { _, block -> context.onCourse(block, week) }, onAddSlot = context.onAddSlot,
-                            onDay = null, showsHeader = false, dayRow = true,
+                    if (context.couple != null && blocks.isNotEmpty()) {
+                        // Two timetables in one day: the time axis in the middle, one person on each side.
+                        CoupleDayView(
+                            blocks = blocks, periods = periods, layer = context.couple, palette = context.palette,
+                            now = if (store.isToday(day, week)) context.now else null, canAdd = canAdd,
+                            onCourse = { context.onCourse(it, week) }, onAddSlot = { context.onAddSlot(day, it) },
                         )
                     } else if (!classic) {
                         val isToday = store.isToday(day, week)
@@ -1002,6 +998,8 @@ private fun WeekGrid(
                         val couple = context.couple?.tint(block, colors.dark)
                         val ink = Color(couple?.text ?: tone.text)
                         val theirs = block.owner == CoupleOwner.Partner
+                        // What the partner is doing during this course goes on a line at its bottom.
+                        val noted = !ghost && block.lanes < 3 && (block.owner == CoupleOwner.Both || block.notes.isNotEmpty())
                         // Courses of equal priority sit side by side and share the column.
                         val laneWidth = columnWidth / block.lanes
                         val narrow = block.lanes > 1
@@ -1011,13 +1009,14 @@ private fun WeekGrid(
                                 .padding(end = if (narrow && block.lane < block.lanes - 1) 1.dp else 0.dp)
                                 .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
                                 .clip(RoundedCornerShape(9.dp)).background(colors.surface)
-                                .background(couple?.brush() ?: Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
+                                .background(Brush.verticalGradient(listOf(Color(couple?.fill ?: tone.highlight), Color(couple?.fill ?: tone.fill))))
                                 .border(1.dp, Color(couple?.border ?: tone.border), RoundedCornerShape(9.dp))
                                 .clickable { if (ghost) context.onOffWeek(block) else context.onCourse(block, day.week) }
                                 .semantics {
                                     contentDescription = (if (ghost) "非本周，" else if (theirs) "TA 的课，" else "") + courseAccessibility(block.block)
                                 }
-                                .padding(horizontal = if (narrow) 1.dp else 2.dp, vertical = if (display.compact) 1.dp else 3.dp),
+                                .padding(horizontal = if (narrow) 1.dp else 2.dp, vertical = if (display.compact) 1.dp else 3.dp)
+                                .padding(bottom = if (noted) CoupleNoteSpace else 0.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
@@ -1049,6 +1048,16 @@ private fun WeekGrid(
                                     }
                                 }
                             }
+                        }
+                    }
+                    // Under a course of the user's: 一起 for a class both attend, or the partner's course then.
+                    day.blocks.filter { it.lanes < 3 && (it.owner == CoupleOwner.Both || it.notes.isNotEmpty()) }.forEach { block ->
+                        val laneWidth = columnWidth / block.lanes
+                        val place = Modifier.offset(x = laneWidth * block.lane + 2.dp, y = stride * block.endSlot - 4.dp - CoupleNoteSpace)
+                            .width(laneWidth - 4.dp)
+                        if (block.owner == CoupleOwner.Both) CoupleNote(place, null, null, null)
+                        else CoupleNote(place, CoupleRules.noteLabel(block.notes), context.couple?.tint(block.notes[0], colors.dark)) {
+                            context.onCourse(block.notes[0], day.week)
                         }
                     }
                     if (nowY != null && day.today) ScheduleNowLine(Modifier.offset(y = nowY.dp - 3.5.dp).fillMaxWidth())
@@ -1128,7 +1137,7 @@ private fun DayTimeline(
                         .width(laneWidth).height(stride * span - 4.dp)
                         .padding(end = if (narrow && block.lane < block.lanes - 1) 4.dp else 0.dp)
                         .clip(RoundedCornerShape(12.dp)).background(colors.surface)
-                        .background(couple?.brush() ?: Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
+                        .background(Brush.verticalGradient(listOf(Color(couple?.fill ?: tone.highlight), Color(couple?.fill ?: tone.fill))))
                         .border(1.dp, Color(couple?.border ?: tone.border), RoundedCornerShape(12.dp))
                         .clickable { context.onCourse(block, week) }
                         .semantics { contentDescription = (if (theirs) "TA 的课，" else "") + courseAccessibility(block.block) }

@@ -594,38 +594,36 @@ class ScheduleParityTest {
     private fun placed(name: String, start: Int, end: Int, lane: Int = 0, lanes: Int = 1) = PlacedBlock(block(name, start, end), start, end, lane, lanes)
 
     @Test
-    fun coupleColoursMatchTheWeb() {
-        // Values from `coupleCourseTone` in web/src/views/schedule/couple.ts.
-        assertEquals(33278927L, CoupleRules.nameHash("药理学"))
-        assertEquals(CoupleTint(0xFFD4E5FC.toInt(), 0xFF8DB6EC.toInt(), 0xFF1D406D.toInt()), CoupleRules.tone("blue", "药理学", dark = false))
-        assertEquals(CoupleTint(0xFF792A47.toInt(), 0xFFD13D73.toInt(), 0xFFF5F7FF.toInt()), CoupleRules.tone("pink", "高等数学", dark = true))
-        assertEquals(CoupleTint(0xFFFDE7F3.toInt(), 0xFFF1A7CE.toInt(), 0xFF6D1D48.toInt()), CoupleRules.tone("pink", "", dark = false))
-        // A class both attend runs from the user's fill into the partner's.
-        val both = CoupleRules.tint(CoupleOwner.Both, "药理学", "blue", "pink", dark = false)
-        assertEquals(CoupleRules.tone("blue", "药理学", false).fill, both.fill)
-        assertEquals(CoupleRules.tone("pink", "药理学", false).fill, both.fillEnd)
-        assertNull(CoupleRules.tint(CoupleOwner.Mine, "药理学", "blue", "pink", dark = false).fillEnd)
+    fun onePersonOneColourAsOnTheWeb() {
+        // Values from `couplePersonTone` in web/src/views/schedule/couple.ts.
+        assertEquals(CoupleTint(0xFFDDEBFD.toInt(), 0xFF9ABFEF.toInt(), 0xFF1D406D.toInt()), CoupleRules.personTone("blue", dark = false))
+        assertEquals(CoupleTint(0xFF6D2640.toInt(), 0xFFCF306A.toInt(), 0xFFF5F7FF.toInt()), CoupleRules.personTone("pink", dark = true))
+        assertEquals(listOf("blue", "pink", "purple", "teal", "green", "amber", "orange"), CoupleRules.COLORS.map { it.first })
+        assertEquals(7, CoupleRules.COLORS.map { CoupleRules.personTone(it.first, false).fill }.distinct().size)
+        // A colour this build does not know is drawn as blue.
+        assertEquals("blue", CoupleRules.color("rainbow"))
+        assertEquals("teal", CoupleRules.color("teal"))
+        assertEquals(CoupleRules.personTone("blue", false), CoupleRules.personTone("rainbow", false))
     }
 
     @Test
-    fun coursesShareTheColumnOnlyWhereTheTwoTimetablesMeet() {
+    fun aClashIsWrittenUnderTheUsersCourse() {
         val mine = listOf(placed("药理学", 1, 2), placed("大学英语", 3, 4), placed("药物分析", 9, 10))
         val theirs = listOf(placed("药 理 学", 1, 2), placed("高等数学", 4, 5), placed("物理化学", 7, 8))
-        val merged = CoupleRules.merge(mine, theirs).associateBy { it.course.name }
-        // The same class in the same periods is drawn once, whatever the spacing of its name.
-        assertEquals(5, merged.size)
-        assertEquals(CoupleOwner.Both, merged.getValue("药理学").owner)
-        assertEquals(1, merged.getValue("药理学").lanes)
-        // Overlapping courses: the user's on the left half, the partner's on the right.
-        assertEquals(listOf(CoupleOwner.Mine, 0, 2), merged.getValue("大学英语").let { listOf(it.owner, it.lane, it.lanes) })
-        assertEquals(listOf(CoupleOwner.Partner, 1, 2), merged.getValue("高等数学").let { listOf(it.owner, it.lane, it.lanes) })
-        // Everything else keeps the whole column.
-        assertEquals(listOf(CoupleOwner.Mine, 0, 1), merged.getValue("药物分析").let { listOf(it.owner, it.lane, it.lanes) })
-        assertEquals(listOf(CoupleOwner.Partner, 0, 1), merged.getValue("物理化学").let { listOf(it.owner, it.lane, it.lanes) })
-        // Two of the user's courses already side by side keep to the left half between them.
-        val crowded = CoupleRules.merge(listOf(placed("甲", 1, 2, 0, 2), placed("乙", 1, 2, 1, 2)), listOf(placed("丙", 1, 2)))
-        assertEquals(listOf(0 to 4, 1 to 4, 1 to 2), crowded.map { it.lane to it.lanes })
-        // Without a partner timetable the user's courses are only marked as theirs.
+        val merged = CoupleRules.merge(mine, theirs)
+        // The partner's 高等数学 meets 大学英语: no tile of its own, a line under the user's course.
+        assertEquals(listOf("药理学", "大学英语", "药物分析", "物理化学"), merged.map { it.course.name })
+        assertEquals(listOf(CoupleOwner.Both, CoupleOwner.Mine, CoupleOwner.Mine, CoupleOwner.Partner), merged.map { it.owner })
+        assertEquals(listOf(emptyList(), listOf("高等数学"), emptyList(), emptyList()), merged.map { block -> block.notes.map { it.course.name } })
+        // Nobody gives up width: every tile keeps its own lanes.
+        assertEquals(listOf(1, 1, 1, 1), merged.map { it.lanes })
+        assertEquals("高等数学", CoupleRules.noteLabel(merged[1].notes))
+        assertEquals("2 门课", CoupleRules.noteLabel(listOf(placed("甲", 1, 2), placed("乙", 1, 2))))
+        // The partner's side of the day view has all of theirs: tiles, noted courses and shared classes.
+        assertEquals(setOf("药理学", "高等数学", "物理化学"), CoupleRules.partnerSide(merged).map { it.course.name }.toSet())
+        // A month cell: three lines, or two and a count.
+        assertEquals(listOf("a", "b", "c") to 0, ScheduleMonth.courseLines(listOf("a", "b", "c"), 3))
+        assertEquals(listOf("a", "b") to 3, ScheduleMonth.courseLines(listOf("a", "b", "c", "d", "e"), 3))
         assertEquals(listOf(CoupleOwner.Mine), CoupleRules.merge(listOf(placed("甲", 1, 2)), emptyList()).map { it.owner })
     }
 
@@ -647,7 +645,7 @@ class ScheduleParityTest {
 
     private fun coupleStatus(state: String): JSONObject = when (state) {
         "active" -> JSONObject().put("status", "active").put("anniversary", JSONObject.NULL)
-            .put("me", JSONObject().put("color", "pink").put("nickname", "阿青").put("snapshot", JSONObject.NULL))
+            .put("me", JSONObject().put("color", "teal").put("nickname", "阿青").put("snapshot", JSONObject.NULL))
             .put("partner", JSONObject().put("color", "blue").put("nickname", "小鹿")
                 .put("snapshot", JSONObject().put("syncedAt", "2026-10-08T01:30:00.000Z")))
         "pending" -> JSONObject().put("status", "pending").put("invite", JSONObject().put("code", "K7M2QX").put("expired", false))
@@ -659,7 +657,7 @@ class ScheduleParityTest {
         assertEquals(CoupleStatus.None, CoupleStatus.fromJson(coupleStatus("none")))
         assertEquals(CoupleStatus.Pending("K7M2QX", false), CoupleStatus.fromJson(coupleStatus("pending")))
         assertEquals(
-            CoupleStatus.Active("", CoupleMember("阿青", "pink", ""), CoupleMember("小鹿", "blue", "2026-10-08T01:30:00.000Z")),
+            CoupleStatus.Active("", CoupleMember("阿青", "teal", ""), CoupleMember("小鹿", "blue", "2026-10-08T01:30:00.000Z")),
             CoupleStatus.fromJson(coupleStatus("active")),
         )
     }

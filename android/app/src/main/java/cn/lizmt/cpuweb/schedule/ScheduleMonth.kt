@@ -91,15 +91,26 @@ object ScheduleMonth {
 
     /** 1 is Monday, 7 is Sunday. */
     fun weekday(date: String): Int = calendar(date)?.let { (it.get(Calendar.DAY_OF_WEEK) + 5) % 7 + 1 } ?: 1
+
+    /**
+     * What a month cell writes: at most `limit` lines. When the day has more
+     * courses, the last line goes to "+N", so `limit - 1` names show and the
+     * second value is how many are left out.
+     */
+    fun <T> courseLines(courses: List<T>, limit: Int): Pair<List<T>, Int> {
+        if (courses.size <= limit) return courses to 0
+        val shown = courses.take((limit - 1).coerceAtLeast(1))
+        return shown to courses.size - shown.size
+    }
 }
 
 private val HolidayPink = Color(0xFFE11D48)
 
 /**
- * The month view: a calendar with one cell per day (date, lunar day or
- * festival, a dot per course) and the selected day's courses underneath. The
- * teaching week stays in the gutter of each row, so the calendar and the term's
- * week numbers still line up.
+ * The month view: a calendar with one cell per day. A cell holds the date, the
+ * lunar day or festival, and that day's courses, one line each; a tap opens
+ * the day. The teaching week stays in the gutter of each row, so the calendar
+ * and the term's week numbers still line up.
  */
 @Composable
 internal fun ScheduleMonthView(
@@ -108,9 +119,10 @@ internal fun ScheduleMonthView(
     selectedDate: String,
     onSelect: (String) -> Unit,
     onOpenDay: (String) -> Unit,
-    onCourse: (PlacedBlock, String) -> Unit,
     /** Dragging the grid up or down turns the month: 1 is the next one, -1 the one before. */
     onMove: (Int) -> Unit = {},
+    /** The partner's timetable while the couple timetable is drawn. */
+    couple: CoupleLayer? = null,
 ) {
     val colors = LocalScheduleColors.current
     val scope = LocalScheduleStyle.current
@@ -186,9 +198,9 @@ internal fun ScheduleMonthView(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
             days.chunked(7).forEach { row ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Text(row.firstNotNullOfOrNull { index[it]?.first }?.toString().orEmpty(), fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                        color = colors.secondary.copy(alpha = 0.7f), textAlign = TextAlign.Center, modifier = Modifier.width(26.dp))
+                        color = colors.secondary.copy(alpha = 0.7f), textAlign = TextAlign.Center, modifier = Modifier.width(26.dp).padding(top = 7.dp))
                     row.forEach { date ->
                         val inMonth = ScheduleMonth.sameMonth(date, anchor)
                         val selected = date == selectedDate
@@ -198,49 +210,62 @@ internal fun ScheduleMonthView(
                         val weekday = ScheduleMonth.weekday(date)
                         val dayCourses = courses[date].orEmpty()
                         val holiday = info?.isStatutoryHoliday == true
+                        // The day's courses by name, in the order they start.
+                        val names = dayCourses.sortedWith(compareBy({ it.startSlot }, { it.lane })).map { it.course.name }.distinct()
+                        val (shown, more) = ScheduleMonth.courseLines(names, 3)
+                        // The partner's day is one line of its own: how many courses they have.
+                        val theirs = couple?.blocksOn(date).orEmpty().map { it.course.name }.distinct().size
                         Box(
-                            Modifier.weight(1f).height(50.dp).padding(horizontal = 1.dp).clip(RoundedCornerShape(10.dp))
-                                .then(when {
-                                    selected -> Modifier.background(accent.copy(alpha = 0.16f))
-                                    isToday -> Modifier.border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                                    else -> Modifier
-                                })
-                                .clickable { onSelect(date) }
+                            Modifier.weight(1f).height(if (couple != null) 106.dp else 88.dp).padding(horizontal = 1.dp).clip(RoundedCornerShape(10.dp))
+                                // A day of the term opens as that day; any other one is only picked.
+                                .clickable { if (index[date] != null) onOpenDay(date) else onSelect(date) }
                                 .semantics {
                                     this.selected = selected
                                     contentDescription = listOfNotNull(
                                         "${date.takeLast(2).toIntOrNull() ?: date} 日", info?.displayLabel(),
                                         index[date]?.let { "第 ${it.first} 周" }, adjustment?.let { store.adjustmentDetail(it) },
-                                        if (dayCourses.isEmpty()) "没有课程" else "${dayCourses.size} 门课程",
+                                        if (names.isEmpty()) "没有课程" else "${names.size} 门课程：${names.joinToString("、")}",
+                                        if (theirs > 0) "TA $theirs 门课" else null,
                                     ).joinToString("，")
                                 },
                         ) {
-                            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    (date.takeLast(2).toIntOrNull() ?: 0).toString(), fontSize = 16.sp, lineHeight = 19.sp, fontFamily = scope.fontFamily,
-                                    fontWeight = if (isToday || selected) FontWeight.Bold else FontWeight.Medium,
-                                    color = when {
-                                        !inMonth -> colors.secondary.copy(alpha = 0.45f)
-                                        isToday || selected -> accent
-                                        holiday -> HolidayPink
-                                        weekday >= 6 -> HolidayPink.copy(alpha = 0.85f)
-                                        else -> colors.text
-                                    },
-                                )
+                            Column(
+                                Modifier.fillMaxWidth().padding(top = 3.dp).alpha(if (inMonth) 1f else 0.42f),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp),
+                            ) {
+                                // Today: the date sits in a disc of the theme colour.
+                                Box(
+                                    Modifier.size(22.dp).then(if (isToday) Modifier.clip(CircleShape).background(scope.themeFill) else Modifier),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        (date.takeLast(2).toIntOrNull() ?: 0).toString(), fontSize = 14.sp, lineHeight = 17.sp, fontFamily = scope.fontFamily,
+                                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                                        color = when {
+                                            isToday -> scope.onFill
+                                            holiday -> HolidayPink
+                                            weekday >= 6 -> HolidayPink.copy(alpha = 0.85f)
+                                            else -> colors.text
+                                        },
+                                    )
+                                }
                                 Text(
                                     info?.displayLabel().orEmpty(), fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, maxLines = 1,
                                     overflow = TextOverflow.Clip, softWrap = false,
                                     fontWeight = if (info?.badge() != null) FontWeight.Bold else FontWeight.Normal,
                                     color = if (holiday) HolidayPink else if (info?.badge() != null) accent else colors.secondary,
-                                    modifier = Modifier.alpha(if (inMonth) 1f else 0.4f),
                                 )
-                                // One bar under the date, as in the system calendar: a dot for
-                                // one class, longer with more.
-                                Box(Modifier.height(6.dp).alpha(if (inMonth) 1f else 0.45f), contentAlignment = Alignment.Center) {
-                                    if (dayCourses.isNotEmpty()) {
-                                        val length = if (dayCourses.size == 1) 4.dp else (dayCourses.size.coerceAtMost(4) * 5).dp
-                                        Box(Modifier.size(length, 4.dp).clip(CircleShape).background(accent.copy(alpha = 0.85f)))
-                                    }
+                                val own = couple?.let { CoupleRules.personTone(it.myColor, colors.dark) }
+                                shown.forEach { name -> MonthCourseLine(name, classic, own) }
+                                if (more > 0) {
+                                    Text("+$more", fontSize = 9.sp, lineHeight = 11.sp, fontWeight = FontWeight.SemiBold, color = colors.secondary,
+                                        modifier = Modifier.fillMaxWidth().padding(start = 3.dp))
+                                }
+                                if (couple != null && theirs > 0) {
+                                    val tone = CoupleRules.personTone(couple.partnerColor, colors.dark)
+                                    Text("TA $theirs 门", fontSize = 10.sp, lineHeight = 13.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold,
+                                        color = Color(tone.text), maxLines = 1, softWrap = false, textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(top = 1.dp).fillMaxWidth().height(14.dp).clip(CircleShape).background(Color(tone.fill)))
                                 }
                             }
                             if (adjustment != null) {
@@ -252,78 +277,30 @@ internal fun ScheduleMonthView(
             }
             }
         }
-
-        // The selected day.
-        val slot = index[selectedDate]
-        val selectedCourses = courses[selectedDate] ?: slot?.let { (week, day) -> store.placedBlocksForDay(day, week.toString()) }.orEmpty()
-        val adjustment = adjustments[selectedDate]
-        Column(Modifier.fillMaxWidth().then(container).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    val parts = selectedDate.split('-').mapNotNull { it.toIntOrNull() }
-                    Text(
-                        if (parts.size == 3) "${parts[1]} 月 ${parts[2]} 日 · ${WEEKDAY_LABELS[ScheduleMonth.weekday(selectedDate) - 1]}" else selectedDate,
-                        fontSize = 17.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.textFamily, color = colors.text,
-                    )
-                    val info = ChineseCalendarInfo.info(selectedDate)
-                    Text(
-                        listOfNotNull(slot?.let { "第 ${it.first} 周" }, info?.lunar?.fullLabel(), info?.badge()).joinToString(" · "),
-                        fontSize = 12.sp, color = colors.secondary,
-                    )
-                }
-                if (slot != null) {
-                    TextButton(onClick = { onOpenDay(selectedDate) }) { Text("日视图", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = accent) }
-                }
-            }
-            if (adjustment != null) {
-                Text(store.adjustmentDetail(adjustment), fontSize = 12.sp, color = if (adjustment.kind == "off") HolidayPink else Color(0xFFC2410C))
-            }
-            when {
-                slot == null -> Text("这一天不在当前学期的教学周内。", fontSize = 13.sp, color = colors.secondary)
-                selectedCourses.isEmpty() -> Text(
-                    if (adjustment?.kind == "off") "这一天放假，没有课程。" else "这一天没有课程。", fontSize = 13.sp, color = colors.secondary,
-                )
-                else -> selectedCourses.sortedWith(compareBy({ it.startSlot }, { it.lane })).forEach { block ->
-                    MonthAgendaRow(store, block, classic) { onCourse(block, slot.first.toString()) }
-                }
-            }
-        }
         Spacer(Modifier.height(4.dp))
     }
 }
 
+/** One course in a month cell: its name on a line of its own colour. */
 @Composable
-private fun MonthAgendaRow(store: ScheduleStore, block: PlacedBlock, classic: Boolean, onClick: () -> Unit) {
-    val colors = LocalScheduleColors.current
+private fun MonthCourseLine(name: String, classic: Boolean, person: CoupleTint? = null) {
     val scope = LocalScheduleStyle.current
-    val course = block.course
-    val shape = RoundedCornerShape(if (classic) 12.dp else scope.style.cornerRadius.coerceAtLeast(2f).dp)
-    val accent = Color(scope.course(course.name).accent(scope.dark))
-    val tone = scheduleCardTone(course.name, scope.palette, scope.dark)
-    val text = if (classic) Color(tone.text) else if (scope.style == ScheduleVisualStyle.Paper || scope.style == ScheduleVisualStyle.Board) scope.ink else accent
-    val background = if (classic) {
-        Modifier.background(colors.surface).background(Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
-            .border(1.dp, Color(tone.border), shape)
-    } else Modifier.background(Color(scope.course(course.name).fill(scope.dark, scope.hasBackground)))
-    Row(
-        Modifier.fillMaxWidth().clip(shape).then(background).clickable(onClick = onClick)
-            .semantics { contentDescription = courseAccessibility(block.block) }.padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(Modifier.size(width = 4.dp, height = 34.dp).clip(RoundedCornerShape(3.dp)).background(if (classic) Color(tone.border) else accent))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(course.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.textFamily, color = text, maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
-            Text(
-                listOfNotNull(
-                    course.location?.trim()?.takeIf { it.isNotEmpty() }, course.teacher?.trim()?.takeIf { it.isNotEmpty() },
-                    ScheduleStyleTime.slotText(block.startSlot, block.endSlot),
-                ).joinToString(" · "),
-                fontSize = 12.sp, fontFamily = scope.textFamily, color = text.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Text("${store.periodTime(block.startSlot).startTime}\n${store.periodTime(block.endSlot).endTime}", fontSize = 12.sp, lineHeight = 15.sp,
-            fontWeight = FontWeight.SemiBold, color = text.copy(alpha = 0.85f), textAlign = TextAlign.End)
+    val fill: Color
+    val ink: Color
+    if (person != null) {
+        // The couple timetable: all of the user's courses in the user's colour.
+        fill = Color(person.fill); ink = Color(person.text)
+    } else if (classic) {
+        val tone = scheduleCardTone(name, scope.palette, scope.dark)
+        fill = Color(tone.fill); ink = Color(tone.text)
+    } else {
+        val tint = scope.course(name)
+        fill = Color(tint.fill(scope.dark, scope.hasBackground)); ink = Color(tint.accent(scope.dark))
     }
+    Text(
+        name, fontSize = 10.sp, lineHeight = 13.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.textFamily,
+        color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+        modifier = Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(if (classic) 3.dp else scope.style.cornerRadius.coerceIn(0f, 3f).dp))
+            .background(fill).padding(horizontal = 2.dp),
+    )
 }
