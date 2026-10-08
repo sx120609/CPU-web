@@ -28,7 +28,10 @@ async function cancelUnsubmitted(tx: Prisma.TransactionClient, deviceId: string,
 }
 async function materialize(tx: Prisma.TransactionClient, device: any, snapshot: Snapshot) {
   const now = Date.now() / 1000;
-  const history = await tx.liveActivityPlan.findMany({ where: { deviceId: device.id } });
+  if (!snapshot.courses.some(c => c.end > now && c.plannedStart <= now + 48 * 3600)) return;
+  const history = await tx.liveActivityPlan.findMany({ where: { deviceId: device.id },
+    select: { itemID: true, state: true, revision: true, payload: true } });
+  const historyById = new Map(history.map(r => [r.itemID, r]));
   const protectedIds = new Set(history.filter(r => protectedStates.includes(r.state)).map(r => r.itemID));
   const edges: Occurrence[] = [...history.flatMap(r => { try { return [JSON.parse(r.payload)]; } catch { return []; } }), ...snapshot.courses];
   let changed = true;
@@ -40,7 +43,7 @@ async function materialize(tx: Prisma.TransactionClient, device: any, snapshot: 
   }
   for (const c of snapshot.courses) {
     if (c.end <= now || c.plannedStart > now + 48 * 3600) continue;
-    const prior = history.find(r => r.itemID === c.occurrenceId);
+    const prior = historyById.get(c.occurrenceId);
     if (prior && (protectedStates.includes(prior.state) || prior.revision === device.planRevision)) continue;
     const blocked = protectedIds.has(c.occurrenceId) || c.end - c.plannedStart >= 8 * 3600 || c.plannedStart >= c.end;
     const data = { event: EVENT, fireAt: new Date(c.plannedStart * 1000), expiresAt: new Date(c.expiresAt * 1000),
@@ -154,6 +157,10 @@ export const START_BATCH_SIZE = Math.max(1, Math.min(10000, Number(process.env.L
 // deployments must retain capacity for HTTP traffic and the broadcast loop.
 export const START_CONCURRENCY = Math.max(1, Math.min(2, Number(process.env.LIVE_ACTIVITY_START_CONCURRENCY) || 2));
 let lastMaterialized = 0;
+let lastMaterializedTiming = '';
+// Plans cover 48 hours; an hourly refill leaves ample runway without opening
+// a transaction for every registered device once per minute.
+const REFILL_INTERVAL_MS = 3600_000;
 let materializing: Promise<void> | undefined;
 async function refillWindow(timingId: string) {
   let cursor: string | undefined;
@@ -161,10 +168,14 @@ async function refillWindow(timingId: string) {
     const devices = await prisma.liveActivityDevice.findMany({ where: { enabled: true, launchMode: 'remote', planSnapshot: { not: null } },
       orderBy: { id: 'asc' }, take: 250, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
     if (!devices.length) break;
+    const now = Date.now() / 1000;
     let index = 0;
     await Promise.all(Array.from({ length: Math.min(1, devices.length) }, async () => {
       while (index < devices.length) {
         const d = devices[index++];
+        const snapshot = JSON.parse(d.planSnapshot!) as Snapshot;
+        if (snapshot.input.scheduleVersion === timingId &&
+          !snapshot.courses.some(c => c.end > now && c.plannedStart <= now + 48 * 3600)) continue;
         await prisma.$transaction(async tx => {
           await lock(tx, `${d.userId}:${d.installationId}`);
           const current = await tx.liveActivityDevice.findUnique({ where: { id: d.id } });
@@ -183,9 +194,15 @@ export async function tickRemoteStarts(send = sendLiveActivityPayload) {
   const config = await getApnsConfig();
   if (!config.configured) return;
   const timing = await currentTiming();
-  if (!materializing && Date.now() - lastMaterialized >= 60000) {
-    materializing = refillWindow(timing.id).catch(error => { console.warn('[apns] window refill failed', error?.message); })
-      .finally(() => { lastMaterialized = Date.now(); materializing = undefined; });
+  if (!materializing && (timing.id !== lastMaterializedTiming || Date.now() - lastMaterialized >= REFILL_INTERVAL_MS)) {
+    materializing = refillWindow(timing.id).then(() => {
+      lastMaterialized = Date.now(); lastMaterializedTiming = timing.id;
+    }).catch(error => {
+      // Failed passes retry after one minute, rather than waiting an hour.
+      lastMaterialized = Date.now() - REFILL_INTERVAL_MS + 60000;
+      lastMaterializedTiming = timing.id;
+      console.warn('[apns] window refill failed', error?.message);
+    }).finally(() => { materializing = undefined; });
   }
   await prisma.liveActivityPlan.updateMany({ where: { state: 'submitting', updatedAt: { lt: new Date(Date.now() - 60000) } }, data: { state: 'submissionUnknown', detail: '提交后未收到确定结果' } });
   const rows = await prisma.liveActivityPlan.findMany({ where: { event: EVENT, state: 'pending', fireAt: { lte: new Date() }, nextAttemptAt: { lte: new Date() }, device: { enabled: true, launchMode: 'remote' } },

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 const periods = [{ id: 1, name: '1', start: '08:00', end: '08:45' }, { id: 2, name: '2', start: '08:55', end: '09:40' }];
 const devices: any[] = [], plans: any[] = [], versions: any[] = [];
 let seq = 0;
+let deviceScans = 0;
+let historyReads = 0;
 function matches(row: any, where: any): boolean {
   return Object.entries(where || {}).every(([k, v]: [string, any]) => {
     if (k === 'OR') return v.some((w: any) => matches(row, w));
@@ -29,7 +31,11 @@ function assign(row: any, data: any) {
 function model(rows: any[]) {
   return {
     async findUnique({ where, include }: any) { const r = rows.find(r => matches(r, where)); return r && include?.device ? { ...r, device: devices.find(d => d.id === r.deviceId) } : r; },
-    async findMany({ where, take, include }: any) { return rows.filter(r => matches(r, where)).slice(0, take).map(r => include?.device ? { ...r, device: devices.find(d => d.id === r.deviceId) } : r); },
+    async findMany({ where, take, include }: any) {
+      if (rows === devices) deviceScans++;
+      if (rows === plans && where?.deviceId) historyReads++;
+      return rows.filter(r => matches(r, where)).slice(0, take).map(r => include?.device ? { ...r, device: devices.find(d => d.id === r.deviceId) } : r);
+    },
     async upsert({ where, create, update }: any) {
       let row = rows.find(r => matches(r, where));
       if (!row) { row = { id: String(++seq), enabled: true, launchMode: 'remote', modeRevision: 0, planRevision: 0, state: 'pending', attempts: 0, broadcastUntil: new Date(0), ...create }; rows.push(row); return assign(row, {}); }
@@ -53,6 +59,7 @@ before(async () => {
   service = await import('../src/services/liveActivityRemoteStart');
   version = (await import('../src/services/liveActivitySchedule')).timingVersion(periods);
 });
+
 const now = Date.parse('2026-09-22T07:45:00+08:00');
 function input(planRevision = 1, installationId = 'installation-0001') {
   return { installationId, accountScope: 'account-scope-0001', token: 'ab'.repeat(32), environment: 'production', bundleID: 'cn.cputime.mobile',
@@ -157,4 +164,45 @@ test('remote-start burst bounds simultaneous workers while sending outside trans
   assert.equal(calls, 2);
   release(); await job;
   assert.equal(calls, 6); assert.equal(peak, 2);
+});
+
+
+test('hourly refill skips idle devices and materializes courses as they enter the 48-hour window', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: now + 2 * 3600_000 });
+  devices.length = 0; plans.length = 0;
+  const body = input(1, 'installation-refill');
+  body.items[0].dateKey = '2026-09-24';
+  // At 09:45 the course is already inside the horizon, so register earlier.
+  t.mock.timers.setTime(now - 3600_000);
+  await service.syncRemoteStarts(99, body);
+  assert.equal(plans.length, 0);
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  // Force a refill later than previous tests, with an empty snapshot first.
+  devices[0].planSnapshot = JSON.stringify({ input: { scheduleVersion: version }, courses: [] });
+  t.mock.timers.setTime(now + 2 * 3600_000);
+  const reads = historyReads;
+  await service.tickRemoteStarts(); await settle();
+  assert.equal(historyReads, reads, 'idle snapshots must not read plan history');
+  const scans = deviceScans;
+  t.mock.timers.tick(60000);
+  await service.tickRemoteStarts(); await settle();
+  assert.equal(deviceScans, scans, 'minute ticks must not scan all devices again');
+  // Sync immediately fills the horizon; future courses are replenished hourly.
+  body.items[0].dateKey = '2026-09-25';
+  await service.syncRemoteStarts(99, { ...body, planRevision: 2 });
+  assert.equal(plans.length, 0);
+  t.mock.timers.setTime(now + 24 * 3600_000);
+  await service.tickRemoteStarts(); await settle();
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].state, 'pending');
+  assert.equal(plans[0].fireAt.getTime(), now + 3 * 86400_000);
+  const originalEnd = periods[1].end;
+  const beforeChange = deviceScans;
+  try {
+    periods[1].end = '09:41';
+    t.mock.timers.tick(5000);
+    await service.tickRemoteStarts(); await settle();
+    assert.equal(deviceScans, beforeChange + 1, 'timing changes must bypass the hourly interval');
+    assert.equal(plans[0].state, 'cancelled', 'old-version pending plans must be retired');
+  } finally { periods[1].end = originalEnd; }
 });

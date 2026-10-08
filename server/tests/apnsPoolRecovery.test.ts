@@ -5,6 +5,7 @@ process.env.DATABASE_URL = 'postgresql://unit-test-only/apns';
 let settings = new Map<string, any>();
 let versions = new Map<string, any>();
 let active = 0;
+let transactions = 0;
 let lockBusy = false;
 let tail: Promise<unknown> = Promise.resolve();
 const periods = [{ id: 1, name: '1', start: '08:00', end: '08:45' }];
@@ -40,6 +41,7 @@ for (const [name, model] of Object.entries(models)) {
   }]));
 }
 root.$transaction = async (fn: any) => {
+  transactions++;
   const previous = tail;
   let release!: () => void;
   tail = new Promise<void>(resolve => { release = resolve; });
@@ -104,6 +106,28 @@ test('slow Apple request holds zero database connections; another worker reuses 
   await provisionApnsChannels(Date.now(), false, transport);
   assert.equal(created, 2, 'one channel per environment, no recreation on another tick');
   assert.deepEqual(channels(), saved);
+});
+
+test('checking sixty existing channels uses a fixed number of transactions', async () => {
+  const original = [...periods];
+  try {
+    periods.splice(0, periods.length, ...Array.from({ length: 30 }, (_, i) => ({
+      id: i + 1, name: String(i + 1), start: `00:${String(i * 2).padStart(2, '0')}`,
+      end: `00:${String(i * 2 + 1).padStart(2, '0')}`,
+    })));
+    const { timingVersion } = await import('../src/services/liveActivitySchedule');
+    const mapping = Object.fromEntries(['production', 'sandbox'].flatMap(env =>
+      periods.map(p => [endChannelKey(env, timingVersion(periods), p.id), env + p.id])));
+    put('apns.channels', mapping);
+    const before = transactions;
+    const result = await provisionApnsChannels(Date.now(), false, {
+      create: async () => assert.fail('all channels already exist'),
+      delete: async () => assert.fail('nothing retired'),
+    });
+    assert.equal(result.channelErrors.length, 0);
+    assert.ok(transactions - before <= 8, 'existing channels must not each open a transaction');
+    assert.deepEqual(channels(), mapping);
+  } finally { periods.splice(0, periods.length, ...original); }
 });
 
 test('partial create success persists immediately and only missing channels are retried', async () => {

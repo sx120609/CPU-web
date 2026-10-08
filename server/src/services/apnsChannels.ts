@@ -101,15 +101,16 @@ export async function provisionApnsChannels(now = Date.now(), prune = false, tra
       }
     }
     const suffixes = await step(db => requiredChannelSuffixes(now, db));
+    // Checking already-published IDs needs one short transaction, rather than
+    // renewing the lease and rereading settings once for every existing channel.
+    const published = await step(async (_db, config) => config);
     for (const environment of ["production", "sandbox"] as const) {
+      let channelCount = Object.keys(published.channels).filter(k => k.startsWith(environment + ":")).length;
       for (const suffix of suffixes) {
         const key = environment + ":" + suffix;
-        const config = await step(async (_db, config) => {
-          if (config.channels[key]) return null;
-          if (Object.keys(config.channels).filter(k => k.startsWith(environment + ":")).length >= MAX_CHANNELS_PER_ENVIRONMENT) throw new Error("APNs channel limit reached");
-          return config;
-        });
-        if (!config) continue;
+        if (published.channels[key]) continue;
+        if (channelCount >= MAX_CHANNELS_PER_ENVIRONMENT) throw new Error("APNs channel limit reached");
+        const config = await step(async (_db, config) => config);
         let created: string | undefined;
         try {
           created = await transport.create(config, environment);
@@ -119,7 +120,7 @@ export async function provisionApnsChannels(now = Date.now(), prune = false, tra
             await writeSetting(db, "apns.channels", latest.channels);
             return true;
           });
-          if (accepted) created = undefined;
+          if (accepted) { channelCount++; created = undefined; }
         } catch (error) {
           errors.push({ environment, message: key + ": " + (error instanceof Error ? error.message : String(error)) });
         } finally {
