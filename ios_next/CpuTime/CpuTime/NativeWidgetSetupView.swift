@@ -155,6 +155,58 @@ private struct NativeCalendarSettingsPage: View {
     }
 }
 
+/// The week view's display settings: how tall and how large its cards are,
+/// what they show, and which days appear.
+@available(iOS 17.0, *)
+private struct ScheduleWeekDisplaySettings: View {
+    @ObservedObject var preferences: NativeSchedulePreferences
+
+    @ViewBuilder
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("格子高度")
+                    Spacer()
+                    Text("\(Int(preferences.rowHeight))%")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Slider(value: $preferences.rowHeight,
+                       in: NativeSchedulePreferences.rowHeightRange,
+                       step: NativeSchedulePreferences.rowHeightStep)
+                    .accessibilityLabel("格子高度")
+            }
+            Picker("文字大小", selection: $preferences.textSize) {
+                Text("小").tag("small")
+                Text("标准").tag("standard")
+                Text("大").tag("large")
+            }
+            .pickerStyle(.segmented)
+            Toggle("显示老师", isOn: $preferences.showTeacherInWeek)
+            Toggle("显示非本周课程", isOn: $preferences.showOffWeek)
+        } header: {
+            Label("周课表的课程格子", systemImage: "square.grid.3x3")
+        } footer: {
+            Text("非本周的课程淡显在本周空着的节次里。紧凑排版在上面的“排版密度”里。")
+        }
+
+        Section {
+            Toggle("显示节次时间", isOn: $preferences.showSlotTime)
+            Toggle("高亮当前节次", isOn: $preferences.showNowIndicator)
+            Toggle("显示回到本周按钮", isOn: $preferences.showBackToWeek)
+            Toggle("显示周六", isOn: $preferences.showSaturday)
+            Toggle("显示周日", isOn: $preferences.showSunday)
+            Toggle("周日排在首列", isOn: $preferences.sundayFirst)
+                .disabled(!preferences.showSunday)
+        } header: {
+            Label("周课表的网格", systemImage: "calendar")
+        } footer: {
+            Text("关闭的周六、周日有课或调休时仍会显示。周日排在首列时，第一列是周一前一天的那个周日。")
+        }
+    }
+}
+
 @available(iOS 17.0, *)
 private struct ScheduleSettingsSection: View {
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
@@ -184,11 +236,11 @@ private struct ScheduleSettingsSection: View {
                 Text("紧凑").tag("compact")
             }
             Toggle("显示日期栏", isOn: $preferences.showDateHeader)
-            Toggle("显示周末", isOn: $preferences.showWeekend)
-            Toggle("标出当前时间", isOn: $preferences.showNowIndicator)
         } header: {
             Label("视图与排版", systemImage: "rectangle.grid.1x2")
         }
+
+        ScheduleWeekDisplaySettings(preferences: preferences)
 
         Section {
             NavigationLink {
@@ -250,6 +302,8 @@ private struct NativeScheduleSettingsView: View {
                 Text("关闭不需要的信息后，课程卡片会自动重新排版。")
             }
 
+            ScheduleWeekDisplaySettings(preferences: preferences)
+
             Section {
                 Picker("默认视图", selection: $preferences.defaultView) {
                     Text("周课表").tag("week")
@@ -261,8 +315,6 @@ private struct NativeScheduleSettingsView: View {
                     Text("紧凑").tag("compact")
                 }
                 Toggle("显示日期栏", isOn: $preferences.showDateHeader)
-                Toggle("显示周末", isOn: $preferences.showWeekend)
-                Toggle("标出当前时间", isOn: $preferences.showNowIndicator)
                 VStack(alignment: .leading, spacing: 10) {
                     Text("课程配色")
                         .font(.subheadline.weight(.medium))

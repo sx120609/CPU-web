@@ -252,6 +252,7 @@ struct ScheduleStyledCourseTile: View {
     @Environment(\.scheduleStaticRendering) private var staticRendering
     @Environment(\.scheduleThemeBrand) private var brand
     @Environment(\.schedulePalette) private var palette
+    @Environment(\.scheduleWeekDisplay) private var display
     let course: NativeScheduleCourse
     var compact = false
     var start: String? = nil
@@ -298,14 +299,23 @@ struct ScheduleStyledCourseTile: View {
                     }
                 }
                 Text(course.name)
-                    .font(.system(size: dayRow ? 15 : (small ? 11 : 13), weight: .semibold, design: style.textDesign))
+                    .font(.system(size: (dayRow ? 15 : (small ? 11 : 13)) * display.textScale, weight: .semibold,
+                                  design: style.textDesign))
                     .lineLimit(dayRow ? (short ? 1 : 2) : (short ? 2 : (compact ? 4 : 3)))
                     .minimumScaleFactor(0.8)
                     .layoutPriority(1)
                 if showLocation, let location = ScheduleStyleTime.location(course.location) {
                     Text("@\(location)")
-                        .font(.system(size: dayRow ? 12 : (small ? 9 : 11), weight: .medium, design: style.textDesign))
+                        .font(.system(size: (dayRow ? 12 : (small ? 9 : 11)) * display.textScale, weight: .medium,
+                                      design: style.textDesign))
                         .lineLimit(short || dayRow ? 1 : 2)
+                        .minimumScaleFactor(0.8)
+                }
+                if display.showTeacher, !dayRow, !short,
+                   let teacher = course.teacher?.trimmingCharacters(in: .whitespacesAndNewlines), !teacher.isEmpty {
+                    Text(teacher)
+                        .font(.system(size: (small ? 9 : 11) * display.textScale, weight: .medium, design: style.textDesign))
+                        .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
             }
@@ -348,6 +358,7 @@ struct ScheduleMinimalCourseCard: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scheduleHasBackground) private var hasBackground
     @Environment(\.schedulePalette) private var palette
+    @Environment(\.scheduleWeekDisplay) private var display
     let course: NativeScheduleCourse
     var compact = false
     var showLocation = true
@@ -361,14 +372,21 @@ struct ScheduleMinimalCourseCard: View {
             let small = compact || short
             VStack(alignment: .leading, spacing: small ? 2 : 4) {
                 Text(course.name)
-                    .font(.system(size: small ? 11 : 13, weight: .semibold))
+                    .font(.system(size: (small ? 11 : 13) * display.textScale, weight: .semibold))
                     .lineLimit(short ? 2 : (compact ? 4 : 3))
                     .minimumScaleFactor(0.85)
                     .layoutPriority(1)
                 if showLocation, let location = ScheduleStyleTime.location(course.location) {
                     Text("@\(location)")
-                        .font(.system(size: small ? 9 : 11, weight: .medium))
+                        .font(.system(size: (small ? 9 : 11) * display.textScale, weight: .medium))
                         .lineLimit(short ? 1 : 2)
+                        .minimumScaleFactor(0.85)
+                }
+                if display.showTeacher, !short,
+                   let teacher = course.teacher?.trimmingCharacters(in: .whitespacesAndNewlines), !teacher.isEmpty {
+                    Text(teacher)
+                        .font(.system(size: (small ? 9 : 11) * display.textScale, weight: .medium))
+                        .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }
             }
@@ -392,6 +410,7 @@ struct ScheduleMinimalCourseCard: View {
 struct ScheduleStyledSlotLabel: View {
     @Environment(\.scheduleStyle) private var style
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.scheduleWeekDisplay) private var display
     let slot: ScheduleSlot
     var startsSession = false
 
@@ -401,18 +420,27 @@ struct ScheduleStyledSlotLabel: View {
                 Text("\(slot.number)")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
-                Text(slot.start)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.scheduleMeta)
+                if display.showSlotTime {
+                    Text(slot.start)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.scheduleMeta)
+                }
             } else if style == .board {
-                if startsSession { Text(ScheduleStyleTime.session(slot.start)).font(.system(size: 8, weight: .bold)) }
-                Text(slot.start).font(.system(size: 12, weight: .bold, design: .monospaced))
-                Text("第\(slot.number)节").font(.system(size: 8))
+                // The board's axis leads with the time; without times it reads the period alone.
+                if display.showSlotTime {
+                    if startsSession { Text(ScheduleStyleTime.session(slot.start)).font(.system(size: 8, weight: .bold)) }
+                    Text(slot.start).font(.system(size: 12, weight: .bold, design: .monospaced))
+                    Text("第\(slot.number)节").font(.system(size: 8))
+                } else {
+                    Text("第\(slot.number)节").font(.system(size: 10, weight: .bold))
+                }
             } else {
                 Text(style == .paper ? ScheduleStyleTime.numeral(slot.number) : String(slot.number))
                     .font(.system(size: style == .paper ? 12 : 13, weight: .bold, design: style.fontDesign))
-                Text(slot.start).font(.system(size: 9, design: style.fontDesign))
-                Text(slot.end).font(.system(size: 9, design: style.fontDesign))
+                if display.showSlotTime {
+                    Text(slot.start).font(.system(size: 9, design: style.fontDesign))
+                    Text(slot.end).font(.system(size: 9, design: style.fontDesign))
+                }
             }
         }
         .monospacedDigit()
@@ -580,6 +608,8 @@ struct NativeScheduleStyledDayColumn: View {
     var nowMinutes: Int? = nil
     var dayPresentation = false
     var completedBeforeMinutes: Int? = nil
+    /// Courses that do not run this week, faded under the others.
+    var offWeekBlocks: [NativeScheduleCourseBlock] = []
 
     private var marksToday: Bool { isToday && !staticRendering }
 
@@ -639,6 +669,7 @@ struct NativeScheduleStyledDayColumn: View {
                             .offset(x: segment.x, y: now.y).allowsHitTesting(false).accessibilityHidden(true)
                     }
                 }
+                ForEach(offWeekBlocks) { block in offWeekCourse(block) }
                 ForEach(blocks) { block in course(block, lanes: laneCounts[block.id] ?? 1) }
             }
             .frame(width: columnWidth, height: columnHeight)
@@ -764,6 +795,29 @@ struct NativeScheduleStyledDayColumn: View {
         )
     }
 
+    /// A course that does not run this week: faded and labelled. It takes no
+    /// taps, so the free period under it still adds a course.
+    private func offWeekCourse(_ block: NativeScheduleCourseBlock) -> some View {
+        let frame = frame(of: block, lanes: 1)
+        let narrow = compactCards || columnWidth < 70
+        return Group {
+            if style == .minimal {
+                ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation)
+            } else {
+                ScheduleStyledCourseTile(course: block.course, compact: narrow,
+                                         start: clocks.first { $0.number == block.startSlot }?.start,
+                                         showLocation: showLocation)
+            }
+        }
+        .overlay(alignment: .bottom) { ScheduleOffWeekTag() }
+        .frame(width: frame.width, height: frame.height)
+        .opacity(0.5)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("非本周，\(block.course.name)")
+        .offset(x: frame.minX, y: frame.minY)
+    }
+
     private func course(_ block: NativeScheduleCourseBlock, lanes: Int) -> some View {
         let frame = frame(of: block, lanes: lanes)
         let status = ScheduleStyledDayStatus(clocks: clocks, now: staticRendering ? nil : nowMinutes,
@@ -860,6 +914,8 @@ struct ScheduleStyledDay: Identifiable {
     let isToday: Bool
     let adjustmentKind: String?
     let blocks: [NativeScheduleCourseBlock]
+    /// Courses that do not run this week, for the periods left free.
+    var offWeekBlocks: [NativeScheduleCourseBlock] = []
 
     var id: Int { day }
 }
@@ -939,7 +995,8 @@ struct ScheduleStyledWeekRows: View {
                     showLocation: showLocation,
                     onCourseSelected: { onCourseSelected(day, $0) },
                     onEmptySlot: { onEmptySlot(day, $0) },
-                    nowMinutes: day.isToday ? now : nil
+                    nowMinutes: day.isToday ? now : nil,
+                    offWeekBlocks: day.offWeekBlocks
                 )
             }
         }

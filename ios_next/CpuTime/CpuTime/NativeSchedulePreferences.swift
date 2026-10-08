@@ -13,7 +13,25 @@ final class NativeSchedulePreferences: ObservableObject {
     @Published var showTeacher: Bool { didSet { persist() } }
     @Published var showPeriod: Bool { didSet { persist() } }
     @Published var showWeeks: Bool { didSet { persist() } }
-    @Published var showWeekend: Bool { didSet { persist() } }
+    /// Saturday and Sunday columns. A hidden day still shows when it has a
+    /// class or is a make-up day. Both start from the old single switch.
+    @Published var showSaturday: Bool { didSet { persist() } }
+    @Published var showSunday: Bool { didSet { persist() } }
+    /// The week view runs Sunday to Saturday: its first column is the Sunday
+    /// before that Monday, which belongs to the previous teaching week.
+    @Published var sundayFirst: Bool { didSet { persist() } }
+    /// Week-view row height in percent of the standard row.
+    @Published var rowHeight: Double { didSet { persist() } }
+    /// "small", "standard" or "large": the text of the week view's cards.
+    @Published var textSize: String { didSet { persist() } }
+    /// The teacher's name on week-view cards, under the classroom.
+    @Published var showTeacherInWeek: Bool { didSet { persist() } }
+    /// Courses that do not run this week, faded in the periods this week leaves free.
+    @Published var showOffWeek: Bool { didSet { persist() } }
+    /// Start and end times on the week view's period axis.
+    @Published var showSlotTime: Bool { didSet { persist() } }
+    /// The back-to-this-week button in the header.
+    @Published var showBackToWeek: Bool { didSet { persist() } }
     @Published var showDateHeader: Bool { didSet { persist() } }
     /// Marks the current time on today's column and the in-class / next-up
     /// states of the day view.
@@ -36,6 +54,15 @@ final class NativeSchedulePreferences: ObservableObject {
         static let showPeriod = "nativeSchedule.showPeriod"
         static let showWeeks = "nativeSchedule.showWeeks"
         static let showWeekend = "nativeSchedule.showWeekend"
+        static let showSaturday = "nativeSchedule.showSaturday"
+        static let showSunday = "nativeSchedule.showSunday"
+        static let sundayFirst = "nativeSchedule.sundayFirst"
+        static let rowHeight = "nativeSchedule.rowHeight"
+        static let textSize = "nativeSchedule.textSize"
+        static let showTeacherInWeek = "nativeSchedule.showTeacherInWeek"
+        static let showOffWeek = "nativeSchedule.showOffWeek"
+        static let showSlotTime = "nativeSchedule.showSlotTime"
+        static let showBackToWeek = "nativeSchedule.showBackToWeek"
         static let showDateHeader = "nativeSchedule.showDateHeader"
         static let showNowIndicator = "nativeSchedule.showNowIndicator"
         static let defaultView = "nativeSchedule.defaultView"
@@ -53,7 +80,16 @@ final class NativeSchedulePreferences: ObservableObject {
         showTeacher = defaults.object(forKey: Key.showTeacher) as? Bool ?? true
         showPeriod = defaults.object(forKey: Key.showPeriod) as? Bool ?? true
         showWeeks = defaults.object(forKey: Key.showWeeks) as? Bool ?? true
-        showWeekend = defaults.object(forKey: Key.showWeekend) as? Bool ?? true
+        let weekend = defaults.object(forKey: Key.showWeekend) as? Bool ?? true
+        showSaturday = defaults.object(forKey: Key.showSaturday) as? Bool ?? weekend
+        showSunday = defaults.object(forKey: Key.showSunday) as? Bool ?? weekend
+        sundayFirst = defaults.object(forKey: Key.sundayFirst) as? Bool ?? false
+        rowHeight = Self.normalizedRowHeight(defaults.object(forKey: Key.rowHeight) as? Double ?? 100)
+        textSize = Self.normalizedTextSize(defaults.string(forKey: Key.textSize))
+        showTeacherInWeek = defaults.object(forKey: Key.showTeacherInWeek) as? Bool ?? false
+        showOffWeek = defaults.object(forKey: Key.showOffWeek) as? Bool ?? false
+        showSlotTime = defaults.object(forKey: Key.showSlotTime) as? Bool ?? true
+        showBackToWeek = defaults.object(forKey: Key.showBackToWeek) as? Bool ?? true
         showDateHeader = defaults.object(forKey: Key.showDateHeader) as? Bool ?? true
         showNowIndicator = defaults.object(forKey: Key.showNowIndicator) as? Bool ?? true
         let savedView = defaults.string(forKey: Key.defaultView) ?? "week"
@@ -77,8 +113,50 @@ final class NativeSchedulePreferences: ObservableObject {
     static let viewOptions = ["week", "day", "month"]
     static let densityOptions = ["comfortable", "compact"]
 
+    static let textSizeOptions = ["small", "standard", "large"]
+    static let rowHeightRange: ClosedRange<Double> = 70...180
+    static let rowHeightStep: Double = 5
+
+    /// Both weekend days at once, as the single switch used to work.
+    var showWeekend: Bool {
+        get { showSaturday && showSunday }
+        set {
+            showSaturday = newValue
+            showSunday = newValue
+        }
+    }
+
+    /// Monday-first days, for the day view's strip and pager.
     func visibleDays(adjustedDays: Set<Int>) -> [Int] {
-        (1...7).filter { showWeekend || $0 <= 5 || adjustedDays.contains($0) }
+        (1...7).filter { $0 <= 5 || ($0 == 6 ? showSaturday : showSunday) || adjustedDays.contains($0) }
+    }
+
+    /// The week view's columns, left to right. `adjustedDays` are the weekend
+    /// days that must stay because they carry a class or a make-up day.
+    func weekColumns(adjustedDays: Set<Int>) -> [Int] {
+        var days = Array(1...5)
+        if showSaturday || adjustedDays.contains(6) { days.append(6) }
+        if showSunday || adjustedDays.contains(7) {
+            if sundayFirst { days.insert(7, at: 0) } else { days.append(7) }
+        }
+        return days
+    }
+
+    /// Compact density tightens the card text a little more.
+    var weekTextScale: Double {
+        let base: Double = textSize == "small" ? 0.88 : (textSize == "large" ? 1.16 : 1)
+        return base * (density == "compact" ? 0.92 : 1)
+    }
+
+    static func normalizedRowHeight(_ value: Double) -> Double {
+        guard value.isFinite else { return 100 }
+        let stepped = (value / rowHeightStep).rounded() * rowHeightStep
+        return min(rowHeightRange.upperBound, max(rowHeightRange.lowerBound, stepped))
+    }
+
+    static func normalizedTextSize(_ value: String?) -> String {
+        guard let value, textSizeOptions.contains(value) else { return "standard" }
+        return value
     }
 
     static var backgroundFileURL: URL {
@@ -101,7 +179,15 @@ final class NativeSchedulePreferences: ObservableObject {
         showTeacher = true
         showPeriod = true
         showWeeks = true
-        showWeekend = true
+        showSaturday = true
+        showSunday = true
+        sundayFirst = false
+        rowHeight = 100
+        textSize = "standard"
+        showTeacherInWeek = false
+        showOffWeek = false
+        showSlotTime = true
+        showBackToWeek = true
         showDateHeader = true
         showNowIndicator = true
         defaultView = "week"
@@ -167,6 +253,15 @@ final class NativeSchedulePreferences: ObservableObject {
         defaults.set(showPeriod, forKey: Key.showPeriod)
         defaults.set(showWeeks, forKey: Key.showWeeks)
         defaults.set(showWeekend, forKey: Key.showWeekend)
+        defaults.set(showSaturday, forKey: Key.showSaturday)
+        defaults.set(showSunday, forKey: Key.showSunday)
+        defaults.set(sundayFirst, forKey: Key.sundayFirst)
+        defaults.set(Self.normalizedRowHeight(rowHeight), forKey: Key.rowHeight)
+        defaults.set(Self.normalizedTextSize(textSize), forKey: Key.textSize)
+        defaults.set(showTeacherInWeek, forKey: Key.showTeacherInWeek)
+        defaults.set(showOffWeek, forKey: Key.showOffWeek)
+        defaults.set(showSlotTime, forKey: Key.showSlotTime)
+        defaults.set(showBackToWeek, forKey: Key.showBackToWeek)
         defaults.set(showDateHeader, forKey: Key.showDateHeader)
         defaults.set(showNowIndicator, forKey: Key.showNowIndicator)
         defaults.set(Self.viewOptions.contains(defaultView) ? defaultView : "week", forKey: Key.defaultView)

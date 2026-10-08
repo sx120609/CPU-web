@@ -249,7 +249,11 @@ struct NativeScheduleView: View {
         .onChange(of: store.calendar) { _, _ in
             finishMonthDaySelectionIfReady()
         }
-        .onChange(of: preferences.showWeekend) { _, _ in
+        .onChange(of: preferences.showSaturday) { _, _ in
+            if !visibleDays.contains(selectedDay) { selectedDay = visibleDays.last ?? 1 }
+            resetPagerSelections()
+        }
+        .onChange(of: preferences.showSunday) { _, _ in
             if !visibleDays.contains(selectedDay) { selectedDay = visibleDays.last ?? 1 }
             resetPagerSelections()
         }
@@ -411,25 +415,27 @@ struct NativeScheduleView: View {
                 .frame(width: 120)
                 .accessibilityLabel("切换课表视图")
 
-                Button {
-                    switch viewMode {
-                    case .day: jumpToCurrentDay(result)
-                    case .week: jumpToCurrentWeek(result)
-                    case .month: jumpToCurrentMonth()
+                if preferences.showBackToWeek {
+                    Button {
+                        switch viewMode {
+                        case .day: jumpToCurrentDay(result)
+                        case .week: jumpToCurrentWeek(result)
+                        case .month: jumpToCurrentMonth()
+                        }
+                    } label: {
+                        Image(systemName: "location.north.line")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 34, height: 34)
+                            .modifier(ScheduleGlassControl(cornerRadius: 17))
+                            .clipShape(Circle())
                     }
-                } label: {
-                    Image(systemName: "location.north.line")
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .modifier(ScheduleGlassControl(cornerRadius: 17))
-                        .clipShape(Circle())
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel(viewMode == .month ? "回到本月" : (viewMode == .day ? "跳转到今日" : "回到本周"))
+                    // A background refresh keeps the cached timetable usable, so
+                    // only the meaningless jump is disabled.
+                    .disabled(isViewingCurrentPosition(result))
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-                .accessibilityLabel(viewMode == .month ? "回到本月" : (viewMode == .day ? "跳转到今日" : "回到本周"))
-                // A background refresh keeps the cached timetable usable, so
-                // only the meaningless jump is disabled.
-                .disabled(isViewingCurrentPosition(result))
 
                 // Keep the overflow action at the trailing edge, matching the
                 // Web header and leaving refresh/additional actions in one
@@ -948,7 +954,7 @@ struct NativeScheduleView: View {
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
                 weekPager(result: result, width: proxy.size.width) { week in
-                    let days = visibleDays(week: week, result: result)
+                    let days = weekColumns(week: week, result: result)
                     if style == .classic {
                         let columnWidth = max(
                             24,
@@ -984,6 +990,11 @@ struct NativeScheduleView: View {
             }
             .frame(height: weekGridHeight)
         }
+        .environment(\.scheduleWeekDisplay, ScheduleWeekDisplay(
+            textScale: CGFloat(preferences.weekTextScale),
+            showTeacher: preferences.showTeacherInWeek,
+            showSlotTime: preferences.showSlotTime
+        ))
     }
 
     /// The pager's fixed cross axis for the week view in the current style.
@@ -1007,19 +1018,131 @@ struct NativeScheduleView: View {
         isStatic: Bool = false
     ) -> some View {
         ScheduleStyledWeekRows(
-            days: days.map { styledDay($0, week: week, result: result) },
+            days: days.map { day in
+                // With Sunday first, the Sunday column belongs to the week before.
+                let dayWeek = columnWeek(day, week: week, days: days)
+                let shown = columnBlocks(for: day, week: week, days: days, result: result)
+                return ScheduleStyledDay(
+                    day: day,
+                    dateText: dayDate(day, week: dayWeek, result: result),
+                    rawDate: rawDayDate(day, week: dayWeek, result: result),
+                    isToday: dayIsToday(day, week: dayWeek, result: result),
+                    adjustmentKind: adjustment(day: day, week: dayWeek, result: result)?.kind,
+                    blocks: shown,
+                    offWeekBlocks: isStatic ? [] : offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown)
+                )
+            },
             columnWidth: ScheduleStyledWeekRows.columnWidth(contentWidth: contentWidth, dayCount: days.count, style: style),
             rowHeight: weekRowHeight,
             compactCards: !isStatic && preferences.density == "compact",
             showsDateHeader: isStatic || preferences.showDateHeader,
             showLocation: preferences.showLocation,
             showsNow: !isStatic && preferences.showNowIndicator,
-            onCourseSelected: { day, block in selectCourse(block, day: day.day, week: week, result: result) },
+            onCourseSelected: { day, block in
+                selectCourse(block, day: day.day, week: columnWeek(day.day, week: week, days: days), result: result)
+            },
             onEmptySlot: { day, slot in
-                let effective = effectiveSlot(day: day.day, week: week, result: result)
+                let dayWeek = columnWeek(day.day, week: week, days: days)
+                guard dayWeek == week || hasCalendarWeek(dayWeek) else { return }
+                let effective = effectiveSlot(day: day.day, week: dayWeek, result: result)
                 presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
             }
         )
+    }
+
+    // MARK: Display settings
+
+    /// The week view's columns, left to right. A hidden Saturday or Sunday
+    /// stays when it has a class or is a make-up or holiday date.
+    private func weekColumns(week: Int?, result: NativeScheduleResult) -> [Int] {
+        let sundayWeek = preferences.sundayFirst ? week.map { $0 - 1 } : week
+        var kept = Set<Int>()
+        if adjustment(day: 6, week: week, result: result) != nil
+            || !blocks(for: 6, week: week, result: result).isEmpty { kept.insert(6) }
+        if adjustment(day: 7, week: sundayWeek, result: result) != nil
+            || ((sundayWeek == week || hasCalendarWeek(sundayWeek))
+                && !blocks(for: 7, week: sundayWeek, result: result).isEmpty) { kept.insert(7) }
+        return preferences.weekColumns(adjustedDays: kept)
+    }
+
+    /// The teaching week a column of `days` belongs to. When Sunday leads a
+    /// week's columns it is the day before that Monday: the week before.
+    private func columnWeek(_ day: Int, week: Int?, days: [Int]) -> Int? {
+        guard day == 7, days.count > 1, days.first == 7, let week else { return week }
+        return week - 1
+    }
+
+    private func hasCalendarWeek(_ week: Int?) -> Bool {
+        guard let week else { return false }
+        return store.calendar?.weeks.contains(where: { $0.week == week }) == true
+    }
+
+    /// The courses a week-view column shows. The Sunday before the term's
+    /// first week has none.
+    private func columnBlocks(for day: Int, week: Int?, days: [Int],
+                              result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+        let dayWeek = columnWeek(day, week: week, days: days)
+        if dayWeek != week, !hasCalendarWeek(dayWeek) { return [] }
+        return blocks(for: day, week: dayWeek, result: result)
+    }
+
+    /// The courses of a weekday that do not run in `week`, for the periods
+    /// `taken` leaves free. Where several share a period the one that runs
+    /// soonest stays. Holidays and make-up days follow their own date and get none.
+    private func offWeekBlocks(for day: Int, week: Int?, result: NativeScheduleResult,
+                               taken: [NativeScheduleCourseBlock]) -> [NativeScheduleCourseBlock] {
+        guard preferences.showOffWeek, let week, store.calendar == nil || hasCalendarWeek(week),
+              adjustment(day: day, week: week, result: result) == nil else { return [] }
+        var candidates: [(block: NativeScheduleCourseBlock, distance: Int)] = []
+        for cell in result.cells where cell.day == day {
+            for (index, course) in cell.courses.enumerated() {
+                let weeks = nativeCourseWeekList(course)
+                guard !weeks.isEmpty, !weeks.contains(week) else { continue }
+                let upcoming = weeks.filter { $0 > week }.min()
+                let past = weeks.filter { $0 < week }.max()
+                let distance: Int
+                if let upcoming {
+                    distance = upcoming - week
+                } else if let past {
+                    distance = 1000 + week - past
+                } else {
+                    continue
+                }
+                let start = min(max(course.startSlot ?? cell.bigSlot * 2 - 1, 1), ScheduleSlot.all.count)
+                let end = min(max(course.endSlot ?? cell.bigSlot * 2, start), ScheduleSlot.all.count)
+                if taken.contains(where: { $0.startSlot <= end && start <= $0.endSlot }) { continue }
+                candidates.append((
+                    block: NativeScheduleCourseBlock(
+                        id: "off-\(week)-\(day)-\(cell.bigSlot)-\(index)-\(course.name)",
+                        course: course, bigSlot: cell.bigSlot, startSlot: start, endSlot: end
+                    ),
+                    distance: distance
+                ))
+            }
+        }
+        candidates.sort { lhs, rhs in
+            if lhs.distance != rhs.distance { return lhs.distance < rhs.distance }
+            return lhs.block.startSlot < rhs.block.startSlot
+        }
+        var chosen: [NativeScheduleCourseBlock] = []
+        for candidate in candidates {
+            let block = candidate.block
+            if !chosen.contains(where: { $0.startSlot <= block.endSlot && block.startSlot <= $0.endSlot }) {
+                chosen.append(block)
+            }
+        }
+        return chosen
+    }
+
+    /// "yyyy-MM-dd" moved by whole days.
+    private static func shiftedDate(_ value: String, by days: Int) -> String? {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: value) else { return nil }
+        return formatter.string(from: date.addingTimeInterval(TimeInterval(days) * 86_400))
     }
 
     private func styledDay(_ day: Int, week: Int?, result: NativeScheduleResult) -> ScheduleStyledDay {
@@ -1161,7 +1284,8 @@ struct NativeScheduleView: View {
     }
 
     private var weekRowHeight: CGFloat {
-        preferences.density == "compact" ? 40 : NativeScheduleDayColumn.slotHeight
+        (preferences.density == "compact" ? 40 : NativeScheduleDayColumn.slotHeight)
+            * CGFloat(NativeSchedulePreferences.normalizedRowHeight(preferences.rowHeight) / 100)
     }
 
     private var dayRowHeight: CGFloat {
@@ -1353,22 +1477,27 @@ struct NativeScheduleView: View {
         showsNow: Bool = true
     ) -> some View {
         let todayIndex = showsNow && preferences.showNowIndicator
-            ? days.firstIndex { dayIsToday($0, week: week, result: result) } : nil
+            ? days.firstIndex { dayIsToday($0, week: columnWeek($0, week: week, days: days), result: result) } : nil
+        // The period times can be hidden in the week view; the day view keeps them.
+        let showsSlotTime = days.count == 1 || !showsNow || preferences.showSlotTime
         return HStack(alignment: .top, spacing: Self.columnGap) {
-            slotAxis(rowHeight: rowHeight, showsHeader: showsDateHeader)
+            slotAxis(rowHeight: rowHeight, showsHeader: showsDateHeader, showsTime: showsSlotTime)
 
             ForEach(days, id: \.self) { day in
-                let effective = effectiveSlot(day: day, week: week, result: result)
+                // With Sunday first, the Sunday column belongs to the week before.
+                let dayWeek = columnWeek(day, week: week, days: days)
+                let effective = effectiveSlot(day: day, week: dayWeek, result: result)
+                let shown = columnBlocks(for: day, week: week, days: days, result: result)
                 NativeScheduleDayColumn(
                     day: day,
-                    dateText: dayDate(day, week: week, result: result),
-                    isToday: dayIsToday(day, week: week, result: result),
-                    adjustment: adjustment(day: day, week: week, result: result),
+                    dateText: dayDate(day, week: dayWeek, result: result),
+                    isToday: dayIsToday(day, week: dayWeek, result: result),
+                    adjustment: adjustment(day: day, week: dayWeek, result: result),
                     columnWidth: columnWidth,
                     rowHeight: rowHeight,
                     compactCards: compactCards,
                     showsDateHeader: showsDateHeader,
-                    blocks: blocks(for: day, week: week, result: result),
+                    blocks: shown,
                     palette: preferences.palette,
                     showLocation: preferences.showLocation,
                     showTeacher: preferences.showTeacher,
@@ -1378,11 +1507,14 @@ struct NativeScheduleView: View {
                         // A cell tap can arrive in the same run loop as a
                         // neighbouring empty-slot gesture. Selecting a real
                         // course always presents that course.
-                        selectCourse(block, day: day, week: week, result: result)
+                        selectCourse(block, day: day, week: dayWeek, result: result)
                     },
                     onEmptySlot: { slot in
+                        guard dayWeek == week || hasCalendarWeek(dayWeek) else { return }
                         presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
-                    }
+                    },
+                    offWeekBlocks: days.count > 1 && showsNow
+                        ? offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown) : []
                 )
             }
         }
@@ -1418,7 +1550,8 @@ struct NativeScheduleView: View {
 
     private func slotAxis(
         rowHeight: CGFloat = NativeScheduleDayColumn.slotHeight,
-        showsHeader: Bool = true
+        showsHeader: Bool = true,
+        showsTime: Bool = true
     ) -> some View {
         VStack(spacing: 0) {
             if showsHeader {
@@ -1434,12 +1567,14 @@ struct NativeScheduleView: View {
                         Text("\(slot.number)")
                             .font(.system(size: 13, weight: .bold).monospacedDigit())
                             .foregroundStyle(NativeScheduleThemeColor.primary(colorScheme))
-                        Text(slot.start)
-                            .font(.system(size: 9).monospacedDigit())
-                            .foregroundStyle(NativeScheduleThemeColor.secondary(colorScheme))
-                        Text(slot.end)
-                            .font(.system(size: 9).monospacedDigit())
-                            .foregroundStyle(NativeScheduleThemeColor.secondary(colorScheme))
+                        if showsTime {
+                            Text(slot.start)
+                                .font(.system(size: 9).monospacedDigit())
+                                .foregroundStyle(NativeScheduleThemeColor.secondary(colorScheme))
+                            Text(slot.end)
+                                .font(.system(size: 9).monospacedDigit())
+                                .foregroundStyle(NativeScheduleThemeColor.secondary(colorScheme))
+                        }
                     }
                     .frame(width: Self.slotAxisWidth, height: rowHeight)
 
@@ -1979,12 +2114,17 @@ struct NativeScheduleView: View {
     }
 
     private func rawDayDate(_ day: Int, week: Int?, result: NativeScheduleResult) -> String? {
-        guard let weekNumber = week, let calendar = store.calendar,
-              let item = calendar.weeks.first(where: { $0.week == weekNumber }),
-              item.days.indices.contains(day - 1) else {
-            return nil
+        guard let weekNumber = week, let calendar = store.calendar else { return nil }
+        if let item = calendar.weeks.first(where: { $0.week == weekNumber }) {
+            return item.days.indices.contains(day - 1) ? item.days[day - 1] : nil
         }
-        return item.days[day - 1]
+        // The Sunday before the term's first week: shown as the leading column
+        // when the week starts on Sunday.
+        if day == 7, let next = calendar.weeks.first(where: { $0.week == weekNumber + 1 }),
+           let monday = next.days.first {
+            return Self.shiftedDate(monday, by: -1)
+        }
+        return nil
     }
 
     private func adjustment(day: Int, week: Int?, result: NativeScheduleResult) -> NativeScheduleAdjustment? {
@@ -2386,6 +2526,8 @@ private struct NativeScheduleDayColumn: View {
     let showWeeks: Bool
     let onCourseSelected: (NativeScheduleCourseBlock) -> Void
     let onEmptySlot: (Int) -> Void
+    /// Courses that do not run this week, faded under the others.
+    let offWeekBlocks: [NativeScheduleCourseBlock]
 
     init(
         day: Int,
@@ -2403,8 +2545,10 @@ private struct NativeScheduleDayColumn: View {
         showPeriod: Bool = true,
         showWeeks: Bool = true,
         onCourseSelected: @escaping (NativeScheduleCourseBlock) -> Void,
-        onEmptySlot: @escaping (Int) -> Void
+        onEmptySlot: @escaping (Int) -> Void,
+        offWeekBlocks: [NativeScheduleCourseBlock] = []
     ) {
+        self.offWeekBlocks = offWeekBlocks
         self.day = day
         self.dateText = dateText
         self.isToday = isToday
@@ -2480,6 +2624,32 @@ private struct NativeScheduleDayColumn: View {
                         // transparent button from an occupied row.
                         slotRow(slot)
                     }
+                }
+                // A course that does not run this week takes no taps, so the
+                // free period under it still adds a course.
+                ForEach(offWeekBlocks) { block in
+                    let cardHeight = max(
+                        34,
+                        CGFloat(block.endSlot - block.startSlot + 1) * rowHeight
+                            + CGFloat(block.endSlot - block.startSlot) * Self.slotGap
+                            - 2
+                    )
+                    NativeScheduleCourseCard(
+                        course: block.course,
+                        palette: palette,
+                        showLocation: showLocation,
+                        showTeacher: showTeacher,
+                        showPeriod: showPeriod,
+                        showWeeks: showWeeks,
+                        compact: compactCards || columnWidth < 70
+                    )
+                    .overlay(alignment: .bottom) { ScheduleOffWeekTag() }
+                    .frame(width: max(12, columnWidth - 2), height: cardHeight)
+                    .opacity(0.5)
+                    .allowsHitTesting(false)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("非本周，\(block.course.name)")
+                    .offset(x: 1, y: CGFloat(block.startSlot - 1) * (rowHeight + Self.slotGap) + 1)
                 }
                 ForEach(blocks) { block in
                     let blockLaneCount = laneCount(for: block)
@@ -2695,6 +2865,7 @@ private struct ScheduleGlassBackground: View {
 @available(iOS 17.0, *)
 private struct NativeScheduleCourseCard: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scheduleWeekDisplay) private var display
     let course: NativeScheduleCourse
     let palette: String
     let showLocation: Bool
@@ -2714,8 +2885,12 @@ private struct NativeScheduleCourseCard: View {
             ].compactMap { $0 }
             let note = details.isEmpty ? nil : details.joined(separator: " · ")
             let metadata: String? = {
+                // Week cards carry the teacher only when the display setting asks for it.
                 let values: [String] = compact
-                    ? [location.map { "@\($0.trimmingCharacters(in: CharacterSet(charactersIn: "@＠")))" }].compactMap { $0 }
+                    ? [
+                        location.map { "@\($0.trimmingCharacters(in: CharacterSet(charactersIn: "@＠")))" },
+                        display.showTeacher && !shortCard ? clean(course.teacher) : nil,
+                    ].compactMap { $0 }
                     : [
                         location.map { "@\($0.trimmingCharacters(in: CharacterSet(charactersIn: "@＠")))" },
                         teacher,
@@ -2725,7 +2900,7 @@ private struct NativeScheduleCourseCard: View {
 
             VStack(alignment: compact ? .center : .leading, spacing: compact ? 2 : (shortCard ? 3 : 7)) {
                 Text(course.name)
-                    .font(.system(size: compact ? 10 : (shortCard ? 14 : 18), weight: .bold))
+                    .font(.system(size: (compact ? 10 : (shortCard ? 14 : 18)) * display.textScale, weight: .bold))
                     .lineLimit(shortCard ? 2 : (compact ? 4 : 3))
                     .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
@@ -2733,7 +2908,7 @@ private struct NativeScheduleCourseCard: View {
 
                 if let metadata {
                     Text(metadata)
-                        .font(.system(size: compact ? 9 : 13, weight: .semibold))
+                        .font(.system(size: (compact ? 9 : 13) * display.textScale, weight: .semibold))
                         .lineLimit(shortCard ? 1 : 2)
                         .minimumScaleFactor(0.85)
                         .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)

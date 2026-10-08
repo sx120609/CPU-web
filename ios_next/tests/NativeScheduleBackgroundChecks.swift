@@ -19,6 +19,22 @@ struct NativeScheduleBackgroundChecks {
         precondition(preferences.backgroundImage == nil)
         precondition(preferences.backgroundVisibility == 0.76 && preferences.backgroundBlur == 0)
         precondition(preferences.showWeekend && preferences.visibleDays(adjustedDays: []) == Array(1...7))
+        // Display settings: Saturday and Sunday hide separately, Sunday can lead the week view.
+        precondition(preferences.weekColumns(adjustedDays: []) == Array(1...7))
+        preferences.sundayFirst = true
+        precondition(preferences.weekColumns(adjustedDays: []) == [7, 1, 2, 3, 4, 5, 6])
+        precondition(preferences.visibleDays(adjustedDays: []) == Array(1...7))
+        preferences.showSunday = false
+        precondition(preferences.weekColumns(adjustedDays: []) == Array(1...6))
+        precondition(preferences.weekColumns(adjustedDays: [7]) == [7, 1, 2, 3, 4, 5, 6])
+        precondition(!preferences.showWeekend && preferences.showSaturday)
+        preferences.showSunday = true
+        preferences.sundayFirst = false
+        precondition(NativeSchedulePreferences.normalizedRowHeight(123) == 125)
+        precondition(NativeSchedulePreferences.normalizedRowHeight(999) == 180)
+        precondition(NativeSchedulePreferences.normalizedRowHeight(.nan) == 100)
+        precondition(NativeSchedulePreferences.normalizedTextSize("huge") == "standard")
+        precondition(preferences.weekTextScale == 1)
         preferences.showWeekend = false
         preferences.defaultView = "month"
         precondition(preferences.visibleDays(adjustedDays: []) == Array(1...5))

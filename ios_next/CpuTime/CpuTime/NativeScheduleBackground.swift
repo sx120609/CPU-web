@@ -12,6 +12,42 @@ extension EnvironmentValues {
     }
 }
 
+/// What the week view's cards and period labels read from the display
+/// settings. The defaults are the standard look, so the day view, the share
+/// picture and the style thumbnails are unchanged.
+struct ScheduleWeekDisplay: Equatable {
+    var textScale: CGFloat = 1
+    var showTeacher = false
+    var showSlotTime = true
+}
+
+private struct ScheduleWeekDisplayKey: EnvironmentKey {
+    static let defaultValue = ScheduleWeekDisplay()
+}
+
+extension EnvironmentValues {
+    var scheduleWeekDisplay: ScheduleWeekDisplay {
+        get { self[ScheduleWeekDisplayKey.self] }
+        set { self[ScheduleWeekDisplayKey.self] = newValue }
+    }
+}
+
+/// The small outlined label on a course that does not run this week.
+struct ScheduleOffWeekTag: View {
+    var body: some View {
+        Text("非本周")
+            .font(.system(size: 8, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 3)
+            .padding(.vertical, 1)
+            .overlay { RoundedRectangle(cornerRadius: 3).strokeBorder(lineWidth: 0.5) }
+            .foregroundStyle(.secondary)
+            .padding(.bottom, 2)
+            .accessibilityHidden(true)
+    }
+}
+
 /// The page and the editor share this renderer. The photo uses Web's centered
 /// `cover` layout with one overlay, rather than multiplying two opacities.
 @available(iOS 17.0, *)
