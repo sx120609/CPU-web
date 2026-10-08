@@ -14,6 +14,8 @@ sudo systemctl start jwxt-agent-CPU-Server-03-update.service
 
 更新器固定读取 `sx120609/CPU-web` 的 main 完整 SHA，下载其 GitHub Release Linux 制品，核对清单、平台、Node.js 24、全部组件大小和 SHA-256，以及 Agent 内的完整 SHA 标记。运行依赖和 Prisma 客户端在新目录准备；不访问业务数据库、不在校内机器编译服务。制品缺失、校验失败或依赖失败时保持旧实例。
 
+依赖清单与 Prisma schema 从绑定完整 SHA 的 GitHub Contents API 下载，避免校内出口重置 `raw.githubusercontent.com` 连接。Release 下载有受限镜像回退；所有传输仍必须通过同一 SHA 和组件校验。
+
 制品准备成功后原子切换 `current`，重启现有服务，并等待新进程在网关注册。注册失败自动切回旧目录并验证旧实例注册。原版本目录保留以便恢复。更新执行器在独立 cgroup 中运行，Agent 的重启不会杀掉更新任务。
 
 核验结果：

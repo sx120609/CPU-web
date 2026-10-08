@@ -44,7 +44,8 @@ async function fixture(t, options = {}) {
       calls.push(['download', url])
       if (options.noArtifact) throw new Error('missing artifact')
       if (url.includes('/releases/')) return copyFile(archive, file)
-      assert.ok(url.includes(`/${commit}/server/`))
+      assert.ok(url.startsWith('https://api.github.com/repos/sx120609/CPU-web/contents/server/'))
+      assert.ok(url.endsWith(`?ref=${commit}`))
       await writeFile(file, '{}')
     },
     execute: async (command, args, opts) => {

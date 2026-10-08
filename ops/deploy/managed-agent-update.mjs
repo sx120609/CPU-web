@@ -33,8 +33,10 @@ async function execute(command, args, options = {}) {
 }
 
 async function download(url, target) {
+  const headers = url.startsWith(`https://api.github.com/repos/${repository}/contents/`)
+    ? ['--header', 'Accept: application/vnd.github.raw+json'] : []
   await execute('curl', ['--fail', '--location', '--silent', '--show-error', '--retry', '2',
-    '--connect-timeout', '15', '--max-time', '300', '--output', target, url])
+    '--connect-timeout', '15', '--max-time', '300', ...headers, '--output', target, url])
 }
 
 async function resolveCommit() {
@@ -115,7 +117,9 @@ export async function updateManagedAgent(input, dependencies = {}) {
     const server = path.join(release, 'server')
     await mkdir(path.join(server, 'prisma'), { recursive: true, mode: 0o755 })
     for (const file of ['package.json', 'package-lock.json', 'prisma/schema.prisma']) {
-      await fetchFile(`https://raw.githubusercontent.com/${repository}/${commit}/server/${file}`, path.join(server, file))
+      // Campus egress can reset raw.githubusercontent.com; the Contents API
+      // serves the same immutable file directly without redirecting to that host.
+      await fetchFile(`https://api.github.com/repos/${repository}/contents/server/${file}?ref=${commit}`, path.join(server, file))
     }
     await command('tar', ['-xzf', serverArchive, '-C', server])
     if ((await readFile(path.join(server, 'dist/deployment-commit.txt'), 'utf8')).trim() !== commit) {
