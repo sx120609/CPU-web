@@ -1271,7 +1271,9 @@ export struct NativeScheduleBody {
     return date.length >= 10 ? String(Number(date.substring(8, 10))) : '–';
   }
   private dateLabel(day: number): string {
-    const date = this.view.dayDate(day);
+    // The column's own date: the leading Sunday is the day before that Monday.
+    const raw = this.view.shownRawDate(day);
+    const date = raw.length >= 10 ? raw.substring(5) : raw;
     return date ? date.replace('-', '.') : '—';
   }
   private textColor(): string { return scheduleText(this.store.dark); }
