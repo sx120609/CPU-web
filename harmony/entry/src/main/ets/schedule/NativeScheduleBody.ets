@@ -54,6 +54,9 @@ export struct NativeScheduleBody {
   onAddSlot: (day: number, slot: number) => void = () => undefined;
   // The second argument is the weekday the course is shown on, which differs on a make-up day.
   onCourse: (block: NativeCourseBlock, shownDay: number) => void = () => undefined;
+  // A course that can only be looked at from here: one that does not run this week (with a
+  // note saying so), or one on the leading Sunday, which belongs to the week before.
+  onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => void = () => undefined;
 
   build() {
     Scroll() {
@@ -70,7 +73,7 @@ export struct NativeScheduleBody {
             if (this.view.viewMode === 'week') this.styledWeek()
             else this.styledDay()
           } else if (this.view.viewMode === 'week') this.weekSchedule()
-          else if (this.view.displayBlocks(this.view.selectedDay).length) this.daySchedule()
+          else if (this.view.shownBlocks(this.view.selectedDay).length) this.daySchedule()
           else this.stateCard('这一天没有课程', this.emptyDayNote(), this.store.canEdit() ? '添加课程' : '', () => this.addAt(this.view.selectedDay, 1))
         }
       }.width('100%').padding({ bottom: 12 })
@@ -81,10 +84,10 @@ export struct NativeScheduleBody {
 
   @Builder
   private adjustmentBadge(day: number, size: number) {
-    if (this.view.adjustment(day)) {
-      Text(this.view.adjustment(day)?.kind === 'off' ? '休' : '班').fontSize(size - 4).fontWeight(600).fontColor('#FFFFFF')
+    if (this.view.shownAdjustment(day)) {
+      Text(this.view.shownAdjustment(day)?.kind === 'off' ? '休' : '班').fontSize(size - 4).fontWeight(600).fontColor('#FFFFFF')
         .width(size).height(size).textAlign(TextAlign.Center).borderRadius(3)
-        .backgroundColor(this.view.adjustment(day)?.kind === 'off' ? OFF_BADGE : SWAP_BADGE)
+        .backgroundColor(this.view.shownAdjustment(day)?.kind === 'off' ? OFF_BADGE : SWAP_BADGE)
         .accessibilityLevel('no')
     }
   }
@@ -120,13 +123,13 @@ export struct NativeScheduleBody {
       Row({ space: this.metrics().gap }) {
         Text('节次').fontSize(10).fontColor(this.secondaryColor()).width(this.metrics().axis).height(this.metrics().header).textAlign(TextAlign.Center)
           .borderRadius(10).backgroundColor(this.store.backgroundPath ? this.surfaceColor() : Color.Transparent)
-        ForEach(this.view.visibleDays(), (day: number) => {
-          Button() { this.calendarDay(day, this.view.isToday(day)) }
+        ForEach(this.view.weekColumns(), (day: number) => {
+          Button() { this.calendarDay(day, this.view.shownIsToday(day)) }
             .type(ButtonType.Normal).height(this.metrics().header).layoutWeight(1).padding(0).backgroundColor(Color.Transparent).borderRadius(10)
             .responseRegion({ x: 0, y: -4, width: '100%', height: 44 })
-            .accessibilitySelected(this.view.isToday(day))
+            .accessibilitySelected(this.view.shownIsToday(day))
             .accessibilityText(DAYS[day - 1] + '，' + this.dateLabel(day) + this.adjustmentSpoken(day) + '，查看当天课程')
-            .onClick(() => { this.store.selectDay(day); this.store.setViewMode('day'); })
+            .onClick(() => this.openDay(day))
         }, (day: number) => String(day))
       }.width('100%')
       Row({ space: this.metrics().gap }) {
@@ -136,36 +139,44 @@ export struct NativeScheduleBody {
             this.nowBadge(this.metrics().axis, this.weekNowY(this.metrics().weekRow, this.metrics().gap))
           }
         }.width(this.metrics().axis)
-        ForEach(this.view.visibleDays(), (day: number) => {
+        ForEach(this.view.weekColumns(), (day: number) => {
           Stack({ alignContent: Alignment.TopStart }) {
             Column() {
               ForEach(this.view.slots(), (slot: number) => {
                 Column().width('100%').height(this.metrics().weekRow).margin({ bottom: slot < this.view.slotCount() ? this.metrics().gap : 0 })
-                  .backgroundColor(this.view.isToday(day) ? this.todayCellColor() : this.cellColor()).borderRadius(8)
+                  .backgroundColor(this.view.shownIsToday(day) ? this.todayCellColor() : this.cellColor()).borderRadius(8)
                   .border({ width: 0.6, color: scheduleCellBorder(this.store.dark), radius: 8,
-                    style: this.view.adjustment(day)?.kind === 'off' ? BorderStyle.Dashed : BorderStyle.Solid })
+                    style: this.view.shownAdjustment(day)?.kind === 'off' ? BorderStyle.Dashed : BorderStyle.Solid })
                   .accessibilityText(DAYS[day - 1] + '第' + slot + '节，添加课程')
                   .onClick(() => this.addAt(day, slot))
               })
             }.width('100%')
-            ForEach(this.placed(day), (block: PlacedCourseBlock) => {
+            ForEach(this.tiles(day, false), (block: PlacedCourseBlock) => {
               Button() {
-              Column({ space: block.endSlot === block.startSlot ? 1 : 2 }) {
-                Text(block.course.name).fontSize(this.metrics().nameSize).fontWeight(FontWeight.Bold)
-                  .minFontSize(this.metrics().nameSize).maxFontSize(this.metrics().nameSize)
+              Column({ space: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 2 }) {
+                if (block.offWeek) this.offWeekTag(this.toneText(block.course.name))
+                Text(block.course.name).fontSize(this.fs(this.metrics().nameSize)).fontWeight(FontWeight.Bold)
+                  .minFontSize(this.fs(this.metrics().nameSize)).maxFontSize(this.fs(this.metrics().nameSize))
                   .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
                   .fontColor(this.toneText(block.course.name)).width('100%').textAlign(TextAlign.Center)
                   // One line on a one-period card, so the classroom below it is never pushed out.
                   .maxLines(block.endSlot === block.startSlot ? 1 : block.endSlot - block.startSlot < 2 ? 3 : 4)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 if (block.course.location) {
-                  Text('@' + block.course.location).fontSize(this.metrics().locationSize).fontWeight(600)
-                    .minFontSize(this.metrics().locationSize).maxFontSize(this.metrics().locationSize).heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
+                  Text('@' + block.course.location).fontSize(this.fs(this.metrics().locationSize)).fontWeight(600)
+                    .minFontSize(this.fs(this.metrics().locationSize)).maxFontSize(this.fs(this.metrics().locationSize)).heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
                     .fontColor(this.toneAccent(block.course.name)).width('100%').textAlign(TextAlign.Center)
                     .maxLines(block.endSlot === block.startSlot ? 1 : 2).textOverflow({ overflow: TextOverflow.Ellipsis }).opacity(0.94)
                 }
+                if (this.store.showTeacher && (block.course.teacher ?? '').trim() && block.endSlot > block.startSlot) {
+                  Text((block.course.teacher ?? '').trim()).fontSize(this.fs(this.metrics().locationSize)).fontWeight(500)
+                    .fontColor(this.toneAccent(block.course.name)).width('100%').textAlign(TextAlign.Center)
+                    .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).opacity(0.94)
+                }
               }.width('100%').height('100%')
-                .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center).padding({ left: 1, right: 1, top: block.endSlot === block.startSlot ? 1 : 3, bottom: block.endSlot === block.startSlot ? 1 : 3 })
+                .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+                .padding({ left: 1, right: 1, top: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 3,
+                  bottom: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 3 })
               }.type(ButtonType.Normal).width(this.weekColumn() / block.lanes - 2)
                 .height((block.endSlot - block.startSlot + 1) * this.weekStride() - this.metrics().gap - 2)
                 .padding(0).clip(true).borderRadius(this.metrics().courseRadius)
@@ -175,9 +186,11 @@ export struct NativeScheduleBody {
                 .border({ width: this.store.palette === 'color-glass' ? 1 : 1.5, color: this.toneBorder(block.course.name), radius: this.metrics().courseRadius })
                 .shadow({ radius: 3, offsetY: 1, color: this.store.dark ? '#3D000000' : '#0D2C3E5E' })
                 .position({ x: block.lane * this.weekColumn() / block.lanes + 1, y: (block.startSlot - 1) * this.weekStride() + 1 })
-                .accessibilityText(this.courseAccessibility(block, day)).onClick(() => this.onCourse(block.whole, day))
+                .opacity(block.offWeek ? 0.5 : 1)
+                .accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
+                .onClick(() => this.openTile(block, day))
             })
-            if (this.view.isToday(day) && this.weekNowY(this.metrics().weekRow, this.metrics().gap) >= 0) {
+            if (this.view.shownIsToday(day) && this.weekNowY(this.metrics().weekRow, this.metrics().gap) >= 0) {
               this.nowLine(this.weekColumn(), this.weekNowY(this.metrics().weekRow, this.metrics().gap))
             }
           }.height(this.weekStride() * this.view.slotCount() - this.metrics().gap).layoutWeight(1)
@@ -190,8 +203,10 @@ export struct NativeScheduleBody {
   private slotAxis(slot: number, dayView: boolean) {
     Column({ space: 1 }) {
       Text(String(slot)).fontSize(11).fontWeight(600).fontColor(this.textColor())
-      Text(this.view.slotStart(slot) || '—').fontSize(8).fontColor(this.secondaryColor())
-      Text(this.view.slotEnd(slot) || '—').fontSize(8).fontColor(this.secondaryColor())
+      if (this.showsSlotTime(dayView)) {
+        Text(this.view.slotStart(slot) || '—').fontSize(8).fontColor(this.secondaryColor())
+        Text(this.view.slotEnd(slot) || '—').fontSize(8).fontColor(this.secondaryColor())
+      }
     }.height(dayView ? this.metrics().dayRow : this.metrics().weekRow).margin({ bottom: slot < this.view.slotCount() ? (dayView ? this.metrics().dayGap : this.metrics().gap) : 0 })
       .width('100%').justifyContent(FlexAlign.Center)
   }
@@ -275,11 +290,11 @@ export struct NativeScheduleBody {
 
   // Only a week that holds today, among the days on screen, marks "now".
   private weekNowY(rowHeight: number, gap: number): number {
-    return this.view.visibleDays().some((day: number) => this.view.isToday(day)) ? this.nowY(rowHeight, gap) : -1;
+    return this.view.weekColumns().some((day: number) => this.view.shownIsToday(day)) ? this.nowY(rowHeight, gap) : -1;
   }
 
   private dayNowY(rowHeight: number, gap: number): number {
-    return this.view.isToday(this.view.selectedDay) ? this.nowY(rowHeight, gap) : -1;
+    return this.view.shownIsToday(this.view.selectedDay) ? this.nowY(rowHeight, gap) : -1;
   }
 
   // ---- Styled week (minimal, grid, table, paper, board) ----
@@ -330,7 +345,7 @@ export struct NativeScheduleBody {
               .border({ width: { top: this.store.visualStyle === 'table' ? 0.6 : 0 }, color: scheduleStyleCellBorder(this.store.dark) })
           })
         }.width(this.styledAxis())
-        ForEach(this.view.visibleDays(), (day: number) => { this.styledColumn(day, false) }, (day: number) => String(day))
+        ForEach(this.view.weekColumns(), (day: number) => { this.styledColumn(day, false) }, (day: number) => String(day))
       }.alignItems(VerticalAlign.Top)
       if (this.weekNowY(this.styledRow(), STYLED_SLOT_GAP) >= 0) {
         this.nowBadge(this.styledAxis(), STYLED_HEADER + this.weekNowY(this.styledRow(), STYLED_SLOT_GAP))
@@ -342,19 +357,28 @@ export struct NativeScheduleBody {
   private styledSlotLabel(slot: number) {
     if (this.store.visualStyle === 'minimal') {
       Text(String(slot)).fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.ink())
-      Text(this.view.slotStart(slot) || '—').fontSize(10).fontWeight(600).fontColor(scheduleMetaText(this.store.dark)).margin({ top: 3 })
-    } else if (this.store.visualStyle === 'board') {
-      if (this.startsSession(slot)) {
-        Text(scheduleSession(this.view.slotStart(slot))).fontSize(8).fontWeight(FontWeight.Bold).fontColor(this.ink())
+      if (this.store.showSlotTime) {
+        Text(this.view.slotStart(slot) || '—').fontSize(10).fontWeight(600).fontColor(scheduleMetaText(this.store.dark)).margin({ top: 3 })
       }
-      Text(this.view.slotStart(slot) || '—').fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.ink()).fontFamily('monospace').maxLines(1)
-      Text(`第${slot}节`).fontSize(8).fontColor(this.ink())
+    } else if (this.store.visualStyle === 'board') {
+      // The board's axis leads with the time; without times it reads 第N节 alone.
+      if (this.store.showSlotTime) {
+        if (this.startsSession(slot)) {
+          Text(scheduleSession(this.view.slotStart(slot))).fontSize(8).fontWeight(FontWeight.Bold).fontColor(this.ink())
+        }
+        Text(this.view.slotStart(slot) || '—').fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.ink()).fontFamily('monospace').maxLines(1)
+        Text(`第${slot}节`).fontSize(8).fontColor(this.ink())
+      } else {
+        Text(`第${slot}节`).fontSize(10).fontWeight(FontWeight.Bold).fontColor(this.ink())
+      }
     } else {
       Text(this.store.visualStyle === 'paper' ? scheduleNumeral(slot) : String(slot))
         .fontSize(this.store.visualStyle === 'paper' ? 12 : 13).fontWeight(FontWeight.Bold).fontColor(this.ink())
         .fontFamily(scheduleStyleFont(this.store.visualStyle))
-      Text(this.view.slotStart(slot) || '—').fontSize(9).fontColor(this.ink()).fontFamily(scheduleStyleFont(this.store.visualStyle))
-      Text(this.view.slotEnd(slot) || '—').fontSize(9).fontColor(this.ink()).fontFamily(scheduleStyleFont(this.store.visualStyle))
+      if (this.store.showSlotTime) {
+        Text(this.view.slotStart(slot) || '—').fontSize(9).fontColor(this.ink()).fontFamily(scheduleStyleFont(this.store.visualStyle))
+        Text(this.view.slotEnd(slot) || '—').fontSize(9).fontColor(this.ink()).fontFamily(scheduleStyleFont(this.store.visualStyle))
+      }
     }
   }
 
@@ -365,13 +389,13 @@ export struct NativeScheduleBody {
       if (!dayRow) {
         Stack({ alignContent: Alignment.TopEnd }) {
           this.styledDateHeader(day)
-          if (this.store.visualStyle === 'minimal' && this.view.adjustment(day)) {
+          if (this.store.visualStyle === 'minimal' && this.view.shownAdjustment(day)) {
             Column() { this.adjustmentBadge(day, 12) }.margin({ right: 2 })
           }
         }.width('100%').height(STYLED_HEADER)
           .accessibilityGroup(true)
           .accessibilityText(scheduleWeekday(day) + ' ' + this.dateLabel(day) + this.adjustmentSpoken(day) + '，查看当天课程')
-          .onClick(() => { this.store.selectDay(day); this.store.setViewMode('day'); })
+          .onClick(() => this.openDay(day))
       }
       Stack({ alignContent: Alignment.TopStart }) {
         Column() {
@@ -381,7 +405,7 @@ export struct NativeScheduleBody {
         if (this.store.visualStyle === 'grid' && this.columnNowY(day, dayRow) >= 0) {
           this.nowLine(this.columnWidth(dayRow), this.columnNowY(day, dayRow))
         }
-        ForEach(this.placed(day), (block: PlacedCourseBlock) => { this.styledTile(block, day, dayRow) })
+        ForEach(this.tiles(day, dayRow), (block: PlacedCourseBlock) => { this.styledTile(block, day, dayRow) })
         if (this.store.visualStyle !== 'grid' && this.columnNowY(day, dayRow) >= 0) {
           this.nowLine(this.columnWidth(dayRow), this.columnNowY(day, dayRow))
         }
@@ -393,7 +417,7 @@ export struct NativeScheduleBody {
   @Builder
   private styledDateHeader(day: number) {
     ScheduleStyledDateHeader({ visualStyle: this.store.visualStyle, dark: this.store.dark, palette: this.store.palette,
-      day: day, date: this.dayOfMonth(day), today: this.view.isToday(day), adjustment: this.view.adjustment(day)?.kind ?? '' })
+      day: day, date: this.dayOfMonth(day), today: this.view.shownIsToday(day), adjustment: this.view.shownAdjustment(day)?.kind ?? '' })
   }
 
   // One empty period of a styled column, on the shared row pitch.
@@ -402,18 +426,18 @@ export struct NativeScheduleBody {
     if (scheduleStyleLayout(this.store.visualStyle).grid === 'cells') {
       Column().width('100%').height(this.cellRow(dayRow)).margin({ bottom: slot < this.view.slotCount() ? STYLED_SLOT_GAP : 0 })
         .backgroundColor(this.cover(day, slot).covered ? Color.Transparent
-          : this.view.isToday(day) && !dayRow ? scheduleThemeTint(this.store.palette, 0.12)
+          : this.view.shownIsToday(day) && !dayRow ? scheduleThemeTint(this.store.palette, 0.12)
           : scheduleStyleCellSurface(!!this.store.backgroundPath, this.store.dark))
         .borderRadius(scheduleStyleLayout(this.store.visualStyle).cornerRadius)
         .border({ width: this.cover(day, slot).covered ? 0 : 1, color: scheduleStyleCellBorder(this.store.dark),
           radius: scheduleStyleLayout(this.store.visualStyle).cornerRadius,
-          style: this.view.adjustment(day)?.kind === 'off' ? BorderStyle.Dashed : BorderStyle.Solid })
+          style: this.view.shownAdjustment(day)?.kind === 'off' ? BorderStyle.Dashed : BorderStyle.Solid })
         .accessibilityText(scheduleWeekday(day) + '第' + slot + '节，空节次').accessibilityLevel(this.cover(day, slot).occupied ? 'no' : 'auto')
         .onClick(() => this.addAt(day, slot))
     } else if (scheduleStyleLayout(this.store.visualStyle).grid === 'table') {
       // Every shared edge is ruled once; a rule that would cross a course spanning several periods is left out.
       Column().width('100%').height(this.cellRow(dayRow) + (slot < this.view.slotCount() ? STYLED_SLOT_GAP : 0))
-        .backgroundColor(this.view.isToday(day) && !dayRow ? scheduleThemeTint(this.store.palette, 0.08) : Color.Transparent)
+        .backgroundColor(this.view.shownIsToday(day) && !dayRow ? scheduleThemeTint(this.store.palette, 0.08) : Color.Transparent)
         .border({ width: { top: this.cover(day, slot).joinsAbove ? 0 : 0.6, left: 0.6 }, color: scheduleStyleCellBorder(this.store.dark) })
         .accessibilityText(scheduleWeekday(day) + '第' + slot + '节，空节次').accessibilityLevel(this.cover(day, slot).occupied ? 'no' : 'auto')
         .onClick(() => this.addAt(day, slot))
@@ -437,7 +461,8 @@ export struct NativeScheduleBody {
   @Builder
   private styledTile(block: PlacedCourseBlock, day: number, dayRow: boolean) {
     Stack({ alignContent: Alignment.TopStart }) {
-      Column({ space: this.tileTiny(block, dayRow) ? 0 : this.tileSmall(block, dayRow) ? 2 : 4 }) {
+      Column({ space: this.tileTiny(block, dayRow) ? 0 : this.tileCompact(dayRow) ? 1 : this.tileSmall(block, dayRow) ? 2 : 4 }) {
+        if (block.offWeek) this.offWeekTag(this.tileInk(block, day))
         if (scheduleStyleLayout(this.store.visualStyle).course === 'departure' && !this.tileTiny(block, dayRow)) {
           Row({ space: 3 }) {
             // The board has no fill and no bar, so a small course-colour mark sits beside the start time.
@@ -448,15 +473,24 @@ export struct NativeScheduleBody {
               .fontFamily('monospace').fontColor(this.tileInk(block, day)).maxLines(1)
           }
         }
-        Text(block.course.name).fontSize(this.tileNameSize(block, dayRow)).fontWeight(600)
+        Text(block.course.name).fontSize(this.tileFont(this.tileNameSize(block, dayRow), dayRow)).fontWeight(600)
           .fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
-          .maxLines(dayRow ? (this.tileShort(block, dayRow) ? 1 : 2) : this.tileTiny(block, dayRow) ? 1 : this.tileShort(block, dayRow) ? 2 : this.tileSmall(block, dayRow) ? 4 : 3)
+          .maxLines(dayRow ? (this.tileShort(block, dayRow) ? 1 : 2) : this.tileTiny(block, dayRow) ? 1 : this.tileShort(block, dayRow) ? 2
+            : this.tileCompact(dayRow) ? 6 : this.tileSmall(block, dayRow) ? 4 : 3)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(this.tileCentered(dayRow) ? TextAlign.Center : TextAlign.Start).width('100%')
         if (scheduleCleanLocation(block.course.location)) {
-          Text('@' + scheduleCleanLocation(block.course.location)).fontSize(dayRow ? 12 : this.tileSmall(block, dayRow) ? Math.min(9, this.tileNameSize(block, dayRow) - 1) : 11)
+          Text('@' + scheduleCleanLocation(block.course.location))
+            .fontSize(this.tileFont(dayRow ? 12 : this.tileSmall(block, dayRow) ? Math.min(9, this.tileNameSize(block, dayRow) - 1) : 11, dayRow))
             .fontWeight(FontWeight.Medium).fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
             .maxLines(this.tileShort(block, dayRow) || dayRow ? 1 : 2).textOverflow({ overflow: TextOverflow.Ellipsis })
+            .textAlign(this.tileCentered(dayRow) ? TextAlign.Center : TextAlign.Start).width('100%')
+        }
+        if (!dayRow && this.store.showTeacher && (block.course.teacher ?? '').trim() && !this.tileShort(block, dayRow)) {
+          Text((block.course.teacher ?? '').trim())
+            .fontSize(this.tileFont(this.tileSmall(block, dayRow) ? Math.min(9, this.tileNameSize(block, dayRow) - 1) : 11, dayRow))
+            .fontWeight(FontWeight.Medium).fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
             .textAlign(this.tileCentered(dayRow) ? TextAlign.Center : TextAlign.Start).width('100%')
         }
       }.width('100%').height('100%')
@@ -464,8 +498,8 @@ export struct NativeScheduleBody {
         .justifyContent(this.tileCentered(dayRow) || dayRow ? FlexAlign.Center : FlexAlign.Start)
         .padding({ left: this.tileStripe() + (dayRow ? 12 : this.tileSmall(block, dayRow) ? 3 : 7),
           right: (dayRow ? 12 : this.tileSmall(block, dayRow) ? 3 : 7) + (dayRow && block.lanes === 1 && this.tileStatus(block, day) ? 84 : 0),
-          top: this.tileTiny(block, dayRow) ? 1 : this.tileShort(block, dayRow) ? 3 : 6,
-          bottom: this.tileTiny(block, dayRow) ? 1 : this.tileShort(block, dayRow) ? 3 : 6 })
+          top: this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6,
+          bottom: this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6 })
       if (this.tileStripe() > 0) {
         Column().width(this.tileStripe()).height('100%')
           .backgroundColor(scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark))
@@ -485,8 +519,16 @@ export struct NativeScheduleBody {
         radius: scheduleStyleLayout(this.store.visualStyle).cornerRadius })
       .position({ x: this.tileInset(block) + block.lane * this.columnWidth(dayRow) / block.lanes,
         y: (block.startSlot - 1) * (this.cellRow(dayRow) + STYLED_SLOT_GAP) + this.tileInset(block) })
-      .accessibilityGroup(true).accessibilityText(this.courseAccessibility(block, day))
-      .onClick(() => this.onCourse(block.whole, day))
+      .opacity(block.offWeek ? 0.5 : 1)
+      .accessibilityGroup(true).accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
+      .onClick(() => this.openTile(block, day))
+  }
+
+  // The small outlined label on a course that does not run this week.
+  @Builder
+  private offWeekTag(color: ResourceColor) {
+    Text('非本周').fontSize(8).fontWeight(600).fontColor(color).maxLines(1)
+      .padding({ left: 3, right: 3 }).border({ width: 0.5, color: color, radius: 3 })
   }
 
   // ---- Styled day ----
@@ -868,8 +910,44 @@ export struct NativeScheduleBody {
   // ---- Data ----
 
   private placed(day: number): PlacedCourseBlock[] {
-    return placeScheduleBlocks(this.view.displayBlocks(day), this.store.displayPriorities());
+    return placeScheduleBlocks(this.view.shownBlocks(day), this.store.displayPriorities());
   }
+
+  // What a week column draws: the courses that do not run this week first, under the others.
+  private tiles(day: number, dayRow: boolean): PlacedCourseBlock[] {
+    const placed = this.placed(day);
+    if (dayRow || this.view.viewMode !== 'week' || !this.view.showOffWeek) return placed;
+    const none: Record<string, number> = {};
+    const ghosts = placeScheduleBlocks(this.view.offWeekBlocks(day), none);
+    ghosts.forEach((block: PlacedCourseBlock) => {
+      block.offWeek = true;
+      block.id = 'off-' + block.id;
+    });
+    return ghosts.concat(placed);
+  }
+
+  private openTile(block: PlacedCourseBlock, day: number): void {
+    if (block.offWeek) this.onPeek(block.whole, day, '这门课本周不上');
+    else if (this.view.leadsWeek(day)) this.onPeek(block.whole, day, '这是上一周周日的课，切到上一周可以编辑。');
+    else this.onCourse(block.whole, day);
+  }
+
+  // A header tap opens that day; the leading Sunday is a day of the week before.
+  private openDay(day: number): void {
+    if (this.view.leadsWeek(day)) {
+      const date = this.view.shownRawDate(day);
+      if (date) this.store.openDate(date);
+      return;
+    }
+    this.store.selectDay(day);
+    this.store.setViewMode('day');
+  }
+
+  // Display settings: text size applies to week cards only.
+  private fs(size: number): number { return Math.round(size * this.store.textScale() * 2) / 2; }
+  private tileFont(size: number, dayRow: boolean): number { return dayRow ? size : this.fs(size); }
+  private tileCompact(dayRow: boolean): boolean { return !dayRow && this.store.compactLayout; }
+  private showsSlotTime(dayView: boolean): boolean { return dayView || this.store.showSlotTime; }
 
   private blocksAt(day: number, slot: number): PlacedCourseBlock[] {
     return this.placed(day).filter((block: PlacedCourseBlock) => block.startSlot <= slot && slot <= block.endSlot);
@@ -887,9 +965,10 @@ export struct NativeScheduleBody {
   }
 
   private addAt(day: number, slot: number): void {
-    if (!this.store.canEdit()) return;
+    // The leading Sunday belongs to the week before; a course added here would land in this week.
+    if (!this.store.canEdit() || this.view.leadsWeek(day)) return;
     // On a make-up day the new course belongs to the weekday being made up.
-    this.onAddSlot(this.view.effectiveSlot(day).day, slot);
+    this.onAddSlot(this.view.shownSlot(day).day, slot);
   }
 
   private startsSession(slot: number): boolean {
@@ -908,7 +987,7 @@ export struct NativeScheduleBody {
   }
 
   private dayStatus(day: number): ScheduleDayStatus {
-    const date = this.view.rawDate(day);
+    const date = this.view.shownRawDate(day);
     const today = scheduleTodayDate(Date.now());
     const isToday = !!date && date === today;
     return { now: isToday && this.store.showNowIndicator ? this.store.nowMinutes : -1,
@@ -924,7 +1003,7 @@ export struct NativeScheduleBody {
   }
 
   private tileCurrent(block: PlacedCourseBlock, day: number): boolean {
-    return this.blockPhase(block, day) === 'current';
+    return !block.offWeek && this.blockPhase(block, day) === 'current';
   }
 
   private blockRemaining(block: PlacedCourseBlock): number {
@@ -1034,13 +1113,13 @@ export struct NativeScheduleBody {
   }
 
   private emptyDayNote(): string {
-    const adjustment = this.view.adjustment(this.view.selectedDay);
+    const adjustment = this.view.shownAdjustment(this.view.selectedDay);
     if (adjustment) return scheduleAdjustmentText(adjustment);
     return this.store.visualStyle === 'classic' ? (this.store.canEdit() ? '可以切换日期，或添加个人课程' : '可以切换日期查看其他课程') : '';
   }
 
   private adjustmentSpoken(day: number): string {
-    const adjustment = this.view.adjustment(day);
+    const adjustment = this.view.shownAdjustment(day);
     return adjustment ? (adjustment.kind === 'off' ? '，休息' : '，补班') : '';
   }
 
@@ -1064,11 +1143,13 @@ export struct NativeScheduleBody {
 
   // ---- Geometry ----
 
-  private metrics(): ScheduleGridMetrics { return scheduleGridMetrics(this.pageWidth, this.contentHeight, this.view.slotCount()); }
+  private metrics(): ScheduleGridMetrics {
+    return scheduleGridMetrics(this.pageWidth, this.contentHeight, this.view.slotCount(), this.store.rowScale());
+  }
   private weekStride(): number { return this.metrics().weekRow + this.metrics().gap; }
   private dayStride(): number { return this.metrics().dayRow + this.metrics().dayGap; }
   private bodyWidth(): number { return Math.max(0, Math.min(this.pageWidth, 720) - 2 * this.metrics().inset); }
-  private dayCount(): number { return Math.max(1, this.view.visibleDays().length); }
+  private dayCount(): number { return Math.max(1, this.view.weekColumns().length); }
   private weekColumn(): number {
     return Math.max(12, (this.bodyWidth() - this.metrics().axis - this.dayCount() * this.metrics().gap) / this.dayCount());
   }
@@ -1081,7 +1162,8 @@ export struct NativeScheduleBody {
   private styledRow(): number {
     const count = Math.max(1, this.view.slotCount());
     // A whole day fits above the tab bar on a phone, as in the classic grid.
-    return Math.max(34, (this.contentHeight - STYLED_HEADER - 2 * this.panelPad() - (count - 1) * STYLED_SLOT_GAP - 18) / count);
+    return Math.max(34, (this.contentHeight - STYLED_HEADER - 2 * this.panelPad() - (count - 1) * STYLED_SLOT_GAP - 18) / count)
+      * this.store.rowScale();
   }
   private cardHeight(): number { return this.pageWidth <= 390 ? 96 : 108; }
   private tableRow(): number { return Math.max(58, this.cardHeight() * 0.6); }
@@ -1096,7 +1178,7 @@ export struct NativeScheduleBody {
       - this.dayCount() * scheduleStyleColumnGap(this.store.visualStyle)) / this.dayCount());
   }
   private columnNowY(day: number, dayRow: boolean): number {
-    return this.view.isToday(day) ? this.nowY(this.cellRow(dayRow), STYLED_SLOT_GAP) : -1;
+    return this.view.shownIsToday(day) ? this.nowY(this.cellRow(dayRow), STYLED_SLOT_GAP) : -1;
   }
 
   // Grid tiles are the cell itself; table tiles sit just inside the rules; the rest keep 1 vp all round.
@@ -1151,10 +1233,10 @@ export struct NativeScheduleBody {
     return '#00000000';
   }
   private columnBackground(day: number): string {
-    if (this.store.visualStyle === 'minimal' && this.view.isToday(day)) return scheduleThemeTint(this.store.palette, this.store.dark ? 0.15 : 0.08);
-    if (this.store.visualStyle === 'paper' && this.view.isToday(day)) return scheduleAlpha(this.styleAccent(), this.store.dark ? 0.10 : 0.07);
+    if (this.store.visualStyle === 'minimal' && this.view.shownIsToday(day)) return scheduleThemeTint(this.store.palette, this.store.dark ? 0.15 : 0.08);
+    if (this.store.visualStyle === 'paper' && this.view.shownIsToday(day)) return scheduleAlpha(this.styleAccent(), this.store.dark ? 0.10 : 0.07);
     // A weekend column is greyed in the table; one worked as a make-up day stays plain.
-    if (this.store.visualStyle === 'table' && day >= 6 && this.view.adjustment(day)?.kind !== 'swap') return scheduleAlpha(this.ink(), 0.035);
+    if (this.store.visualStyle === 'table' && day >= 6 && this.view.shownAdjustment(day)?.kind !== 'swap') return scheduleAlpha(this.ink(), 0.035);
     return '#00000000';
   }
   private ink(): string { return scheduleStyleInk(this.store.visualStyle, this.store.dark); }
@@ -1181,11 +1263,11 @@ export struct NativeScheduleBody {
   }
 
   private monthLabel(): string {
-    const date = this.view.rawDate(this.view.visibleDays()[0] ?? 1);
+    const date = this.view.shownRawDate(this.view.weekColumns()[0] ?? 1);
     return date.length >= 10 ? `${Number(date.substring(5, 7))}月` : '节次';
   }
   private dayOfMonth(day: number): string {
-    const date = this.view.rawDate(day);
+    const date = this.view.shownRawDate(day);
     return date.length >= 10 ? String(Number(date.substring(8, 10))) : '–';
   }
   private dateLabel(day: number): string {

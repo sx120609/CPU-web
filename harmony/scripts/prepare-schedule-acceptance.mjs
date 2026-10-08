@@ -117,6 +117,9 @@ struct ScheduleAcceptance {
   @State private sharedVisible: boolean = false;
   @StorageProp('qaStyle') @Watch('syncOptions') private style: string = 'classic';
   @StorageProp('qaWeekend') @Watch('syncOptions') private weekend: boolean = true;
+  // Display settings, comma separated: sundayFirst, offWeek, teacher, compact, noTime, noSaturday,
+  // noSunday, noToday, small or large, rows=140.
+  @StorageProp('qaDisplay') @Watch('syncOptions') private display: string = '';
   @StorageProp('qaNow') @Watch('syncOptions') private now: string = '';
   @StorageProp('qaPriority') @Watch('syncOptions') private priority: string = '';
   @StorageProp('qaWeek') @Watch('syncOptions') private week: string = '';
@@ -137,7 +140,19 @@ struct ScheduleAcceptance {
     this.applySystemAppearance();
     this.store.palette = this.theme;
     this.store.visualStyle = normalizeScheduleStyle(this.style);
-    this.store.showWeekend = this.weekend;
+    const flags = this.display.split(',').map((flag: string) => flag.trim());
+    const rows = flags.find((flag: string) => flag.startsWith('rows='));
+    this.store.resetDisplay();
+    this.store.showSaturday = this.weekend && !flags.includes('noSaturday');
+    this.store.showSunday = this.weekend && !flags.includes('noSunday');
+    this.store.sundayFirst = flags.includes('sundayFirst');
+    this.store.showOffWeek = flags.includes('offWeek');
+    this.store.showTeacher = flags.includes('teacher');
+    this.store.compactLayout = flags.includes('compact');
+    this.store.showSlotTime = !flags.includes('noTime');
+    this.store.showBackToWeek = !flags.includes('noToday');
+    this.store.textSize = flags.includes('small') ? 'small' : flags.includes('large') ? 'large' : 'standard';
+    if (rows) this.store.rowHeight = Number(rows.substring(5)) || 100;
     if (this.state === 'loaded') {
       this.store.load(true);
       this.store.setViewMode(this.mode);
@@ -278,6 +293,7 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaState', String(want.parameters?.state ?? 'loaded'));
     AppStorage.setOrCreate('qaStyle', String(want.parameters?.style ?? 'classic'));
     AppStorage.setOrCreate('qaWeekend', String(want.parameters?.weekend ?? 'true') !== 'false');
+    AppStorage.setOrCreate('qaDisplay', String(want.parameters?.display ?? ''));
     AppStorage.setOrCreate('qaNow', String(want.parameters?.now ?? ''));
     AppStorage.setOrCreate('qaPriority', String(want.parameters?.priority ?? ''));
     AppStorage.setOrCreate('qaWeek', String(want.parameters?.week ?? ''));

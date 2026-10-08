@@ -32,7 +32,9 @@ import { restoreNativeScheduleCache } from '../schedule/NativeScheduleCache';
 import { NativeWebHeader, NativeWebHeaderState } from '../common/NativeWebHeader';
 import { NativeLoginGate, NativeLoginResponse } from '../common/NativeLoginGate';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
-import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeScheduleSnapshot, NativeScheduleStore } from '../schedule/NativeScheduleStore';
+import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeScheduleSnapshot, NativeScheduleStore,
+  SCHEDULE_ROW_HEIGHT_MAX, SCHEDULE_ROW_HEIGHT_MIN, SCHEDULE_ROW_HEIGHT_STEP, scheduleNormalizedRowHeight,
+  scheduleNormalizedTextSize } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
@@ -203,7 +205,18 @@ struct Index {
         this.scheduleStore.backgroundPath = String(await prefs.get('background', ''));
         this.scheduleStore.backgroundOpacity = Number(await prefs.get('opacity', 0.18));
         this.scheduleStore.visualStyle = normalizeScheduleStyle(String(await prefs.get('style', 'classic')));
-        this.scheduleStore.showWeekend = Boolean(await prefs.get('weekend', true));
+        // 周六、周日两个开关都从原来的「显示周末」起步。
+        const weekend = Boolean(await prefs.get('weekend', true));
+        this.scheduleStore.showSaturday = Boolean(await prefs.get('saturday', weekend));
+        this.scheduleStore.showSunday = Boolean(await prefs.get('sunday', weekend));
+        this.scheduleStore.sundayFirst = Boolean(await prefs.get('sundayFirst', false));
+        this.scheduleStore.rowHeight = scheduleNormalizedRowHeight(Number(await prefs.get('rowHeight', 100)));
+        this.scheduleStore.textSize = scheduleNormalizedTextSize(String(await prefs.get('textSize', 'standard')));
+        this.scheduleStore.compactLayout = Boolean(await prefs.get('compact', false));
+        this.scheduleStore.showTeacher = Boolean(await prefs.get('teacher', false));
+        this.scheduleStore.showOffWeek = Boolean(await prefs.get('offWeek', false));
+        this.scheduleStore.showSlotTime = Boolean(await prefs.get('slotTime', true));
+        this.scheduleStore.showBackToWeek = Boolean(await prefs.get('backToWeek', true));
         this.scheduleStore.showNowIndicator = Boolean(await prefs.get('now', true));
         this.scheduleStore.restorePriorities(String(await prefs.get('priorities', '')));
         this.scheduleStore.attachPriorityPersistence((raw: string) => {
@@ -783,8 +796,7 @@ struct Index {
     store.dark = this.scheduleStore.dark;
     store.palette = this.scheduleStore.palette;
     store.visualStyle = this.scheduleStore.visualStyle;
-    store.showWeekend = this.scheduleStore.showWeekend;
-    store.showNowIndicator = this.scheduleStore.showNowIndicator;
+    store.copyDisplay(this.scheduleStore);
     store.backgroundPath = this.scheduleStore.backgroundPath;
     store.backgroundOpacity = this.scheduleStore.backgroundOpacity;
     store.attach((request: NativeScheduleRequest) => {
@@ -1521,23 +1533,111 @@ struct Index {
           }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
           Text('课表风格不改变课程数据、课程配色或背景图片。').fontSize(12).fontColor($r('app.color.app_text_tertiary')).width('100%')
         }.width('100%')
+        Column({ space: 8 }) {
+          Text('课程格子').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
         Column() {
           Row({ space: 12 }) {
-            Text('显示周末').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
-            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showWeekend }).selectedColor($r('app.color.app_accent'))
-              .accessibilityText('显示周末')
-              .onChange((value: boolean) => { this.scheduleStore.showWeekend = value; this.saveScheduleStyle(); })
-          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
-          Text('关闭后，周末有课或调休的那一周仍会显示。').fontSize(12).fontColor($r('app.color.app_text_secondary'))
-            .width('100%').padding({ left: 14, right: 14, bottom: 10 })
+            Text('格子高度').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Text(this.scheduleStore.rowHeight + '%').fontSize(13).fontColor($r('app.color.app_text_secondary'))
+          }.width('100%').padding({ left: 14, right: 14, top: 10 })
+          Slider({ value: this.scheduleStore.rowHeight, min: SCHEDULE_ROW_HEIGHT_MIN, max: SCHEDULE_ROW_HEIGHT_MAX, step: SCHEDULE_ROW_HEIGHT_STEP })
+            .selectedColor($r('app.color.app_accent')).width('100%').padding({ left: 8, right: 8 })
+            .accessibilityText('格子高度')
+            .onChange((value: number) => { this.scheduleStore.rowHeight = scheduleNormalizedRowHeight(value); this.saveScheduleStyle(); })
           Row({ space: 12 }) {
-            Text('标出当前时间').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Text('文字大小').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Row({ space: 2 }) {
+              ForEach(['small', 'standard', 'large'], (size: string) => {
+                Button(size === 'small' ? '小' : size === 'large' ? '大' : '标准').type(ButtonType.Normal).height(30).borderRadius(8)
+                  .padding({ left: 14, right: 14 }).fontSize(13)
+                  .fontWeight(this.scheduleStore.textSize === size ? 600 : 400)
+                  .fontColor(this.scheduleStore.textSize === size ? $r('app.color.app_accent') : $r('app.color.app_text_secondary'))
+                  .backgroundColor(this.scheduleStore.textSize === size ? $r('app.color.app_surface') : Color.Transparent)
+                  .accessibilitySelected(this.scheduleStore.textSize === size)
+                  .onClick(() => { this.scheduleStore.textSize = size; this.saveScheduleStyle(); })
+              }, (size: string) => size)
+            }.padding(2).borderRadius(10).backgroundColor($r('app.color.app_divider'))
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Row({ space: 12 }) {
+            Text('紧凑排版').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.compactLayout }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('紧凑排版')
+              .onChange((value: boolean) => { this.scheduleStore.compactLayout = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Row({ space: 12 }) {
+            Text('显示老师').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showTeacher }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('显示老师')
+              .onChange((value: boolean) => { this.scheduleStore.showTeacher = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Row({ space: 12 }) {
+            Text('显示非本周课程').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showOffWeek }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('显示非本周课程')
+              .onChange((value: boolean) => { this.scheduleStore.showOffWeek = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Text('本周不上的课淡显在空着的节次里。').fontSize(12).fontColor($r('app.color.app_text_secondary'))
+            .width('100%').padding({ left: 14, right: 14, bottom: 10 })
+        }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
+        }.width('100%')
+        Column({ space: 8 }) {
+          Text('课表网格').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+        Column() {
+          Row({ space: 12 }) {
+            Text('显示节次时间').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showSlotTime }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('显示节次时间')
+              .onChange((value: boolean) => { this.scheduleStore.showSlotTime = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+          Row({ space: 12 }) {
+            Text('高亮当前节次').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showNowIndicator }).selectedColor($r('app.color.app_accent'))
-              .accessibilityText('标出当前时间')
+              .accessibilityText('高亮当前节次')
               .onChange((value: boolean) => { this.scheduleStore.showNowIndicator = value; this.saveScheduleStyle(); })
           }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
             .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Row({ space: 12 }) {
+            Text('显示回到本周按钮').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showBackToWeek }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('显示回到本周按钮')
+              .onChange((value: boolean) => { this.scheduleStore.showBackToWeek = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Row({ space: 12 }) {
+            Text('显示周六').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showSaturday }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('显示周六')
+              .onChange((value: boolean) => { this.scheduleStore.showSaturday = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Row({ space: 12 }) {
+            Text('显示周日').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.showSunday }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('显示周日')
+              .onChange((value: boolean) => { this.scheduleStore.showSunday = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Text('关闭后，周六、周日有课或调休时仍会显示。').fontSize(12).fontColor($r('app.color.app_text_secondary'))
+            .width('100%').padding({ left: 14, right: 14, bottom: 10 })
+          Row({ space: 12 }) {
+            Text('周日排在首列').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.scheduleStore.sundayFirst }).selectedColor($r('app.color.app_accent'))
+              .accessibilityText('周日排在首列').enabled(this.scheduleStore.showSunday)
+              .onChange((value: boolean) => { this.scheduleStore.sundayFirst = value; this.saveScheduleStyle(); })
+          }.width('100%').padding({ left: 14, right: 14, top: 8, bottom: 8 })
+            .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+          Text('第一列是周一前一天的那个周日。').fontSize(12).fontColor($r('app.color.app_text_secondary'))
+            .width('100%').padding({ left: 14, right: 14, bottom: 10 })
         }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
+          Button('恢复默认').height(40).width('100%').fontSize(13)
+            .fontColor($r('app.color.app_text_secondary')).backgroundColor(Color.Transparent)
+            .enabled(!this.scheduleStore.displayIsDefault())
+            .onClick(() => { this.scheduleStore.resetDisplay(); this.saveScheduleStyle(); })
+        }.width('100%')
         Column({ space: 8 }) {
           Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
           this.paletteChoices(this.scheduleStore.palette, false)
@@ -1569,7 +1669,16 @@ struct Index {
       await prefs.put('background', this.scheduleStore.backgroundPath);
       await prefs.put('opacity', this.scheduleStore.backgroundOpacity);
       await prefs.put('style', this.scheduleStore.visualStyle);
-      await prefs.put('weekend', this.scheduleStore.showWeekend);
+      await prefs.put('saturday', this.scheduleStore.showSaturday);
+      await prefs.put('sunday', this.scheduleStore.showSunday);
+      await prefs.put('sundayFirst', this.scheduleStore.sundayFirst);
+      await prefs.put('rowHeight', this.scheduleStore.rowHeight);
+      await prefs.put('textSize', this.scheduleStore.textSize);
+      await prefs.put('compact', this.scheduleStore.compactLayout);
+      await prefs.put('teacher', this.scheduleStore.showTeacher);
+      await prefs.put('offWeek', this.scheduleStore.showOffWeek);
+      await prefs.put('slotTime', this.scheduleStore.showSlotTime);
+      await prefs.put('backToWeek', this.scheduleStore.showBackToWeek);
       await prefs.put('now', this.scheduleStore.showNowIndicator);
       await prefs.flush();
     }).catch(() => promptAction.showToast({ message: '样式保存失败，请重试' }));

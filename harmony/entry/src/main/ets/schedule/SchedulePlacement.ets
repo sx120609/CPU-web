@@ -20,6 +20,8 @@ export interface PlacedCourseBlock {
   course: NativeScheduleCourse;
   // The whole course, for the quick look and the editor.
   whole: NativeCourseBlock;
+  // A course that does not run this week, drawn faded in a period this week leaves free.
+  offWeek?: boolean;
 }
 
 /** The saved key for a course name: trimmed, inner whitespace collapsed. */

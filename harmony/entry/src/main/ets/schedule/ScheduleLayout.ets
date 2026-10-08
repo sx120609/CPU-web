@@ -18,7 +18,7 @@ export interface ScheduleGridMetrics {
   locationSize: number;
 }
 
-export function scheduleGridMetrics(width: number, height: number, slotCount: number = 12): ScheduleGridMetrics {
+export function scheduleGridMetrics(width: number, height: number, slotCount: number = 12, rowScale: number = 1): ScheduleGridMetrics {
   const narrow = width <= 390;
   const mobile = width <= 760;
   const gap = narrow ? 2 : mobile ? 4 : 5;
@@ -37,7 +37,8 @@ export function scheduleGridMetrics(width: number, height: number, slotCount: nu
     dayAxis: narrow ? 38 : mobile ? 42 : 50,
     dayGap: mobile ? 4 : 5,
     header,
-    weekRow: Math.max(narrow ? 38 : mobile ? 42 : 48, (height - header - 16 - (count - 1) * gap) / count),
+    // rowScale is the display setting's row height; 1 fits the day on one screen.
+    weekRow: Math.max(narrow ? 38 : mobile ? 42 : 48, (height - header - 16 - (count - 1) * gap) / count) * rowScale,
     dayRow: Math.max(narrow ? 48 : mobile ? 52 : 58, (height - 12 - (count - 1) * (mobile ? 4 : 5)) / count),
     courseRadius: 9,
     nameSize,

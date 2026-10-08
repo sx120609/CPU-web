@@ -204,7 +204,20 @@ export class NativeScheduleStore {
   readOnly: boolean = false;
   // 课表风格（ScheduleStyle.ets），与配色、深浅色互不影响。
   visualStyle: string = 'classic';
-  showWeekend: boolean = true;
+  // 显示设置：只影响周视图怎么画。默认值就是加这些开关之前的样子。
+  showSaturday: boolean = true;
+  showSunday: boolean = true;
+  // 一周从周日开始：第一列是周一前一天的那个周日（属于上一个教学周）。
+  sundayFirst: boolean = false;
+  // 周视图格子高度的百分比，100 是刚好铺满一屏。
+  rowHeight: number = 100;
+  textSize: string = 'standard';
+  compactLayout: boolean = false;
+  showTeacher: boolean = false;
+  // 本周不上的课，淡显在本周空着的节次里。
+  showOffWeek: boolean = false;
+  showSlotTime: boolean = true;
+  showBackToWeek: boolean = true;
   showNowIndicator: boolean = true;
   // 课表时区（Asia/Shanghai）里现在是当天第几分钟，由页面每分钟写入；-1 表示未知。
   nowMinutes: number = -1;
@@ -648,9 +661,88 @@ export class NativeScheduleStore {
   visibleDays(): number[] {
     const days: number[] = [1, 2, 3, 4, 5];
     [6, 7].forEach((day: number) => {
-      if (this.showWeekend || this.adjustment(day) || this.displayBlocks(day).length) days.push(day);
+      if ((day === 6 ? this.showSaturday : this.showSunday) || this.adjustment(day) || this.displayBlocks(day).length) days.push(day);
     });
     return days;
+  }
+
+  // ---- 显示设置 ----
+
+  copyDisplay(from: NativeScheduleStore): void {
+    this.showSaturday = from.showSaturday;
+    this.showSunday = from.showSunday;
+    this.sundayFirst = from.sundayFirst;
+    this.rowHeight = from.rowHeight;
+    this.textSize = from.textSize;
+    this.compactLayout = from.compactLayout;
+    this.showTeacher = from.showTeacher;
+    this.showOffWeek = from.showOffWeek;
+    this.showSlotTime = from.showSlotTime;
+    this.showBackToWeek = from.showBackToWeek;
+    this.showNowIndicator = from.showNowIndicator;
+  }
+
+  resetDisplay(): void {
+    this.copyDisplay(new NativeScheduleStore());
+  }
+
+  displayIsDefault(): boolean {
+    return this.rowHeight === 100 && this.textSize === 'standard' && !this.compactLayout && !this.showTeacher
+      && !this.showOffWeek && this.showSlotTime && this.showNowIndicator && this.showBackToWeek
+      && this.showSaturday && this.showSunday && !this.sundayFirst;
+  }
+
+  textScale(): number { return scheduleDisplayTextScale(this.textSize, this.compactLayout); }
+  rowScale(): number { return scheduleNormalizedRowHeight(this.rowHeight) / 100; }
+
+  // 周视图里排在首列的周日：它是周一的前一天，属于上一个教学周。
+  leadsWeek(day: number): boolean {
+    return this.sundayFirst && this.viewMode === 'week' && day === 7;
+  }
+
+  // 下面几个 shown* 是周视图某一列实际对应的日期、调休和课程；不是首列周日时和原来的一样。
+  shownRawDate(day: number): string {
+    return this.leadsWeek(day) ? scheduleShiftDate(this.rawDate(1), -1) : this.rawDate(day);
+  }
+
+  shownAdjustment(day: number): NativeScheduleAdjustment | undefined {
+    return this.adjustmentOnDate(this.shownRawDate(day));
+  }
+
+  shownBlocks(day: number): NativeCourseBlock[] {
+    return this.leadsWeek(day) ? this.blocksOnDate(this.shownRawDate(day)) : this.displayBlocks(day);
+  }
+
+  shownIsToday(day: number): boolean {
+    if (!this.leadsWeek(day)) return this.isToday(day);
+    const date = this.shownRawDate(day);
+    return !!date && date === this.todayDate();
+  }
+
+  shownSlot(day: number): NativeScheduleDaySlot {
+    if (!this.leadsWeek(day)) return this.effectiveSlot(day);
+    return this.dateSlot(this.shownRawDate(day)) ?? { week: 0, day };
+  }
+
+  // 周视图从左到右画哪几天。
+  weekColumns(): number[] {
+    return scheduleWeekColumns(this.showSaturday, this.showSunday, this.sundayFirst && this.viewMode === 'week',
+      (day: number) => !!this.shownAdjustment(day) || this.shownBlocks(day).length > 0);
+  }
+
+  // 这一列里「非本周」的课：只有整学期课表里才有别的周的课；放假和调课日按日期另有安排，不填。
+  offWeekBlocks(day: number): NativeCourseBlock[] {
+    if (!this.showOffWeek || !this.result || this.shownAdjustment(day)) return [];
+    const week = this.leadsWeek(day) ? this.shownSlot(day).week : this.weekNumber();
+    if (!week) return [];
+    const other: NativeScheduleCell[] = [];
+    this.result.cells.forEach((cell: NativeScheduleCell) => {
+      const courses = cell.courses.filter((course: NativeScheduleCourse) => {
+        return !!course.weekList?.length && !course.weekList.includes(week);
+      });
+      if (courses.length > 0) other.push({ day: cell.day, bigSlot: cell.bigSlot, courses });
+    });
+    return scheduleOffWeekBlocks(this.mergedBlocks(other, day), this.shownBlocks(day), week);
   }
 
   // ---- 月视图 ----
@@ -852,7 +944,7 @@ export class NativeScheduleStore {
     preview.periods = this.periods;
     preview.source = this.source;
     preview.readOnly = this.readOnly;
-    preview.showWeekend = this.showWeekend;
+    preview.copyDisplay(this);
     preview.completeSemester = this.completeSemester;
     // Adjacent pages may only display a matching cached week or a complete term.
     const cached = this.freshCache(this.selectedSemester, week);
@@ -1059,4 +1151,80 @@ export class NativeScheduleStore {
     this.persistCache();
     this.listener?.();
   }
+}
+
+// ---- 显示设置的规则（不依赖界面，测试直接调用） ----
+
+export const SCHEDULE_ROW_HEIGHT_MIN = 70;
+export const SCHEDULE_ROW_HEIGHT_MAX = 180;
+export const SCHEDULE_ROW_HEIGHT_STEP = 5;
+
+export function scheduleNormalizedRowHeight(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+  const stepped = Math.round(value / SCHEDULE_ROW_HEIGHT_STEP) * SCHEDULE_ROW_HEIGHT_STEP;
+  return Math.min(SCHEDULE_ROW_HEIGHT_MAX, Math.max(SCHEDULE_ROW_HEIGHT_MIN, stepped));
+}
+
+export function scheduleNormalizedTextSize(value: string): string {
+  return value === 'small' || value === 'large' ? value : 'standard';
+}
+
+// 紧凑排版再收一点，好让同一格里多放一行。
+export function scheduleDisplayTextScale(size: string, compact: boolean): number {
+  const base = size === 'small' ? 0.88 : size === 'large' ? 1.16 : 1;
+  return base * (compact ? 0.92 : 1);
+}
+
+// 周视图从左到右画哪几天（1 是周一，7 是周日）。关掉的周六、周日只要 keeps 说那天有课或调休就留着。
+export function scheduleWeekColumns(showSaturday: boolean, showSunday: boolean, sundayFirst: boolean,
+  keeps: (day: number) => boolean): number[] {
+  const days: number[] = [1, 2, 3, 4, 5];
+  if (showSaturday || keeps(6)) days.push(6);
+  if (showSunday || keeps(7)) {
+    if (sundayFirst) days.unshift(7);
+    else days.push(7);
+  }
+  return days;
+}
+
+// yyyy-MM-dd 前后挪几天；读不出日期时返回空串。
+export function scheduleShiftDate(date: string, days: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
+  const moved = new Date(Date.UTC(Number(date.substring(0, 4)), Number(date.substring(5, 7)) - 1, Number(date.substring(8, 10)) + days));
+  return moved.toISOString().substring(0, 10);
+}
+
+function scheduleBlocksOverlap(left: NativeCourseBlock, right: NativeCourseBlock): boolean {
+  return left.startSlot <= right.endSlot && right.startSlot <= left.endSlot;
+}
+
+// 离这一周最近的一次上课：先看后面的周，再看已经过去的周；-1 表示没有别的周。
+function scheduleOccurrenceDistance(weeks: number[], week: number): number {
+  let upcoming = -1;
+  let past = -1;
+  weeks.forEach((value: number) => {
+    if (value > week && (upcoming < 0 || value < upcoming)) upcoming = value;
+    if (value < week && value > past) past = value;
+  });
+  if (upcoming > 0) return upcoming - week;
+  return past > 0 ? 1000 + week - past : -1;
+}
+
+// 某一天里要淡显的「非本周」课程：这一周不上，而且它的节次本周是空的；同一格只留最近要上的那一门。
+export function scheduleOffWeekBlocks(candidates: NativeCourseBlock[], taken: NativeCourseBlock[], week: number): NativeCourseBlock[] {
+  const ranked: NativeCourseBlock[] = candidates.filter((block: NativeCourseBlock) => {
+    const weeks = block.course.weekList ?? [];
+    if (!weeks.length || weeks.includes(week)) return false;
+    if (scheduleOccurrenceDistance(weeks, week) < 0) return false;
+    return !taken.some((item: NativeCourseBlock) => scheduleBlocksOverlap(item, block));
+  });
+  ranked.sort((left: NativeCourseBlock, right: NativeCourseBlock) => {
+    return scheduleOccurrenceDistance(left.course.weekList ?? [], week) - scheduleOccurrenceDistance(right.course.weekList ?? [], week)
+      || left.startSlot - right.startSlot;
+  });
+  const chosen: NativeCourseBlock[] = [];
+  ranked.forEach((block: NativeCourseBlock) => {
+    if (!chosen.some((item: NativeCourseBlock) => scheduleBlocksOverlap(item, block))) chosen.push(block);
+  });
+  return chosen;
 }

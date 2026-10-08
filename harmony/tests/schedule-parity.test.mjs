@@ -160,6 +160,7 @@ function loadedStore(adjustments = []) {
   return store;
 }
 const names = blocks => plain(blocks.map(item => item.course.name));
+const scheduleShift = date => schedule('NativeScheduleStore').scheduleShiftDate(date, -1);
 
 test('a day off shows nothing and a make-up day shows the courses of the day it takes over', () => {
   const store = loadedStore([{ date: '2026-09-14', kind: 'off', note: '校运动会' }, { date: '2026-09-19', kind: 'swap', source: '2026-09-17' },
@@ -184,13 +185,80 @@ test('a day off shows nothing and a make-up day shows the courses of the day it 
 test('with weekends hidden, a weekend day that has classes or is adjusted still shows', () => {
   const store = loadedStore([{ date: '2026-09-20', kind: 'off' }]);
   assert.deepEqual(plain(store.visibleDays()), [1, 2, 3, 4, 5, 6, 7]);
-  store.showWeekend = false;
+  store.showSaturday = false;
+  store.showSunday = false;
   assert.deepEqual(plain(store.visibleDays()), [1, 2, 3, 4, 5, 7]);
   store.selectWeek('3');
   assert.deepEqual(plain(store.visibleDays()), [1, 2, 3, 4, 5, 6]);
   store.selectWeek('1');
   assert.deepEqual(plain(store.visibleDays()), [1, 2, 3, 4, 5]);
-  assert.equal(store.previewWeek('3').showWeekend, false);
+  assert.equal(store.previewWeek('3').showSaturday, false);
+  assert.equal(store.previewWeek('3').showSunday, false);
+});
+
+test('display settings: Saturday and Sunday hide separately and Sunday can lead the week', () => {
+  const rules = schedule('NativeScheduleStore');
+  const none = () => false;
+  assert.deepEqual(plain(rules.scheduleWeekColumns(true, true, false, none)), [1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(plain(rules.scheduleWeekColumns(true, true, true, none)), [7, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(plain(rules.scheduleWeekColumns(false, true, false, none)), [1, 2, 3, 4, 5, 7]);
+  assert.deepEqual(plain(rules.scheduleWeekColumns(false, false, true, none)), [1, 2, 3, 4, 5]);
+  // A hidden day with classes stays, in its Sunday-first place.
+  assert.deepEqual(plain(rules.scheduleWeekColumns(false, false, true, day => day === 7)), [7, 1, 2, 3, 4, 5]);
+  assert.equal(rules.scheduleShiftDate('2026-09-07', -1), '2026-09-06');
+  assert.equal(rules.scheduleShiftDate('2026-03-01', -1), '2026-02-28');
+  assert.equal(rules.scheduleShiftDate('', -1), '');
+  assert.equal(rules.scheduleNormalizedRowHeight(123), 125);
+  assert.equal(rules.scheduleNormalizedRowHeight(999), 180);
+  assert.equal(rules.scheduleNormalizedRowHeight(NaN), 100);
+  assert.equal(rules.scheduleNormalizedTextSize('huge'), 'standard');
+  assert.ok(rules.scheduleDisplayTextScale('large', false) > 1 && rules.scheduleDisplayTextScale('standard', true) < 1);
+});
+
+test('with Sunday first, the leading column is the Sunday before that Monday', () => {
+  const store = loadedStore([]);
+  store.selectWeek('2');
+  const sundayOfWeekOne = scheduleShift(store.rawDate(1));
+  assert.equal(store.leadsWeek(7), false);
+  assert.equal(store.shownRawDate(7), store.rawDate(7));
+  store.sundayFirst = true;
+  assert.equal(store.leadsWeek(7), true);
+  assert.deepEqual(plain(store.weekColumns().slice(0, 2)), [7, 1]);
+  assert.equal(store.shownRawDate(7), sundayOfWeekOne);
+  assert.deepEqual(plain(store.shownSlot(7)), { week: 1, day: 7 });
+  assert.deepEqual(names(store.shownBlocks(7)), names(store.blocksOnDate(sundayOfWeekOne)));
+  // Weekdays are untouched, and the day view keeps the teaching week's own Sunday.
+  assert.equal(store.shownRawDate(1), store.rawDate(1));
+  store.setViewMode('day');
+  assert.equal(store.leadsWeek(7), false);
+  assert.equal(store.shownRawDate(7), store.rawDate(7));
+  // The Sunday before week 1 is outside the term: a date, no classes, nothing to add to.
+  store.setViewMode('week');
+  store.selectWeek('1');
+  assert.equal(store.shownRawDate(7), scheduleShift(store.rawDate(1)));
+  assert.deepEqual(names(store.shownBlocks(7)), []);
+  assert.equal(store.shownSlot(7).week, 0);
+  assert.equal(store.previewWeek('2').sundayFirst, true);
+});
+
+test('courses of other weeks fill only the periods this week leaves free', () => {
+  const rules = schedule('NativeScheduleStore');
+  const off = (name, startSlot, endSlot, weekList) => ({ day: 1, bigSlot: 1, startSlot, endSlot, course: { name, weeks: '', weekList } });
+  const taken = [off('本周的课', 1, 2, [5])];
+  const candidates = [off('被挡住', 2, 3, [6]), off('已结课', 5, 6, [1, 2]), off('下周开', 5, 6, [6, 7]), off('期末开', 5, 6, [15]),
+    off('没有周次', 7, 8, []), off('本周也上', 9, 10, [5, 6])];
+  assert.deepEqual(names(rules.scheduleOffWeekBlocks(candidates, taken, 5)), ['下周开']);
+  assert.deepEqual(names(rules.scheduleOffWeekBlocks(candidates, [], 16)), ['期末开', '被挡住', '本周也上']);
+  const store = loadedStore([]);
+  assert.deepEqual(names(store.offWeekBlocks(1)), []);
+  store.showOffWeek = true;
+  for (let day = 1; day <= 7; day += 1) {
+    const shown = store.shownBlocks(day);
+    for (const ghost of store.offWeekBlocks(day)) {
+      assert.ok(!ghost.course.weekList.includes(store.weekNumber()), ghost.course.name);
+      assert.ok(shown.every(item => item.endSlot < ghost.startSlot || ghost.endSlot < item.startSlot), ghost.course.name);
+    }
+  }
 });
 
 test('display priorities are kept per semester, survive a restart and are dropped with the account', () => {

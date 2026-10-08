@@ -42,6 +42,8 @@ export struct NativeSchedulePage {
   @State private detailLocation: string = '';
   @State private detailWeeks: string = '';
   @State private detailNote: string = '';
+  // Set when the course can only be looked at from here (not this week's, or the leading Sunday's).
+  @State private detailPeek: string = '';
   @State private detailSchedule: string = '';
   @State private detailCustom: boolean = false;
   @State private detailOrphaned: boolean = false;
@@ -115,7 +117,8 @@ export struct NativeSchedulePage {
                     NativeScheduleBody({ store: this.store, view: this.weekPreview(week.value),
                       contentHeight: this.contentHeight, pageWidth: this.pageWidth,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
-                      onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay) })
+                      onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
+                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
                   }
                 }.width('100%').height('100%')
               }, (week: NativeScheduleWeek) => this.store.selectedSemester + ':' + week.value)
@@ -129,7 +132,8 @@ export struct NativeSchedulePage {
             NativeScheduleBody({ store: this.store, view: this.store,
               contentHeight: this.contentHeight, pageWidth: this.pageWidth,
               onLogin: this.onLogin, onAddSlot: this.onAddSlot,
-              onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay) })
+              onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
+              onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
           }
         }.layoutWeight(1).width('100%').clip(true).margin({ bottom: this.bottomClearance })
           .onRefreshing(() => { this.pullRefreshing = true; this.store.load(true); })
@@ -170,15 +174,17 @@ export struct NativeSchedulePage {
         this.modeButton('周', 'week')
         this.modeButton('月', 'month')
       }.width(108).height(32).padding(2).borderRadius(16).backgroundColor(this.softSurfaceColor())
-      Button() { SymbolGlyph($r('sys.symbol.scope')).fontSize(17).fontColor([this.textColor()]) }
-        .type(ButtonType.Circle).width(32).height(32).padding(0).backgroundColor(this.surfaceColor())
-        .responseRegion({ x: -3, y: -6, width: 38, height: 44 })
-        .id('schedule-today').accessibilityText('回到本周今日')
-        .onClick(() => {
-          this.store.returnToCurrentWeek();
-          this.store.selectDay(new Date().getDay() || 7);
-          this.store.seedMonthSelection(true);
-        })
+      if (this.store.showBackToWeek) {
+        Button() { SymbolGlyph($r('sys.symbol.scope')).fontSize(17).fontColor([this.textColor()]) }
+          .type(ButtonType.Circle).width(32).height(32).padding(0).backgroundColor(this.surfaceColor())
+          .responseRegion({ x: -3, y: -6, width: 38, height: 44 })
+          .id('schedule-today').accessibilityText('回到本周今日')
+          .onClick(() => {
+            this.store.returnToCurrentWeek();
+            this.store.selectDay(new Date().getDay() || 7);
+            this.store.seedMonthSelection(true);
+          })
+      }
       if (this.store.readOnly) {
         Button() { SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([this.textColor()]) }
           .type(ButtonType.Circle).width(32).height(32).padding(0).backgroundColor(this.surfaceColor())
@@ -505,7 +511,7 @@ export struct NativeSchedulePage {
           Text(this.detailName).width('100%').fontSize(22).fontWeight(FontWeight.Bold).fontColor(this.textColor())
           Text(this.detailSchedule).width('100%').fontSize(14).fontColor(scheduleMetaText(this.store.dark))
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        if (this.store.canEdit()) {
+        if (this.store.canEdit() && !this.detailPeek) {
           Button('编辑').type(ButtonType.Capsule).height(32).fontSize(14).fontWeight(600).padding({ left: 14, right: 14 })
             .fontColor(scheduleThemeText(this.store.palette, this.store.dark))
             .backgroundColor(scheduleThemeTint(this.store.palette, this.store.dark ? 0.2 : 0.1))
@@ -523,7 +529,9 @@ export struct NativeSchedulePage {
           if (this.detailNote) this.detailRow('备注', this.detailNote)
         }.width('100%')
       }
-      if (this.detailOrphaned) {
+      if (this.detailPeek.trim()) {
+        Text(this.detailPeek.trim()).width('100%').fontSize(13).fontColor(scheduleMetaText(this.store.dark))
+      } else if (this.detailOrphaned) {
         Text('教务课表里已找不到这门课，请核对后保留或删除。').width('100%').fontSize(13).fontColor('#C2410C')
       } else if (this.detailCustom) {
         Text('自己添加或修改过的课程').width('100%').fontSize(13).fontColor(scheduleMetaText(this.store.dark))
@@ -552,7 +560,8 @@ export struct NativeSchedulePage {
 
   // `shownDay` is the weekday the course is shown on; on a make-up day it differs from the
   // weekday the course belongs to, which is what the editor uses.
-  private openDetail(block: NativeCourseBlock, shownDay: number): void {
+  private openDetail(block: NativeCourseBlock, shownDay: number, peek: string = ''): void {
+    this.detailPeek = peek;
     this.detailBlock = block;
     this.detailName = block.course.name || '课程';
     this.detailTeacher = (block.course.teacher ?? '').trim();
