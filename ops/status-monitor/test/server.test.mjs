@@ -77,6 +77,29 @@ test("the overall headline reflects how serious the worst open problem is", () =
   assert.equal(later.incidents.length, 2);
 });
 
+test("a degraded check shows its own label and detail, and the headline says degraded rather than slow", () => {
+  const { config, state, sample } = fixture();
+  for (const id of ["web", "forum", "voicehub"]) sample(id, up, NOW - MINUTE);
+  const some = { outcome: "slow", elapsedMs: 50, reason: "部分节点离线", detail: "在线 1/2 台 <b>" };
+  for (const minute of [2, 1]) sample("voicehub", some, NOW - minute * MINUTE);
+
+  const view = buildView(state, config, NOW);
+  const [agents] = view.groups[1].checks;
+  assert.deepEqual([agents.status, agents.statusLabel, agents.detail, agents.reason], ["slow", "部分节点离线", "在线 1/2 台 <b>", ""]);
+  assert.deepEqual(view.overall, { status: "partial", label: "部分服务降级" });
+  assert.equal(agents.uptime, 1);
+  assert.deepEqual(view.incidents, []);
+  assert.match(renderPage(view), /<div class="state"><span>在线 1\/2 台 &lt;b&gt;<\/span><svg[^>]*>.*?<\/svg>部分节点离线<\/div>/u);
+
+  // 单纯响应慢仍然是原来的说法，也没有附加说明。
+  const slow = fixture();
+  for (const id of ["web", "forum", "voicehub"]) slow.sample(id, up, NOW - 3 * MINUTE);
+  for (const minute of [2, 1]) slow.sample("forum", { outcome: "slow", elapsedMs: 4200, reason: "" }, NOW - minute * MINUTE);
+  const slowView = buildView(slow.state, slow.config, NOW);
+  assert.equal(slowView.overall.label, "部分服务响应缓慢");
+  assert.deepEqual([slowView.groups[0].checks[1].statusLabel, slowView.groups[0].checks[1].detail], ["响应缓慢", ""]);
+});
+
 test("the page escapes everything it prints and matches its own content security policy", async (context) => {
   const { config, state, sample } = fixture();
   for (const minute of [3, 2, 1]) sample("forum", down, NOW - minute * MINUTE);

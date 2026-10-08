@@ -220,50 +220,83 @@ async function findBrokenAsset(asset, check, request, certificates) {
   }
 }
 
-function contentFailure(check, response) {
-  if (!check.expect.status.includes(response.status)) return `HTTP ${response.status}`;
-  if (check.expect.contains && !response.body.includes(check.expect.contains)) return check.failureText || "页面内容异常";
-  const expectations = Object.entries(check.expect.json);
-  if (expectations.length) {
-    let parsed;
-    try {
-      parsed = JSON.parse(response.body);
-    } catch {
-      return "返回内容不是 JSON";
-    }
-    for (const [jsonPath, expected] of expectations) {
-      if (getPath(parsed, jsonPath) !== expected) return check.failureText || `检查未通过（${jsonPath}）`;
-    }
+const MISSING_DATA = "未取得状态数据";
+
+// 逐条核对 JSON 规则，返回第一条不满足的。字段不存在和取值不符分开报告：前者说明对方没给数据，不能套用检查项自己的失败说明。
+function findJsonMismatch(parsed, rules) {
+  for (const [jsonPath, expected] of Object.entries(rules.json)) {
+    const actual = getPath(parsed, jsonPath);
+    if (actual === undefined) return { path: jsonPath, missing: true };
+    if (actual !== expected) return { path: jsonPath, missing: false };
   }
-  return "";
+  for (const [jsonPath, minimum] of Object.entries(rules.jsonMin)) {
+    const actual = getPath(parsed, jsonPath);
+    if (typeof actual !== "number") return { path: jsonPath, missing: true };
+    if (actual < minimum) return { path: jsonPath, missing: false };
+  }
+  return null;
 }
 
-function readVersion(check, body) {
+const hasJsonRules = (rules) => Boolean(rules) && Object.keys(rules.json).length + Object.keys(rules.jsonMin).length > 0;
+
+// 把 "在线 {data.jwxtAgents.online}/{data.jwxtAgents.total} 台" 里的路径换成响应里的值；任何一个取不到就整条不显示。
+function renderDetail(template, parsed) {
+  if (!template) return "";
+  let complete = true;
+  const text = template.replace(/\{([^{}]+)\}/gu, (_match, jsonPath) => {
+    const value = getPath(parsed, jsonPath.trim());
+    if (!["number", "string", "boolean"].includes(typeof value)) complete = false;
+    return String(value);
+  });
+  return complete ? text.slice(0, 80) : "";
+}
+
+function readVersion(check, parsed) {
   if (!check.versionFrom) return null;
+  const value = getPath(parsed, check.versionFrom);
+  return typeof value === "string" && /^[\w.-]{1,64}$/u.test(value) ? value : null;
+}
+
+// 判定一次响应：failure 非空即失败；warning 非空表示可用但降级（如部分节点离线）。
+function evaluate(check, response) {
+  if (!check.expect.status.includes(response.status)) return { failure: `HTTP ${response.status}` };
+  if (check.expect.contains && !response.body.includes(check.expect.contains)) return { failure: check.failureText || "页面内容异常" };
+
+  const judged = hasJsonRules(check.expect) || hasJsonRules(check.degraded);
+  if (!judged && !check.detail && !check.versionFrom) return {};
+  let parsed;
   try {
-    const value = getPath(JSON.parse(body), check.versionFrom);
-    return typeof value === "string" && /^[\w.-]{1,64}$/u.test(value) ? value : null;
+    parsed = JSON.parse(response.body);
   } catch {
-    return null;
+    return judged ? { failure: "返回内容不是 JSON" } : {};
   }
+
+  const facts = { version: readVersion(check, parsed), detail: renderDetail(check.detail, parsed) };
+  const mismatch = findJsonMismatch(parsed, check.expect);
+  if (mismatch) return { ...facts, failure: mismatch.missing ? MISSING_DATA : (check.failureText || `检查未通过（${mismatch.path}）`) };
+  const degraded = check.degraded ? findJsonMismatch(parsed, check.degraded) : null;
+  if (degraded?.missing) return { ...facts, failure: MISSING_DATA };
+  return { ...facts, warning: degraded ? check.degraded.text : "" };
 }
 
 /**
- * 执行一个检查项，返回 { outcome: "up" | "slow" | "down", reason, elapsedMs, httpStatus, certificates, version }。
+ * 执行一个检查项，返回 { outcome: "up" | "slow" | "down", reason, detail, elapsedMs, httpStatus, certificates, version }。
+ * slow 表示可用但不理想：reason 为空是响应慢，非空是降级规则给出的说明。
  * 不抛异常：任何失败都归为 down 并给出可公开的原因。
  */
 export async function runCheck(check, { request = httpRequest } = {}) {
   const startedAt = performance.now();
   const certificates = [];
-  const finish = (reason, extra = {}) => {
+  const finish = ({ failure = "", warning = "", ...extra }) => {
     const elapsedMs = Math.round(performance.now() - startedAt);
     const latest = new Map(certificates.map((certificate) => [certificate.host, certificate]));
     return {
       elapsedMs,
-      reason,
-      outcome: reason ? "down" : (check.slowMs > 0 && elapsedMs > check.slowMs ? "slow" : "up"),
+      reason: failure || warning,
+      outcome: failure ? "down" : (warning || (check.slowMs > 0 && elapsedMs > check.slowMs) ? "slow" : "up"),
       httpStatus: null,
       version: null,
+      detail: "",
       certificates: [...latest.values()],
       ...extra,
     };
@@ -277,21 +310,21 @@ export async function runCheck(check, { request = httpRequest } = {}) {
       followRedirects: check.followRedirects,
     });
     certificates.push(...response.certificates);
-    const extra = { httpStatus: response.status, version: readVersion(check, response.body) };
-    const failure = contentFailure(check, response);
-    if (failure) return finish(failure, extra);
+    const { failure = "", warning = "", version = null, detail = "" } = evaluate(check, response);
+    const extra = { version, detail, httpStatus: response.status };
+    if (failure) return finish({ failure, ...extra });
 
     if (check.type === "assets") {
       const assets = extractAssets(response.body, response.url);
-      if (!assets.length) return finish("页面没有引用脚本或样式", extra);
+      if (!assets.length) return finish({ failure: "页面没有引用脚本或样式", ...extra });
       const broken = (await Promise.all(assets.map((asset) => findBrokenAsset(asset, check, request, certificates)))).filter(Boolean);
       if (broken.length) {
-        return finish(`资源加载失败：${broken[0]}${broken.length > 1 ? ` 等 ${broken.length} 个` : ""}`, extra);
+        return finish({ failure: `资源加载失败：${broken[0]}${broken.length > 1 ? ` 等 ${broken.length} 个` : ""}`, ...extra });
       }
     }
-    return finish("", extra);
+    return finish({ warning, ...extra });
   } catch (error) {
-    return finish(describeError(error));
+    return finish({ failure: describeError(error) });
   }
 }
 

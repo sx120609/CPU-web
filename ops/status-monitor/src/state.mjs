@@ -21,9 +21,12 @@ function createEntry() {
     lastSampleAt: null,
     lastKnownAt: null,
     reason: "",
+    warning: "",
+    detail: "",
     recentMs: [],
     days: {},
     incidentId: null,
+    degradedSince: null,
   };
 }
 
@@ -35,6 +38,7 @@ function setStatus(entry, status, since) {
 /**
  * 记入一次探测结果，返回需要通知的事件。
  * 连续 failureThreshold 次失败才判定中断并开事件；第一次成功即恢复。
+ * slow 同样要连续出现才改变状态；其中带说明的（降级规则命中，如部分节点离线）会发通知，单纯响应慢不发。
  * outcome 为 unknown（监控机自己断网）时不计入可用率，也不改变当前状态。
  */
 export function applySample(state, check, sample, { now, timezone }) {
@@ -42,6 +46,7 @@ export function applySample(state, check, sample, { now, timezone }) {
   entry.lastSampleAt = now;
   if (sample.outcome === "unknown") return [];
   entry.lastKnownAt = now;
+  entry.detail = sample.detail ?? "";
 
   const bucket = entry.days[dayKey(now, timezone)] ??= { up: 0, slow: 0, down: 0 };
   bucket[sample.outcome] += 1;
@@ -65,6 +70,8 @@ export function applySample(state, check, sample, { now, timezone }) {
     state.incidents.unshift(incident);
     state.incidents.length = Math.min(state.incidents.length, MAX_INCIDENTS);
     entry.incidentId = incident.id;
+    // 中断的通知盖过之前的降级通知，恢复时只按中断报一次。
+    entry.degradedSince = null;
     setStatus(entry, "down", incident.startedAt);
     return [{ type: "down", checkId: check.id, name: check.name, critical: check.critical, reason: incident.reason, startedAt: incident.startedAt }];
   }
@@ -79,10 +86,20 @@ export function applySample(state, check, sample, { now, timezone }) {
   entry.failures = 0;
   entry.failingSince = null;
   entry.reason = "";
+  entry.warning = sample.outcome === "slow" ? (sample.reason ?? "") : "";
   entry.slowStreak = sample.outcome === "slow" ? entry.slowStreak + 1 : 0;
   entry.recentMs = [...entry.recentMs, sample.elapsedMs].slice(-RECENT_SAMPLES);
   const status = entry.slowStreak >= check.failureThreshold ? "slow" : "up";
   if (entry.status !== status) setStatus(entry, status, now);
+
+  const degraded = status === "slow" && Boolean(entry.warning);
+  if (degraded && !entry.degradedSince) {
+    entry.degradedSince = now;
+    events.push({ type: "degraded", checkId: check.id, name: check.name, reason: entry.warning, detail: entry.detail, startedAt: now });
+  } else if (!degraded && entry.degradedSince) {
+    events.push({ type: "recovered", kind: "degraded", checkId: check.id, name: check.name, startedAt: entry.degradedSince, resolvedAt: now });
+    entry.degradedSince = null;
+  }
   return events;
 }
 

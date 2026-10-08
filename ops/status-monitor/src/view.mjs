@@ -37,7 +37,9 @@ function describeCheck(check, entry, dayKeys, now) {
     name: check.name,
     description: check.description,
     critical: check.critical,
-    statusLabel: STATUS_LABELS[status],
+    // slow 状态带说明时是降级规则命中（如部分节点离线），否则是响应慢。
+    statusLabel: (status === "slow" && entry.warning) || STATUS_LABELS[status],
+    detail: fresh ? (entry.detail ?? "") : "",
     since: fresh ? entry.since : null,
     reason: status === "down" ? entry.reason : "",
     responseMs: status === "unknown" || status === "down" ? null : median(entry.recentMs),
@@ -49,7 +51,9 @@ function describeOverall(checks) {
   const down = checks.filter((check) => check.status === "down");
   if (down.some((check) => check.critical)) return { status: "down", label: "主要服务中断" };
   if (down.length) return { status: "partial", label: "部分服务异常" };
-  if (checks.some((check) => check.status === "slow")) return { status: "partial", label: "部分服务响应缓慢" };
+  const slow = checks.filter((check) => check.status === "slow");
+  if (slow.some((check) => check.statusLabel !== STATUS_LABELS.slow)) return { status: "partial", label: "部分服务降级" };
+  if (slow.length) return { status: "partial", label: "部分服务响应缓慢" };
   if (checks.every((check) => check.status === "unknown")) return { status: "unknown", label: "暂无监测数据" };
   return { status: "up", label: "所有服务运行正常" };
 }

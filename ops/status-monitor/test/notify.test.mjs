@@ -31,6 +31,14 @@ test("messages read like a short incident note", () => {
   assert.equal(formatMessage([recovered("接口服务")], { ...context, publicUrl: "" }).text, "【药大拾间】接口服务已恢复\n接口服务：中断 6 分钟（14:32–14:38）");
   assert.equal(formatMessage([certificate], { ...context, publicUrl: "" }).text, "【药大拾间】证书即将到期\ncputime.cn：证书还有 13 天到期（11月27日）");
   assert.equal(formatMessage([{ type: "test", sentAt: at(9, 5) }], { ...context, publicUrl: "" }).text, "【药大拾间】通知测试\n这是一条测试消息，发送于 09:05，无需处理。");
+
+  const degraded = { type: "degraded", checkId: "jwxt-agent", name: "教务 Agent", reason: "部分节点离线", detail: "在线 1/2 台", startedAt: at(14, 32) };
+  assert.equal(formatMessage([degraded], { ...context, publicUrl: "" }).text, "【药大拾间】教务 Agent 降级\n教务 Agent：部分节点离线，在线 1/2 台（14:32 起）");
+  assert.equal(
+    formatMessage([{ ...recovered("教务 Agent"), kind: "degraded" }], { ...context, publicUrl: "" }).text,
+    "【药大拾间】教务 Agent 已恢复\n教务 Agent：降级 6 分钟（14:32–14:38）",
+  );
+  assert.equal(formatMessage([degraded, down("论坛")], { ...context, publicUrl: "" }).text.split("\n")[1], "降级｜教务 Agent：部分节点离线，在线 1/2 台（14:32 起）");
   assert.equal(
     formatMessage([recovered("接口服务"), down("论坛", "请求超时")], { ...context, publicUrl: "" }).text,
     "【药大拾间】服务状态变化\n恢复｜接口服务：中断 6 分钟（14:32–14:38）\n中断｜论坛：请求超时（14:32 起）",

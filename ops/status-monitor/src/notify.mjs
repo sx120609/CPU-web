@@ -9,19 +9,29 @@ function describeEvent(event, timezone) {
   if (event.type === "recovered") {
     const sameDay = dayKey(event.startedAt, timezone) === dayKey(event.resolvedAt, timezone);
     const started = sameDay ? formatClock(event.startedAt, timezone) : formatDateTime(event.startedAt, timezone);
-    return `${event.name}：中断 ${formatDuration(event.resolvedAt - event.startedAt)}（${started}–${formatClock(event.resolvedAt, timezone)}）`;
+    const what = event.kind === "degraded" ? "降级" : "中断";
+    return `${event.name}：${what} ${formatDuration(event.resolvedAt - event.startedAt)}（${started}–${formatClock(event.resolvedAt, timezone)}）`;
+  }
+  if (event.type === "degraded") {
+    return `${event.name}：${event.reason}${event.detail ? `，${event.detail}` : ""}（${formatClock(event.startedAt, timezone)} 起）`;
   }
   const expiry = formatDay(dayKey(event.expiresAt, timezone));
   return event.daysLeft < 0 ? `${event.host}：证书已过期（${expiry}）` : `${event.host}：证书还有 ${event.daysLeft} 天到期（${expiry}）`;
 }
 
+// 名称以字母或数字结尾（教务 Agent、www.cputime.cn）时，和后面的中文之间留一个空格。
+const headline = (events, what) => (events.length === 1
+  ? `${events[0].name}${/[A-Za-z0-9]$/u.test(events[0].name) ? " " : ""}${what}`
+  : `${events.length} 项服务${what}`);
+
 const HEADLINES = {
-  down: (events) => (events.length === 1 ? `${events[0].name}中断` : `${events.length} 项服务中断`),
-  recovered: (events) => (events.length === 1 ? `${events[0].name}已恢复` : `${events.length} 项服务已恢复`),
+  down: (events) => headline(events, "中断"),
+  degraded: (events) => headline(events, "降级"),
+  recovered: (events) => headline(events, "已恢复"),
   certificate: () => "证书即将到期",
   test: () => "通知测试",
 };
-const PREFIXES = { down: "中断｜", recovered: "恢复｜", certificate: "证书｜", test: "" };
+const PREFIXES = { down: "中断｜", degraded: "降级｜", recovered: "恢复｜", certificate: "证书｜", test: "" };
 
 // 把同一批事件合成一条消息，全站故障时不会连发十几条。
 export function formatMessage(events, { siteName, publicUrl, timezone }) {

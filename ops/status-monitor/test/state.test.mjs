@@ -68,6 +68,51 @@ test("slow responses need the same streak before the status changes and clear on
   assert.equal(state.incidents.length, 0);
 });
 
+test("a degraded rule notifies once it is confirmed and again when it clears, without opening an incident", () => {
+  const state = createState();
+  const agents = { id: "jwxt-agent", name: "教务 Agent", critical: false, failureThreshold: 2 };
+  const all = { outcome: "up", elapsedMs: 40, reason: "", detail: "在线 2/2 台" };
+  const some = { outcome: "slow", elapsedMs: 40, reason: "部分节点离线", detail: "在线 1/2 台" };
+  const at = (minute, sample) => applySample(state, agents, sample, { now: START + minute * MINUTE, timezone });
+
+  assert.deepEqual(at(0, all), []);
+  assert.deepEqual(at(1, some), []);
+  assert.deepEqual(at(2, some), [{ type: "degraded", checkId: "jwxt-agent", name: "教务 Agent", reason: "部分节点离线", detail: "在线 1/2 台", startedAt: START + 2 * MINUTE }]);
+  assert.deepEqual(at(3, some), []);
+  assert.equal(state.checks["jwxt-agent"].status, "slow");
+  assert.equal(state.checks["jwxt-agent"].warning, "部分节点离线");
+  assert.equal(state.checks["jwxt-agent"].detail, "在线 1/2 台");
+
+  assert.deepEqual(at(9, all), [{ type: "recovered", kind: "degraded", checkId: "jwxt-agent", name: "教务 Agent", startedAt: START + 2 * MINUTE, resolvedAt: START + 9 * MINUTE }]);
+  assert.equal(state.checks["jwxt-agent"].status, "up");
+  assert.equal(state.checks["jwxt-agent"].detail, "在线 2/2 台");
+  assert.deepEqual(state.incidents, []);
+  // 降级期间服务可用，全部计入可用。
+  assert.deepEqual(state.checks["jwxt-agent"].days["2026-10-08"], { up: 2, slow: 3, down: 0 });
+});
+
+test("an outage supersedes a degraded notice, and plain slowness never notifies", () => {
+  const state = createState();
+  const agents = { id: "jwxt-agent", name: "教务 Agent", critical: false, failureThreshold: 2 };
+  const some = { outcome: "slow", elapsedMs: 40, reason: "部分节点离线", detail: "在线 1/2 台" };
+  const none = { outcome: "down", elapsedMs: 40, reason: "教务节点全部离线", detail: "在线 0/2 台" };
+  const at = (minute, sample) => applySample(state, agents, sample, { now: START + minute * MINUTE, timezone });
+
+  at(0, some);
+  assert.deepEqual(at(1, some).map((event) => event.type), ["degraded"]);
+  assert.deepEqual(at(2, none), []);
+  assert.deepEqual(at(3, none).map((event) => event.type), ["down"]);
+  assert.equal(state.checks["jwxt-agent"].degradedSince, null);
+  // 从全部离线回到只剩一台：先报中断结束，降级确认后再单独提醒。
+  assert.deepEqual(at(4, some).map((event) => [event.type, event.kind]), [["recovered", undefined]]);
+  assert.deepEqual(at(5, some).map((event) => event.type), ["degraded"]);
+
+  const latency = { outcome: "slow", elapsedMs: 4200, reason: "" };
+  for (let minute = 0; minute < 4; minute += 1) assert.deepEqual(applySample(state, check, latency, { now: START + minute * MINUTE, timezone }), []);
+  assert.equal(state.checks.api.status, "slow");
+  assert.deepEqual(applySample(state, check, up, { now: START + 5 * MINUTE, timezone }), []);
+});
+
 test("daily buckets follow the configured timezone and only the last 90 days are kept", () => {
   const state = createState();
   // 北京时间 10 月 8 日 23:59 和 10 月 9 日 00:01 分属两天，尽管 UTC 日期相同。

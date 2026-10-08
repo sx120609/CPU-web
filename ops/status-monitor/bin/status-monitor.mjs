@@ -21,8 +21,12 @@ const HELP = `药大拾间状态监控
 async function runOnce(monitor) {
   const results = await monitor.runOnce();
   for (const { check, sample } of results) {
-    const detail = sample.outcome === "down" ? sample.reason : `${sample.elapsedMs} ms`;
-    process.stdout.write(`${sample.outcome === "down" ? "✗" : "✓"} ${check.name}（${check.id}）：${STATUS_LABELS[sample.outcome]}，${detail}\n`);
+    const facts = [
+      sample.outcome === "slow" && sample.reason ? sample.reason : STATUS_LABELS[sample.outcome],
+      sample.outcome === "down" ? sample.reason : `${sample.elapsedMs} ms`,
+      sample.detail,
+    ].filter(Boolean);
+    process.stdout.write(`${sample.outcome === "down" ? "✗" : "✓"} ${check.name}（${check.id}）：${facts.join("，")}\n`);
   }
   return results.some(({ sample }) => sample.outcome === "down") ? 1 : 0;
 }

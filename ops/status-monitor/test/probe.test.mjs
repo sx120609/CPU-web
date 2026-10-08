@@ -75,6 +75,54 @@ test("unexpected status codes, missing text and non-JSON bodies are failures wit
   assert.equal((await runCheck(unready)).reason, "就绪检查未通过");
 });
 
+test("agent counts drive the outcome: all online is up, some offline is degraded, none online is down", async (context) => {
+  let agents = { total: 2, online: 2 };
+  const { origin } = await startServer(context, {
+    "/ready": (_request, response) => response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ code: 0, data: { ready: true, jwxtAgents: agents } })),
+    "/old-release": json({ code: 0, data: { ready: true } }),
+    "/unready": json({ code: 5030, data: { ready: false } }, 503),
+  });
+  const rules = {
+    expect: { status: [200, 503], jsonMin: { "data.jwxtAgents.online": 1 } },
+    failureText: "教务节点全部离线",
+    degraded: { jsonMin: { "data.jwxtAgents.online": 2 }, text: "部分节点离线" },
+    detail: "在线 {data.jwxtAgents.online}/{data.jwxtAgents.total} 台",
+  };
+  const probe = (path = "/ready") => runCheck(checkOf(origin, { path, ...rules }));
+
+  const healthy = await probe();
+  assert.deepEqual([healthy.outcome, healthy.reason, healthy.detail], ["up", "", "在线 2/2 台"]);
+
+  agents = { total: 2, online: 1 };
+  const degraded = await probe();
+  assert.deepEqual([degraded.outcome, degraded.reason, degraded.detail], ["slow", "部分节点离线", "在线 1/2 台"]);
+
+  agents = { total: 2, online: 0 };
+  const offline = await probe();
+  assert.deepEqual([offline.outcome, offline.reason, offline.detail], ["down", "教务节点全部离线", "在线 0/2 台"]);
+
+  // 主站还没升级到带这个字段的版本，或者没就绪：是“没拿到数据”，不能说成节点全部离线。
+  for (const path of ["/old-release", "/unready"]) {
+    const missing = await probe(path);
+    assert.deepEqual([missing.outcome, missing.reason, missing.detail], ["down", "未取得状态数据", ""]);
+  }
+});
+
+test("a field the response does not carry is reported as missing data, not with the check's own failure text", async (context) => {
+  const { origin } = await startServer(context, {
+    "/unready": json({ code: 5030, data: { ready: false } }, 503),
+    "/text": reply(200, { "Content-Type": "text/plain" }, "ok"),
+  });
+  const bot = checkOf(origin, { path: "/unready", expect: { status: [200, 503], json: { "data.qqbot.connected": true } }, failureText: "机器人未连接" });
+  assert.equal((await runCheck(bot)).reason, "未取得状态数据");
+
+  // 只用来显示的字段取不到时不影响判定。
+  const decorated = await runCheck(checkOf(origin, { path: "/text", detail: "在线 {data.online} 台", versionFrom: "data.commit" }));
+  assert.deepEqual([decorated.outcome, decorated.detail, decorated.version], ["up", "", null]);
+  const strict = await runCheck(checkOf(origin, { path: "/text", degraded: { json: { "data.ok": true } } }));
+  assert.equal(strict.reason, "返回内容不是 JSON");
+});
+
 test("compressed bodies are decoded and redirects are followed within one time budget", async (context) => {
   const { origin } = await startServer(context, {
     "/old": reply(301, { Location: "/gzip" }, ""),

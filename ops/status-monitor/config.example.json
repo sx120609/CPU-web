@@ -65,6 +65,16 @@
       "name": "子系统",
       "checks": [
         {
+          "id": "jwxt-agent",
+          "name": "教务 Agent",
+          "description": "校园网内的教务节点",
+          "url": "https://cputime.cn/api/ready",
+          "expect": { "status": [200, 503], "jsonMin": { "data.jwxtAgents.online": 1 } },
+          "failureText": "教务节点全部离线",
+          "degraded": { "jsonMin": { "data.jwxtAgents.online": 2 }, "text": "部分节点离线" },
+          "detail": "在线 {data.jwxtAgents.online}/{data.jwxtAgents.total} 台"
+        },
+        {
           "id": "voicehub",
           "name": "药苑之声",
           "url": "https://cputime.cn/voicehub/",

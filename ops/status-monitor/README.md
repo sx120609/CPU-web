@@ -15,6 +15,7 @@
 | 接口服务 | `GET /api/health` | 主要服务 |
 | 数据服务 | `GET /api/ready`，要求 `data.ready` 为真 | 主要服务；覆盖数据库、缓存和教务网关，同时读取主站当前版本 |
 | 论坛 | `GET /api/boards` | 一次真实的数据库读取 |
+| 教务 Agent | `GET /api/ready`，读取 `data.jwxtAgents` | 显示在线台数；全部离线算中断，只掉了一部分算降级 |
 | 药苑之声 | `GET /voicehub/` | 独立的 Nuxt 服务 |
 | QQ 机器人 | `GET /api/ready`，要求 `data.qqbot.connected` 为真 | |
 | www.cputime.cn、cpu.lizmt.cn | `GET /api/health` | 其他入口域名 |
@@ -27,6 +28,7 @@
 - 一次探测失败后隔 3 秒重试，两次都失败才记为一次失败。
 - 连续 2 次失败（约 2 分钟）判定为中断并发通知；之后第一次成功即恢复。
 - 响应超过 3 秒记为“响应缓慢”，不算中断，也不发通知。
+- 检查项可以配置降级规则（`degraded`）：服务可用但不完整时，状态页显示规则里的说明，连续 2 次命中后发“降级”通知，恢复时再通知一次。降级期间仍计入可用，不出现在“近期事件”里。
 - 探测失败时会先确认监控机自己能不能上网（请求 `connectivity.urls`）。监控机断网期间的结果不计入可用率、不触发告警。
 - 可用率按探测成功的次数计算。状态页上一天内失败不到 5% 标为“短暂异常”，否则标为“中断”。
 - 证书剩余天数跌破 14、7、3、1 天时各提醒一次，证书换新后重新计。
@@ -126,7 +128,10 @@ location / {
 | `expect.status` | 允许的状态码，默认 200，可以是数组 |
 | `expect.contains` | 响应体必须包含的文字 |
 | `expect.json` | “路径: 期望值”，如 `{ "data.ready": true }` |
-| `failureText` | 内容不符合预期时显示的原因，如“机器人未连接” |
+| `expect.jsonMin` | “路径: 最小值”，该字段必须是不小于它的数字，如 `{ "data.jwxtAgents.online": 1 }` |
+| `failureText` | 取值不符合预期时显示的原因，如“机器人未连接”。响应里根本没有这个字段时，显示的是“未取得状态数据” |
+| `degraded` | 降级规则：`json`、`jsonMin` 写法同上，`text` 是状态页和通知里的说明。`expect` 通过而这里不满足时算降级 |
+| `detail` | 显示在状态旁边的一行数据，`{路径}` 会换成响应里的值，如 `在线 {data.jwxtAgents.online}/{data.jwxtAgents.total} 台` |
 | `versionFrom` | 从响应 JSON 的这个路径读取主站版本，显示在页脚 |
 | `method`、`headers`、`followRedirects` | 请求细节，默认 `GET`、无额外请求头、跟随重定向 |
 | `intervalSeconds` 等 | `defaults` 里的五项都可以按检查项单独覆盖 |
@@ -152,7 +157,7 @@ location / {
 | `generic` | 自己的接收端 | `{"title","text","site","statusPage","events"}` |
 
 - 地址和令牌带密钥，建议用 `urlEnv`、`tokenEnv` 从环境变量读取；它们不会出现在日志里。
-- `events` 可以只订阅 `down`、`recovered`、`certificate` 中的一部分，默认全部。
+- `events` 可以只订阅 `down`、`degraded`、`recovered`、`certificate` 中的一部分，默认全部。
 - 钉钉机器人请用“自定义关键词”方式，关键词填品牌名（消息标题以“【药大拾间】”开头）；加签方式不支持。
 - 用 OneBot 时，不要把通知发到和主站同一台机器上的机器人，否则主站整机故障时消息发不出来。
 
@@ -176,12 +181,14 @@ node bin/status-monitor.mjs --config config.json --test-notify
 
 - 历史数据只有一个文件：`dataDir/state.json`，包含每个检查项 90 天的按日统计、最近 200 条事件和证书到期时间。备份或迁移时复制它即可。
 - 文件损坏时会被改名为 `state.json.corrupt-<时间戳>`，监控从空数据继续运行。
-- 日志每行一个 JSON 对象，写到标准输出：`check_failed`（单次探测失败）、`status_down`、`status_recovered`、`status_certificate`、`monitor_offline`（监控机自己断网）、`notify_sent`、`notify_failed`。
+- 日志每行一个 JSON 对象，写到标准输出：`check_failed`（单次探测失败）、`status_down`、`status_degraded`、`status_recovered`、`status_certificate`、`monitor_offline`（监控机自己断网）、`notify_sent`、`notify_failed`。
 
 ## 局限
 
 - 只有一个探测点。监控机到主站之间的线路故障会被当成主站故障；监控机整体断网能识别出来并跳过。
-- 教务 Agent 的在线数量不在公开接口里，这里只能看到教务网关是否就绪；学校教务系统本身是否可用也不在探测范围内。
+- 教务 Agent 的在线数来自主站 `/api/ready` 的 `data.jwxtAgents`（只有 `total` 和 `online` 两个数字，口径是已启用且承担教务的 Agent）。主站版本早于这个字段时，该检查项会显示“未取得状态数据”。
+- 示例配置里“少于 2 台在线算降级”是按两台 Agent 写的，增减 Agent 后要改 `degraded.jsonMin`；“全部离线算中断”假定教务只走 Agent，如果开启了主站本机直连教务，这条规则要相应调整。
+- 学校教务系统本身是否可用不在探测范围内。
 - 监控停机期间没有数据，状态页上对应的日期显示为“无数据”。
 
 ## 测试

@@ -28,10 +28,29 @@ test("checks inherit defaults and can override them one by one", () => {
   assert.equal(check.intervalSeconds, 120);
   assert.equal(check.timeoutMs, 5000);
   assert.equal(check.failureThreshold, 2);
-  assert.deepEqual(check.expect, { status: [200], contains: "", json: {} });
+  assert.deepEqual(check.expect, { status: [200], contains: "", json: {}, jsonMin: {} });
+  assert.equal(check.degraded, null);
+  assert.equal(check.detail, "");
   assert.equal(config.timezone, "Asia/Shanghai");
   assert.equal(config.siteUrl, "https://cputime.cn/");
   assert.deepEqual(config.notify, []);
+});
+
+test("numeric thresholds, a degraded rule and a detail line are accepted together", async () => {
+  const [check] = normalizeConfig(minimal({
+    expect: { status: [200, 503], jsonMin: { "data.jwxtAgents.online": 1 } },
+    degraded: { jsonMin: { "data.jwxtAgents.online": 2 }, text: "部分节点离线" },
+    detail: "在线 {data.jwxtAgents.online}/{data.jwxtAgents.total} 台",
+  })).checks;
+  assert.deepEqual(check.expect.jsonMin, { "data.jwxtAgents.online": 1 });
+  assert.deepEqual(check.degraded, { json: {}, jsonMin: { "data.jwxtAgents.online": 2 }, text: "部分节点离线" });
+  assert.equal(check.detail, "在线 {data.jwxtAgents.online}/{data.jwxtAgents.total} 台");
+  assert.equal(normalizeConfig(minimal({ degraded: { json: { "data.ok": true } } })).checks[0].degraded.text, "部分异常");
+
+  // 示例配置里的教务 Agent 检查项就是这个组合。
+  const agents = (await loadConfig(examplePath)).checks.find((item) => item.id === "jwxt-agent");
+  assert.deepEqual(agents.expect.jsonMin, { "data.jwxtAgents.online": 1 });
+  assert.equal(agents.critical, false);
 });
 
 test("mistakes are rejected with a message that names the field", () => {
@@ -43,6 +62,9 @@ test("mistakes are rejected with a message that names the field", () => {
   rejects(minimal({ type: "tcp" }), /type/u);
   rejects(minimal({ method: "HEAD", expect: { contains: "x" } }), /HEAD/u);
   rejects(minimal({ expect: { json: { "data.ok": {} } } }), /期望值/u);
+  rejects(minimal({ expect: { jsonMin: { "data.online": "1" } } }), /最小值必须是数字/u);
+  rejects(minimal({ degraded: { text: "部分节点离线" } }), /degraded 至少要有一条/u);
+  rejects(minimal({ method: "HEAD", detail: "在线 {data.online} 台" }), /HEAD/u);
   rejects(minimal({}, { timezone: "Mars/Olympus" }), /timezone/u);
   rejects({ groups: [{ name: "a", checks: [minimal().groups[0].checks[0], minimal().groups[0].checks[0]] }] }, /id 重复：web/u);
 });
@@ -54,7 +76,7 @@ test("notification secrets can come from the environment and are required when r
   const [wecom] = normalizeConfig(withChannel({ format: "text", urlEnv: "STATUS_NOTIFY_URL" }), { env }).notify;
   assert.equal(wecom.url, env.STATUS_NOTIFY_URL);
   assert.equal(wecom.name, "text");
-  assert.deepEqual(wecom.events, ["down", "recovered", "certificate"]);
+  assert.deepEqual(wecom.events, ["down", "degraded", "recovered", "certificate"]);
 
   const [qq] = normalizeConfig(withChannel({ name: "QQ 群", format: "onebot", url: "http://127.0.0.1:3000/send_group_msg", groupId: "123456789", tokenEnv: "BOT_TOKEN" }), { env }).notify;
   assert.deepEqual(qq.target, { group_id: 123456789 });

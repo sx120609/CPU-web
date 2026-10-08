@@ -18,7 +18,7 @@ const CHECK_LIMITS = {
 };
 const CHECK_TYPES = new Set(["http", "assets"]);
 const NOTIFY_FORMATS = new Set(["generic", "text", "feishu", "onebot"]);
-const NOTIFY_EVENTS = ["down", "recovered", "certificate"];
+const NOTIFY_EVENTS = ["down", "degraded", "recovered", "certificate"];
 const CHECK_ID = /^[a-z0-9][a-z0-9-]{0,39}$/u;
 
 export class ConfigError extends Error {}
@@ -81,6 +81,23 @@ function normalizeTimings(raw, label, fallback) {
   return timings;
 }
 
+// json 要求取值相等，jsonMin 要求是不小于给定值的数字；expect 和 degraded 共用这两种规则。
+function normalizeJsonRules(raw, label) {
+  const json = raw.json ?? {};
+  if (!isPlainObject(json)) fail(`${label}.json 必须是“路径: 期望值”的对象`);
+  for (const [jsonPath, expected] of Object.entries(json)) {
+    if (expected !== null && !["string", "number", "boolean"].includes(typeof expected)) {
+      fail(`${label}.json["${jsonPath}"] 的期望值只能是字符串、数字、布尔值或 null`);
+    }
+  }
+  const jsonMin = raw.jsonMin ?? {};
+  if (!isPlainObject(jsonMin)) fail(`${label}.jsonMin 必须是“路径: 最小值”的对象`);
+  for (const [jsonPath, minimum] of Object.entries(jsonMin)) {
+    if (!Number.isFinite(minimum)) fail(`${label}.jsonMin["${jsonPath}"] 的最小值必须是数字`);
+  }
+  return { json, jsonMin };
+}
+
 function normalizeExpect(raw, label) {
   if (raw !== undefined && !isPlainObject(raw)) fail(`${label} 必须是对象`);
   const expect = raw ?? {};
@@ -88,18 +105,19 @@ function normalizeExpect(raw, label) {
   for (const status of statuses) {
     if (!Number.isInteger(status) || status < 100 || status > 599) fail(`${label}.status 必须是 HTTP 状态码`);
   }
-  const json = expect.json ?? {};
-  if (!isPlainObject(json)) fail(`${label}.json 必须是“路径: 期望值”的对象`);
-  for (const [jsonPath, expected] of Object.entries(json)) {
-    if (expected !== null && !["string", "number", "boolean"].includes(typeof expected)) {
-      fail(`${label}.json["${jsonPath}"] 的期望值只能是字符串、数字、布尔值或 null`);
-    }
-  }
   return {
     status: statuses,
     contains: expect.contains === undefined ? "" : text(expect.contains, `${label}.contains`, { max: 500 }),
-    json,
+    ...normalizeJsonRules(expect, label),
   };
+}
+
+function normalizeDegraded(raw, label) {
+  if (raw === undefined) return null;
+  if (!isPlainObject(raw)) fail(`${label} 必须是对象`);
+  const rules = normalizeJsonRules(raw, label);
+  if (!Object.keys(rules.json).length && !Object.keys(rules.jsonMin).length) fail(`${label} 至少要有一条 json 或 jsonMin 规则`);
+  return { ...rules, text: text(raw.text, `${label}.text`, { fallback: "部分异常", max: 40 }) };
 }
 
 function normalizeCheck(raw, label, defaults, seenIds) {
@@ -119,8 +137,11 @@ function normalizeCheck(raw, label, defaults, seenIds) {
     fail(`${label}.headers 必须是“名称: 字符串”的对象`);
   }
   const expect = normalizeExpect(raw.expect, `${label}.expect`);
-  if (method === "HEAD" && (expect.contains || Object.keys(expect.json).length)) {
-    fail(`${label} 用 HEAD 请求时没有响应体，不能检查 contains 或 json`);
+  const degraded = normalizeDegraded(raw.degraded, `${label}.degraded`);
+  const detail = text(raw.detail, `${label}.detail`, { fallback: "", max: 80 });
+  const readsBody = expect.contains || Object.keys(expect.json).length || Object.keys(expect.jsonMin).length || degraded || detail;
+  if (method === "HEAD" && readsBody) {
+    fail(`${label} 用 HEAD 请求时没有响应体，不能使用 contains、json、jsonMin、degraded 或 detail`);
   }
 
   return {
@@ -129,6 +150,8 @@ function normalizeCheck(raw, label, defaults, seenIds) {
     method,
     headers,
     expect,
+    degraded,
+    detail,
     name: text(raw.name, `${label}.name`, { max: 40 }),
     description: text(raw.description, `${label}.description`, { fallback: "", max: 80 }),
     url: httpUrl(raw.url, `${label}.url`),

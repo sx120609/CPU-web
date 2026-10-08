@@ -32,6 +32,7 @@ h2{margin:24px 4px 8px;color:var(--text-3);font-size:13px;font-weight:400}
 .name{min-width:0;font-weight:600}
 .name span{margin-left:8px;color:var(--text-3);font-size:12px;font-weight:400}
 .state{display:flex;flex:none;align-items:center;gap:6px;color:var(--text-2);font-size:13px}
+.state span{margin-right:4px;color:var(--text-3);font-size:12px}
 .reason{margin-top:2px;color:var(--text-2);font-size:13px}
 .bars{display:flex;height:24px;margin:10px -1px 0}
 .b{--c:var(--none);position:relative;min-width:0;flex:1 1 0;padding:0 1px;border-radius:3px;background:var(--c) content-box;font-style:normal}
@@ -143,7 +144,7 @@ function renderCheck(check, view) {
     ? `<p class="reason">${escapeHtml(check.reason)}${check.since ? ` · ${escapeHtml(formatDateTime(check.since, view.timezone))} 起` : ""}</p>`
     : "";
   return `<article class="row">
-<div class="head"><div class="name">${escapeHtml(check.name)}${check.description ? `<span>${escapeHtml(check.description)}</span>` : ""}</div><div class="state">${icon(check.status)}${escapeHtml(check.statusLabel)}</div></div>${reason}
+<div class="head"><div class="name">${escapeHtml(check.name)}${check.description ? `<span>${escapeHtml(check.description)}</span>` : ""}</div><div class="state">${check.detail ? `<span>${escapeHtml(check.detail)}</span>` : ""}${icon(check.status)}${escapeHtml(check.statusLabel)}</div></div>${reason}
 <div class="bars" role="img" aria-label="${escapeHtml(`${check.name}：${figures[0]}`)}">${check.days.map(renderBar).join("")}</div>
 <div class="axis"><span class="wide">${view.historyDays} 天前</span><span class="narrow">${view.historyDays / 2} 天前</span><span>${escapeHtml(figures.join(" · "))}</span><span>今天</span></div>
 </article>`;
