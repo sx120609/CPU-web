@@ -11,6 +11,8 @@ data class PlacedBlock(
     val endSlot: Int,
     val lane: Int = 0,
     val lanes: Int = 1,
+    /** Set while the couple timetable is drawn: whose course this is. */
+    val owner: CoupleOwner? = null,
 ) {
     val course: ScheduleCourse get() = block.course
     val day: Int get() = block.day

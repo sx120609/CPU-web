@@ -7,6 +7,7 @@ import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore } from "./ad
 import { installAndroidEditor } from "./editor";
 import { installAndroidHeader } from "./header";
 import { installAndroidNavigation } from "./navigation";
+import { installAndroidCouple } from "./couple";
 import { installAndroidShares } from "./shares";
 import { installAndroidShellObserver } from "./shell";
 
@@ -88,6 +89,7 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative && !(window as any)
   installAndroidShellObserver();
   installAndroidEditor();
   installAndroidShares();
+  installAndroidCouple();
   const install = () => {
     const router = liveApp()?.config.globalProperties.$router;
     if (router) {

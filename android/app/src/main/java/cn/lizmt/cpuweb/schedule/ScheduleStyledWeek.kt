@@ -229,15 +229,18 @@ internal fun StyledCourseTile(
     showLocation: Boolean = true,
     /** A small label above the name, such as 非本周. */
     tag: String? = null,
+    /** The couple timetable's colours: by person, in every style, instead of the style's own course colour. */
+    couple: CoupleTint? = null,
 ) {
     val scope = LocalScheduleStyle.current
     val display = LocalScheduleDisplay.current
     val style = scope.style
     val tint = scope.course(course.name)
-    val accent = Color(tint.accent(scope.dark))
+    val accent = couple?.let { Color(it.border) } ?: Color(tint.accent(scope.dark))
     val centered = style.centered && !dayRow
-    val inverse = style == ScheduleVisualStyle.Board && current && !scope.static
+    val inverse = couple == null && style == ScheduleVisualStyle.Board && current && !scope.static
     val ink = when {
+        couple != null -> Color(couple.text)
         inverse -> scope.canvas ?: Color.White
         style == ScheduleVisualStyle.Paper || style == ScheduleVisualStyle.Board -> scope.ink
         else -> accent
@@ -261,9 +264,9 @@ internal fun StyledCourseTile(
     val shape = RoundedCornerShape(style.cornerRadius.dp)
     val highlighted = current && !scope.static
     Box(
-        modifier.clip(shape).background(background)
-            .then(if (style.borderWidth > 0f) Modifier.border(
-                if (highlighted) 2.dp else style.borderWidth.dp, if (highlighted) scope.themeText else accent, shape) else Modifier)
+        modifier.clip(shape).then(if (couple != null) Modifier.background(couple.brush()) else Modifier.background(background))
+            .then(if (style.borderWidth > 0f || couple != null) Modifier.border(
+                if (highlighted) 2.dp else max(style.borderWidth, 1f).dp, if (highlighted) scope.themeText else accent, shape) else Modifier)
             .drawBehind { if (stripe > 0.dp) drawRect(accent, size = Size(stripe.toPx(), size.height)) }
             .padding(start = stripe, end = trailingInset)
             .padding(horizontal = if (dayRow) 12.dp else if (small) 3.dp else 7.dp,
@@ -331,16 +334,18 @@ internal fun ScheduleCardTag(text: String, color: Color) {
 @Composable
 internal fun MinimalCourseCard(
     course: ScheduleCourse, modifier: Modifier, height: Dp, compact: Boolean, showLocation: Boolean = true, tag: String? = null,
+    couple: CoupleTint? = null,
 ) {
     val scope = LocalScheduleStyle.current
     val display = LocalScheduleDisplay.current
     val tint = scope.course(course.name)
-    val accent = Color(tint.accent(scope.dark))
+    val accent = couple?.let { Color(it.text) } ?: Color(tint.accent(scope.dark))
     val short = height < 64.dp
     val small = compact || short
     ScheduleCardText {
     Column(
-        modifier.clip(RoundedCornerShape(9.dp)).background(Color(tint.fill(scope.dark, scope.hasBackground)))
+        modifier.clip(RoundedCornerShape(9.dp))
+            .then(if (couple != null) Modifier.background(couple.brush()) else Modifier.background(Color(tint.fill(scope.dark, scope.hasBackground))))
             .padding(horizontal = if (compact) 3.dp else 7.dp, vertical = if (display.compact) 2.dp else if (short) 4.dp else 6.dp),
         verticalArrangement = Arrangement.spacedBy(if (display.compact) 0.dp else if (small) 1.dp else 3.dp),
     ) {
@@ -470,6 +475,7 @@ internal fun StyledDayColumn(
 ) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
+    val couple = LocalScheduleCouple.current
     val marksToday = today && !scope.static
     val gap = StyledSlotGap
     val step = rowHeight + gap
@@ -525,18 +531,20 @@ internal fun StyledDayColumn(
                 .width(tileWidth).height(tileHeight)
                 .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
                 .then(if (interactive) Modifier.clickable { if (ghost) onOffWeek(block) else onCourse(block) }.semantics {
-                    contentDescription = (if (ghost) "非本周，" else "") + courseAccessibility(block.block) +
-                        (statusLabel?.invoke(block)?.let { "，$it" } ?: "")
+                    contentDescription = (if (ghost) "非本周，" else if (block.owner == CoupleOwner.Partner) "TA 的课，" else "") +
+                        courseAccessibility(block.block) + (statusLabel?.invoke(block)?.let { "，$it" } ?: "")
                 } else Modifier)
-            val tag = if (ghost) "非本周" else null
+            val tag = if (ghost) "非本周" else if (block.owner == CoupleOwner.Partner && block.span > 1) "TA" else null
+            val tint = if (ghost) null else couple?.tint(block, scope.dark)
             if (style == ScheduleVisualStyle.Minimal) {
-                MinimalCourseCard(block.course, tile, tileHeight, narrow, showLocation, tag)
+                MinimalCourseCard(block.course, tile, tileHeight, narrow, showLocation, tag, tint)
             } else {
                 Box(tile) {
                     StyledCourseTile(
                         block.course, Modifier.fillMaxSize(), tileHeight, compact = narrow,
                         start = periods.firstOrNull { it.number == block.startSlot }?.startTime, current = !ghost && isCurrent(block),
                         trailingInset = if (label != null) 80.dp else 0.dp, dayRow = dayRow, showLocation = showLocation, tag = tag,
+                        couple = tint,
                     )
                     if (label != null) {
                         Text(label, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End,
@@ -632,6 +640,8 @@ internal fun StyledWeekGrid(
     panelRadius: Dp = 20.dp,
     interactive: Boolean = true,
     onOffWeek: (PlacedBlock) -> Unit = {},
+    /** One day at reading size: the day view of the couple timetable. */
+    dayRow: Boolean = false,
 ) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
@@ -722,7 +732,7 @@ internal fun StyledWeekGrid(
                         }
                         StyledDayColumn(
                             day = day.day, blocks = day.blocks, periods = periods, columnWidth = columnWidth, rowHeight = rowHeight,
-                            today = day.today, adjustmentKind = day.adjustmentKind, compact = true,
+                            today = day.today, adjustmentKind = day.adjustmentKind, compact = !dayRow, dayRow = dayRow,
                             now = if (day.today) now else null, canAdd = canAdd && day.canAdd,
                             onCourse = { onCourse(day, it) }, onAddSlot = { onAddSlot(day.day, it) }, interactive = interactive,
                             offWeek = day.offWeek, onOffWeek = onOffWeek,

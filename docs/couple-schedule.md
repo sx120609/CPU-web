@@ -10,7 +10,11 @@
 - 点 TA 的课查看时间、地点和老师；点空格仍然是给自己添加课程。
 - 邀请、接受、配色、纪念日、解除绑定都在「更多 → 情侣课表」弹窗里。旧的 `/schedule/couple` 链接和邀请链接跳转到 `/schedule?couple=1` 打开这个弹窗。
 
-目前只做了 Web 端；各 App 通过 WebView 打开的课表会同样生效，原生课表页还没有接入。
+## 原生客户端
+
+原生课表页自己画 TA 的课，规则和网页一致：按日期对齐、一起上的课合并成一格、只有时间撞在一起的课才左右各占半格、六种风格都按人配色。状态行在周次条的第二行，「更多 → 情侣课表」是原生的管理面板（邀请、输入邀请码、互换配色、纪念日、显示开关、解除绑定）。原生端也会上传自己的课表：课表稳定几秒后把当前学期的整学期课表（含个人修改）发给 `PUT /api/couple/schedule`，内容没变时 12 小时内不重复上传。
+
+- 安卓：请求经过随包的页面桥 `window.CPUAndroidCouple`（`android/bridge/couple.ts`），用网页会话的登录态；逻辑在 `ScheduleCouple.kt`，面板在 `ScheduleCoupleSheet.kt`。「在课表里显示 TA 的课」只保存在本机。调试参数 `--es debugCouple active|pending` 配合 `--ez debugMockSchedule true` 可以不登录看效果。
 
 ## 绑定
 
@@ -54,6 +58,7 @@
 ## 测试
 
 - `server/tests/coupleSchedule.test.ts`、`web/tests/coupleSchedule.test.ts`、`web/tests/coupleSync.test.ts` 随 `npm test` 运行。
+- 安卓：`android/tests/native-bridge.test.mjs`（页面桥）和 `ScheduleParityTest` 里的情侣课表用例（配色与网页一致、合并规则、状态行文字、按日期取 TA 的课）。
 - `server/tests/coupleSchedule.integration.test.ts` 需要独立的 PostgreSQL，默认跳过：
 
   ```bash

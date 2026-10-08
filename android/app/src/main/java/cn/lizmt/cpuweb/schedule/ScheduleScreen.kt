@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.outlined.NearMe
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -63,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -80,7 +83,7 @@ import kotlinx.coroutines.flow.drop
 
 /** Sheets presented over the timetable. */
 sealed interface ScheduleSheet {
-    data class QuickLook(val block: CourseBlock, val offWeek: Boolean = false) : ScheduleSheet
+    data class QuickLook(val block: CourseBlock, val offWeek: Boolean = false, val partner: Boolean = false) : ScheduleSheet
     data class Overlap(val blocks: List<CourseBlock>) : ScheduleSheet
     data object WeekPicker : ScheduleSheet
     data object Style : ScheduleSheet
@@ -90,6 +93,7 @@ sealed interface ScheduleSheet {
     data object Editor : ScheduleSheet
     data object Appearance : ScheduleSheet
     data object Sharing : ScheduleSheet
+    data object Couple : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -105,6 +109,8 @@ private class ScheduleBodyContext(
     /** Week-view row height relative to "twelve periods fit the screen". */
     val rowScale: Float,
     val display: ScheduleDisplayOptions,
+    /** The partner's timetable while the couple timetable is drawn. */
+    val couple: CoupleLayer?,
     val onLogin: () -> Unit,
     val onCourse: (PlacedBlock, String) -> Unit,
     val onOffWeek: (PlacedBlock) -> Unit,
@@ -180,6 +186,20 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     }
     val now = if (style.showNowIndicator) DebugScheduleFixture.pinnedNow ?: minute else null
 
+    // The couple timetable belongs to the user's own grid; a shared timetable shows one person only.
+    val couple = activity.couple.takeIf { !store.readOnly }
+    val partnerStore = couple?.partnerStore
+    val layer = remember(couple?.status, couple?.visible, partnerStore, partnerStore?.result) { couple?.layer() }
+    if (couple != null) {
+        // The partner's timetable changes while this one is open.
+        LaunchedEffect(couple) {
+            while (true) {
+                delay(5 * 60_000L)
+                couple.refresh()
+            }
+        }
+    }
+
     fun openEditor(block: CourseBlock?, day: Int? = null, slot: Int? = null) {
         if (store.result == null || !store.canEdit) {
             activity.toast(if (store.readOnly) "共享课表只能查看" else "请先加载本科课表，研究生课表暂不支持个人修改")
@@ -191,6 +211,10 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     }
 
     fun openCourse(placed: PlacedBlock, week: String) {
+        if (placed.owner == CoupleOwner.Partner) {
+            sheet = ScheduleSheet.QuickLook(placed.block, partner = true)
+            return
+        }
         // Side-by-side courses are narrow in the week grid, so they are listed first.
         val matches = if (store.viewMode == "week" && placed.lanes > 1) store.overlapping(placed.block, week) else emptyList()
         sheet = if (matches.size > 1) ScheduleSheet.Overlap(matches) else ScheduleSheet.QuickLook(placed.block)
@@ -206,6 +230,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         showOffWeek = style.showOffWeek,
         rowScale = style.rowHeight / 100f,
         display = style.displayOptions,
+        couple = layer,
         onLogin = { activity.openAcademicAuthorization() },
         onCourse = ::openCourse,
         onOffWeek = { sheet = ScheduleSheet.QuickLook(it.block, offWeek = true) },
@@ -220,7 +245,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     val glass = if (style.background != null) colors.surface.copy(alpha = if (colors.dark) 0.7f else 0.78f) else null
     Box(Modifier.fillMaxSize().consumesTouches().background(colors.page)) {
         ScheduleBackground(style)
-        CompositionLocalProvider(LocalScheduleGlass provides glass, LocalScheduleStyle provides styleScope) {
+        CompositionLocalProvider(LocalScheduleGlass provides glass, LocalScheduleStyle provides styleScope, LocalScheduleCouple provides layer) {
         Column(Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 4.dp)) {
             // A term that failed to load has no weeks, but its picker must stay
             // reachable so another term can be chosen.
@@ -242,13 +267,16 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                         "分享所选周课表" to { shareSchedule(activity, store) },
                         "导出所选周日历" to { exportSchedule(activity, store) },
                         ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
+                        ("情侣课表" to { sheet = ScheduleSheet.Couple }).takeIf { !store.readOnly },
                         ("应用外观" to { sheet = ScheduleSheet.Appearance }).takeIf { !store.readOnly },
                     ),
                 )
                 if (store.viewMode == "month") {
                     MonthSwitcher(anchor) { monthAnchor = ScheduleMonth.shift(anchor, it) }
                 } else if (store.weekOptions().isNotEmpty()) {
-                    WeekSwitcher(store) { sheet = ScheduleSheet.WeekPicker }
+                    WeekSwitcher(store, couple, DebugScheduleFixture.pinnedNow ?: minute, onCouple = { sheet = ScheduleSheet.Couple }) {
+                        sheet = ScheduleSheet.WeekPicker
+                    }
                 }
             }
             // The failure state card already carries the message.
@@ -294,12 +322,14 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     when (val current = sheet) {
         null -> Unit
         is ScheduleSheet.QuickLook -> CourseQuickLookSheet(
-            store, current.block, style.palette, onDismiss = { sheet = null },
-            onEdit = if (store.canEdit && !current.offWeek) ({
+            // The partner's course reads its times from the partner's own periods.
+            if (current.partner) layer?.partnerStore ?: store else store,
+            current.block, style.palette, onDismiss = { sheet = null },
+            onEdit = if (store.canEdit && !current.offWeek && !current.partner) ({
                 sheet = null
                 openEditor(current.block)
             }) else null,
-            note = if (current.offWeek) "这门课本周不上" else null,
+            note = if (current.partner) "${layer?.partnerName?.ifEmpty { "TA" } ?: "TA"} 的课" else if (current.offWeek) "这门课本周不上" else null,
         )
         is ScheduleSheet.Overlap -> OverlapSheet(current.blocks, style.palette, onDismiss = { sheet = null }) {
             sheet = ScheduleSheet.QuickLook(it)
@@ -317,6 +347,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         })
         ScheduleSheet.Appearance -> AppearanceSheet(activity.appearance, onDismiss = { sheet = null })
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
+        ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
     }
     if (sheet == ScheduleSheet.Editor && !editor.visible) {
         LaunchedEffect(Unit) { sheet = null }
@@ -453,13 +484,42 @@ private fun ModeButton(label: String, selected: Boolean, modifier: Modifier, onC
 }
 
 @Composable
-private fun WeekSwitcher(store: ScheduleStore, onPick: () -> Unit) {
+private fun WeekSwitcher(store: ScheduleStore, couple: ScheduleCouple?, minute: Int, onCouple: () -> Unit, onPick: () -> Unit) {
     val colors = LocalScheduleColors.current
     val label = store.selectedWeek.takeIf { it.isNotEmpty() }?.let { "第${it}周" } ?: "选择周次"
     val start = store.dayDate(1)
     val end = store.dayDate(7)
     val range = if (start.isNotEmpty() && end.isNotEmpty()) "${start.replace('-', '.')} - ${end.replace('-', '.')}" else "校历暂无日期"
     val current = store.isCurrentWeek()
+    val bound = couple?.active
+    if (couple != null && bound != null) {
+        // Bound: the week and its dates share the first line, and the partner's
+        // status takes the second, so the couple timetable needs no row of its own.
+        SwitcherRow(
+            previous = "上一周", next = "下一周",
+            canPrevious = store.canMoveWeek(-1), canNext = store.canMoveWeek(1),
+            onPrevious = { store.moveWeek(-1) }, onNext = { store.moveWeek(1) },
+            description = "", onPick = null,
+        ) {
+            Row(
+                Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onPick).padding(horizontal = 6.dp)
+                    .semantics(mergeDescendants = true) { contentDescription = "选择周次，$label，$range" },
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(label, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text,
+                    fontFamily = navigatorTitleFamily(), maxLines = 1)
+                if (current) {
+                    Text("本周", fontSize = 10.sp, color = colors.accent, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(colors.accent.copy(alpha = 0.12f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp))
+                }
+                Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1,
+                    fontFamily = navigatorDateFamily(), overflow = TextOverflow.Ellipsis)
+            }
+            CoupleStatusLine(couple, bound, minute, onCouple)
+        }
+        return
+    }
     SwitcherRow(
         previous = "上一周", next = "下一周",
         canPrevious = store.canMoveWeek(-1), canNext = store.canMoveWeek(1),
@@ -479,6 +539,48 @@ private fun WeekSwitcher(store: ScheduleStore, onPick: () -> Unit) {
         // The date range is all digits, so the board may keep its monospaced face there.
         Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1,
             fontFamily = navigatorDateFamily())
+    }
+}
+
+/** The partner's status under the week title: what they are doing now, the days together, and the switch for their courses. */
+@Composable
+private fun CoupleStatusLine(couple: ScheduleCouple, bound: CoupleStatus.Active, minute: Int, onOpen: () -> Unit) {
+    val colors = LocalScheduleColors.current
+    val today = ScheduleStore.todayKey()
+    val text = couple.statusText(today, minute).orEmpty()
+    val days = CoupleRules.daysTogether(bound.anniversary, today)
+    val dot = Color(CoupleRules.tone(bound.partner.color, "", colors.dark).border)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = onOpen).padding(horizontal = 6.dp, vertical = 2.dp)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "情侣课表，$text" + (days?.let { "，在一起第 $it 天" } ?: "")
+                },
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+        ) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(dot))
+            Spacer(Modifier.width(5.dp))
+            Text(text, fontSize = 11.sp, lineHeight = 15.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (days != null) {
+                Spacer(Modifier.width(7.dp))
+                Icon(Icons.Rounded.Favorite, contentDescription = null, tint = CoupleAccent, modifier = Modifier.size(10.dp))
+                Spacer(Modifier.width(2.dp))
+                Text(days.toString(), fontSize = 11.sp, lineHeight = 15.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold,
+                    color = CoupleAccent, maxLines = 1)
+            }
+        }
+        // A small switch: the partner's courses on or off without opening the sheet.
+        Box(
+            Modifier.clip(CircleShape).toggleable(couple.visible, role = Role.Switch) { couple.updateVisible(it) }
+                .padding(horizontal = 4.dp, vertical = 4.dp).semantics { contentDescription = "在课表里显示 TA 的课" },
+        ) {
+            Box(
+                Modifier.size(width = 26.dp, height = 14.dp).clip(CircleShape)
+                    .background(if (couple.visible) CoupleAccent else colors.secondary.copy(alpha = 0.3f)).padding(2.dp),
+                contentAlignment = if (couple.visible) Alignment.CenterEnd else Alignment.CenterStart,
+            ) { Box(Modifier.size(10.dp).clip(CircleShape).background(Color.White)) }
+        }
     }
 }
 
@@ -636,12 +738,24 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                 ) { store.load(true) }
                 data == null -> LoadingCard(store.bridgeReady)
                 day != null -> {
-                    val blocks = store.placedBlocksForDay(day, week, data)
+                    val date = store.calendarWeek(week)?.days?.getOrNull(day - 1).orEmpty()
+                    val own = store.placedBlocksForDay(day, week, data)
+                    val blocks = context.couple?.merge(own, date) ?: own
                     val adjustment = store.adjustment(day, week)
                     val canAdd = store.canEdit
                     if (adjustment != null && blocks.isNotEmpty()) AdjustmentNotice(store, adjustment, day, week)
-                    if (!classic) {
-                        val date = store.calendarWeek(week)?.days?.getOrNull(day - 1).orEmpty()
+                    if (!classic && context.couple != null && blocks.isNotEmpty()) {
+                        // Two timetables in one day: the style's own grid, where a course
+                        // gives up half its width only to one of the other person's.
+                        StyledWeekGrid(
+                            days = listOf(StyledWeekDay(day, date, store.isToday(day, week), adjustment?.kind, blocks, week)),
+                            periods = periods,
+                            rowHeight = max(52f, styledWeekRowHeight(height.value + StyledHeaderHeight.value, scope.style)).dp,
+                            now = context.now, canAdd = canAdd,
+                            onCourse = { _, block -> context.onCourse(block, week) }, onAddSlot = context.onAddSlot,
+                            onDay = null, showsHeader = false, dayRow = true,
+                        )
+                    } else if (!classic) {
                         val isToday = store.isToday(day, week)
                         val status = DayStatus(
                             store::periodTime,
@@ -671,16 +785,19 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                     // Today is a key too: the column marked as today moves at midnight.
                     val days = remember(
                         week, data, revision, priorities, calendar, context.showSaturday, context.showSunday, context.sundayFirst,
-                        context.showOffWeek, ScheduleStore.todayKey(),
+                        context.showOffWeek, ScheduleStore.todayKey(), context.couple,
                     ) {
                         // With Sunday first, the Sunday column is the day before this
                         // Monday: it belongs to the previous teaching week.
                         val previous = if (context.sundayFirst) store.previousWeek(week) else null
                         fun weekOf(day: Int): String? = if (context.sundayFirst && day == 7) previous else week
                         fun sourceOf(target: String) = if (target == week) data else store.resultFor(target)
+                        fun dateOf(day: Int, target: String) = store.calendarWeek(target)?.days?.getOrNull(day - 1).orEmpty()
                         ScheduleDisplayRules.weekColumns(context.showSaturday, context.showSunday, context.sundayFirst) { day ->
                             val target = weekOf(day) ?: return@weekColumns false
-                            store.adjustment(day, target)?.kind == "swap" || store.blocksForDay(day, target, sourceOf(target)).isNotEmpty()
+                            store.adjustment(day, target)?.kind == "swap" || store.blocksForDay(day, target, sourceOf(target)).isNotEmpty() ||
+                                // A weekend the user has free still shows when the partner has a class on it.
+                                context.couple?.blocksOn(dateOf(day, target)).orEmpty().isNotEmpty()
                         }.map { weekday ->
                             val target = weekOf(weekday)
                             if (target == null) {
@@ -688,16 +805,20 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                                 StyledWeekDay(weekday, date, date.isNotEmpty() && date == ScheduleStore.todayKey(), null, emptyList(), canAdd = false)
                             } else {
                                 val source = sourceOf(target)
-                                val blocks = store.placedBlocksForDay(weekday, target, source)
+                                val date = dateOf(weekday, target)
+                                val own = store.placedBlocksForDay(weekday, target, source)
+                                val blocks = context.couple?.merge(own, date) ?: own
                                 StyledWeekDay(
                                     day = weekday,
-                                    date = store.calendarWeek(target)?.days?.getOrNull(weekday - 1).orEmpty(),
+                                    date = date,
                                     today = store.isToday(weekday, target),
                                     adjustmentKind = store.adjustment(weekday, target)?.kind,
                                     blocks = blocks,
                                     week = target,
+                                    // A course that does not run this week only fills periods both people have free.
                                     offWeek = if (!context.showOffWeek) emptyList() else
-                                        store.offWeekBlocksForDay(weekday, target, blocks.map { it.block }, source)
+                                        store.offWeekBlocksForDay(weekday, target, own.map { it.block }, source)
+                                            .filter { ghost -> blocks.none { it.owner == CoupleOwner.Partner && it.startSlot <= ghost.endSlot && ghost.startSlot <= it.endSlot } }
                                             .map { PlacedBlock(it, it.startSlot, it.endSlot) },
                                     canAdd = target == week,
                                 )
@@ -877,6 +998,10 @@ private fun WeekGrid(
                     }
                     (day.offWeek.map { it to true } + day.blocks.map { it to false }).forEach { (block, ghost) ->
                         val tone = scheduleCardTone(block.course.name, context.palette, colors.dark)
+                        // The couple timetable colours by person instead of by course.
+                        val couple = context.couple?.tint(block, colors.dark)
+                        val ink = Color(couple?.text ?: tone.text)
+                        val theirs = block.owner == CoupleOwner.Partner
                         // Courses of equal priority sit side by side and share the column.
                         val laneWidth = columnWidth / block.lanes
                         val narrow = block.lanes > 1
@@ -886,10 +1011,12 @@ private fun WeekGrid(
                                 .padding(end = if (narrow && block.lane < block.lanes - 1) 1.dp else 0.dp)
                                 .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
                                 .clip(RoundedCornerShape(9.dp)).background(colors.surface)
-                                .background(Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
-                                .border(1.dp, Color(tone.border), RoundedCornerShape(9.dp))
+                                .background(couple?.brush() ?: Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
+                                .border(1.dp, Color(couple?.border ?: tone.border), RoundedCornerShape(9.dp))
                                 .clickable { if (ghost) context.onOffWeek(block) else context.onCourse(block, day.week) }
-                                .semantics { contentDescription = (if (ghost) "非本周，" else "") + courseAccessibility(block.block) }
+                                .semantics {
+                                    contentDescription = (if (ghost) "非本周，" else if (theirs) "TA 的课，" else "") + courseAccessibility(block.block)
+                                }
                                 .padding(horizontal = if (narrow) 1.dp else 2.dp, vertical = if (display.compact) 1.dp else 3.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
@@ -897,27 +1024,27 @@ private fun WeekGrid(
                             ScheduleCardText {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     val gap = if (display.compact) 1.dp else 3.dp
-                                    if (ghost) {
-                                        ScheduleCardTag("非本周", Color(tone.text))
+                                    if (ghost || (theirs && block.span > 1)) {
+                                        ScheduleCardTag(if (ghost) "非本周" else "TA", ink)
                                         Spacer(Modifier.height(gap))
                                     }
                                     Text(
                                         block.course.name, fontSize = if (narrow) 9.sp else 10.sp, lineHeight = if (narrow) 11.sp else 12.sp, letterSpacing = 0.sp,
-                                        fontWeight = FontWeight.Medium, color = Color(tone.text), textAlign = TextAlign.Center,
+                                        fontWeight = FontWeight.Medium, color = ink, textAlign = TextAlign.Center,
                                         maxLines = if (block.span == 1) 2 else if (display.compact) 8 else 6, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = false),
                                     )
                                     if (!block.course.location.isNullOrEmpty() && block.span > 1 && !narrow) {
                                         Spacer(Modifier.height(gap))
                                         Text(block.course.location.orEmpty(), fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
-                                            color = Color(tone.text).copy(alpha = 0.86f), textAlign = TextAlign.Center,
+                                            color = ink.copy(alpha = 0.86f), textAlign = TextAlign.Center,
                                             maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     }
                                     val teacher = block.course.teacher?.trim().orEmpty()
                                     if (display.showTeacher && teacher.isNotEmpty() && block.span > 1 && !narrow) {
                                         Spacer(Modifier.height(gap))
                                         Text(teacher, fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
-                                            color = Color(tone.text).copy(alpha = 0.86f), textAlign = TextAlign.Center,
+                                            color = ink.copy(alpha = 0.86f), textAlign = TextAlign.Center,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
@@ -993,25 +1120,32 @@ private fun DayTimeline(
                 val laneWidth = columnWidth / block.lanes
                 val narrow = block.lanes > 1
                 val meta = listOfNotNull(block.course.location?.let { "@$it" }, block.course.teacher).joinToString(" · ")
+                val couple = context.couple?.tint(block, colors.dark)
+                val ink = Color(couple?.text ?: tone.text)
+                val theirs = block.owner == CoupleOwner.Partner
                 Column(
                     Modifier.offset(x = laneWidth * block.lane, y = stride * (block.startSlot - 1))
                         .width(laneWidth).height(stride * span - 4.dp)
                         .padding(end = if (narrow && block.lane < block.lanes - 1) 4.dp else 0.dp)
                         .clip(RoundedCornerShape(12.dp)).background(colors.surface)
-                        .background(Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
-                        .border(1.dp, Color(tone.border), RoundedCornerShape(12.dp))
+                        .background(couple?.brush() ?: Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
+                        .border(1.dp, Color(couple?.border ?: tone.border), RoundedCornerShape(12.dp))
                         .clickable { context.onCourse(block, week) }
-                        .semantics { contentDescription = courseAccessibility(block.block) }
+                        .semantics { contentDescription = (if (theirs) "TA 的课，" else "") + courseAccessibility(block.block) }
                         .padding(horizontal = if (narrow) 10.dp else 16.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
+                    if (theirs && span > 1) {
+                        ScheduleCardTag("TA", ink)
+                        Spacer(Modifier.height(4.dp))
+                    }
                     Text(block.course.name, fontSize = if (span == 1) 13.sp else 16.sp, fontWeight = FontWeight.Medium,
-                        color = Color(tone.text), maxLines = if (span == 1) 1 else 3, overflow = TextOverflow.Ellipsis)
+                        color = ink, maxLines = if (span == 1) 1 else 3, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(4.dp))
-                    Text(meta.ifEmpty { "地点待确认" }, fontSize = 11.sp, color = Color(tone.text).copy(alpha = 0.82f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(meta.ifEmpty { "地点待确认" }, fontSize = 11.sp, color = ink.copy(alpha = 0.82f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (span > 1) {
                         Text("${ScheduleStyleTime.slotText(block.startSlot, block.endSlot)} · ${store.timeRange(block.startSlot, block.endSlot)}",
-                            fontSize = 11.sp, color = Color(tone.text), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            fontSize = 11.sp, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

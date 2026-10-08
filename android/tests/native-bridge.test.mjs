@@ -324,3 +324,53 @@ test('share codes go through the signed-in session and carry the site nickname',
   assert.equal((await shares({ action: 'publish', body: {} })).status, 401);
   assert.equal((await shares({ action: 'get', code: 'ABCD2345' })).data.code, 'ABCD2345');
 });
+
+test('the couple timetable goes through the signed-in session', async () => {
+  const { stores, auth } = legacyStores();
+  const requests = [];
+  const p = page({ stores, fetch: async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (options.method === 'POST' && String(url).endsWith('/accept')) {
+      return { ok: false, status: 400, json: async () => ({ code: 400, message: '邀请码无效或已过期' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ code: 0, data: { status: 'none' } }) };
+  } });
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  const couple = p.window.CPUAndroidCouple;
+
+  assert.equal((await couple({ action: 'status' })).data.status, 'none');
+  assert.equal(requests[0].url, '/api/couple');
+  assert.equal(requests[0].options.method, 'GET');
+  assert.equal(requests[0].options.cache, 'no-store');
+  assert.equal(requests[0].options.headers['X-CSRF-Token'], undefined);
+
+  await couple({ action: 'sync', body: { semester: 'fall', schedule: {}, calendar: {} } });
+  assert.equal(requests[1].url, '/api/couple/schedule');
+  assert.equal(requests[1].options.method, 'PUT');
+  assert.equal(requests[1].options.headers['X-CSRF-Token'], 'csrf-token');
+  assert.deepEqual(JSON.parse(requests[1].options.body), { semester: 'fall', schedule: {}, calendar: {} });
+
+  await couple({ action: 'settings', body: { myColor: 'pink' } });
+  assert.equal(requests[2].url, '/api/couple');
+  assert.equal(requests[2].options.method, 'PATCH');
+
+  const refused = await couple({ action: 'accept', code: ' abc234 ' });
+  assert.equal(requests[3].url, '/api/couple/accept');
+  assert.deepEqual(JSON.parse(requests[3].options.body), { code: 'abc234' });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.error, '邀请码无效或已过期');
+
+  await couple({ action: 'invite' });
+  await couple({ action: 'cancelInvite' });
+  await couple({ action: 'unbind' });
+  await couple({ action: 'schedules' });
+  assert.deepEqual(requests.slice(4).map(item => item.options.method + ' ' + item.url),
+    ['POST /api/couple/invite', 'DELETE /api/couple/invite', 'DELETE /api/couple', 'GET /api/couple/schedules']);
+
+  // Nothing else reaches the server, and nothing at all without an account.
+  assert.equal((await couple({ action: 'whatever' })).status, 400);
+  auth.isLoggedIn = false;
+  assert.equal((await couple({ action: 'status' })).status, 401);
+  assert.equal(requests.length, 8);
+});

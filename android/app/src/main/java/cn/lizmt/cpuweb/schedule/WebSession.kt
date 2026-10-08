@@ -448,6 +448,13 @@ class WebSession(
         JSONObject().put("payload", payload), 45_000,
     )
 
+    /** One couple-timetable request (`CPUAndroidCouple`): the reply is `{ data }` or `{ error, status }`. */
+    suspend fun couple(payload: JSONObject): String? = call(
+        "var run=window.CPUAndroidCouple;if(typeof run!=='function')return {error:'情侣课表尚未就绪，请稍后重试',status:0};" +
+            "return await run(args.payload);",
+        JSONObject().put("payload", payload), 45_000,
+    )
+
     suspend fun refreshAuthCapability(): NativeAuthState? {
         val value = call(
             "for(var attempt=0;attempt<20;attempt+=1){var refresh=window.CPUTimeNative&&window.CPUTimeNative.refreshAuth;" +

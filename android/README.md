@@ -72,7 +72,8 @@ adb shell am start -n cn.lizmt.cpuweb/cn.lizmt.cpuweb.schedule.MainActivity --ez
 | `--ei debugDay 4` | 选中星期几（1–7） |
 | `--es debugNow 09:00` | 固定“现在”，查看正在上、下一节等状态 |
 | `--es debugPriority 体育（羽毛球）` | 设置优先显示的课程，多个用逗号分隔，靠前的在上 |
-| `--es debugSheet sharing` | 启动后打开弹窗：`visual`（课表风格）、`display`（显示设置）、`style`（配色与背景）、`sharing`（共享课表） |
+| `--es debugSheet sharing` | 启动后打开弹窗：`visual`（课表风格）、`display`（显示设置）、`style`（配色与背景）、`sharing`（共享课表）、`couple`（情侣课表） |
+| `--es debugCouple active` | 情侣课表的假接口状态：`active`（已绑定，TA 的课表和自己的有重合、有撞课、有各自的课）、`pending`（邀请码等待接受），不传为未绑定 |
 | `--es debugDisplay sundayFirst,offWeek` | 先恢复默认再套用显示设置：`sundayFirst`、`offWeek`、`teacher`、`compact`、`noTime`、`noSaturday`、`noSunday`、`noToday`、`small` / `large`、`rows=140` |
 | `--ez debugPublished true` | 假接口里已有自己的分享码 |
 | `--ez debugShared true` | 启动后打开一份共享课表 |

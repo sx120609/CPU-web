@@ -20,7 +20,7 @@ export async function siteRequest(method: string, path: string, body?: unknown, 
   const controller = new AbortController(); const timeout = setTimeout(()=>controller.abort(),30000);
   try {
     const response = await fetch('/api'+path, {
-      method, credentials:'same-origin', headers, signal:controller.signal,
+      method, credentials:'same-origin', cache:'no-store', headers, signal:controller.signal,
       ...(body === undefined ? {} : {body:JSON.stringify(body)})
     });
     const result = await response.json().catch(() => null);

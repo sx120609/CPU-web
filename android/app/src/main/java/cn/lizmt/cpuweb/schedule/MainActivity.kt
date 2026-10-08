@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     lateinit var widgets: WidgetSettings
         private set
     lateinit var sharing: ScheduleSharing
+    lateinit var couple: ScheduleCouple
         private set
     private lateinit var clientStats: ClientStats
     private var reportsClientStats = false
@@ -122,6 +123,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         // Shared timetables are other people's data: they stay out of device backups.
         sharing = if (debugFixture) ScheduleSharing(lifecycleScope, null, { DebugScheduleFixture.shares(it) })
         else ScheduleSharing(lifecycleScope, java.io.File(noBackupFilesDir, "shared-schedules.json"), { web.shares(it) })
+        couple = if (debugFixture) ScheduleCouple(lifecycleScope, null, { DebugScheduleFixture.couple(it) })
+        else ScheduleCouple(lifecycleScope, getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE), { web.couple(it) })
         shell = ShellCoordinator(lifecycleScope, web, schedule)
         clientStats = ClientStats(this, lifecycleScope) {
             ClientFeatureState(appearance.mode, style.visualStyle.id, style.background != null)
@@ -140,8 +143,16 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                 .collectLatest {
                     // The saved shared timetables belong to the account whose timetable is on screen.
                     if (!debugFixture) sharing.adopt(schedule.accountScope)
+                    couple.adopt(schedule.accountScope)
                     delay(400)
                     widgets.syncLocalDays(schedule, web)
+                    // The partner sees the term that is running now, edits included. Wait until
+                    // the timetable has settled so one launch uploads once.
+                    if (debugFixture || web.authState.authenticated) {
+                        couple.refresh()
+                        delay(4_000)
+                        if (schedule.selectedSemester == schedule.currentSemesterValue()) couple.sync(schedule.completeSnapshot())
+                    }
                 }
         }
         if (debugFixture) {
@@ -365,6 +376,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private const val SHELL_PREFS = "native_shell"
         private const val PRIORITY_PREFS = "native_schedule_priorities"
         private const val KEY_PRIORITIES = "v1"
+        private const val COUPLE_PREFS = "native_schedule_couple"
         private const val KEY_WELCOME_SEEN = "welcome_seen_v4"
         private const val REQUEST_WRITE_STORAGE = 2002
     }

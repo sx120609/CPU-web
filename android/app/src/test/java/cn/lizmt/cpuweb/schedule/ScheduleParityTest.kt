@@ -588,4 +588,134 @@ class ScheduleParityTest {
     }
 
     // endregion
+
+    // region Couple timetable
+
+    private fun placed(name: String, start: Int, end: Int, lane: Int = 0, lanes: Int = 1) = PlacedBlock(block(name, start, end), start, end, lane, lanes)
+
+    @Test
+    fun coupleColoursMatchTheWeb() {
+        // Values from `coupleCourseTone` in web/src/views/schedule/couple.ts.
+        assertEquals(33278927L, CoupleRules.nameHash("药理学"))
+        assertEquals(CoupleTint(0xFFD4E5FC.toInt(), 0xFF8DB6EC.toInt(), 0xFF1D406D.toInt()), CoupleRules.tone("blue", "药理学", dark = false))
+        assertEquals(CoupleTint(0xFF792A47.toInt(), 0xFFD13D73.toInt(), 0xFFF5F7FF.toInt()), CoupleRules.tone("pink", "高等数学", dark = true))
+        assertEquals(CoupleTint(0xFFFDE7F3.toInt(), 0xFFF1A7CE.toInt(), 0xFF6D1D48.toInt()), CoupleRules.tone("pink", "", dark = false))
+        // A class both attend runs from the user's fill into the partner's.
+        val both = CoupleRules.tint(CoupleOwner.Both, "药理学", "blue", "pink", dark = false)
+        assertEquals(CoupleRules.tone("blue", "药理学", false).fill, both.fill)
+        assertEquals(CoupleRules.tone("pink", "药理学", false).fill, both.fillEnd)
+        assertNull(CoupleRules.tint(CoupleOwner.Mine, "药理学", "blue", "pink", dark = false).fillEnd)
+    }
+
+    @Test
+    fun coursesShareTheColumnOnlyWhereTheTwoTimetablesMeet() {
+        val mine = listOf(placed("药理学", 1, 2), placed("大学英语", 3, 4), placed("药物分析", 9, 10))
+        val theirs = listOf(placed("药 理 学", 1, 2), placed("高等数学", 4, 5), placed("物理化学", 7, 8))
+        val merged = CoupleRules.merge(mine, theirs).associateBy { it.course.name }
+        // The same class in the same periods is drawn once, whatever the spacing of its name.
+        assertEquals(5, merged.size)
+        assertEquals(CoupleOwner.Both, merged.getValue("药理学").owner)
+        assertEquals(1, merged.getValue("药理学").lanes)
+        // Overlapping courses: the user's on the left half, the partner's on the right.
+        assertEquals(listOf(CoupleOwner.Mine, 0, 2), merged.getValue("大学英语").let { listOf(it.owner, it.lane, it.lanes) })
+        assertEquals(listOf(CoupleOwner.Partner, 1, 2), merged.getValue("高等数学").let { listOf(it.owner, it.lane, it.lanes) })
+        // Everything else keeps the whole column.
+        assertEquals(listOf(CoupleOwner.Mine, 0, 1), merged.getValue("药物分析").let { listOf(it.owner, it.lane, it.lanes) })
+        assertEquals(listOf(CoupleOwner.Partner, 0, 1), merged.getValue("物理化学").let { listOf(it.owner, it.lane, it.lanes) })
+        // Two of the user's courses already side by side keep to the left half between them.
+        val crowded = CoupleRules.merge(listOf(placed("甲", 1, 2, 0, 2), placed("乙", 1, 2, 1, 2)), listOf(placed("丙", 1, 2)))
+        assertEquals(listOf(0 to 4, 1 to 4, 1 to 2), crowded.map { it.lane to it.lanes })
+        // Without a partner timetable the user's courses are only marked as theirs.
+        assertEquals(listOf(CoupleOwner.Mine), CoupleRules.merge(listOf(placed("甲", 1, 2)), emptyList()).map { it.owner })
+    }
+
+    @Test
+    fun theStatusLineSaysWhatThePartnerIsDoing() {
+        val day = listOf(CoupleTimedCourse("高等数学", "10:00", "11:35"), CoupleTimedCourse("药理学", "08:00", "09:35"))
+        assertEquals("小鹿 在上《药理学》· 09:35 下课", CoupleRules.nowText("小鹿", true, day, 8 * 60 + 30))
+        assertEquals("小鹿 下一节《高等数学》· 10:00", CoupleRules.nowText("小鹿", true, day, 9 * 60 + 40))
+        assertEquals("小鹿 今天的课都上完了", CoupleRules.nowText("小鹿", true, day, 12 * 60))
+        assertEquals("小鹿 今天没有课", CoupleRules.nowText("小鹿", true, emptyList(), 600))
+        assertEquals("小鹿 今天不在学期内", CoupleRules.nowText("小鹿", true, null, 600))
+        assertEquals("TA 还没有同步课表", CoupleRules.nowText("", false, null, 600))
+        assertEquals(1, CoupleRules.daysTogether("2026-10-08", "2026-10-08"))
+        assertEquals(507, CoupleRules.daysTogether("2025-05-20", "2026-10-08"))
+        assertNull(CoupleRules.daysTogether("2026-10-09", "2026-10-08"))
+        assertNull(CoupleRules.daysTogether("", "2026-10-08"))
+        assertNull(CoupleRules.daysTogether("2026-02-30", "2026-10-08"))
+    }
+
+    private fun coupleStatus(state: String): JSONObject = when (state) {
+        "active" -> JSONObject().put("status", "active").put("anniversary", JSONObject.NULL)
+            .put("me", JSONObject().put("color", "pink").put("nickname", "阿青").put("snapshot", JSONObject.NULL))
+            .put("partner", JSONObject().put("color", "blue").put("nickname", "小鹿")
+                .put("snapshot", JSONObject().put("syncedAt", "2026-10-08T01:30:00.000Z")))
+        "pending" -> JSONObject().put("status", "pending").put("invite", JSONObject().put("code", "K7M2QX").put("expired", false))
+        else -> JSONObject().put("status", "none")
+    }
+
+    @Test
+    fun theBindingIsReadFromTheServerAnswer() {
+        assertEquals(CoupleStatus.None, CoupleStatus.fromJson(coupleStatus("none")))
+        assertEquals(CoupleStatus.Pending("K7M2QX", false), CoupleStatus.fromJson(coupleStatus("pending")))
+        assertEquals(
+            CoupleStatus.Active("", CoupleMember("阿青", "pink", ""), CoupleMember("小鹿", "blue", "2026-10-08T01:30:00.000Z")),
+            CoupleStatus.fromJson(coupleStatus("active")),
+        )
+    }
+
+    @Test
+    fun thePartnerTimetableIsDrawnByDateAndTheOwnOneUploadedOnce() = runTest {
+        val calls = mutableListOf<String>()
+        var state = "active"
+        var now = 1_000_000L
+        val partner = JSONObject().put("semester", "2026-2027-1")
+            .put("schedule", JSONObject().put("cells", JSONArray().put(JSONObject().put("day", 2).put("bigSlot", 1)
+                .put("courses", JSONArray().put(course("高等数学", 1, 2))))))
+            .put("calendar", JSONObject().put("weeks", JSONArray()
+                .put(JSONObject().put("week", 1).put("days", weekDays(7)))
+                .put(JSONObject().put("week", 2).put("days", weekDays(14)))))
+        val couple = ScheduleCouple(backgroundScope, null, { payload ->
+            val action = payload.getString("action")
+            calls += action
+            val data = when (action) {
+                "schedules" -> JSONObject().put("me", JSONObject.NULL).put("partner", partner)
+                "sync" -> JSONObject().put("changed", true)
+                "unbind" -> coupleStatus("none").also { state = "none" }
+                else -> coupleStatus(state)
+            }
+            JSONObject().put("data", data).toString()
+        }, clock = { now })
+        assertNull(couple.layer())
+        couple.refresh()
+        testScheduler.runCurrent()
+        val layer = couple.layer()!!
+        assertEquals("小鹿", layer.partnerName)
+        assertEquals("blue", layer.partnerColor)
+        // Tuesday of the partner's second week, found by its date.
+        assertEquals(listOf("高等数学"), layer.blocksOn("2026-09-15")!!.map { it.course.name })
+        assertEquals(emptyList<String>(), layer.blocksOn("2026-09-14")!!.map { it.course.name })
+        assertNull(layer.blocksOn("2026-12-01"))
+        assertEquals(listOf(CoupleOwner.Partner), layer.merge(emptyList(), "2026-09-15").map { it.owner })
+        // Hidden courses leave the binding alone.
+        couple.updateVisible(false)
+        assertNull(couple.layer())
+        assertNotNull(couple.statusText("2026-09-15", 600))
+        couple.updateVisible(true)
+        // A second look within the minute asks nothing.
+        couple.refresh()
+        assertEquals(listOf("status", "schedules"), calls)
+        // Unbinding drops the partner's timetable at once.
+        couple.unbind()
+        assertEquals(CoupleStatus.None, couple.status)
+        assertNull(couple.layer())
+        assertNull(couple.statusText("2026-09-15", 600))
+        // Nothing is uploaded while unbound.
+        couple.sync(ScheduleJson.parseSnapshot(snapshot(JSONArray().put(JSONObject().put("day", 1).put("bigSlot", 1)
+            .put("courses", JSONArray().put(course("药理学", 1, 2)))))))
+        assertFalse("sync" in calls)
+        now += 1
+    }
+
+    // endregion
 }

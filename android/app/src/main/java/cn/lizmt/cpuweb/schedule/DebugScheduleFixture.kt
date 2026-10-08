@@ -13,7 +13,8 @@ import java.util.Locale
  *
  * Further extras put the fixture in a given state for a screenshot (see the
  * README): `debugStyle`, `debugView`, `debugDay`, `debugNow`,
- * `debugPriority`, `debugSheet`, `debugPublished` and `debugShared`.
+ * `debugPriority`, `debugSheet`, `debugPublished`, `debugShared` and
+ * `debugCouple` (`active`, `pending` or `none`).
  */
 object DebugScheduleFixture {
     const val EXTRA = "debugMockSchedule"
@@ -29,12 +30,16 @@ object DebugScheduleFixture {
         private set
     private var sheet = ""
     private var published = false
+    private var coupleState = "none"
+    private var coupleSwapped = false
+    private var coupleAnniversary = "2025-05-20"
 
     fun initialSheet(): ScheduleSheet? = when (sheet) {
         "visual" -> ScheduleSheet.VisualStyle
         "display" -> ScheduleSheet.Display
         "style" -> ScheduleSheet.Style
         "sharing" -> ScheduleSheet.Sharing
+        "couple" -> ScheduleSheet.Couple
         else -> null
     }
 
@@ -65,6 +70,7 @@ object DebugScheduleFixture {
             activity.schedule.setPriorities(SEMESTER, names.mapIndexed { index, name -> name to names.size - index }.toMap())
         }
         published = intent.getBooleanExtra("debugPublished", false)
+        coupleState = intent.getStringExtra("debugCouple")?.takeIf { it == "active" || it == "pending" } ?: "none"
         val friend = SharedSchedule.read(shareDocument(FRIEND_CODE, "小王"), System.currentTimeMillis()).copy(remark = "室友小王")
         activity.sharing.installDebugState(
             SharedScheduleLibrary(account = "debug", schedules = listOf(friend)),
@@ -95,6 +101,54 @@ object DebugScheduleFixture {
             else -> null
         }
         return (if (data == null) JSONObject().put("error", "分享课表不存在或已撤销").put("status", 404) else JSONObject().put("data", data)).toString()
+    }
+
+    /** A stand-in for `/api/couple`: a partner whose timetable meets the user's in every way the grid draws. */
+    fun couple(payload: JSONObject): String {
+        fun status(): JSONObject = when (coupleState) {
+            "pending" -> JSONObject().put("status", "pending")
+                .put("invite", JSONObject().put("code", "K7M2QX").put("expiresAt", "2099-01-01T00:00:00.000Z").put("expired", false))
+            "active" -> {
+                val synced = JSONObject().put("semester", SEMESTER).put("syncedAt", "2026-10-08T01:30:00.000Z").put("changedAt", "2026-10-07T02:00:00.000Z")
+                JSONObject().put("status", "active").put("since", "2026-09-01T02:00:00.000Z")
+                    .put("anniversary", if (coupleAnniversary.isEmpty()) JSONObject.NULL else coupleAnniversary)
+                    .put("me", JSONObject().put("id", 1).put("color", if (coupleSwapped) "pink" else "blue").put("nickname", "阿青").put("snapshot", synced))
+                    .put("partner", JSONObject().put("id", 2).put("color", if (coupleSwapped) "blue" else "pink").put("nickname", "小鹿").put("snapshot", synced))
+            }
+            else -> JSONObject().put("status", "none")
+        }
+        val data: JSONObject = when (payload.optString("action")) {
+            "invite" -> { coupleState = "pending"; status() }
+            "cancelInvite", "unbind" -> { coupleState = "none"; status() }
+            "accept" -> { coupleState = "active"; status() }
+            "settings" -> {
+                val body = payload.optJSONObject("body") ?: JSONObject()
+                if (body.has("myColor")) coupleSwapped = !coupleSwapped
+                if (body.has("anniversary")) coupleAnniversary = if (body.isNull("anniversary")) "" else body.optString("anniversary")
+                status()
+            }
+            "schedules" -> {
+                val all = (1..18).toList()
+                fun course(name: String, start: Int, end: Int, location: String) = JSONObject().put("name", name).put("startSlot", start)
+                    .put("endSlot", end).put("location", location).put("teacher", "").put("weeks", ScheduleStore.weekText(all)).put("weekList", JSONArray(all))
+                fun cell(day: Int, slot: Int, value: JSONObject) = JSONObject().put("day", day).put("bigSlot", slot).put("courses", JSONArray().put(value))
+                // Monday: the same class. Tuesday and Thursday: classes that meet the user's. The rest: hers alone.
+                val cells = JSONArray()
+                    .put(cell(1, 1, course("药理学", 1, 2, "药学楼 302")))
+                    .put(cell(2, 2, course("高等数学", 3, 4, "理科楼 B105")))
+                    .put(cell(3, 2, course("物理化学", 3, 4, "药学楼 210")))
+                    .put(cell(4, 3, course("分析化学实验", 5, 7, "实验楼 305")))
+                    .put(cell(5, 1, course("医用物理学", 1, 2, "理科楼 A301")))
+                    .put(cell(7, 2, course("周日社团：合唱", 3, 4, "大学生活动中心")))
+                val calendar = JSONObject(snapshot()).getJSONObject("calendar")
+                JSONObject().put("me", JSONObject.NULL).put("partner", JSONObject().put("semester", SEMESTER)
+                    .put("syncedAt", "2026-10-08T01:30:00.000Z").put("changedAt", "2026-10-07T02:00:00.000Z")
+                    .put("schedule", JSONObject().put("cells", cells)).put("calendar", calendar))
+            }
+            "sync" -> JSONObject().put("changed", false)
+            else -> status()
+        }
+        return JSONObject().put("data", data).toString()
     }
 
     /** A complete term whose week 4 is the current week. */
