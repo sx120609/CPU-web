@@ -142,6 +142,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   await tx.teacher.updateMany({ where: { createdById: userId }, data: { createdById: null } });
   await tx.iosClientInstall.updateMany({ where: { userId }, data: { userId: null } });
   await tx.androidClientInstall.updateMany({ where: { userId }, data: { userId: null } });
+  await tx.harmonyClientInstall.updateMany({ where: { userId }, data: { userId: null } });
   await tx.user.update({ where: { id: userId }, data: {
     username: `deleted-${randomUUID()}`, passwordHash: randomBytes(48).toString("base64url"), nickname: "已删除用户", email: null, avatar: null, bio: null, college: null, enrollYear: null,
     role: "user", voiceHubRole: null, lostFoundRole: null, studentSso: false, status: "deleted", mutedUntil: null,

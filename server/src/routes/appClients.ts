@@ -2,6 +2,7 @@ import { Router } from "express";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { androidClientHeartbeatSchema, androidClientMetricsSchema, recordAndroidClientHeartbeat, recordAndroidClientMetrics } from "../services/androidClientStats";
 import { desktopInstallReportSchema, recordDesktopInstallReport } from "../services/desktopInstallReports";
+import { harmonyClientHeartbeatSchema, recordHarmonyClientHeartbeat } from "../services/harmonyClientStats";
 import { iosClientHeartbeatSchema, iosClientMetricsSchema, recordIosClientHeartbeat, recordIosClientMetrics } from "../services/iosClientStats";
 import { Errors, ok } from "../utils/response";
 
@@ -50,6 +51,18 @@ appClientRouter.post("/android/metrics", securityRateLimit("android-client-metri
   if (!parsed.success) return next(Errors.badRequest("诊断数据格式不正确"));
   try {
     ok(res, await recordAndroidClientMetrics(parsed.data));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// The native HarmonyOS shell: same contract as the heartbeats above.
+appClientRouter.post("/harmony/heartbeat", securityRateLimit("harmony-client-heartbeat", 30, 60_000), async (req, res, next) => {
+  const parsed = harmonyClientHeartbeatSchema.safeParse(req.body);
+  if (!parsed.success) return next(Errors.badRequest("客户端信息格式不正确"));
+  try {
+    await recordHarmonyClientHeartbeat(parsed.data, req.user?.userId ?? null);
+    ok(res, { recorded: true });
   } catch (error) {
     next(error);
   }

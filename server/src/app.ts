@@ -44,6 +44,7 @@ import { getQqBotDeploymentStatus } from "./services/qqbot/connection";
 import { startLiveActivityPushScheduler } from "./services/liveActivityPush";
 import { startIosClientStatsPrunePoller } from "./services/iosClientStats";
 import { startAndroidClientStatsPrunePoller } from "./services/androidClientStats";
+import { startHarmonyClientStatsPrunePoller } from "./services/harmonyClientStats";
 import { startDesktopInstallReportPrunePoller } from "./services/desktopInstallReports";
 import { startLogRetentionSweeper } from "./services/logRetention";
 
@@ -60,6 +61,7 @@ export function startAppWorkers() {
   startLiveActivityPushScheduler();
   startIosClientStatsPrunePoller();
   startAndroidClientStatsPrunePoller();
+  startHarmonyClientStatsPrunePoller();
   startDesktopInstallReportPrunePoller();
   startLogRetentionSweeper();
 }

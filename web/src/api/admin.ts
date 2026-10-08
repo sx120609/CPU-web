@@ -385,6 +385,40 @@ export type AndroidClientDiagnosticDetail = {
   topFrames: string[];
 };
 
+export type HarmonyClientStats = {
+  range: IosClientStatsRange;
+  totals: { allTime: number; active1d: number; active7d: number; active30d: number };
+  installs: number;
+  signedInUsers: number;
+  byDeviceType: { type: string; name: string; count: number }[];
+  byDeviceModel: { deviceModel: string; brand: string; count: number }[];
+  otherDeviceModels: { models: number; count: number };
+  byAppVersion: { version: string; count: number }[];
+  bySystemVersion: { version: string; count: number }[];
+  byApiVersion: { version: string; count: number }[];
+  features: {
+    appearanceMode: { mode: string; count: number }[];
+    scheduleStyle: { style: string; name: string; count: number }[];
+    schedulePalette: { palette: string; count: number }[];
+    customBackground: { yes: number; no: number; unknown: number };
+    customDisplay: { yes: number; no: number; unknown: number };
+  };
+  trend: { dates: string[]; active: number[]; newInstalls: number[]; versions: { version: string; counts: number[] }[] };
+  recent: {
+    deviceBrand: string;
+    deviceModel: string;
+    deviceType: string;
+    brandName: string;
+    typeName: string;
+    systemVersion: string;
+    appVersion: string;
+    appBuild: string;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    user: { id: number; nickname: string; username: string } | null;
+  }[];
+};
+
 export type AndroidClientStats = {
   range: IosClientStatsRange;
   totals: { allTime: number; active1d: number; active7d: number; active30d: number };
@@ -1316,6 +1350,8 @@ export const adminApi = {
     request.get<IosClientDiagnosticDetail>(`/admin/ios-clients/diagnostics/${encodeURIComponent(id)}`, undefined, { cacheTtlMs: 0 }),
   androidClientStats: (range: IosClientStatsRange, options?: RequestOptions) =>
     request.get<AndroidClientStats>("/admin/android-clients", { range }, { cacheTtlMs: 0, ...options }),
+  harmonyClientStats: (range: IosClientStatsRange, options?: RequestOptions) =>
+    request.get<HarmonyClientStats>("/admin/harmony-clients", { range }, { cacheTtlMs: 0, ...options }),
   androidClientDiagnostic: (id: string) =>
     request.get<AndroidClientDiagnosticDetail>(`/admin/android-clients/diagnostics/${encodeURIComponent(id)}`, undefined, { cacheTtlMs: 0 }),
   desktopInstallReports: (range: IosClientStatsRange, options?: RequestOptions) =>

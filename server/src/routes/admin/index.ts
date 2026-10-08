@@ -118,6 +118,7 @@ import {
 import { getCloudUsageSummary, type CloudUsageRange } from "../../services/cloudUsage";
 import { getIosClientDiagnostic, getIosClientStats, parseIosClientStatsRange } from "../../services/iosClientStats";
 import { getAndroidClientDiagnostic, getAndroidClientStats } from "../../services/androidClientStats";
+import { getHarmonyClientStats } from "../../services/harmonyClientStats";
 import { getDesktopInstallReports, parseDesktopInstallReportRange } from "../../services/desktopInstallReports";
 import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
@@ -2417,6 +2418,14 @@ adminRouter.get("/ios-clients/diagnostics/:id", adminOnly, async (req, res, next
 adminRouter.get("/android-clients", adminOnly, async (req, res, next) => {
   try {
     ok(res, await getAndroidClientStats(parseIosClientStatsRange(req.query.range)));
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/harmony-clients", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await getHarmonyClientStats(parseIosClientStatsRange(req.query.range)));
   } catch (e) {
     next(e);
   }

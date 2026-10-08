@@ -6,6 +6,7 @@ import { NATIVE_TAB_BAR_HEIGHT, nativeNavigationBottomInset, nativeNavigationCle
 import BuildProfile from 'BuildProfile';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import preferences from '@ohos.data.preferences';
+import deviceInfo from '@ohos.deviceInfo';
 import window from '@ohos.window';
 import fs from '@ohos.file.fs';
 import { systemShare } from '@kit.ShareKit';
@@ -20,7 +21,7 @@ import promptAction from '@ohos.promptAction';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import picker from '@ohos.file.picker';
 import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
-import { APP_URL, USER_AGENT_SUFFIX, isAppOrigin, isHttpUrl, isInternalUrl } from '../common/AppConfig';
+import { APP_URL, USER_AGENT_SUFFIX, VERSION_CODE, VERSION_NAME, isAppOrigin, isHttpUrl, isInternalUrl } from '../common/AppConfig';
 import { NATIVE_STARTUP_POLICY } from '../common/NativeStartupPolicy';
 import {
   HarmonyBridge,
@@ -973,6 +974,48 @@ struct Index {
     this.failed = false;
   }
 
+  // ---- 客户端统计 ----
+  // 后台「鸿蒙客户端」页的数据来源：设备型号、系统与应用版本、几项课表设置。安装标识是本机生成的
+  // 随机编号，只存在应用自己的首选项里，不读取 OAID、UDID 等设备标识。请求从站点页面里发出，
+  // 带着网页的登录会话，所以登录后的上报能对上账号；半小时内不重复发。
+  private clientStatsSentAt: number = 0;
+
+  private reportClientStats(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context || !isAppOrigin(this.controller.getUrl())) return;
+    const now = Date.now();
+    if (now - this.clientStatsSentAt < 30 * 60 * 1000) return;
+    this.clientStatsSentAt = now;
+    void preferences.getPreferences(context, { name: 'native_client_stats' }).then(async (prefs) => {
+      let installId = String(await prefs.get('installId', ''));
+      if (!installId) {
+        installId = util.generateRandomUUID(true);
+        await prefs.put('installId', installId);
+        await prefs.flush();
+      }
+      const body = JSON.stringify(clientStatsHeartbeat(installId, this.appearanceMode, this.scheduleStore));
+      const script = `
+        (() => {
+          const cookie = name => {
+            const item = document.cookie.split(';').map(value => value.trim()).find(value => value.startsWith(name + '='));
+            return item ? decodeURIComponent(item.slice(name.length + 1)) : '';
+          };
+          fetch('/api/app-clients/harmony/heartbeat', {
+            method: 'POST', credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CPU-Auth-Mode': 'cookie',
+              'X-CPU-Client': 'harmony-app',
+              'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')
+            },
+            body: ${JSON.stringify(body)}
+          }).catch(() => undefined);
+        })();
+      `;
+      await this.controller.runJavaScript(script);
+    }).catch(() => { this.clientStatsSentAt = 0; });
+  }
+
   private configureScheduleWidget(): void {
     const theme = JSON.stringify(this.widgetTheme);
     const script = `
@@ -1061,6 +1104,7 @@ struct Index {
         .onPageEnd(() => {
           this.loading = false;
           this.applyHarmonyUxPolicy();
+          this.reportClientStats();
           if (this.pendingWebNavigation) {
             const revision = this.pendingWebNavigation;
             void this.controller.runJavaScript(`requestAnimationFrame(() => requestAnimationFrame(() => window.CPUHarmony.navigationReady(${revision})));`);
@@ -2116,4 +2160,39 @@ struct Index {
     clearNativeScheduleHostCallbacks();
     setActiveHarmonyBridge(undefined);
   }
+}
+
+// What the heartbeat to /api/app-clients/harmony/heartbeat carries (server/src/services/harmonyClientStats.ts).
+interface ClientStatsHeartbeat {
+  installId: string;
+  deviceBrand: string;
+  deviceModel: string;
+  deviceType: string;
+  systemVersion: string;
+  apiVersion: number;
+  appVersion: string;
+  appBuild: string;
+  appearanceMode: string;
+  scheduleStyle: string;
+  schedulePalette: string;
+  customBackground: boolean;
+  customDisplay: boolean;
+}
+
+function clientStatsHeartbeat(installId: string, appearanceMode: string, store: NativeScheduleStore): ClientStatsHeartbeat {
+  return {
+    installId,
+    deviceBrand: deviceInfo.brand || 'unknown',
+    deviceModel: deviceInfo.productModel || 'unknown',
+    deviceType: deviceInfo.deviceType || 'unknown',
+    systemVersion: deviceInfo.displayVersion || deviceInfo.osFullName || 'unknown',
+    apiVersion: deviceInfo.sdkApiVersion,
+    appVersion: VERSION_NAME,
+    appBuild: String(VERSION_CODE),
+    appearanceMode: appearanceMode === 'dark' || appearanceMode === 'light' ? appearanceMode : 'system',
+    scheduleStyle: store.visualStyle,
+    schedulePalette: store.palette,
+    customBackground: !!store.backgroundPath,
+    customDisplay: !store.displayIsDefault()
+  };
 }

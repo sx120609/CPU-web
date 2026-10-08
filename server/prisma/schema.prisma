@@ -99,6 +99,7 @@ model User {
   liveActivityDevices           LiveActivityDevice[]
   iosClientInstalls            IosClientInstall[]
   androidClientInstalls        AndroidClientInstall[]
+  harmonyClientInstalls        HarmonyClientInstall[]
   scheduleSharesOwned          ScheduleShare[]              @relation("ScheduleShareOwner")
   coupleMembership             CoupleMember?
   toolPermissions              ToolPermission[]
@@ -1052,6 +1053,48 @@ model AndroidClientDiagnostic {
   @@index([kind, occurredAt])
   @@index([signature])
   @@index([appVersion])
+}
+
+// 鸿蒙原生客户端的安装记录：启动、回到前台和登录时上报，按安装去重。
+// installId 是 App 自己生成的随机 UUID，不含 OAID、UDID 等设备标识。
+model HarmonyClientInstall {
+  id            String   @id @default(cuid())
+  installId     String   @unique
+  userId        Int?
+  deviceBrand   String
+  deviceModel   String
+  // deviceInfo.deviceType：phone / tablet / 2in1 …
+  deviceType    String
+  systemVersion String
+  apiVersion    Int      @default(0)
+  appVersion    String
+  appBuild      String
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  // 以下为最近一次上报的状态；null 表示客户端未上报。
+  appearanceMode   String?
+  scheduleStyle    String?
+  schedulePalette  String?
+  customBackground Boolean?
+  customDisplay    Boolean?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([lastSeenAt])
+  @@index([userId])
+  @@index([firstSeenAt])
+}
+
+// 每台安装每天一行（按北京时间日期），用于日活趋势与版本升级进度。保留 180 天。
+model HarmonyClientDailyActive {
+  date       String
+  installId  String
+  appVersion String
+  appBuild   String
+  createdAt  DateTime @default(now())
+
+  @@id([date, installId])
+  @@index([date])
 }
 
 // Windows 桌面端安装器的匿名安装结果：失败，以及需要重试或管理员权限才成功的安装。
