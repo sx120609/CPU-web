@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from './jwxtSessionCrypto';
-import { getApnsConfig } from './apnsConfig';
+import { getApnsConfig, lockApnsConfig } from './apnsConfig';
 import { appleReferenceSeconds, sendLiveActivityPayload } from './apnsClient';
 import { currentTiming, endChannelKey, timingVersion } from './liveActivitySchedule';
 import { parseCoursePlan, type Occurrence } from './liveActivityTimeline';
@@ -133,7 +133,7 @@ export async function takeOverOccurrence(userId: number, input: any) {
     const version = snapshot?.input.scheduleVersion || input.scheduleVersion;
     if (version !== timing.id || c.end <= Date.now() / 1000 || c.plannedStart > Date.now() / 1000) throw new Error('本次课程尚不能恢复，请同步作息');
     if (!protectedStates.includes(row.state)) await tx.liveActivityPlan.update({ where: { id: row.id }, data: { state: 'local', detail: '前台恢复已接管' } });
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(742091, 1)::text`;
+    await lockApnsConfig(tx);
     await tx.liveActivityScheduleVersion.updateMany({ where: { id: version, broadcastUntil: { lt: new Date(c.end * 1000) } }, data: { broadcastUntil: new Date(c.end * 1000) } });
     return { occurrenceId: c.occurrenceId, state: protectedStates.includes(row.state) ? row.state : 'local', channelID: config.channels[endChannelKey(device.environment, version, c.endPeriod)] || null, scheduleVersion: version };
   });
@@ -150,7 +150,9 @@ export function remoteStartPayload(c: Occurrence, channel: string, now: number, 
     'stale-date': Math.floor(c.end), alert: { title: '课程提醒', body: '课表实时活动已开始' } } };
 }
 export const START_BATCH_SIZE = Math.max(1, Math.min(10000, Number(process.env.LIVE_ACTIVITY_START_BATCH) || 2000));
-const START_CONCURRENCY = Math.max(1, Math.min(128, Number(process.env.LIVE_ACTIVITY_START_CONCURRENCY) || 64));
+// Bound transaction workers independently of the batch size. Five-connection
+// deployments must retain capacity for HTTP traffic and the broadcast loop.
+export const START_CONCURRENCY = Math.max(1, Math.min(2, Number(process.env.LIVE_ACTIVITY_START_CONCURRENCY) || 2));
 let lastMaterialized = 0;
 let materializing: Promise<void> | undefined;
 async function refillWindow(timingId: string) {
@@ -160,7 +162,7 @@ async function refillWindow(timingId: string) {
       orderBy: { id: 'asc' }, take: 250, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
     if (!devices.length) break;
     let index = 0;
-    await Promise.all(Array.from({ length: Math.min(12, devices.length) }, async () => {
+    await Promise.all(Array.from({ length: Math.min(1, devices.length) }, async () => {
       while (index < devices.length) {
         const d = devices[index++];
         await prisma.$transaction(async tx => {
@@ -198,7 +200,7 @@ export async function tickRemoteStarts(send = sendLiveActivityPayload) {
         await lock(tx, `${candidate.device.userId}:${candidate.device.installationId}`);
         const row = await tx.liveActivityPlan.findUnique({ where: { id: candidate.id }, include: { device: true } });
         if (!row || row.state !== 'pending' || !row.device.enabled || row.device.launchMode !== 'remote' || row.revision !== row.device.planRevision || row.nextAttemptAt > new Date()) return null;
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(742091, 1)::text`;
+        await lockApnsConfig(tx);
         const published = await tx.schedulePeriodConfig.findUnique({ where: { id: 1 } });
         if (!published || timingVersion(JSON.parse(published.periods)) !== timing.id) return null;
         const snapshot = JSON.parse(row.device.planSnapshot || '{}') as Snapshot;

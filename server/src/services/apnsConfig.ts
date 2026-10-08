@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createPrivateKey } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
+import { HttpError } from "../utils/response";
 
 const KEYS = {
   keyPath: "apns.keyPath",
@@ -132,10 +133,18 @@ export async function saveApnsConfig(input: unknown): Promise<ApnsConfig> {
   });
 }
 
-// Serializes saves and channel creation across processes during a rolling deploy.
+// Never occupy a pool connection waiting for another APNs transaction. Callers
+// can retry later; the lock owner must be able to finish even with a tiny pool.
+export async function lockApnsConfig(db: Prisma.TransactionClient) {
+  const [row] = await db.$queryRaw<Array<{ acquired: boolean }>>`SELECT pg_try_advisory_xact_lock(742091, 1) AS acquired`;
+  if (!row?.acquired) throw new HttpError(503, 5030, "APNs configuration is busy; retry shortly");
+}
+
+// Only short database work belongs here. Apple requests run under a fenced lease
+// in apnsChannels, outside both this transaction and the connection pool.
 export function withApnsConfigLock<T>(operation: (db: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return prisma.$transaction(async (db) => {
-    await db.$queryRaw`SELECT pg_advisory_xact_lock(742091, 1)::text`;
+    await lockApnsConfig(db);
     return operation(db);
-  }, { timeout: 60000, maxWait: 5000 });
+  }, { timeout: 5000, maxWait: 1000 });
 }

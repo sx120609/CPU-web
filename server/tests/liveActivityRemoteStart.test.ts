@@ -40,7 +40,7 @@ function model(rows: any[]) {
   };
 }
 const db: any = {
-  $queryRaw: async () => [], $transaction: async (fn: any) => fn(db),
+  $queryRaw: async () => [{ acquired: true }], $transaction: async (fn: any) => fn(db),
   siteSetting: { findMany: async () => Object.entries({ keyPath: '/test.p8', keyID: 'KEY', teamID: 'TEAM', bundleID: 'cn.cputime.mobile', channels: JSON.stringify({ [`production:main-campus:${version}:end-period-2`]: 'test-end-2' }) }).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })) },
   schedulePeriodConfig: { findUnique: async () => ({ periods: JSON.stringify(periods) }) },
   liveActivityDevice: model(devices), liveActivityPlan: model(plans), liveActivityScheduleVersion: model(versions),
@@ -133,4 +133,28 @@ test('explicit transient rejection retries within expiry; accepted results retai
   assert.equal(row.state, 'submitted'); assert.equal(sends, 2);
   await service.syncRemoteStarts(6, { ...body, planRevision: 2, leadMinutes: 30 });
   assert.equal(row.state, 'submitted');
+});
+
+test('remote-start burst bounds simultaneous workers while sending outside transactions', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  devices.length = 0; plans.length = 0;
+  for (let i = 10; i < 16; i++) {
+    const body = input(1, `installation-load-${i}`);
+    body.token = i.toString(16).padStart(2, '0').repeat(32);
+    await service.syncRemoteStarts(i, body);
+  }
+  let release!: () => void, entered!: () => void;
+  const gate = new Promise<void>(r => { release = r; });
+  const twoStarted = new Promise<void>(r => { entered = r; });
+  let active = 0, peak = 0, calls = 0;
+  const job = service.tickRemoteStarts(async () => {
+    calls++; peak = Math.max(peak, ++active);
+    if (calls === 2) entered();
+    await gate; active--;
+    return { status: 200, body: '' };
+  });
+  await twoStarted;
+  assert.equal(calls, 2);
+  release(); await job;
+  assert.equal(calls, 6); assert.equal(peak, 2);
 });
