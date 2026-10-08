@@ -59,14 +59,46 @@
       <span v-else>已经到底了</span>
     </div>
 
+    <el-dialog
+      :model-value="introOpen"
+      title="校园公告更新了"
+      width="min(440px, calc(100vw - 24px))"
+      class="announce-intro"
+      align-center
+      append-to-body
+      @close="dismissIntro"
+    >
+      <ol class="intro-items">
+        <li>
+          <strong>来源更全</strong>
+          <p>除了教务处、学工处，现在还同步学校其他部门和各学院发布的通知。</p>
+        </li>
+        <li>
+          <strong>只看你关心的</strong>
+          <p>点右上角“选择部门”，勾选想看的部门和学院，“全部”和上方的标签就只显示它们。</p>
+        </li>
+        <li>
+          <strong>学院通知要自己勾</strong>
+          <p>学院默认不显示。个人资料里填了学院的，会自动带上自己学院的通知。</p>
+        </li>
+      </ol>
+      <template #footer>
+        <el-button @click="dismissIntro">知道了</el-button>
+        <el-button type="primary" @click="dismissIntro(); openChooser()">去选择部门</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="chooserOpen" title="选择部门" width="min(440px, calc(100vw - 24px))" class="announce-chooser" append-to-body>
       <p class="chooser-hint">勾选的部门会出现在“全部”和上方的标签里。{{ auth.isLoggedIn ? "" : "登录后可以在各设备间同步。" }}</p>
       <div class="chooser-list">
-        <label v-for="b in boards" :key="b.slug" class="chooser-row">
-          <el-checkbox :model-value="draft.includes(b.slug)" @change="toggleDraft(b.slug)" />
-          <span class="chooser-name">{{ b.name }}</span>
-          <span class="chooser-count">{{ b.topicCount }} 条</span>
-        </label>
+        <template v-for="group in chooserGroups" :key="group.title">
+          <h3 v-if="chooserGroups.length > 1" class="chooser-group">{{ group.title }}</h3>
+          <label v-for="b in group.boards" :key="b.slug" class="chooser-row">
+            <el-checkbox :model-value="draft.includes(b.slug)" @change="toggleDraft(b.slug)" />
+            <span class="chooser-name">{{ b.name }}</span>
+            <span class="chooser-count">{{ b.topicCount }} 条</span>
+          </label>
+        </template>
       </div>
       <template #footer>
         <div class="chooser-foot">
@@ -102,6 +134,19 @@ function readLocalOverrides(): SourceOverrides | null {
   }
 }
 
+// 新功能说明只弹一次；用户已经自己选过部门的不用再讲。
+const INTRO_KEY = "cpu-announcement-intro-v1";
+let introSeen = false;
+
+function shouldShowIntro() {
+  if (introSeen) return false;
+  try {
+    return localStorage.getItem(INTRO_KEY) !== "1" && !localStorage.getItem(OVERRIDES_KEY);
+  } catch {
+    return false;
+  }
+}
+
 function writeLocalOverrides(overrides: SourceOverrides | null) {
   try {
     if (overrides) localStorage.setItem(OVERRIDES_KEY, JSON.stringify(overrides));
@@ -132,9 +177,12 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const overrides = ref<SourceOverrides | null>(readLocalOverrides());
+// 登录用户的默认部门由服务器给（会加上自己学院）；没取到时按板块自身的默认值。
+const accountDefaults = ref<Set<string> | null>(null);
 const chooserOpen = ref(false);
 const draft = ref<string[]>([]);
 const saving = ref(false);
+const introOpen = ref(false);
 const allBoards = ref<Board[]>(boardsSnapshot);
 const items = ref<Topic[]>([]);
 const total = ref(0);
@@ -150,16 +198,24 @@ const activeSlug = computed(() => {
   return boards.value.some((b) => b.slug === slug) ? slug : "";
 });
 const activeBoard = computed(() => boards.value.find((b) => b.slug === activeSlug.value) || null);
-const defaultSlugs = computed(() => boards.value.filter((b) => b.announceDefault !== false).map((b) => b.slug));
+const defaultSlugs = computed(() => boards.value.filter(isDefaultSource).map((b) => b.slug));
 const selectedSlugs = computed(() => {
   const include = new Set(overrides.value?.include ?? []);
   const exclude = new Set(overrides.value?.exclude ?? []);
   return boards.value
-    .filter((b) => (b.announceDefault !== false ? !exclude.has(b.slug) : include.has(b.slug)))
+    .filter((b) => (isDefaultSource(b) ? !exclude.has(b.slug) : include.has(b.slug)))
     .map((b) => b.slug);
 });
 // 从别处直接打开一个没选的部门时，它的标签也要在。
 const tabBoards = computed(() => boards.value.filter((b) => selectedSlugs.value.includes(b.slug) || b.slug === activeSlug.value));
+// 学院有十几个，在选择框里和学校部门分开列。
+const chooserGroups = computed(() => {
+  const isCollege = (b: Board) => /学院$|^体育部$/.test(b.name);
+  return [
+    { title: "学校部门", boards: boards.value.filter((b) => !isCollege(b)) },
+    { title: "学院", boards: boards.value.filter(isCollege) },
+  ].filter((group) => group.boards.length);
+});
 const listKey = computed(() => activeSlug.value || `all:${selectedSlugs.value.join(",")}`);
 const hasMore = computed(() => page.value * PAGE_SIZE < total.value);
 
@@ -182,19 +238,37 @@ onMounted(async () => {
   if (boardList.status === "fulfilled") allBoards.value = boardsSnapshot = boardList.value;
   // 登录用户以服务器上的选择为准；取不到就先用本机记的。
   if (preference.status === "fulfilled" && boards.value.length) {
+    accountDefaults.value = new Set(preference.value.defaults);
     overrides.value = preference.value.customized ? overridesFor(preference.value.selected) : null;
     writeLocalOverrides(overrides.value);
   }
   await nextTick();
   ready = true;
   if (!restore(listKey.value)) reload();
+  // 有部门可选、而且用户没在服务器上选过，才值得打断一下。
+  const customized = preference.status === "fulfilled" && preference.value.customized;
+  introOpen.value = boards.value.length > 0 && !customized && shouldShowIntro();
 });
+
+function dismissIntro() {
+  introOpen.value = false;
+  introSeen = true;
+  try {
+    localStorage.setItem(INTRO_KEY, "1");
+  } catch {
+    // 存不下时本次会话内不再弹。
+  }
+}
+
+function isDefaultSource(board: Board) {
+  return accountDefaults.value ? accountDefaults.value.has(board.slug) : board.announceDefault !== false;
+}
 
 function overridesFor(selected: string[]): SourceOverrides {
   const chosen = new Set(selected);
   return {
-    include: boards.value.filter((b) => b.announceDefault === false && chosen.has(b.slug)).map((b) => b.slug),
-    exclude: boards.value.filter((b) => b.announceDefault !== false && !chosen.has(b.slug)).map((b) => b.slug),
+    include: boards.value.filter((b) => !isDefaultSource(b) && chosen.has(b.slug)).map((b) => b.slug),
+    exclude: boards.value.filter((b) => isDefaultSource(b) && !chosen.has(b.slug)).map((b) => b.slug),
   };
 }
 
@@ -344,8 +418,15 @@ function normalizeAnnouncementsError(error_: unknown) {
 .announce-more { display: flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .announce-more button[data-cpu-button="text"] { margin-left: 8px; }
 
+.intro-items { margin: 0; padding-inline-start: 20px; }
+.intro-items li + li { margin-top: 10px; }
+.intro-items strong { font-weight: 600; }
+.intro-items p { margin: 2px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+
 .chooser-hint { margin: 0 0 8px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .chooser-list { max-height: min(56vh, 420px); overflow-y: auto; }
+.chooser-group { margin: 12px 0 2px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-weight: 500; }
+.chooser-group:first-child { margin-top: 0; }
 .chooser-row { display: flex; min-height: 40px; align-items: center; gap: 10px; cursor: pointer; }
 .chooser-row + .chooser-row { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
 .chooser-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

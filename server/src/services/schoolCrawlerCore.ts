@@ -100,17 +100,26 @@ async function fetchText(url: string): Promise<{ text: string; finalUrl: string 
   return { text, finalUrl: normalizePublicUrl(res.url || selectedUrl) };
 }
 
+const ARTICLE_HREF = /\/c\d+a\d+\/page\.htm|\/info\/\d+\/\d+\.htm/i;
+
 function parseList(html: string, listUrlBase: string): ParsedSchoolFeedListItem[] {
   const $ = cheerio.load(html);
   const items: ParsedSchoolFeedListItem[] = [];
-  $("li, tr").each((_, el) => {
-    const $li = $(el);
-    const $a = $li.find(".news_title a, a[href]").first();
+  const readRow = ($li: ReturnType<typeof $>) => {
+    // 带缩略图的列表里第一个链接是图片，标题链接在 .news_title 里。
+    const $title = $li.find(".news_title a").first();
+    const $a = $title.length ? $title : $li.find("a[href]").first();
     const $meta = $li.find(".news_meta, .date, time").first();
     if (!$a.length) return;
     const href = ($a.attr("href") ?? "").trim();
     const title = ($a.attr("title") ?? $a.text() ?? "").trim();
-    const dateMatch = ($meta.text() + " " + $li.text()).match(/(20\d{2})\s*[年.\/-]\s*(\d{1,2})\s*[月.\/-]\s*(\d{1,2})\s*日?/);
+    let dateMatch = ($meta.text() + " " + $li.text()).match(/(20\d{2})\s*[年.\/-]\s*(\d{1,2})\s*[月.\/-]\s*(\d{1,2})\s*日?/);
+    if (!dateMatch) {
+      // 有的模板把日期拆成“日”和“年-月”两块。
+      const yearMonth = $li.find(".news_year").first().text().match(/(20\d{2})\D+(\d{1,2})/);
+      const day = $li.find(".news_day").first().text().match(/\d{1,2}/);
+      if (yearMonth && day) dateMatch = ["", yearMonth[1], yearMonth[2], day[0]] as RegExpMatchArray;
+    }
     const dateStr = dateMatch ? `${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}` : undefined;
     if (!href || !title || !dateStr) return;
 
@@ -122,7 +131,17 @@ function parseList(html: string, listUrlBase: string): ParsedSchoolFeedListItem[
       title,
       publishedAt: new Date(dateStr + "T08:00:00+08:00").toISOString(),
     });
-  });
+  };
+  $("li, tr").each((_, el) => readRow($(el)));
+  if (!items.length) {
+    // 不用 li/tr 排版的站点：从文章链接往上找到带日期的那一层，当作一行。
+    $("a[href]").each((_, el) => {
+      if (!ARTICLE_HREF.test($(el).attr("href") ?? "")) return;
+      let $row = $(el).parent();
+      for (let depth = 0; depth < 3 && $row.length && !/20\d{2}\s*[年.\/-]\s*\d{1,2}/.test($row.text()); depth += 1) $row = $row.parent();
+      if ($row.length && $row.find("a[href]").filter((__, a) => ARTICLE_HREF.test($(a).attr("href") ?? "")).length === 1) readRow($row);
+    });
+  }
   return items;
 }
 
@@ -160,6 +179,11 @@ async function fetchDetail(url: string): Promise<{ content: string; effectiveUrl
       : $("div.read").first().length ? $("div.read").first()
       : $("div.article").first();
     if (!$body.length) $body = $("body");
+    // 博达站点常把整篇通知做成内嵌 PDF，地址只出现在脚本里；换成普通链接，否则正文是空的。
+    $body.find("script").each((_, el) => {
+      const pdf = /showVsbpdfIframe\(\s*["']([^"']+\.pdf)["']/i.exec($(el).html() ?? "")?.[1];
+      if (pdf) $(el).replaceWith(`<p><a href="${normalizePublicUrl(pdf, effectiveUrl)}">查看通知原文（PDF）</a></p>`);
+    });
     $body.find("script,style,noscript,iframe,.wp_articlecontent .read_more,.wp_entry .arti_metas").remove();
 
     const wechatHref = $body.find('a[href*="mp.weixin.qq.com"]').first().attr("href");

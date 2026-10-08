@@ -3,6 +3,7 @@ import { createApp, startAppWorkers } from "./app";
 import { waitForBackgroundOwnership } from "./utils/deploymentWorkers";
 import { config } from "./config";
 import { ensureBuiltinBoards } from "./services/defaultBoards";
+import { ensureCollegeFeedSources } from "./services/collegeFeedSources";
 import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
 import { loadStorageConfig } from "./services/storageConfig";
@@ -26,6 +27,14 @@ async function start() {
   });
   if (createdBoards.length) {
     console.log(`🏛️  已同步默认板块: ${createdBoards.map((board) => board.name).join("、")}`);
+  }
+  // 学院通知源缺了只是少一路公告，不影响启动。
+  const createdColleges = await ensureCollegeFeedSources().catch((e) => {
+    console.warn("ensureCollegeFeedSources failed:", e?.message);
+    return [];
+  });
+  if (createdColleges.length) {
+    console.log(`🕷️  已补充学院通知源: ${createdColleges.map((college) => college.name).join("、")}`);
   }
   // 首页摘要依赖功能开关和全局置顶的内存快照。必须在开始接收请求前完成加载，
   // 否则重启后的首个请求会把空置顶列表写进共享首页缓存。

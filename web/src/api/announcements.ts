@@ -5,6 +5,8 @@ export interface AnnouncementPreference {
   customized: boolean;
   /** 出现在“全部”里的公告板块 slug。 */
   selected: string[];
+  /** 这个用户没选过时默认显示的板块（全站默认的，加上自己学院的）。 */
+  defaults: string[];
 }
 
 export const announcementsApi = {
