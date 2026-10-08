@@ -77,6 +77,6 @@ $env:Path = "$env:NODE_HOME;$env:Path"
 
 本次源码与模拟器验证的范围、证据及未验证项见 [独立核查记录](docs/independent-audit-20260908.md)。GitHub Actions 会检查随包桥／主题资源未过期，并执行课表回归测试；Linux 部署产物不等同于已签名的 HarmonyOS 发布包。
 
-3.0.6（26）的正式签名包、备注修复、跟进 iOS 4.14（70）的七天条和手机模拟器验收见 [发布记录](docs/release-3.0.6.md)。与 iOS 4.14 对齐的课表改动、商店截图的做法和 AppGallery 的提交步骤见 [3.0.5 的记录](docs/release-3.0.5.md)；更早的见 [3.0.3 的记录](docs/release-3.0.3.md)。
+3.0.7（27）的正式签名包、课表显示设置和月视图的拖动换月见 [发布记录](docs/release-3.0.7.md)。3.0.6（26）的正式签名包、备注修复、跟进 iOS 4.14（70）的七天条和手机模拟器验收见 [发布记录](docs/release-3.0.6.md)。与 iOS 4.14 对齐的课表改动、商店截图的做法和 AppGallery 的提交步骤见 [3.0.5 的记录](docs/release-3.0.5.md)；更早的见 [3.0.3 的记录](docs/release-3.0.3.md)。
 
 鸿蒙上架审核整改与待补资质见 [2026-09-10 整改记录](docs/review-remediation-20260910.md)。
