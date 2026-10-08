@@ -42,7 +42,7 @@
             <i v-for="entry in courseLines(item).shown" :key="entry.name" :style="{ color: entry.accent, background: entry.fill }">{{ entry.name }}</i>
             <u v-if="courseLines(item).more">+{{ courseLines(item).more }}</u>
             <!-- 情侣课表：TA 这一天有几门课，单独一行，用 TA 的颜色。 -->
-            <i v-if="partnerCounts[item.date]" class="sm-ta" :style="partnerStyle">TA {{ partnerCounts[item.date] }} 门</i>
+            <i v-if="partnerCounts[item.date]" class="sm-ta" :style="partnerStyle"><b>TA</b>{{ partnerCounts[item.date] }} 门</i>
           </span>
           <em v-if="item.adjustment" class="sm-badge" :class="item.adjustment.kind">{{ item.adjustment.kind === "off" ? "休" : "班" }}</em>
         </button>
@@ -396,9 +396,18 @@ function dayLabel(item: MonthDay) {
 }
 // TA 的那一行排在最下面，和上面我的课隔开一点。
 .sm-courses .sm-ta {
-  margin-top: 1px;
+  margin-top: 2px;
   border-radius: 7px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-weight: 600;
+}
+.sm-courses .sm-ta b {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
 }
 .sm.sm-coupled {
   --sm-row-height: 108px;

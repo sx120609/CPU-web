@@ -563,7 +563,7 @@
                     <span v-if="display.showTeacher && piece.block.course.teacher" class="week-course-teacher">{{ piece.block.course.teacher }}</span>
                     <em>{{ piece.block.course.slotNote || piece.block.course.weeks }}</em>
                     <div v-if="isCoupleShared(page, piece.block) || coupleClashesFor(page, piece.block).length" class="couple-notes">
-                      <b v-if="isCoupleShared(page, piece.block)" class="couple-note together">一起上</b>
+                      <b v-if="isCoupleShared(page, piece.block)" class="couple-note together"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z" /></svg>一起</b>
                       <b
                         v-for="other in coupleClashesFor(page, piece.block).slice(0, 1)"
                         :key="`${other.startSlot}-${other.course.name}`"
@@ -571,7 +571,7 @@
                         :style="coupleNoteStyle(other)"
                         role="button"
                         @click.stop="onPartnerCourseClick($event, other)"
-                      >TA {{ coupleClashesFor(page, piece.block).length > 1 ? `${coupleClashesFor(page, piece.block).length} 门课` : other.course.name }}</b>
+                      ><i>TA</i>{{ coupleClashesFor(page, piece.block).length > 1 ? `${coupleClashesFor(page, piece.block).length} 门课` : other.course.name }}</b>
                     </div>
                   </article>
                   <article

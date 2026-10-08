@@ -204,11 +204,12 @@ const nowLine = computed(() => {
   justify-self: center;
   max-width: 100%;
   overflow: hidden;
-  padding: 2px 12px;
+  padding: 2px 14px;
   border: 1px solid var(--cd-rule);
   border-radius: 999px;
   color: var(--cd-ink);
   font-size: 12px;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -220,8 +221,8 @@ const nowLine = computed(() => {
   min-width: 0;
   padding: 0;
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--cd-rule) 70%, transparent);
-  background: transparent;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cd-ink) 2.5%, transparent);
   font: inherit;
 }
 button.cd-cell:not(:disabled) {
@@ -233,8 +234,8 @@ button.cd-cell:not(:disabled) {
   align-items: center;
   justify-content: center;
   gap: 1px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cd-ink) 5%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cd-ink) 4%, transparent);
 }
 .cd-axis b {
   font-size: 13px;
@@ -261,10 +262,11 @@ button.cd-cell:not(:disabled) {
   box-sizing: border-box;
   min-width: 0;
   overflow: hidden;
-  padding: 5px 9px;
-  border: 1px solid var(--tile-border);
-  border-radius: 10px;
+  padding: 5px 9px 5px 12px;
+  border: 0;
+  border-radius: 12px;
   background: var(--tile-fill);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tile-border) 55%, transparent);
   color: var(--tile-accent);
   display: flex;
   flex-direction: column;
@@ -299,6 +301,17 @@ button.cd-cell:not(:disabled) {
 }
 .cd-tile.narrow strong {
   font-size: 12px;
+}
+// 靠时间轴的一边有一条这个人的颜色。
+.cd-tile::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--tile-border);
 }
 // 一起上的课右上角一颗小爱心。
 .cd-tile.shared::after {

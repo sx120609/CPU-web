@@ -134,7 +134,7 @@
       <!-- 情侣课表：这节课 TA 在做什么，用一行字写在我的课下面。一起上就写「一起上」，
            TA 这时有别的课就写「TA 课名」，点它看 TA 那门课。 -->
       <div v-if="tile.shared || tile.notes.length" class="ss-couple-notes">
-        <b v-if="tile.shared" class="ss-couple-note together">一起上</b>
+        <b v-if="tile.shared" class="ss-couple-note together"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z" /></svg>一起</b>
         <b
           v-for="note in tile.notes"
           :key="note.key"
@@ -143,7 +143,7 @@
           role="button"
           :title="note.title"
           @click.stop="emit('course', note.block, 'ta', $event)"
-        >TA {{ note.name }}</b>
+        ><i>TA</i>{{ note.name }}</b>
       </div>
     </article>
 
@@ -976,26 +976,44 @@ const nowPlacement = computed(() => {
 }
 .ss-couple-note {
   box-sizing: border-box;
-  height: 14px;
-  padding: 0 3px;
+  height: 15px;
+  padding: 0 4px 0 2px;
   overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 2px;
   font-size: 9px;
-  font-weight: 700;
-  line-height: 12px;
+  font-weight: 600;
+  line-height: 15px;
   text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
 }
+// 「TA」两个字加粗，后面跟课名。
+.ss-couple-note i {
+  flex: 0 0 auto;
+  padding-left: 2px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
 .ss-couple-note.together {
-  border-color: color-mix(in srgb, var(--couple-accent, #e2568a) 45%, transparent);
-  background: color-mix(in srgb, var(--couple-accent, #e2568a) 14%, var(--ss-panel));
+  padding-left: 4px;
+  background: color-mix(in srgb, var(--couple-accent, #e2568a) 12%, var(--ss-panel));
   color: var(--couple-accent, #e2568a);
   cursor: inherit;
 }
+.ss-couple-note svg {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+}
 .ss-tile.has-notes {
-  padding-bottom: 18px;
+  padding-bottom: 19px;
 }
 // 三门以上并排：一格只有两个字宽，只留课名。
 .ss-tile.tiny .ss-tile-time,
@@ -1012,18 +1030,15 @@ const nowPlacement = computed(() => {
 .ss-ta-tag {
   flex: 0 0 auto;
   align-self: flex-start;
-  padding: 0 3px;
-  border-radius: 4px;
-  background: var(--tile-accent);
-  color: var(--tile-fill);
-  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tile-accent) 45%, transparent);
+  color: var(--tile-accent);
+  font-size: 8px;
   font-style: normal;
   font-weight: 700;
-  line-height: 13px;
-}
-.ss-board .ss-ta-tag,
-.ss-paper .ss-ta-tag {
-  color: var(--ss-panel);
+  line-height: 12px;
+  letter-spacing: 0.3px;
 }
 .ss-day-presentation .ss-ta-tag {
   top: 6px;
