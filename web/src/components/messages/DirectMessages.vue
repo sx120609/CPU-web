@@ -974,7 +974,9 @@ function errorMessage(error: unknown, fallback: string) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 /* 按钮统一清掉浏览器默认样式；:where 保持零特异性，后面的具体类可以直接覆盖。 */
 .dm :where(button) {
   margin: 0;
@@ -1659,7 +1661,8 @@ html[data-theme="dark"] .dm {
 }
 
 /* ---------- 窄屏：列表与聊天二选一 ---------- */
-@media (max-width: 720px) {
+/* Same switch as the messages page (shared compact layout), so iPad portrait never gets the desktop two-pane card. */
+@include compact-layout {
   .dm {
     display: block;
     width: 100%;

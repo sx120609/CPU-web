@@ -632,7 +632,9 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 .md {
   font-size: var(--cpu-fs-m);
   line-height: 1.75;
@@ -979,9 +981,6 @@ onMounted(() => {
   cursor: zoom-in;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.md-clickable-images :deep(img:hover) {
-  transform: translateY(-1px);
-}
 .md :deep([data-align="left"]) { text-align: left; }
 .md :deep([data-align="center"]) { text-align: center; }
 .md :deep([data-align="right"]) { text-align: right; }
@@ -1245,7 +1244,8 @@ onMounted(() => {
   background: var(--cpu-primary-soft);
 }
 
-@media (max-width: 768px) {
+// Follows the phone component tree, so compact tablets get the same two-column albums.
+@include compact-layout {
   .md :deep(.md-image-album),
   .md :deep(.md-image-album[data-image-count="3"]),
   .md :deep(.md-image-album[data-image-count="4"]),

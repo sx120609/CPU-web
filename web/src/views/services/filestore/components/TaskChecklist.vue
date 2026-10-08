@@ -40,7 +40,9 @@ const missing = computed(() => stats.value?.missing || []);
 const unexpected = computed(() => stats.value?.unexpected || []);
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../../../styles/compact" as *;
+
 .fs-check { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .fs-check-block { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-surface-soft); }
 .fs-check-block header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -65,10 +67,11 @@ const unexpected = computed(() => stats.value?.unexpected || []);
 .fs-check-chips small { color: var(--cpu-text-secondary); font-family: var(--cpu-font-sans); font-size: var(--cpu-fs-xs); font-weight: 500; }
 .fs-check-empty { margin: 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 
-@media (max-width: 960px) {
+// compact-header is "960 px or any compact layout": the phone tree on a tablet up to 1023 px keeps these too.
+@include compact-header {
   .fs-check { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 }
-@media (max-width: 768px) {
+@include compact-layout {
   .fs-check-block { border-radius: var(--cpu-radius-l); background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
 }
 </style>

@@ -43,7 +43,9 @@ const { detail, completionRate } = useInjectedFilestoreWorkspace();
 const stats = computed(() => detail.value?.stats);
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../../../styles/compact" as *;
+
 .fs-metrics {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
@@ -67,11 +69,12 @@ const stats = computed(() => detail.value?.stats);
 .fs-metrics-grid .is-info dd { color: var(--cpu-text-secondary); }
 :global(html[data-theme="dark"] .fs-metrics-grid .is-info dd) { color: #38bdf8; }
 
-@media (max-width: 960px) {
+// compact-header is "960 px or any compact layout": the phone tree on a tablet up to 1023 px keeps these too.
+@include compact-header {
   .fs-metrics { grid-template-columns: minmax(0, 1fr); }
   .fs-metrics-lead { border-right: 0; border-bottom: 1px solid var(--cpu-border-soft); }
 }
-@media (max-width: 768px) {
+@include compact-layout {
   .fs-metrics-lead { padding: 14px; }
   .fs-metrics-lead > b { font-size: 26px; }
   .fs-metrics-grid > div { align-items: center; padding: 11px 4px; }

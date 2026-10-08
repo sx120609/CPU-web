@@ -377,7 +377,9 @@ onBeforeRouteLeave((to) => {
 /* 热榜：名次是数字，前三名用琥珀色 */
 .rank-row { display: grid; min-width: 0; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; }
 .rank-row + .rank-row { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
-.rank-row:hover { background: var(--cpu-surface-soft); }
+/* Touch screens keep :hover after a tap, so the tint is for mice only; taps get :active feedback. */
+@media (hover: hover) { .rank-row:hover { background: var(--cpu-surface-soft); } }
+.rank-row:active { background: var(--cpu-surface-soft); }
 .rank-row:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
 .rank-no { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xl); font-weight: 800; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
 .rank-no.top3 { color: var(--cpu-rank-top); }

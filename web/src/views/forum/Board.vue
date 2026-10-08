@@ -254,7 +254,9 @@ onBeforeRouteLeave((to) => {
 });
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 .board-page { display: flex; max-width: 1120px; margin: 0 auto; flex-direction: column; gap: 12px; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
 .board-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 4px; }
 .head-left { display: flex; min-width: 0; align-items: center; gap: 12px; }
@@ -278,6 +280,13 @@ onBeforeRouteLeave((to) => {
 .section-count strong { font-weight: 500; }
 .board-error { padding: 24px 12px; }
 .pager { display: flex; justify-content: center; padding: 12px; }
+// Desktop layout on a touch tablet: finger-sized page buttons.
+@include expanded-touch {
+  .pager {
+    --el-pagination-button-width: 40px;
+    --el-pagination-button-height: 40px;
+  }
+}
 @media (max-width: 700px) {
   .board-head { flex-direction: column; align-items: stretch; }
   .head-right { justify-content: space-between; }

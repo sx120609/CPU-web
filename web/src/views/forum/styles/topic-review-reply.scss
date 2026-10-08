@@ -287,3 +287,12 @@
   border-radius: 0 0 20px 20px;
 }
 
+
+// The dialog shrinks to the area above the on-screen keyboard (--cpu-overlay-viewport-height), so the full
+// editor sizes itself from that height instead of a fixed 320–620 px; otherwise a landscape tablet keeps
+// only a sliver of the editor visible. Global because the dialog is teleported to <body>.
+:global(.reply-dialog .rich-editor.toolbar-static:not(.simple-mobile) .editor-surface) {
+  min-height: clamp(96px, calc(var(--cpu-overlay-viewport-height, 100dvh) - 420px), 320px);
+  max-height: clamp(140px, calc(var(--cpu-overlay-viewport-height, 100dvh) - 300px), 620px);
+  overscroll-behavior-y: auto;
+}

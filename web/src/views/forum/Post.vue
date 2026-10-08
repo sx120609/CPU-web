@@ -2414,12 +2414,7 @@ function notifyVideoReviewState(summary?: {
   color: var(--cpu-text);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
-}
-
-.second-hand-kind:hover {
-  border-color: var(--cpu-border-soft);
-  transform: translateY(-1px);
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .second-hand-kind.active {

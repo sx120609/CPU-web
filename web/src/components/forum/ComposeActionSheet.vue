@@ -96,7 +96,9 @@ function go(to: string) {
 .compose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .compose-action { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 12px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-surface-soft); color: var(--cpu-text); text-align: left; cursor: pointer; }
 .compose-grid > .compose-action:last-child { grid-column: 1 / -1; }
-.compose-action:hover { border-color: var(--cpu-primary); background: var(--cpu-primary-soft); }
+/* A tapped action would otherwise keep looking selected on touch screens. */
+@media (hover: hover) { .compose-action:hover { border-color: var(--cpu-primary); background: var(--cpu-primary-soft); } }
+.compose-action:active { border-color: var(--cpu-primary); background: var(--cpu-primary-soft); }
 .compose-action:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .compose-icon { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border-radius: var(--cpu-radius-m); background: var(--cpu-card); font-size: var(--cpu-fs-xl); }
 .compose-action span:last-child { min-width: 0; }

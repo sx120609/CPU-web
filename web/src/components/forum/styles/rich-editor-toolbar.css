@@ -8,9 +8,10 @@
   overflow: visible;
 }
 
+/* --editor-toolbar-top is the sticky header above the editor (site top bar or the post page's own header). */
 .editor-toolbar {
   position: sticky;
-  top: 0;
+  top: var(--editor-toolbar-top, 0px);
   z-index: 8;
   display: flex;
   flex-direction: column;
@@ -35,6 +36,12 @@
   border-bottom: 1px solid var(--cpu-border-soft);
   border-radius: 14px 14px 0 0;
   background: var(--cpu-surface-soft);
+}
+
+/* Too little room under the header (keyboard up in landscape): the toolbar scrolls away with the page. */
+.rich-editor.toolbar-unstuck .editor-toolbar {
+  position: relative;
+  top: auto;
 }
 
 .rich-editor.toolbar-static .toolbar-head {

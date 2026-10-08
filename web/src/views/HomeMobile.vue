@@ -483,7 +483,8 @@ function selectFeedStream(stream: MobileHomeFeedStream) {
 }
 
 function openQuickEntry(to: string) { void router.push(to); }
-function openTopic(id: number) { void router.push(`/forum/topic/${id}`); }
+// Pass the home path as `from` so the topic's back control returns here, as ForumFeedCard already does.
+function openTopic(id: number) { void router.push({ path: `/forum/topic/${id}`, query: { from: route.fullPath } }); }
 function openService(service: any) {
   const target = typeof service?.url === "string" ? service.url.trim() : "";
   if (!target) {

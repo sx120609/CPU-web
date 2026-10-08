@@ -23,8 +23,8 @@
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
       </button>
       <button data-cpu-button="surface" type="button" class="svc-d-shortcut" style="--tone: #2563eb" @click="$router.push('/download')">
-        <span class="pk-tile" aria-hidden="true"><AppIcon name="desktop" /></span>
-        <span><b>药大拾间客户端</b><small>校园网自动连接、学习通辅助与桌面常驻能力都在客户端中</small></span>
+        <span class="pk-tile" aria-hidden="true"><AppIcon :name="clientShortcut.icon" /></span>
+        <span><b>{{ clientShortcut.title }}</b><small>{{ clientShortcut.sub }}</small></span>
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
       </button>
     </div>
@@ -109,7 +109,8 @@ import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import ToolCardDesktop from "./components/ToolCardDesktop.vue";
-import { publicServiceLinks, useServicesPage } from "./servicesPage";
+import { canOfferDesktopClient } from "@/utils/clientInfo";
+import { publicServiceLinks, useInjectedServicesPage } from "./servicesPage";
 import "@/styles/page-kit.css";
 
 const {
@@ -124,7 +125,12 @@ const {
   isLoginRequired,
   toolBadge,
   openTool,
-} = useServicesPage();
+} = useInjectedServicesPage();
+
+// 桌面客户端的能力只在 Windows / macOS 上可用；iPad、安卓平板和 App 内看到的是与手机相同的通用下载入口。
+const clientShortcut = canOfferDesktopClient()
+  ? { icon: "desktop", title: "药大拾间客户端", sub: "校园网自动连接、学习通辅助与桌面常驻能力都在客户端中" }
+  : { icon: "download", title: "客户端下载", sub: "桌面端与手机端" };
 </script>
 
 <style scoped>

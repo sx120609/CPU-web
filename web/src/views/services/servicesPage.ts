@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch, type InjectionKey, type Ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import { getToken } from "@/api/request";
@@ -110,6 +110,8 @@ export function useServiceTools() {
 }
 
 // 桌面端与移动端服务页共用的数据与入口行为；两套页面只负责各自的排版。
+// services/Index.vue 只调用一次并 provide 给两套页面：iPad 旋转跨过布局切换点时，
+// 搜索词、电费对话框和已加载的工具配置都会保留，也不会重复请求。
 export function useServicesPage() {
   const tools = useServiceTools();
   const { auth } = tools;
@@ -118,6 +120,8 @@ export function useServicesPage() {
   const route = useRoute();
   const site = useSiteStore();
   const electricOpen = ref(false);
+  // 移动端的搜索词；放在共享状态里，切换布局后切回来仍在。
+  const keyword = ref("");
   let disposed = false;
   const academicDataUnavailable = computed(() => Boolean(auth.user?.studentSso && auth.academicIdentityUnavailable));
   const electricAvailable = computed(() => auth.isLoggedIn && site.features.electric);
@@ -152,7 +156,17 @@ export function useServicesPage() {
     electricOpen,
     electricAvailable,
     academicDataUnavailable,
+    keyword,
   };
+}
+
+export type ServicesPage = ReturnType<typeof useServicesPage>;
+export const servicesPageKey: InjectionKey<ServicesPage> = Symbol("services-page");
+
+export function useInjectedServicesPage() {
+  const page = inject(servicesPageKey);
+  if (!page) throw new Error("services page state is not provided");
+  return page;
 }
 
 // 小工具的管理入口：工具配置里可管理的，加上账号被单独授权的。

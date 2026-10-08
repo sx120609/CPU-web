@@ -1,21 +1,26 @@
 <template>
-  <el-tooltip v-if="meta" :content="meta.hint" placement="top">
-    <span
+  <!-- 触屏设备没有悬停：提示改为点按打开，再点一次或点别处关闭。 -->
+  <el-tooltip v-if="meta" :content="meta.hint" placement="top" :trigger="canHover ? 'hover' : 'click'">
+    <button
+      data-cpu-button="surface"
+      type="button"
       class="academic-data-source-badge"
       :class="`is-${meta.tone}`"
-      :aria-label="`当前数据来自${meta.label}`"
-      role="status"
+      :aria-label="`当前数据来自${meta.label}。${meta.hint}`"
     >
       <span class="source-dot" aria-hidden="true"></span>
       {{ meta.label }}
-    </span>
+    </button>
   </el-tooltip>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useFormFactor } from "@/utils/formFactor";
 
 const props = defineProps<{ source?: unknown }>();
+const formFactor = useFormFactor();
+const canHover = computed(() => formFactor.value.canHover);
 
 const meta = computed(() => {
   if (props.source === "modern") {
@@ -53,6 +58,9 @@ const meta = computed(() => {
   line-height: 1;
   white-space: nowrap;
   box-sizing: border-box;
+  margin: 0;
+  font-family: inherit;
+  cursor: help;
 }
 
 .source-dot {

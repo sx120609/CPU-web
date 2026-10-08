@@ -1,3 +1,5 @@
+@use "../../../styles/compact" as *;
+
 .main-post {
   padding: 0;
   // `hidden` creates a non-scrolling scroll container and prevents the nested
@@ -497,3 +499,10 @@
   .post-action-more { margin-left: auto; }
 }
 
+// Desktop layout on a touch tablet: the 私聊 / 备注 links beside the author name are finger-sized.
+@include expanded-touch {
+  .main-post .post-meta .post-private-chat-button {
+    min-height: 36px;
+    padding: 6px 8px;
+  }
+}

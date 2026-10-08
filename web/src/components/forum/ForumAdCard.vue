@@ -121,7 +121,9 @@ function trackClick() {
   text-decoration: none;
   transition: background .16s ease, border-color .16s ease;
 }
-.forum-ad-link:hover { background: color-mix(in srgb, var(--cpu-primary) 4%, var(--cpu-card)); }
+/* Touch screens keep :hover after a tap, so the tint is for mice only; taps get :active feedback. */
+@media (hover: hover) { .forum-ad-link:hover { background: color-mix(in srgb, var(--cpu-primary) 4%, var(--cpu-card)); } }
+.forum-ad-link:active { background: color-mix(in srgb, var(--cpu-primary) 4%, var(--cpu-card)); }
 .ad-media {
   display: grid;
   width: 108px;

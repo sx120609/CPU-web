@@ -1,6 +1,6 @@
 <template>
-  <div class="rich-editor" :class="[toolbarModeClass, { 'simple-mobile': isSimpleMobile }]" :style="rootStyle">
-    <div v-if="!isSimpleMobile" class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
+  <div class="rich-editor" :class="[toolbarModeClass, { 'simple-mobile': isSimpleMobile, 'toolbar-unstuck': toolbarUnstuck }]" :style="rootStyle">
+    <div v-if="!isSimpleMobile" ref="toolbarRef" class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
       <div class="toolbar-head">
         <span class="toolbar-title">{{ label }}</span>
         <span v-if="toolbarStatusText" class="toolbar-status">{{ toolbarStatusText }}</span>
@@ -155,6 +155,7 @@ import DOMPurify from "dompurify";
 import { uploadApi } from "@/api/topic";
 import { normalizeImageUploadError, prepareForumImageUpload } from "@/utils/imageUpload";
 import { isAndroidNativeApp } from "@/utils/clientInfo";
+import { useFormFactor } from "@/utils/formFactor";
 import {
   ensureMarkdownMathStyles,
   loadMarkdownMath,
@@ -166,7 +167,9 @@ type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
-const MOBILE_BREAKPOINT = "(max-width: 768px)";
+// Below this much room between the sticky header and the bottom of the visible area (keyboard up on a
+// landscape tablet or phone), a stuck toolbar would cover the text being typed, so it scrolls away instead.
+const MIN_STICKY_EDITING_ROOM = 200;
 const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片；一次选多张图片会自动排成相册。";
 const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插入图片；多图会自动排成相册。";
 const DEFAULT_FOOTER = "支持排版、图片、相册和草稿保存。";
@@ -200,15 +203,19 @@ const emit = defineEmits<{
 }>();
 
 const editorRef = ref<HTMLElement | null>(null);
+const toolbarRef = ref<HTMLElement | null>(null);
 const contentImageInputRef = ref<HTMLInputElement | null>(null);
 const imageOnlyInputRef = ref<HTMLInputElement | null>(null);
 const imageUploading = ref(false);
 const mediaUploadTasks = ref<MediaUploadTask[]>([]);
 const draftHint = ref("");
 const hasSelectedImage = ref(false);
-const isMobileViewport = ref(false);
+const formFactor = useFormFactor();
+// The phone component tree (compact layout), the same switch the pages use.
+const isMobileViewport = computed(() => formFactor.value.compact);
 const activeMobileToolbar = ref<MobileToolbarKey | "">("");
 const toolbarStickyOffset = ref(0);
+const toolbarUnstuck = ref(false);
 const touchScrollState = reactive({
   active: false,
   startY: 0,
@@ -230,8 +237,8 @@ let pendingDraftContent = "";
 let uploadCleanupTimer = 0;
 let editorDisposed = false;
 let hydrateSeq = 0;
-let mobileViewportQuery: MediaQueryList | null = null;
-let topbarResizeObserver: ResizeObserver | null = null;
+let stickyHeaderResizeObserver: ResizeObserver | null = null;
+let observedStickyHeader: HTMLElement | null = null;
 
 const alignOptions: Array<{ value: Alignment; label: string; title: string }> = [
   { value: "left", label: "左齐", title: "靠左" },
@@ -296,16 +303,6 @@ const rootStyle = computed(() => ({
 }));
 
 onMounted(async () => {
-  syncMobileViewport();
-  if (typeof window !== "undefined" && window.matchMedia) {
-    mobileViewportQuery = window.matchMedia(MOBILE_BREAKPOINT);
-    if (typeof mobileViewportQuery.addEventListener === "function") {
-      mobileViewportQuery.addEventListener("change", handleViewportChange);
-    } else {
-      mobileViewportQuery.addListener(handleViewportChange);
-    }
-  }
-  observeTopbarHeight();
   syncToolbarStickyOffset();
   hydrateEditor((props.restoreDraft ? readDraft() : "") || props.modelValue);
   document.addEventListener("selectionchange", updateToolbarState);
@@ -321,14 +318,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   editorDisposed = true;
   document.removeEventListener("selectionchange", updateToolbarState);
-  if (mobileViewportQuery) {
-    if (typeof mobileViewportQuery.removeEventListener === "function") {
-      mobileViewportQuery.removeEventListener("change", handleViewportChange);
-    } else {
-      mobileViewportQuery.removeListener(handleViewportChange);
-    }
-  }
-  topbarResizeObserver?.disconnect();
+  stickyHeaderResizeObserver?.disconnect();
+  stickyHeaderResizeObserver = null;
+  observedStickyHeader = null;
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleLayoutResize);
     window.visualViewport?.removeEventListener("resize", handleLayoutResize);
@@ -340,20 +332,18 @@ onBeforeUnmount(() => {
   window.clearTimeout(uploadCleanupTimer);
 });
 
-function handleViewportChange(event: { matches: boolean }) {
-  isMobileViewport.value = event.matches;
-  if (!event.matches) activeMobileToolbar.value = "";
-  syncToolbarStickyOffset();
-}
+// Only a real layout flip closes an open panel; the on-screen keyboard resizes the visual viewport all the
+// time on tablets, and closing the panel then would cost a tap per formatting action.
+watch(isMobileViewport, (mobile) => {
+  if (!mobile) activeMobileToolbar.value = "";
+});
 
-function syncMobileViewport() {
-  if (typeof window === "undefined") return;
-  isMobileViewport.value = window.matchMedia?.(MOBILE_BREAKPOINT).matches ?? window.innerWidth <= 768;
-}
+// The toolbar appears or changes size with the layout and the simple-mobile switch.
+watch([isMobileViewport, isSimpleMobile], () => {
+  void nextTick(syncToolbarStickyOffset);
+});
 
 function handleLayoutResize() {
-  syncMobileViewport();
-  if (!isMobileViewport.value) activeMobileToolbar.value = "";
   syncToolbarStickyOffset();
 }
 
@@ -366,22 +356,64 @@ async function runMobileAction(action: () => void | Promise<void>, keepOpen = fa
   if (!keepOpen) activeMobileToolbar.value = "";
 }
 
-function observeTopbarHeight() {
-  if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
-  const topbar = document.querySelector<HTMLElement>(".topbar");
-  if (!topbar) return;
-  topbarResizeObserver = new ResizeObserver(() => syncToolbarStickyOffset());
-  topbarResizeObserver.observe(topbar);
+function isVisibleStickyHeader(element: Element | null | undefined): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false;
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && (style.position === "sticky" || style.position === "fixed");
+}
+
+/**
+ * The header the sticky toolbar has to stay below: the post page's own header in native shells, otherwise
+ * the site top bar. Looked up from this editor, so a page leaving during a route transition is never measured.
+ */
+function findStickyHeader(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const pageHeader = editorRef.value?.closest(".post-page")?.querySelector(":scope > .native-post-header");
+  if (isVisibleStickyHeader(pageHeader)) return pageHeader;
+  const topbar = document.querySelector(".layout-root > .topbar");
+  return isVisibleStickyHeader(topbar) ? topbar : null;
+}
+
+function observeStickyHeader(header: HTMLElement | null) {
+  if (header === observedStickyHeader || typeof ResizeObserver === "undefined") return;
+  stickyHeaderResizeObserver?.disconnect();
+  observedStickyHeader = header;
+  if (!header) {
+    stickyHeaderResizeObserver = null;
+    return;
+  }
+  stickyHeaderResizeObserver = new ResizeObserver(() => syncToolbarStickyOffset());
+  stickyHeaderResizeObserver.observe(header);
 }
 
 function syncToolbarStickyOffset() {
-  if (typeof window === "undefined") return;
-  if (!isMobileViewport.value) {
+  if (typeof window === "undefined" || editorDisposed) return;
+  if (props.toolbarMode !== "sticky") {
     toolbarStickyOffset.value = 0;
+    toolbarUnstuck.value = false;
+    observeStickyHeader(null);
     return;
   }
-  const topbar = document.querySelector<HTMLElement>(".topbar");
-  toolbarStickyOffset.value = topbar ? Math.ceil(topbar.getBoundingClientRect().height) : 0;
+  const header = findStickyHeader();
+  observeStickyHeader(header);
+  const offset = header
+    ? Math.ceil((Number.parseFloat(window.getComputedStyle(header).top) || 0) + header.getBoundingClientRect().height)
+    : 0;
+  toolbarStickyOffset.value = offset;
+  const visibleHeight = window.visualViewport?.height ?? window.innerHeight;
+  const toolbarHeight = closedToolbarHeight();
+  toolbarUnstuck.value = toolbarHeight > 0 && visibleHeight - offset - toolbarHeight < MIN_STICKY_EDITING_ROOM;
+}
+
+// Measured without an open panel, so opening 格式 or 图片 never makes the toolbar jump out of view.
+function closedToolbarHeight() {
+  const toolbar = toolbarRef.value;
+  if (!toolbar) return 0;
+  let height = toolbar.getBoundingClientRect().height;
+  toolbar.querySelectorAll<HTMLElement>(".mobile-toolbar-panel, .mobile-toolbar-note").forEach((element) => {
+    height -= element.getBoundingClientRect().height;
+  });
+  return Math.max(0, height);
 }
 
 function handleEditorTouchStart(event: TouchEvent) {
@@ -1155,4 +1187,4 @@ defineExpose({ clearDraft, flushDraftSave, isContentEmpty, pickImages });
 <style scoped src="./styles/rich-editor-toolbar.css"></style>
 <style scoped src="./styles/rich-editor-content.css"></style>
 <style scoped src="./styles/rich-editor-status.css"></style>
-<style scoped src="./styles/rich-editor-responsive.css"></style>
+<style scoped lang="scss" src="./styles/rich-editor-responsive.scss"></style>

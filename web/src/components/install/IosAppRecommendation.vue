@@ -2,7 +2,7 @@
   <aside v-if="visible" class="ios-app-recommendation" aria-labelledby="ios-app-recommendation-title">
     <img class="app-icon" src="/favicon.svg" alt="" width="40" height="40" />
     <div class="copy">
-      <strong id="ios-app-recommendation-title">药大拾间 iOS 原生版已上线</strong>
+      <strong id="ios-app-recommendation-title">{{ headline }}</strong>
       <p>App Store 免费下载，登录原有账号即可使用；当前版本也可继续使用。</p>
     </div>
     <a
@@ -17,7 +17,7 @@
       class="close-action"
       type="button"
       data-cpu-button="icon"
-      aria-label="关闭 iOS 下载推荐，7 天内不再提示"
+      :aria-label="closeLabel"
       @click="dismiss"
     >
       <el-icon aria-hidden="true"><Close /></el-icon>
@@ -28,11 +28,15 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { Close } from "@element-plus/icons-vue";
-import { IOS_APP_STORE_URL, shouldRecommendIosApp } from "@/utils/clientInfo";
+import { IOS_APP_STORE_URL, isLikelyIpadDevice, shouldRecommendIosApp } from "@/utils/clientInfo";
 
 const DISMISSED_KEY = "cpu-ios-app-recommendation-dismissed-at";
 const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
 const visible = ref(shouldRecommendIosApp() && !recentlyDismissed());
+// The app is universal; say so, and on an iPad name the iPad directly.
+const isIpad = isLikelyIpadDevice();
+const headline = isIpad ? "药大拾间 iPad 版已上线" : "药大拾间 iPhone 与 iPad 原生版已上线";
+const closeLabel = isIpad ? "关闭 iPad 版下载推荐，7 天内不再提示" : "关闭 iPhone 与 iPad 版下载推荐，7 天内不再提示";
 
 function recentlyDismissed() {
   try {

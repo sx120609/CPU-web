@@ -1,4 +1,4 @@
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, inject, onMounted, reactive, ref, watch, type InjectionKey } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Monitor, Moon, Sunny } from "@element-plus/icons-vue";
@@ -84,6 +84,8 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 
 // 桌面端与移动端个人中心共用的数据、表单与操作；两套页面只负责各自的排版。
+// profile/Index.vue 只调用一次并 provide 给两套页面：iPad 旋转跨过布局切换点时，
+// 打开中的编辑资料、修改密码对话框和已输入的内容都会保留，也不会重复加载。
 export function useProfilePage() {
   const commerceHidden = hidesNativeCommerce();
   const auth = useAuthStore();
@@ -641,4 +643,13 @@ export function useProfilePage() {
     retryAvatarPreview,
     openMyTopic,
   };
+}
+
+export type ProfilePage = ReturnType<typeof useProfilePage>;
+export const profilePageKey: InjectionKey<ProfilePage> = Symbol("profile-page");
+
+export function useInjectedProfilePage() {
+  const page = inject(profilePageKey);
+  if (!page) throw new Error("profile page state is not provided");
+  return page;
 }

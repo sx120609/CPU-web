@@ -109,7 +109,9 @@ function categoryIcon(category?: string | null) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 .message-list {
   display: flex;
   flex-direction: column;
@@ -256,7 +258,7 @@ function categoryIcon(category?: string | null) {
   font-size: var(--cpu-fs-l);
 }
 
-@media (max-width: 768px) {
+@include compact-layout {
   .message-list {
     gap: 8px;
   }

@@ -1,4 +1,9 @@
-@media (max-width: 768px) {
+@use "../../../styles/compact" as *;
+
+// The phone topic: its own sticky header, inline author rows, a fixed reply composer and a bottom-sheet
+// reply dialog. It follows the compact layout, so touch tablets below 1024 px get it, and so do native
+// shells, which hide their own bars on this route and rely on this header for navigation.
+@mixin topic-compact {
   .topic-page {
     gap: 0;
     min-height: 100dvh;
@@ -515,56 +520,6 @@
     line-height: 1.4;
   }
 
-  :global(.reply-dialog-overlay) {
-    background: var(--cpu-scrim);
-  }
-
-  :global(.reply-dialog-overlay .el-overlay-dialog) {
-    display: flex;
-    align-items: flex-end;
-    padding: 8px 8px max(8px, env(safe-area-inset-bottom));
-  }
-
-  :global(.reply-dialog-overlay .reply-dialog) {
-    display: flex;
-    width: calc(100dvw - 16px) !important;
-    max-width: 720px;
-    max-height: min(560px, calc(var(--cpu-overlay-viewport-height, 100dvh) - 16px - env(safe-area-inset-bottom)));
-    margin: 0 auto !important;
-    padding: 0;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: var(--cpu-radius-l);
-    box-shadow: var(--cpu-shadow-float);
-  }
-
-  :global(.reply-dialog-overlay .reply-dialog .el-dialog__header) {
-    flex: 0 0 auto;
-    margin: 0;
-    padding: 13px 46px 11px 16px;
-    border-bottom: 1px solid var(--cpu-border-soft);
-  }
-
-  :global(.reply-dialog-overlay .reply-dialog .el-dialog__title) {
-    color: var(--cpu-text);
-    font-size: var(--cpu-fs-m);
-    font-weight: 700;
-  }
-
-  :global(.reply-dialog-overlay .reply-dialog .el-dialog__headerbtn) {
-    top: 7px;
-    right: 8px;
-  }
-
-  :global(.reply-dialog-overlay .reply-dialog .el-dialog__body) {
-    display: flex;
-    min-height: 0;
-    padding: 12px 12px 10px;
-    flex: 1 1 auto;
-    flex-direction: column;
-    overflow-y: auto;
-  }
-
   .reply-original-peek {
     display: flex;
     flex: 0 0 auto;
@@ -589,21 +544,6 @@
     font-size: var(--cpu-fs-xs);
   }
 
-  :global(.reply-dialog .rich-editor.toolbar-static.simple-mobile) {
-    flex: 0 0 auto;
-    border-radius: var(--cpu-radius-l);
-    box-shadow: none;
-  }
-
-  :global(.reply-dialog .rich-editor.toolbar-static.simple-mobile .editor-surface) {
-    min-height: 118px;
-    max-height: min(28dvh, 240px);
-  }
-
-  :global(.reply-dialog-overlay .reply-dialog .el-dialog__footer) {
-    padding: 0 12px 12px;
-  }
-
   .reply-dialog-actions > .cpu-muted {
     min-width: 0;
     font-size: var(--cpu-fs-xs);
@@ -615,5 +555,100 @@
     border-radius: var(--cpu-radius-l);
     font-weight: 700;
   }
+}
 
+@include compact-layout {
+  @include topic-compact;
+}
+
+// The reply dialog is teleported to <body>, so these rules are global. :global() cannot sit inside the
+// compact-layout mixin (a prefix in front of it would be dropped), hence the explicit scope.
+@mixin topic-reply-sheet($scope: "") {
+  :global(#{$scope}.reply-dialog-overlay) {
+    background: var(--cpu-scrim);
+  }
+
+  :global(#{$scope}.reply-dialog-overlay .el-overlay-dialog) {
+    display: flex;
+    align-items: flex-end;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+  }
+
+  :global(#{$scope}.reply-dialog-overlay .reply-dialog) {
+    display: flex;
+    width: calc(100dvw - 16px) !important;
+    max-width: 720px;
+    max-height: min(560px, calc(var(--cpu-overlay-viewport-height, 100dvh) - 16px - env(safe-area-inset-bottom)));
+    margin: 0 auto !important;
+    padding: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: var(--cpu-radius-l);
+    box-shadow: var(--cpu-shadow-float);
+  }
+
+  :global(#{$scope}.reply-dialog-overlay .reply-dialog .el-dialog__header) {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 13px 46px 11px 16px;
+    border-bottom: 1px solid var(--cpu-border-soft);
+  }
+
+  :global(#{$scope}.reply-dialog-overlay .reply-dialog .el-dialog__title) {
+    color: var(--cpu-text);
+    font-size: var(--cpu-fs-m);
+    font-weight: 700;
+  }
+
+  :global(#{$scope}.reply-dialog-overlay .reply-dialog .el-dialog__headerbtn) {
+    top: 7px;
+    right: 8px;
+  }
+
+  :global(#{$scope}.reply-dialog-overlay .reply-dialog .el-dialog__body) {
+    display: flex;
+    min-height: 0;
+    padding: 12px 12px 10px;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  :global(#{$scope}.reply-dialog .rich-editor.toolbar-static.simple-mobile) {
+    flex: 0 0 auto;
+    border-radius: var(--cpu-radius-l);
+    box-shadow: none;
+  }
+
+  :global(#{$scope}.reply-dialog .rich-editor.toolbar-static.simple-mobile .editor-surface) {
+    min-height: 118px;
+    max-height: min(28dvh, 240px);
+  }
+
+  :global(#{$scope}.reply-dialog-overlay .reply-dialog .el-dialog__footer) {
+    padding: 0 12px 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  @include topic-reply-sheet;
+}
+
+@include topic-reply-sheet(':where(html[data-cpu-layout="compact"]) ');
+
+// A compact layout wider than a phone (tablet portrait, native shells on tablets) keeps the phone column
+// at a readable width instead of stretching it edge to edge.
+@media (min-width: 769px) {
+  :where(html[data-cpu-layout="compact"]) {
+    .topic-page,
+    .topic-page-loading {
+      max-width: 760px;
+      margin-inline: auto;
+    }
+
+    .mobile-reply-composer {
+      right: max(10px, calc(50% - 370px));
+      left: max(10px, calc(50% - 370px));
+    }
+  }
 }

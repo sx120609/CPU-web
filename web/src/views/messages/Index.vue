@@ -407,6 +407,7 @@ import { buildQqAddFriendUrl } from "@/utils/qqContact";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 import { forumContentExcerpt } from "@/utils/forumContent";
 import { isWechatBrowser as detectWechatBrowser, mountWechatSubscribeButton } from "@/utils/wechatBridge";
+import { useMobileLayout } from "@/utils/mobileLayout";
 
 const route = useRoute();
 const router = useRouter();
@@ -457,7 +458,9 @@ let disposed = false;
 let wechatQrPollTimer: ReturnType<typeof setTimeout> | null = null;
 let wechatQrPollSeq = 0;
 let disposeWechatSubscribeButton: (() => void) | null = null;
-let privateViewportQuery: MediaQueryList | null = null;
+// The full-height private chat follows the shared phone/tablet layout, so iPad portrait gets the same
+// scroll-locked single-pane chat as phones instead of a desktop card inside phone chrome.
+const compactLayout = useMobileLayout();
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 const isWechatBrowser = detectWechatBrowser();
@@ -507,8 +510,6 @@ const qqBotAddFriendUrl = computed(() => {
 });
 onMounted(() => {
   disposed = false;
-  privateViewportQuery = window.matchMedia("(max-width: 720px)");
-  privateViewportQuery.addEventListener("change", syncPrivateScrollLock);
   syncPrivateScrollLock();
   void loadPage();
   void loadQqBotProfile({ silent: true });
@@ -540,8 +541,6 @@ onBeforeUnmount(() => {
   stopWechatQrPolling();
   disposeWechatSubscribeButton?.();
   disposeWechatSubscribeButton = null;
-  privateViewportQuery?.removeEventListener("change", syncPrivateScrollLock);
-  privateViewportQuery = null;
   setPrivateScrollLock(false);
 });
 
@@ -584,8 +583,11 @@ function directMessageQueryReset() {
   };
 }
 
+watch(compactLayout, syncPrivateScrollLock);
+
 function syncPrivateScrollLock() {
-  setPrivateScrollLock(tab.value === "private" && Boolean(privateViewportQuery?.matches));
+  if (disposed) return;
+  setPrivateScrollLock(tab.value === "private" && compactLayout.value);
 }
 
 function setPrivateScrollLock(active: boolean) {
@@ -1146,7 +1148,9 @@ function normalizeMessageSettings(value: any) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/compact" as *;
+
 :global(html.messages-private-scroll-lock),
 :global(body.messages-private-scroll-lock) {
   overflow: hidden !important;
@@ -1494,7 +1498,7 @@ function normalizeMessageSettings(value: any) {
   margin-top: 14px;
 }
 
-@media (max-width: 768px) {
+@include compact-layout {
   .qq-bind-guide {
     align-items: stretch;
     flex-direction: column;
@@ -1780,6 +1784,28 @@ function normalizeMessageSettings(value: any) {
     font-size: var(--cpu-fs-l);
   }
 
+  .notice-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 118px), 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .notice-actions :deep(.el-button) {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+    padding-inline: 10px;
+  }
+
+  .notice-actions :deep(.el-button > span) {
+    white-space: nowrap;
+  }
+}
+
+/* Kept on the plain phone query: a bare :deep() cannot sit under the compact-layout :where(html) copy
+   (the scope attribute would land on <html>). */
+@media (max-width: 768px) {
   :deep(.notice-dialog) {
     width: 100% !important;
     max-width: 100% !important;
@@ -1803,30 +1829,14 @@ function normalizeMessageSettings(value: any) {
   :deep(.notice-dialog .el-dialog__footer) {
     padding: 0 16px 16px;
   }
-
-  .notice-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 118px), 1fr));
-    gap: 8px;
-    width: 100%;
-  }
-
-  .notice-actions :deep(.el-button) {
-    width: 100%;
-    min-width: 0;
-    margin-left: 0;
-    padding-inline: 10px;
-  }
-
-  .notice-actions :deep(.el-button > span) {
-    white-space: nowrap;
-  }
 }
 
-@media (max-width: 720px) {
+/* The single-pane private chat follows the shared compact layout (phones, iPad portrait, native shells).
+   The floor never exceeds the visible height, so landscape phones keep the composer on screen. */
+@include compact-layout {
   .msg-page.is-private {
     height: calc(100dvh - 160px - env(safe-area-inset-bottom));
-    min-height: 360px;
+    min-height: min(360px, calc(var(--layout-viewport-height, 100dvh) - 66px));
     gap: 8px;
     overflow: hidden;
   }
@@ -1878,11 +1888,18 @@ function normalizeMessageSettings(value: any) {
     min-height: 300px;
   }
 
-  /* The app shell draws no top bar or tab bar. The second selector outranks the
-     keyboard rule above, which would otherwise leave an 84px gap over the keyboard. */
+  // The app shell draws no top bar or tab bar. The second selector outranks the
+  // keyboard rule above, which would otherwise leave an 84px gap over the keyboard.
   .layout-root--native-shell .msg-page.is-private,
   .layout-root--native-shell.keyboard-open .msg-page.is-private {
     height: 100dvh;
+  }
+}
+
+/* Compact tablets above phone width: keep the single-pane chat phone-sized rather than 860px wide. */
+@media (min-width: 769px) {
+  :where(html[data-cpu-layout="compact"]) .msg-page.is-private {
+    max-width: 760px;
   }
 }
 
@@ -1915,8 +1932,9 @@ function normalizeMessageSettings(value: any) {
   }
 }
 
-/* 桌面端和移动端用同一套导航：先选私聊 / 通知 / 设置，通知再按分类筛选；不再露出一排原生标签页。 */
-@media (min-width: 769px) {
+/* 桌面端和移动端用同一套导航：先选私聊 / 通知 / 设置，通知再按分类筛选；不再露出一排原生标签页。
+   Follows the rendered tree rather than width, so compact tablets above 768px keep the phone styles. */
+@include expanded-only {
   .msg-page { width: 100%; max-width: 1080px; margin: 0 auto; gap: 14px; }
   .page-head { flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 0 2px; }
   .page-title { font-size: var(--cpu-fs-xl); font-weight: 700; letter-spacing: -.01em; }

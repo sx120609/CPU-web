@@ -172,7 +172,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { ArrowRight, ChatLineRound, ChatDotRound, Edit, Bell, InfoFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
@@ -194,6 +194,7 @@ import {
 
 const auth = useAuthStore();
 const site = useSiteStore();
+const route = useRoute();
 const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
@@ -351,8 +352,9 @@ function openUrl(url: string, label = "联系电话") {
   ElMessage.warning("该服务链接格式暂不支持");
 }
 
+// Pass the home path as `from` so the topic's back control returns home instead of falling back to 最新.
 function openTopic(id: number) {
-  router.push(`/forum/topic/${id}`);
+  router.push({ path: `/forum/topic/${id}`, query: { from: route.fullPath } });
 }
 
 function normalizeHomeError(error: unknown) {
@@ -364,7 +366,9 @@ function normalizeHomeError(error: unknown) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../styles/compact" as *;
+
 /* 桌面首页：简短的站点介绍，下面两栏白色分组。分组标题在分组外，像设置页的小标题。 */
 .home { display: flex; max-width: 1120px; margin: 0 auto; flex-direction: column; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
 
@@ -398,12 +402,17 @@ function normalizeHomeError(error: unknown) {
 .second-hand p { margin: 0; }
 .second-hand-actions { display: flex; gap: 8px; margin-top: 12px; }
 .second-hand-actions a { display: inline-flex; height: 40px; flex: 1; align-items: center; justify-content: center; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); color: var(--cpu-text); font-weight: 500; text-decoration: none; }
-.second-hand-actions a:hover { background: var(--cpu-surface-subtle); }
+.second-hand-actions a:active { background: var(--cpu-surface-subtle); }
 
 .announce-list { margin: 0; padding: 0; list-style: none; }
 .announce-list li { padding: 12px 16px; cursor: pointer; }
 .announce-list li + li, .svc + .svc { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
-.announce-list li:hover, .svc:hover { background: var(--cpu-surface-soft); }
+.announce-list li:active, .svc:active { background: var(--cpu-surface-soft); }
+/* 悬停底色只给鼠标：iPad 点按后会一直保留 :hover，触屏改用上面的 :active 反馈 */
+@media (hover: hover) {
+  .second-hand-actions a:hover { background: var(--cpu-surface-subtle); }
+  .announce-list li:hover, .svc:hover { background: var(--cpu-surface-soft); }
+}
 .announce-list li:focus-visible, .svc:focus-visible, .second-hand-actions a:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
 .ann-title { display: -webkit-box; overflow: hidden; font-weight: 500; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-wrap: pretty; }
 .ann-meta { display: flex; gap: 5px; margin-top: 2px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
@@ -420,5 +429,13 @@ function normalizeHomeError(error: unknown) {
   .intro { flex-direction: column; align-items: flex-start; gap: 16px; }
   .service-list { display: grid; grid-template-columns: 1fr 1fr; }
   .service-list .svc:nth-child(2) { box-shadow: none; }
+}
+
+/* 横屏 iPad 等触屏平板走桌面首页：链接、行和按钮的点按区域不小于 44px（.svc 本身已是 52px） */
+@include expanded-touch {
+  .more { min-height: 44px; }
+  .announce-list li { min-height: 44px; }
+  .second-hand-actions a { height: 44px; }
+  .intro-actions .el-button { height: 44px; }
 }
 </style>

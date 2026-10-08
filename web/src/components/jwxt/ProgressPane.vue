@@ -296,8 +296,8 @@ function scoreColor(s: string) {
 }
 </script>
 
-<style scoped>
-.progress-pane { display: flex; flex-direction: column; gap: 16px; }
+<style scoped lang="scss">
+.progress-pane { display: flex; flex-direction: column; gap: 16px; container: progress-pane / inline-size; }
 
 .data-note {
   display: flex;
@@ -481,11 +481,9 @@ function scoreColor(s: string) {
   font-size: var(--cpu-fs-xs);
 }
 
-@media (max-width: 760px) {
-  .progress-pane {
-    gap: 12px;
-  }
-
+// 卡片列表：视口不超过 760px 时（旧浏览器的兜底），或面板放不下卡片里 760px 的表格时
+// （再加上 el-card 两侧 20px 内边距和边框）。按面板宽度判断，竖屏 iPad 等中等宽度下不再横向拖动表格。
+@mixin progress-cards {
   .overall {
     border-radius: var(--cpu-radius-l);
     padding: 18px 16px;
@@ -533,5 +531,18 @@ function scoreColor(s: string) {
     flex-direction: column;
     gap: 10px;
   }
+}
+
+@media (max-width: 760px) {
+  .progress-pane {
+    gap: 12px;
+  }
+
+  @include progress-cards;
+}
+
+// 容器查询不能作用于容器自身，所以面板的 gap 只在视口断点里收紧。
+@container progress-pane (max-width: 801px) {
+  @include progress-cards;
 }
 </style>
