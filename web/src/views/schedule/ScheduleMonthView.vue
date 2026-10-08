@@ -8,6 +8,18 @@
         <span v-if="showsGutter" class="sm-gutter">周</span>
         <span v-for="(label, index) in weekdayLabels" :key="label" :class="{ weekend: index >= 5 }">{{ label }}</span>
       </div>
+      <!-- 上下拖动换月：格子跟着手指走，松手后翻到下一个月或者弹回来。 -->
+      <div
+        :key="monthId"
+        class="sm-rows"
+        :class="[enterClass, { dragging: drag.active }]"
+        :style="rowsStyle"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerEnd"
+        @pointercancel="onPointerEnd"
+        @click.capture="onClickCapture"
+      >
       <div v-for="row in rows" :key="row[0].date" class="sm-row">
         <span v-if="showsGutter" class="sm-gutter">{{ rowWeek(row) }}</span>
         <button
@@ -32,11 +44,13 @@
           <span v-if="visualStyle === 'table'" class="sm-names">
             <i v-for="entry in courseMarks(item).slice(0, 2)" :key="entry.name" :style="{ color: entry.accent }">{{ entry.name.slice(0, 4) }}</i>
           </span>
-          <span v-else class="sm-dots">
-            <i v-for="entry in courseMarks(item).slice(0, 4)" :key="entry.name" :style="{ background: entry.accent }" />
+          <!-- 当天有课就在日期下面画一条：一节课是一个点，课越多越长。 -->
+          <span v-else class="sm-load">
+            <i v-if="item.blocks.length" :style="{ width: `${loadWidth(item)}px` }" />
           </span>
           <em v-if="item.adjustment" class="sm-badge" :class="item.adjustment.kind">{{ item.adjustment.kind === "off" ? "休" : "班" }}</em>
         </button>
+      </div>
       </div>
     </div>
 
@@ -72,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, reactive, ref } from "vue";
 import { dayOfWeekForCalendarYmd } from "./calendar";
 import { placeCourseBlocks, type SchedulePriorityMap } from "./displayPriority";
 import { lunarDateText, monthDayTitle, monthKeyOf, monthRows, paperMonthTitle, type MonthDay } from "./monthModel";
@@ -93,16 +107,23 @@ const props = withDefaults(defineProps<{
   priorities?: SchedulePriorityMap;
   /** 能不能从这里跳到所选那天的日视图。 */
   canOpenDay?: boolean;
+  /** 还有没有上一个月、下一个月可以翻。 */
+  canShiftPrevious?: boolean;
+  canShiftNext?: boolean;
 }>(), {
   hasBackground: false,
   priorities: () => ({}),
   canOpenDay: false,
+  canShiftPrevious: false,
+  canShiftNext: false,
 });
 
 const emit = defineEmits<{
   (event: "select", date: string): void;
   (event: "open-day", date: string): void;
   (event: "course", block: WeekCourseBlock, date: string, source: Event): void;
+  /** 上下拖动换月：1 是下一个月，-1 是上一个月。 */
+  (event: "shift", delta: number): void;
 }>();
 
 const weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"];
@@ -114,6 +135,73 @@ const paperTitle = computed(() => {
   const first = props.days.find((item) => item.inMonth);
   return first ? paperMonthTitle(monthKeyOf(first.date)) : "";
 });
+
+// MARK: 上下拖动换月
+
+const SHIFT_DISTANCE = 44;
+const monthId = computed(() => {
+  const first = props.days.find((item) => item.inMonth);
+  return first ? monthKeyOf(first.date) : "";
+});
+const drag = reactive({ pointer: -1, startX: 0, startY: 0, active: false, offset: 0, moved: false });
+/** 换月以后新的一页从哪边滑进来。 */
+const enterClass = ref("");
+
+const rowsStyle = computed(() => (drag.offset ? { transform: `translateY(${drag.offset}px)` } : {}));
+
+function canShift(delta: number) {
+  return delta > 0 ? props.canShiftNext : props.canShiftPrevious;
+}
+
+function onPointerDown(event: PointerEvent) {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  drag.pointer = event.pointerId;
+  drag.startX = event.clientX;
+  drag.startY = event.clientY;
+  drag.active = false;
+  drag.moved = false;
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (event.pointerId !== drag.pointer) return;
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (!drag.active) {
+    if (Math.abs(dy) < 8 || Math.abs(dy) < Math.abs(dx)) return;
+    drag.active = true;
+    drag.moved = true;
+    try {
+      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    } catch {
+      /* 指针已经抬起就不用接管了 */
+    }
+  }
+  // 往上拖是下一个月。没有月份可翻的那一边只给一点阻尼，表示到头了。
+  const delta = dy < 0 ? 1 : -1;
+  drag.offset = dy * (canShift(delta) ? 0.55 : 0.18);
+}
+
+function onPointerEnd(event: PointerEvent) {
+  if (event.pointerId !== drag.pointer) return;
+  drag.pointer = -1;
+  if (!drag.active) return;
+  const dy = event.clientY - drag.startY;
+  const delta = dy < 0 ? 1 : -1;
+  drag.active = false;
+  drag.offset = 0;
+  if (event.type === "pointerup" && Math.abs(dy) >= SHIFT_DISTANCE && canShift(delta)) {
+    enterClass.value = delta > 0 ? "enter-from-below" : "enter-from-above";
+    emit("shift", delta);
+  }
+}
+
+/** 拖动结束时落在某一天上的那一下不算点选。 */
+function onClickCapture(event: MouseEvent) {
+  if (!drag.moved) return;
+  drag.moved = false;
+  event.stopPropagation();
+  event.preventDefault();
+}
 
 function rowWeek(row: MonthDay[]) {
   return row.find((item) => item.slot)?.slot?.week ?? "";
@@ -132,6 +220,12 @@ function visibleBlocks(item: MonthDay) {
   return placeCourseBlocks(item.blocks, props.priorities)
     .map(displayBlockOf)
     .sort((a, b) => a.startSlot - b.startSlot || a.endSlot - b.endSlot);
+}
+
+/** 日期下面那一条的长度：一节课是一个圆点，四节以上到头。 */
+function loadWidth(item: MonthDay) {
+  const count = visibleBlocks(item).length;
+  return count <= 1 ? 5 : Math.min(4, count) * 6;
 }
 
 function courseMarks(item: MonthDay) {
@@ -238,6 +332,38 @@ const emptyText = computed(() => {
 .sm-row + .sm-row {
   margin-top: 6px;
 }
+// 上下拖动换月：竖向的手势归这一块自己处理，页面不跟着滚。
+.sm-rows {
+  touch-action: pan-x;
+  transition: transform 0.22s ease-out;
+  will-change: transform;
+}
+.sm-rows.dragging {
+  transition: none;
+}
+.sm-rows.enter-from-below {
+  animation: sm-enter-below 0.24s ease-out;
+}
+.sm-rows.enter-from-above {
+  animation: sm-enter-above 0.24s ease-out;
+}
+@keyframes sm-enter-below {
+  from { opacity: 0; transform: translateY(36px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sm-enter-above {
+  from { opacity: 0; transform: translateY(-36px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sm-rows {
+    transition: none;
+  }
+  .sm-rows.enter-from-below,
+  .sm-rows.enter-from-above {
+    animation: none;
+  }
+}
 .sm-gutter {
   color: var(--sm-meta);
   font-size: 11px;
@@ -298,15 +424,19 @@ const emptyText = computed(() => {
 .sm-dark .sm-day.festival .sm-subtitle {
   color: #ff8ca6;
 }
-.sm-dots {
+.sm-load {
   height: 5px;
   display: flex;
-  gap: 2px;
+  justify-content: center;
 }
-.sm-dots i {
-  width: 5px;
+.sm-load i {
   height: 5px;
-  border-radius: 50%;
+  border-radius: 999px;
+  background: var(--sm-fill);
+  opacity: 0.85;
+}
+.sm-grid .sm-day.selected .sm-load i {
+  background: var(--sm-on-fill);
 }
 .sm-names {
   width: 100%;
