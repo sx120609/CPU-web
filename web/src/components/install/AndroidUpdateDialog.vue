@@ -41,7 +41,7 @@
       <p v-else-if="promptKind === 'widget'" class="update-lead">
         当前客户端版本较低，更新后可使用桌面小组件。
       </p>
-      <p v-else class="update-lead">建议更新后继续使用。</p>
+      <p v-else class="update-lead">近期小版本更新频繁，建议持续追更，获得更好体验。</p>
 
       <ul v-if="notes.length" class="update-notes">
         <li v-for="note in notes" :key="note">{{ note }}</li>
