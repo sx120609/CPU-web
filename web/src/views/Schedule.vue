@@ -460,13 +460,12 @@
           :today-date="todayYmd"
           :clocks="smallSlots"
           :priorities="schedulePriority"
-          :can-open-day="canOpenMonthDay"
+          can-open-day
           :can-shift-previous="canChangeMonth(-1)"
           :can-shift-next="canChangeMonth(1)"
           @shift="changeMonth"
           @select="onMonthSelect"
           @open-day="openMonthDay"
-          @course="(block, date, source) => onMonthCourseClick(source, block, date)"
         />
       </div>
     </section>
@@ -605,22 +604,22 @@
                 @day="(day) => page.delta === 0 && onDayClick(day)"
               />
 
-              <!-- 双人模式的日视图：沿用当前风格的网格，两人的课只在撞在一起时才左右分开。 -->
-              <StyledWeekGrid
-                v-else-if="!usesClassicDay && couple.active.value"
+              <!-- 双人模式的日视图：时间轴在中间，我的课在左、TA 的课在右，所有风格共用。 -->
+              <CoupleDayView
+                v-else-if="couple.active.value"
                 :visual-style="scheduleStyle"
                 :palette="scheduleTheme"
                 :dark="appearance.isDark"
                 :has-background="hasScheduleBackground"
-                :days="coupleDayFor(page)"
                 :clocks="smallSlots"
+                :pieces="coupleDayFor(page)[0].pieces"
+                :partner-pieces="coupleDayFor(page)[0].partnerPieces ?? []"
+                :shared-ids="coupleDayFor(page)[0].sharedIds"
+                :partner-name="couplePartnerName"
+                :partner-color="couplePartnerColor"
                 :now-minutes="pageIsToday(page) ? displayNowMinutes : null"
-                :completed-before="pageIsPast(page) ? 24 * 60 : null"
-                :shows-date-header="false"
-                :tone-resolver="coupleToneResolver"
-                day-presentation
                 @course="(block, owner, source) => owner === 'ta' ? onPartnerCourseClick(source, block) : onCourseBlockClick(source, block, page.weekValue)"
-                @slot="(_day, slot) => onStyledSlotClick(page.day, slot, page.weekValue)"
+                @slot="(slot) => onStyledSlotClick(page.day, slot, page.weekValue)"
               />
 
               <StyledDayView
@@ -639,8 +638,8 @@
                 @slot="(slot) => onStyledSlotClick(page.day, slot, page.weekValue)"
               />
 
-              <div v-else class="day-pane" :class="{ 'couple-on': couple.active.value }">
-                <section v-if="page.dayCourseBlocks.length || coupleDataFor(page).partnerBlocks.length" class="day-timeline" aria-label="当日课表">
+              <div v-else class="day-pane">
+                <section v-if="page.dayCourseBlocks.length" class="day-timeline" aria-label="当日课表">
                   <div class="day-grid-body">
                     <template v-for="slot in smallSlots" :key="`day-axis-${page.key}-${slot.no}`">
                       <div class="slot-axis day-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
@@ -650,7 +649,7 @@
                       </div>
                       <div
                         class="day-slot-cell"
-                        :style="{ gridColumn: couple.active.value ? '2 / 4' : '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }"
+                        :style="{ gridColumn: '2 / 3', gridRow: `${slot.no} / ${slot.no + 1}` }"
                         @click="onDaySlotClick($event, page.day, slot.no, page.weekValue)"
                       />
                     </template>
@@ -658,8 +657,7 @@
                       v-for="piece in dayPiecesFor(page)"
                       :key="`${page.weekValue}-${page.day}-${piece.id}`"
                       class="day-course-block"
-                      :class="{ 'couple-shared': isCoupleShared(page, piece.block), 'couple-split': isCoupleSplit(page, piece.block, 'me') }"
-                      :style="dayCourseBlockStyle(piece, 'me', isCoupleShared(page, piece.block), page)"
+                      :style="dayCourseBlockStyle(piece)"
                       :title="courseTitle(piece.block.course)"
                       @click.stop="onCourseBlockClick($event, piece.block, page.weekValue)"
                     >
@@ -669,23 +667,6 @@
                         <span v-if="piece.block.course.teacher">{{ piece.block.course.teacher }}</span>
                       </div>
                       <div class="day-course-note">{{ piece.block.course.slotNote || piece.block.course.weeks }}</div>
-                    </article>
-                    <article
-                      v-for="block in coupleDataFor(page).partnerBlocks"
-                      :key="`ta-${page.weekValue}-${page.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
-                      class="day-course-block couple-partner"
-                      :class="{ 'couple-split': isCoupleSplit(page, block, 'ta') }"
-                      :style="dayCourseBlockStyle(block, 'ta', false, page)"
-                      :title="`TA · ${courseTitle(block.course)}`"
-                      @click.stop="onPartnerCourseClick($event, block)"
-                    >
-                      <i class="couple-ta-tag">TA</i>
-                      <div class="day-course-name">{{ block.course.name }}</div>
-                      <div class="day-course-meta">
-                        <span v-if="block.course.location">@{{ block.course.location }}</span>
-                        <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
-                      </div>
-                      <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
                     </article>
                   </div>
                 </section>
@@ -1088,6 +1069,7 @@ import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
 import { coupleCourseTone } from "@/views/schedule/couple";
 import { useCoupleOverlay } from "@/views/schedule/useCoupleOverlay";
 import CoupleDialog from "@/views/schedule/CoupleDialog.vue";
+import CoupleDayView from "@/views/schedule/CoupleDayView.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -3535,16 +3517,20 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   syncNativeWidgetTheme();
 }
 
-// 双人模式按人配色；两人同一节上同一门课时合并成一格，用双方颜色的渐变。
-function coupleTone(owner: "me" | "ta", name: string, shared: boolean) {
+// 双人模式下我的课照旧用当前风格和配色，只有 TA 的课换成 TA 的颜色。
+function coupleTone(owner: "me" | "ta", name: string) {
   const value = couple.status.value;
-  if (!couple.active.value || value?.status !== "active") return toneFor(name);
-  const mine = coupleCourseTone(value.me.color, name, appearance.isDark);
-  if (owner === "ta") return coupleCourseTone(value.partner.color, name, appearance.isDark);
-  if (!shared) return mine;
-  const theirs = coupleCourseTone(value.partner.color, name, appearance.isDark);
-  return { ...mine, bg: `linear-gradient(120deg, ${mine.bg} 0%, ${mine.bg} 38%, ${theirs.bg} 62%, ${theirs.bg} 100%)` };
+  if (owner !== "ta" || value?.status !== "active") return toneFor(name);
+  return coupleCourseTone(value.partner.color, name, appearance.isDark);
 }
+const couplePartnerName = computed(() => {
+  const value = couple.status.value;
+  return value?.status === "active" ? value.partner.nickname || "TA" : "TA";
+});
+const couplePartnerColor = computed(() => {
+  const value = couple.status.value;
+  return value?.status === "active" ? value.partner.color : "pink";
+});
 
 type DrawnBlock = WeekCourseBlock | PlacedCourseBlock;
 
@@ -3553,43 +3539,44 @@ function drawnBlockOf(item: DrawnBlock) {
 }
 
 // 并排的重叠课程按所在的道分宽度。
-function laneStyle(item: DrawnBlock) {
-  if (!("block" in item) || item.lanes <= 1) return {};
-  const share = 100 / item.lanes;
+// `strip`：这门课和 TA 的课撞在一起时，右边给 TA 留出一条色带的宽度。
+function laneStyle(item: DrawnBlock, strip = false) {
+  const lanes = "block" in item ? item.lanes : 1;
+  const lane = "block" in item ? item.lane : 0;
+  if (lanes <= 1 && !strip) return {};
+  const room = strip ? "(100% - var(--couple-strip))" : "100%";
   return {
     justifySelf: "start",
-    width: `calc(${share}% - 2px)`,
-    marginLeft: `calc(${share * item.lane}% + 1px)`,
+    width: `calc(${room} / ${lanes} - 2px)`,
+    marginLeft: `calc(${room} / ${lanes} * ${lane} + 1px)`,
   };
 }
 
 function courseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false, page?: WeekPage) {
   const block = drawnBlockOf(item);
-  const colors = coupleTone(owner, block.course.name, shared);
+  const colors = coupleTone(owner, block.course.name);
+  const split = Boolean(page && !shared && isCoupleSplit(page, block, owner));
   // 关掉周末或把周日挪到首列以后，星期几不再等于第几列。
   const column = page ? columnsFor(page).indexOf(block.day) + 2 : block.day + 1;
   return {
     ...(column < 2 ? { display: "none" } : {}),
     gridColumn: `${column} / ${column + 1}`,
     gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
-    // 和对方的课撞在一起时左右两半已经分给了两个人，不再按道分。
-    ...(page && isCoupleSplit(page, block, owner) ? {} : laneStyle(item)),
+    // 撞在一起时 TA 的课收成右边一条色带（宽度在样式里），我的课让出这一条。
+    ...(split && owner === "ta" ? {} : laneStyle(item, split)),
     "--course-bg": colors.bg,
     "--course-border": colors.border,
     "--course-text": colors.text,
   };
 }
 
-function dayCourseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false, page?: SchedulePageModel) {
+function dayCourseBlockStyle(item: DrawnBlock) {
   const block = drawnBlockOf(item);
-  const colors = coupleTone(owner, block.course.name, shared);
-  const coupled = couple.active.value;
-  // 双人模式下只有撞在同一时段的课才左右分开，其余的照常占满一行。
-  const split = Boolean(coupled && page && !shared && isCoupleSplit(page, block, owner));
+  const colors = toneFor(block.course.name);
   return {
-    gridColumn: !coupled ? "2 / 3" : !split ? "2 / 4" : owner === "ta" ? "3 / 4" : "2 / 3",
+    gridColumn: "2 / 3",
     gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
-    ...(split ? {} : laneStyle(item)),
+    ...laneStyle(item),
     "--course-bg": colors.bg,
     "--course-border": colors.border,
     "--course-text": colors.text,
@@ -4030,10 +4017,10 @@ function styledDaysFor(page: SchedulePageModel) {
   return styledPageDays.value.get(page.key) ?? [];
 }
 
-// 双人模式按人配色，新样式的网格也用同一套。
-const coupleToneResolver: TileToneResolver = (block, owner, shared) => {
-  if (!couple.active.value || couple.status.value?.status !== "active") return null;
-  const tone = coupleTone(owner, block.course.name, shared);
+// 双人模式下只有 TA 的课换颜色，我的课仍然是样式自己的配色。
+const coupleToneResolver: TileToneResolver = (block, owner) => {
+  if (owner !== "ta" || !couple.active.value || couple.status.value?.status !== "active") return null;
+  const tone = coupleTone(owner, block.course.name);
   return { accent: tone.text, fill: tone.bg, border: tone.border, accentInverse: tone.text };
 };
 
@@ -4119,7 +4106,6 @@ const monthWeekRange = computed(() => {
   const last = Math.max(...weekNumbers);
   return first === last ? `第 ${first} 周` : `第 ${first}–${last} 周`;
 });
-const canOpenMonthDay = computed(() => dateIndex.value.has(monthSelectedDate.value));
 const todayButtonLabel = computed(() => (
   viewMode.value === "month" ? "回到今天" : viewMode.value === "week" ? "回到本周" : "跳转到当日"
 ));
@@ -4182,11 +4168,6 @@ function openMonthDay(date: string) {
   // 研究生课表在切周时会把日期挪到有课的那天；这里要的是用户点的那一天。
   activeDay.value = slot.day;
   saveLastState();
-}
-
-function onMonthCourseClick(_source: Event, block: WeekCourseBlock, date: string) {
-  const slot = dateIndex.value.get(date);
-  openQuickLook(block, slot ? String(slot.week) : currentWeekValue());
 }
 
 // 进到月视图时校历可能还没恢复，换学期后月份也会不在新校历里。

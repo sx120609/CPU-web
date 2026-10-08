@@ -109,7 +109,8 @@
         current: tile.current,
         partner: tile.owner === 'ta',
         shared: tile.shared,
-        narrow: tile.lanes > 1 || tile.half,
+        narrow: tile.lanes > 1,
+        strip: tile.strip,
         'off-week': tile.offWeek,
       }"
       :style="tile.style"
@@ -119,16 +120,19 @@
       @click.stop="openTile(tile, $event)"
       @keydown.enter.prevent="openTile(tile, $event)"
     >
-      <i v-if="tile.offWeek" class="ss-off-tag">非本周</i>
-      <i v-else-if="tile.owner === 'ta'" class="ss-ta-tag">TA</i>
-      <div v-if="layout.course === 'departure'" class="ss-tile-time">
-        <i class="ss-mark" />
-        <b>{{ tile.start }}</b>
-      </div>
-      <strong>{{ tile.block.course.name }}</strong>
-      <span v-if="tile.location">@{{ tile.location }}</span>
-      <span v-if="tile.teacher">{{ tile.teacher }}</span>
-      <em v-if="tile.status" class="ss-tile-status">{{ tile.status }}</em>
+      <!-- 和我的课撞在一起的 TA 的课只是一条色带，不放字；点开看详情。 -->
+      <template v-if="!tile.strip">
+        <i v-if="tile.offWeek" class="ss-off-tag">非本周</i>
+        <i v-else-if="tile.owner === 'ta'" class="ss-ta-tag">TA</i>
+        <div v-if="layout.course === 'departure'" class="ss-tile-time">
+          <i class="ss-mark" />
+          <b>{{ tile.start }}</b>
+        </div>
+        <strong>{{ tile.block.course.name }}</strong>
+        <span v-if="tile.location">@{{ tile.location }}</span>
+        <span v-if="tile.teacher">{{ tile.teacher }}</span>
+        <em v-if="tile.status" class="ss-tile-status">{{ tile.status }}</em>
+      </template>
     </article>
 
     <!-- 「现在」：节次栏上一个胶囊，今天那一列一条线，在同一个高度。 -->
@@ -265,7 +269,7 @@ function allPieces(item: StyledDay) {
   return item.partnerPieces?.length ? [...item.pieces, ...item.partnerPieces] : item.pieces;
 }
 
-/** 双人模式下，这门课是不是和对方的课撞在同一时段：只有撞在一起才左右各占半格。 */
+/** 双人模式下，这门课是不是和对方的课撞在同一时段：撞在一起时 TA 的课收成一条色带，我的课让出这一条。 */
 function sharesSlotWithOther(item: StyledDay, piece: PlacedCourseBlock, owner: TileOwner) {
   if (!coupled.value) return false;
   const others = owner === "ta" ? item.pieces : (item.partnerPieces ?? []);
@@ -303,8 +307,8 @@ interface Tile {
   block: WeekCourseBlock;
   owner: TileOwner;
   shared: boolean;
-  /** 双人模式下和对方的课撞在一起，只占半格。 */
-  half: boolean;
+  /** TA 的课和我的课撞在一起：只画右边一条色带。 */
+  strip: boolean;
   offWeek: boolean;
   current: boolean;
   lanes: number;
@@ -341,17 +345,18 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
   const display = displayBlockOf(piece);
   const status = statusFor(item);
   const tone = toneFor(piece.block, owner, shared);
-  // 双人模式下两人的课撞在同一时段时左半是我、右半是 TA；其余的和平时一样按重叠簇的道数分宽度。
-  const half = !shared && !offWeek && sharesSlotWithOther(item, piece, owner);
-  const width = half ? 50 : 100 / piece.lanes;
-  const offset = half ? (owner === "ta" ? 50 : 0) : (100 / piece.lanes) * piece.lane;
-  const single = !half && piece.lanes === 1;
+  // 双人模式下两人的课撞在同一时段时，TA 的课收成右边一条色带，我的课让出这一条；
+  // 其余的和平时一样按重叠簇的道数分宽度。
+  const clash = !shared && !offWeek && sharesSlotWithOther(item, piece, owner);
+  const strip = clash && owner === "ta";
+  const room = clash ? "(100% - var(--ss-couple-strip))" : "100%";
+  const single = !clash && piece.lanes === 1;
   return {
     key: `${offWeek ? "off" : owner}-${item.day}-${piece.id}`,
     block: piece.block,
     owner,
     shared,
-    half,
+    strip,
     offWeek,
     current: !offWeek && owner === "me" && blockPhase(status, display) === "current",
     lanes: piece.lanes,
@@ -368,9 +373,11 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
     style: {
       gridColumn: column + 2,
       gridRow: `${startRow + rowBase.value} / ${endRow + rowBase.value + 1}`,
-      width: single ? "auto" : `calc(${width}% - var(--ss-tile-inset) * 2)`,
-      marginLeft: single ? "var(--ss-tile-inset)" : `calc(${offset}% + var(--ss-tile-inset))`,
-      justifySelf: single ? "stretch" : "start",
+      width: single ? "auto" : strip ? "calc(var(--ss-couple-strip) - 2px)"
+        : `calc(${room} / ${piece.lanes} - var(--ss-tile-inset) * 2)`,
+      marginLeft: single ? "var(--ss-tile-inset)" : strip ? "0"
+        : `calc(${room} / ${piece.lanes} * ${piece.lane} + var(--ss-tile-inset))`,
+      justifySelf: single ? "stretch" : strip ? "end" : "start",
       "--tile-accent": tone.accent,
       "--tile-fill": tone.fill,
       "--tile-border": tone.border,
@@ -935,6 +942,21 @@ const nowPlacement = computed(() => {
 }
 .ss-board .ss-tile.current .ss-mark {
   background: var(--tile-accent-inverse);
+}
+// 情侣课表：和我的课撞在一起的 TA 的课，只是这一列右边的一条色带。
+.ss {
+  --ss-couple-strip: 9px;
+}
+.ss-tile.strip {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--tile-border);
+}
+.ss-tile.strip::before,
+.ss-tile.strip::after {
+  content: none;
 }
 // 情侣课表：TA 的课右上角一个小标记，颜色之外再给一个能认出来的记号。
 .ss-ta-tag {

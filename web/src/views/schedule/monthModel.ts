@@ -186,3 +186,13 @@ export function paperMonthTitle(monthKey: string) {
   const months = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
   return `${year}年 · ${months[Number(match[2]) - 1]}月`;
 }
+
+/**
+ * 月历一格里写哪几门课：最多 `limit` 行。写不下时最后一行让给「+N」，
+ * 所以显示 `limit - 1` 门课，`more` 是没写出来的门数。
+ */
+export function monthCourseLines<T>(courses: T[], limit: number): { shown: T[]; more: number } {
+  if (courses.length <= limit) return { shown: courses, more: 0 };
+  const shown = courses.slice(0, Math.max(1, limit - 1));
+  return { shown, more: courses.length - shown.length };
+}

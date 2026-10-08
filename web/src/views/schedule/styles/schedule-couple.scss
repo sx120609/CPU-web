@@ -134,20 +134,22 @@
   font-size: 10px;
 }
 
-// 周视图：两人的课撞在同一时段时左半是我、右半是 TA；其余的课和一起上的课都占满整格。
-.week-overview.couple-on .week-course.couple-split {
-  justify-self: start;
-  width: calc(50% - 2px);
-  padding: 4px 2px;
+// 周视图：两人的课撞在同一时段时，TA 的课收成这一列右边的一条色带，我的课让出这一条；
+// 其余的课和一起上的课都占满整格。
+.week-overview {
+  --couple-strip: 9px;
 }
 .week-overview.couple-on .week-course.couple-partner.couple-split {
   justify-self: end;
+  width: calc(var(--couple-strip) - 2px);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--course-border);
 }
-.week-overview.couple-on .week-course.couple-split em {
+.week-overview.couple-on .week-course.couple-partner.couple-split > * {
   display: none;
-}
-.week-overview.couple-on .week-course.couple-split strong {
-  -webkit-line-clamp: 5;
 }
 .week-course.couple-shared,
 .day-course-block.couple-shared {
@@ -170,22 +172,4 @@
   right: 8px;
   width: 13px;
   height: 13px;
-}
-
-// 日视图：撞在同一时段时分成我 | TA 两列。
-.day-pane.couple-on .day-grid-body {
-  grid-template-columns: 50px minmax(0, 1fr) minmax(0, 1fr);
-}
-.day-pane.couple-on .day-course-block.couple-split {
-  padding: 10px;
-  gap: 5px;
-}
-
-@media (max-width: 760px) {
-  .week-overview.couple-on .week-course.couple-split span {
-    display: none;
-  }
-  .day-pane.couple-on .day-grid-body {
-    grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr);
-  }
 }

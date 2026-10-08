@@ -6,6 +6,7 @@ import {
   calendarMonths,
   lunarDayName,
   monthDayTitle,
+  monthCourseLines,
   monthRows,
   paperMonthTitle,
   shiftMonth,
@@ -79,4 +80,11 @@ test("titles read as on the calendar", () => {
   assert.equal(monthDayTitle("2026-10-07"), "10 月 7 日 · 周三");
   assert.equal(paperMonthTitle("2026-10"), "二〇二六年 · 十月");
   assert.deepEqual([1, 10, 11, 20, 21, 29, 30].map(lunarDayName), ["初一", "初十", "十一", "二十", "廿一", "廿九", "三十"]);
+});
+
+test("a month cell lists three courses, or two and a count", () => {
+  assert.deepEqual(monthCourseLines(["a", "b", "c"], 3), { shown: ["a", "b", "c"], more: 0 });
+  assert.deepEqual(monthCourseLines(["a", "b", "c", "d", "e"], 3), { shown: ["a", "b"], more: 3 });
+  assert.deepEqual(monthCourseLines([], 3), { shown: [], more: 0 });
+  assert.deepEqual(monthCourseLines(["a", "b"], 1), { shown: ["a"], more: 1 });
 });

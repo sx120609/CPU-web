@@ -79,10 +79,9 @@
           :selected-date="selectedDate"
           :today-date="todayYmd"
           :clocks="clocks"
-          :can-open-day="dateIndex.has(selectedDate)"
+          can-open-day
           @select="selectDate"
           @open-day="openDate"
-          @course="(block) => openQuickLook(block)"
         />
       </section>
     </template>
