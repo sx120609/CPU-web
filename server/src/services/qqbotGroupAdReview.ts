@@ -62,15 +62,18 @@ const QQ_GROUP_AD_KFC_MEME_HARD_DIVERSION_PATTERNS = [
   /(?<!\d)1[3-9]\d{9}(?!\d)/u,
 ];
 const QQ_GROUP_AD_QQ_NUMBER_PATTERN = /(?:QQ\s*(?:\u7fa4|\u7fa4\u53f7)|Q\s*\u7fa4|\u7fa4\u53f7).{0,16}\d{6,12}/iu;
-const QQ_GROUP_AD_INVITE_NUMBER_PATTERN = /(?:\u52a0|\u8fdb|\u52a0\u5165|\u62c9|\u626b\u7801|\u8054\u7cfb|\u79c1\u804a).{0,24}\d{6,12}/u;
+// An invitation names what to join or whom to add. A bare 加/联系/私聊 near a
+// number also matched 大家加油 + an exam date, 参加考试 + a ticket number and
+// 联系辅导员 + a phone number, which were recalled as ads without the model.
+const QQ_GROUP_AD_INVITE_NUMBER_PATTERN = /(?:(?:加|进|入|拉)(?:个|一下|下|我们的?|本)?\s*(?:qq|q|扣扣|企鹅)?\s*群|加入.{0,8}群|(?:加|添加)\s*(?:我|好友|本人)|(?:加|添加|联系|私聊)\s*(?:我的?)?\s*(?:qq|q|扣扣|企鹅|vx|wx|v信|微信|v(?![a-z])))(?:号)?.{0,24}?(?<!\d)\d{6,12}(?!\d)/iu;
 const QQ_GROUP_CAMPUS_RECRUITMENT_PATTERN = /(?:招新|纳新|招募(?:成员|新成员|队员|志愿者)?|报名|加入(?:我们|社团|协会)?)/u;
 const QQ_GROUP_CAMPUS_ORGANIZATION_PATTERN = /(?:社团|协会|学生会|学生组织|兴趣小组|兴趣社|校队|志愿服务|校园活动|校园组织|院学生会|校学生会|部门招新)/u;
 const QQ_GROUP_CAMPUS_CONTEXT_PATTERN = /(?:学校|校园|学院|大学|本科|学生|同学|校内|校级|院级|新生|班级)/u;
 const QQ_GROUP_COMMERCIAL_AD_PATTERN = /(?:收费|付费|价格|售价|下单|购买|商品|服务费|佣金|兼职|刷单|代理(?:加盟|返利|商)?|加盟|培训班|培训收费|课程(?:销售|收费)|代购|推广返利|商业推广|商务合作|广告位|优惠券|折扣价|售卖|收款|付款|转账|返现|红包|招代理|招聘|公司|企业|品牌|商家|门店|招商|店铺)/u;
-const QQ_GROUP_COMMERCIAL_GROUP_DIVERSION_PATTERN = /(?:兼职|家教|家教兼职|代课|辅导|招工|招聘|招代理|刷单|付费培训|课程销售)/u;
+const QQ_GROUP_COMMERCIAL_GROUP_DIVERSION_PATTERN = /(?:兼职|家教|家教兼职|代课|辅导(?!员)|招工|招聘|招代理|刷单|付费培训|课程销售)/u;
 const QQ_GROUP_NUMBER_ANY_LABEL_PATTERN = /(?:群|群号).{0,16}\d{6,12}/u;
 const QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN = /(?:学校(?:重要)?(?:消息|通知)|校方(?:重要)?(?:消息|通知)|校园官方|官方(?:群|通知)|重要通知|军训通知|新生(?:活动|开学|入学)?通知|录取通知|通知书(?:邮寄|发放)|开学(?:时间|安排|通知)|入党(?:事宜|通知)|入团(?:事宜|通知)|转换专业(?:事宜|通知)?)/u;
-const QQ_GROUP_MASS_INVITE_PATTERN = /(?:@全体成员|最后(?:一次|一条)通知|别错过|务必|抓紧|今晚|截至|互相转达|(?:请|大家).{0,16}(?:加|进|加入|扫码))/u;
+const QQ_GROUP_MASS_INVITE_PATTERN = /(?:@全体成员|最后(?:一次|一条)通知|别错过|务必|抓紧|今晚|截至|互相转达|(?:请|大家).{0,16}(?:加(?:群|入|一下|上|我)|进(?:新)?群|扫码))/u;
 const QQ_GROUP_UNVERIFIED_TARGET_PATTERN = /(?:新生(?:通知)?群|通知群|官方群|官方(?:群|通知)|入学群|资料群)/u;
 const QQ_GROUP_DISSOLUTION_PATTERN = /(?:本群|此群|该群)(?:作废|即将解散|将要解散|即将关闭|停止使用)/u;
 const QQ_GROUP_REPLACEMENT_DIVERSION_PATTERN = /(?:所有人|大家|请各位|请大家|成员).{0,20}(?:转移|转到|迁移|前往).{0,24}(?:新群|群号|QQ群|Q群)/u;

@@ -1765,10 +1765,20 @@ export function isCampusAssistantConversationRestricted(messages: CampusAssistan
 function containsRestrictedPublicTopic(value: string) {
   const normalized = normalizeSearchText(value);
   if (!normalized) return false;
-  if (RESTRICTED_PUBLIC_TOPIC_TERMS.some((term) => normalized.includes(normalizeSearchText(term)))) {
+  if (RESTRICTED_PUBLIC_TOPIC_TERMS.some((term) => containsRestrictedTerm(normalized, normalizeSearchText(term)))) {
     return true;
   }
   return /^(?:请|能否|可以|帮我|给我|想)?(?:解释|介绍|讨论|讲讲|说说|评价|了解|查找|搜索|整理)?六四(?:是什么|指什么|事件|风波|运动|真相|历史|资料|经过|背景|结果|影响|原因|吗)?$/u.test(normalized);
+}
+
+/**
+ * A numeric term only counts on its own: "8964" inside a student number,
+ * phone number or order id is not the topic, and replacing a whole answer for
+ * it tells the user a harmless question broke the rules.
+ */
+function containsRestrictedTerm(normalized: string, term: string) {
+  if (!/^\d+$/u.test(term)) return normalized.includes(term);
+  return new RegExp(`(?<!\\d)${term}(?!\\d)`, "u").test(normalized);
 }
 
 export function guardCampusAssistantResponse(response: CampusAssistantResponse) {
@@ -2028,7 +2038,7 @@ export function buildAssistantMessages(
   images: CampusAssistantImageInput[] = [],
   directoryContext?: DepartmentContactToolContext,
 ) {
-  const promptActions = selectAssistantPromptActions(availableActions, message, prioritizedActions);
+  const promptActions = selectAssistantPromptActions(availableActions, message, prioritizedActions, history);
   const catalog = promptActions.map((item) => ({
     id: item.id,
     label: item.label,
@@ -2072,6 +2082,7 @@ function selectAssistantPromptActions(
   availableActions: CampusAssistantAction[],
   message: string,
   prioritizedActions: CampusAssistantAction[] = [],
+  history: CampusAssistantMessage[] = [],
 ) {
   const byId = new Map(availableActions.map((item) => [item.id, item]));
   const selected: CampusAssistantAction[] = [];
@@ -2098,9 +2109,31 @@ function selectAssistantPromptActions(
     })
     .slice(0, 3);
   matching.forEach(add);
+  // A follow-up such as "那补考呢" names no feature of its own. Keep the
+  // previous question's entries, and with them their knowledge, so the model
+  // does not lose the topic.
+  findPreviousTopicActions(availableActions, history).forEach(add);
   CAMPUS_ASSISTANT_CORE_ACTION_IDS.forEach((id) => add(byId.get(id)));
   if (!selected.length) availableActions.slice(0, CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT).forEach(add);
   return selected.slice(0, CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT);
+}
+
+function findPreviousTopicActions(
+  availableActions: CampusAssistantAction[],
+  history: CampusAssistantMessage[],
+  limit = 2,
+) {
+  const previousQuestion = [...history].reverse().find((item) => item.role === "user")?.content || "";
+  const normalizedQuestion = normalizeSearchText(previousQuestion);
+  if (!normalizedQuestion) return [] as CampusAssistantAction[];
+  const byId = new Map(availableActions.map((item) => [item.id, item]));
+  return CAMPUS_ASSISTANT_ROUTES
+    .filter((route) => byId.has(route.id))
+    .map((route) => ({ id: route.id, score: scoreRoute(route, normalizedQuestion) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .flatMap((entry) => byId.get(entry.id) ?? []);
 }
 
 function normalizeSearchText(value: string) {

@@ -67,7 +67,7 @@ export function normalizeInboundCommandText(text: string) {
     // the mention segment before this function is called.  Accept the known
     // bot names here so both forms reach the same command parser.
     const next = normalized.replace(
-      /^(?:@?\s*)?(?:qqbot|拾间bot|拾间助手|药大拾间bot|药大拾间·bot|助手|bot)\s*[，,:：-]?\s*/i,
+      /^(?:@?\s*)?(?:qqbot|拾间bot|拾间ai|拾间助手|药大拾间bot|药大拾间ai|药大拾间·bot|助手|bot)\s*[，,:：-]?\s*/i,
       "",
     ).trim();
     if (!next || next === normalized) break;

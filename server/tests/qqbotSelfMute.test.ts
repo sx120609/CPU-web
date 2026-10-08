@@ -12,6 +12,9 @@ function replace(t: TestContext, target: any, key: string, implementation: (...a
   return mocked;
 }
 
+// Each test is a different message; a reused id is dropped as a re-delivery.
+let nextMessageId = 123;
+
 async function setup(t: TestContext, group: any = { enabled: true, allowMute: true }, banError?: string) {
   const { prisma } = await import("../src/prisma");
   const { handleQqBotWebhook } = await import("../src/services/qqbot");
@@ -50,7 +53,7 @@ async function setup(t: TestContext, group: any = { enabled: true, allowMute: tr
     group_id: 20002,
     user_id: 30003,
     self_id: 10001,
-    message_id: 123,
+    message_id: nextMessageId++,
     sender: { role: "member" },
     message: [{ type: "text", data: { text: "/banme" } }],
   };
@@ -114,4 +117,11 @@ test("机器人自己的消息不能触发自我禁言", async (t) => {
   await handleQqBotWebhook({ ...event, user_id: event.self_id });
   assert.equal(requests.some(request => request.action === "set_group_ban"), false);
   assert.equal(logs.find(log => log.command === "banme")?.status, "error");
+});
+
+test("同一条消息被重复投递时只处理一次", async (t) => {
+  const { handleQqBotWebhook, event, requests } = await setup(t);
+  assert.deepEqual(await handleQqBotWebhook(event), { ok: true });
+  assert.deepEqual(await handleQqBotWebhook({ ...event }), { ignored: true, duplicate: true });
+  assert.equal(requests.filter((request) => request.action === "set_group_ban").length, 1);
 });
