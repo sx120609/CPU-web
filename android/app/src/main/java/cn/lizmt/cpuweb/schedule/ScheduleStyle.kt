@@ -33,8 +33,29 @@ class ScheduleStyleSettings(private val context: Context) {
     /** The visual style; classic until the user picks another one. */
     var visualStyle by mutableStateOf(ScheduleVisualStyle.fromId(prefs.getString("visualStyle", null)))
         private set
-    /** Saturday and Sunday columns; a weekend day with classes shows either way. */
-    var showWeekend by mutableStateOf(prefs.getBoolean("showWeekend", true))
+    /** Saturday and Sunday columns; a weekend day with classes shows either way. Both start from the old single switch. */
+    var showSaturday by mutableStateOf(prefs.getBoolean("showSaturday", prefs.getBoolean("showWeekend", true)))
+        private set
+    var showSunday by mutableStateOf(prefs.getBoolean("showSunday", prefs.getBoolean("showWeekend", true)))
+        private set
+    /** The week runs Sunday to Saturday: the first column is the Sunday before that Monday. */
+    var sundayFirst by mutableStateOf(prefs.getBoolean("sundayFirst", false))
+        private set
+    /** Row height of the week view in percent; 100 fits the twelve periods on one screen. */
+    var rowHeight by mutableStateOf(ScheduleDisplayRules.normalizedRowHeight(prefs.getInt("rowHeight", 100)))
+        private set
+    var textSize by mutableStateOf(ScheduleDisplayRules.normalizedTextSize(prefs.getString("textSize", null)))
+        private set
+    var compactLayout by mutableStateOf(prefs.getBoolean("compactLayout", false))
+        private set
+    var showTeacher by mutableStateOf(prefs.getBoolean("showTeacher", false))
+        private set
+    /** Courses that do not run this week, drawn faded in the periods this week leaves free. */
+    var showOffWeek by mutableStateOf(prefs.getBoolean("showOffWeek", false))
+        private set
+    var showSlotTime by mutableStateOf(prefs.getBoolean("showSlotTime", true))
+        private set
+    var showBackToWeek by mutableStateOf(prefs.getBoolean("showBackToWeek", true))
         private set
     /** Marks the current time on today's column and the in-class / next-up states of the day view. */
     var showNowIndicator by mutableStateOf(prefs.getBoolean("showNowIndicator", true))
@@ -49,9 +70,50 @@ class ScheduleStyleSettings(private val context: Context) {
         prefs.edit().putString("visualStyle", value.id).apply()
     }
 
-    fun updateShowWeekend(value: Boolean) {
-        showWeekend = value
-        prefs.edit().putBoolean("showWeekend", value).apply()
+    /** What the week grid's cards and period axis read. */
+    val displayOptions: ScheduleDisplayOptions
+        get() = ScheduleDisplayOptions(
+            textScale = ScheduleDisplayRules.textScale(textSize, compactLayout),
+            compact = compactLayout, showTeacher = showTeacher, showSlotTime = showSlotTime,
+        )
+
+    val displayIsDefault: Boolean
+        get() = rowHeight == 100 && textSize == "standard" && !compactLayout && !showTeacher && !showOffWeek && showSlotTime &&
+            showNowIndicator && showBackToWeek && showSaturday && showSunday && !sundayFirst
+
+    private fun store(key: String, value: Boolean) = prefs.edit().putBoolean(key, value).apply()
+
+    fun updateShowSaturday(value: Boolean) { showSaturday = value; store("showSaturday", value) }
+    fun updateShowSunday(value: Boolean) { showSunday = value; store("showSunday", value) }
+    fun updateSundayFirst(value: Boolean) { sundayFirst = value; store("sundayFirst", value) }
+    fun updateCompactLayout(value: Boolean) { compactLayout = value; store("compactLayout", value) }
+    fun updateShowTeacher(value: Boolean) { showTeacher = value; store("showTeacher", value) }
+    fun updateShowOffWeek(value: Boolean) { showOffWeek = value; store("showOffWeek", value) }
+    fun updateShowSlotTime(value: Boolean) { showSlotTime = value; store("showSlotTime", value) }
+    fun updateShowBackToWeek(value: Boolean) { showBackToWeek = value; store("showBackToWeek", value) }
+
+    fun updateRowHeight(value: Int) {
+        rowHeight = ScheduleDisplayRules.normalizedRowHeight(value)
+        prefs.edit().putInt("rowHeight", rowHeight).apply()
+    }
+
+    fun selectTextSize(value: String) {
+        textSize = ScheduleDisplayRules.normalizedTextSize(value)
+        prefs.edit().putString("textSize", textSize).apply()
+    }
+
+    fun resetDisplay() {
+        updateRowHeight(100)
+        selectTextSize("standard")
+        updateCompactLayout(false)
+        updateShowTeacher(false)
+        updateShowOffWeek(false)
+        updateShowSlotTime(true)
+        updateShowNowIndicator(true)
+        updateShowBackToWeek(true)
+        updateShowSaturday(true)
+        updateShowSunday(true)
+        updateSundayFirst(false)
     }
 
     fun updateShowNowIndicator(value: Boolean) {

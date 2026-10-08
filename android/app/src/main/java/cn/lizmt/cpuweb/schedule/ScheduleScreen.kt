@@ -58,6 +58,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -79,11 +80,12 @@ import kotlinx.coroutines.flow.drop
 
 /** Sheets presented over the timetable. */
 sealed interface ScheduleSheet {
-    data class QuickLook(val block: CourseBlock) : ScheduleSheet
+    data class QuickLook(val block: CourseBlock, val offWeek: Boolean = false) : ScheduleSheet
     data class Overlap(val blocks: List<CourseBlock>) : ScheduleSheet
     data object WeekPicker : ScheduleSheet
     data object Style : ScheduleSheet
     data object VisualStyle : ScheduleSheet
+    data object Display : ScheduleSheet
     data object Widgets : ScheduleSheet
     data object Editor : ScheduleSheet
     data object Appearance : ScheduleSheet
@@ -96,9 +98,16 @@ private class ScheduleBodyContext(
     val translucent: Boolean,
     /** Minutes since midnight while "now" is marked, else null. */
     val now: Int?,
-    val showWeekend: Boolean,
+    val showSaturday: Boolean,
+    val showSunday: Boolean,
+    val sundayFirst: Boolean,
+    val showOffWeek: Boolean,
+    /** Week-view row height relative to "twelve periods fit the screen". */
+    val rowScale: Float,
+    val display: ScheduleDisplayOptions,
     val onLogin: () -> Unit,
     val onCourse: (PlacedBlock, String) -> Unit,
+    val onOffWeek: (PlacedBlock) -> Unit,
     val onAddSlot: (Int, Int) -> Unit,
 )
 
@@ -191,9 +200,15 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         palette = style.palette,
         translucent = style.background != null,
         now = now,
-        showWeekend = style.showWeekend,
+        showSaturday = style.showSaturday,
+        showSunday = style.showSunday,
+        sundayFirst = style.sundayFirst,
+        showOffWeek = style.showOffWeek,
+        rowScale = style.rowHeight / 100f,
+        display = style.displayOptions,
         onLogin = { activity.openAcademicAuthorization() },
         onCourse = ::openCourse,
+        onOffWeek = { sheet = ScheduleSheet.QuickLook(it.block, offWeek = true) },
         onAddSlot = { day, slot -> if (store.canEdit) openEditor(null, day, slot) },
     )
     val styleScope = ScheduleStyleScope(
@@ -212,15 +227,16 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
             if (store.weekOptions().isNotEmpty() || store.semesterOptions().isNotEmpty()) {
                 ScheduleToolbar(
                     store = store,
-                    onToday = {
+                    onToday = if (style.showBackToWeek) ({
                         monthSelected = today
                         monthAnchor = today
                         store.returnToCurrentWeek()
-                    },
+                    }) else null,
                     actions = listOfNotNull(
                         ("刷新课表" to { store.load(true) }).takeIf { !store.readOnly },
                         ("添加课程" to { openEditor(null) }).takeIf { store.canEdit },
                         "课表风格" to { sheet = ScheduleSheet.VisualStyle },
+                        "显示设置" to { sheet = ScheduleSheet.Display },
                         ("课表配色与背景" to { sheet = ScheduleSheet.Style }).takeIf { !store.readOnly },
                         ("桌面课表小组件" to { sheet = ScheduleSheet.Widgets }).takeIf { !store.readOnly },
                         "分享所选周课表" to { shareSchedule(activity, store) },
@@ -278,10 +294,11 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         null -> Unit
         is ScheduleSheet.QuickLook -> CourseQuickLookSheet(
             store, current.block, style.palette, onDismiss = { sheet = null },
-            onEdit = if (store.canEdit) ({
+            onEdit = if (store.canEdit && !current.offWeek) ({
                 sheet = null
                 openEditor(current.block)
             }) else null,
+            note = if (current.offWeek) "这门课本周不上" else null,
         )
         is ScheduleSheet.Overlap -> OverlapSheet(current.blocks, style.palette, onDismiss = { sheet = null }) {
             sheet = ScheduleSheet.QuickLook(it)
@@ -289,6 +306,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         ScheduleSheet.WeekPicker -> WeekPickerSheet(store, onDismiss = { sheet = null })
         ScheduleSheet.Style -> ScheduleStyleSheet(activity, onDismiss = { sheet = null })
         ScheduleSheet.VisualStyle -> VisualStyleSheet(style, onDismiss = { sheet = null })
+        ScheduleSheet.Display -> DisplaySettingsSheet(style, onDismiss = { sheet = null })
         ScheduleSheet.Widgets -> WidgetSettingsSheet(activity, onDismiss = { sheet = null })
         ScheduleSheet.Editor -> CourseEditorSheet(editor, onDismiss = {
             // The sheet may already be hidden (Back), so it always goes away; a
@@ -328,7 +346,7 @@ private fun ScheduleBackground(style: ScheduleStyleSettings) {
 }
 
 @Composable
-private fun ScheduleToolbar(store: ScheduleStore, onToday: () -> Unit, actions: List<Pair<String, () -> Unit>>) {
+private fun ScheduleToolbar(store: ScheduleStore, onToday: (() -> Unit)?, actions: List<Pair<String, () -> Unit>>) {
     val colors = LocalScheduleColors.current
     var semesterMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
@@ -375,7 +393,7 @@ private fun ScheduleToolbar(store: ScheduleStore, onToday: () -> Unit, actions: 
             }
         }
         Spacer(Modifier.width(6.dp))
-        Box(
+        if (onToday != null) Box(
             Modifier.size(32.dp).clip(CircleShape).background(colors.surface).clickable(onClick = onToday)
                 .semantics { contentDescription = if (store.viewMode == "month") "回到本月" else "回到本周今日" },
             contentAlignment = Alignment.Center,
@@ -548,7 +566,7 @@ private fun SchedulePages(store: ScheduleStore, context: ScheduleBodyContext) {
     }
     if (store.viewMode == "day") {
         // Weekends can be hidden; a weekend day with classes or a make-up day still shows.
-        val days = store.visibleDays(store.selectedWeek, context.showWeekend)
+        val days = store.visibleDays(store.selectedWeek, context.showSaturday, context.showSunday)
         // Keep the page model keyed by semester and week so a new one rebuilds the pager.
         key(store.selectedSemester, store.selectedWeek, days) {
             val initial = days.indexOf(store.selectedDay).let { if (it < 0) days.lastIndex else it }.coerceAtLeast(0)
@@ -648,29 +666,60 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                     val priorities = store.displayPriorities
                     val calendar = store.calendar
                     // Today is a key too: the column marked as today moves at midnight.
-                    val days = remember(week, data, revision, priorities, calendar, context.showWeekend, ScheduleStore.todayKey()) {
-                        store.visibleDays(week, context.showWeekend, data).map { weekday ->
-                            StyledWeekDay(
-                                day = weekday,
-                                date = store.calendarWeek(week)?.days?.getOrNull(weekday - 1).orEmpty(),
-                                today = store.isToday(weekday, week),
-                                adjustmentKind = store.adjustment(weekday, week)?.kind,
-                                blocks = store.placedBlocksForDay(weekday, week, data),
-                            )
+                    val days = remember(
+                        week, data, revision, priorities, calendar, context.showSaturday, context.showSunday, context.sundayFirst,
+                        context.showOffWeek, ScheduleStore.todayKey(),
+                    ) {
+                        // With Sunday first, the Sunday column is the day before this
+                        // Monday: it belongs to the previous teaching week.
+                        val previous = if (context.sundayFirst) store.previousWeek(week) else null
+                        fun weekOf(day: Int): String? = if (context.sundayFirst && day == 7) previous else week
+                        fun sourceOf(target: String) = if (target == week) data else store.resultFor(target)
+                        ScheduleDisplayRules.weekColumns(context.showSaturday, context.showSunday, context.sundayFirst) { day ->
+                            val target = weekOf(day) ?: return@weekColumns false
+                            store.adjustment(day, target)?.kind == "swap" || store.blocksForDay(day, target, sourceOf(target)).isNotEmpty()
+                        }.map { weekday ->
+                            val target = weekOf(weekday)
+                            if (target == null) {
+                                val date = ScheduleDisplayRules.shiftDate(store.calendarWeek(week)?.days?.firstOrNull().orEmpty(), -1)
+                                StyledWeekDay(weekday, date, date.isNotEmpty() && date == ScheduleStore.todayKey(), null, emptyList(), canAdd = false)
+                            } else {
+                                val source = sourceOf(target)
+                                val blocks = store.placedBlocksForDay(weekday, target, source)
+                                StyledWeekDay(
+                                    day = weekday,
+                                    date = store.calendarWeek(target)?.days?.getOrNull(weekday - 1).orEmpty(),
+                                    today = store.isToday(weekday, target),
+                                    adjustmentKind = store.adjustment(weekday, target)?.kind,
+                                    blocks = blocks,
+                                    week = target,
+                                    offWeek = if (!context.showOffWeek) emptyList() else
+                                        store.offWeekBlocksForDay(weekday, target, blocks.map { it.block }, source)
+                                            .map { PlacedBlock(it, it.startSlot, it.endSlot) },
+                                    canAdd = target == week,
+                                )
+                            }
                         }
                     }
-                    val openDay: (Int) -> Unit = {
-                        store.selectDay(it)
-                        store.selectViewMode("day")
+                    val openDay: (Int) -> Unit = { weekday ->
+                        days.firstOrNull { it.day == weekday }?.week?.takeIf { it.isNotEmpty() }?.let { target ->
+                            if (target != store.selectedWeek) store.selectWeek(target)
+                            store.selectDay(weekday)
+                            store.selectViewMode("day")
+                        }
                     }
-                    if (classic) {
-                        WeekGrid(store, week, days, context, height, openDay)
-                    } else {
-                        StyledWeekGrid(
-                            days = days, periods = periods, rowHeight = styledWeekRowHeight(height.value, scope.style).dp,
-                            now = context.now, canAdd = store.canEdit,
-                            onCourse = { _, block -> context.onCourse(block, week) }, onAddSlot = context.onAddSlot, onDay = openDay,
-                        )
+                    CompositionLocalProvider(LocalScheduleDisplay provides context.display) {
+                        if (classic) {
+                            WeekGrid(store, days, context, height, openDay)
+                        } else {
+                            StyledWeekGrid(
+                                days = days, periods = periods,
+                                rowHeight = (styledWeekRowHeight(height.value, scope.style) * context.rowScale).dp,
+                                now = context.now, canAdd = store.canEdit,
+                                onCourse = { day, block -> context.onCourse(block, day.week) }, onAddSlot = context.onAddSlot,
+                                onDay = openDay, onOffWeek = context.onOffWeek,
+                            )
+                        }
                     }
                 }
             }
@@ -690,10 +739,14 @@ private fun AdjustmentNotice(store: ScheduleStore, adjustment: ScheduleAdjustmen
 }
 
 @Composable
-private fun DayHeaderCell(store: ScheduleStore, day: Int, week: String, highlighted: Boolean, modifier: Modifier) {
+private fun DayHeaderCell(
+    store: ScheduleStore, day: Int, week: String, highlighted: Boolean, modifier: Modifier,
+    /** `yyyy-MM-dd` of a column outside the term's weeks (the Sunday before week 1). */
+    fallbackDate: String = "",
+) {
     val colors = LocalScheduleColors.current
-    val date = store.dayDate(day, week)
-    val adjustment = store.adjustment(day, week)
+    val date = if (week.isEmpty()) fallbackDate.drop(5) else store.dayDate(day, week)
+    val adjustment = if (week.isEmpty()) null else store.adjustment(day, week)
     val glass = LocalScheduleGlass.current
     Column(
         modifier.height(36.dp).clip(RoundedCornerShape(10.dp))
@@ -767,14 +820,14 @@ private fun StyledDayStripRow(store: ScheduleStore, week: String, days: List<Int
 @Composable
 private fun WeekGrid(
     store: ScheduleStore,
-    week: String,
     days: List<StyledWeekDay>,
     context: ScheduleBodyContext,
     height: Dp,
     onDay: (Int) -> Unit,
 ) {
     val colors = LocalScheduleColors.current
-    val stride = compactWeekRowHeight(height.value).dp
+    val display = context.display
+    val stride = (compactWeekRowHeight(height.value) * context.rowScale).dp
     val cellColor = if (context.translucent) colors.cell.copy(alpha = if (colors.dark) 0.52f else 0.36f) else colors.cell
     val periods = (1..SLOT_COUNT).map(store::periodTime)
     val nowY = if (days.any { it.today }) context.now?.let { nowPosition(it, periods, stride.value - 4f, 4f)?.first } else null
@@ -787,11 +840,12 @@ private fun WeekGrid(
                     .padding(top = 10.dp))
             days.forEach { day ->
                 DayHeaderCell(
-                    store, day.day, week, highlighted = day.today,
+                    store, day.day, day.week, highlighted = day.today,
                     modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { onDay(day.day) }.semantics {
                         val note = day.adjustmentKind?.let { if (it == "off") "，休息" else "，补班" }.orEmpty()
                         contentDescription = WEEKDAY_LABELS[day.day - 1] + note + "，查看当天课程"
                     },
+                    fallbackDate = day.date,
                 )
             }
         }
@@ -812,13 +866,13 @@ private fun WeekGrid(
                             Box(
                                 Modifier.fillMaxWidth().height(stride - 4.dp).clip(RoundedCornerShape(8.dp)).background(dayCell)
                                     .border(0.5.dp, colors.divider.copy(alpha = if (colors.dark) 0.65f else 0.6f), RoundedCornerShape(8.dp))
-                                    .then(if (store.canEdit) Modifier.clickable { context.onAddSlot(day.day, slot) }
+                                    .then(if (store.canEdit && day.canAdd) Modifier.clickable { context.onAddSlot(day.day, slot) }
                                         .semantics { contentDescription = WEEKDAY_LABELS[day.day - 1] + "第${slot}节，添加课程" } else Modifier),
                             )
                             Spacer(Modifier.height(4.dp))
                         }
                     }
-                    day.blocks.forEach { block ->
+                    (day.offWeek.map { it to true } + day.blocks.map { it to false }).forEach { (block, ghost) ->
                         val tone = scheduleCardTone(block.course.name, context.palette, colors.dark)
                         // Courses of equal priority sit side by side and share the column.
                         val laneWidth = columnWidth / block.lanes
@@ -827,26 +881,43 @@ private fun WeekGrid(
                             Modifier.offset(x = laneWidth * block.lane, y = stride * (block.startSlot - 1))
                                 .width(laneWidth).height(stride * block.span - 4.dp)
                                 .padding(end = if (narrow && block.lane < block.lanes - 1) 1.dp else 0.dp)
+                                .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
                                 .clip(RoundedCornerShape(9.dp)).background(colors.surface)
                                 .background(Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
                                 .border(1.dp, Color(tone.border), RoundedCornerShape(9.dp))
-                                .clickable { context.onCourse(block, week) }
-                                .semantics { contentDescription = courseAccessibility(block.block) }
-                                .padding(horizontal = if (narrow) 1.dp else 2.dp, vertical = 3.dp),
+                                .clickable { if (ghost) context.onOffWeek(block) else context.onCourse(block, day.week) }
+                                .semantics { contentDescription = (if (ghost) "非本周，" else "") + courseAccessibility(block.block) }
+                                .padding(horizontal = if (narrow) 1.dp else 2.dp, vertical = if (display.compact) 1.dp else 3.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
-                            Text(
-                                block.course.name, fontSize = if (narrow) 9.sp else 10.sp, lineHeight = if (narrow) 11.sp else 12.sp, letterSpacing = 0.sp,
-                                fontWeight = FontWeight.Medium, color = Color(tone.text), textAlign = TextAlign.Center,
-                                maxLines = if (block.span == 1) 2 else 6, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                            if (!block.course.location.isNullOrEmpty() && block.span > 1 && !narrow) {
-                                Spacer(Modifier.height(3.dp))
-                                Text(block.course.location.orEmpty(), fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
-                                    color = Color(tone.text).copy(alpha = 0.86f), textAlign = TextAlign.Center,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            ScheduleCardText {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    val gap = if (display.compact) 1.dp else 3.dp
+                                    if (ghost) {
+                                        ScheduleCardTag("非本周", Color(tone.text))
+                                        Spacer(Modifier.height(gap))
+                                    }
+                                    Text(
+                                        block.course.name, fontSize = if (narrow) 9.sp else 10.sp, lineHeight = if (narrow) 11.sp else 12.sp, letterSpacing = 0.sp,
+                                        fontWeight = FontWeight.Medium, color = Color(tone.text), textAlign = TextAlign.Center,
+                                        maxLines = if (block.span == 1) 2 else if (display.compact) 8 else 6, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    if (!block.course.location.isNullOrEmpty() && block.span > 1 && !narrow) {
+                                        Spacer(Modifier.height(gap))
+                                        Text(block.course.location.orEmpty(), fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
+                                            color = Color(tone.text).copy(alpha = 0.86f), textAlign = TextAlign.Center,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    val teacher = block.course.teacher?.trim().orEmpty()
+                                    if (display.showTeacher && teacher.isNotEmpty() && block.span > 1 && !narrow) {
+                                        Spacer(Modifier.height(gap))
+                                        Text(teacher, fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
+                                            color = Color(tone.text).copy(alpha = 0.86f), textAlign = TextAlign.Center,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
                             }
                         }
                     }
@@ -870,8 +941,10 @@ private fun SlotAxis(store: ScheduleStore, slot: Int, stride: Dp) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(slot.toString(), fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
-        Text(period.startTime, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, color = colors.secondary)
-        Text(period.endTime, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, color = colors.secondary)
+        if (LocalScheduleDisplay.current.showSlotTime) {
+            Text(period.startTime, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, color = colors.secondary)
+            Text(period.endTime, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, color = colors.secondary)
+        }
     }
 }
 

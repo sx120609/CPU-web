@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -226,8 +227,11 @@ internal fun StyledCourseTile(
     /** A full-width row of the day view: reading size, leading, centred vertically. */
     dayRow: Boolean = false,
     showLocation: Boolean = true,
+    /** A small label above the name, such as 非本周. */
+    tag: String? = null,
 ) {
     val scope = LocalScheduleStyle.current
+    val display = LocalScheduleDisplay.current
     val style = scope.style
     val tint = scope.course(course.name)
     val accent = Color(tint.accent(scope.dark))
@@ -262,13 +266,16 @@ internal fun StyledCourseTile(
                 if (highlighted) 2.dp else style.borderWidth.dp, if (highlighted) scope.themeText else accent, shape) else Modifier)
             .drawBehind { if (stripe > 0.dp) drawRect(accent, size = Size(stripe.toPx(), size.height)) }
             .padding(start = stripe, end = trailingInset)
-            .padding(horizontal = if (dayRow) 12.dp else if (small) 3.dp else 7.dp, vertical = if (short) 3.dp else 6.dp),
+            .padding(horizontal = if (dayRow) 12.dp else if (small) 3.dp else 7.dp,
+                vertical = if (display.compact) 2.dp else if (short) 3.dp else 6.dp),
         contentAlignment = if (centered) Alignment.Center else if (dayRow) Alignment.CenterStart else Alignment.TopStart,
     ) {
+        ScheduleCardText {
         Column(
             horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(if (small) 1.dp else 3.dp),
+            verticalArrangement = Arrangement.spacedBy(if (display.compact) 0.dp else if (small) 1.dp else 3.dp),
         ) {
+            if (tag != null) ScheduleCardTag(tag, ink)
             if (style.course == StyleCourse.Departure) {
                 // The board has no fill and no bar, so a small course-colour mark
                 // sits beside the start time. The inverted tile takes the other scheme's colour.
@@ -285,7 +292,8 @@ internal fun StyledCourseTile(
             Text(
                 course.name, fontSize = nameSize, lineHeight = nameSize * 1.18f, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold,
                 fontFamily = scope.textFamily, color = ink, textAlign = if (centered) TextAlign.Center else TextAlign.Start,
-                maxLines = if (dayRow) (if (short) 1 else 2) else if (short) 2 else if (!showLocation) 8 else if (compact) 4 else 3,
+                maxLines = if (dayRow) (if (short) 1 else 2) else if (short) 2 else if (!showLocation) 8 else if (display.compact) 6
+                    else if (compact) 4 else 3,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
             )
             ScheduleStyleTime.location(course.location)?.takeIf { showLocation }?.let { location ->
@@ -296,32 +304,63 @@ internal fun StyledCourseTile(
                     maxLines = if (short || dayRow) 1 else 2, overflow = TextOverflow.Ellipsis,
                 )
             }
+            course.teacher?.trim()?.takeIf { display.showTeacher && !dayRow && !short && showLocation && it.isNotEmpty() }?.let { teacher ->
+                val size = if (small) 9.sp else 11.sp
+                Text(
+                    teacher, fontSize = size, lineHeight = size * 1.2f, letterSpacing = 0.sp, fontWeight = FontWeight.Medium,
+                    fontFamily = scope.textFamily, color = ink, textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         }
     }
 }
 
+/** The small outlined label on a course card: 非本周. */
+@Composable
+internal fun ScheduleCardTag(text: String, color: Color) {
+    Text(
+        text, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = color,
+        maxLines = 1, softWrap = false,
+        modifier = Modifier.border(0.5.dp, color, RoundedCornerShape(3.dp)).padding(horizontal = 3.dp),
+    )
+}
+
 /** The minimal style's week card: a borderless pale tint, text at the top leading corner. */
 @Composable
-internal fun MinimalCourseCard(course: ScheduleCourse, modifier: Modifier, height: Dp, compact: Boolean, showLocation: Boolean = true) {
+internal fun MinimalCourseCard(
+    course: ScheduleCourse, modifier: Modifier, height: Dp, compact: Boolean, showLocation: Boolean = true, tag: String? = null,
+) {
     val scope = LocalScheduleStyle.current
+    val display = LocalScheduleDisplay.current
     val tint = scope.course(course.name)
     val accent = Color(tint.accent(scope.dark))
     val short = height < 64.dp
     val small = compact || short
+    ScheduleCardText {
     Column(
         modifier.clip(RoundedCornerShape(9.dp)).background(Color(tint.fill(scope.dark, scope.hasBackground)))
-            .padding(horizontal = if (compact) 3.dp else 7.dp, vertical = if (short) 4.dp else 6.dp),
-        verticalArrangement = Arrangement.spacedBy(if (small) 1.dp else 3.dp),
+            .padding(horizontal = if (compact) 3.dp else 7.dp, vertical = if (display.compact) 2.dp else if (short) 4.dp else 6.dp),
+        verticalArrangement = Arrangement.spacedBy(if (display.compact) 0.dp else if (small) 1.dp else 3.dp),
     ) {
+        if (tag != null) ScheduleCardTag(tag, accent)
         val nameSize = if (small) 10.5.sp else 13.sp
         Text(course.name, fontSize = nameSize, lineHeight = nameSize * 1.18f, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold,
-            color = accent, maxLines = if (short) 2 else if (!showLocation) 8 else if (compact) 4 else 3, overflow = TextOverflow.Ellipsis,
+            color = accent, overflow = TextOverflow.Ellipsis,
+            maxLines = if (short) 2 else if (!showLocation) 8 else if (display.compact) 6 else if (compact) 4 else 3,
             modifier = Modifier.weight(1f, fill = false))
         ScheduleStyleTime.location(course.location)?.takeIf { showLocation }?.let { location ->
             val size = if (small) 9.sp else 11.sp
             Text("@$location", fontSize = size, lineHeight = size * 1.2f, letterSpacing = 0.sp, fontWeight = FontWeight.Medium,
                 color = accent, maxLines = if (short) 1 else 2, overflow = TextOverflow.Ellipsis)
         }
+        course.teacher?.trim()?.takeIf { display.showTeacher && !short && showLocation && it.isNotEmpty() }?.let { teacher ->
+            val size = if (small) 9.sp else 11.sp
+            Text(teacher, fontSize = size, lineHeight = size * 1.2f, letterSpacing = 0.sp, fontWeight = FontWeight.Medium,
+                color = accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
     }
 }
 
@@ -329,6 +368,7 @@ internal fun MinimalCourseCard(course: ScheduleCourse, modifier: Modifier, heigh
 internal fun StyledSlotLabel(period: SchedulePeriod, startsSession: Boolean, rowHeight: Dp, modifier: Modifier) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
+    val times = LocalScheduleDisplay.current.showSlotTime
     // Three lines need about 36sp. With larger text or a short row the last
     // line goes, so a label never runs into the period below it.
     val roomy = rowHeight.value >= 36f * LocalDensity.current.fontScale
@@ -340,21 +380,23 @@ internal fun StyledSlotLabel(period: SchedulePeriod, startsSession: Boolean, row
         when (style) {
             ScheduleVisualStyle.Minimal -> {
                 Text(period.number.toString(), fontSize = 14.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold, color = scope.primary, maxLines = 1)
-                Text(period.startTime, fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = scope.meta, maxLines = 1)
+                if (times) Text(period.startTime, fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = scope.meta, maxLines = 1)
             }
             ScheduleVisualStyle.Board -> {
-                if (startsSession && roomy) Text(ScheduleStyleTime.session(period.startTime), fontSize = 8.sp, lineHeight = 9.sp, fontWeight = FontWeight.Bold, color = scope.ink, maxLines = 1)
-                Text(period.startTime, fontSize = 11.5.sp, lineHeight = 13.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Bold,
+                // The board's axis leads with the time; without times it reads 第N节 alone.
+                if (times && startsSession && roomy) Text(ScheduleStyleTime.session(period.startTime), fontSize = 8.sp, lineHeight = 9.sp, fontWeight = FontWeight.Bold, color = scope.ink, maxLines = 1)
+                if (times) Text(period.startTime, fontSize = 11.5.sp, lineHeight = 13.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace, color = scope.ink, maxLines = 1, softWrap = false)
-                Text("第${period.number}节", fontSize = 8.sp, lineHeight = 9.sp, color = scope.ink, maxLines = 1)
+                Text("第${period.number}节", fontSize = if (times) 8.sp else 10.sp, lineHeight = if (times) 9.sp else 12.sp,
+                    fontWeight = if (times) FontWeight.Normal else FontWeight.Bold, color = scope.ink, maxLines = 1)
             }
             else -> {
                 val paper = style == ScheduleVisualStyle.Paper
                 Text(if (paper) ScheduleStyleTime.numeral(period.number) else period.number.toString(),
                     fontSize = if (paper) 12.sp else 13.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, fontFamily = scope.fontFamily,
                     color = scope.ink, maxLines = 1)
-                Text(period.startTime, fontSize = 9.sp, lineHeight = 10.sp, letterSpacing = 0.sp, fontFamily = scope.fontFamily, color = scope.ink, maxLines = 1)
-                if (roomy) {
+                if (times) Text(period.startTime, fontSize = 9.sp, lineHeight = 10.sp, letterSpacing = 0.sp, fontFamily = scope.fontFamily, color = scope.ink, maxLines = 1)
+                if (times && roomy) {
                     Text(period.endTime, fontSize = 9.sp, lineHeight = 10.sp, letterSpacing = 0.sp, fontFamily = scope.fontFamily, color = scope.ink, maxLines = 1)
                 }
             }
@@ -422,6 +464,9 @@ internal fun StyledDayColumn(
     dayRow: Boolean = false,
     /** Off for a thumbnail: nothing in it takes a tap or speaks. */
     interactive: Boolean = true,
+    /** Courses that do not run this week, drawn faded under the others. */
+    offWeek: List<PlacedBlock> = emptyList(),
+    onOffWeek: (PlacedBlock) -> Unit = {},
 ) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
@@ -462,7 +507,7 @@ internal fun StyledDayColumn(
                 }
             }
         }
-        blocks.forEach { block ->
+        (offWeek.map { it to true } + blocks.map { it to false }).forEach { (block, ghost) ->
             val lanes = block.lanes
             // Grid tiles are the cell itself, the same size as the empty cells beside
             // them; table tiles sit just inside the rules; the rest keep 1dp all round.
@@ -478,17 +523,20 @@ internal fun StyledDayColumn(
             val showLocation = columnWidth / lanes >= 30.dp
             val tile = Modifier.offset(x = inset + columnWidth / lanes * block.lane, y = step * first + inset)
                 .width(tileWidth).height(tileHeight)
-                .then(if (interactive) Modifier.clickable { onCourse(block) }.semantics {
-                    contentDescription = courseAccessibility(block.block) + (statusLabel?.invoke(block)?.let { "，$it" } ?: "")
+                .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
+                .then(if (interactive) Modifier.clickable { if (ghost) onOffWeek(block) else onCourse(block) }.semantics {
+                    contentDescription = (if (ghost) "非本周，" else "") + courseAccessibility(block.block) +
+                        (statusLabel?.invoke(block)?.let { "，$it" } ?: "")
                 } else Modifier)
+            val tag = if (ghost) "非本周" else null
             if (style == ScheduleVisualStyle.Minimal) {
-                MinimalCourseCard(block.course, tile, tileHeight, narrow, showLocation)
+                MinimalCourseCard(block.course, tile, tileHeight, narrow, showLocation, tag)
             } else {
                 Box(tile) {
                     StyledCourseTile(
                         block.course, Modifier.fillMaxSize(), tileHeight, compact = narrow,
-                        start = periods.firstOrNull { it.number == block.startSlot }?.startTime, current = isCurrent(block),
-                        trailingInset = if (label != null) 80.dp else 0.dp, dayRow = dayRow, showLocation = showLocation,
+                        start = periods.firstOrNull { it.number == block.startSlot }?.startTime, current = !ghost && isCurrent(block),
+                        trailingInset = if (label != null) 80.dp else 0.dp, dayRow = dayRow, showLocation = showLocation, tag = tag,
                     )
                     if (label != null) {
                         Text(label, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End,
@@ -559,6 +607,11 @@ internal class StyledWeekDay(
     val today: Boolean,
     val adjustmentKind: String?,
     val blocks: List<PlacedBlock>,
+    /** The teaching week this column belongs to: with Sunday first, Sunday is the week before. Empty when there is none. */
+    val week: String = "",
+    /** Courses that do not run this week, for the periods left free. */
+    val offWeek: List<PlacedBlock> = emptyList(),
+    val canAdd: Boolean = true,
 )
 
 /**
@@ -578,6 +631,7 @@ internal fun StyledWeekGrid(
     showsHeader: Boolean = true,
     panelRadius: Dp = 20.dp,
     interactive: Boolean = true,
+    onOffWeek: (PlacedBlock) -> Unit = {},
 ) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
@@ -669,8 +723,9 @@ internal fun StyledWeekGrid(
                         StyledDayColumn(
                             day = day.day, blocks = day.blocks, periods = periods, columnWidth = columnWidth, rowHeight = rowHeight,
                             today = day.today, adjustmentKind = day.adjustmentKind, compact = true,
-                            now = if (day.today) now else null, canAdd = canAdd,
+                            now = if (day.today) now else null, canAdd = canAdd && day.canAdd,
                             onCourse = { onCourse(day, it) }, onAddSlot = { onAddSlot(day.day, it) }, interactive = interactive,
+                            offWeek = day.offWeek, onOffWeek = onOffWeek,
                         )
                     }
                 }

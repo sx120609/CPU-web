@@ -197,6 +197,50 @@ class ScheduleParityTest {
     }
 
     @Test
+    fun saturdayAndSundayHideSeparatelyAndSundayCanLead() = runTest {
+        val store = ScheduleStore(this)
+        store.accept(snapshot(cells(2 to course("周二的课", 1, 2))), false)
+        assertEquals(listOf(1, 2, 3, 4, 5, 6), store.visibleDays("2", showSaturday = true, showSunday = false))
+        assertEquals(listOf(1, 2, 3, 4, 5, 7), store.visibleDays("2", showSaturday = false, showSunday = true))
+        val none: (Int) -> Boolean = { false }
+        assertEquals(listOf(7, 1, 2, 3, 4, 5, 6), ScheduleDisplayRules.weekColumns(true, true, true, none))
+        assertEquals(listOf(1, 2, 3, 4, 5), ScheduleDisplayRules.weekColumns(false, false, true, none))
+        // A hidden day with classes stays, in its Sunday-first place.
+        assertEquals(listOf(7, 1, 2, 3, 4, 5), ScheduleDisplayRules.weekColumns(false, false, true) { it == 7 })
+        assertEquals("1", store.previousWeek("2"))
+        assertNull(store.previousWeek("1"))
+        assertEquals("2026-09-06", ScheduleDisplayRules.shiftDate("2026-09-07", -1))
+        assertEquals("", ScheduleDisplayRules.shiftDate("", -1))
+    }
+
+    @Test
+    fun coursesOfOtherWeeksFillOnlyFreePeriods() = runTest {
+        val store = ScheduleStore(this)
+        store.accept(snapshot(JSONArray()
+            .put(JSONObject().put("day", 1).put("bigSlot", 1).put("courses", JSONArray()
+                .put(course("本周的课", 1, 2, listOf(1))).put(course("被挡住", 2, 3, listOf(2)))))
+            .put(JSONObject().put("day", 1).put("bigSlot", 3).put("courses", JSONArray()
+                .put(course("下周开", 5, 6, listOf(2))).put(course("每周都上", 7, 8))))), false)
+        val taken = store.blocksForDay(1, "1")
+        assertEquals(listOf("本周的课", "每周都上"), taken.map { it.course.name })
+        assertEquals(listOf("下周开"), store.offWeekBlocksForDay(1, "1", taken).map { it.course.name })
+        // Saturday of week 1 is a make-up day: it follows its own date.
+        assertEquals(emptyList<CourseBlock>(), store.offWeekBlocksForDay(6, "1", emptyList()))
+    }
+
+    @Test
+    fun theSoonestCourseWinsASharedFreePeriod() {
+        fun off(name: String, weeks: List<Int>) =
+            CourseBlock(3, 1, 1, 2, ScheduleCourse(name = name, weekList = weeks, startSlot = 1, endSlot = 2))
+        val candidates = listOf(off("已结课", listOf(1, 2, 3, 4)), off("下周开", listOf(6, 7)), off("期末开", listOf(15)), off("没有周次", emptyList()))
+        assertEquals(listOf("下周开"), ScheduleDisplayRules.offWeekBlocks(candidates, emptyList(), 5).map { it.course.name })
+        assertEquals(listOf("期末开"), ScheduleDisplayRules.offWeekBlocks(candidates, emptyList(), 16).map { it.course.name })
+        assertEquals(1.16f * 0.92f, ScheduleDisplayRules.textScale("large", true), 0.0001f)
+        assertEquals(125, ScheduleDisplayRules.normalizedRowHeight(123))
+        assertEquals(180, ScheduleDisplayRules.normalizedRowHeight(999))
+    }
+
+    @Test
     fun theMonthViewSelectsADateOfTheTerm() = runTest {
         val store = ScheduleStore(this)
         store.accept(snapshot(cells(2 to course("周二的课", 1, 2))), false)

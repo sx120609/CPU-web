@@ -573,9 +573,51 @@ class ScheduleStore(
 
     /** The weekdays a week shows: weekends can be hidden unless a class or a make-up day falls on them. */
     fun visibleDays(week: String, showWeekend: Boolean, data: ScheduleResult? = resultFor(week)): List<Int> =
+        visibleDays(week, showWeekend, showWeekend, data)
+
+    fun visibleDays(week: String, showSaturday: Boolean, showSunday: Boolean, data: ScheduleResult? = resultFor(week)): List<Int> =
         (1..7).filter { day ->
-            showWeekend || day <= 5 || adjustment(day, week)?.kind == "swap" || blocksForDay(day, week, data).isNotEmpty()
+            day <= 5 || (if (day == 6) showSaturday else showSunday) ||
+                adjustment(day, week)?.kind == "swap" || blocksForDay(day, week, data).isNotEmpty()
         }
+
+    /** The week before [week] in this term, or null at the first one. */
+    fun previousWeek(week: String): String? {
+        val options = weekOptions()
+        val index = options.indexOfFirst { it.value == week }
+        return if (index > 0) options[index - 1].value else null
+    }
+
+    /**
+     * The courses of a weekday that do not run in [week], for the periods
+     * [taken] leaves free. Only whole-term data lists other weeks' courses;
+     * holidays and make-up days follow their own date and get none.
+     */
+    fun offWeekBlocksForDay(day: Int, week: String, taken: List<CourseBlock>, data: ScheduleResult? = resultFor(week)): List<CourseBlock> {
+        val source = data ?: return emptyList()
+        val weekNumber = week.ifEmpty { source.currentWeek }.toIntOrNull() ?: return emptyList()
+        if (adjustment(day, week) != null) return emptyList()
+        val blocks = mutableListOf<CourseBlock>()
+        source.cells.filter { it.day == day }.forEach { cell ->
+            cell.courses.filter { it.weekList.isNotEmpty() && weekNumber !in it.weekList }.forEach { course ->
+                val fallbackStart = (cell.bigSlot * 2 - 1).coerceIn(1, SLOT_COUNT)
+                val fallbackEnd = (cell.bigSlot * 2).coerceIn(fallbackStart, SLOT_COUNT)
+                val startSlot = (course.startSlot ?: fallbackStart).coerceIn(1, SLOT_COUNT)
+                val endSlot = (course.endSlot ?: fallbackEnd).coerceIn(startSlot, SLOT_COUNT)
+                val block = CourseBlock(day, cell.bigSlot, startSlot, endSlot, course)
+                val index = blocks.indexOfFirst { it.course.weekList == course.weekList && canMergeBlocks(it, block) }
+                if (index < 0) {
+                    blocks += CourseBlock(day, (startSlot + 1) / 2, startSlot, endSlot, courseWithRange(course, startSlot, endSlot))
+                } else {
+                    val previous = blocks[index]
+                    val start = minOf(previous.startSlot, startSlot)
+                    val end = maxOf(previous.endSlot, endSlot)
+                    blocks[index] = CourseBlock(day, (start + 1) / 2, start, end, courseWithRange(previous.course, start, end, course))
+                }
+            }
+        }
+        return ScheduleDisplayRules.offWeekBlocks(blocks, taken, weekNumber)
+    }
 
     fun calendarWeek(week: String = selectedWeek): CalendarWeek? {
         val number = (week.ifEmpty { result?.currentWeek.orEmpty() }).toIntOrNull() ?: return null

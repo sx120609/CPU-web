@@ -32,6 +32,7 @@ object DebugScheduleFixture {
 
     fun initialSheet(): ScheduleSheet? = when (sheet) {
         "visual" -> ScheduleSheet.VisualStyle
+        "display" -> ScheduleSheet.Display
         "style" -> ScheduleSheet.Style
         "sharing" -> ScheduleSheet.Sharing
         else -> null
@@ -44,6 +45,21 @@ object DebugScheduleFixture {
         intent.getIntExtra("debugDay", 0).takeIf { it in 1..7 }?.let { activity.schedule.selectDay(it) }
         pinnedNow = intent.getStringExtra("debugNow")?.let(ScheduleStyleTime::clockMinutes)
         sheet = intent.getStringExtra("debugSheet").orEmpty()
+        // Display settings for a screenshot, e.g. "sundayFirst,offWeek,teacher,rows=140".
+        intent.getStringExtra("debugDisplay")?.split(',')?.map { it.trim() }?.let { flags ->
+            val style = activity.style
+            style.resetDisplay()
+            style.updateSundayFirst("sundayFirst" in flags)
+            style.updateShowOffWeek("offWeek" in flags)
+            style.updateShowTeacher("teacher" in flags)
+            style.updateCompactLayout("compact" in flags)
+            style.updateShowSlotTime("noTime" !in flags)
+            style.updateShowSaturday("noSaturday" !in flags)
+            style.updateShowSunday("noSunday" !in flags)
+            style.updateShowBackToWeek("noToday" !in flags)
+            style.selectTextSize(flags.firstOrNull { it == "small" || it == "large" } ?: "standard")
+            flags.firstOrNull { it.startsWith("rows=") }?.removePrefix("rows=")?.toIntOrNull()?.let(style::updateRowHeight)
+        }
         // Names in display order: the first one is in front.
         intent.getStringExtra("debugPriority")?.split(',')?.map { SchedulePriority.key(it) }?.filter { it.isNotEmpty() }?.let { names ->
             activity.schedule.setPriorities(SEMESTER, names.mapIndexed { index, name -> name to names.size - index }.toMap())
