@@ -37,6 +37,9 @@ import { prisma } from "./prisma";
 import { isRedisConfigured, readRedisString } from "./services/redis";
 import { createDeploymentRelay } from "./utils/deploymentRelay";
 import { remoteGateway } from "./services/jwxtGatewayTransport";
+import { getJwxtAgentRuntimeConfig } from "./services/jwxtAgentConfig";
+import { getJwxtAgentState } from "./services/jwxtAgentGateway";
+import { summarizeJwxtAgents } from "./services/jwxtAgentSummary";
 import { getQqBotDeploymentStatus } from "./services/qqbot/connection";
 import { startLiveActivityPushScheduler } from "./services/liveActivityPush";
 import { startIosClientStatsPrunePoller } from "./services/iosClientStats";
@@ -123,7 +126,7 @@ export function createApp(options: { workers?: boolean } = {}) {
         throw new Error("Redis unavailable");
       }
       res.setHeader("Cache-Control", "no-store");
-      res.json({ code: 0, data: { ready: true, commit: process.env.CPU_WEB_RELEASE_SHA || "", relayInFlight: deploymentRelay.inFlight(), qqbot: await getQqBotDeploymentStatus() }, message: "" });
+      res.json({ code: 0, data: { ready: true, commit: process.env.CPU_WEB_RELEASE_SHA || "", relayInFlight: deploymentRelay.inFlight(), qqbot: await getQqBotDeploymentStatus(), jwxtAgents: summarizeJwxtAgents(getJwxtAgentRuntimeConfig().agents, getJwxtAgentState) }, message: "" });
     } catch {
       res.status(503).json({ code: 5030, data: { ready: false }, message: "Service is not ready" });
     }
