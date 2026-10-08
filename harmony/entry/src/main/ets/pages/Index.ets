@@ -453,7 +453,11 @@ struct Index {
           bridge.openWebRoute = path => {
             const app = document.getElementById('app')?.__vue_app__;
             const router = app?.config?.globalProperties?.$router;
-            return router?.push ? router.push(path) : undefined;
+            if (router?.push) return router.push(path);
+            // A page that is not the site's own app (药苑之声 is a separate one) has no site
+            // router: load the route instead. The page load reports the navigation as ready.
+            location.assign(path);
+            return new Promise(() => undefined);
           };
           window.CPUTimeNative = bridge;
           try { if (sessionStorage.getItem('cpu-auth-cache-scope')?.startsWith('user-')) bridge.authChanged(); } catch (_) {}
@@ -1785,8 +1789,51 @@ struct Index {
       this.controller.refresh();
       return;
     }
-    const script = `window.CPUHarmonyHeaderAction?.(${JSON.stringify(action)}, ${JSON.stringify(roots[this.selectedTab] || '/home')});`;
-    void this.controller.runJavaScript(script).catch(() => promptAction.showToast({ message: '页面尚未就绪，请重试' }));
+    const root = roots[this.selectedTab] || '/home';
+    // The site's own app handles the header through its router. A page outside it (药苑之声 is a
+    // separate app) has no such handler, so the header acts there by loading site routes: back
+    // steps through that page's own history and leaves from its first page.
+    const script = `
+      (() => {
+        const action = ${JSON.stringify(action)};
+        const root = ${JSON.stringify(root)};
+        if (typeof window.CPUHarmonyHeaderAction === 'function') {
+          window.CPUHarmonyHeaderAction(action, root);
+          return 'handled';
+        }
+        if (action === 'back') {
+          const back = window.history.state?.back;
+          if (typeof back === 'string' && back) window.history.back();
+          else location.assign(root);
+          return 'handled';
+        }
+        if (action === 'messages') { location.assign('/messages'); return 'handled'; }
+        if (action === 'login') { location.assign('/login'); return 'handled'; }
+        return 'outside';
+      })();
+    `;
+    void this.controller.runJavaScript(script).then((result: string) => {
+      if (action === 'more' && result.includes('outside')) this.showOutsidePageMenu(root);
+    }).catch(() => promptAction.showToast({ message: '页面尚未就绪，请重试' }));
+  }
+
+  // 「更多」on a page outside the site's own app, where the site's drawer does not exist.
+  private showOutsidePageMenu(root: string): void {
+    const names: string[] = ['首页', '教务', '课表', '服务', '我的'];
+    promptAction.showActionMenu({
+      title: '更多',
+      buttons: [
+        { text: '刷新页面', color: '#168776' },
+        { text: '返回' + (names[this.selectedTab] || '首页'), color: '#168776' },
+        { text: '消息', color: '#168776' },
+        { text: '回到首页', color: '#168776' }
+      ]
+    }).then((result) => {
+      if (result.index === 0) this.controller.refresh();
+      else if (result.index === 1) this.selectTab(this.selectedTab, root);
+      else if (result.index === 2) this.selectTab(this.selectedTab, '/messages');
+      else if (result.index === 3) this.selectTab(0);
+    }).catch(() => undefined);
   }
 
   private applyAppearance(value: string, updateWeb: boolean): void {
@@ -2145,9 +2192,19 @@ struct Index {
         .catch(() => undefined);
       return true;
     }
-    void this.controller.runJavaScript(`Promise.resolve(window.CPUHarmonyBack?.()).then(handled => {
-      if (handled === false || handled === undefined) window.CPUHarmony.navigate('/schedule');
-    });`).catch(() => this.selectTab(2));
+    // Outside the site's own app the system back gesture steps through that page's history and
+    // leaves from its first page, instead of jumping to the timetable.
+    void this.controller.runJavaScript(`(() => {
+      if (typeof window.CPUHarmonyBack !== 'function' && !document.getElementById('app')?.__vue_app__) {
+        const back = window.history.state?.back;
+        if (typeof back === 'string' && back) window.history.back();
+        else location.assign(${JSON.stringify(['/home', '/jwxt', '/schedule', '/services', '/profile'][this.selectedTab] || '/home')});
+        return;
+      }
+      Promise.resolve(window.CPUHarmonyBack?.()).then(handled => {
+        if (handled === false || handled === undefined) window.CPUHarmony.navigate('/schedule');
+      });
+    })();`).catch(() => this.selectTab(2));
     return true;
   }
 

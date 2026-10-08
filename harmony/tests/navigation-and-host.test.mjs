@@ -98,3 +98,62 @@ test('tab handoff keeps the schedule visible until the destination paints and ig
   [...timers.values()].forEach(fn => fn());
   assert.equal(nav.scheduleLayerVisible, true);
 });
+
+test('the native header and tabs still work on a page outside the site app (药苑之声)', async () => {
+  const source = readFileSync(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
+  const methods = source.slice(source.indexOf('  private handleHeaderAction('), source.indexOf('  private applyAppearance('));
+  let menu = null; let picked = 0;
+  const ctx = vm.createContext({ module: { exports: {} }, promptAction: {
+    showToast() {}, showActionMenu: options => { menu = options; return Promise.resolve({ index: picked }); } } });
+  vm.runInContext(transformSync('export class Header {' + methods + '}', { loader: 'ts', format: 'cjs' }).code, ctx);
+  const header = new ctx.module.exports.Header();
+  const selected = []; let refreshed = 0;
+  Object.assign(header, { selectedTab: 3, selectTab: (index, destination) => selected.push([index, destination]) });
+  const run = async (action, page) => {
+    header.controller = { refresh: () => { refreshed += 1; }, runJavaScript: async script => String(vm.runInNewContext(script, page)) };
+    header.handleHeaderAction(action);
+    await new Promise(setImmediate); await new Promise(setImmediate);
+  };
+  const outside = state => {
+    const page = { assigned: [], backs: 0 };
+    page.location = { assign: path => page.assigned.push(path) };
+    page.window = { history: { state, back: () => { page.backs += 1; } } };
+    return page;
+  };
+
+  // The site's own app keeps handling everything itself.
+  const calls = [];
+  await run('more', { window: { CPUHarmonyHeaderAction: (action, root) => calls.push([action, root]) } });
+  assert.deepEqual(calls, [['more', '/services']]); assert.equal(menu, null);
+
+  // First page of the outside app: back leaves to the tab's root.
+  let page = outside(null); await run('back', page);
+  assert.deepEqual(page.assigned, ['/services']); assert.equal(page.backs, 0);
+  // Deeper inside it: back steps through its own history.
+  page = outside({ back: '/voicehub/' }); await run('back', page);
+  assert.deepEqual(page.assigned, []); assert.equal(page.backs, 1);
+  page = outside(null); await run('messages', page); assert.deepEqual(page.assigned, ['/messages']);
+  page = outside(null); await run('login', page); assert.deepEqual(page.assigned, ['/login']);
+
+  // 更多 has no site drawer to open there, so the shell shows its own menu.
+  picked = 1; page = outside(null); await run('more', page);
+  assert.equal(menu.buttons.map(button => button.text).join('|'), '刷新页面|返回服务|消息|回到首页');
+  assert.deepEqual(selected, [[3, '/services']]);
+  picked = 0; await run('more', outside(null)); assert.equal(refreshed, 1);
+  picked = 3; await run('more', outside(null)); assert.deepEqual(selected.at(-1), [0, undefined]);
+  header.handleHeaderAction('home'); assert.deepEqual(selected.at(-1), [0, undefined]);
+
+  // A tab tapped there loads the site route, because the page has no site router to push to.
+  const start = source.indexOf('bridge.openWebRoute = path => {');
+  const body = source.slice(start, source.indexOf('window.CPUTimeNative = bridge;', start));
+  const routes = []; const loaded = [];
+  const openWith = app => {
+    const bridge = {};
+    vm.runInNewContext(body, { bridge, document: { getElementById: () => app }, location: { assign: path => loaded.push(path) } });
+    return bridge.openWebRoute;
+  };
+  openWith({ __vue_app__: { config: { globalProperties: { $router: { push: path => routes.push(path) } } } } })('/profile');
+  assert.deepEqual(routes, ['/profile']); assert.deepEqual(loaded, []);
+  const pending = openWith(null)('/profile');
+  assert.deepEqual(loaded, ['/profile']); assert.ok(pending instanceof Promise || typeof pending?.then === 'function');
+});
