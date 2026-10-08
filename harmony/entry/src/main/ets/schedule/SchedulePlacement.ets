@@ -22,6 +22,8 @@ export interface PlacedCourseBlock {
   whole: NativeCourseBlock;
   // A course that does not run this week, drawn faded in a period this week leaves free.
   offWeek?: boolean;
+  // Set while the couple timetable is drawn: whose course this is (me | ta | both).
+  owner?: string;
 }
 
 /** The saved key for a course name: trimmed, inner whitespace collapsed. */

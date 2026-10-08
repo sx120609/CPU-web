@@ -13,6 +13,7 @@ import { systemShare } from '@kit.ShareKit';
 import { scheduleText, scheduleCalendar } from '../schedule/ScheduleExport';
 import { SCHEDULE_STYLES, normalizeScheduleStyle, scheduleStyleSubtitle, scheduleStyleTitle } from '../schedule/ScheduleStyle';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
+import { CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
 import { schedulePalette } from '../schedule/ScheduleVisuals';
 import common from '@ohos.app.ability.common';
@@ -33,7 +34,7 @@ import { restoreNativeScheduleCache } from '../schedule/NativeScheduleCache';
 import { NativeWebHeader, NativeWebHeaderState } from '../common/NativeWebHeader';
 import { NativeLoginGate, NativeLoginResponse } from '../common/NativeLoginGate';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
-import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeScheduleSnapshot, NativeScheduleStore,
+import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeScheduleSemester, NativeScheduleSnapshot, NativeScheduleStore,
   SCHEDULE_ROW_HEIGHT_MAX, SCHEDULE_ROW_HEIGHT_MIN, SCHEDULE_ROW_HEIGHT_STEP, scheduleNormalizedRowHeight,
   scheduleNormalizedTextSize } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
@@ -80,6 +81,10 @@ struct Index {
   @State private editorModel: NativeCourseEditorModel = new NativeCourseEditorModel();
   @State private scheduleStyleVisible: boolean = false;
   @State private sharingModel: NativeScheduleSharingModel = new NativeScheduleSharingModel();
+  @State private coupleModel: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
+  // 共享课表是别人的课表，不叠情侣课表：给它一个始终未绑定的。
+  @State private noCouple: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
+  private coupleSyncTimer: number = -1;
   // 别人共享的课表：只读，开在自己的 store 上，盖住整个页面。
   @State private sharedStore: NativeScheduleStore = new NativeScheduleStore();
   @State private sharedVisible: boolean = false;
@@ -178,6 +183,7 @@ struct Index {
           this.configureScheduleWidget();
         }
         this.refreshSchedulePriorities();
+        this.queueCoupleSync();
       }
     );
     if (context) {
@@ -192,6 +198,10 @@ struct Index {
     }
     this.sharingModel.attach((request: ShareApiRequest) => this.shareApi(request),
       (raw: string) => this.persistSharedSchedules(raw));
+    this.coupleModel.attach((request: CoupleApiRequest) => this.coupleApi(request),
+      (key: string, value: string) => this.persistCouple(key, value));
+    // 对方的课表会在自己开着课表时更新。
+    setInterval(() => { if (this.selectedTab === 2 && this.scheduleStore.result) void this.coupleModel.refresh(); }, 5 * 60 * 1000);
     this.editorModel.attach((id: string, payload: CourseEditorRequest) => {
       const requestId = JSON.stringify(id);
       const request = JSON.stringify(payload);
@@ -222,6 +232,7 @@ struct Index {
         this.scheduleStore.showBackToWeek = Boolean(await prefs.get('backToWeek', true));
         this.scheduleStore.showNowIndicator = Boolean(await prefs.get('now', true));
         this.scheduleStore.restorePriorities(String(await prefs.get('priorities', '')));
+        this.coupleModel.restore(String(await prefs.get('coupleVisible', '1')) !== '0', String(await prefs.get('coupleSync', '')));
         this.scheduleStore.attachPriorityPersistence((raw: string) => {
           void prefs.put('priorities', raw).then(() => prefs.flush()).catch(() => undefined);
         });
@@ -234,6 +245,7 @@ struct Index {
         else if (this.webHeader.contentReady && !this.webHeader.authenticated) this.scheduleLoginGate();
         // 共享课表按账号分开存；换了身份（本科/研究生）还是同一个账号。
         this.sharingModel.adopt(scope.split(':')[0]);
+        this.coupleModel.adopt(scope.split(':')[0]);
         if (!this.scheduleStore.handleAuthChanged(scope)) return;
         this.priorityRequestKey = '';
         this.closeSharedSchedule(false);
@@ -741,6 +753,41 @@ struct Index {
     }
   }
 
+  private async coupleApi(request: CoupleApiRequest): Promise<CoupleApiReply> {
+    const unavailable: CoupleApiReply = { ok: false, status: 0, error: '情侣课表服务尚未就绪，请稍后重试' };
+    const raw = await this.runWebTask(`typeof window.CPUHarmonyCouple === 'function'
+      ? window.CPUHarmonyCouple(${this.scriptLiteral(request)}) : null`);
+    try {
+      const reply = JSON.parse(raw || 'null') as CoupleApiReply | null;
+      return reply && typeof reply.ok === 'boolean' ? reply : unavailable;
+    } catch (_) {
+      return unavailable;
+    }
+  }
+
+  private persistCouple(key: string, value: string): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
+      await prefs.put(key === 'visible' ? 'coupleVisible' : 'coupleSync', value);
+      await prefs.flush();
+    }).catch(() => undefined);
+  }
+
+  // 情侣课表：课表稳定几秒后读一次绑定状态，并把当前学期的整学期课表（含个人修改）传给对方。
+  private queueCoupleSync(): void {
+    clearTimeout(this.coupleSyncTimer);
+    this.coupleSyncTimer = setTimeout(() => {
+      const store = this.scheduleStore;
+      if (!store.result || !store.bridgeReady || store.status !== 'loaded') return;
+      void this.coupleModel.refresh().then(() => {
+        const current = store.semesterOptions().find((item: NativeScheduleSemester) => item.current)?.value ?? '';
+        if (current && current !== store.prioritySemester()) return;
+        void this.coupleModel.sync((): SharePublishBody => this.sharePublishBody());
+      });
+    }, 4000);
+  }
+
   // 重叠课程谁显示在前面，随个人修改存在服务端；每次拿到新的课表数据读一次。
   private refreshSchedulePriorities(): void {
     const store = this.scheduleStore;
@@ -1142,6 +1189,8 @@ struct Index {
           if (this.scheduleMounted) {
             NativeSchedulePage({
               store: this.scheduleStore,
+              couple: this.coupleModel,
+              onCouple: () => this.coupleModel.open(),
               bottomClearance: this.bottomContentClearance(),
               onLogin: () => {
                 this.selectTab(1);
@@ -1234,6 +1283,7 @@ struct Index {
         Column() {
           NativeSchedulePage({
             store: this.sharedStore,
+            couple: this.noCouple,
             bottomClearance: this.bottomBarInset() + 8,
             onClose: () => this.closeSharedSchedule(true)
           })
@@ -1482,12 +1532,14 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible || this.sharingModel.visible, this.nativePanelSheet(), {
+    .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible || this.sharingModel.visible
+      || this.coupleModel.sheetVisible, this.nativePanelSheet(), {
       height: SheetSize.LARGE, showClose: true, dragBar: true,
       onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy) action.dismiss(); },
       onDisappear: () => {
         this.editorModel.cancel(); this.scheduleStyleVisible = false; this.widgetPanelVisible = false; this.widgetPreviewRevision += 1;
         this.sharingModel.close();
+        this.coupleModel.close();
       }
     })
   }
@@ -1522,6 +1574,15 @@ struct Index {
         publishBody: (): SharePublishBody => this.sharePublishBody(),
         onOpen: (schedule: SharedSchedule) => this.openSharedSchedule(schedule),
         onCopy: (text: string) => { if (this.bridge.copyText(text)) promptAction.showToast({ message: '已复制，可以发给对方了' }); },
+        onSend: (text: string) => this.sendText(text)
+      })
+    } else if (this.coupleModel.sheetVisible) {
+      NativeScheduleCouple({
+        model: this.coupleModel,
+        dark: this.scheduleStore.dark,
+        nowMinutes: this.scheduleStore.nowMinutes,
+        origin: APP_URL,
+        onCopy: (text: string) => { if (this.bridge.copyText(text)) promptAction.showToast({ message: '已复制，可以发给 TA 了' }); },
         onSend: (text: string) => this.sendText(text)
       })
     } else {
@@ -2160,6 +2221,10 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.coupleModel.sheetVisible) {
+      this.coupleModel.close();
+      return true;
+    }
     if (this.sharingModel.visible) {
       this.sharingModel.close();
       return true;

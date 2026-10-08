@@ -10,6 +10,8 @@ import { scheduleAlpha, scheduleCleanLocation, scheduleCourseAccent, scheduleMet
   scheduleStyleFont, scheduleStyleInk, scheduleStylePanelSurface, scheduleStyleTextFont, scheduleThemeText,
   scheduleThemeTint, scheduleWeekday } from './ScheduleStyle';
 import { ScheduleStyledDateHeader } from './ScheduleDateHeader';
+import { COUPLE_ACCENT, NativeScheduleCoupleModel } from './NativeScheduleCouple';
+import { coupleTone } from './ScheduleCouple';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 // Height of the styled day strip: the date header of the styled week views, a little taller.
@@ -18,6 +20,8 @@ const STYLED_STRIP: number = 50;
 @Component
 export struct NativeSchedulePage {
   @ObjectLink store: NativeScheduleStore;
+  // The couple timetable; a read-only shared timetable gets one that is not bound.
+  @ObjectLink couple: NativeScheduleCoupleModel;
   @Prop bottomClearance: number = 100;
   onLogin: () => void = () => undefined;
   onWidgets: () => void = () => undefined;
@@ -29,6 +33,7 @@ export struct NativeSchedulePage {
   onShare: () => void = () => undefined;
   onExport: () => void = () => undefined;
   onSharing: () => void = () => undefined;
+  onCouple: () => void = () => undefined;
   // Closes a read-only shared timetable.
   onClose: () => void = () => undefined;
   // Pins "now" (minutes since midnight) for acceptance screenshots; -1 follows the clock.
@@ -97,12 +102,13 @@ export struct NativeSchedulePage {
               Swiper(this.dayController) {
                 ForEach([1,2,3,4,5,6,7], (day: number) => {
                   Column() {
-                    NativeScheduleBody({ store: this.store, view: this.dayPreview(day),
+                    NativeScheduleBody({ store: this.store, couple: this.couple, view: this.dayPreview(day),
                       contentHeight: Math.max(360, this.contentHeight - (this.store.visualStyle === 'classic' ? 44 : STYLED_STRIP + 2)),
                       pageWidth: this.pageWidth,
                       showDayStrip: false,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
-                      onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay) })
+                      onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
+                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
                   }.width('100%').height('100%')
                 })
               }.width('100%').layoutWeight(1).index(Math.max(0, Math.min(6, this.store.selectedDay - 1)))
@@ -114,7 +120,7 @@ export struct NativeSchedulePage {
               ForEach(this.store.weekOptions(), (week: NativeScheduleWeek, index: number) => {
                 Column() {
                   if (Math.abs(index - this.store.selectedWeekIndex()) <= 1) {
-                    NativeScheduleBody({ store: this.store, view: this.weekPreview(week.value),
+                    NativeScheduleBody({ store: this.store, couple: this.couple, view: this.weekPreview(week.value),
                       contentHeight: this.contentHeight, pageWidth: this.pageWidth,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
                       onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
@@ -129,7 +135,7 @@ export struct NativeSchedulePage {
                 if (week) this.store.selectWeek(week.value);
               })
           } else {
-            NativeScheduleBody({ store: this.store, view: this.store,
+            NativeScheduleBody({ store: this.store, couple: this.couple, view: this.store,
               contentHeight: this.contentHeight, pageWidth: this.pageWidth,
               onLogin: this.onLogin, onAddSlot: this.onAddSlot,
               onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
@@ -211,6 +217,7 @@ export struct NativeSchedulePage {
             { value: '分享所选周课表', action: () => this.onShare() },
             { value: '导出所选周日历', action: () => this.onExport() },
             { value: '共享课表', action: () => this.onSharing() },
+            { value: '情侣课表', action: () => this.onCouple() },
             { value: '应用外观', action: () => this.onAppearance() }
           ])
       }
@@ -257,8 +264,62 @@ export struct NativeSchedulePage {
       })
   }
 
+  // Bound: the week and its dates share the first line and the partner's status takes the second,
+  // so the couple timetable needs no row of its own.
+  @Builder
+  private coupledWeekSwitcher() {
+    Row() {
+      this.weekStepButton(-1)
+      Column({ space: 2 }) {
+        Row({ space: 6 }) {
+          Text(this.weekLabel()).fontSize(14).fontWeight(600).fontColor(this.navigatorInk()).fontFamily(this.navigatorTitleFont()).maxLines(1)
+          if (this.isCurrentWeek()) {
+            Text('本周').fontSize(10).fontWeight(FontWeight.Bold).fontColor(this.accentColor())
+              .padding({ left: 5, right: 5, top: 1, bottom: 1 }).borderRadius(6)
+              .backgroundColor(scheduleTint(this.accentColor(), 0.14))
+          }
+          Text(this.weekRange()).fontSize(10).fontColor(this.navigatorSecondary()).maxLines(1).fontFamily(this.navigatorDateFont())
+        }.justifyContent(FlexAlign.Center).width('100%')
+          .accessibilityGroup(true).accessibilityText('选择周次，' + this.weekLabel() + '，' + this.weekRange())
+          .id('schedule-week-title').onClick(() => this.store.weekPickerVisible = true)
+        Row({ space: 4 }) {
+          Row({ space: 5 }) {
+            Circle().width(6).height(6).fill(coupleTone(this.couple.status.partner.color, '', this.store.dark).border)
+            Text(this.couple.nowText(this.store.nowMinutes)).fontSize(11).fontColor(this.navigatorSecondary()).maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
+            if (this.couple.daysTogether() > 0) {
+              Row({ space: 2 }) {
+                SymbolGlyph($r('sys.symbol.heart_fill')).fontSize(10).fontColor([COUPLE_ACCENT])
+                Text(String(this.couple.daysTogether())).fontSize(11).fontWeight(600).fontColor(COUPLE_ACCENT).maxLines(1)
+              }.margin({ left: 2 })
+            }
+          }.layoutWeight(1).justifyContent(FlexAlign.Center)
+            .accessibilityGroup(true)
+            .accessibilityText('情侣课表，' + this.couple.nowText(this.store.nowMinutes)
+              + (this.couple.daysTogether() > 0 ? `，在一起第 ${this.couple.daysTogether()} 天` : ''))
+            .id('schedule-couple-line').onClick(() => this.onCouple())
+          // A small switch: the partner's courses on or off without opening the sheet.
+          Row() {
+            Circle().width(10).height(10).fill('#FFFFFF')
+          }.width(26).height(14).padding(2).borderRadius(7)
+            .justifyContent(this.couple.visible ? FlexAlign.End : FlexAlign.Start)
+            .backgroundColor(this.couple.visible ? COUPLE_ACCENT : scheduleAlpha(this.navigatorSecondary(), 0.35))
+            .responseRegion({ x: -6, y: -8, width: 38, height: 30 })
+            .accessibilityGroup(true).accessibilityRole(AccessibilityRoleType.SWITCH)
+            .accessibilityText('在课表里显示 TA 的课').accessibilityChecked(this.couple.visible)
+            .id('schedule-couple-toggle').onClick(() => this.couple.setVisible(!this.couple.visible))
+        }.width('100%')
+      }.layoutWeight(1).alignItems(HorizontalAlign.Center)
+      this.weekStepButton(1)
+    }.width('100%').constraintSize({ minHeight: 42 }).margin({ bottom: 2 }).borderRadius(18)
+      .backgroundColor(this.store.backgroundPath ? this.surfaceColor() : Color.Transparent)
+  }
+
   @Builder
   private weekSwitcher() {
+    if (!this.store.readOnly && this.couple.bound()) {
+      this.coupledWeekSwitcher()
+    } else {
     Row() {
       this.weekStepButton(-1)
       Button() {
@@ -280,6 +341,7 @@ export struct NativeSchedulePage {
     }.width('100%').height(42).margin({ bottom: 2 }).borderRadius(18)
       // Over a background photo the navigator sits on a frosted plate, like the other clients.
       .backgroundColor(this.store.backgroundPath ? this.surfaceColor() : Color.Transparent)
+    }
   }
 
   @Builder

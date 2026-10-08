@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const bundle=readFileSync(new URL('../entry/src/main/resources/rawfile/NativeWebCompatibility.js',import.meta.url),'utf8');
 function page() {
   let edits={hidden:[],custom:[]}; let fail=false; const writes=[]; const shareRequests=[]; let shareReply={status:200,body:{code:0,data:{}}};
+  const coupleRequests=[];
   const auth={ready:true,isLoggedIn:true,user:{id:1},academicIdentity:'undergraduate',token:'__cpu_cookie_session__',$subscribe(){}};
   const jwxt={isLoggedIn:true,token:'__cpu_jwxt_cookie_session__',$subscribe(){}};
   const window={CPUTimeNative:{ready(){}},CPUTimeNativeScheduleFetch(){}};
@@ -15,6 +16,11 @@ function page() {
       if(String(url).startsWith('/api/schedule-shares')) {
         shareRequests.push({url:String(url),options,body:options.body?JSON.parse(options.body):undefined});
         return {ok:shareReply.status<400,status:shareReply.status,json:async()=>shareReply.body};
+      }
+      if(String(url).startsWith('/api/couple')) {
+        coupleRequests.push({url:String(url),options,body:options.body?JSON.parse(options.body):undefined});
+        if(String(url).endsWith('/accept')) return {ok:false,status:400,json:async()=>({code:400,message:'邀请码无效或已过期'})};
+        return {ok:true,status:200,json:async()=>({code:0,data:{status:'none'}})};
       }
       assert.match(String(url),/^\/api\/jwxt\/schedule-edits/);
       if(options.method==='PUT') {
@@ -27,6 +33,7 @@ function page() {
   });
   vm.runInContext(bundle,ctx);
   return {run:window.CPUHarmonyEditor,shares:window.CPUHarmonyShares,shareRequests,setShareReply:value=>shareReply=value,
+    couple:window.CPUHarmonyCouple,coupleRequests,
     auth,writes,get edits(){return edits;},setEdits:value=>edits=value,fail:()=>fail=true};
 }
 const form={name:'新增课程',teacher:'教师',location:'B311',note:'',day:2,startSlot:3,endSlot:4,weekList:[2,4]};
@@ -168,4 +175,28 @@ test('an empty note is saved as the period label, and editing a course keeps the
   opened=await p.run({action:'open',semester:'fall'});
   await p.run({action:'save',session:opened.session,original,form:{...form,note:''},cells:[]});
   assert.equal(p.edits.custom[0].course.slotNote,'第 3-4 节');
+});
+test('the couple timetable goes through the signed-in session',async()=>{
+  const p=page();
+  const status=await p.couple({action:'status'});
+  assert.equal(status.ok,true); assert.equal(status.data.status,'none');
+  assert.equal(p.coupleRequests[0].url,'/api/couple'); assert.equal(p.coupleRequests[0].options.method,'GET');
+  assert.equal(p.coupleRequests[0].options.cache,'no-store'); assert.equal(p.coupleRequests[0].options.headers['X-CSRF-Token'],undefined);
+  await p.couple({action:'sync',body:{semester:'fall',schedule:{},calendar:{}}});
+  assert.equal(p.coupleRequests[1].url,'/api/couple/schedule'); assert.equal(p.coupleRequests[1].options.method,'PUT');
+  assert.equal(p.coupleRequests[1].options.headers['X-CSRF-Token'],'test-csrf');
+  assert.equal(p.coupleRequests[1].options.headers['X-CPU-Client'],'harmony-app');
+  assert.deepEqual(p.coupleRequests[1].body,{semester:'fall',schedule:{},calendar:{}});
+  await p.couple({action:'settings',body:{myColor:'pink'}});
+  assert.equal(p.coupleRequests[2].options.method,'PATCH'); assert.deepEqual(p.coupleRequests[2].body,{myColor:'pink'});
+  assert.deepEqual(JSON.parse(JSON.stringify(await p.couple({action:'accept',code:' abc234 '}))),{ok:false,status:400,error:'邀请码无效或已过期'});
+  assert.deepEqual(p.coupleRequests[3].body,{code:'abc234'});
+  await p.couple({action:'invite'}); await p.couple({action:'cancelInvite'}); await p.couple({action:'unbind'}); await p.couple({action:'schedules'});
+  assert.deepEqual(p.coupleRequests.slice(4).map(item=>item.options.method+' '+item.url),
+    ['POST /api/couple/invite','DELETE /api/couple/invite','DELETE /api/couple','GET /api/couple/schedules']);
+  // Nothing else reaches the server, and nothing at all without an account.
+  assert.equal((await p.couple({action:'whatever'})).status,400);
+  p.auth.isLoggedIn=false;
+  assert.equal((await p.couple({action:'status'})).status,401);
+  assert.equal(p.coupleRequests.length,8);
 });

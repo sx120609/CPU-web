@@ -14,6 +14,7 @@
 
 原生课表页自己画 TA 的课，规则和网页一致：按日期对齐、一起上的课合并成一格、只有时间撞在一起的课才左右各占半格、六种风格都按人配色。状态行在周次条的第二行，「更多 → 情侣课表」是原生的管理面板（邀请、输入邀请码、互换配色、纪念日、显示开关、解除绑定）。原生端也会上传自己的课表：课表稳定几秒后把当前学期的整学期课表（含个人修改）发给 `PUT /api/couple/schedule`，内容没变时 12 小时内不重复上传。
 
+- 鸿蒙：请求经过随包的页面桥 `window.CPUHarmonyCouple`（`harmony/bridge/couple.ts`）；规则在 `ScheduleCouple.ets`，模型和面板在 `NativeScheduleCouple.ets`。双人模式的日视图在所有风格下都用网格画。验收脚手架 `prepare-schedule-acceptance.mjs` 接受 `--ps couple active|pending|none` 和 `--ps panel couple`。隐藏周末时，只有 TA 有课的周末列不会单独显示出来（安卓会显示）。
 - 安卓：请求经过随包的页面桥 `window.CPUAndroidCouple`（`android/bridge/couple.ts`），用网页会话的登录态；逻辑在 `ScheduleCouple.kt`，面板在 `ScheduleCoupleSheet.kt`。「在课表里显示 TA 的课」只保存在本机。调试参数 `--es debugCouple active|pending` 配合 `--ez debugMockSchedule true` 可以不登录看效果。
 
 ## 绑定
@@ -58,6 +59,7 @@
 ## 测试
 
 - `server/tests/coupleSchedule.test.ts`、`web/tests/coupleSchedule.test.ts`、`web/tests/coupleSync.test.ts` 随 `npm test` 运行。
+- 鸿蒙：`harmony/tests/editor-bridge.test.mjs`（页面桥）和 `harmony/tests/schedule-parity.test.mjs` 里的情侣课表用例。模型和面板（`NativeScheduleCouple.ets`）只在模拟器的验收脚手架里走过，没有单元测试。
 - 安卓：`android/tests/native-bridge.test.mjs`（页面桥）和 `ScheduleParityTest` 里的情侣课表用例（配色与网页一致、合并规则、状态行文字、按日期取 TA 的课）。
 - `server/tests/coupleSchedule.integration.test.ts` 需要独立的 PostgreSQL，默认跳过：
 

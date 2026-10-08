@@ -3,6 +3,8 @@ import { scheduleCardTone } from './ScheduleVisuals';
 import { scheduleAccent, scheduleCell, scheduleCellBorder, scheduleGridMetrics, ScheduleGridMetrics,
   scheduleSecondaryText, scheduleSurface, scheduleText, scheduleTint } from './ScheduleLayout';
 import { PlacedCourseBlock, placeScheduleBlocks } from './SchedulePlacement';
+import { NativeScheduleCoupleModel } from './NativeScheduleCouple';
+import { CoupleTint, mergeCoupleBlocks } from './ScheduleCouple';
 import { scheduleAdjustmentText } from './ScheduleMonth';
 import { ScheduleStyledDateHeader } from './ScheduleDateHeader';
 import { scheduleAlpha, scheduleCleanLocation, scheduleClockLabel, scheduleClockMinutes, scheduleCourseAccent,
@@ -46,6 +48,8 @@ interface DaySection {
 @Component
 export struct NativeScheduleBody {
   @ObjectLink store: NativeScheduleStore;
+  // The couple timetable; a read-only shared timetable gets one that is not bound.
+  @ObjectLink couple: NativeScheduleCoupleModel;
   @Prop view: NativeScheduleStore = new NativeScheduleStore();
   @Prop contentHeight: number = 540;
   @Prop pageWidth: number = 360;
@@ -73,7 +77,7 @@ export struct NativeScheduleBody {
             if (this.view.viewMode === 'week') this.styledWeek()
             else this.styledDay()
           } else if (this.view.viewMode === 'week') this.weekSchedule()
-          else if (this.view.shownBlocks(this.view.selectedDay).length) this.daySchedule()
+          else if (this.placed(this.view.selectedDay).length) this.daySchedule()
           else this.stateCard('这一天没有课程', this.emptyDayNote(), this.store.canEdit() ? '添加课程' : '', () => this.addAt(this.view.selectedDay, 1))
         }
       }.width('100%').padding({ bottom: 12 })
@@ -154,23 +158,23 @@ export struct NativeScheduleBody {
             ForEach(this.tiles(day, false), (block: PlacedCourseBlock) => {
               Button() {
               Column({ space: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 2 }) {
-                if (block.offWeek) this.offWeekTag(this.toneText(block.course.name))
+                if (this.tileTag(block)) this.cardTag(this.tileTag(block), this.cardText(block))
                 Text(block.course.name).fontSize(this.fs(this.metrics().nameSize)).fontWeight(FontWeight.Bold)
                   .minFontSize(this.fs(this.metrics().nameSize)).maxFontSize(this.fs(this.metrics().nameSize))
                   .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
-                  .fontColor(this.toneText(block.course.name)).width('100%').textAlign(TextAlign.Center)
+                  .fontColor(this.cardText(block)).width('100%').textAlign(TextAlign.Center)
                   // One line on a one-period card, so the classroom below it is never pushed out.
                   .maxLines(block.endSlot === block.startSlot ? 1 : block.endSlot - block.startSlot < 2 ? 3 : 4)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 if (block.course.location) {
                   Text('@' + block.course.location).fontSize(this.fs(this.metrics().locationSize)).fontWeight(600)
                     .minFontSize(this.fs(this.metrics().locationSize)).maxFontSize(this.fs(this.metrics().locationSize)).heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
-                    .fontColor(this.toneAccent(block.course.name)).width('100%').textAlign(TextAlign.Center)
+                    .fontColor(this.cardText(block)).width('100%').textAlign(TextAlign.Center)
                     .maxLines(block.endSlot === block.startSlot ? 1 : 2).textOverflow({ overflow: TextOverflow.Ellipsis }).opacity(0.94)
                 }
                 if (this.store.showTeacher && (block.course.teacher ?? '').trim() && block.endSlot > block.startSlot) {
                   Text((block.course.teacher ?? '').trim()).fontSize(this.fs(this.metrics().locationSize)).fontWeight(500)
-                    .fontColor(this.toneAccent(block.course.name)).width('100%').textAlign(TextAlign.Center)
+                    .fontColor(this.cardText(block)).width('100%').textAlign(TextAlign.Center)
                     .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).opacity(0.94)
                 }
               }.width('100%').height('100%')
@@ -181,9 +185,9 @@ export struct NativeScheduleBody {
                 .height((block.endSlot - block.startSlot + 1) * this.weekStride() - this.metrics().gap - 2)
                 .padding(0).clip(true).borderRadius(this.metrics().courseRadius)
                 .backgroundColor(Color.Transparent)
-                .linearGradient({ angle: 180, colors: [[this.toneFill(block.course.name), 0], [this.toneBottom(block.course.name), 1]] })
+                .linearGradient({ angle: 180, colors: [[this.cardTop(block), 0], [this.cardBottom(block), 1]] })
                 .backdropBlur(10)
-                .border({ width: this.store.palette === 'color-glass' ? 1 : 1.5, color: this.toneBorder(block.course.name), radius: this.metrics().courseRadius })
+                .border({ width: this.store.palette === 'color-glass' ? 1 : 1.5, color: this.cardBorder(block), radius: this.metrics().courseRadius })
                 .shadow({ radius: 3, offsetY: 1, color: this.store.dark ? '#3D000000' : '#0D2C3E5E' })
                 .position({ x: block.lane * this.weekColumn() / block.lanes + 1, y: (block.startSlot - 1) * this.weekStride() + 1 })
                 .opacity(block.offWeek ? 0.5 : 1)
@@ -233,26 +237,27 @@ export struct NativeScheduleBody {
         ForEach(this.placed(this.view.selectedDay), (block: PlacedCourseBlock) => {
           Button() {
             Column({ space: block.endSlot === block.startSlot ? 2 : 5 }) {
+              if (this.tileTag(block)) this.cardTag(this.tileTag(block), this.cardText(block))
               Text(block.course.name).fontSize(block.endSlot === block.startSlot ? 14 : 17).fontWeight(FontWeight.Bold)
-                .fontColor(this.toneText(block.course.name)).width('100%')
+                .fontColor(this.cardText(block)).width('100%')
                 .maxLines(block.endSlot === block.startSlot ? 1 : block.endSlot - block.startSlot < 2 ? 2 : 3).textOverflow({ overflow: TextOverflow.Ellipsis })
               Text([block.course.location ? '@' + block.course.location : '', block.course.teacher].filter((value: string | undefined) => !!value).join(' · ') || '地点待确认')
-                .fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.toneText(block.course.name)).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                .fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.cardText(block)).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
               if (block.endSlot > block.startSlot) {
                 Text((block.course.slotNote || `第 ${block.startSlot}–${block.endSlot} 节`) + this.timeRangeSuffix(block)).fontSize(11)
-                  .fontColor(this.toneAccent(block.course.name)).opacity(0.86).width('100%').maxLines(1)
+                  .fontColor(this.cardText(block)).opacity(0.86).width('100%').maxLines(1)
               }
             }.width('100%').height('100%').padding({ left: block.lanes > 1 ? 8 : 14, right: block.lanes > 1 ? 8 : 14, top: block.endSlot === block.startSlot ? 3 : 6, bottom: block.endSlot === block.startSlot ? 3 : 6 })
               .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Start)
           }.type(ButtonType.Normal).width(this.dayColumn() / block.lanes - 2)
             .height((block.endSlot - block.startSlot + 1) * this.dayStride() - this.metrics().dayGap - 2)
             .padding(0).clip(true).borderRadius(14).backgroundColor(Color.Transparent)
-            .linearGradient({ angle: 180, colors: [[this.toneFill(block.course.name), 0], [this.toneBottom(block.course.name), 1]] })
+            .linearGradient({ angle: 180, colors: [[this.cardTop(block), 0], [this.cardBottom(block), 1]] })
             .backdropBlur(10)
-            .border({ width: this.store.palette === 'color-glass' ? 1 : 1.5, color: this.toneBorder(block.course.name), radius: 14 })
+            .border({ width: this.store.palette === 'color-glass' ? 1 : 1.5, color: this.cardBorder(block), radius: 14 })
             .shadow({ radius: 3, offsetY: 1, color: this.store.dark ? '#3D000000' : '#0D2C3E5E' })
             .position({ x: block.lane * this.dayColumn() / block.lanes + 1, y: (block.startSlot - 1) * this.dayStride() + 1 })
-            .accessibilityText(this.courseAccessibility(block, this.view.selectedDay)).onClick(() => this.onCourse(block.whole, this.view.selectedDay))
+            .accessibilityText(this.courseAccessibility(block, this.view.selectedDay)).onClick(() => this.openTile(block, this.view.selectedDay))
         })
         if (this.dayNowY(this.metrics().dayRow, this.metrics().dayGap) >= 0) {
           this.nowLine(this.dayColumn(), this.dayNowY(this.metrics().dayRow, this.metrics().dayGap))
@@ -461,14 +466,19 @@ export struct NativeScheduleBody {
   @Builder
   private styledTile(block: PlacedCourseBlock, day: number, dayRow: boolean) {
     Stack({ alignContent: Alignment.TopStart }) {
+      if (this.coupleTintOf(block)?.fillEnd) {
+        // A class both attend: the user's colour on the left half, the partner's on the right.
+        Column().width('50%').height('100%').position({ x: '50%', y: 0 }).backgroundColor(this.coupleTintOf(block)?.fillEnd)
+      }
       Column({ space: this.tileTiny(block, dayRow) ? 0 : this.tileCompact(dayRow) ? 1 : this.tileSmall(block, dayRow) ? 2 : 4 }) {
-        if (block.offWeek) this.offWeekTag(this.tileInk(block, day))
+        if (this.tileTag(block)) this.cardTag(this.tileTag(block), this.tileInk(block, day))
         if (scheduleStyleLayout(this.store.visualStyle).course === 'departure' && !this.tileTiny(block, dayRow)) {
           Row({ space: 3 }) {
             // The board has no fill and no bar, so a small course-colour mark sits beside the start time.
             Column().width(this.tileSmall(block, dayRow) ? 5 : 7).height(this.tileSmall(block, dayRow) ? 5 : 7).borderRadius(1)
-              .backgroundColor(scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette),
-                this.tileInverse(block, day) ? !this.store.dark : this.store.dark))
+              .backgroundColor(this.coupleTintOf(block) ? this.tileAccent(block)
+                : scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette),
+                  this.tileInverse(block, day) ? !this.store.dark : this.store.dark))
             Text(this.blockStart(block)).fontSize(this.tileSmall(block, dayRow) ? 10 : 14).fontWeight(FontWeight.Bolder)
               .fontFamily('monospace').fontColor(this.tileInk(block, day)).maxLines(1)
           }
@@ -501,8 +511,7 @@ export struct NativeScheduleBody {
           top: this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6,
           bottom: this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6 })
       if (this.tileStripe() > 0) {
-        Column().width(this.tileStripe()).height('100%')
-          .backgroundColor(scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark))
+        Column().width(this.tileStripe()).height('100%').backgroundColor(this.tileAccent(block))
       }
       if (dayRow && block.lanes === 1 && this.tileStatus(block, day) && this.store.visualStyle !== 'minimal') {
         Row() {
@@ -512,10 +521,8 @@ export struct NativeScheduleBody {
     }.width(this.tileWidth(block, dayRow)).height(this.tileHeight(block, dayRow))
       .clip(true).borderRadius(scheduleStyleLayout(this.store.visualStyle).cornerRadius)
       .backgroundColor(this.tileBackground(block, day))
-      .border({ width: scheduleStyleLayout(this.store.visualStyle).borderWidth > 0
-        ? (this.tileCurrent(block, day) ? 2 : scheduleStyleLayout(this.store.visualStyle).borderWidth) : 0,
-        color: this.tileCurrent(block, day) ? this.themeText()
-          : scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark),
+      .border({ width: this.tileBorderWidth(block, day),
+        color: this.tileCurrent(block, day) ? this.themeText() : this.tileAccent(block),
         radius: scheduleStyleLayout(this.store.visualStyle).cornerRadius })
       .position({ x: this.tileInset(block) + block.lane * this.columnWidth(dayRow) / block.lanes,
         y: (block.startSlot - 1) * (this.cellRow(dayRow) + STYLED_SLOT_GAP) + this.tileInset(block) })
@@ -524,10 +531,10 @@ export struct NativeScheduleBody {
       .onClick(() => this.openTile(block, day))
   }
 
-  // The small outlined label on a course that does not run this week.
+  // The small outlined label on a course: 非本周, or TA on the partner's.
   @Builder
-  private offWeekTag(color: ResourceColor) {
-    Text('非本周').fontSize(8).fontWeight(600).fontColor(color).maxLines(1)
+  private cardTag(label: string, color: ResourceColor) {
+    Text(label).fontSize(8).fontWeight(600).fontColor(color).maxLines(1)
       .padding({ left: 3, right: 3 }).border({ width: 0.5, color: color, radius: 3 })
   }
 
@@ -539,9 +546,11 @@ export struct NativeScheduleBody {
       // Minimal, paper and board show the rest card on a free day; grid and table keep their empty
       // rows so a course can still be added there.
       this.restCard()
-    } else if (this.store.visualStyle === 'minimal') {
+    } else if (this.store.visualStyle === 'minimal' && !this.couple.showing()) {
       this.timelineDay()
-    } else if (this.store.visualStyle === 'grid') {
+    } else if (this.store.visualStyle === 'grid' || this.couple.showing()) {
+      // Also the day of the couple timetable in every style: on a grid a course gives up half
+      // its width only to one of the other person's.
       Row({ space: 8 }) {
         Stack({ alignContent: Alignment.TopStart }) {
           Column() {
@@ -909,8 +918,12 @@ export struct NativeScheduleBody {
 
   // ---- Data ----
 
+  // The day's courses as drawn; with the couple timetable, the partner's of the same date beside them.
   private placed(day: number): PlacedCourseBlock[] {
-    return placeScheduleBlocks(this.view.shownBlocks(day), this.store.displayPriorities());
+    const own = placeScheduleBlocks(this.view.shownBlocks(day), this.store.displayPriorities());
+    if (!this.couple.showing()) return own;
+    const none: Record<string, number> = {};
+    return mergeCoupleBlocks(own, placeScheduleBlocks(this.couple.blocksOn(this.view.shownRawDate(day)), none));
   }
 
   // What a week column draws: the courses that do not run this week first, under the others.
@@ -918,7 +931,10 @@ export struct NativeScheduleBody {
     const placed = this.placed(day);
     if (dayRow || this.view.viewMode !== 'week' || !this.view.showOffWeek) return placed;
     const none: Record<string, number> = {};
-    const ghosts = placeScheduleBlocks(this.view.offWeekBlocks(day), none);
+    // A course that does not run this week only fills periods both people have free.
+    const ghosts = placeScheduleBlocks(this.view.offWeekBlocks(day), none).filter((ghost: PlacedCourseBlock) => {
+      return !placed.some((block: PlacedCourseBlock) => block.owner === 'ta' && block.startSlot <= ghost.endSlot && ghost.startSlot <= block.endSlot);
+    });
     ghosts.forEach((block: PlacedCourseBlock) => {
       block.offWeek = true;
       block.id = 'off-' + block.id;
@@ -928,6 +944,7 @@ export struct NativeScheduleBody {
 
   private openTile(block: PlacedCourseBlock, day: number): void {
     if (block.offWeek) this.onPeek(block.whole, day, '这门课本周不上');
+    else if (block.owner === 'ta') this.onPeek(block.whole, day, this.couple.partnerName() + ' 的课');
     else if (this.view.leadsWeek(day)) this.onPeek(block.whole, day, '这是上一周周日的课，切到上一周可以编辑。');
     else this.onCourse(block.whole, day);
   }
@@ -1130,7 +1147,8 @@ export struct NativeScheduleBody {
   }
 
   private courseAccessibility(block: PlacedCourseBlock, day: number): string {
-    return DAYS[day - 1] + '，' + block.course.name + '，第' + block.startSlot + '至' + block.endSlot + '节，' + (block.course.location || '');
+    return (block.owner === 'ta' ? 'TA 的课，' : '') + DAYS[day - 1] + '，' + block.course.name + '，第' + block.startSlot + '至'
+      + block.endSlot + '节，' + (block.course.location || '');
   }
 
   // "高等数学，教室 A101，第 1–2 节，08:00 至 09:40，已结束"
@@ -1216,14 +1234,41 @@ export struct NativeScheduleBody {
 
   // ---- Colours ----
 
+  // The couple timetable colours by person, in every style, instead of the style's own course colour.
+  private coupleTintOf(block: PlacedCourseBlock): CoupleTint | undefined {
+    return block.owner && !block.offWeek && this.couple.showing()
+      ? this.couple.tint(block.owner, block.course.name, this.store.dark) : undefined;
+  }
+  // The TA label needs a whole column: half a column on a phone cuts it to one letter.
+  private tileTag(block: PlacedCourseBlock): string {
+    return block.offWeek ? '非本周' : block.owner === 'ta' && block.endSlot > block.startSlot && block.lanes === 1 ? 'TA' : '';
+  }
+  private tileAccent(block: PlacedCourseBlock): string {
+    return this.coupleTintOf(block)?.border ?? scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark);
+  }
+  private tileBorderWidth(block: PlacedCourseBlock, day: number): number {
+    const width = scheduleStyleLayout(this.store.visualStyle).borderWidth;
+    if (this.coupleTintOf(block)) return this.tileCurrent(block, day) ? 2 : Math.max(1, width);
+    return width > 0 ? (this.tileCurrent(block, day) ? 2 : width) : 0;
+  }
+  private cardText(block: PlacedCourseBlock): string { return this.coupleTintOf(block)?.text ?? this.toneText(block.course.name); }
+  private cardTop(block: PlacedCourseBlock): string { return this.coupleTintOf(block)?.fill ?? this.toneFill(block.course.name); }
+  private cardBottom(block: PlacedCourseBlock): string {
+    const tint = this.coupleTintOf(block);
+    return tint ? (tint.fillEnd || tint.fill) : this.toneBottom(block.course.name);
+  }
+  private cardBorder(block: PlacedCourseBlock): string { return this.coupleTintOf(block)?.border ?? this.toneBorder(block.course.name); }
+
   private tileInverse(block: PlacedCourseBlock, day: number): boolean {
-    return this.store.visualStyle === 'board' && this.tileCurrent(block, day);
+    return this.store.visualStyle === 'board' && this.tileCurrent(block, day) && !this.coupleTintOf(block);
   }
   private tileInk(block: PlacedCourseBlock, day: number): string {
+    if (this.coupleTintOf(block)) return this.coupleTintOf(block)?.text ?? this.ink();
     if (this.tileInverse(block, day)) return this.canvasOrWhite();
     return this.store.visualStyle === 'paper' || this.store.visualStyle === 'board' ? this.ink() : this.courseAccent(block.course.name);
   }
   private tileBackground(block: PlacedCourseBlock, day: number): string {
+    if (this.coupleTintOf(block)) return this.coupleTintOf(block)?.fill ?? '#00000000';
     if (this.tileInverse(block, day)) return this.ink();
     const course = scheduleStyleLayout(this.store.visualStyle).course;
     const color = scheduleStyleCourseColor(block.course.name, this.store.palette);

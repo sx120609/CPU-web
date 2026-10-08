@@ -90,12 +90,37 @@ const promoSnapshot = {
 const shareDocument = { code: 'ABCD2345', owner: '阿青', semester, courseCount: courses.length,
   createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-06T12:30:00.000Z',
   schedule: { cells: snapshot.data.cells }, calendar: snapshot.calendar };
+// `--ps couple active`: a partner whose timetable meets the user's in every way the grid draws:
+// Monday the same class, Tuesday and Thursday classes that meet the user's, the rest hers alone.
+const partnerCourses = [
+  [1, 1, 2, '药物设计学', '教学楼A101'],
+  [2, 3, 4, '高等数学', '理科楼B105'],
+  [3, 1, 2, '物理化学', '教学楼C210'],
+  [4, 5, 6, '分析化学实验', '实验楼E305'],
+  [5, 5, 6, '医用物理学', '理科楼A301'],
+  [7, 3, 4, '周日社团：合唱', '大学生活动中心'],
+];
+const coupleMember = (nickname, color) => ({ id: color === 'blue' ? 1 : 2, color, nickname, avatar: null,
+  snapshot: { semester, syncedAt: '2026-10-08T01:30:00.000Z', changedAt: '2026-10-07T02:00:00.000Z' } });
+const coupleStatus = {
+  none: { status: 'none' },
+  pending: { status: 'pending', invite: { code: 'K7M2QX', expiresAt: '2099-01-01T00:00:00.000Z', expired: false } },
+  active: { status: 'active', since: '2026-09-01T02:00:00.000Z', anniversary: '2025-05-20',
+    me: coupleMember('阿青', 'blue'), partner: coupleMember('小鹿', 'pink') },
+  swapped: { status: 'active', since: '2026-09-01T02:00:00.000Z', anniversary: '2025-05-20',
+    me: coupleMember('阿青', 'pink'), partner: coupleMember('小鹿', 'blue') },
+};
+const coupleSchedules = { me: null, partner: { semester, syncedAt: '2026-10-08T01:30:00.000Z', changedAt: '2026-10-07T02:00:00.000Z',
+  schedule: { cells: partnerCourses.map(([day, startSlot, endSlot, name, location]) => ({ day, bigSlot: Math.ceil(startSlot / 2),
+    courses: [{ name, location, teacher: '', weeks: '1-20周', weekList: weeks.map(({ value }) => Number(value)), startSlot, endSlot }] })) },
+  calendar: snapshot.calendar } };
 put('entry/src/main/ets/pages/ScheduleAcceptance.ets', `
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleStore, NativeScheduleRequest } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiData, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
+import { CoupleApiData, CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { normalizeScheduleStyle, scheduleClockMinutes, SCHEDULE_STYLES } from '../schedule/ScheduleStyle';
 import { NativeTabBar } from '../common/NativeTabBar';
 import { nativeNavigationBottomInset, nativeNavigationClearance } from '../common/NativeNavigationLayout';
@@ -115,6 +140,10 @@ struct ScheduleAcceptance {
   @State private sharing: NativeScheduleSharingModel = new NativeScheduleSharingModel();
   @State private sharedStore: NativeScheduleStore = new NativeScheduleStore();
   @State private sharedVisible: boolean = false;
+  @State private couple: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
+  @State private noCouple: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
+  // none | pending | active: what the stand-in couple server answers.
+  @StorageProp('qaCouple') private coupleState: string = '';
   @StorageProp('qaStyle') @Watch('syncOptions') private style: string = 'classic';
   @StorageProp('qaWeekend') @Watch('syncOptions') private weekend: boolean = true;
   // Display settings, comma separated: sundayFirst, offWeek, teacher, compact, noTime, noSaturday,
@@ -164,6 +193,7 @@ struct ScheduleAcceptance {
       if (this.panel === 'editor') this.openEditor(this.store.displayBlocks(this.store.selectedDay)[0]);
       if (this.panel === 'add') this.openEditor();
       if (this.panel === 'sharing') this.sharing.open();
+      if (this.panel === 'couple') this.couple.open();
     } else {
       this.store.viewMode = this.mode;
       this.store.result = undefined;
@@ -200,7 +230,24 @@ struct ScheduleAcceptance {
       setTimeout(() => this.editor.accept(id, JSON.stringify(request.action === 'open' ? opened : saved)), 60);
     }, () => undefined);
     this.sharing.attach((request: ShareApiRequest) => this.shareApi(request), () => undefined);
+    this.couple.attach((request: CoupleApiRequest) => this.coupleApi(request), () => undefined);
+    if (this.coupleState) void this.couple.refresh(true);
     this.syncOptions();
+  }
+  private async coupleApi(request: CoupleApiRequest): Promise<CoupleApiReply> {
+    if (request.action === 'invite') this.coupleState = 'pending';
+    else if (request.action === 'cancelInvite' || request.action === 'unbind') this.coupleState = 'none';
+    else if (request.action === 'accept') this.coupleState = 'active';
+    else if (request.action === 'settings' && JSON.stringify(request.body ?? '').includes('myColor')) {
+      this.coupleState = this.coupleState === 'swapped' ? 'active' : 'swapped';
+    }
+    const status = this.coupleState === 'pending' ? ${JSON.stringify(JSON.stringify(coupleStatus.pending))}
+      : this.coupleState === 'active' ? ${JSON.stringify(JSON.stringify(coupleStatus.active))}
+      : this.coupleState === 'swapped' ? ${JSON.stringify(JSON.stringify(coupleStatus.swapped))}
+      : ${JSON.stringify(JSON.stringify(coupleStatus.none))};
+    const raw = request.action === 'schedules' ? ${JSON.stringify(JSON.stringify(coupleSchedules))} : request.action === 'sync' ? '{"changed":false}' : status;
+    const reply: CoupleApiReply = { ok: true, status: 200, data: JSON.parse(raw) as CoupleApiData };
+    return reply;
   }
   // The editor and the sharing page talk to stand-ins for the Web bridge and the share server.
   private openEditor(block?: NativeCourseBlock, day?: number, slot?: number): void {
@@ -251,6 +298,8 @@ struct ScheduleAcceptance {
   private panelSheet() {
     if (this.editor.visible) {
       NativeCourseEditor({ model: this.editor })
+    } else if (this.couple.sheetVisible) {
+      NativeScheduleCouple({ model: this.couple, dark: this.store.dark, nowMinutes: this.store.nowMinutes })
     } else {
       NativeScheduleSharing({ model: this.sharing, semester: '${semester}', semesterLabel: '2026–27 秋', canPublish: true,
         publishBody: (): SharePublishBody => sharePublishBody(this.store.completeSnapshot(), this.store.periods),
@@ -263,7 +312,8 @@ struct ScheduleAcceptance {
   }
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-      NativeSchedulePage({ store: this.store, bottomClearance: nativeNavigationClearance(px2vp(this.bottomInset)),
+      NativeSchedulePage({ store: this.store, couple: this.couple, onCouple: () => this.couple.open(),
+        bottomClearance: nativeNavigationClearance(px2vp(this.bottomInset)),
         pinnedNow: scheduleClockMinutes(this.now),
         onStyle: () => this.cycleStyle(), onAppearance: () => this.toggleAppearance(), onWidgets: () => this.cycleTheme(),
         onEdit: (block: NativeCourseBlock) => this.openEditor(block), onTools: () => this.openEditor(),
@@ -274,13 +324,13 @@ struct ScheduleAcceptance {
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
       if (this.sharedVisible) {
         Column() {
-          NativeSchedulePage({ store: this.sharedStore, bottomClearance: nativeNavigationBottomInset(px2vp(this.bottomInset)) + 8,
+          NativeSchedulePage({ store: this.sharedStore, couple: this.noCouple, bottomClearance: nativeNavigationBottomInset(px2vp(this.bottomInset)) + 8,
             pinnedNow: scheduleClockMinutes(this.now), onClose: () => { this.sharedVisible = false; this.sharing.visible = true; } })
         }.width('100%').height('100%').padding({ top: this.topPadding() }).backgroundColor(scheduleSurface(this.store.dark))
       }
     }.width('100%').height('100%').backgroundColor(scheduleSurface(this.store.dark))
-      .bindSheet(this.editor.visible || this.sharing.visible, this.panelSheet(), { height: SheetSize.LARGE, showClose: true, dragBar: true,
-        onDisappear: () => { this.editor.cancel(); this.sharing.close(); } })
+      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible, this.panelSheet(), { height: SheetSize.LARGE, showClose: true, dragBar: true,
+        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); } })
   }
 }
 `);
@@ -299,6 +349,7 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaWeek', String(want.parameters?.week ?? ''));
     AppStorage.setOrCreate('qaDay', String(want.parameters?.day ?? ''));
     AppStorage.setOrCreate('qaPanel', String(want.parameters?.panel ?? ''));
+    AppStorage.setOrCreate('qaCouple', String(want.parameters?.couple ?? ''));
     AppStorage.setOrCreate('qaData', String(want.parameters?.data ?? ''));
     AppStorage.setOrCreate('qaClean', String(want.parameters?.clean ?? 'false') === 'true');
     const routedUrl =`);
