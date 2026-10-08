@@ -463,6 +463,7 @@
           can-open-day
           :partner-counts="monthPartnerCounts"
           :partner-tone="monthPartnerTone"
+          :own-tone="monthOwnTone"
           :can-shift-previous="canChangeMonth(-1)"
           :can-shift-next="canChangeMonth(1)"
           @shift="changeMonth"
@@ -629,6 +630,7 @@
                 :shared-ids="coupleDayFor(page)[0].sharedIds"
                 :partner-name="couplePartnerName"
                 :partner-color="couplePartnerColor"
+                :my-color="coupleMyColor"
                 :now-minutes="pageIsToday(page) ? displayNowMinutes : null"
                 @course="(block, owner, source) => owner === 'ta' ? onPartnerCourseClick(source, block) : onCourseBlockClick(source, block, page.weekValue)"
                 @slot="(slot) => onStyledSlotClick(page.day, slot, page.weekValue)"
@@ -3544,12 +3546,17 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   syncNativeWidgetTheme();
 }
 
-// 双人模式下我的课照旧用当前风格和配色，只有 TA 的课换成 TA 的颜色。
+// 双人模式下一个人一种颜色：我的课全用我的颜色，TA 的课全用 TA 的颜色，不再一门课一个色，
+// 一眼就能分出谁是谁。关掉「显示 TA 的课」后回到平时的配色。
 function coupleTone(owner: "me" | "ta", name: string) {
   const value = couple.status.value;
-  if (owner !== "ta" || value?.status !== "active") return toneFor(name);
-  return coupleCourseTone(value.partner.color, name, appearance.isDark);
+  if (!couple.active.value || value?.status !== "active") return toneFor(name);
+  return coupleCourseTone(owner === "ta" ? value.partner.color : value.me.color, "", appearance.isDark);
 }
+const coupleMyColor = computed(() => {
+  const value = couple.status.value;
+  return value?.status === "active" ? value.me.color : "blue";
+});
 /** 月视图里 TA 每天有几门课。 */
 const monthPartnerCounts = computed(() => {
   const counts: Record<string, number> = {};
@@ -3564,6 +3571,11 @@ const monthPartnerCounts = computed(() => {
 const monthPartnerTone = computed(() => {
   if (!couple.active.value) return null;
   const tone = coupleTone("ta", "");
+  return { accent: tone.text, fill: tone.bg };
+});
+const monthOwnTone = computed(() => {
+  if (!couple.active.value) return null;
+  const tone = coupleTone("me", "");
   return { accent: tone.text, fill: tone.bg };
 });
 const couplePartnerName = computed(() => {
@@ -3610,7 +3622,7 @@ function courseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = 
 
 function dayCourseBlockStyle(item: DrawnBlock) {
   const block = drawnBlockOf(item);
-  const colors = toneFor(block.course.name);
+  const colors = coupleTone("me", block.course.name);
   return {
     gridColumn: "2 / 3",
     gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
@@ -4055,9 +4067,9 @@ function styledDaysFor(page: SchedulePageModel) {
   return styledPageDays.value.get(page.key) ?? [];
 }
 
-// 双人模式下只有 TA 的课换颜色，我的课仍然是样式自己的配色。
+// 双人模式按人配色，新样式的网格也用同一套。
 const coupleToneResolver: TileToneResolver = (block, owner) => {
-  if (owner !== "ta" || !couple.active.value || couple.status.value?.status !== "active") return null;
+  if (!couple.active.value || couple.status.value?.status !== "active") return null;
   const tone = coupleTone(owner, block.course.name);
   return { accent: tone.text, fill: tone.bg, border: tone.border, accentInverse: tone.text };
 };

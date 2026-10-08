@@ -77,6 +77,8 @@ const props = withDefaults(defineProps<{
   partnerCounts?: Record<string, number>;
   /** TA 那一行的颜色。 */
   partnerTone?: { accent: string; fill: string } | null;
+  /** 双人模式下我的课统一用的颜色；平时是 null，各门课用自己的颜色。 */
+  ownTone?: { accent: string; fill: string } | null;
   /** 还有没有上一个月、下一个月可以翻。 */
   canShiftPrevious?: boolean;
   canShiftNext?: boolean;
@@ -86,6 +88,7 @@ const props = withDefaults(defineProps<{
   canOpenDay: false,
   partnerCounts: () => ({}),
   partnerTone: null,
+  ownTone: null,
   canShiftPrevious: false,
   canShiftNext: false,
 });
@@ -178,6 +181,7 @@ function rowWeek(row: MonthDay[]) {
 }
 
 function toneOf(name: string) {
+  if (props.ownTone) return props.ownTone;
   if (props.visualStyle === "classic") {
     const tone = classicCourseTone(name, props.palette, props.dark);
     return { accent: props.dark ? tone.border : tone.text, fill: tone.bg };

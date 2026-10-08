@@ -3,11 +3,11 @@
        谁也不用给谁让宽度；一起上的课两边各画一格，带一颗小爱心。 -->
   <section class="cd" :class="[`cd-${visualStyle}`, { 'cd-dark': dark }]" aria-label="两人当日课表">
     <header class="cd-head">
-      <span class="cd-who">我</span>
+      <span class="cd-who" :style="ownChipStyle">我</span>
       <span class="cd-head-axis">节次</span>
       <span class="cd-who ta" :style="partnerChipStyle">{{ partnerName || "TA" }}</span>
     </header>
-    <div class="cd-grid" :style="{ gridTemplateRows: `repeat(${clocks.length}, var(--cd-row))` }">
+    <div class="cd-body" :style="{ gridTemplateRows: `repeat(${clocks.length}, var(--cd-row))` }">
       <template v-for="(slot, row) in clocks" :key="slot.no">
         <button
           type="button"
@@ -53,7 +53,7 @@ import { computed } from "vue";
 import { coupleCourseTone, type CoupleColor } from "./couple";
 import type { PlacedCourseBlock } from "./displayPriority";
 import { cleanLocation, nowRowPosition, type SlotClock } from "./nowIndicator";
-import { classicCourseTone, scheduleStyleCourseTone, type ScheduleStyleKey } from "./scheduleStyle";
+import type { ScheduleStyleKey } from "./scheduleStyle";
 import type { TileOwner } from "./styledTypes";
 import type { WeekCourseBlock } from "./types";
 
@@ -71,6 +71,7 @@ const props = withDefaults(defineProps<{
   sharedIds?: Set<string>;
   partnerName: string;
   partnerColor: CoupleColor;
+  myColor: CoupleColor;
   /** 这一天是今天时的当前分钟数，用来画「现在」。 */
   nowMinutes?: number | null;
   canAdd?: boolean;
@@ -88,24 +89,19 @@ const emit = defineEmits<{
 
 const rowIndex = computed(() => new Map(props.clocks.map((slot, index) => [slot.no, index])));
 
-function ownTone(name: string) {
-  if (props.visualStyle === "classic") {
-    const tone = classicCourseTone(name, props.palette, props.dark);
-    return { accent: tone.text, fill: tone.bg, border: tone.border };
-  }
-  const tone = scheduleStyleCourseTone(name, props.palette, props.dark, props.hasBackground);
-  return { accent: tone.accent, fill: tone.fill, border: tone.border };
-}
-
-function partnerTone(name: string) {
-  const tone = coupleCourseTone(props.partnerColor, name, props.dark);
+// 一个人一种颜色：左边全是我的颜色，右边全是 TA 的颜色。
+function personTone(color: CoupleColor) {
+  const tone = coupleCourseTone(color, "", props.dark);
   return { accent: tone.text, fill: tone.bg, border: tone.border };
 }
+const ownTone = computed(() => personTone(props.myColor));
+const partnerTone = computed(() => personTone(props.partnerColor));
 
-const partnerChipStyle = computed(() => {
-  const tone = partnerTone("");
+function chipStyle(tone: { accent: string; fill: string; border: string }) {
   return { color: tone.accent, background: tone.fill, borderColor: tone.border };
-});
+}
+const ownChipStyle = computed(() => chipStyle(ownTone.value));
+const partnerChipStyle = computed(() => chipStyle(partnerTone.value));
 
 function buildTile(piece: PlacedCourseBlock, owner: TileOwner, shared: boolean, lane = piece.lane, lanes = piece.lanes) {
   const first = rowIndex.value.get(piece.startSlot);
@@ -113,7 +109,7 @@ function buildTile(piece: PlacedCourseBlock, owner: TileOwner, shared: boolean, 
   if (first === undefined && last === undefined) return null;
   const startRow = first ?? 0;
   const endRow = Math.max(startRow, last ?? props.clocks.length - 1);
-  const tone = owner === "ta" ? partnerTone(piece.block.course.name) : ownTone(piece.block.course.name);
+  const tone = owner === "ta" ? partnerTone.value : ownTone.value;
   const start = piece.block.course.customStartTime?.trim() || props.clocks[startRow]?.start || "";
   const end = piece.block.course.customEndTime?.trim() || props.clocks[endRow]?.end || "";
   const share = 100 / lanes;
@@ -191,7 +187,7 @@ const nowLine = computed(() => {
   font-family: inherit;
 }
 .cd-head,
-.cd-grid {
+.cd-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--cd-axis) minmax(0, 1fr);
   column-gap: 6px;
@@ -216,7 +212,7 @@ const nowLine = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cd-grid {
+.cd-body {
   position: relative;
   row-gap: 3px;
 }
