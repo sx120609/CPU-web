@@ -44,7 +44,7 @@ function memoryFs() {
     unlinkSync: path => { missing(path); files.delete(path); } };
 }
 
-const exporter = compile('../entry/src/main/ets/schedule/ScheduleExport.ets');
+const exporter = compileTree('../entry/src/main/ets/schedule/ScheduleExport.ets', {});
 const course = { startSlot: 1, endSlot: 2, course: { name: '药学;讲座,及实验\\演示\n' + '课程'.repeat(35), teacher: '老师', location: 'B311' } };
 const sampleStore = () => ({
   selectedWeek: '2', selectedSemester: '2026-2027-1',
