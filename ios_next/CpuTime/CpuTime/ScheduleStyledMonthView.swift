@@ -23,6 +23,8 @@ struct ScheduleStyledMonthPage: View {
     let onSelect: (String) -> Void
     let onOpenDay: () -> Void
     let onCourseSelected: (NativeScheduleCourseBlock) -> Void
+    /// Dragging the calendar up or down turns the month: 1 is the next one.
+    var onMoveMonth: (Int) -> Void = { _ in }
 
     @Environment(\.scheduleStyle) private var style
     @Environment(\.colorScheme) private var colorScheme
@@ -66,7 +68,10 @@ struct ScheduleStyledMonthPage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if style == .minimal { minimalGrid } else { styledGrid }
+            Group {
+                if style == .minimal { minimalGrid } else { styledGrid }
+            }
+            .modifier(ScheduleMonthSwipe(onMove: onMoveMonth))
             // The table's frame already separates the calendar from the summary.
             if style != .table {
                 Rectangle().fill(style == .board ? boardRule : rule.opacity(style == .minimal ? 0.5 : 1))
@@ -226,15 +231,10 @@ struct ScheduleStyledMonthPage: View {
         return AnyShapeStyle(.themeText)
     }
 
+    /// One bar under the date, as in the system calendar: a dot for one class, longer with more.
     private func courseDots(_ day: Day) -> some View {
-        HStack(spacing: 3) {
-            ForEach(Array(day.courses.prefix(3).enumerated()), id: \.offset) { _, block in
-                Circle().fill(courseAccent(block)).frame(width: 4, height: 4)
-            }
-            if day.courses.count > 3 {
-                Circle().fill(Color.secondary.opacity(0.4)).frame(width: 3, height: 3)
-            }
-        }
+        ScheduleMonthLoadBar(count: day.courses.count)
+            .foregroundStyle(accent.opacity(0.85))
         .frame(height: 6)
         .opacity(day.inMonth ? 1 : 0.5)
         .accessibilityHidden(true)

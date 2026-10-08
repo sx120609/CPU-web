@@ -5,6 +5,49 @@ import SwiftUI
 /// 周视图和日视图都是按节次画网格的课表；月视图不再画网格，而是一张日历：每天一
 /// 格，格子里是公历日、农历/节日和当天课程的彩色圆点，下面跟着所选那天的课程清
 /// 单。教学周信息保留在每行左侧的「周」栏里，这样月历和学期周次仍能对上。
+/// 日期下面的那一条：没有课不画，一节课是一个圆点，四节以上到头。
+struct ScheduleMonthLoadBar: View {
+    let count: Int
+
+    var body: some View {
+        Capsule()
+            .frame(width: count <= 1 ? 4 : CGFloat(min(4, count)) * 5, height: 4)
+            .opacity(count > 0 ? 1 : 0)
+            .accessibilityHidden(true)
+    }
+}
+
+/// 上下拖动月历换月：格子跟着手指走，拖过一段距离就翻到下一个月或上一个月，
+/// 新的一页从拖来的那一边滑进来；不够就弹回去。
+@available(iOS 17.0, *)
+struct ScheduleMonthSwipe: ViewModifier {
+    let onMove: (Int) -> Void
+    @State private var pull: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: pull)
+            .opacity(1 - min(0.6, Double(abs(pull)) / 86))
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 12)
+                    .onChanged { value in
+                        guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                        pull = value.translation.height * 0.55
+                    }
+                    .onEnded { value in
+                        let distance = value.translation.height
+                        if abs(distance) >= 44, abs(distance) > abs(value.translation.width) {
+                            let delta = distance < 0 ? 1 : -1
+                            onMove(delta)
+                            pull = delta > 0 ? 36 : -36
+                        }
+                        withAnimation(.easeOut(duration: 0.22)) { pull = 0 }
+                    }
+            )
+    }
+}
+
 @available(iOS 17.0, *)
 struct NativeScheduleMonthView: View {
     /// 所显示月份里的任意一天（`yyyy-MM-dd`）。
@@ -26,6 +69,8 @@ struct NativeScheduleMonthView: View {
     let onOpenDay: (String) -> Void
     /// 第二个参数是被点的那一天，调课时课程归属要按它换算。
     let onCourseSelected: (NativeScheduleCourseBlock, String) -> Void
+    /// 上下拖动月历换月：1 是下一个月，-1 是上一个月。
+    var onMoveMonth: (Int) -> Void = { _ in }
 
     struct DaySlot: Equatable {
         let week: Int
@@ -50,6 +95,7 @@ struct NativeScheduleMonthView: View {
                     monthGrid(days, dayWidth: dayWidth)
                 }
                 .frame(height: CGFloat(weeks(days).count) * 56 + 38)
+                .modifier(ScheduleMonthSwipe(onMove: onMoveMonth))
                 selectedDayCard(days)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -81,7 +127,8 @@ struct NativeScheduleMonthView: View {
             accessibilityLabel: accessibilityLabel,
             onSelect: onSelect,
             onOpenDay: { onOpenDay(selectedDate) },
-            onCourseSelected: { onCourseSelected($0, selectedDate) }
+            onCourseSelected: { onCourseSelected($0, selectedDate) },
+            onMoveMonth: onMoveMonth
         )
     }
 
@@ -175,21 +222,12 @@ struct NativeScheduleMonthView: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
     }
 
+    /// 日期下面只画一条，和系统日历一样：一节课是一个点，课越多越长。
     private func courseDots(_ day: Day) -> some View {
-        HStack(spacing: 2) {
-            ForEach(Array(day.courses.prefix(3).enumerated()), id: \.offset) { _, block in
-                Circle()
-                    .fill(NativeScheduleThemeColor.accent(for: block.course.name, palette: palette, scheme: colorScheme))
-                    .frame(width: 4, height: 4)
-            }
-            if day.courses.count > 3 {
-                Text("+")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(height: 5)
-        .opacity(day.inMonth ? 1 : 0.45)
+        ScheduleMonthLoadBar(count: day.courses.count)
+            .foregroundStyle(Color.cpuBrand.opacity(0.85))
+            .frame(height: 5)
+            .opacity(day.inMonth ? 1 : 0.45)
     }
 
     private func numberColor(_ day: Day, isSelected: Bool, isToday: Bool) -> Color {

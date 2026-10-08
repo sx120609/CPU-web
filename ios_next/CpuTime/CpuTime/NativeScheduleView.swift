@@ -544,7 +544,8 @@ struct NativeScheduleView: View {
                     bigSlot: block.bigSlot, startSlot: block.startSlot, endSlot: block.endSlot,
                     schedule: scheduleText(block, day: slot.day)
                 ))
-            }
+            },
+            onMoveMonth: { moveMonth($0) }
         )
     }
 
