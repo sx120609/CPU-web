@@ -400,6 +400,10 @@ function normalizeAnnouncementsError(error_: unknown) {
 
 .announce-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .announce-tabs::-webkit-scrollbar { display: none; }
+/* 用鼠标没法横向拖动一行藏了滚动条的标签，部门一多后面的就点不到；桌面上换行排开，触屏仍然横滑。 */
+@media (hover: hover) and (pointer: fine) {
+  .announce-tabs { flex-wrap: wrap; overflow-x: visible; }
+}
 .announce-tabs button { display: inline-flex; min-height: 36px; flex: 0 0 auto; align-items: center; padding: 0 12px; font-size: var(--cpu-fs-m); cursor: pointer; }
 
 .announce-source { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 4px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
