@@ -407,7 +407,6 @@ import { buildQqAddFriendUrl } from "@/utils/qqContact";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 import { forumContentExcerpt } from "@/utils/forumContent";
 import { isWechatBrowser as detectWechatBrowser, mountWechatSubscribeButton } from "@/utils/wechatBridge";
-import { useMobileLayout } from "@/utils/mobileLayout";
 
 const route = useRoute();
 const router = useRouter();
@@ -458,9 +457,6 @@ let disposed = false;
 let wechatQrPollTimer: ReturnType<typeof setTimeout> | null = null;
 let wechatQrPollSeq = 0;
 let disposeWechatSubscribeButton: (() => void) | null = null;
-// The full-height private chat follows the shared phone/tablet layout, so iPad portrait gets the same
-// scroll-locked single-pane chat as phones instead of a desktop card inside phone chrome.
-const compactLayout = useMobileLayout();
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 const isWechatBrowser = detectWechatBrowser();
@@ -510,7 +506,6 @@ const qqBotAddFriendUrl = computed(() => {
 });
 onMounted(() => {
   disposed = false;
-  syncPrivateScrollLock();
   void loadPage();
   void loadQqBotProfile({ silent: true });
   void loadWechatProfile({ silent: true });
@@ -541,7 +536,6 @@ onBeforeUnmount(() => {
   stopWechatQrPolling();
   disposeWechatSubscribeButton?.();
   disposeWechatSubscribeButton = null;
-  setPrivateScrollLock(false);
 });
 
 watch(() => route.query.tab, (value) => {
@@ -554,7 +548,6 @@ watch(() => route.query.tab, (value) => {
 }, { immediate: true });
 
 watch(tab, (value) => {
-  syncPrivateScrollLock();
   const nextQuery = {
     ...route.query,
     tab: value === "all" ? undefined : value,
@@ -581,18 +574,6 @@ function directMessageQueryReset() {
     forumKind: undefined,
     forumId: undefined,
   };
-}
-
-watch(compactLayout, syncPrivateScrollLock);
-
-function syncPrivateScrollLock() {
-  if (disposed) return;
-  setPrivateScrollLock(tab.value === "private" && compactLayout.value);
-}
-
-function setPrivateScrollLock(active: boolean) {
-  document.documentElement.classList.toggle("messages-private-scroll-lock", active);
-  document.body.classList.toggle("messages-private-scroll-lock", active);
 }
 
 watch(qqBotAddFriendUrl, async (value) => {
@@ -1150,12 +1131,6 @@ function normalizeMessageSettings(value: any) {
 
 <style scoped lang="scss">
 @use "../../styles/compact" as *;
-
-:global(html.messages-private-scroll-lock),
-:global(body.messages-private-scroll-lock) {
-  overflow: hidden !important;
-  overscroll-behavior: none;
-}
 
 .msg-page { display: flex; flex-direction: column; gap: 10px; }
 .page-head {
@@ -1831,19 +1806,14 @@ function normalizeMessageSettings(value: any) {
   }
 }
 
-/* The single-pane private chat follows the shared compact layout (phones, iPad portrait, native shells).
-   The floor never exceeds the visible height, so landscape phones keep the composer on screen. */
 @include compact-layout {
+  /* 会话列表随页面滚动；打开会话后的全屏聊天窗口由 DirectMessages 自己定位 */
   .msg-page.is-private {
-    height: calc(100dvh - 160px - env(safe-area-inset-bottom));
-    min-height: min(360px, calc(var(--layout-viewport-height, 100dvh) - 66px));
     gap: 8px;
-    overflow: hidden;
   }
 
   .msg-page.is-private .page-head {
     display: flex;
-    flex: 0 0 auto;
     padding: 8px;
     border-radius: var(--cpu-radius-l);
   }
@@ -1858,41 +1828,11 @@ function normalizeMessageSettings(value: any) {
   }
 
   .messages-tabs.is-private {
-    display: flex;
-    min-height: 0;
-    flex: 1;
-    flex-direction: column;
     margin: 0;
     padding: 0;
     border-radius: var(--cpu-radius-l);
     overflow: hidden;
-  }
-
-  .messages-tabs.is-private :deep(.el-tabs__header) {
-    display: none;
-  }
-
-  .messages-tabs.is-private :deep(.el-tabs__content),
-  .messages-tabs.is-private :deep(.el-tab-pane) {
-    min-height: 0;
-    height: 100%;
-  }
-
-  .messages-tabs.is-private :deep(.el-tabs__content) {
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .layout-root.keyboard-open .msg-page.is-private {
-    height: calc(100dvh - 84px);
-    min-height: 300px;
-  }
-
-  // The app shell draws no top bar or tab bar. The second selector outranks the
-  // keyboard rule above, which would otherwise leave an 84px gap over the keyboard.
-  .layout-root--native-shell .msg-page.is-private,
-  .layout-root--native-shell.keyboard-open .msg-page.is-private {
-    height: 100dvh;
+    background: var(--cpu-card);
   }
 }
 

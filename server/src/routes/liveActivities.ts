@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authRequired } from "../middleware/auth";
-import { Errors, ok } from "../utils/response";
+import { Errors, HttpError, ok } from "../utils/response";
 import { liveActivityBroadcastConfig } from "../services/liveActivityPush";
 
 import { syncRemoteStarts, revokeRemoteStarts, switchToLocal, takeOverOccurrence, remoteDeviceState } from "../services/liveActivityRemoteStart";
@@ -22,7 +22,7 @@ liveActivityRouter.post("/local-handoff", async (req, res, next) => {
 });
 liveActivityRouter.post("/foreground-recovery", async (req, res, next) => {
   try { ok(res, await takeOverOccurrence(req.user!.userId, req.body)); }
-  catch (error) { next(Errors.badRequest(error instanceof Error ? error.message : "恢复失败")); }
+  catch (error) { next(error instanceof HttpError ? error : Errors.badRequest(error instanceof Error ? error.message : "恢复失败")); }
 });
 liveActivityRouter.put("/remote-start", async (req, res, next) => {
   try { ok(res, await syncRemoteStarts(req.user!.userId, req.body)); }
@@ -36,7 +36,7 @@ liveActivityRouter.get("/broadcast-config", async (req, res, next) => {
   try {
     ok(res, await liveActivityBroadcastConfig(String(req.query.environment || "production"), String(req.query.bundleID || ""), req.query.mode === "local"));
   } catch (error) {
-    next(Errors.badRequest(error instanceof Error ? error.message : "广播配置读取失败"));
+    next(error instanceof HttpError ? error : Errors.badRequest(error instanceof Error ? error.message : "广播配置读取失败"));
   }
 });
 // Old builds must upgrade. Never accept or dispatch personal plans/tokens after

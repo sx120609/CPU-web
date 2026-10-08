@@ -1,0 +1,15 @@
+{
+  "name": "cpu-web-status-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone uptime monitor and public status page for CPU-web, deployed on a server separate from the main site",
+  "scripts": {
+    "start": "node bin/status-monitor.mjs --config config.json",
+    "once": "node bin/status-monitor.mjs --config config.json --once",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

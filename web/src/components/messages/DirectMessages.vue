@@ -1,12 +1,11 @@
 <template>
-  <div class="dm" :class="{ 'has-active': !!activeCounterpart }">
+  <div class="dm" :class="{ 'is-chat-floating': floatChat }">
     <aside class="dm-side">
       <div class="dm-side-head">
         <div class="dm-side-title">
           <h3>私聊</h3>
           <span v-if="totalUnread" class="dm-count">{{ Math.min(totalUnread, 99) }}</span>
         </div>
-        <button type="button" class="dm-text-btn dm-notice-link" @click="openNoticeCenter">其他通知</button>
       </div>
       <label v-if="conversations.length > 5 || searchQuery" class="dm-search">
         <el-icon><Search /></el-icon>
@@ -63,7 +62,15 @@
       </div>
     </aside>
 
-    <section class="dm-chat">
+    <!-- 手机上聊天窗口挂到 body 下，按可视视口定位，不受页面滚动和外层卡片高度影响 -->
+    <Teleport to="body" :disabled="!floatChat">
+    <section class="dm-chat" :class="{ 'is-floating': floatChat, 'is-keyboard': floatChat && composerFocused }">
+      <header v-if="floatChat && !activeCounterpart" class="dm-chat-head">
+        <button type="button" class="dm-icon-btn dm-back" aria-label="返回会话列表" title="返回会话列表" @click="backToList">
+          <el-icon><ArrowLeft /></el-icon>
+        </button>
+        <b class="dm-chat-head-title">私聊</b>
+      </header>
       <div v-if="targetLoading" class="dm-chat-state">
         <span class="dm-spinner" aria-hidden="true"></span>
         <span>正在打开私聊…</span>
@@ -133,7 +140,7 @@
         </header>
 
         <div ref="messageScroller" class="dm-scroller" aria-live="polite" aria-label="私聊消息记录">
-          <div class="dm-thread">
+          <div ref="messageThread" class="dm-thread">
             <div v-if="nextCursor" class="dm-load-more">
               <button type="button" class="dm-pill-btn" :disabled="olderLoading" @click="loadOlderMessages">
                 <span v-if="olderLoading" class="dm-spinner dm-spinner--sm" aria-hidden="true"></span>
@@ -207,11 +214,13 @@
               rows="1"
               maxlength="2000"
               enterkeyhint="send"
-              :disabled="sendBlocked || sending"
-              :placeholder="sendBlocked ? '等待对方回复' : '输入消息，Enter 发送'"
+              :disabled="sendBlocked"
+              :placeholder="sendBlocked ? '等待对方回复' : isNarrow ? '输入消息' : '输入消息，Enter 发送'"
               aria-label="输入私聊消息"
               @input="resizeComposer"
               @keydown="onComposerKeydown"
+              @focus="composerFocused = true"
+              @blur="composerFocused = false"
             ></textarea>
             <span v-if="draft.length >= 1800" class="dm-counter">{{ draft.length }}/2000</span>
             <button
@@ -230,6 +239,7 @@
         </footer>
       </template>
     </section>
+    </Teleport>
 
     <el-dialog v-model="reportOverviewOpen" title="举报与投诉" width="min(460px, calc(100vw - 32px))" append-to-body destroy-on-close>
       <p class="dm-report-lead">请选择需要举报的消息，举报将提交给管理员处理。</p>
@@ -261,6 +271,7 @@
 </template>
 
 <script setup lang="ts">
+import { useMobileLayout } from "@/utils/mobileLayout";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import {
@@ -314,6 +325,10 @@ const listError = ref("");
 const targetError = ref("");
 const messageError = ref("");
 const messageScroller = ref<HTMLElement | null>(null);
+const messageThread = ref<HTMLElement | null>(null);
+// Phones, touch tablets below 1024 px and app shells share one layout decision with the rest of the site.
+const isNarrow = useMobileLayout();
+const composerFocused = ref(false);
 const reportDialogOpen = ref(false);
 const reportOverviewOpen = ref(false);
 const reportTarget = ref<{ type: "direct_message" | "user"; id: number; label: string } | null>(null);
@@ -375,6 +390,12 @@ let routeSeq = 0;
 let messageSeq = 0;
 
 const activeCounterpart = computed(() => activeConversation.value?.counterpart || pendingTarget.value);
+// 窄屏上会话列表和聊天窗口二选一：打开会话后聊天窗口铺满屏幕
+const floatChat = computed(() => isNarrow.value
+  && route.query.tab === "private"
+  && Boolean(activeCounterpart.value || targetLoading.value || targetError.value));
+let stickObserver: ResizeObserver | null = null;
+let pinnedToBottom = true;
 async function blockCounterpart() {
   const conversationId = activeConversation.value?.id;
   const targetId = conversationId || activeCounterpart.value?.id;
@@ -443,12 +464,44 @@ onBeforeUnmount(() => {
   messageSeq += 1;
   if (refreshTimer) window.clearInterval(refreshTimer);
   document.removeEventListener("visibilitychange", handleVisibilityChange);
+  stickObserver?.disconnect();
+  stickObserver = null;
+  setPageScrollLock(false);
   flushComposerDraft();
 });
 
 function handleVisibilityChange() {
   if (!document.hidden) void refreshVisibleConversation();
 }
+
+
+function setPageScrollLock(active: boolean) {
+  document.documentElement.classList.toggle("messages-private-scroll-lock", active);
+  document.body.classList.toggle("messages-private-scroll-lock", active);
+}
+
+watch(floatChat, setPageScrollLock, { immediate: true });
+
+// 键盘弹出、输入框变高或来了新消息都会改变可见区域；原本停在底部时继续贴底
+watch([messageScroller, messageThread], ([scroller, thread], _previous, onCleanup) => {
+  if (!scroller || !thread || typeof ResizeObserver === "undefined") return;
+  pinnedToBottom = true;
+  const onScroll = () => {
+    pinnedToBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48;
+  };
+  const observer = new ResizeObserver(() => {
+    if (pinnedToBottom) scroller.scrollTop = scroller.scrollHeight;
+  });
+  scroller.addEventListener("scroll", onScroll, { passive: true });
+  observer.observe(scroller);
+  observer.observe(thread);
+  stickObserver = observer;
+  onCleanup(() => {
+    scroller.removeEventListener("scroll", onScroll);
+    observer.disconnect();
+    if (stickObserver === observer) stickObserver = null;
+  });
+});
 
 watch(
   () => [route.query.tab, route.query.user, route.query.conversation, route.query.forumKind, route.query.forumId],
@@ -676,6 +729,9 @@ async function sendMessage() {
   const counterpart = activeCounterpart.value;
   if (!content || !counterpart || sending.value || sendBlocked.value) return;
   sending.value = true;
+  // 发送期间不禁用输入框，否则手机键盘会收起；先清空，失败时再放回去
+  const draftKey = composerDraftKey.value;
+  draft.value = "";
   try {
     const forumTarget = pendingForumTarget.value;
     const result = activeConversation.value
@@ -683,8 +739,7 @@ async function sendMessage() {
       : forumTarget
         ? await directMessageApi.sendToForumPost(forumTarget.kind, forumTarget.postId, content, { suppressErrorMessage: true })
         : await directMessageApi.sendToUser(counterpart.id, content, { suppressErrorMessage: true });
-    clearComposerDraft(composerDraftKey.value);
-    draft.value = "";
+    clearComposerDraft(draftKey);
     pendingTarget.value = null;
     pendingTargetRemark.value = null;
     pendingForumTarget.value = null;
@@ -707,6 +762,7 @@ async function sendMessage() {
   } catch (error) {
     const message = errorMessage(error, "消息发送失败");
     ElMessage.error(message);
+    if (!draft.value && composerDraftKey.value === draftKey) draft.value = content;
     if (/等待对方回复|最多发送两条/.test(message) && activeConversation.value) {
       activeConversation.value.sendState = {
         limitedUntilReply: true,
@@ -817,6 +873,7 @@ function conversationDisplayName(conversation: DirectConversation) {
 async function scrollToBottom() {
   await nextTick();
   const el = messageScroller.value;
+  pinnedToBottom = true;
   if (el) el.scrollTop = el.scrollHeight;
 }
 
@@ -868,19 +925,6 @@ async function editCounterpartRemark() {
   } else {
     pendingTargetRemark.value = result.remark;
   }
-}
-
-function openNoticeCenter() {
-  router.replace({
-    query: {
-      ...route.query,
-      tab: "all",
-      conversation: undefined,
-      user: undefined,
-      forumKind: undefined,
-      forumId: undefined,
-    },
-  }).catch(() => null);
 }
 
 function positiveQueryId(value: unknown) {
@@ -978,7 +1022,7 @@ function errorMessage(error: unknown, fallback: string) {
 @use "../../styles/compact" as *;
 
 /* 按钮统一清掉浏览器默认样式；:where 保持零特异性，后面的具体类可以直接覆盖。 */
-.dm :where(button) {
+:where(.dm, .dm-chat) :where(button) {
   margin: 0;
   padding: 0;
   border: 0;
@@ -988,21 +1032,25 @@ function errorMessage(error: unknown, fallback: string) {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.dm :where(button:disabled) {
+:where(.dm, .dm-chat) :where(button:disabled) {
   cursor: default;
 }
-.dm :where(button:focus-visible) {
+:where(.dm, .dm-chat) :where(button:focus-visible) {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
 }
 
 /* ---------- 外框 ---------- */
-.dm {
+/* 聊天窗口在手机上会挂到 body 下，变量要在它自己身上也定义一份 */
+.dm,
+.dm-chat {
   --dm-hover: color-mix(in srgb, var(--cpu-text) 5%, transparent);
   --dm-theirs: var(--cpu-surface-subtle);
   --dm-mine: var(--cpu-button-primary);
   --dm-mine-ink: var(--cpu-button-on-primary);
   --dm-warn-ink: #a15c07;
+}
+.dm {
   display: grid;
   grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
   /* 225px 是顶栏、页头和标签栏的高度，再留出卡片与页面底部内边距，让输入框落在首屏内 */
@@ -1014,7 +1062,8 @@ function errorMessage(error: unknown, fallback: string) {
   border: 1px solid var(--cpu-border-soft);
   border-radius: var(--cpu-radius-l);
 }
-html[data-theme="dark"] .dm {
+html[data-theme="dark"] .dm,
+html[data-theme="dark"] .dm-chat {
   --dm-warn-ink: var(--cpu-warn);
 }
 
@@ -1140,9 +1189,6 @@ html[data-theme="dark"] .dm {
   margin: 0;
   font-size: var(--cpu-fs-l);
   font-weight: 500;
-}
-.dm-notice-link {
-  display: none;
 }
 .dm-search {
   display: flex;
@@ -1300,6 +1346,10 @@ html[data-theme="dark"] .dm {
 }
 .dm-back {
   display: none;
+}
+.dm-chat-head-title {
+  font-size: var(--cpu-fs-l);
+  font-weight: 500;
 }
 .dm-peer {
   display: flex;
@@ -1653,53 +1703,75 @@ html[data-theme="dark"] .dm {
 @media (prefers-reduced-motion: reduce) {
   .dm *,
   .dm *::before,
-  .dm *::after {
+  .dm *::after,
+  .dm-chat *,
+  .dm-chat *::before,
+  .dm-chat *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-/* ---------- 窄屏：列表与聊天二选一 ---------- */
-/* Same switch as the messages page (shared compact layout), so iPad portrait never gets the desktop two-pane card. */
+/* ---------- 窄屏：会话列表随页面滚动，聊天窗口铺满屏幕 ---------- */
+:global(html.messages-private-scroll-lock),
+:global(body.messages-private-scroll-lock) {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+/* Same switch as the rest of the site, so iPad portrait gets the full-screen chat too. */
 @include compact-layout {
   .dm {
     display: block;
     width: 100%;
     max-width: 100%;
-    height: 100%;
-    min-height: 0;
+    height: auto;
+    overflow: visible;
     border: 0;
-    border-radius: var(--cpu-radius-l);
     box-sizing: border-box;
   }
+  .dm.is-chat-floating .dm-side {
+    display: none;
+  }
   .dm-side {
-    height: 100%;
     border-right: 0;
     background: var(--cpu-card);
   }
-  .dm-chat {
-    display: none;
-    height: 100%;
-  }
-  .dm.has-active .dm-side {
-    display: none;
-  }
-  .dm.has-active .dm-chat {
-    display: flex;
-  }
+  /* “私聊”和未读数已经在页面顶部的切换条里 */
   .dm-side-head {
-    height: 54px;
-    padding: 0 8px 0 16px;
+    display: none;
   }
-  .dm-notice-link {
-    display: inline-flex;
+  .dm-search {
+    margin: 8px 8px 4px;
   }
   .dm-list {
-    padding: 0 6px 8px;
+    padding: 4px;
+    overflow: visible;
   }
   .dm-row {
     padding: 10px 8px;
+  }
+  .dm-side-state {
+    min-height: 260px;
+  }
+
+  .dm-chat:not(.is-floating) {
+    display: none;
+  }
+  /* 可视视口由 overlayViewport.ts 写在根节点上：键盘弹出时高度跟着缩，
+     页面被系统推上去时 top 跟着移，输入区始终贴在键盘上沿。 */
+  .dm-chat.is-floating {
+    position: fixed;
+    z-index: 1200;
+    top: var(--cpu-overlay-viewport-top, 0px);
+    right: 0;
+    left: 0;
+    height: var(--cpu-overlay-viewport-height, 100dvh);
+    color: var(--cpu-text);
+    background: var(--cpu-card);
+    font-size: var(--cpu-fs-m);
+    overscroll-behavior: contain;
   }
   .dm-back {
     display: grid;
@@ -1708,25 +1780,32 @@ html[data-theme="dark"] .dm {
     font-size: var(--cpu-fs-xl);
   }
   .dm-chat-head {
-    height: 56px;
-    padding: 0 4px;
+    box-sizing: content-box;
+    height: 52px;
+    padding: var(--cpu-safe-area-inset-top, 0px) 4px 0;
   }
   .dm-peer {
     padding-right: 4px;
   }
   .dm-thread {
-    padding: 10px 12px 14px;
+    padding: 8px 12px 12px;
   }
   .dm-bubble-row {
     max-width: 84%;
   }
   .dm-dock {
-    padding: 6px 8px max(8px, env(safe-area-inset-bottom));
+    /* 键盘收起时让开系统手势条；iOS 客户端的悬浮标签栏盖在网页上，也要让开 */
+    padding: 6px 8px calc(6px + max(env(safe-area-inset-bottom, 0px), var(--cpu-ios-bottom-clearance, 0px)));
     border-top: 1px solid var(--cpu-border-soft);
+  }
+  .dm-chat.is-keyboard .dm-dock {
+    padding-bottom: 6px;
   }
   .dm-composer {
     padding: 4px 4px 4px 14px;
-    border-radius: var(--cpu-radius-l);
+  }
+  .dm-composer:focus-within {
+    box-shadow: none;
   }
   .dm-composer textarea {
     /* 16px 以下 iOS 会在聚焦时自动放大页面 */
@@ -1735,7 +1814,9 @@ html[data-theme="dark"] .dm {
   }
   .dm-hint {
     margin-top: 5px;
-    font-size: var(--cpu-fs-xs);
+  }
+  .dm-chat.is-keyboard .dm-hint {
+    display: none;
   }
 }
 

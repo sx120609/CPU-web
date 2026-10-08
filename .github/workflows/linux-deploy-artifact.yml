@@ -18,6 +18,18 @@ jobs:
     name: Build verified Linux bundle
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cpu_apns_regression
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cpu_apns_regression"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     permissions:
       contents: read
       actions: read
@@ -62,6 +74,11 @@ jobs:
 
       - name: Run server and web unit tests
         run: node tools/run-node-tests.mjs
+
+      - name: Verify APNs with a real one-connection PostgreSQL pool
+        env:
+          APNS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cpu_apns_regression
+        run: node tools/run-node-tests.mjs server/tests/apnsPoolPostgres.test.ts
 
       - name: Verify HarmonyOS schedule bridges and shared visual tokens
         shell: bash

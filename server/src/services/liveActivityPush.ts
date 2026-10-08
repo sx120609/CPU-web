@@ -25,9 +25,9 @@ export async function liveActivityBroadcastConfig(environment: string, bundleID:
   return withApnsConfigLock(async db => {
   const config = await getApnsConfig(db);
   if (config.configured && bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
-  const timing = await currentTiming();
+  const timing = await currentTiming(db);
   const issuedAt = Date.now() / 1000;
-  if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000));
+  if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000), db);
   return { protocolVersion: 2, scheduleId: timing.scheduleId, scheduleVersion: timing.id,
     timezone: timing.timezone, periods: timing.periods, issuedAt,
     usableUntil: issuedAt + 7 * 86400, broadcastUntil: issuedAt + 8 * 86400,
@@ -68,13 +68,17 @@ export function schoolBroadcastEvents(term: Pick<ScheduleTermConfigValue, "perio
   });
 }
 
-async function ensureBroadcastEvents(now: number) {
+export async function ensureBroadcastEvents(now: number) {
   if (now - lastBroadcastMaterializedAt < 60) return;
   const config = await getApnsConfig();
   if (!config.configured) return;
   const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now * 1000));
   const current = await currentTiming();
-  const versions = await db.liveActivityScheduleVersion.findMany({ where: { OR: [{ id: current.id }, { broadcastUntil: { gte: new Date(now * 1000) } }] } });
+  // Retention extensions do not change today's immutable boundary events.
+  const versions = await db.liveActivityScheduleVersion.findMany({
+    where: { OR: [{ id: current.id }, { broadcastUntil: { gte: new Date(now * 1000) } }] },
+    select: { id: true, periods: true }, orderBy: { id: "asc" },
+  });
   const digest = JSON.stringify([dateKey, config.bundleID, config.channels, versions]);
   if (digest === materializedDigest) { lastBroadcastMaterializedAt = now; return; }
   const events = versions.flatMap(v => schoolBroadcastEvents({ periods: JSON.parse(v.periods) }, dateKey, false, v.id));
@@ -88,11 +92,10 @@ async function ensureBroadcastEvents(now: number) {
     where: { state: "pending", NOT: { OR: rows.map(row => ({ channelID: row.channelID, eventID: row.eventID })) } },
     data: { state: "skipped", detail: "已替换为当前学校广播时间", claimedUntil: null },
   });
-  for (const row of rows) {
-    await db.liveActivityBroadcastEvent.upsert({
-      where: { channelID_eventID: { channelID: row.channelID, eventID: row.eventID } },
-      create: row, update: { payload: row.payload, event: row.event, expiresAt: row.expiresAt },
-    });
+  // Event identity includes the immutable timing version and date. Preserve
+  // sent/retry/claim state on restarts and across competing schedulers.
+  for (let offset = 0; offset < rows.length; offset += 500) {
+    await db.liveActivityBroadcastEvent.createMany({ data: rows.slice(offset, offset + 500), skipDuplicates: true });
   }
   await db.liveActivityBroadcastEvent.deleteMany({ where: { state: { not: "pending" }, fireAt: { lt: new Date((now - 3 * 86400) * 1000) } } });
   materializedDigest = digest;
