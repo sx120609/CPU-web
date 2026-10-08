@@ -84,7 +84,7 @@ function postHttp2(environment: ApnsEnvironment, path: string, headers: Record<s
       "content-type": "application/json",
       "content-length": String(Buffer.byteLength(body)),
       ...headers,
-      });
+      }, { endStream: false });
     } catch (error) {
       finish(error instanceof Error ? error : new Error(String(error)));
       return;
