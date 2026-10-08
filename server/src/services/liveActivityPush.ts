@@ -25,9 +25,9 @@ export async function liveActivityBroadcastConfig(environment: string, bundleID:
   return withApnsConfigLock(async db => {
   const config = await getApnsConfig(db);
   if (config.configured && bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
-  const timing = await currentTiming();
+  const timing = await currentTiming(db);
   const issuedAt = Date.now() / 1000;
-  if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000));
+  if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000), db);
   return { protocolVersion: 2, scheduleId: timing.scheduleId, scheduleVersion: timing.id,
     timezone: timing.timezone, periods: timing.periods, issuedAt,
     usableUntil: issuedAt + 7 * 86400, broadcastUntil: issuedAt + 8 * 86400,

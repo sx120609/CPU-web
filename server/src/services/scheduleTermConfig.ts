@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import type { Prisma } from "@prisma/client";
 import { type CalendarResult } from "../services/jwxtParser";
 
 export type SchedulePeriod = {
@@ -147,10 +148,10 @@ export async function listScheduleTermConfigs() {
 }
 
 /// 节次时间全校统一，存在单行的 SchedulePeriodConfig 里。
-export async function getSchedulePeriods(): Promise<SchedulePeriod[]> {
+export async function getSchedulePeriods(db: Prisma.TransactionClient = prisma): Promise<SchedulePeriod[]> {
   if (!process.env.DATABASE_URL) return [];
   try {
-    const row = await prisma.schedulePeriodConfig.findUnique({ where: { id: 1 }, select: { periods: true } });
+    const row = await db.schedulePeriodConfig.findUnique({ where: { id: 1 }, select: { periods: true } });
     return row ? (JSON.parse(row.periods) as SchedulePeriod[]) : [];
   } catch {
     return [];
