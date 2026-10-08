@@ -14,6 +14,7 @@ import { scheduleText, scheduleCalendar } from '../schedule/ScheduleExport';
 import { SCHEDULE_STYLES, normalizeScheduleStyle, scheduleStyleSubtitle, scheduleStyleTitle } from '../schedule/ScheduleStyle';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
 import { CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
+import { findScheduleOverlap, PlacedCourseBlock, placeScheduleBlocks, scheduleOverlapKey, scheduleOverlapText } from '../schedule/SchedulePlacement';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
 import { schedulePalette } from '../schedule/ScheduleVisuals';
 import common from '@ohos.app.ability.common';
@@ -85,6 +86,9 @@ struct Index {
   // 共享课表是别人的课表，不叠情侣课表：给它一个始终未绑定的。
   @State private noCouple: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
   private coupleSyncTimer: number = -1;
+  // 同一时段排了两门课的提示：已经提醒过的那几处。
+  private overlapSeen: string[] = [];
+  private overlapLoaded: boolean = false;
   // 别人共享的课表：只读，开在自己的 store 上，盖住整个页面。
   @State private sharedStore: NativeScheduleStore = new NativeScheduleStore();
   @State private sharedVisible: boolean = false;
@@ -184,6 +188,7 @@ struct Index {
         }
         this.refreshSchedulePriorities();
         this.queueCoupleSync();
+        this.checkScheduleOverlap();
       }
     );
     if (context) {
@@ -233,6 +238,9 @@ struct Index {
         this.scheduleStore.showNowIndicator = Boolean(await prefs.get('now', true));
         this.scheduleStore.restorePriorities(String(await prefs.get('priorities', '')));
         this.coupleModel.restore(String(await prefs.get('coupleVisible', '1')) !== '0', String(await prefs.get('coupleSync', '')));
+        try { this.overlapSeen = JSON.parse(String(await prefs.get('overlapSeen', '[]'))) as string[]; } catch (_) { this.overlapSeen = []; }
+        this.overlapLoaded = true;
+        this.checkScheduleOverlap();
         this.scheduleStore.attachPriorityPersistence((raw: string) => {
           void prefs.put('priorities', raw).then(() => prefs.flush()).catch(() => undefined);
         });
@@ -763,6 +771,30 @@ struct Index {
     } catch (_) {
       return unavailable;
     }
+  }
+
+  // 自己的课表里同一时段排了两门课：多半是教务数据有误，第一次看到时提醒一下，同一处只提醒一次。
+  private checkScheduleOverlap(): void {
+    const store = this.scheduleStore;
+    if (!this.overlapLoaded || !store.result || store.status !== 'loaded' || this.selectedTab !== 2) return;
+    let week: PlacedCourseBlock[] = [];
+    [1, 2, 3, 4, 5, 6, 7].forEach((day: number) => {
+      week = week.concat(placeScheduleBlocks(store.displayBlocks(day), store.displayPriorities()));
+    });
+    const notice = findScheduleOverlap(week);
+    if (!notice) return;
+    const key = scheduleOverlapKey(store.prioritySemester(), notice);
+    if (this.overlapSeen.includes(key)) return;
+    this.overlapSeen = this.overlapSeen.concat([key]).slice(-40);
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (context) {
+      void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
+        await prefs.put('overlapSeen', JSON.stringify(this.overlapSeen));
+        await prefs.flush();
+      }).catch(() => undefined);
+    }
+    AlertDialog.show({ title: '同一时间排了两门课', message: scheduleOverlapText(notice),
+      confirm: { value: '知道了', action: () => undefined } });
   }
 
   private persistCouple(key: string, value: string): void {

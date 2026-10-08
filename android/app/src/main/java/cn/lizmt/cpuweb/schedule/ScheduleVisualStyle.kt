@@ -419,8 +419,24 @@ object ScheduleStyleTime {
         return (if (number < 20) "十" else values[number / 10] + "十") + (if (number % 10 == 0) "" else values[number % 10])
     }
 
-    /** The room without a leading "@": some rows carry one already and the tiles add their own. */
-    fun location(raw: String?): String? = raw?.trim()?.trim('@', '＠', ' ', '\t')?.takeIf { it.isNotEmpty() }
+    /**
+     * The room as the grid shows it, without a leading "@": some rows carry one
+     * already and the tiles add their own.
+     */
+    fun location(raw: String?): String? = raw?.trim()?.trim('@', '＠', ' ', '\t')?.let(::classroomOnly)?.takeIf { it.isNotEmpty() }
+
+    /**
+     * Lectures are all in the teaching building and the room number carries the
+     * wing (A to E): "教学楼A102" is shown as "A102". Any other place is shown as
+     * the academic system wrote it. Display only: the course data keeps the
+     * original, which is what hidden and edited courses are matched by.
+     */
+    fun classroomOnly(value: String): String {
+        val location = value.trim()
+        return TEACHING_BUILDING.replaceFirst(location, "").ifEmpty { location }
+    }
+
+    private val TEACHING_BUILDING = Regex("^教学楼\\s*(?=[A-Ea-e]\\s*[-－]?\\s*\\d)")
 
     /** "第 1–2 节", or "第 9 节" for a single period. */
     fun slotText(start: Int, end: Int): String = if (start == end) "第 $start 节" else "第 $start–$end 节"

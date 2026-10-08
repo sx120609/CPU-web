@@ -589,6 +589,34 @@ class ScheduleParityTest {
 
     // endregion
 
+    @Test
+    fun aClassroomInTheTeachingBuildingShowsOnlyItsRoomNumber() {
+        assertEquals("A102", ScheduleStyleTime.classroomOnly("教学楼A102"))
+        assertEquals("E-305", ScheduleStyleTime.classroomOnly(" 教学楼 E-305 "))
+        assertEquals("b201", ScheduleStyleTime.location("@教学楼b201"))
+        // Anything else is shown as the academic system wrote it.
+        assertEquals("实验楼B203", ScheduleStyleTime.classroomOnly("实验楼B203"))
+        assertEquals("教学楼报告厅", ScheduleStyleTime.classroomOnly("教学楼报告厅"))
+        assertEquals("教学楼F101", ScheduleStyleTime.classroomOnly("教学楼F101"))
+        assertEquals("教学楼", ScheduleStyleTime.classroomOnly("教学楼"))
+        assertNull(ScheduleStyleTime.location(" "))
+    }
+
+    @Test
+    fun twoOfTheUsersCoursesInTheSamePeriodsArePointedOut() {
+        val week = listOf(block("药理学", 1, 2, 1), block("体育（羽毛球）", 1, 2, 3), block("生物化学", 1, 2, 3), block("药物分析", 5, 6, 4))
+        fun placed(priorities: Map<String, Int> = emptyMap()) = (1..7).flatMap { day -> SchedulePriority.place(week.filter { it.day == day }, priorities) }
+        val notice = OverlapNotice.find(placed())!!
+        assertEquals(OverlapNotice(3, 1, 2, listOf("体育（羽毛球）", "生物化学")), notice)
+        assertEquals("2026-2027-1|3|体育（羽毛球）/生物化学", notice.key("2026-2027-1"))
+        assertTrue(notice.text.startsWith("周三第 1–2 节同时排了 「体育（羽毛球）」、「生物化学」。这通常是教务系统的数据有误"))
+        // A course set to show first covers the other: the user has dealt with it.
+        assertNull(OverlapNotice.find(placed(mapOf("生物化学" to 1))))
+        assertNull(OverlapNotice.find(SchedulePriority.place(listOf(block("药理学", 1, 2), block("药物分析", 3, 4)), emptyMap())))
+        // The same course listed twice in the same periods is not two courses.
+        assertNull(OverlapNotice.find(SchedulePriority.place(listOf(block("药理学", 1, 2), block("药理学", 1, 2)), emptyMap())))
+    }
+
     // region Couple timetable
 
     private fun placed(name: String, start: Int, end: Int, lane: Int = 0, lanes: Int = 1) = PlacedBlock(block(name, start, end), start, end, lane, lanes)

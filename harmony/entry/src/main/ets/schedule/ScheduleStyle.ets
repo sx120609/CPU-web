@@ -383,7 +383,18 @@ export function scheduleWeekday(day: number): string {
 
 /** The room without a leading "@": some rows carry one already and the tiles add their own. */
 export function scheduleCleanLocation(raw?: string): string {
-  return (raw ?? '').trim().replace(/^[@＠\s]+/, '').replace(/[@＠\s]+$/, '');
+  return scheduleClassroomOnly((raw ?? '').trim().replace(/^[@＠\s]+/, '').replace(/[@＠\s]+$/, ''));
+}
+
+/**
+ * Lectures are all in the teaching building and the room number carries the wing (A to E):
+ * "教学楼A102" is shown as "A102". Any other place is shown as the academic system wrote it.
+ * Display only: the course data keeps the original, which is what hidden and edited courses are
+ * matched by.
+ */
+export function scheduleClassroomOnly(value: string): string {
+  const location = (value ?? '').trim();
+  return location.replace(/^教学楼\s*(?=[A-Ea-e]\s*[-－]?\s*\d)/, '') || location;
 }
 
 /** Minutes since midnight in the timetable's time zone (Asia/Shanghai). */

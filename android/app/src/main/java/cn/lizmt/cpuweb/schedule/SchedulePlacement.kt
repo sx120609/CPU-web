@@ -146,3 +146,44 @@ data class CourseArrangement(val day: Int, val slots: Set<Int>, val weekList: Li
         }
     }
 }
+
+/**
+ * Two of the user's own courses in the same periods. That is usually wrong data
+ * from the academic system (a cancelled course still listed, the old row of a
+ * moved one), so the first time it shows the user is told: check the academic
+ * system first, then edit or delete here.
+ */
+data class OverlapNotice(val day: Int, val startSlot: Int, val endSlot: Int, val names: List<String>) {
+    /** The same overlap is pointed out once: same term, weekday and course names. */
+    fun key(semester: String): String = "$semester|$day|${names.sorted().joinToString("/")}"
+
+    val text: String
+        get() {
+            val slots = if (startSlot == endSlot) "第 $startSlot 节" else "第 $startSlot–$endSlot 节"
+            val listed = names.take(3).joinToString("、") { "「$it」" } + if (names.size > 3) " 等" else ""
+            return "${WEEKDAY_LABELS.getOrElse(day - 1) { "" }}${slots}同时排了 $listed。这通常是教务系统的数据有误，建议先到教务系统核对原始课表；" +
+                "确认哪一门不该在这里以后，点这门课就可以编辑或删除。"
+        }
+
+    companion object {
+        /**
+         * The first place in a week where courses sit side by side. A course set
+         * to show first covers the other one: the user has dealt with that, so
+         * it is not pointed out.
+         */
+        fun find(week: List<PlacedBlock>): OverlapNotice? {
+            val side = week.filter { it.lanes > 1 }.sortedWith(compareBy({ it.day }, { it.startSlot }, { it.lane }))
+            val first = side.firstOrNull() ?: return null
+            // The cluster of that day that the first course belongs to.
+            val cluster = mutableListOf(first)
+            var end = first.endSlot
+            side.drop(1).forEach { block ->
+                if (block.day != first.day || block.startSlot > end) return@forEach
+                cluster += block
+                end = maxOf(end, block.endSlot)
+            }
+            val names = cluster.map { it.course.name }.distinct()
+            return if (names.size < 2) null else OverlapNotice(first.day, first.startSlot, end, names)
+        }
+    }
+}

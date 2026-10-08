@@ -547,7 +547,7 @@
                   >
                     <i class="off-week-tag">非本周</i>
                     <strong>{{ piece.block.course.name }}</strong>
-                    <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
+                    <span v-if="piece.block.course.location">@{{ classroomOnly(piece.block.course.location) }}</span>
                   </article>
                   <article
                     v-for="piece in piecesFor(page)"
@@ -559,7 +559,7 @@
                     @click.stop="onWeekPageCourseClick($event, page, piece.block)"
                   >
                     <strong>{{ piece.block.course.name }}</strong>
-                    <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
+                    <span v-if="piece.block.course.location">@{{ classroomOnly(piece.block.course.location) }}</span>
                     <span v-if="display.showTeacher && piece.block.course.teacher" class="week-course-teacher">{{ piece.block.course.teacher }}</span>
                     <em>{{ piece.block.course.slotNote || piece.block.course.weeks }}</em>
                     <div v-if="isCoupleShared(page, piece.block) || coupleClashesFor(page, piece.block).length" class="couple-notes">
@@ -584,7 +584,7 @@
                   >
                     <i class="couple-ta-tag">TA</i>
                     <strong>{{ block.course.name }}</strong>
-                    <span v-if="block.course.location">@{{ block.course.location }}</span>
+                    <span v-if="block.course.location">@{{ classroomOnly(block.course.location) }}</span>
                   </article>
                   <!-- 「现在」：节次栏上的时间和今天那一列上的一条线。 -->
                   <template v-if="classicNowFor(page)">
@@ -677,7 +677,7 @@
                     >
                       <div class="day-course-name">{{ piece.block.course.name }}</div>
                       <div class="day-course-meta">
-                        <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
+                        <span v-if="piece.block.course.location">@{{ classroomOnly(piece.block.course.location) }}</span>
                         <span v-if="piece.block.course.teacher">{{ piece.block.course.teacher }}</span>
                       </div>
                       <div class="day-course-note">{{ piece.block.course.slotNote || piece.block.course.weeks }}</div>
@@ -1080,6 +1080,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Brush, Calendar, CirclePlus, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Operation, Picture, Plus, QuestionFilled, Refresh, Share, Tools, WarningFilled } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
+import { findOverlapNotice, overlapNoticeKey, overlapNoticeSeen, overlapNoticeText, rememberOverlapNotice } from "@/views/schedule/overlapNotice";
 import { couplePersonTone } from "@/views/schedule/couple";
 import { useCoupleOverlay } from "@/views/schedule/useCoupleOverlay";
 import CoupleDialog from "@/views/schedule/CoupleDialog.vue";
@@ -1149,7 +1150,7 @@ import {
 } from "@/views/schedule/displayPriority";
 import { buildWeekIcs, saveWeekIcs, weekIcsFileName } from "@/views/schedule/icsExport";
 import { buildDateIndex, buildMonthDays, calendarMonths, monthKeyOf } from "@/views/schedule/monthModel";
-import { blockScheduleLine, formatClock, nowRowPosition, shanghaiMinutes } from "@/views/schedule/nowIndicator";
+import { blockScheduleLine, classroomOnly, formatClock, nowRowPosition, shanghaiMinutes } from "@/views/schedule/nowIndicator";
 import {
   DEFAULT_SCHEDULE_STYLE,
   readStoredScheduleStyle,
@@ -1552,6 +1553,7 @@ function queueCoupleScheduleSync() {
   coupleSyncTimer = window.setTimeout(syncCoupleSchedule, 4000);
 }
 watch(() => [parsed.value, calendar.value, scheduleSource.value, auth.isLoggedIn], queueCoupleScheduleSync);
+
 watch(scheduleEdits, queueCoupleScheduleSync, { deep: true });
 
 const scriptableWidgetScript = ref("");
@@ -3865,6 +3867,23 @@ function piecesFor(page: SchedulePageModel) {
 function dayPiecesFor(page: SchedulePageModel) {
   return piecesFor(page).filter((piece) => piece.block.day === page.day);
 }
+
+// 同一时段排了两门课：多半是教务数据有误，第一次看到时提醒一下，同一处只提醒一次。
+let overlapNoticeOpen = false;
+watch(() => {
+  const page = carouselPages.value.find((item) => item.delta === 0);
+  return !loading.value && page ? findOverlapNotice(piecesFor(page)) : null;
+}, (notice) => {
+  if (!notice || overlapNoticeOpen || !semester.value) return;
+  const key = overlapNoticeKey(semester.value, notice);
+  if (overlapNoticeSeen(key)) return;
+  overlapNoticeOpen = true;
+  rememberOverlapNotice(key);
+  void ElMessageBox.alert(overlapNoticeText(notice), "同一时间排了两门课", {
+    confirmButtonText: "知道了",
+    appendTo: document.body,
+  }).catch(() => undefined).finally(() => { overlapNoticeOpen = false; });
+}, { immediate: true });
 
 function pageDate(page: WeekPage, day = page.day) {
   const days = normalizeCalendarWeekDays(weekInfoFor(page.weekValue)?.days ?? []);

@@ -55,7 +55,17 @@ export function chineseNumeral(value: number) {
 /** 教室名里可能已经带着开头的「@」，卡片上自己会加。 */
 export function cleanLocation(raw: string | null | undefined) {
   const value = String(raw ?? "").trim().replace(/^[@＠\s]+/u, "").trim();
-  return value || null;
+  return classroomOnly(value) || null;
+}
+
+/**
+ * 理论课都在教学楼上，教室号本身就带楼栋（A–E）：「教学楼A102」只显示「A102」，课表格子里
+ * 省下三个字。别的地点（实验楼、体育馆、教学楼后面不是楼栋加房号的）原样显示。
+ * 只改显示，课程数据不动：隐藏和编辑记录是按原始地点认课的。
+ */
+export function classroomOnly(value: string) {
+  const location = value.trim();
+  return location.replace(/^教学楼\s*(?=[A-Ea-e]\s*[-－]?\s*\d)/u, "") || location;
 }
 
 /**

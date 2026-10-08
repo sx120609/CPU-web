@@ -28,6 +28,9 @@ object DebugScheduleFixture {
     /** The shared timetable to open at launch (`--ez debugShared true`). */
     var openSharedCode: String? = null
         private set
+    /** The fixture has two courses in one period on purpose; its screenshots stay free of the notice unless asked for. */
+    var suppressesOverlapNotice = false
+        private set
     private var sheet = ""
     private var published = false
     private var coupleState = "none"
@@ -71,6 +74,7 @@ object DebugScheduleFixture {
             activity.schedule.setPriorities(SEMESTER, names.mapIndexed { index, name -> name to names.size - index }.toMap())
         }
         published = intent.getBooleanExtra("debugPublished", false)
+        suppressesOverlapNotice = !intent.getBooleanExtra("debugOverlapNotice", false)
         coupleState = intent.getStringExtra("debugCouple")?.takeIf { it == "active" || it == "pending" } ?: "none"
         // "debugCoupleColors teal,amber": the user's colour, then the partner's.
         intent.getStringExtra("debugCoupleColors")?.split(',')?.takeIf { it.size == 2 }?.let { (mine, theirs) ->

@@ -7,6 +7,8 @@ import {
   topSchedulePriority,
   withCoursePreferred,
 } from "../src/views/schedule/displayPriority";
+import { findOverlapNotice, overlapNoticeKey, overlapNoticeText } from "../src/views/schedule/overlapNotice";
+import { classroomOnly, cleanLocation } from "../src/views/schedule/nowIndicator";
 import type { WeekCourseBlock } from "../src/views/schedule/types";
 
 // The same cases as ios_next/tests/NativeSchedulePriorityChecks.swift, so the
@@ -67,4 +69,30 @@ test("the editor switch puts a course in front of every ranked one and removes i
   // Tied for first: moved in front.
   assert.deepEqual(withCoursePreferred({ 甲: 3, 乙: 3 }, "乙", true), { 甲: 3, 乙: 4 });
   assert.deepEqual(withCoursePreferred({ 甲: 2, 乙: 3 }, "乙", false), { 甲: 2 });
+});
+
+test("two of the user's own courses in the same periods are pointed out once", () => {
+  const week = [block("药理学", 1, 2, 1), block("体育（羽毛球）", 1, 2, 3), block("生物化学", 1, 2, 3), block("药物分析", 5, 6, 4)];
+  const notice = findOverlapNotice(placeCourseBlocks(week));
+  assert.deepEqual(notice, { day: 3, startSlot: 1, endSlot: 2, names: ["体育（羽毛球）", "生物化学"] });
+  assert.equal(overlapNoticeKey("2026-2027-1", notice!), "2026-2027-1|3|体育（羽毛球）/生物化学");
+  assert.match(overlapNoticeText(notice!), /^周三第 1–2 节同时排了 「体育（羽毛球）」、「生物化学」。这通常是教务系统的数据有误/u);
+  // A course set to show first covers the other: the user has dealt with it, nothing to point out.
+  assert.equal(findOverlapNotice(placeCourseBlocks(week, { 生物化学: 1 })), null);
+  assert.equal(findOverlapNotice(placeCourseBlocks([block("药理学", 1, 2), block("药物分析", 3, 4)])), null);
+  // The same course listed twice in the same periods is not two courses.
+  assert.equal(findOverlapNotice(placeCourseBlocks([block("药理学", 1, 2), block("药理学", 1, 2)])), null);
+});
+
+test("a classroom in the teaching building shows only its room number", () => {
+  assert.equal(classroomOnly("教学楼A102"), "A102");
+  assert.equal(classroomOnly(" 教学楼 E-305 "), "E-305");
+  assert.equal(cleanLocation("@教学楼b201"), "b201");
+  // Anything else is shown as the academic system wrote it.
+  assert.equal(classroomOnly("实验楼B203"), "实验楼B203");
+  assert.equal(classroomOnly("教学楼报告厅"), "教学楼报告厅");
+  assert.equal(classroomOnly("教学楼F101"), "教学楼F101");
+  assert.equal(classroomOnly("教学楼"), "教学楼");
+  assert.equal(classroomOnly("A102"), "A102");
+  assert.equal(cleanLocation(""), null);
 });

@@ -177,7 +177,7 @@ export struct NativeScheduleBody {
                   .maxLines(block.endSlot === block.startSlot ? 1 : block.endSlot - block.startSlot < 2 ? 3 : 4)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 if (block.course.location) {
-                  Text('@' + block.course.location).fontSize(this.fs(this.metrics().locationSize)).fontWeight(600)
+                  Text('@' + scheduleCleanLocation(block.course.location)).fontSize(this.fs(this.metrics().locationSize)).fontWeight(600)
                     .minFontSize(this.fs(this.metrics().locationSize)).maxFontSize(this.fs(this.metrics().locationSize)).heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
                     .fontColor(this.cardText(block)).width('100%').textAlign(TextAlign.Center)
                     .maxLines(block.endSlot === block.startSlot ? 1 : 2).textOverflow({ overflow: TextOverflow.Ellipsis }).opacity(0.94)
@@ -253,7 +253,7 @@ export struct NativeScheduleBody {
               Text(block.course.name).fontSize(block.endSlot === block.startSlot ? 14 : 17).fontWeight(FontWeight.Bold)
                 .fontColor(this.cardText(block)).width('100%')
                 .maxLines(block.endSlot === block.startSlot ? 1 : block.endSlot - block.startSlot < 2 ? 2 : 3).textOverflow({ overflow: TextOverflow.Ellipsis })
-              Text([block.course.location ? '@' + block.course.location : '', block.course.teacher].filter((value: string | undefined) => !!value).join(' · ') || '地点待确认')
+              Text([block.course.location ? '@' + scheduleCleanLocation(block.course.location) : '', block.course.teacher].filter((value: string | undefined) => !!value).join(' · ') || '地点待确认')
                 .fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.cardText(block)).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
               if (block.endSlot > block.startSlot) {
                 Text((block.course.slotNote || `第 ${block.startSlot}–${block.endSlot} 节`) + this.timeRangeSuffix(block)).fontSize(11)

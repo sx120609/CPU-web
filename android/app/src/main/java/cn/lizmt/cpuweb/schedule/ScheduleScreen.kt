@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -185,6 +186,32 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         }
     }
     val now = if (style.showNowIndicator) DebugScheduleFixture.pinnedNow ?: minute else null
+
+    // Two of the user's own courses in the same periods: say so once, see [OverlapNotice].
+    var overlap by remember { mutableStateOf<OverlapNotice?>(null) }
+    if (!store.readOnly) {
+        val found = remember(store.selectedSemester, store.selectedWeek, store.dataRevision, store.result, store.displayPriorities) {
+            if (store.result == null) null else OverlapNotice.find((1..7).flatMap { store.placedBlocksForDay(it) })
+        }
+        LaunchedEffect(found) {
+            val notice = found ?: return@LaunchedEffect
+            if (DebugScheduleFixture.suppressesOverlapNotice || sheet != null) return@LaunchedEffect
+            val seen = activity.getSharedPreferences("native_schedule_notices", android.content.Context.MODE_PRIVATE)
+            val key = notice.key(store.selectedSemester)
+            val known = seen.getStringSet("overlap", emptySet()).orEmpty()
+            if (key in known) return@LaunchedEffect
+            seen.edit().putStringSet("overlap", (known + key).toList().takeLast(40).toSet()).apply()
+            overlap = notice
+        }
+    }
+    overlap?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { overlap = null },
+            title = { Text("同一时间排了两门课") },
+            text = { Text(notice.text) },
+            confirmButton = { TextButton(onClick = { overlap = null }) { Text("知道了") } },
+        )
+    }
 
     // The couple timetable belongs to the user's own grid; a shared timetable shows one person only.
     val couple = activity.couple.takeIf { !store.readOnly }
@@ -1035,7 +1062,7 @@ private fun WeekGrid(
                                     )
                                     if (!block.course.location.isNullOrEmpty() && block.span > 1 && !narrow) {
                                         Spacer(Modifier.height(gap))
-                                        Text(block.course.location.orEmpty(), fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
+                                        Text(ScheduleStyleTime.classroomOnly(block.course.location.orEmpty()), fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
                                             color = ink.copy(alpha = 0.86f), textAlign = TextAlign.Center,
                                             maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     }
@@ -1128,7 +1155,7 @@ private fun DayTimeline(
                 val span = block.span
                 val laneWidth = columnWidth / block.lanes
                 val narrow = block.lanes > 1
-                val meta = listOfNotNull(block.course.location?.let { "@$it" }, block.course.teacher).joinToString(" · ")
+                val meta = listOfNotNull(block.course.location?.let { "@" + ScheduleStyleTime.classroomOnly(it) }, block.course.teacher).joinToString(" · ")
                 val couple = context.couple?.tint(block, colors.dark)
                 val ink = Color(couple?.text ?: tone.text)
                 val theirs = block.owner == CoupleOwner.Partner

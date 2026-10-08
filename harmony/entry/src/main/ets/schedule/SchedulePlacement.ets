@@ -120,3 +120,48 @@ export function overlappingCourseNames(block: NativeCourseBlock, blocks: NativeC
   });
   return names;
 }
+
+/**
+ * Two of the user's own courses in the same periods. That is usually wrong data from the academic
+ * system (a cancelled course still listed, the old row of a moved one), so the first time it shows
+ * the user is told: check the academic system first, then edit or delete here.
+ */
+export interface ScheduleOverlapNotice {
+  day: number;
+  startSlot: number;
+  endSlot: number;
+  names: string[];
+}
+
+/**
+ * The first place in a week where courses sit side by side. A course set to show first covers the
+ * other one: the user has dealt with that, so it is not pointed out.
+ */
+export function findScheduleOverlap(week: PlacedCourseBlock[]): ScheduleOverlapNotice | undefined {
+  const side = week.filter((piece: PlacedCourseBlock) => piece.lanes > 1 && !piece.offWeek)
+    .sort((left: PlacedCourseBlock, right: PlacedCourseBlock) => left.day - right.day || left.startSlot - right.startSlot || left.lane - right.lane);
+  if (!side.length) return undefined;
+  const first = side[0];
+  // The cluster of that day that the first course belongs to.
+  const names: string[] = [];
+  let end = first.endSlot;
+  side.forEach((piece: PlacedCourseBlock) => {
+    if (piece.day !== first.day || piece.startSlot > end) return;
+    if (!names.includes(piece.course.name)) names.push(piece.course.name);
+    end = Math.max(end, piece.endSlot);
+  });
+  return names.length < 2 ? undefined : { day: first.day, startSlot: first.startSlot, endSlot: end, names };
+}
+
+/** The same overlap is pointed out once: same term, weekday and course names. */
+export function scheduleOverlapKey(semester: string, notice: ScheduleOverlapNotice): string {
+  return `${semester}|${notice.day}|${notice.names.slice().sort().join('/')}`;
+}
+
+export function scheduleOverlapText(notice: ScheduleOverlapNotice): string {
+  const weekdays: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const slots = notice.startSlot === notice.endSlot ? `第 ${notice.startSlot} 节` : `第 ${notice.startSlot}–${notice.endSlot} 节`;
+  const listed = notice.names.slice(0, 3).map((name: string) => `「${name}」`).join('、') + (notice.names.length > 3 ? ' 等' : '');
+  return `${weekdays[notice.day - 1] ?? ''}${slots}同时排了 ${listed}。这通常是教务系统的数据有误，建议先到教务系统核对原始课表；`
+    + '确认哪一门不该在这里以后，点这门课就可以编辑或删除。';
+}

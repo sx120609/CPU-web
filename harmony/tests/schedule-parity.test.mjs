@@ -126,7 +126,7 @@ test('"now" rests on a period, in a break, or nowhere outside the day', () => {
   assert.equal(style.scheduleTodayDate(Date.UTC(2026, 9, 6, 16, 30)), '2026-10-07');
   assert.deepEqual(['08:00', '12:00', '18:30', ''].map(style.scheduleSession), ['上午', '下午', '晚上', '课程']);
   assert.deepEqual([1, 10, 12, 20, 21].map(style.scheduleNumeral), ['一', '十', '十二', '二十', '二十一']);
-  assert.equal(style.scheduleCleanLocation(' @教学楼A101 '), '教学楼A101');
+  assert.equal(style.scheduleCleanLocation(' @实验楼A101 '), '实验楼A101');
   assert.equal(style.scheduleSlotText(9, 9), '第 9 节');
   assert.equal(style.scheduleSlotText(5, 6), '第 5–6 节');
 });
@@ -538,4 +538,30 @@ test('the couple status line and the binding read like the Web', () => {
   assert.deepEqual(plain(active), { kind: 'active', code: '', expired: false, anniversary: '',
     me: { nickname: '阿青', color: 'teal', syncedAt: '' }, partner: { nickname: '小鹿', color: 'blue', syncedAt: '2026-10-08T01:30:00.000Z' } });
   assert.match(couple.coupleInvitation('K7M2QX', 'https://cputime.cn/'), /https:\/\/cputime\.cn\/schedule\?couple=1&code=K7M2QX/);
+});
+
+test('a classroom in the teaching building shows only its room number', () => {
+  assert.equal(style.scheduleClassroomOnly('教学楼A102'), 'A102');
+  assert.equal(style.scheduleClassroomOnly(' 教学楼 E-305 '), 'E-305');
+  assert.equal(style.scheduleCleanLocation('@教学楼b201'), 'b201');
+  // Anything else is shown as the academic system wrote it.
+  assert.equal(style.scheduleClassroomOnly('实验楼B203'), '实验楼B203');
+  assert.equal(style.scheduleClassroomOnly('教学楼报告厅'), '教学楼报告厅');
+  assert.equal(style.scheduleClassroomOnly('教学楼F101'), '教学楼F101');
+  assert.equal(style.scheduleClassroomOnly('教学楼'), '教学楼');
+  assert.equal(style.scheduleCleanLocation(''), '');
+});
+
+test('two of the user\'s own courses in the same periods are pointed out once', () => {
+  const week = [block('药理学', 1, 2, 1), block('体育（羽毛球）', 1, 2, 3), block('生物化学', 1, 2, 3), block('药物分析', 5, 6, 4)];
+  const placed = priorities => [1, 2, 3, 4, 5, 6, 7].flatMap(day => placement.placeScheduleBlocks(week.filter(item => item.day === day), priorities));
+  const notice = placement.findScheduleOverlap(placed({}));
+  assert.deepEqual(plain(notice), { day: 3, startSlot: 1, endSlot: 2, names: ['体育（羽毛球）', '生物化学'] });
+  assert.equal(placement.scheduleOverlapKey('2026-2027-1', notice), '2026-2027-1|3|体育（羽毛球）/生物化学');
+  assert.match(placement.scheduleOverlapText(notice), /^周三第 1–2 节同时排了 「体育（羽毛球）」、「生物化学」。这通常是教务系统的数据有误/);
+  // A course set to show first covers the other: the user has dealt with it.
+  assert.equal(placement.findScheduleOverlap(placed({ 生物化学: 1 })), undefined);
+  assert.equal(placement.findScheduleOverlap(placement.placeScheduleBlocks([block('药理学', 1, 2), block('药物分析', 3, 4)], {})), undefined);
+  // The same course listed twice in the same periods is not two courses.
+  assert.equal(placement.findScheduleOverlap(placement.placeScheduleBlocks([block('药理学', 1, 2), block('药理学', 1, 2)], {})), undefined);
 });
