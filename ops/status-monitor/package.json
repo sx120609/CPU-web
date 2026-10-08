@@ -11,5 +11,11 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "0.0.18"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

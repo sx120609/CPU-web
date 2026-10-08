@@ -112,8 +112,8 @@ test("the page escapes everything it prints and matches its own content security
   assert.match(html, /<p class="reason">HTTP 502 · 10月8日 14:29 起<\/p>/u);
   assert.match(html, /<span class="tag">进行中<\/span>/u);
   assert.match(html, /更新于 10月8日 14:31:05/u);
-  assert.equal(html.match(/<i class="b /gu).length, 3 * 90);
-  assert.match(html, /data-tip="10月8日 · 可用率 0\.00%，3 次探测失败"/u);
+  assert.equal(html.match(/<i class="b /gu).length, 3 * (1 + 1));
+  assert.match(html, /data-tip="10月8日 · 可用率 0\.00%，3 次探测失败 · 3 次采样"/u);
   assert.doesNotMatch(html, / style="/u);
 
   const server = createStatusServer({ config, state, monitor: { revision: () => 1 }, logger: { error: () => {} }, now: () => NOW });

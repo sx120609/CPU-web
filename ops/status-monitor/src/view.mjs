@@ -1,5 +1,6 @@
 import { HISTORY_DAYS } from "./state.mjs";
 import { daysUntil, recentDayKeys } from "./time.mjs";
+import { buildHistory } from './history-view.mjs';
 
 const INCIDENT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_INCIDENTS_SHOWN = 20;
@@ -60,10 +61,11 @@ function describeOverall(checks) {
 
 // 状态页和 /api/status 共用的数据视图。只包含可以公开的内容，不带探测地址。
 export function buildView(state, config, now) {
+  const history = buildHistory(state, config, now);
   const dayKeys = recentDayKeys(now, config.timezone, HISTORY_DAYS);
   const groups = config.groups.map((group) => ({
     name: group.name,
-    checks: group.checks.map((check) => describeCheck(check, state.checks[check.id], dayKeys, now)),
+    checks: group.checks.map((check) => ({ ...describeCheck(check, state.checks[check.id], dayKeys, now), history: history.checks[check.id] })),
   }));
   const checks = groups.flatMap((group) => group.checks);
   const sampleTimes = config.checks.map((check) => state.checks[check.id]?.lastSampleAt ?? 0);
@@ -76,6 +78,7 @@ export function buildView(state, config, now) {
     siteUrl: config.siteUrl,
     timezone: config.timezone,
     historyDays: HISTORY_DAYS,
+    historyAxis: { granularity: history.granularity, start: history.start, end: history.end },
     intervalSeconds: Math.min(...config.checks.map((check) => check.intervalSeconds)),
     updatedAt: Math.max(...sampleTimes) || null,
     release: state.release?.value ?? null,

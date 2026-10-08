@@ -1,0 +1,172 @@
+// Public configuration; 4s request deadline approved for EO.
+export default {
+  "title": "药大拾间服务状态",
+  "siteName": "药大拾间",
+  "siteUrl": "https://cputime.cn",
+  "publicUrl": "https://status.cputime.cn",
+  "timezone": "Asia/Shanghai",
+  "listen": {
+    "host": "127.0.0.1",
+    "port": 8787
+  },
+  "dataDir": "data",
+  "corsOrigins": [
+    "https://cputime.cn"
+  ],
+  "defaults": {
+    "intervalSeconds": 60,
+    "timeoutMs": 4000,
+    "slowMs": 3000,
+    "failureThreshold": 2,
+    "retryDelayMs": 3000
+  },
+  "connectivity": {
+    "urls": [
+      "https://www.baidu.com/",
+      "https://www.qq.com/"
+    ]
+  },
+  "certificate": {
+    "warnDays": 14
+  },
+  "groups": [
+    {
+      "name": "主站",
+      "checks": [
+        {
+          "id": "web",
+          "name": "网站首页",
+          "url": "https://cputime.cn/",
+          "critical": true,
+          "expect": {
+            "contains": "id=\"app\""
+          }
+        },
+        {
+          "id": "assets",
+          "name": "页面资源",
+          "description": "首页引用的脚本和样式",
+          "type": "assets",
+          "url": "https://cputime.cn/"
+        },
+        {
+          "id": "api",
+          "name": "接口服务",
+          "url": "https://cputime.cn/api/health",
+          "critical": true,
+          "expect": {
+            "json": {
+              "data.ok": true
+            }
+          }
+        },
+        {
+          "id": "ready",
+          "name": "数据服务",
+          "description": "数据库、缓存和教务网关",
+          "url": "https://cputime.cn/api/ready",
+          "critical": true,
+          "expect": {
+            "status": [
+              200,
+              503
+            ],
+            "json": {
+              "data.ready": true
+            }
+          },
+          "failureText": "就绪检查未通过",
+          "versionFrom": "data.commit"
+        },
+        {
+          "id": "forum",
+          "name": "论坛",
+          "url": "https://cputime.cn/api/boards",
+          "expect": {
+            "json": {
+              "code": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "子系统",
+      "checks": [
+        {
+          "id": "jwxt-agent",
+          "name": "教务 Agent",
+          "description": "校园网内的教务节点",
+          "url": "https://cputime.cn/api/ready",
+          "expect": {
+            "status": [
+              200,
+              503
+            ],
+            "jsonMin": {
+              "data.jwxtAgents.online": 1
+            }
+          },
+          "failureText": "教务节点全部离线",
+          "degraded": {
+            "jsonMin": {
+              "data.jwxtAgents.online": 2
+            },
+            "text": "部分节点离线"
+          },
+          "detail": "在线 {data.jwxtAgents.online}/{data.jwxtAgents.total} 台"
+        },
+        {
+          "id": "voicehub",
+          "name": "药苑之声",
+          "url": "https://cputime.cn/voicehub/",
+          "expect": {
+            "contains": "药苑之声"
+          }
+        },
+        {
+          "id": "qqbot",
+          "name": "QQ 机器人",
+          "url": "https://cputime.cn/api/ready",
+          "expect": {
+            "status": [
+              200,
+              503
+            ],
+            "json": {
+              "data.qqbot.connected": true
+            }
+          },
+          "failureText": "机器人未连接"
+        }
+      ]
+    },
+    {
+      "name": "其他入口",
+      "checks": [
+        {
+          "id": "www",
+          "name": "www.cputime.cn",
+          "url": "https://www.cputime.cn/api/health",
+          "expect": {
+            "json": {
+              "data.ok": true
+            }
+          }
+        },
+        {
+          "id": "legacy",
+          "name": "cpu.lizmt.cn",
+          "description": "旧域名",
+          "url": "https://cpu.lizmt.cn/api/health",
+          "expect": {
+            "json": {
+              "data.ok": true
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "notify": []
+};
