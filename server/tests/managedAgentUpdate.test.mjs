@@ -4,12 +4,32 @@ import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } 
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { updateManagedAgent, validateManagedConfig } from '../../ops/deploy/managed-agent-update.mjs'
+import { confirmReady, updateManagedAgent, validateManagedConfig } from '../../ops/deploy/managed-agent-update.mjs'
 import { createArtifactManifest } from '../../ops/deploy/artifact-manifest.mjs'
 
 // Directory symlinks are required by the production updater; exercise it on Linux CI.
 const skip = process.platform === 'win32'
 const commit = 'a'.repeat(40), oldCommit = 'b'.repeat(40)
+
+test('registration waits for journalctl grep to find the new process handshake', async () => {
+  let attempts = 0
+  await confirmReady({ service: 'jwxt-agent-test.service' }, async (command, args) => {
+    if (command === 'journalctl') {
+      assert.ok(args.includes('_PID=123'))
+      if (++attempts === 1) throw Object.assign(new Error('no matching entry'), { code: 1, stderr: '' })
+      return '[jwxt-agent] 已注册上线: 校内 Agent'
+    }
+    return args[0] === 'is-active' ? 'active' : '123'
+  })
+  assert.equal(attempts, 2)
+})
+
+test('registration does not hide journalctl access or invocation errors', async () => {
+  await assert.rejects(confirmReady({ service: 'jwxt-agent-test.service' }, async (command, args) => {
+    if (command === 'journalctl') throw Object.assign(new Error('journal unavailable'), { code: 1, stderr: 'Permission denied' })
+    return args[0] === 'is-active' ? 'active' : '123'
+  }), /journal unavailable/)
+})
 
 async function fixture(t, options = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'managed-agent-test-'))

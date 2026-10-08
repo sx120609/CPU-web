@@ -45,7 +45,7 @@ async function resolveCommit() {
   return assertCommit(JSON.parse(text).sha)
 }
 
-async function confirmReady(config, command) {
+export async function confirmReady(config, command) {
   const pid = await command('systemctl', ['show', config.service, '--property=MainPID', '--value'])
   if (!/^[1-9]\d*$/.test(pid)) throw new Error('Agent did not start')
   const deadline = Date.now() + 90_000
@@ -54,8 +54,15 @@ async function confirmReady(config, command) {
     if (active !== 'active') throw new Error('Agent service is not active')
     const currentPid = await command('systemctl', ['show', config.service, '--property=MainPID', '--value'])
     if (currentPid !== pid) throw new Error('Agent restarted before registering')
-    const logs = await command('journalctl', ['--unit', config.service, `_PID=${pid}`,
-      '--grep=\\[jwxt-agent\\] 已注册上线:', '--lines=1', '--output=cat', '--no-pager'])
+    let logs = ''
+    try {
+      logs = await command('journalctl', ['--unit', config.service, `_PID=${pid}`,
+        '--grep=\\[jwxt-agent\\] 已注册上线:', '--lines=1', '--output=cat', '--no-pager'])
+    } catch (error) {
+      // journalctl --grep exits 1 when no matching entry exists yet. The
+      // process can be healthy while its registration handshake is pending.
+      if (error.code !== 1 || (error.stderr || '').trim()) throw error
+    }
     if (logs.includes('[jwxt-agent] 已注册上线:')) return
     await pause(1_000)
   } while (Date.now() < deadline)
