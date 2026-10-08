@@ -545,4 +545,12 @@ function scoreColor(s: string) {
 @container progress-pane (max-width: 801px) {
   @include progress-cards;
 }
+
+// iPadOS 15 (still served by the legacy iOS app) has no container queries, and a compact iPad at
+// 820/834 px is wider than the 760 px fallback, so give it the cards from the layout decision instead.
+@supports not (container-type: inline-size) {
+  :where(html[data-cpu-layout="compact"]) {
+    @include progress-cards;
+  }
+}
 </style>
