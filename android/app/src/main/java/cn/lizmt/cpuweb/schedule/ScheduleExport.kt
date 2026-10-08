@@ -21,7 +21,7 @@ object ScheduleExport {
             lines += "${WEEKDAY_LABELS[day - 1]} ${store.dayDate(day)}".trim()
             blocks.forEach { block ->
                 lines += "${store.periodTime(block.startSlot).startTime}–${store.periodTime(block.endSlot).endTime} ${block.course.name}"
-                block.course.location?.let { lines += it }
+                ScheduleStyleTime.location(block.course.location)?.let { lines += it }
             }
         }
         return lines.joinToString("\n")
@@ -45,7 +45,7 @@ object ScheduleExport {
                     "DTSTART:${utcDate(date, start)}",
                     "DTEND:${utcDate(date, end)}",
                     "SUMMARY:${escape(block.course.name)}",
-                    "LOCATION:${escape(block.course.location.orEmpty())}",
+                    "LOCATION:${escape(ScheduleStyleTime.location(block.course.location).orEmpty())}",
                     "DESCRIPTION:${escape(block.course.teacher.orEmpty())}",
                     "END:VEVENT",
                 )

@@ -1,4 +1,5 @@
 import { NativeScheduleStore, NativeCourseBlock } from './NativeScheduleStore';
+import { scheduleCleanLocation } from './ScheduleStyle';
 
 const DAYS: string[] = ['周一','周二','周三','周四','周五','周六','周日'];
 
@@ -10,7 +11,7 @@ export function scheduleText(store: NativeScheduleStore): string {
     lines.push('', `${DAYS[day - 1]} ${store.dayDate(day)}`);
     blocks.forEach((block: NativeCourseBlock) => {
       lines.push(`${store.slotStart(block.startSlot)}–${store.slotEnd(block.endSlot)} ${block.course.name}`);
-      if (block.course.location) lines.push(block.course.location);
+      if (scheduleCleanLocation(block.course.location)) lines.push(scheduleCleanLocation(block.course.location));
     });
   }
   return lines.join('\n');
@@ -50,7 +51,7 @@ export function scheduleCalendar(store: NativeScheduleStore): string {
       if (!date || !start || !end) throw new Error('课程日期或节次不完整，无法安全导出');
       lines.push('BEGIN:VEVENT', `UID:${date}-${day}-${block.startSlot}-${index}@harmony.cputime.cn`,
         `DTSTAMP:${stamp}`, `DTSTART:${utcDate(date, start)}`, `DTEND:${utcDate(date, end)}`,
-        `SUMMARY:${escapeText(block.course.name)}`, `LOCATION:${escapeText(block.course.location || '')}`,
+        `SUMMARY:${escapeText(block.course.name)}`, `LOCATION:${escapeText(scheduleCleanLocation(block.course.location))}`,
         `DESCRIPTION:${escapeText(block.course.teacher || '')}`, 'END:VEVENT');
     });
   }

@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { loadScheduleWidgetData } from "./scheduleWidgetData";
+import { classroomOnly } from "../shared/classroom";
 
 export type WechatScheduleQuery = {
   scope: "day" | "week";
@@ -205,7 +206,7 @@ function appendDaySchedule(lines: string[], day: any, teachingWeekActive: unknow
 function appendCourse(lines: string[], course: any) {
   const time = [course.startTime, course.endTime].filter(Boolean).join("-") || `第 ${course.startSlot || "?"}-${course.endSlot || "?"} 节`;
   lines.push(`· ${time}  ${String(course.name || "未命名课程").trim()}`);
-  const detail = [course.location ? `地点：${course.location}` : "", course.teacher ? `教师：${course.teacher}` : ""].filter(Boolean).join("  ");
+  const detail = [course.location ? `地点：${classroomOnly(course.location)}` : "", course.teacher ? `教师：${course.teacher}` : ""].filter(Boolean).join("  ");
   if (detail) lines.push(`  ${detail}`);
 }
 

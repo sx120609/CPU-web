@@ -390,7 +390,7 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
     title: [
       owner === "ta" ? `TA · ${piece.block.course.name}` : piece.block.course.name,
       piece.block.course.teacher ? `教师：${piece.block.course.teacher}` : "",
-      piece.block.course.location ? `地点：${piece.block.course.location}` : "",
+      piece.block.course.location ? `地点：${cleanLocation(piece.block.course.location)}` : "",
       piece.block.course.weeks,
     ].filter(Boolean).join("\n"),
     style: {

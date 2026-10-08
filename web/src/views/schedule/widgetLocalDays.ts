@@ -1,5 +1,6 @@
 import { watch } from "vue";
 import { dayOfWeekForCalendarYmd, normalizeCalendarWeekDays } from "./calendar";
+import { classroomOnly } from "./nowIndicator";
 import { smallSlots } from "./slots";
 import type { CalendarResult, WeekCourseBlock } from "./types";
 
@@ -114,7 +115,7 @@ export function buildScheduleWidgetLocalRecord(input: ScheduleWidgetLocalInput):
             return {
               name: course.name,
               teacher: trimmed(course.teacher),
-              location: trimmed(course.location),
+              location: classroomOnly(trimmed(course.location) ?? "") || trimmed(course.location),
               // 和服务端一样：先节次备注，没有就写上课周次。
               note: slotNote ?? trimmed(course.weeks),
               slotNote,

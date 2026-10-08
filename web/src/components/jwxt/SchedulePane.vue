@@ -158,7 +158,7 @@
                   @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                 >
                   <strong>{{ block.course.name }}</strong>
-                  <span v-if="block.course.location">@{{ block.course.location }}</span>
+                  <span v-if="block.course.location">@{{ classroomOnly(block.course.location) }}</span>
                   <em>{{ block.course.slotNote || block.course.weeks }}</em>
                 </article>
               </div>
@@ -190,7 +190,7 @@
                   >
                     <div class="day-course-name">{{ block.course.name }}</div>
                     <div class="day-course-meta" :class="{ 'day-course-meta--without-location': !block.course.location }">
-                      <span v-if="block.course.location" class="day-course-location">@{{ block.course.location }}</span>
+                      <span v-if="block.course.location" class="day-course-location">@{{ classroomOnly(block.course.location) }}</span>
                       <span v-if="block.course.teacher" class="day-course-teacher">{{ block.course.teacher }}</span>
                     </div>
                     <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
@@ -380,6 +380,7 @@ import {
 } from "@/utils/scheduleEdits";
 import { courseMatchesWeek, normalizedCourseWeekList } from "@/utils/scheduleWeeks";
 import { smallSlots, MAX_SMALL_SLOT } from "@/views/schedule/slots";
+import { classroomOnly } from "@/views/schedule/nowIndicator";
 import { deleteCourseEdit, isOriginalCourseEditUnchanged, saveCustomCourseEdit } from "@/views/schedule/courseEditor";
 import {
   claimOfficialScheduleChangeNotice,
@@ -1554,7 +1555,7 @@ function courseTitle(course: ScheduleCourse) {
     course.name,
     scheduleCourseEditLabel(course),
     course.teacher ? `教师：${course.teacher}` : "",
-    course.location ? `地点：${course.location}` : "",
+    course.location ? `地点：${classroomOnly(course.location)}` : "",
     course.weeks,
     course.slotNote,
   ].filter(Boolean).join("\n");

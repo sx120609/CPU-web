@@ -13,6 +13,7 @@ import {
   shortDate,
   todayKey,
 } from "./calendar";
+import { classroomOnly } from "./nowIndicator";
 import { mergeContinuousCourseBlocks, normalizeSlotRange, normalizeSlotRangeForTablePosition } from "./slots";
 import type {
   CalendarResult,
@@ -256,7 +257,7 @@ export function courseTitle(course: ScheduleCourse) {
     course.name,
     scheduleCourseEditLabel(course),
     course.teacher ? `教师：${course.teacher}` : "",
-    course.location ? `地点：${course.location}` : "",
+    course.location ? `地点：${classroomOnly(course.location)}` : "",
     course.weeks,
     course.slotNote,
   ].filter(Boolean).join("\n");

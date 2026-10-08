@@ -1,6 +1,7 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { courseMatchesWeek, normalizedCourseWeekList } from "../shared/scheduleWeeks";
 import { adjustmentForDate, type ScheduleAdjustmentLike } from "../shared/scheduleAdjustments";
+import { classroomOnly } from "../shared/classroom";
 export { parseWeekText as parseScheduleWidgetWeeks } from "../shared/scheduleWeeks";
 
 export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 11;
@@ -284,7 +285,7 @@ function coursesForWeek(
           endTime: SMALL_SLOTS[range.end - 1]?.end ?? "",
           name: String(course.name || ""),
           teacher: course.teacher || "",
-          location: course.location || "",
+          location: classroomOnly(course.location),
           note: course.slotNote || course.weeks || "",
           custom: Boolean(course.custom),
         });

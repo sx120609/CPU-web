@@ -1,6 +1,6 @@
 // 把一周的课导出成 `.ics` 日历文件。用的是课表已经按日期解析好的课程，
 // 所以放假那天什么都不导出，补班那天导出它实际上的课（iOS 见 ScheduleICSExport.swift）。
-import { clockMinutes, type SlotClock } from "./nowIndicator";
+import { classroomOnly, clockMinutes, type SlotClock } from "./nowIndicator";
 import type { WeekCourseBlock } from "./types";
 
 export interface IcsDay {
@@ -77,7 +77,7 @@ export function buildWeekIcs(input: { week: number; days: IcsDay[]; clocks: Slot
       lines.push(`DTSTART;TZID=${TIME_ZONE}:${start.text}`);
       lines.push(`DTEND;TZID=${TIME_ZONE}:${end.text}`);
       lines.push(`SUMMARY:${escapeText(trimmed(course.name) ?? "课程")}`);
-      const location = trimmed(course.location);
+      const location = classroomOnly(trimmed(course.location) ?? "");
       if (location) lines.push(`LOCATION:${escapeText(location)}`);
       const details = [trimmed(course.teacher), trimmed(course.slotNote)].filter(Boolean).join(" · ");
       if (details) lines.push(`DESCRIPTION:${escapeText(details)}`);

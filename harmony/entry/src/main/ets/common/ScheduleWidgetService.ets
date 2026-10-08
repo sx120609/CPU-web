@@ -23,6 +23,7 @@ import {
   widgetThemeAccent
 } from './ScheduleWidgetPalette';
 import { NativeScheduleSnapshot } from '../schedule/NativeScheduleStore';
+import { scheduleClassroomOnly } from '../schedule/ScheduleStyle';
 import { LocalScheduleBlocks, LocalScheduleRecord, localScheduleRecord } from '../schedule/NativeWidgetLocalSchedule';
 
 const PREFERENCES_NAME = 'schedule_widget';
@@ -605,7 +606,7 @@ function courseRows(source: ScheduleCourse[], current: number, theme: string): W
   return source.map((course: ScheduleCourse): WidgetCourseRow => {
     const start = normalizedText(course.startTime) || '--:--';
     const end = normalizedText(course.endTime);
-    const metadata = [course.location, course.teacher, course.note || course.slotNote]
+    const metadata = [scheduleClassroomOnly(course.location ?? ''), course.teacher, course.note || course.slotNote]
       .map((value: string | undefined) => normalizedText(value))
       .filter((value: string) => value.length > 0)
       .join(' · ');

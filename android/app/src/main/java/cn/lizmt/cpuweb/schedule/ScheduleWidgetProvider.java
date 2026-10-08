@@ -405,7 +405,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         for (JSONObject course : selected) {
             if (options.showCourseName) text.append("，").append(ScheduleWidgetJson.text(course, "name", ""));
             if (options.showTime) text.append(" ").append(timeRange(course));
-            if (options.showRoom) text.append(" ").append(ScheduleWidgetJson.text(course, "location", ""));
+            if (options.showRoom) text.append(" ").append(room(course));
             if (options.showTeacher) text.append(" ").append(ScheduleWidgetJson.text(course, "teacher", ""));
         }
         return text.toString();
@@ -794,10 +794,15 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         return time.isEmpty() ? name : time + " " + name;
     }
 
+    /** The room as the timetable shows it: "教学楼A102" is "A102". */
+    private static String room(JSONObject course) {
+        return ScheduleStyleTime.INSTANCE.classroomOnly(ScheduleWidgetJson.text(course, "location", ""));
+    }
+
     private static String courseMetaLine(JSONObject course) {
         if (course == null) return "";
         List<String> parts = new ArrayList<>();
-        String location = ScheduleWidgetJson.text(course, "location", "");
+        String location = room(course);
         String teacher = ScheduleWidgetJson.text(course, "teacher", "");
         String note = ScheduleWidgetJson.text(course, "note", ScheduleWidgetJson.text(course, "slotNote", ""));
         if (!location.isEmpty()) parts.add("@" + location);
@@ -815,7 +820,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static String locationLine(JSONObject course) {
-        String location = ScheduleWidgetJson.text(course, "location", "");
+        String location = room(course);
         String teacher = ScheduleWidgetJson.text(course, "teacher", "");
         if (!location.isEmpty() && !teacher.isEmpty()) return "@" + location + " · " + teacher;
         if (!location.isEmpty()) return "@" + location;

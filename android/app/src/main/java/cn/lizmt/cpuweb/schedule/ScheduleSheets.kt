@@ -78,7 +78,7 @@ fun OverlapSheet(blocks: List<CourseBlock>, palette: String, onDismiss: () -> Un
                 Column(Modifier.weight(1f)) {
                     Text(block.course.name, fontWeight = FontWeight.Medium, color = Color(tone.text))
                     Text(
-                        listOf(block.course.location ?: "地点待定", block.course.slotNote.orEmpty()).filter { it.isNotEmpty() }.joinToString(" · "),
+                        listOf(ScheduleStyleTime.location(block.course.location) ?: "地点待定", block.course.slotNote.orEmpty()).filter { it.isNotEmpty() }.joinToString(" · "),
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

@@ -2,6 +2,7 @@ import { Resvg } from "@resvg/resvg-js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type { WechatScheduleResult } from "./wechatSchedule";
+import { classroomOnly } from "../shared/classroom";
 
 const SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -89,7 +90,7 @@ function renderWeekSvg(result: WechatScheduleResult) {
     const w = dayWidth - 4;
     const tone = courseTone(course.name);
     const nameLines = wrapText(String(course.name || "未命名课程"), 5, Math.max(1, Math.min(5, Math.floor((h - 36) / 31))));
-    const meta = String(course.location || course.teacher || "").trim();
+    const meta = String(classroomOnly(course.location) || course.teacher || "").trim();
     const nameHeight = nameLines.length * 29;
     const showMeta = Boolean(meta) && h >= nameHeight + 52;
     const totalHeight = nameHeight + (showMeta ? 28 : 0);
@@ -129,7 +130,7 @@ function renderDaySvg(result: WechatScheduleResult) {
     const h = (endSlot - startSlot + 1) * SLOT_HEIGHT + (endSlot - startSlot) * GAP - 4;
     const w = courseWidth - 4;
     const tone = courseTone(course.name);
-    const detail = [course.location ? `@${course.location}` : "", course.teacher || ""].filter(Boolean).join("  ");
+    const detail = [course.location ? `@${classroomOnly(course.location)}` : "", course.teacher || ""].filter(Boolean).join("  ");
     const nameLines = wrapText(String(course.name || "未命名课程"), 22, Math.max(1, Math.min(3, Math.floor(h / 42))));
     const startY = y + Math.max(43, (h - nameLines.length * 40 - (detail ? 32 : 0)) / 2 + 32);
     return `

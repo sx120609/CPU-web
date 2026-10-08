@@ -1,4 +1,5 @@
 import { normalizedCourseWeekList } from "../../utils/scheduleWeeks";
+import { classroomOnly } from "./nowIndicator";
 import { normalizeSlotRange } from "./slots";
 import type { ScheduleCourse, ScheduleResult } from "./types";
 
@@ -198,7 +199,7 @@ function describeChangedCourse(before: ScheduleEntry, after: ScheduleEntry) {
 
 function describeCourse(entry: ScheduleEntry) {
   const parts = [displayTime(entry), entry.weeks];
-  if (entry.location) parts.push(entry.location);
+  if (entry.location) parts.push(classroomOnly(entry.location));
   if (entry.teacher) parts.push(entry.teacher);
   return `${entry.name}（${parts.join("，")}）`;
 }

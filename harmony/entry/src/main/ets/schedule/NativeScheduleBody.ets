@@ -1303,7 +1303,7 @@ export struct NativeScheduleBody {
 
   private courseAccessibility(block: PlacedCourseBlock, day: number): string {
     return (block.owner === 'ta' ? 'TA 的课，' : '') + DAYS[day - 1] + '，' + block.course.name + '，第' + block.startSlot + '至'
-      + block.endSlot + '节，' + (block.course.location || '');
+      + block.endSlot + '节，' + scheduleCleanLocation(block.course.location);
   }
 
   // "高等数学，教室 A101，第 1–2 节，08:00 至 09:40，已结束"

@@ -574,7 +574,8 @@ type LoginCredentialExchange =
   | { ok: true; jar: CookieJar; username: string; callbackUrl?: string }
   | { ok: false; attempt: LoginHandoffAttempt };
 
-const CPU_SSO_REJECTED_MESSAGE = "统一认证未接受本次登录。请重新输入账号密码；若官网可登录，请刷新后重试。";
+// 学校不说原因时，绝大多数是还在用默认密码，或者账号被锁定。
+const CPU_SSO_REJECTED_MESSAGE = "统一认证未接受本次登录，多半是还在用默认密码，或账号已被锁定。请用浏览器（最好是电脑）打开 i.cpu.edu.cn 登录并修改密码，不要继续使用默认密码；如果那里提示账号锁定，请联系辅导员重置密码。";
 
 function scrubCpuSsoCredentialCookies(jar: CookieJar) {
   // 官方页用 JavaScript 保存的“记住账号/密码”Cookie 不属于服务端会话材料。

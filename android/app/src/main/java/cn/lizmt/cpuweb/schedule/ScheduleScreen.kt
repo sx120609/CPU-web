@@ -1227,7 +1227,7 @@ private fun StateCard(title: String, message: String, action: String, onAction: 
 
 internal fun courseAccessibility(block: CourseBlock): String =
     WEEKDAY_LABELS[block.day - 1] + "，" + block.course.name + "，第" + block.startSlot + "至" + block.endSlot + "节，" +
-        block.course.location.orEmpty()
+        ScheduleStyleTime.location(block.course.location).orEmpty()
 
 /** A frosted plate colour while a background photo is shown, else null (see [ScheduleSurface]). */
 internal val LocalScheduleGlass = staticCompositionLocalOf<Color?> { null }

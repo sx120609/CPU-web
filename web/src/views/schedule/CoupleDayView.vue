@@ -124,7 +124,7 @@ function buildTile(piece: PlacedCourseBlock, owner: TileOwner, shared: boolean, 
     time: start && end ? `${start}–${end}` : "",
     title: [
       owner === "ta" ? `${props.partnerName || "TA"} · ${piece.block.course.name}` : piece.block.course.name,
-      piece.block.course.location ? `地点：${piece.block.course.location}` : "",
+      piece.block.course.location ? `地点：${cleanLocation(piece.block.course.location)}` : "",
     ].filter(Boolean).join("\n"),
     style: {
       gridColumn: owner === "ta" ? 3 : 1,
