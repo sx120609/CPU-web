@@ -1,52 +1,61 @@
 <template>
   <el-dialog
     v-model="open"
-    title="更新 Android 客户端"
-    width="420"
+    width="340"
     align-center
     append-to-body
     class="android-update-dialog"
+    :show-close="false"
     :close-on-click-modal="true"
+    :aria-label="headline"
   >
     <div class="android-update-panel">
-      <div v-if="hasPendingUpdate" class="update-status" aria-live="polite">
-        <p>{{ nativeUpdate.message || '正在读取更新状态' }}</p>
-        <p class="muted">{{ nativeUpdate.fileName }}</p>
-        <el-progress v-if="nativeUpdate.phase !== 'failed'" :percentage="nativeUpdate.progress" :indeterminate="nativeUpdate.totalBytes <= 0 && updateBusy" />
+      <img class="update-icon" src="/icon-192-v3.png" alt="" width="56" height="56" />
+      <h2 class="update-title">{{ headline }}</h2>
+
+      <div v-if="showVersionStep" class="update-versions" :aria-label="`当前版本 ${currentVersionShort}，新版本 ${latestRelease.versionName}`">
+        <span class="update-version">{{ currentVersionShort }}</span>
+        <svg class="update-arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5.5 15.5 10 11 14.5" /></svg>
+        <span class="update-version is-new">{{ latestRelease.versionName }}</span>
       </div>
-      <p v-else-if="saveOnly">
+
+      <div v-if="hasPendingUpdate" class="update-status" aria-live="polite">
+        <div class="update-status-line">
+          <span>{{ nativeUpdate.message || '正在读取更新状态' }}</span>
+          <span v-if="showPercent" class="update-percent">{{ nativeUpdate.progress }}%</span>
+        </div>
+        <el-progress
+          v-if="nativeUpdate.phase !== 'failed'"
+          :percentage="nativeUpdate.progress"
+          :indeterminate="nativeUpdate.totalBytes <= 0 && updateBusy"
+          :show-text="false"
+          :stroke-width="6"
+        />
+      </div>
+      <p v-else-if="saveOnly" class="update-lead">
         当前已安装 {{ currentVersionLabel }}，无需重复安装。需要保存安装包时，可以在浏览器下载。
       </p>
-      <p v-else-if="promptKind === 'install'">
-        下载 <b>药大拾间</b> Android 客户端 {{ latestVersionLabel }}。
+      <p v-else-if="promptKind === 'install'" class="update-lead">
+        下载药大拾间 Android 客户端 {{ latestVersionLabel }}。
       </p>
-      <p v-else-if="promptKind === 'widget'">
-        当前客户端版本较低，更新到 {{ latestVersionLabel }} 后可使用桌面小组件。
+      <p v-else-if="promptKind === 'widget'" class="update-lead">
+        当前客户端版本较低，更新后可使用桌面小组件。
       </p>
-      <p v-else>
-        发现新版本 {{ latestVersionLabel }}，当前版本 {{ currentVersionLabel }}。建议更新后继续使用。
-      </p>
+      <p v-else class="update-lead">建议更新后继续使用。</p>
 
-      <p v-if="showLegacyMigrationNote" class="migration-note">
-        从 2.x 升级到新版架构不会覆盖旧客户端；确认新版可用后，可手动卸载旧版。
-      </p>
-      <p v-else-if="promptKind !== 'install'" class="muted">
-        可直接覆盖更新，无需卸载当前客户端。
-      </p>
-      <p v-if="needsBrowserUpdate" class="muted">
-        旧版应用内更新可能提示“解析软件包时出现问题”。请在系统浏览器下载新版，下载完成后打开 APK 安装，无需卸载当前 3.x 客户端。
-      </p>
-      <p v-if="needsBrowserUpdate" class="muted">如果浏览器没有打开，请复制下载链接，粘贴到系统浏览器中打开。</p>
-    </div>
+      <ul v-if="notes.length" class="update-notes">
+        <li v-for="note in notes" :key="note">{{ note }}</li>
+      </ul>
 
-    <template #footer>
-      <el-button @click="open = false">稍后</el-button>
-      <el-button v-if="isAndroidNativeApp()" @click="copyBrowserDownload">复制下载链接</el-button>
-      <el-button v-if="canInAppUpdate" @click="openBrowserDownload">浏览器下载</el-button>
-      <el-button type="primary" :disabled="updateBusy" @click="downloadAndroidUpdate">
+      <el-button class="update-primary" type="primary" size="large" :disabled="updateBusy" @click="downloadAndroidUpdate">
         {{ primaryButtonText }}
       </el-button>
-    </template>
+      <div class="update-links">
+        <button type="button" @click="open = false">稍后</button>
+        <button v-if="canInAppUpdate" type="button" @click="openBrowserDownload">浏览器下载</button>
+        <button v-if="isAndroidNativeApp()" type="button" @click="copyBrowserDownload">复制下载链接</button>
+      </div>
+    </div>
   </el-dialog>
 </template>
 
@@ -128,6 +137,27 @@ const needsBrowserUpdate = computed(() => isAndroidNativeApp() && !canInAppUpdat
 const showLegacyMigrationNote = computed(() => (
   (promptKind.value === "install" && !isAndroidNativeApp()) || isAndroidLegacyMajorUpgrade()
 ));
+const currentVersionShort = computed(() => currentVersionName.value || (currentVersionCode.value ? `版本 ${currentVersionCode.value}` : "未知版本"));
+const showVersionStep = computed(() => isAndroidNativeApp() && updateAvailable.value && !saveOnly.value);
+const showPercent = computed(() => nativeUpdate.value.phase === "downloading" && nativeUpdate.value.totalBytes > 0);
+const headline = computed(() => {
+  if (nativeUpdate.value.phase === "failed") return "更新没有完成";
+  if (["ready", "permission"].includes(nativeUpdate.value.phase)) return "更新已下载";
+  if (hasPendingUpdate.value) return "正在更新";
+  if (saveOnly.value) return "已是最新版";
+  if (promptKind.value === "install") return "下载 Android 客户端";
+  return "发现新版本";
+});
+const notes = computed(() => {
+  const list: string[] = [];
+  if (showLegacyMigrationNote.value) list.push("从 2.x 升级到新版架构不会覆盖旧客户端；确认新版可用后，可手动卸载旧版。");
+  else if (promptKind.value !== "install") list.push("可直接覆盖更新，无需卸载当前客户端。");
+  if (needsBrowserUpdate.value) {
+    list.push("旧版应用内更新可能提示“解析软件包时出现问题”。请在系统浏览器下载新版，下载完成后打开 APK 安装，无需卸载当前 3.x 客户端。");
+    list.push("如果浏览器没有打开，请复制下载链接，粘贴到系统浏览器中打开。");
+  }
+  return list;
+});
 const primaryButtonText = computed(() => {
   if (saveOnly.value) return "在浏览器保存安装包";
   if (["ready", "permission"].includes(nativeUpdate.value.phase)) return "继续安装";
@@ -391,39 +421,153 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
 
 <style scoped>
 .android-update-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   color: var(--cpu-text);
   font-size: var(--cpu-fs-m);
-  line-height: 1.75;
-}
-
-.android-update-panel p {
-  margin: 0;
-}
-
-.android-update-panel p + p {
-  margin-top: 10px;
-}
-
-.android-update-panel b {
-  color: var(--cpu-primary);
-}
-
-.migration-note,
-.muted {
-  padding: 10px 12px;
-  border-radius: var(--cpu-radius-m);
-  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
+  text-align: center;
 }
 
-.migration-note {
-  border: 1px solid var(--cpu-primary-soft);
-  background: var(--cpu-primary-soft);
-  color: var(--cpu-primary);
+.update-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  box-shadow: var(--cpu-shadow-sm);
 }
 
-.muted {
+.update-title {
+  margin: 14px 0 0;
+  font-size: var(--cpu-fs-xl);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.update-versions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: var(--cpu-fs-s);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-version {
+  padding: 2px 10px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
+}
+
+.update-version.is-new {
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-weight: 600;
+}
+
+.update-arrow {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--cpu-text-muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.update-lead {
+  margin: 10px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+}
+
+.update-status {
+  width: 100%;
+  margin-top: 16px;
+  text-align: left;
+}
+
+.update-status-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+}
+
+.update-percent {
+  flex: none;
+  color: var(--cpu-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-notes {
+  width: 100%;
+  margin: 16px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--cpu-border-soft);
+  list-style: none;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.6;
+  text-align: left;
+}
+
+.update-notes li + li {
+  margin-top: 6px;
+}
+
+.update-primary {
+  width: 100%;
+  margin-top: 18px;
+  border-radius: var(--cpu-radius-m);
+  font-weight: 600;
+}
+
+.update-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
+
+.update-links button {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--cpu-radius-s);
+  background: none;
+  color: var(--cpu-text-secondary);
+  font: inherit;
+  font-size: var(--cpu-fs-s);
+  cursor: pointer;
+}
+
+.update-links button:active {
+  background: var(--cpu-surface-soft);
+}
+
+.update-links button:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 1px;
+}
+</style>
+
+<style>
+.el-dialog.android-update-dialog {
+  max-width: calc(100vw - 48px);
+  padding: 24px 20px 12px;
+  border-radius: 18px;
+}
+
+.el-dialog.android-update-dialog .el-dialog__header {
+  display: none;
+}
+
+.el-dialog.android-update-dialog .el-dialog__body {
+  padding: 0;
 }
 </style>
