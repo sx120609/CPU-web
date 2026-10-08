@@ -9,15 +9,21 @@ export function normalizeAdjacentStrongDelimiters(markdown: string) {
   );
 }
 
-const CJK_BARE_URL_BOUNDARIES = new Set([
-  "，", "。", "！", "？", "；", "：", "、",
-  "（", "）", "【", "】", "《", "》", "“", "”", "‘", "’",
-]);
+// CJK punctuation, fullwidth forms (～，（）！), curly quotes, dashes, ellipsis and
+// the middle dot never belong to a bare URL.
+const URL_STOP_PATTERN = /[\u00B7\u2010-\u2027\u3000-\u303F\uFF00-\uFFEF]/u;
+const HAN_PATTERN = /\p{Script=Han}/u;
+// Han characters continue a URL only as a path segment or a query value, as in
+// /wiki/中国药科大学 or ?q=成绩; right after other characters they are prose.
+const URL_HAN_SEGMENT_STARTS = new Set(["/", "=", "?", "&", "#"]);
+const URL_LIKE_CHARACTER = /[A-Za-z0-9./@:_~%?#=&+-]/u;
 
 /**
- * marked 会把裸链接后的中文标点和正文继续识别为 URL，例如
- * `https://cputime.cn。后续说明` 会整体进入 href。仅为存在中文标点边界的裸链接
- * 补上 CommonMark 自动链接尖括号；代码、HTML 标签和显式 Markdown 链接保持原样。
+ * marked 的 GFM 自动链接会一直延伸到空白处，而中文正文里没有空白：
+ * `https://cputime.cn/jwxt查看成绩`、`https://cputime.cn。后续说明` 都会整体进入
+ * href，点开就是错误页面。裸链接一旦紧接中文或全角标点，就在那里截断并补上
+ * CommonMark 自动链接尖括号；显式 Markdown 链接地址末尾多出的标点也一并去掉。
+ * 代码和已有的尖括号链接保持原样。
  */
 export function normalizeBareUrlBoundaries(markdown: string) {
   const source = String(markdown || "");
@@ -57,24 +63,24 @@ function normalizeBareUrlBoundariesInLine(line: string) {
       continue;
     }
 
-    const isUrlStart = line.startsWith("https://", index) || line.startsWith("http://", index);
-    if (!inlineCodeFenceLength && isUrlStart && !isProtectedMarkdownUrl(line, index)) {
-      let end = index;
-      while (end < line.length && !/[\s<>`]/u.test(line[end])) end += 1;
-      const candidate = line.slice(index, end);
-      const boundaryIndex = Array.from(candidate).findIndex((char) => CJK_BARE_URL_BOUNDARIES.has(char));
-      if (boundaryIndex > 0) {
-        const boundaryOffset = Array.from(candidate).slice(0, boundaryIndex).join("").length;
-        let url = candidate.slice(0, boundaryOffset);
-        let trailingAsciiPunctuation = "";
-        const trailingMatch = /[.,!?;:]+$/u.exec(url)?.[0] || "";
-        if (trailingMatch) {
-          url = url.slice(0, -trailingMatch.length);
-          trailingAsciiPunctuation = trailingMatch;
-        }
-        if (url.length > "https://".length) {
-          normalized += `<${url}>${trailingAsciiPunctuation}`;
-          index += boundaryOffset;
+    const scheme = inlineCodeFenceLength ? "" : bareUrlSchemeAt(line, index);
+    if (scheme && line.slice(0, index).endsWith("](")) {
+      const targetEnd = findLinkTargetEnd(line, index);
+      if (line[targetEnd] === ")") {
+        normalized += trimLinkTargetPunctuation(line.slice(index, targetEnd));
+        index = targetEnd;
+        continue;
+      }
+    }
+    if (scheme && !isProtectedMarkdownUrl(line, index)) {
+      const { end, stoppedByCjk } = findBareUrlEnd(line, index);
+      if (stoppedByCjk) {
+        const { url, trailing } = splitTrailingUrlPunctuation(line.slice(index, end));
+        if (url.length > scheme.length) {
+          normalized += scheme === "www."
+            ? `[${url}](http://${url})${trailing}`
+            : `<${url}>${trailing}`;
+          index = end;
           continue;
         }
       }
@@ -84,6 +90,73 @@ function normalizeBareUrlBoundariesInLine(line: string) {
     index += 1;
   }
   return normalized;
+}
+
+function bareUrlSchemeAt(line: string, index: number) {
+  if (line.startsWith("https://", index)) return "https://";
+  if (line.startsWith("http://", index)) return "http://";
+  // "www." inside a longer URL or host name is not a separate link.
+  if (line.startsWith("www.", index) && !URL_LIKE_CHARACTER.test(line[index - 1] || "")) return "www.";
+  return "";
+}
+
+/** Scans a bare URL and reports whether CJK text or punctuation, rather than whitespace, ended it. */
+function findBareUrlEnd(line: string, start: number) {
+  let end = start;
+  let inHanSegment = false;
+  while (end < line.length) {
+    const char = String.fromCodePoint(line.codePointAt(end) ?? 0);
+    if (/[\s<>`]/u.test(char)) return { end, stoppedByCjk: false };
+    if (URL_STOP_PATTERN.test(char)) return { end, stoppedByCjk: true };
+    if (HAN_PATTERN.test(char)) {
+      if (!inHanSegment && !URL_HAN_SEGMENT_STARTS.has(line[end - 1] || "")) return { end, stoppedByCjk: true };
+      inHanSegment = true;
+    } else {
+      inHanSegment = false;
+    }
+    end += char.length;
+  }
+  return { end, stoppedByCjk: false };
+}
+
+/** Sentence punctuation, emphasis markers and an unmatched ")" before the cut belong to the prose. */
+function splitTrailingUrlPunctuation(candidate: string) {
+  let end = candidate.length;
+  while (end > 0) {
+    const char = candidate[end - 1];
+    if (/[.,!?;:'"*_~]/u.test(char)) {
+      end -= 1;
+      continue;
+    }
+    const head = candidate.slice(0, end);
+    if (char === ")" && head.split("(").length < head.split(")").length) {
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+  return { url: candidate.slice(0, end), trailing: candidate.slice(end) };
+}
+
+/** The ")" closing a Markdown link target, allowing balanced parentheses inside it. */
+function findLinkTargetEnd(line: string, start: number) {
+  let depth = 0;
+  let end = start;
+  while (end < line.length && !/\s/u.test(line[end])) {
+    if (line[end] === "(") depth += 1;
+    else if (line[end] === ")") {
+      if (!depth) return end;
+      depth -= 1;
+    }
+    end += 1;
+  }
+  return end;
+}
+
+function trimLinkTargetPunctuation(target: string) {
+  let end = target.length;
+  while (end > 0 && (URL_STOP_PATTERN.test(target[end - 1]) || /[.,!?;:'"]/u.test(target[end - 1]))) end -= 1;
+  return target.slice(0, end) || target;
 }
 
 function isProtectedMarkdownUrl(line: string, index: number) {
