@@ -4,7 +4,12 @@ import { smallSlots } from "./slots";
 import { createScheduleViewModelHelpers } from "./viewModels";
 import type { CalendarResult, ScheduleCourse, ScheduleResult, WeekCourseBlock } from "./types";
 
-export type CoupleColor = "blue" | "pink";
+/** 每人一种颜色，和服务端的 COUPLE_COLORS 一致。 */
+export const COUPLE_COLORS = ["blue", "pink", "purple", "teal", "green", "amber", "orange"] as const;
+export type CoupleColor = (typeof COUPLE_COLORS)[number];
+export const COUPLE_COLOR_NAMES: Record<CoupleColor, string> = {
+  blue: "蓝", pink: "粉", purple: "紫", teal: "青", green: "绿", amber: "黄", orange: "橙",
+};
 
 export interface CoupleScheduleSnapshot {
   semester: string;
@@ -156,6 +161,11 @@ export function snapshotFingerprint(value: unknown) {
 const COUPLE_COLOR_FAMILIES: Record<CoupleColor, { hue: number; spread: number }> = {
   blue: { hue: 214, spread: 14 },
   pink: { hue: 338, spread: 10 },
+  purple: { hue: 268, spread: 12 },
+  teal: { hue: 178, spread: 10 },
+  green: { hue: 138, spread: 12 },
+  amber: { hue: 42, spread: 8 },
+  orange: { hue: 22, spread: 8 },
 };
 
 function nameHash(value: string) {
@@ -176,4 +186,12 @@ export function coupleCourseTone(color: CoupleColor, name: string, dark: boolean
   return dark
     ? { bg: `hsl(${hue} 48% ${29 + shift * 3}%)`, border: `hsl(${hue} 62% ${50 + shift * 3}%)`, text: "#f5f7ff" }
     : { bg: `hsl(${hue} 88% ${93 - shift * 2}%)`, border: `hsl(${hue} 72% ${77 - shift * 3}%)`, text: `hsl(${hue} 58% 27%)` };
+}
+
+/** 一个人的颜色：这个人所有的课都用它，不按课程名再变化。 */
+export function couplePersonTone(color: CoupleColor, dark: boolean) {
+  const hue = (COUPLE_COLOR_FAMILIES[color] ?? COUPLE_COLOR_FAMILIES.blue).hue;
+  return dark
+    ? { bg: `hsl(${hue} 48% 29%)`, border: `hsl(${hue} 62% 50%)`, text: "#f5f7ff" }
+    : { bg: `hsl(${hue} 88% 93%)`, border: `hsl(${hue} 72% 77%)`, text: `hsl(${hue} 58% 27%)` };
 }

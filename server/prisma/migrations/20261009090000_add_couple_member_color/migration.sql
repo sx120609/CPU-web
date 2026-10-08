@@ -1,0 +1,1 @@
+ALTER TABLE "CoupleMember" ADD COLUMN IF NOT EXISTS "color" TEXT;

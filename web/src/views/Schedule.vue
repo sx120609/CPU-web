@@ -1080,7 +1080,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Brush, Calendar, CirclePlus, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Operation, Picture, Plus, QuestionFilled, Refresh, Share, Tools, WarningFilled } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
-import { coupleCourseTone } from "@/views/schedule/couple";
+import { couplePersonTone } from "@/views/schedule/couple";
 import { useCoupleOverlay } from "@/views/schedule/useCoupleOverlay";
 import CoupleDialog from "@/views/schedule/CoupleDialog.vue";
 import CoupleDayView from "@/views/schedule/CoupleDayView.vue";
@@ -2410,7 +2410,7 @@ const coupleBarStyle = computed(() => {
   const value = couple.status.value;
   if (value?.status !== "active") return {};
   return {
-    "--couple-partner-color": coupleCourseTone(value.partner.color, "", appearance.isDark).border,
+    "--couple-partner-color": couplePersonTone(value.partner.color, appearance.isDark).border,
   };
 });
 const canShowInstallAction = computed(() => Boolean(installPromptRef.value && (installPromptRef.value as any).canShow));
@@ -3551,7 +3551,7 @@ function persistScheduleTheme(value = scheduleTheme.value) {
 function coupleTone(owner: "me" | "ta", name: string) {
   const value = couple.status.value;
   if (!couple.active.value || value?.status !== "active") return toneFor(name);
-  return coupleCourseTone(owner === "ta" ? value.partner.color : value.me.color, "", appearance.isDark);
+  return couplePersonTone(owner === "ta" ? value.partner.color : value.me.color, appearance.isDark);
 }
 const coupleMyColor = computed(() => {
   const value = couple.status.value;

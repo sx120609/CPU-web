@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { coupleMemberColor, generateCoupleInviteCode, normalizeAnniversary, normalizeCoupleInviteCode } from "../src/services/coupleSchedule";
+import { coupleColorsFor, coupleMemberColor, generateCoupleInviteCode, normalizeAnniversary, normalizeCoupleInviteCode } from "../src/services/coupleSchedule";
 
 test("invite codes are six unambiguous characters", () => {
   for (let i = 0; i < 200; i += 1) {
@@ -33,4 +33,16 @@ test("the invitee always gets the other colour", () => {
   assert.equal(coupleMemberColor("inviter", "pink"), "pink");
   assert.equal(coupleMemberColor("invitee", "pink"), "blue");
   assert.equal(coupleMemberColor("inviter", "unexpected"), "blue");
+  // 自己选过颜色就用自己选的；不认识的颜色当作没选。
+  assert.equal(coupleMemberColor("invitee", "blue", "teal"), "teal");
+  assert.equal(coupleMemberColor("invitee", "blue", "rainbow"), "pink");
+  const pair = (first: string | null, second: string | null) => {
+    const colors = coupleColorsFor([{ userId: 1, role: "inviter", color: first }, { userId: 2, role: "invitee", color: second }], "blue");
+    return [colors.get(1), colors.get(2)];
+  };
+  assert.deepEqual(pair(null, null), ["blue", "pink"]);
+  assert.deepEqual(pair("green", "amber"), ["green", "amber"]);
+  // 一方选的颜色撞上另一方按旧方式推出的颜色：没选过的那一方让开。
+  assert.deepEqual(pair("pink", null), ["pink", "blue"]);
+  assert.deepEqual(pair(null, "blue"), ["pink", "blue"]);
 });

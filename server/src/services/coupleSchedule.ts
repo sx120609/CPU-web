@@ -12,14 +12,40 @@ const INVITE_PATTERN = new RegExp(`^[${INVITE_ALPHABET}]{${INVITE_LENGTH}}$`, "u
 const COUPLE_LINK = "/schedule?couple=1";
 
 const memberUserSelect = { id: true, nickname: true, avatar: true } as const;
-export const COUPLE_COLORS = ["blue", "pink"] as const;
+export const COUPLE_COLORS = ["blue", "pink", "purple", "teal", "green", "amber", "orange"] as const;
 export type CoupleColor = (typeof COUPLE_COLORS)[number];
 
-/** 邀请方用关系上保存的颜色，接受方自动取另一种。 */
-export function coupleMemberColor(role: string, inviterColor: string): CoupleColor {
+function isCoupleColor(value: unknown): value is CoupleColor {
+  return COUPLE_COLORS.includes(value as CoupleColor);
+}
+
+/**
+ * 一名成员的颜色。自己选过就用自己选的；没选过时沿用旧的方式：邀请方用关系上保存的
+ * 颜色（蓝或粉），接受方取另一种。
+ */
+export function coupleMemberColor(role: string, inviterColor: string, chosen?: string | null): CoupleColor {
+  if (isCoupleColor(chosen)) return chosen;
   const inviter: CoupleColor = inviterColor === "pink" ? "pink" : "blue";
   if (role === "inviter") return inviter;
   return inviter === "blue" ? "pink" : "blue";
+}
+
+/**
+ * 两人的颜色，保证不相同：只有一方选过、又正好撞上另一方按旧方式推出的颜色时，
+ * 没选过的那一方换成蓝或粉里不冲突的那个。
+ */
+export function coupleColorsFor(
+  members: { userId: number; role: string; color?: string | null }[],
+  inviterColor: string,
+): Map<number, CoupleColor> {
+  const colors = new Map<number, CoupleColor>();
+  for (const member of members) colors.set(member.userId, coupleMemberColor(member.role, inviterColor, member.color));
+  if (members.length === 2 && colors.get(members[0].userId) === colors.get(members[1].userId)) {
+    const follower = members.find((member) => !isCoupleColor(member.color)) ?? members[1];
+    const taken = colors.get(members.find((member) => member !== follower)!.userId);
+    colors.set(follower.userId, taken === "blue" ? "pink" : "blue");
+  }
+  return colors;
 }
 
 export function generateCoupleInviteCode() {
@@ -87,10 +113,10 @@ async function membershipOf(userId: number) {
 
 type Membership = NonNullable<Awaited<ReturnType<typeof membershipOf>>>;
 
-function presentMember(member: Membership["link"]["members"][number], inviterColor: string) {
+function presentMember(member: Membership["link"]["members"][number], color: CoupleColor) {
   return {
     id: member.user.id,
-    color: coupleMemberColor(member.role, inviterColor),
+    color,
     nickname: member.user.nickname,
     avatar: publicAvatarValue(member.user),
     snapshot: member.snapshot ? {
@@ -120,8 +146,8 @@ function presentStatus(membership: Membership | null, userId: number, now = new 
     status: "active" as const,
     since: (link.acceptedAt ?? link.createdAt).toISOString(),
     anniversary: link.anniversary,
-    me: presentMember(me, link.inviterColor),
-    partner: presentMember(partner, link.inviterColor),
+    me: presentMember(me, coupleColorsFor(link.members, link.inviterColor).get(me.userId)!),
+    partner: presentMember(partner, coupleColorsFor(link.members, link.inviterColor).get(partner.userId)!),
   };
 }
 
@@ -215,14 +241,22 @@ export async function unbindCouple(userId: number) {
 }
 
 export async function updateCoupleSettings(userId: number, input: { anniversary?: unknown; myColor?: unknown }) {
-  const data: { anniversary?: string | null; inviterColor?: CoupleColor } = {};
+  const data: { anniversary?: string | null } = {};
   if (input.anniversary !== undefined) data.anniversary = normalizeAnniversary(input.anniversary);
   const membership = await activeMembership(userId);
   if (input.myColor !== undefined) {
-    if (!COUPLE_COLORS.includes(input.myColor as CoupleColor)) throw Errors.badRequest("颜色只能是蓝色或粉色");
-    const mine = input.myColor as CoupleColor;
-    // 颜色保存在关系上：设定自己的颜色等于决定邀请方的颜色。
-    data.inviterColor = membership.role === "inviter" ? mine : (mine === "blue" ? "pink" : "blue");
+    if (!isCoupleColor(input.myColor)) throw Errors.badRequest("没有这种颜色");
+    const mine = input.myColor;
+    const { link } = membership;
+    const partner = link.members.find((member) => member.userId !== userId)!;
+    const colors = coupleColorsFor(link.members, link.inviterColor);
+    const before = colors.get(userId)!;
+    // 每人存自己的颜色。选了对方正在用的颜色就是两人互换，两人的颜色始终不同。
+    const theirs = mine === colors.get(partner.userId) ? before : colors.get(partner.userId)!;
+    await prisma.$transaction([
+      prisma.coupleMember.update({ where: { userId }, data: { color: mine } }),
+      prisma.coupleMember.update({ where: { userId: partner.userId }, data: { color: theirs } }),
+    ]);
   }
   if (Object.keys(data).length) await prisma.coupleLink.update({ where: { id: membership.linkId }, data });
   return getCoupleStatus(userId);

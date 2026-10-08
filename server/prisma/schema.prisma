@@ -713,7 +713,7 @@ model CoupleLink {
   inviteCode      String?   @unique
   inviteExpiresAt DateTime?
   anniversary     String? // YYYY-MM-DD，任意一方可修改
-  inviterColor    String    @default("blue") // blue / pink；接受方自动取另一种，双方看到的配色一致
+  inviterColor    String    @default("blue") // 旧的配色方式：成员自己没选过颜色时，邀请方用它、接受方取另一种
   acceptedAt      DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -725,6 +725,7 @@ model CoupleMember {
   userId   Int      @id
   linkId   Int
   role     String // inviter / invitee
+  color    String? // 自己选的颜色（COUPLE_COLORS 之一）；没选过时按 CoupleLink.inviterColor 推出
   joinedAt DateTime @default(now())
 
   user     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)

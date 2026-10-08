@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { coupleCourseTone, type CoupleColor } from "./couple";
+import { couplePersonTone, type CoupleColor } from "./couple";
 import type { PlacedCourseBlock } from "./displayPriority";
 import { cleanLocation, nowRowPosition, type SlotClock } from "./nowIndicator";
 import type { ScheduleStyleKey } from "./scheduleStyle";
@@ -91,7 +91,7 @@ const rowIndex = computed(() => new Map(props.clocks.map((slot, index) => [slot.
 
 // 一个人一种颜色：左边全是我的颜色，右边全是 TA 的颜色。
 function personTone(color: CoupleColor) {
-  const tone = coupleCourseTone(color, "", props.dark);
+  const tone = couplePersonTone(color, props.dark);
   return { accent: tone.text, fill: tone.bg, border: tone.border };
 }
 const ownTone = computed(() => personTone(props.myColor));

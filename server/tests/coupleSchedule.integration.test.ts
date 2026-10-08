@@ -83,7 +83,13 @@ test("couple schedule lifecycle on isolated PostgreSQL", { skip: process.env.COU
     assert.equal((await call(bob, "PATCH", "/", { myColor: "blue" })).body.data.me.color, "blue");
     colors = (await call(alice, "GET", "/")).body.data;
     assert.deepEqual([colors.me.color, colors.partner.color, colors.anniversary], ["pink", "blue", "2025-05-20"]);
-    assert.equal((await call(bob, "PATCH", "/", { myColor: "green" })).status, 400);
+    assert.equal((await call(bob, "PATCH", "/", { myColor: "rainbow" })).status, 400);
+    // 每人选自己的颜色；选了对方正在用的就是互换。
+    assert.equal((await call(bob, "PATCH", "/", { myColor: "teal" })).body.data.me.color, "teal");
+    colors = (await call(alice, "GET", "/")).body.data;
+    assert.deepEqual([colors.me.color, colors.partner.color], ["pink", "teal"]);
+    colors = (await call(alice, "PATCH", "/", { myColor: "teal" })).body.data;
+    assert.deepEqual([colors.me.color, colors.partner.color], ["teal", "pink"]);
 
     assert.equal((await call(bob, "DELETE", "/")).body.data.status, "none");
     assert.equal((await call(alice, "GET", "/")).body.data.status, "none");

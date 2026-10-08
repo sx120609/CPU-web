@@ -20,7 +20,7 @@ export const coupleRouter = Router();
 const acceptSchema = z.object({ code: z.string().trim().min(1).max(20) }).strict();
 const settingsSchema = z.object({
   anniversary: z.string().trim().max(10).nullable().optional(),
-  myColor: z.enum(["blue", "pink"]).optional(),
+  myColor: z.string().trim().min(1).max(16).optional(),
 }).strict();
 const snapshotSchema = z.object({
   semester: z.string().trim().min(1).max(80),
