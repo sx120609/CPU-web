@@ -1,5 +1,7 @@
 <template>
   <div class="announce-page">
+    <SiteSearchBar placeholder="搜索帖子或校园服务" />
+
     <header class="announce-head">
       <h1>校园公告</h1>
       <p>学校各部门公开网站上的通知，自动同步到这里</p>
@@ -66,6 +68,7 @@ let boardsSnapshot: Board[] = [];
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { TopRight } from "@element-plus/icons-vue";
+import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi, type Topic } from "@/api/topic";
 import { fmtRelative } from "@/utils/format";
