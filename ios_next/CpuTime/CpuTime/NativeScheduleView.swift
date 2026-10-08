@@ -1568,13 +1568,19 @@ struct NativeScheduleView: View {
                         Text("\(slot.number)")
                             .font(.system(size: 13, weight: .bold).monospacedDigit())
                             .foregroundStyle(NativeScheduleThemeColor.primary(colorScheme))
-                        if showsTime {
+                        // The number and both times need about 42pt. A row
+                        // set shorter than that keeps the start time, and a
+                        // very short one the number alone, rather than
+                        // letting the labels run into each other.
+                        if showsTime, rowHeight >= 27 {
                             Text(slot.start)
                                 .font(.system(size: 9).monospacedDigit())
                                 .foregroundStyle(NativeScheduleThemeColor.secondary(colorScheme))
-                            Text(slot.end)
-                                .font(.system(size: 9).monospacedDigit())
-                                .foregroundStyle(NativeScheduleThemeColor.secondary(colorScheme))
+                            if rowHeight >= 42 {
+                                Text(slot.end)
+                                    .font(.system(size: 9).monospacedDigit())
+                                    .foregroundStyle(NativeScheduleThemeColor.secondary(colorScheme))
+                            }
                         }
                     }
                     .frame(width: Self.slotAxisWidth, height: rowHeight)
@@ -2885,12 +2891,14 @@ private struct NativeScheduleCourseCard: View {
                 showWeeks ? clean(course.weeks) : nil,
             ].compactMap { $0 }
             let note = details.isEmpty ? nil : details.joined(separator: " · ")
+            // Week cards carry the teacher only when the display setting asks
+            // for it, on a line of its own: a column is too narrow for
+            // 「@教学楼 201 · 李老师」 and the name was the part cut off.
+            let weekTeacher = compact && display.showTeacher && !shortCard ? clean(course.teacher) : nil
             let metadata: String? = {
-                // Week cards carry the teacher only when the display setting asks for it.
                 let values: [String] = compact
                     ? [
                         location.map { "@\($0.trimmingCharacters(in: CharacterSet(charactersIn: "@＠")))" },
-                        display.showTeacher && !shortCard ? clean(course.teacher) : nil,
                     ].compactMap { $0 }
                     : [
                         location.map { "@\($0.trimmingCharacters(in: CharacterSet(charactersIn: "@＠")))" },
@@ -2914,6 +2922,15 @@ private struct NativeScheduleCourseCard: View {
                         .minimumScaleFactor(0.85)
                         .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
                         .layoutPriority(0)
+                }
+
+                if let weekTeacher {
+                    Text(weekTeacher)
+                        .font(.system(size: 9 * display.textScale, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .opacity(0.86)
                 }
 
                 if !compact, !shortCard, let note {

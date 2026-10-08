@@ -354,22 +354,33 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     /// transition or SwiftUI sheet rebuild from tearing down an answer.
     private var assistantKeepAliveTask: Task<NativeAssistantReply, Error>?
     private var assistantTaskID = UUID()
-    private let pathMonitor = NWPathMonitor()
+    /// Created off the main thread: `NWPathMonitor()` makes a synchronous call
+    /// to a system service, and a launch watchdog report caught the first
+    /// frame waiting on it.
+    private var pathMonitor: NWPathMonitor?
     private let pathMonitorQueue = DispatchQueue(label: "cn.cputime.ios.network-monitor")
 
     override init() {
         super.init()
-        pathMonitor.pathUpdateHandler = { [weak self] path in
-            let unavailable = path.status != .satisfied
+        let queue = pathMonitorQueue
+        queue.async { [weak self] in
+            let monitor = NWPathMonitor()
+            monitor.pathUpdateHandler = { [weak self] path in
+                let unavailable = path.status != .satisfied
+                Task { @MainActor [weak self] in
+                    self?.isNetworkUnavailable = unavailable
+                }
+            }
+            monitor.start(queue: queue)
             Task { @MainActor [weak self] in
-                self?.isNetworkUnavailable = unavailable
+                // The store went away while the monitor was being made.
+                if let self { self.pathMonitor = monitor } else { monitor.cancel() }
             }
         }
-        pathMonitor.start(queue: pathMonitorQueue)
     }
 
     deinit {
-        pathMonitor.cancel()
+        pathMonitor?.cancel()
     }
 
     func makeWebView() -> WKWebView {

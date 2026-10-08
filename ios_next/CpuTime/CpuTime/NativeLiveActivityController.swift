@@ -390,6 +390,11 @@ final class NativeLiveActivityController: ObservableObject {
             do {
                 try request(c, channel: channelID, scheduled: scheduled)
                 arranged += 1
+                // A week of courses is a run of such calls. Give the main run
+                // loop a turn between them, so touches are not held back for
+                // the whole run: hang reports showed 1.2 to 3 seconds here.
+                await Task.yield()
+                guard valid(epoch) else { return }
             } catch {
                 failures[c.id] = error.localizedDescription
                 mark(c.id, state: "retryableFailure")
