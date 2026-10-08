@@ -4,107 +4,149 @@
   --couple-accent: #e2568a;
 }
 
-// 周次切换下方的一条胶囊：TA 此刻的状态、在一起天数、双人/单人开关。
-.couple-bar {
-  flex: 0 0 auto;
-  width: 100%;
-  max-width: 720px;
-  height: 34px;
-  margin: -4px auto 10px;
-  padding: 0 3px 0 0;
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--schedule-border);
-  border-radius: var(--cpu-radius-pill);
-  background: var(--schedule-surface-bg);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
+// TA 此刻的状态写在周次那一块里（第二行），不另占一行。上一周／下一周收成图标，把宽度让出来。
+.week-switcher.coupled {
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
 }
-.couple-bar-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px 0 5px;
+.week-switcher.coupled .week-btn-label {
+  display: none;
+}
+.week-title.coupled {
+  gap: 0;
+  padding: 0 4px 0 10px;
+}
+.week-title-main {
+  max-width: 100%;
+  height: 20px;
+  padding: 0;
   border: 0;
   background: transparent;
-  color: var(--schedule-text);
+  color: inherit;
   font: inherit;
-  text-align: left;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   cursor: pointer;
 }
-.couple-bar-avatar {
+.week-title-main b {
+  font-size: var(--cpu-fs-s);
+}
+.week-title-main:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+.couple-line {
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.couple-line-main {
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.couple-line-dot {
   flex: 0 0 auto;
-  display: grid;
-  padding: 1.5px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--couple-partner-color, var(--couple-accent));
 }
-.couple-bar-text {
-  flex: 1 1 auto;
+.week-title .couple-line-text {
   min-width: 0;
   overflow: hidden;
-  font-size: var(--cpu-fs-xs);
+  font-size: 11px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.couple-bar-days {
+.couple-line-days {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   color: var(--couple-accent);
-  font-size: var(--cpu-fs-xs);
+  font-size: 11px;
+  font-style: normal;
   font-weight: 700;
 }
-.couple-bar-days svg {
-  width: 12px;
-  height: 12px;
+.couple-line-days svg {
+  width: 10px;
+  height: 10px;
 }
-.couple-bar-toggle {
+.couple-line-toggle {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 20px;
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--schedule-text-muted);
+  color: currentColor;
+  opacity: 0.5;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
 }
-.couple-bar-toggle svg {
-  width: 18px;
-  height: 18px;
+.couple-line-toggle svg {
+  width: 15px;
+  height: 15px;
 }
-.couple-bar-toggle.active {
-  background: color-mix(in srgb, var(--couple-accent) 14%, transparent);
+.couple-line-toggle.active {
   color: var(--couple-accent);
+  opacity: 1;
 }
 
-// 周视图：同一格左半是我、右半是 TA；一起上的课占满整格。
-.week-overview.couple-on .week-course {
+// TA 的课右上角一个小标记，颜色之外再给一个能认出来的记号。
+.couple-ta-tag {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--course-border);
+  color: var(--course-bg);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.week-course.couple-partner,
+.day-course-block.couple-partner {
+  position: relative;
+}
+.day-course-block .couple-ta-tag {
+  top: 8px;
+  right: 8px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+// 周视图：两人的课撞在同一时段时左半是我、右半是 TA；其余的课和一起上的课都占满整格。
+.week-overview.couple-on .week-course.couple-split {
   justify-self: start;
   width: calc(50% - 2px);
   padding: 4px 2px;
 }
-.week-overview.couple-on .week-course.couple-partner {
+.week-overview.couple-on .week-course.couple-partner.couple-split {
   justify-self: end;
 }
-.week-overview.couple-on .week-course.couple-shared {
-  justify-self: stretch;
-  width: auto;
-}
-.week-overview.couple-on .week-course em {
+.week-overview.couple-on .week-course.couple-split em {
   display: none;
 }
-.week-overview.couple-on .week-course strong {
+.week-overview.couple-on .week-course.couple-split strong {
   -webkit-line-clamp: 5;
 }
 .week-course.couple-shared,
@@ -130,46 +172,20 @@
   height: 13px;
 }
 
-// 日视图：我 | TA 两列。
-.couple-day-head {
-  display: grid;
-  grid-template-columns: 50px minmax(0, 1fr) minmax(0, 1fr);
-  gap: 5px;
-  margin-bottom: 6px;
-  color: var(--schedule-text-secondary);
-  font-size: var(--cpu-fs-xs);
-  text-align: center;
-}
+// 日视图：撞在同一时段时分成我 | TA 两列。
 .day-pane.couple-on .day-grid-body {
   grid-template-columns: 50px minmax(0, 1fr) minmax(0, 1fr);
 }
-.day-pane.couple-on .day-course-block {
+.day-pane.couple-on .day-course-block.couple-split {
   padding: 10px;
   gap: 5px;
 }
-.day-pane.couple-on .day-course-name {
-  font-size: var(--cpu-fs-m);
-}
-.day-pane.couple-on .day-course-meta {
-  font-size: var(--cpu-fs-xs);
-}
 
 @media (max-width: 760px) {
-  .couple-bar {
-    height: 32px;
-    margin: -6px auto 8px;
-  }
-  .week-overview.couple-on .week-course span {
+  .week-overview.couple-on .week-course.couple-split span {
     display: none;
   }
-  .week-overview.couple-on .week-course.couple-shared span {
-    display: -webkit-box;
-  }
-  .couple-day-head,
   .day-pane.couple-on .day-grid-body {
     grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .day-pane.couple-on .day-course-name {
-    font-size: var(--cpu-fs-m);
   }
 }

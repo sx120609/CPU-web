@@ -109,7 +109,7 @@
         current: tile.current,
         partner: tile.owner === 'ta',
         shared: tile.shared,
-        narrow: tile.lanes > 1 || coupled,
+        narrow: tile.lanes > 1 || tile.half,
         'off-week': tile.offWeek,
       }"
       :style="tile.style"
@@ -120,6 +120,7 @@
       @keydown.enter.prevent="openTile(tile, $event)"
     >
       <i v-if="tile.offWeek" class="ss-off-tag">非本周</i>
+      <i v-else-if="tile.owner === 'ta'" class="ss-ta-tag">TA</i>
       <div v-if="layout.course === 'departure'" class="ss-tile-time">
         <i class="ss-mark" />
         <b>{{ tile.start }}</b>
@@ -264,6 +265,13 @@ function allPieces(item: StyledDay) {
   return item.partnerPieces?.length ? [...item.pieces, ...item.partnerPieces] : item.pieces;
 }
 
+/** 双人模式下，这门课是不是和对方的课撞在同一时段：只有撞在一起才左右各占半格。 */
+function sharesSlotWithOther(item: StyledDay, piece: PlacedCourseBlock, owner: TileOwner) {
+  if (!coupled.value) return false;
+  const others = owner === "ta" ? item.pieces : (item.partnerPieces ?? []);
+  return others.some((other) => other.startSlot <= piece.endSlot && piece.startSlot <= other.endSlot);
+}
+
 function cellClass(item: StyledDay, slot: number, row: number) {
   const covering = allPieces(item).filter((piece) => piece.startSlot <= slot && slot <= piece.endSlot);
   // 并排的课没占满这一行时，剩下的格子照常露出来。
@@ -295,6 +303,8 @@ interface Tile {
   block: WeekCourseBlock;
   owner: TileOwner;
   shared: boolean;
+  /** 双人模式下和对方的课撞在一起，只占半格。 */
+  half: boolean;
   offWeek: boolean;
   current: boolean;
   lanes: number;
@@ -331,8 +341,8 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
   const display = displayBlockOf(piece);
   const status = statusFor(item);
   const tone = toneFor(piece.block, owner, shared);
-  // 双人模式下左半是我、右半是 TA；一起上的课占满整格。平时按重叠簇的道数分宽度。
-  const half = coupled.value && !shared;
+  // 双人模式下两人的课撞在同一时段时左半是我、右半是 TA；其余的和平时一样按重叠簇的道数分宽度。
+  const half = !shared && !offWeek && sharesSlotWithOther(item, piece, owner);
   const width = half ? 50 : 100 / piece.lanes;
   const offset = half ? (owner === "ta" ? 50 : 0) : (100 / piece.lanes) * piece.lane;
   const single = !half && piece.lanes === 1;
@@ -341,6 +351,7 @@ function buildTile(item: StyledDay, column: number, piece: PlacedCourseBlock, ow
     block: piece.block,
     owner,
     shared,
+    half,
     offWeek,
     current: !offWeek && owner === "me" && blockPhase(status, display) === "current",
     lanes: piece.lanes,
@@ -924,6 +935,36 @@ const nowPlacement = computed(() => {
 }
 .ss-board .ss-tile.current .ss-mark {
   background: var(--tile-accent-inverse);
+}
+// 情侣课表：TA 的课右上角一个小标记，颜色之外再给一个能认出来的记号。
+.ss-ta-tag {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--tile-accent);
+  color: var(--tile-fill);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.4;
+  opacity: 0.82;
+}
+.ss-board .ss-ta-tag,
+.ss-paper .ss-ta-tag {
+  color: var(--ss-panel);
+}
+.ss-board .ss-ta-tag {
+  // 站牌的课程第一行是开始时间，标记放进排版里，免得盖住时间。
+  position: static;
+  align-self: flex-start;
+}
+.ss-day-presentation .ss-ta-tag {
+  top: 6px;
+  right: 8px;
+  padding: 0 4px;
+  font-size: 10px;
 }
 // 情侣课表：一起上的课右上角一颗小爱心。
 .ss-tile.shared::after {

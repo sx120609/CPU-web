@@ -361,12 +361,39 @@
       </button>
     </section>
 
-    <section v-else-if="parsed" class="week-switcher">
-      <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
+    <section v-else-if="parsed" class="week-switcher" :class="{ coupled: coupleBound }">
+      <button type="button" class="week-btn" aria-label="上一周" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
         <el-icon><ArrowLeft /></el-icon>
-        上一周
+        <span class="week-btn-label">上一周</span>
       </button>
+      <!-- 绑定了情侣课表时，TA 此刻的状态就写在周次这一块里，不再另占一行。 -->
+      <div v-if="coupleBound" class="week-title coupled" :style="coupleBarStyle">
+        <button type="button" class="week-title-main" :disabled="loading" @click="weekDialogOpen = true">
+          <b>第 {{ currentWeekValue() || "--" }} 周</b>
+          <span v-if="currentWeekRange">{{ currentWeekRange }}</span>
+        </button>
+        <div class="couple-line">
+          <button type="button" class="couple-line-main" aria-label="情侣课表" @click="openCoupleDialog()">
+            <i class="couple-line-dot" aria-hidden="true" />
+            <span class="couple-line-text">{{ coupleBarText }}</span>
+            <em v-if="couple.togetherDays.value" class="couple-line-days"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z" /></svg>{{ couple.togetherDays.value }}</em>
+          </button>
+          <button
+            type="button"
+            class="couple-line-toggle"
+            :class="{ active: couple.visible.value }"
+            :aria-pressed="couple.visible.value"
+            :aria-label="couple.visible.value ? '只看我的课' : '显示 TA 的课'"
+            :title="couple.visible.value ? '只看我的课' : '显示 TA 的课'"
+            @click="couple.setVisible(!couple.visible.value)"
+          >
+            <svg v-if="couple.visible.value" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="currentColor" /><circle cx="16.5" cy="9" r="2.6" fill="currentColor" opacity=".75" /><path fill="currentColor" d="M3 19c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6v.6H3V19z" /><path fill="currentColor" opacity=".75" d="M16 13.4c2.9 0 5 2 5 4.9v1.3h-4.4V19c0-2.1-.8-4-2.2-5.3.5-.2 1-.3 1.6-.3z" /></svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4" fill="currentColor" /><path fill="currentColor" d="M5.5 19.2c0-3.5 2.9-6 6.5-6s6.5 2.5 6.5 6v.6h-13v-.6z" /></svg>
+          </button>
+        </div>
+      </div>
       <button
+        v-else
         type="button"
         class="week-title clickable"
         :disabled="loading"
@@ -375,36 +402,9 @@
         <b>第 {{ currentWeekValue() || "--" }} 周</b>
         <span v-if="currentWeekRange">{{ currentWeekRange }}</span>
       </button>
-      <button type="button" class="week-btn" :disabled="!canChangeWeek(1)" @click="changeWeek(1)">
-        下一周
+      <button type="button" class="week-btn" aria-label="下一周" :disabled="!canChangeWeek(1)" @click="changeWeek(1)">
+        <span class="week-btn-label">下一周</span>
         <el-icon><ArrowRight /></el-icon>
-      </button>
-    </section>
-
-    <section
-      v-if="parsed && couple.status.value?.status === 'active'"
-      class="couple-bar"
-      :style="coupleBarStyle"
-      aria-label="情侣课表"
-    >
-      <button type="button" class="couple-bar-main" @click="openCoupleDialog()">
-        <span class="couple-bar-avatar">
-          <UserAvatar :size="22" :src="couple.status.value.partner.avatar" :name="couple.status.value.partner.nickname" :seed="couple.status.value.partner.id" />
-        </span>
-        <span class="couple-bar-text">{{ coupleBarText }}</span>
-        <span v-if="couple.togetherDays.value" class="couple-bar-days"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z" /></svg>{{ couple.togetherDays.value }}</span>
-      </button>
-      <button
-        type="button"
-        class="couple-bar-toggle"
-        :class="{ active: couple.visible.value }"
-        :aria-pressed="couple.visible.value"
-        :aria-label="couple.visible.value ? '只看我的课' : '显示 TA 的课'"
-        :title="couple.visible.value ? '只看我的课' : '显示 TA 的课'"
-        @click="couple.setVisible(!couple.visible.value)"
-      >
-        <svg v-if="couple.visible.value" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="currentColor" /><circle cx="16.5" cy="9" r="2.6" fill="currentColor" opacity=".75" /><path fill="currentColor" d="M3 19c0-3.3 2.7-5.6 6-5.6s6 2.3 6 5.6v.6H3V19z" /><path fill="currentColor" opacity=".75" d="M16 13.4c2.9 0 5 2 5 4.9v1.3h-4.4V19c0-2.1-.8-4-2.2-5.3.5-.2 1-.3 1.6-.3z" /></svg>
-        <svg v-else viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4" fill="currentColor" /><path fill="currentColor" d="M5.5 19.2c0-3.5 2.9-6 6.5-6s6.5 2.5 6.5 6v.6h-13v-.6z" /></svg>
       </button>
     </section>
 
@@ -551,7 +551,7 @@
                     v-for="piece in piecesFor(page)"
                     :key="`${page.weekValue}-${piece.id}`"
                     class="week-course"
-                    :class="{ 'couple-shared': isCoupleShared(page, piece.block) }"
+                    :class="{ 'couple-shared': isCoupleShared(page, piece.block), 'couple-split': isCoupleSplit(page, piece.block, 'me') }"
                     :style="courseBlockStyle(piece, 'me', isCoupleShared(page, piece.block), page)"
                     :title="courseTitle(piece.block.course)"
                     @click.stop="onWeekPageCourseClick($event, page, piece.block)"
@@ -565,10 +565,12 @@
                     v-for="block in coupleDataFor(page).partnerBlocks"
                     :key="`ta-${page.weekValue}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
                     class="week-course couple-partner"
+                    :class="{ 'couple-split': isCoupleSplit(page, block, 'ta') }"
                     :style="courseBlockStyle(block, 'ta', false, page)"
                     :title="`TA · ${courseTitle(block.course)}`"
                     @click.stop="onPartnerCourseClick($event, block)"
                   >
+                    <i class="couple-ta-tag">TA</i>
                     <strong>{{ block.course.name }}</strong>
                     <span v-if="block.course.location">@{{ block.course.location }}</span>
                   </article>
@@ -603,6 +605,24 @@
                 @day="(day) => page.delta === 0 && onDayClick(day)"
               />
 
+              <!-- 双人模式的日视图：沿用当前风格的网格，两人的课只在撞在一起时才左右分开。 -->
+              <StyledWeekGrid
+                v-else-if="!usesClassicDay && couple.active.value"
+                :visual-style="scheduleStyle"
+                :palette="scheduleTheme"
+                :dark="appearance.isDark"
+                :has-background="hasScheduleBackground"
+                :days="coupleDayFor(page)"
+                :clocks="smallSlots"
+                :now-minutes="pageIsToday(page) ? displayNowMinutes : null"
+                :completed-before="pageIsPast(page) ? 24 * 60 : null"
+                :shows-date-header="false"
+                :tone-resolver="coupleToneResolver"
+                day-presentation
+                @course="(block, owner, source) => owner === 'ta' ? onPartnerCourseClick(source, block) : onCourseBlockClick(source, block, page.weekValue)"
+                @slot="(_day, slot) => onStyledSlotClick(page.day, slot, page.weekValue)"
+              />
+
               <StyledDayView
                 v-else-if="!usesClassicDay"
                 :visual-style="scheduleStyle"
@@ -621,7 +641,6 @@
 
               <div v-else class="day-pane" :class="{ 'couple-on': couple.active.value }">
                 <section v-if="page.dayCourseBlocks.length || coupleDataFor(page).partnerBlocks.length" class="day-timeline" aria-label="当日课表">
-                  <div v-if="couple.active.value" class="couple-day-head"><span /><b>我</b><b>TA</b></div>
                   <div class="day-grid-body">
                     <template v-for="slot in smallSlots" :key="`day-axis-${page.key}-${slot.no}`">
                       <div class="slot-axis day-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
@@ -639,8 +658,8 @@
                       v-for="piece in dayPiecesFor(page)"
                       :key="`${page.weekValue}-${page.day}-${piece.id}`"
                       class="day-course-block"
-                      :class="{ 'couple-shared': isCoupleShared(page, piece.block) }"
-                      :style="dayCourseBlockStyle(piece, 'me', isCoupleShared(page, piece.block))"
+                      :class="{ 'couple-shared': isCoupleShared(page, piece.block), 'couple-split': isCoupleSplit(page, piece.block, 'me') }"
+                      :style="dayCourseBlockStyle(piece, 'me', isCoupleShared(page, piece.block), page)"
                       :title="courseTitle(piece.block.course)"
                       @click.stop="onCourseBlockClick($event, piece.block, page.weekValue)"
                     >
@@ -655,10 +674,12 @@
                       v-for="block in coupleDataFor(page).partnerBlocks"
                       :key="`ta-${page.weekValue}-${page.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
                       class="day-course-block couple-partner"
-                      :style="dayCourseBlockStyle(block, 'ta')"
+                      :class="{ 'couple-split': isCoupleSplit(page, block, 'ta') }"
+                      :style="dayCourseBlockStyle(block, 'ta', false, page)"
                       :title="`TA · ${courseTitle(block.course)}`"
                       @click.stop="onPartnerCourseClick($event, block)"
                     >
+                      <i class="couple-ta-tag">TA</i>
                       <div class="day-course-name">{{ block.course.name }}</div>
                       <div class="day-course-meta">
                         <span v-if="block.course.location">@{{ block.course.location }}</span>
@@ -1067,7 +1088,6 @@ import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
 import { coupleCourseTone } from "@/views/schedule/couple";
 import { useCoupleOverlay } from "@/views/schedule/useCoupleOverlay";
 import CoupleDialog from "@/views/schedule/CoupleDialog.vue";
-import UserAvatar from "@/components/common/UserAvatar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -2327,8 +2347,9 @@ const carouselPages = computed<WeekPage[]>(() => {
 });
 
 // 情侣课表叠加层：TA 的课按日期对齐到当前网格，见 docs/couple-schedule.md。
-type CouplePageData = { partnerBlocks: WeekCourseBlock[]; shared: Set<string> };
-const EMPTY_COUPLE_PAGE: CouplePageData = { partnerBlocks: [], shared: new Set() };
+// `split`：和对方的课撞在同一时段的课（"me|…" 是我的，"ta|…" 是 TA 的），只有这些才左右各占半格。
+type CouplePageData = { partnerBlocks: WeekCourseBlock[]; shared: Set<string>; split: Set<string> };
+const EMPTY_COUPLE_PAGE: CouplePageData = { partnerBlocks: [], shared: new Set(), split: new Set() };
 function coupleBlockKey(block: WeekCourseBlock) {
   return `${block.day}|${block.startSlot}|${block.endSlot}|${block.course.name.replace(/\s+/gu, "")}`;
 }
@@ -2338,7 +2359,7 @@ const couplePageData = computed(() => {
   const reader = couple.partnerReader.value;
   for (const page of carouselPages.value) {
     const days = viewMode.value === "week" ? [1, 2, 3, 4, 5, 6, 7] : [page.day];
-    const data: CouplePageData = { partnerBlocks: [], shared: new Set() };
+    const data: CouplePageData = { partnerBlocks: [], shared: new Set(), split: new Set() };
     for (const day of days) {
       const date = pageDate(page, day);
       const theirs = date ? reader.blocksForDate(date) : null;
@@ -2348,8 +2369,16 @@ const couplePageData = computed(() => {
       for (const block of theirs) {
         const placed = { ...block, day };
         // 同一节同一门课（一起上的课）只画一格。
-        if (mineKeys.has(coupleBlockKey(placed))) data.shared.add(coupleBlockKey(placed));
-        else data.partnerBlocks.push(placed);
+        if (mineKeys.has(coupleBlockKey(placed))) {
+          data.shared.add(coupleBlockKey(placed));
+          continue;
+        }
+        data.partnerBlocks.push(placed);
+        for (const own of mine) {
+          if (own.startSlot > placed.endSlot || placed.startSlot > own.endSlot) continue;
+          data.split.add(`me|${coupleBlockKey(own)}`);
+          data.split.add(`ta|${coupleBlockKey(placed)}`);
+        }
       }
     }
     pages.set(page.key, data);
@@ -2362,6 +2391,10 @@ function coupleDataFor(page: SchedulePageModel) {
 function isCoupleShared(page: SchedulePageModel, block: WeekCourseBlock) {
   return coupleDataFor(page).shared.has(coupleBlockKey(block));
 }
+function isCoupleSplit(page: SchedulePageModel, block: WeekCourseBlock, owner: "me" | "ta") {
+  return coupleDataFor(page).split.has(`${owner}|${coupleBlockKey(block)}`);
+}
+const coupleBound = computed(() => couple.status.value?.status === "active");
 const coupleBarStyle = computed(() => {
   const value = couple.status.value;
   if (value?.status !== "active") return {};
@@ -3519,9 +3552,9 @@ function drawnBlockOf(item: DrawnBlock) {
   return "block" in item ? item.block : item;
 }
 
-// 并排的重叠课程按所在的道分宽度。双人模式下左右两半已经分给了两个人，不再分道。
+// 并排的重叠课程按所在的道分宽度。
 function laneStyle(item: DrawnBlock) {
-  if (!("block" in item) || item.lanes <= 1 || couple.active.value) return {};
+  if (!("block" in item) || item.lanes <= 1) return {};
   const share = 100 / item.lanes;
   return {
     justifySelf: "start",
@@ -3539,21 +3572,24 @@ function courseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = 
     ...(column < 2 ? { display: "none" } : {}),
     gridColumn: `${column} / ${column + 1}`,
     gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
-    ...laneStyle(item),
+    // 和对方的课撞在一起时左右两半已经分给了两个人，不再按道分。
+    ...(page && isCoupleSplit(page, block, owner) ? {} : laneStyle(item)),
     "--course-bg": colors.bg,
     "--course-border": colors.border,
     "--course-text": colors.text,
   };
 }
 
-function dayCourseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false) {
+function dayCourseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false, page?: SchedulePageModel) {
   const block = drawnBlockOf(item);
   const colors = coupleTone(owner, block.course.name, shared);
   const coupled = couple.active.value;
+  // 双人模式下只有撞在同一时段的课才左右分开，其余的照常占满一行。
+  const split = Boolean(coupled && page && !shared && isCoupleSplit(page, block, owner));
   return {
-    gridColumn: !coupled ? "2 / 3" : shared ? "2 / 4" : owner === "ta" ? "3 / 4" : "2 / 3",
+    gridColumn: !coupled ? "2 / 3" : !split ? "2 / 4" : owner === "ta" ? "3 / 4" : "2 / 3",
     gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
-    ...laneStyle(item),
+    ...(split ? {} : laneStyle(item)),
     "--course-bg": colors.bg,
     "--course-border": colors.border,
     "--course-text": colors.text,
@@ -3717,7 +3753,25 @@ const currentStyleTitle = computed(() => (
   scheduleStyleOptions.find((item) => item.key === scheduleStyle.value)?.title ?? "经典"
 ));
 // 经典样式保留自己的画法。双人模式的日视图是「我 | TA」两列对照，也沿用经典的网格。
-const usesClassicDay = computed(() => scheduleStyle.value === "classic" || couple.active.value);
+const usesClassicDay = computed(() => scheduleStyle.value === "classic");
+
+/** 双人模式的日视图交给风格网格画：一天一列，带上 TA 的课。 */
+function coupleDayFor(page: SchedulePageModel): StyledDay[] {
+  const data = coupleDataFor(page);
+  const own = dayPiecesFor(page);
+  const rawDate = pageDate(page);
+  const adjustment = rawDate ? calendar.value?.adjustments?.find((item) => item.date === rawDate) : undefined;
+  return [{
+    day: page.day,
+    dateText: page.dayTabs[page.day - 1]?.date ?? "",
+    rawDate,
+    isToday: pageIsToday(page),
+    adjustmentKind: adjustment?.kind ?? null,
+    pieces: own,
+    partnerPieces: placeCourseBlocks(data.partnerBlocks.filter((block) => block.day === page.day)),
+    sharedIds: new Set(own.filter((piece) => data.shared.has(coupleBlockKey(piece.block))).map((piece) => piece.id)),
+  }];
+}
 const styleCanvasCss = computed(() => {
   if (hasScheduleBackground.value) return "";
   const canvas = scheduleStyleCanvas(scheduleStyle.value, appearance.isDark);
