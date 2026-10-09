@@ -22,11 +22,19 @@
     <meta name="application-name" content="药大拾间" />
     <script src="/appearance-bootstrap.js?v=20261007"></script>
     <style>
+      :root {
+        --cpu-boot-bg: #f2f3f5;
+      }
+      html[data-theme="dark"] {
+        --cpu-boot-bg: #0e1012;
+      }
       html, body {
         margin: 0;
         width: 100%;
         min-height: 100%;
-        background: #edf4ff;
+        /* Native shells keep short documents at their content height. Their
+           exposed root canvas must follow the same theme as the page. */
+        background: var(--cpu-bg, var(--cpu-boot-bg));
       }
       body {
         min-height: 100vh;
@@ -81,9 +89,6 @@
         font-size: 15px;
         line-height: 1.45;
         color: #667085;
-      }
-      html[data-theme="dark"] body {
-        background: #07110f;
       }
       html[data-theme="dark"] .app-launch-screen {
         background: linear-gradient(180deg, #07110f 0%, #0b1715 48%, #101816 100%);

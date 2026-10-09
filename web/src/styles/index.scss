@@ -255,6 +255,9 @@ samp {
 }
 
 html {
+  // The document canvas is visible below short native pages and behind route
+  // transitions. Painting only body leaves the startup light canvas exposed.
+  background: var(--cpu-bg);
   overscroll-behavior: none;
   touch-action: pan-y manipulation;
 }
