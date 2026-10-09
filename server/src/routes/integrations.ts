@@ -9,8 +9,10 @@ import { Errors, ok } from "../utils/response";
 
 import { getSongReviewConfig, reviewSong } from "../services/songAiReview";
 import { songReviewInputSchema } from "../services/songReviewPolicy";
+import { shopIntegrationRouter } from "./shopIntegration";
 
 export const integrationsRouter = Router();
+integrationsRouter.use(shopIntegrationRouter);
 
 const voiceHubNotificationSchema = z.object({
   userId: z.number().int().positive(),

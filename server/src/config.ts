@@ -465,6 +465,9 @@ export const config = {
   ).trim(),
   campusMapPdsSharePassword: (process.env.CAMPUS_MAP_PDS_SHARE_PASSWORD ?? "").trim(),
   oauthClientId: String(process.env.OAUTH_CLIENT_ID ?? "cpu-electron").trim(),
+  shopOAuthClientId: String(process.env.SHOP_OAUTH_CLIENT_ID ?? "dayi-shop").trim(),
+  shopOrigin: String(process.env.SHOP_ORIGIN ?? "https://shop.cputime.cn").trim().replace(/\/+$/, ""),
+  shopIntegrationSecret: String(process.env.SHOP_INTEGRATION_SECRET ?? "").trim(),
   oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),
 };
 
