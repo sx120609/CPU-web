@@ -305,6 +305,7 @@
         <ProfileRowMobile v-if="auth.canAccessModuleAdmin" :icon="Tools" title="管理后台" tone="#dc2626" @click="router.push('/admin')" />
         <ProfileRowMobile :icon="Coin" title="存储与缓存" tone="#0891b2" @click="router.push('/profile/storage')" />
         <ProfileRowMobile :icon="Download" title="客户端下载" tone="#2563eb" @click="router.push('/download')" />
+        <ProfileRowMobile v-if="!inWechat" :icon="ChatDotRound" title="关注服务号" tone="#07c160" @click="wechatFollowOpen = true" />
         <ProfileRowMobile :icon="Medal" title="致谢" tone="#b45309" @click="router.push('/thanks')" />
       </div>
     </section>
@@ -460,6 +461,8 @@
       :disabled="avatarSaving"
       @change="onAvatarChange"
     />
+
+    <WechatFollowDialog v-model="wechatFollowOpen" />
   </div>
 </template>
 
@@ -469,6 +472,7 @@ import {
   ArrowRight,
   Bell,
   Camera,
+  ChatDotRound,
   CircleCheck,
   Coin,
   Download,
@@ -488,7 +492,9 @@ import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import { useMessageStore } from "@/stores/message";
 import { fmtDate, fmtRelative } from "@/utils/format";
+import { isWechatBrowser } from "@/utils/wechatBridge";
 import ProfileRowMobile from "./components/ProfileRowMobile.vue";
+import WechatFollowDialog from "./components/WechatFollowDialog.vue";
 import {
   appearanceOptions,
   formatMoney,
@@ -561,6 +567,8 @@ const {
   retryAvatarPreview,
   openMyTopic,
 } = useInjectedProfilePage();
+const wechatFollowOpen = ref(false);
+const inWechat = isWechatBrowser();
 
 const messages = useMessageStore();
 const avatarSheetOpen = ref(false);

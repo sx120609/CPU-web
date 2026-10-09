@@ -47,6 +47,7 @@
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
         <el-button plain @click="router.push('/profile/privacy')">账号与隐私</el-button>
         <el-button plain @click="router.push('/profile/storage')">存储与缓存</el-button>
+        <el-button v-if="!inWechat" plain @click="wechatFollowOpen = true">关注服务号</el-button>
         <el-button plain :disabled="saving || logoutBusy" @click="router.push('/profile/verification')">拾间认证</el-button>
         <el-button v-if="!commerceHidden" type="warning" plain :disabled="saving || logoutBusy" @click="router.push('/vip')">VIP 中心</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
@@ -477,6 +478,8 @@
       :disabled="avatarSaving"
       @change="onAvatarChange"
     />
+
+    <WechatFollowDialog v-model="wechatFollowOpen" />
   </div>
 </template>
 
@@ -488,6 +491,8 @@ import AppIcon from "@/components/common/AppIcon.vue";
 import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
+import { isWechatBrowser } from "@/utils/wechatBridge";
+import WechatFollowDialog from "./components/WechatFollowDialog.vue";
 import {
   appearanceOptions,
   formatMoney,
@@ -564,6 +569,8 @@ const {
   retryAvatarPreview,
   openMyTopic,
 } = useInjectedProfilePage();
+const wechatFollowOpen = ref(false);
+const inWechat = isWechatBrowser();
 </script>
 
 <style scoped>
