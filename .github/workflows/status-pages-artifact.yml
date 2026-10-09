@@ -1,0 +1,35 @@
+name: Status Pages artifact
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['ops/status-monitor/**', '.github/workflows/status-pages-artifact.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ops/status-monitor/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: ops/status-monitor
+      - run: npm test && node tools/build-eo.mjs
+        working-directory: ops/status-monitor
+      - name: Package commit-bound Pages upload
+        run: |
+          mkdir -p artifact
+          printf '%s\n' "$GITHUB_SHA" > artifact/COMMIT
+          cd ops/status-monitor/output/upload
+          zip -qr "$GITHUB_WORKSPACE/artifact/status-pages.zip" .
+          cd "$GITHUB_WORKSPACE/artifact"
+          sha256sum status-pages.zip COMMIT > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: status-pages-${{ github.sha }}
+          path: artifact/
+          if-no-files-found: error
