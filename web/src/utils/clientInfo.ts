@@ -147,16 +147,6 @@ export function shouldHideNativeYaodaCanFly(
     && (!isLoggedIn || String(username || "").trim() === NATIVE_FORUM_INTRANET_ONLY_USERNAME);
 }
 
-/** VIP stays out of both shells for everyone; sponsorship only for visitors and the restricted account. */
-export function shouldHideNativeSponsor(
-  isLoggedIn: boolean,
-  username?: string | null,
-  ua = navigator.userAgent,
-) {
-  return isIosOrHarmonyNativeApp(ua)
-    && (!isLoggedIn || String(username || "").trim() === NATIVE_FORUM_INTRANET_ONLY_USERNAME);
-}
-
 export function shouldHideHarmonyAssistant(
   isLoggedIn: boolean,
   username?: string | null,

@@ -15,7 +15,7 @@ import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUploa
 import { preloadAvatar } from "@/utils/avatarPreview";
 import { withMediaRevision } from "@/utils/cdnMedia";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
-import { hidesNativeCommerce, shouldHideHarmonyAssistant, shouldHideNativeSponsor } from "@/utils/clientInfo";
+import { hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
 
 interface ProfileViewCache {
   topics: any[];
@@ -94,7 +94,6 @@ export function useProfilePage() {
   const route = useRoute();
   const router = useRouter();
   const user = computed(() => auth.user);
-  const sponsorHidden = computed(() => shouldHideNativeSponsor(Boolean(user.value), user.value?.username));
   const assistantHiddenForClient = computed(() => shouldHideHarmonyAssistant(auth.isLoggedIn, auth.user?.username));
   const assistantEntryVisible = computed(() => site.features.assistantEntry && !assistantHiddenForClient.value);
   const myTopics = ref<any[]>([]);
@@ -153,7 +152,7 @@ export function useProfilePage() {
   const pwForm = reactive({ oldPassword: "", newPassword: "", confirm: "" });
   const anonymousBoards = computed(() => boards.value.filter((board) => board.anonymousEnabled));
   const profileCacheKey = computed(() => user.value?.id ? `cpu-profile-view-v1:user-${user.value.id}` : "");
-  const sponsorVisible = computed(() => !sponsorHidden.value && (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0));
+  const sponsorVisible = computed(() => !commerceHidden && (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0));
   const anonymousStatusText = computed(() => {
     const state = user.value?.anonymousState;
     if (!state) return "—";
@@ -303,7 +302,7 @@ export function useProfilePage() {
   }
 
   async function loadSponsorOptions() {
-    if (sponsorHidden.value) return;
+    if (commerceHidden) return;
     try {
       Object.assign(sponsorOptions, await paymentsApi.sponsorOptions({ suppressErrorMessage: true }));
       sponsorOptionsCached.value = true;
@@ -316,7 +315,7 @@ export function useProfilePage() {
   }
 
   async function loadSponsorOrders() {
-    if (sponsorHidden.value) return;
+    if (commerceHidden) return;
     try {
       sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10, status: "paid" }, { suppressErrorMessage: true })).list;
     } catch {
@@ -374,7 +373,7 @@ export function useProfilePage() {
   }
 
   async function handleSponsorReturnFromQuery() {
-    if (sponsorHidden.value) return;
+    if (commerceHidden) return;
     const sponsorQuery = String(route.query.sponsor ?? "");
     if (sponsorQuery !== "success") return;
     const key = String(route.query.outTradeNo ?? "__no_trade_no");
@@ -405,7 +404,7 @@ export function useProfilePage() {
   }
 
   function openSponsorConfirm() {
-    if (sponsorHidden.value) return;
+    if (commerceHidden) return;
     if (sponsorSubmitting.value) return;
     if (!validateSponsorAmount()) return;
     if (!enabledPayTypes.value.length) {
@@ -416,7 +415,7 @@ export function useProfilePage() {
   }
 
   async function submitSponsor() {
-    if (sponsorHidden.value) return;
+    if (commerceHidden) return;
     if (sponsorSubmitting.value) return;
     if (!validateSponsorAmount()) return;
     if (!enabledPayTypes.value.length) {
@@ -577,7 +576,6 @@ export function useProfilePage() {
 
   return {
     commerceHidden,
-    sponsorHidden,
     auth,
     site,
     appearance,

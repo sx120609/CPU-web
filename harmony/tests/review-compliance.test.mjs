@@ -63,9 +63,6 @@ test('iOS and Harmony Web shells apply the account-specific forum and game polic
     assert.equal(api.shouldHideNativeYaodaCanFly(false, null, ua), true);
     assert.equal(api.shouldHideNativeYaodaCanFly(true, '2020240384', ua), true);
     assert.equal(api.shouldHideNativeYaodaCanFly(true, '2020240385', ua), false);
-    assert.equal(api.shouldHideNativeSponsor(false, null, ua), true);
-    assert.equal(api.shouldHideNativeSponsor(true, ' 2020240384 ', ua), true);
-    assert.equal(api.shouldHideNativeSponsor(true, '2020240385', ua), false);
     assert.equal(api.isNativeForumIntranetOnlyAccount('2020240384', ua), true);
     assert.equal(api.isNativeForumIntranetOnlyAccount('2020240385', ua), false);
   }
@@ -78,8 +75,6 @@ test('iOS and Harmony Web shells apply the account-specific forum and game polic
   assert.equal(api.shouldHideHarmonyAssistant(true, '2020240384', 'Chrome'), false);
 
   assert.equal(api.shouldHideNativeYaodaCanFly(false, null, 'Chrome'), false);
-  assert.equal(api.shouldHideNativeSponsor(false, null, 'Chrome'), false);
-  assert.equal(api.shouldHideNativeSponsor(true, '2020240384', 'CPUWebScheduleApp/38'), false);
   assert.equal(api.isNativeForumIntranetOnlyAccount('2020240384', 'CPUWebScheduleApp/38'), false);
 });
 
@@ -92,7 +87,6 @@ function loadMainRouteGuard({ user = null, hideGame = false, hideAssistant = fal
     router: { beforeEach: (callback) => { guard = callback; } },
     window: { location: { replace() {} } }, document: {},
     hidesNativeCommerce: () => false, isNativeScheduleShell: () => false,
-    shouldHideNativeSponsor: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, user, token: user ? 'session' : '', canAccessForum: true }),
     useSiteStore: () => ({ loaded: true, features: {} }),

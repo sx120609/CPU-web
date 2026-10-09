@@ -502,7 +502,6 @@ import {
 
 const {
   commerceHidden,
-  sponsorHidden,
   auth,
   site,
   appearance,
@@ -594,7 +593,7 @@ const heroStats = computed(() => {
     stats.push({ label: "回复", value: current.replyCount ?? 0 });
     stats.push({ label: "声望", value: current.reputation ?? 0 });
   }
-  if (!sponsorHidden.value && (current.sponsorAmount ?? 0) > 0) {
+  if (!commerceHidden && (current.sponsorAmount ?? 0) > 0) {
     stats.push({ label: "赞助", value: `¥${formatMoney(current.sponsorAmount)}`, gold: true });
   }
   return stats;
