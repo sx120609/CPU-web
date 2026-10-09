@@ -198,8 +198,8 @@ ${groups}
 ${certificates}
 <p class="note">${release}</p>
 </div>
-</main>
 <footer class="note"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">粤ICP备2026117069号</a></footer>
+</main>
 <script>${SCRIPT}</script>
 </body>
 </html>
