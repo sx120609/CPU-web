@@ -64,7 +64,7 @@
 
     <!-- 手机上聊天窗口挂到 body 下，按可视视口定位，不受页面滚动和外层卡片高度影响 -->
     <Teleport to="body" :disabled="!floatChat">
-    <section class="dm-chat" :class="{ 'is-floating': floatChat, 'is-keyboard': floatChat && composerFocused }">
+    <section class="dm-chat" :class="{ 'is-floating': floatChat, 'is-keyboard': floatChat && keyboardOpen, 'is-under-shell-header': shellDrawsHeader }">
       <header v-if="floatChat && !activeCounterpart" class="dm-chat-head">
         <button type="button" class="dm-icon-btn dm-back" aria-label="返回会话列表" title="返回会话列表" @click="backToList">
           <el-icon><ArrowLeft /></el-icon>
@@ -272,6 +272,7 @@
 
 <script setup lang="ts">
 import { useMobileLayout } from "@/utils/mobileLayout";
+import { isHarmonyNativeApp, nativeShellOwnsChrome } from "@/utils/clientInfo";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import {
@@ -329,6 +330,15 @@ const messageThread = ref<HTMLElement | null>(null);
 // Phones, touch tablets below 1024 px and app shells share one layout decision with the rest of the site.
 const isNarrow = useMobileLayout();
 const composerFocused = ref(false);
+// 鸿蒙壳的原生导航栏盖在网页底部，键盘弹出才被键盘遮住。收起键盘后输入框可能仍有焦点，
+// 所以那里按视口是否真的变矮判断，不能只看焦点。
+const harmonyShell = isHarmonyNativeApp();
+// 原生壳自己画顶栏，网页已经在状态栏下方。各壳只在 .layout-root 上把顶部安全区清零，
+// 而铺满屏幕的聊天窗口挂在 body 下，读到的仍是系统安全区，会在顶栏下再空出一条。
+const shellDrawsHeader = nativeShellOwnsChrome() || harmonyShell;
+const viewportShrunk = ref(false);
+let restViewport = { width: 0, height: 0 };
+const keyboardOpen = computed(() => composerFocused.value && (!harmonyShell || viewportShrunk.value));
 const reportDialogOpen = ref(false);
 const reportOverviewOpen = ref(false);
 const reportTarget = ref<{ type: "direct_message" | "user"; id: number; label: string } | null>(null);
@@ -457,6 +467,20 @@ onMounted(async () => {
   }, 7000);
   document.addEventListener("visibilitychange", handleVisibilityChange);
 });
+
+function trackViewport() {
+  if (window.innerWidth !== restViewport.width) restViewport = { width: window.innerWidth, height: 0 };
+  restViewport.height = Math.max(restViewport.height, window.innerHeight);
+  viewportShrunk.value = restViewport.height - window.innerHeight > 96;
+}
+
+if (harmonyShell) {
+  onMounted(() => {
+    trackViewport();
+    window.addEventListener("resize", trackViewport);
+  });
+  onBeforeUnmount(() => window.removeEventListener("resize", trackViewport));
+}
 
 onBeforeUnmount(() => {
   disposed = true;
@@ -1757,6 +1781,9 @@ html[data-theme="dark"] .dm-chat {
     height: 52px;
     padding: var(--cpu-safe-area-inset-top, 0px) 4px 0;
   }
+  .dm-chat.is-under-shell-header .dm-chat-head {
+    padding-top: 0;
+  }
   .dm-peer {
     padding-right: 4px;
   }
@@ -1767,8 +1794,8 @@ html[data-theme="dark"] .dm-chat {
     max-width: 84%;
   }
   .dm-dock {
-    /* 键盘收起时让开系统手势条；iOS 客户端的悬浮标签栏盖在网页上，也要让开 */
-    padding: 6px 8px calc(6px + max(env(safe-area-inset-bottom, 0px), var(--cpu-ios-bottom-clearance, 0px)));
+    /* 键盘收起时让开系统手势条；iOS 和鸿蒙客户端的原生标签栏盖在网页上，也要让开 */
+    padding: 6px 8px calc(6px + max(env(safe-area-inset-bottom, 0px), var(--cpu-ios-bottom-clearance, 0px), var(--cpu-harmony-bottom-clearance, 0px)));
     border-top: 1px solid var(--cpu-border-soft);
   }
   .dm-chat.is-keyboard .dm-dock {
