@@ -9,6 +9,7 @@ import { boardApi } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import {
   hidesNativeCommerce,
+  shouldHideNativeSponsor,
   isLikelyIosDevice,
   isNativeForumIntranetOnlyAccount,
   isNativeScheduleShell,
@@ -237,7 +238,7 @@ export const router = createRouter({
 installForumListLayoutSync(router, forumListRouteOptions);
 
 router.beforeEach(async (to) => {
-  if (hidesNativeCommerce() && /^\/(vip|sponsor|sponsor-wall)(\/|$)/.test(to.path)) {
+  if (hidesNativeCommerce() && /^\/vip(\/|$)/.test(to.path)) {
     return { path: "/profile", replace: true };
   }
   const nativeShell = (window as any).CPUTimeNative;
@@ -263,6 +264,13 @@ router.beforeEach(async (to) => {
   // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测一次真实会话。
   // 游客的 401 不提示、不跳转，避免公开页面被错误抢到登录页。
   if (!auth.ready) await auth.fetchMe({ probe: true });
+
+  if (
+    /^\/(sponsor|sponsor-wall)(\/|$)/.test(to.path)
+    && shouldHideNativeSponsor(Boolean(auth.user), auth.user?.username)
+  ) {
+    return { path: "/profile", replace: true };
+  }
 
   if (to.name === "search" && shouldHideHarmonyAssistant(Boolean(auth.user), auth.user?.username)) {
     return { name: "services", replace: true };

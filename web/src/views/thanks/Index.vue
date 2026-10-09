@@ -190,7 +190,7 @@ import UserAvatar from "@/components/common/UserAvatar.vue";
 import { paymentsApi, type SponsorRankingEntry } from "@/api/payments";
 import { siteApi } from "@/api/site";
 import { useAuthStore } from "@/stores/auth";
-import { hidesNativeCommerce } from "@/utils/clientInfo";
+import { shouldHideNativeSponsor } from "@/utils/clientInfo";
 import { copyText } from "@/utils/userGroup";
 import ThanksFireworks from "./ThanksFireworks.vue";
 import {
@@ -245,7 +245,7 @@ function formatMoney(amount: string) {
 }
 
 // ---- 实时数据：社区数字和赞助榜，定时刷新 ----
-const showSponsors = !hidesNativeCommerce();
+const showSponsors = computed(() => !shouldHideNativeSponsor(Boolean(auth.user), auth.user?.username));
 const community = ref<{ users: number; topics: number; replies: number } | null>(null);
 const ranking = ref<SponsorRankingEntry[]>([]);
 const sponsorTotal = ref(0);
@@ -267,7 +267,7 @@ async function loadCommunity() {
 }
 
 async function loadRanking() {
-  if (!showSponsors) return;
+  if (!showSponsors.value) return;
   try {
     const next = await paymentsApi.sponsorRanking({ suppressErrorMessage: true });
     if (disposed) return;
@@ -301,7 +301,7 @@ function refresh() {
 // ---- 开场数字 ----
 const figures = computed(() => {
   const days = Math.max(1, Math.floor((Date.now() - new Date(`${thanksHero.since}T00:00:00+08:00`).getTime()) / 86_400_000));
-  const sponsored = showSponsors && sponsorTotal.value > 0;
+  const sponsored = showSponsors.value && sponsorTotal.value > 0;
   return [
     { key: "days", label: "天的陪伴", value: days },
     { key: "commits", label: "次代码提交", value: COMMIT_COUNT },
@@ -335,13 +335,13 @@ function countUp() {
 watch(figures, countUp);
 
 // ---- 章节导航 ----
-const sections = [
+const sections = computed(() => [
   { id: "thx-lead", label: "主创" },
   { id: "thx-people", label: "伙伴" },
-  ...(showSponsors ? [{ id: "thx-sponsors", label: "赞助" }] : []),
+  ...(showSponsors.value ? [{ id: "thx-sponsors", label: "赞助" }] : []),
   { id: "thx-tools", label: "工具" },
   { id: "thx-road", label: "历程" },
-];
+]);
 const activeSection = ref("");
 let sectionObserver: IntersectionObserver | null = null;
 

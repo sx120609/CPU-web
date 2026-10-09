@@ -32,10 +32,10 @@ import {
   sponsorConfigToCents,
 } from "../services/sponsor";
 import { awardSponsorAssistantPoints } from "../services/campusAssistantPoints";
-import { iosCommerceUnavailable } from "../middleware/iosCommerce";
+import { iosSponsorUnavailable } from "../middleware/iosCommerce";
 
 export const paymentsRouter = Router();
-paymentsRouter.use("/sponsor", iosCommerceUnavailable);
+paymentsRouter.use("/sponsor", iosSponsorUnavailable);
 
 function requestOrigin(req: any) {
   const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "http").split(",")[0].trim();

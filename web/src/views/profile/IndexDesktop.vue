@@ -41,7 +41,7 @@
         <li v-if="!auth.forumHidden"><span>发帖</span><span>{{ user?.postCount }}</span></li>
         <li v-if="!auth.forumHidden"><span>回复</span><span>{{ user?.replyCount }}</span></li>
         <li v-if="!auth.forumHidden"><span>声望</span><span>{{ user?.reputation }}</span></li>
-        <li v-if="!commerceHidden && (user?.sponsorAmount ?? 0) > 0"><span>赞助</span><span class="sponsor-total">¥{{ formatMoney(user?.sponsorAmount) }}</span></li>
+        <li v-if="!sponsorHidden && (user?.sponsorAmount ?? 0) > 0"><span>赞助</span><span class="sponsor-total">¥{{ formatMoney(user?.sponsorAmount) }}</span></li>
       </ul>
       <div class="profile-actions cpu-button-row">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
@@ -162,7 +162,7 @@
       </el-button>
     </div>
 
-    <div id="sponsor" v-if="!commerceHidden && (site.features.sponsor || (user?.sponsorAmount ?? 0) > 0)" class="cpu-card sponsor-card">
+    <div id="sponsor" v-if="!sponsorHidden && (site.features.sponsor || (user?.sponsorAmount ?? 0) > 0)" class="cpu-card sponsor-card">
       <div class="sponsor-main">
         <div class="sponsor-copy">
           <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>
@@ -501,6 +501,7 @@ import {
 
 const {
   commerceHidden,
+  sponsorHidden,
   auth,
   site,
   appearance,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Request } from "express";
 import { detectLoginClient, IOS_ANALYTICS_CLIENTS, loginClientUsage } from "../src/utils/loginClient";
-import { isIosCommerceRequest } from "../src/middleware/iosCommerce";
+import { isIosCommerceRequest, isIosSponsorUnavailable } from "../src/middleware/iosCommerce";
 
 function detect(ua: string, client?: string) {
   return detectLoginClient({ get: (key: string) => key === "user-agent" ? ua : client } as Request);
@@ -78,4 +78,10 @@ test("detailed telemetry preserves existing iOS commerce restrictions", () => {
   assert.equal(isIosCommerceRequest({ headers: { "user-agent": "CPUWebHarmonyApp/3 CPUTimeNative/1" } }), false);
   assert.equal(isIosCommerceRequest({ headers: { "user-agent": "CPUWebScheduleApp/39 CPUTimeNative/1" } }), false);
   assert.equal(isIosCommerceRequest({ headers: { "x-cpu-client": "web" } }), false);
+});
+
+test("iOS sponsorship is open to signed-in users other than the restricted account", () => {
+  assert.equal(isIosSponsorUnavailable(false, null), true);
+  assert.equal(isIosSponsorUnavailable(true, " 2020240384 "), true);
+  assert.equal(isIosSponsorUnavailable(true, "2020240385"), false);
 });
