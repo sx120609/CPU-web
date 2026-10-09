@@ -6,6 +6,48 @@ import express from "express";
 
 process.env.REDIS_ENABLED = "false";
 
+test("shop access exposes only current active global-admin authority to the authenticated shop", async t => {
+  const { prisma } = await import("../src/prisma");
+  const { config } = await import("../src/config");
+  const { shopIntegrationRouter } = await import("../src/routes/shopIntegration");
+  const secret = "shop-access-test-secret-32-characters";
+  const beforeSecret = config.shopIntegrationSecret;
+  const beforeFind = prisma.user.findUnique;
+  t.after(() => { config.shopIntegrationSecret = beforeSecret; prisma.user.findUnique = beforeFind; });
+  config.shopIntegrationSecret = secret;
+  let user: any = { role: "admin", status: "active" };
+  let calls = 0;
+  prisma.user.findUnique = (async ({ where, select }: any) => {
+    calls++;
+    assert.equal(where.id, 7);
+    assert.deepEqual(select, { role: true, status: true });
+    return user;
+  }) as any;
+  const app = express(); app.use(shopIntegrationRouter);
+  app.use((err: any, _req: any, res: any, _next: any) => res.status(err.status || 400).json({ error: err.message }));
+  const server = createServer(app);
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const endpoint = `http://127.0.0.1:${(server.address() as any).port}/dayi-shop/users/7/access`;
+  const get = (key = secret) => fetch(endpoint, { headers: { "x-shop-integration-secret": key } });
+  assert.equal((await get("wrong")).status, 401);
+  assert.equal(calls, 0);
+  assert.equal((await fetch(endpoint.replace('/7/', '/0/'), { headers: { "x-shop-integration-secret": secret } })).status, 400);
+  const response = await get();
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual((await response.json()).data, { userId: 7, globalAdmin: true });
+  for (const role of ["user", "mod", "bot"]) {
+    user = { role, status: "active", voiceHubRole: "super_admin" };
+    assert.equal((await (await get()).json()).data.globalAdmin, false);
+  }
+  for (const status of ["banned", "deleting", "deleted"]) {
+    user = { role: "admin", status };
+    assert.equal((await (await get()).json()).data.globalAdmin, false);
+  }
+  user = null;
+  assert.equal((await (await get()).json()).data.globalAdmin, false);
+});
+
 test("shop events are authenticated, private, idempotent and ignore unavailable accounts", async t => {
   const { prisma } = await import("../src/prisma");
   const { config } = await import("../src/config");

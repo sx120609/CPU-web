@@ -7,6 +7,24 @@ import { Errors, ok } from "../utils/response";
 
 export const shopIntegrationRouter = Router();
 
+function authenticateShop(suppliedSecret: string) {
+  const expected = Buffer.from(config.shopIntegrationSecret);
+  const supplied = Buffer.from(suppliedSecret);
+  if (expected.length < 32 || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+    throw Errors.unauthorized("商城集成认证失败");
+  }
+}
+
+shopIntegrationRouter.get("/dayi-shop/users/:userId/access", async (req, res, next) => {
+  try {
+    authenticateShop(String(req.header("x-shop-integration-secret") || ""));
+    const userId = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(req.params.userId);
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+    res.setHeader("Cache-Control", "no-store");
+    ok(res, { userId, globalAdmin: user?.role === "admin" && user.status === "active" });
+  } catch (error) { next(error); }
+});
+
 const eventSchema = z.object({
   userId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   orderId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
@@ -22,11 +40,7 @@ const statusText = {
 
 shopIntegrationRouter.post("/dayi-shop/notifications", async (req, res, next) => {
   try {
-    const expected = Buffer.from(config.shopIntegrationSecret);
-    const supplied = Buffer.from(String(req.header("x-shop-integration-secret") || ""));
-    if (expected.length < 32 || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
-      throw Errors.unauthorized("商城集成认证失败");
-    }
+    authenticateShop(String(req.header("x-shop-integration-secret") || ""));
     const { notifications } = batchSchema.parse(req.body);
     let count = 0;
     let skipped = 0;
