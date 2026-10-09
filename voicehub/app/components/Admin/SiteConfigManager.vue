@@ -10,14 +10,14 @@
       </div>
       <div class="flex gap-3">
         <button
-          :disabled="loading || saving"
+          :disabled="loading || saving || !configLoaded"
           class="flex items-center gap-2 px-5 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 text-xs font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           @click="resetForm"
         >
           <RotateCcw :size="14" /> 重置
         </button>
         <button
-          :disabled="loading || saving"
+          :disabled="loading || saving || !configLoaded"
           class="flex items-center gap-2 px-8 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black rounded-xl shadow-lg shadow-blue-900/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           @click="saveConfig"
         >
@@ -40,7 +40,12 @@
       <p class="text-zinc-500 text-sm">加载配置中...</p>
     </div>
 
-    <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div v-else-if="!configLoaded" role="alert" :class="cardClass">
+      <p class="text-sm text-rose-500">{{ loadError }}</p>
+      <button type="button" class="text-sm text-blue-500" @click="loadConfig">重新加载配置</button>
+    </div>
+
+    <fieldset v-else :disabled="saving" class="grid grid-cols-1 lg:grid-cols-2 gap-6 min-w-0">
       <!-- 基础信息 -->
       <section :class="cardClass">
         <h3
@@ -151,8 +156,8 @@
           <Settings2 :size="16" class="text-amber-500" /> 投稿逻辑设置
         </h3>
         <div class="space-y-6">
-          <div
-            class="flex items-center justify-between p-3 bg-zinc-950/50 border border-zinc-800 rounded-xl"
+          <label
+            class="flex items-center justify-between p-3 bg-zinc-950/50 border border-zinc-800 rounded-xl cursor-pointer"
           >
             <div>
               <p class="text-xs font-bold text-zinc-200">启用重播申请</p>
@@ -163,11 +168,11 @@
               type="checkbox"
               class="w-5 h-5 rounded border-zinc-800 bg-zinc-900 accent-blue-600 cursor-pointer"
             >
-          </div>
+          </label>
 
           <div class="space-y-4">
-            <div
-              class="flex items-center justify-between p-3 bg-zinc-950/50 border border-zinc-800 rounded-xl"
+            <label
+              class="flex items-center justify-between p-3 bg-zinc-950/50 border border-zinc-800 rounded-xl cursor-pointer"
             >
               <div>
                 <p class="text-xs font-bold text-zinc-200">启用投稿限额</p>
@@ -178,11 +183,13 @@
                 type="checkbox"
                 class="w-5 h-5 rounded border-zinc-800 bg-zinc-900 accent-blue-600 cursor-pointer"
               >
-            </div>
+            </label>
 
             <div v-if="formData.enableSubmissionLimit" class="space-y-4">
               <div class="grid grid-cols-3 gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl">
                 <button
+                  type="button"
+                  :aria-pressed="currentLimitType === 'daily'"
                   :class="[
                     'py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all',
                     currentLimitType === 'daily'
@@ -194,6 +201,8 @@
                   每日限额
                 </button>
                 <button
+                  type="button"
+                  :aria-pressed="currentLimitType === 'weekly'"
                   :class="[
                     'py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all',
                     currentLimitType === 'weekly'
@@ -205,6 +214,8 @@
                   每周限额
                 </button>
                 <button
+                  type="button"
+                  :aria-pressed="currentLimitType === 'monthly'"
                   :class="[
                     'py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all',
                     currentLimitType === 'monthly'
@@ -218,23 +229,39 @@
               </div>
 
               <div>
-                <label :class="labelClass"
+                <label for="submission-limit" :class="labelClass"
                   >{{ currentLimitType === 'daily' ? '单日' : (currentLimitType === 'weekly' ? '单周' : '单月') }}投稿上限</label
                 >
                 <div class="relative">
                   <input
+                    id="submission-limit"
                     v-model.number="currentLimitValue"
                     type="number"
                     min="0"
+                    step="1"
                     :class="inputClass"
                   >
                   <span
-                    class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-700 uppercase"
+                    class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-700 uppercase"
                     >首 / 人</span
                   >
                 </div>
               </div>
             </div>
+          </div>
+          <div class="space-y-3 border-t border-zinc-800 pt-4">
+            <p role="status" class="text-xs text-zinc-500">
+              {{ saving ? '正在保存配置…' : (hasChanges ? '修改尚未保存，请点击保存配置。' : '当前配置已保存。') }}
+            </p>
+            <p v-if="saveError" role="alert" class="text-xs text-rose-500">{{ saveError }}</p>
+            <button
+              type="button"
+              :disabled="saving || !hasChanges"
+              class="min-h-11 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="saveConfig"
+            >
+              {{ saving ? '保存中…' : '保存配置' }}
+            </button>
           </div>
         </div>
       </section>
@@ -314,7 +341,7 @@
           </div>
         </div>
       </section>
-    </div>
+    </fieldset>
   </div>
 </template>
 
@@ -332,12 +359,19 @@ import {
   AlertCircle
 } from 'lucide-vue-next'
 import { useToast } from '~/composables/useToast'
+import { normalizeApiBase, withApiBase } from '~/utils/baseUrl'
 
 const { showToast: showNotification } = useToast()
 
 const loading = ref(true)
 const saving = ref(false)
 const saveSuccess = ref(false)
+const configLoaded = ref(false)
+const loadError = ref('')
+const saveError = ref('')
+const runtimeConfig = useRuntimeConfig()
+const settingsUrl = withApiBase('/api/admin/system-settings',
+  normalizeApiBase(runtimeConfig.public.apiBase, runtimeConfig.app.baseURL))
 
 // 样式类常量
 const inputClass =
@@ -374,6 +408,7 @@ const formData = ref({
 })
 
 const originalData = ref({})
+const hasChanges = computed(() => JSON.stringify(formData.value) !== JSON.stringify(originalData.value))
 
 // 当前限额类型和值的快捷访问
 const currentLimitType = computed(() => {
@@ -403,9 +438,16 @@ const currentLimitValue = computed({
 const loadConfig = async () => {
   try {
     loading.value = true
-    const data = await $fetch('/api/admin/system-settings', {
-      timeout: 10000
+    loadError.value = ''
+    const data = await $fetch(settingsUrl, {
+      credentials: 'include',
+      timeout: 10000,
+      cache: 'no-store'
     })
+    if (!data || typeof data.enableReplayRequests !== 'boolean' ||
+        typeof data.enableSubmissionLimit !== 'boolean') {
+      throw new Error('配置响应无效')
+    }
 
     formData.value = {
       siteTitle: data.siteTitle || '',
@@ -427,9 +469,12 @@ const loadConfig = async () => {
     }
 
     originalData.value = JSON.parse(JSON.stringify(formData.value))
+    configLoaded.value = true
   } catch (error) {
     console.error('加载配置失败:', error)
-    showNotification('加载配置失败', 'error')
+    configLoaded.value = false
+    loadError.value = '加载配置失败，请重新加载后再修改。'
+    showNotification(loadError.value, 'error')
   } finally {
     loading.value = false
   }
@@ -437,6 +482,15 @@ const loadConfig = async () => {
 
 // 保存配置
 const saveConfig = async () => {
+  if (loading.value || saving.value || !configLoaded.value) return
+  saveError.value = ''
+  saveSuccess.value = false
+  if (formData.value.enableSubmissionLimit &&
+      (!Number.isInteger(currentLimitValue.value) || currentLimitValue.value < 0)) {
+    saveError.value = '投稿上限必须是非负整数，0 表示关闭普通用户投稿。'
+    showNotification(saveError.value, 'error')
+    return
+  }
   try {
     saving.value = true
     const configToSave = {
@@ -447,19 +501,32 @@ const saveConfig = async () => {
         (formData.value.submissionGuidelines || '').trim() || defaultSubmissionGuidelines,
       // 确保根据限额类型处理空值
       dailySubmissionLimit:
-        currentLimitType.value === 'daily' ? formData.value.dailySubmissionLimit : null,
+        currentLimitType.value === 'daily' && Number.isInteger(currentLimitValue.value)
+          ? currentLimitValue.value : null,
       weeklySubmissionLimit:
-        currentLimitType.value === 'weekly' ? formData.value.weeklySubmissionLimit : null,
+        currentLimitType.value === 'weekly' && Number.isInteger(currentLimitValue.value)
+          ? currentLimitValue.value : null,
       monthlySubmissionLimit:
-        currentLimitType.value === 'monthly' ? formData.value.monthlySubmissionLimit : null
+        currentLimitType.value === 'monthly' && Number.isInteger(currentLimitValue.value)
+          ? currentLimitValue.value : null
     }
 
-    await $fetch('/api/admin/system-settings', {
+    const savedData = await $fetch(settingsUrl, {
       method: 'POST',
+      credentials: 'include',
       body: configToSave,
       timeout: 15000
     })
 
+    const submissionFields = ['enableReplayRequests', 'enableSubmissionLimit',
+      'dailySubmissionLimit', 'weeklySubmissionLimit', 'monthlySubmissionLimit']
+    if (!savedData || submissionFields.some((key) => savedData[key] !== configToSave[key])) {
+      throw new Error('服务器未确认投稿设置已保存，请重试。')
+    }
+    // 只将服务器实际保存的值标记为已保存，避免请求期间的新编辑被误报成功。
+    formData.value = Object.fromEntries(Object.keys(configToSave).map((key) => [
+      key, savedData[key] === undefined ? configToSave[key] : savedData[key]
+    ]))
     saveSuccess.value = true
     originalData.value = JSON.parse(JSON.stringify(formData.value))
     showNotification('配置保存成功！', 'success')
@@ -469,7 +536,8 @@ const saveConfig = async () => {
     }, 3000)
   } catch (error) {
     console.error('保存配置失败:', error)
-    showNotification(error?.data?.message || error?.message || '保存配置失败，请重试', 'error')
+    saveError.value = error?.data?.message || error?.message || '保存配置失败，请重试'
+    showNotification(saveError.value, 'error')
   } finally {
     saving.value = false
   }
@@ -499,7 +567,10 @@ const handleLimitTypeChange = (type) => {
 
 // 重置表单
 const resetForm = () => {
+  if (!configLoaded.value || saving.value) return
   formData.value = JSON.parse(JSON.stringify(originalData.value))
+  saveError.value = ''
+  saveSuccess.value = false
 }
 
 onMounted(loadConfig)
