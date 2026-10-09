@@ -12,9 +12,11 @@ test("shop access exposes only current active global-admin authority to the auth
   const { shopIntegrationRouter } = await import("../src/routes/shopIntegration");
   const secret = "shop-access-test-secret-32-characters";
   const beforeSecret = config.shopIntegrationSecret;
+  const beforePaySecret = config.payIntegrationSecret;
   const beforeFind = prisma.user.findUnique;
-  t.after(() => { config.shopIntegrationSecret = beforeSecret; prisma.user.findUnique = beforeFind; });
+  t.after(() => { config.shopIntegrationSecret = beforeSecret; config.payIntegrationSecret = beforePaySecret; prisma.user.findUnique = beforeFind; });
   config.shopIntegrationSecret = secret;
+  config.payIntegrationSecret = "separate-payment-secret-32-characters";
   let user: any = { role: "admin", status: "active" };
   let calls = 0;
   prisma.user.findUnique = (async ({ where, select }: any) => {
@@ -36,13 +38,20 @@ test("shop access exposes only current active global-admin authority to the auth
   const response = await get();
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.deepEqual((await response.json()).data, { userId: 7, globalAdmin: true });
+  const payEndpoint = endpoint.replace('/dayi-shop/', '/shijian-pay/');
+  const payAccess = (key = config.payIntegrationSecret) => fetch(payEndpoint, { headers: { 'x-pay-integration-secret': key } });
+  assert.equal((await payAccess(secret)).status, 401);
+  assert.equal((await get(config.payIntegrationSecret)).status, 401);
+  assert.deepEqual((await (await payAccess()).json()).data, { userId: 7, globalAdmin: true });
   for (const role of ["user", "mod", "bot"]) {
     user = { role, status: "active", voiceHubRole: "super_admin" };
     assert.equal((await (await get()).json()).data.globalAdmin, false);
+    assert.equal((await (await payAccess()).json()).data.globalAdmin, false);
   }
   for (const status of ["banned", "deleting", "deleted"]) {
     user = { role: "admin", status };
     assert.equal((await (await get()).json()).data.globalAdmin, false);
+    assert.equal((await (await payAccess()).json()).data.globalAdmin, false);
   }
   user = null;
   assert.equal((await (await get()).json()).data.globalAdmin, false);
@@ -122,6 +131,59 @@ test("shop OAuth enforces callback, client secret, PKCE, single-use codes and pr
   t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
   const origin = `http://127.0.0.1:${(server.address() as any).port}`;
   const body = { grant_type: "authorization_code", code: "b".repeat(64), client_id: "dayi-shop", redirect_uri: callback, code_verifier: verifier, client_secret: secret };
+  const exchange = (overrides = {}) => fetch(origin + "/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...overrides }) });
+  assert.equal((await exchange({ client_secret: "wrong" })).status, 401);
+  assert.equal((await exchange({ code_verifier: "c".repeat(43) })).status, 400);
+  status = "deleted";
+  assert.equal((await exchange()).status, 403);
+  assert.equal(record.usedAt, null);
+  status = "active";
+  assert.equal((await exchange()).status, 200);
+  assert.equal((await exchange()).status, 400);
+  const profile = await fetch(origin + "/userinfo", { headers: { Authorization: "Bearer test" } });
+  assert.equal(profile.status, 200);
+  assert.deepEqual((await profile.json()).data, { sub: "7", user: { id: 7, nickname: "Test buyer", avatar: null } });
+  for (status of ["banned", "deleting", "deleted"]) assert.equal((await fetch(origin + "/userinfo", { headers: { Authorization: "Bearer test" } })).status, 403);
+});
+
+test("payment OAuth enforces callback, client secret, PKCE, single-use codes and profile-only access", async t => {
+  const { config } = await import("../src/config");
+  const { prisma } = await import("../src/prisma");
+  const { oauthRouter } = await import("../src/routes/oauth");
+  const { oauthClientIsValid, oauthScopesAllowed } = await import("../src/services/oauthClients");
+  const replace = (target: any, key: string, value: any) => { const before = target[key]; target[key] = value; t.after(() => { target[key] = before; }); };
+  const secret = "shop-oauth-test-secret-32-characters";
+  replace(config, "payIntegrationSecret", secret);
+  const callback = "https://pay.cputime.cn/api/auth/cputime/callback";
+  assert.equal(oauthClientIsValid("shijian-pay", callback), true);
+  for (const uri of ["https://pay.cputime.cn/other", callback + "?x=1", "https://evil.test/callback", callback + "#x", "http://pay.cputime.cn/api/auth/cputime/callback"]) assert.equal(oauthClientIsValid("shijian-pay", uri), false);
+  assert.equal(oauthScopesAllowed("shijian-pay", ["openid", "profile"]), true);
+  assert.equal(oauthScopesAllowed("shijian-pay", ["ai"]), false);
+  const originalOrigin = config.payOrigin;
+  const originalMode = config.nodeEnv;
+  config.payOrigin = "http://127.0.0.1:18089";
+  config.nodeEnv = "production";
+  assert.equal(oauthClientIsValid("shijian-pay", config.payOrigin + "/api/auth/cputime/callback"), false);
+  config.nodeEnv = "test";
+  assert.equal(oauthClientIsValid("shijian-pay", config.payOrigin + "/api/auth/cputime/callback"), true);
+  config.payOrigin = originalOrigin;
+  config.nodeEnv = originalMode;
+  const verifier = "a".repeat(43);
+  const record: any = { id: 1, userId: 7, clientId: "shijian-pay", redirectUri: callback, scope: "openid profile", codeChallenge: createHash("sha256").update(verifier).digest("base64url"), expiresAt: new Date(Date.now() + 60000), usedAt: null };
+  let status = "active";
+  replace(prisma.user, "findUnique", async () => ({ status }));
+  replace(prisma.oAuthAuthorizationCode, "findUnique", async () => record);
+  replace(prisma.oAuthAuthorizationCode, "updateMany", async () => { if (record.usedAt) return { count: 0 }; record.usedAt = new Date(); return { count: 1 }; });
+  replace(prisma.oAuthAccessToken, "create", async ({ data }: any) => data);
+  replace(prisma.oAuthAccessToken, "findUnique", async () => ({ userId: 7, clientId: "shijian-pay", scope: "openid profile", expiresAt: new Date(Date.now() + 10000), user: { id: 7, nickname: "Test buyer", avatar: null, status } }));
+  replace(prisma.oAuthAccessToken, "update", async () => ({}));
+  const app = express(); app.use(express.json(), oauthRouter);
+  app.use((err: any, _req: any, res: any, _next: any) => res.status(err.status || 400).json({ error: err.message }));
+  const server = createServer(app);
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const origin = `http://127.0.0.1:${(server.address() as any).port}`;
+  const body = { grant_type: "authorization_code", code: "b".repeat(64), client_id: "shijian-pay", redirect_uri: callback, code_verifier: verifier, client_secret: secret };
   const exchange = (overrides = {}) => fetch(origin + "/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...overrides }) });
   assert.equal((await exchange({ client_secret: "wrong" })).status, 401);
   assert.equal((await exchange({ code_verifier: "c".repeat(43) })).status, 400);

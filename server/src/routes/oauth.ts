@@ -23,7 +23,7 @@ import {
   type LearningAssistantAiBody,
 } from "../services/learningAssistantAi";
 import { Errors, ok } from "../utils/response";
-import { isShopOAuthClient, oauthClientIsValid, oauthScopesAllowed } from "../services/oauthClients";
+import { isServiceOAuthClientId, serviceOAuthClient, oauthClientIsValid, oauthScopesAllowed } from "../services/oauthClients";
 
 export const oauthRouter = Router();
 
@@ -88,7 +88,7 @@ async function loadAccessToken(req: Request) {
   }
   await prisma.oAuthAccessToken.update({ where: { id: token.id }, data: { lastUsedAt: new Date() } });
   if (["banned", "deleting", "deleted"].includes(token.user.status)) throw Errors.forbidden("账号不可用");
-  if (token.clientId === config.shopOAuthClientId && !isShopOAuthClient(token.clientId)) throw Errors.unauthorized("商城授权已停用");
+  if (isServiceOAuthClientId(token.clientId) && !serviceOAuthClient(token.clientId)) throw Errors.unauthorized("站点授权已停用");
   return token;
 }
 
@@ -129,8 +129,9 @@ oauthRouter.post("/token", async (req, res, next) => {
   try {
     const input = tokenBodySchema.parse(req.body);
     if (!oauthClientIsValid(input.client_id, input.redirect_uri)) throw Errors.badRequest("客户端参数无效");
-    if (isShopOAuthClient(input.client_id) && !constantTimeEqual(input.client_secret || "", config.shopIntegrationSecret)) {
-      throw Errors.unauthorized("商城客户端认证失败");
+    const service = serviceOAuthClient(input.client_id);
+    if (service && !constantTimeEqual(input.client_secret || "", service.secret)) {
+      throw Errors.unauthorized("站点客户端认证失败");
     }
     const record = await prisma.oAuthAuthorizationCode.findUnique({ where: { codeHash: hashToken(String(input.code)) } });
     if (!record || record.usedAt || record.expiresAt <= new Date() || record.clientId !== input.client_id || record.redirectUri !== input.redirect_uri) {
@@ -170,8 +171,9 @@ oauthRouter.post("/token", async (req, res, next) => {
 oauthRouter.post("/revoke", async (req, res, next) => {
   try {
     const input = revokeBodySchema.parse(req.body);
-    if (input.client_id !== config.oauthClientId && !isShopOAuthClient(input.client_id)) throw Errors.badRequest("客户端参数无效");
-    if (isShopOAuthClient(input.client_id) && !constantTimeEqual(input.client_secret || "", config.shopIntegrationSecret)) throw Errors.unauthorized("商城客户端认证失败");
+    const service = serviceOAuthClient(input.client_id);
+    if (input.client_id !== config.oauthClientId && !service) throw Errors.badRequest("客户端参数无效");
+    if (service && !constantTimeEqual(input.client_secret || "", service.secret)) throw Errors.unauthorized("站点客户端认证失败");
     await prisma.oAuthAccessToken.updateMany({
       where: { tokenHash: hashToken(input.token), clientId: input.client_id, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -187,7 +189,7 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
     const token = await loadAccessToken(req);
     if (!token.scope.split(/\s+/).includes("profile")) throw Errors.forbidden("token 没有 profile scope");
     res.setHeader("Cache-Control", "no-store");
-    if (isShopOAuthClient(token.clientId)) {
+    if (serviceOAuthClient(token.clientId)) {
       return ok(res, { sub: String(token.userId), user: { id: token.userId, nickname: token.user.nickname, avatar: token.user.avatar } });
     }
     const quota = await getCampusAssistantQuotaStatus(token.userId);
