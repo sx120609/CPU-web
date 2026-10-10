@@ -24,10 +24,13 @@
       <div class="portal-head">
         <div>
           <b>融合门户资讯聚合</b>
-          <span>门户的资讯列表登录后才能看。用你自己的账号在本站登录教务，再点绑定，之后就用这个登录态定时同步各部门公告。</span>
+          <span>门户的资讯列表登录后才能看。学校的登录态隔一阵就会过期，存下账号密码后过期了会自动重新登录；只绑定当前登录的话，过期后要回来重新绑。</span>
         </div>
         <div class="portal-actions cpu-button-row">
-          <el-button type="primary" :loading="binding" :disabled="binding || unbinding" @click="bindPortal">
+          <el-button type="primary" :disabled="binding || unbinding" @click="openCredentials">
+            {{ portal?.sessionAutoRelogin ? "更换账号密码" : "存账号密码自动登录" }}
+          </el-button>
+          <el-button :loading="binding" :disabled="binding || unbinding" @click="bindPortal">
             {{ portal?.sessionBound ? "换成我当前的登录" : "用我当前的教务登录绑定" }}
           </el-button>
           <el-button v-if="portal?.sessionBound" :loading="unbinding" :disabled="binding || unbinding" @click="unbindPortal">解除绑定</el-button>
@@ -37,6 +40,7 @@
         <template v-if="portal?.sessionBound">
           已绑定：{{ portal.sessionUser?.nickname || portal.sessionUser?.username || "未知账号" }}
           <template v-if="portal.sessionBoundAt"> · {{ fmtRelative(portal.sessionBoundAt) }}绑定</template>
+          · {{ portal.sessionAutoRelogin ? `已存 ${portal.sessionAccount} 的密码，过期自动重登` : "没存密码，过期后要重新绑定" }}
           <template v-if="portal.lastRunAt">
             · 上次同步{{ fmtRelative(portal.lastRunAt) }}
             <b :style="{ color: portal.lastRunOk ? '#16a34a' : '#dc2626' }">{{ portal.lastRunOk ? "成功" : "失败" }}</b>
@@ -55,6 +59,22 @@
         </label>
       </div>
     </section>
+
+    <el-dialog v-model="credentialsOpen" title="存账号密码自动登录" width="420" :close-on-click-modal="false">
+      <el-form label-position="top" @submit.prevent="saveCredentials">
+        <el-form-item label="学号 / 工号">
+          <el-input v-model.trim="credentials.username" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="统一认证密码">
+          <el-input v-model="credentials.password" type="password" show-password autocomplete="new-password" @keyup.enter="saveCredentials" />
+        </el-form-item>
+        <p class="portal-hint">密码加密后存在服务器上，只用来在门户登录态过期时重新登录。改了密码要回来更新；学校拒绝登录时会自动停用，不会反复尝试。</p>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="savingCredentials" @click="credentialsOpen = false">取消</el-button>
+        <el-button type="primary" :loading="savingCredentials" :disabled="!credentials.username || !credentials.password" @click="saveCredentials">登录并保存</el-button>
+      </template>
+    </el-dialog>
 
     <el-table :data="list" v-loading="loading" stripe size="default" class="admin-table">
       <el-table-column prop="id" label="ID" width="60" />
@@ -179,6 +199,9 @@ const departments = ref<any[]>([]);
 const departmentBusyId = ref<number | null>(null);
 const binding = ref(false);
 const unbinding = ref(false);
+const credentialsOpen = ref(false);
+const savingCredentials = ref(false);
+const credentials = ref({ username: "", password: "" });
 const portal = computed(() => list.value.find((row) => row.parser === "portal-notice-v1") ?? null);
 let feedLoadSeq = 0;
 
@@ -217,10 +240,27 @@ async function bindPortal() {
   } finally { binding.value = false; }
 }
 
+function openCredentials() {
+  credentials.value = { username: portal.value?.sessionAccount || "", password: "" };
+  credentialsOpen.value = true;
+}
+
+async function saveCredentials() {
+  if (savingCredentials.value || !credentials.value.username || !credentials.value.password) return;
+  savingCredentials.value = true;
+  try {
+    const r = await adminApi.bindPortalFeedCredentials(credentials.value);
+    credentialsOpen.value = false;
+    credentials.value.password = "";
+    ElMessage.success(`已保存，门户里现有 ${r.total} 条资讯，登录态过期后会自动重新登录`);
+    await reload(true);
+  } finally { savingCredentials.value = false; }
+}
+
 async function unbindPortal() {
   if (unbinding.value) return;
   try {
-    await ElMessageBox.confirm("解除后门户公告停止同步，已同步的公告保留。", "解除绑定", { type: "warning", confirmButtonText: "解除", cancelButtonText: "取消" });
+    await ElMessageBox.confirm("解除后门户公告停止同步，保存的账号密码一并删除，已同步的公告保留。", "解除绑定", { type: "warning", confirmButtonText: "解除", cancelButtonText: "取消" });
   } catch { return; }
   unbinding.value = true;
   try {
@@ -331,6 +371,7 @@ function requestMessage(error: unknown) {
 .portal-head span { display: block; margin-top: 2px; color: #6b7280; font-size: 12px; line-height: 1.5; }
 .portal-actions { display: flex; flex: none; gap: 8px; }
 .portal-state { margin: 10px 0 0; color: #374151; font-size: 12px; }
+.portal-hint { margin: 0; color: #6b7280; font-size: 12px; line-height: 1.6; }
 .dept-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eef2f7; }
 .dept-title { grid-column: 1 / -1; color: #6b7280; font-size: 12px; }
 .dept-row { display: flex; min-height: 28px; align-items: center; gap: 8px; color: #111827; font-size: 13px; }

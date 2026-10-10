@@ -2,6 +2,7 @@
  * 融合门户“门户资讯聚合”入库。
  *
  * 列表要登录后才能看，所以用管理员在后台绑定的教务会话去取（走教务通道，落到持有该会话的节点）；
+ * 学校的统一认证会话隔一阵就过期，管理员可以把账号密码也存下来（密文），过期后自动重新登录。
  * 正文在各部门的公开网站上，走公告抓取通道。每个发布部门对应一个公告板块，没有就自动建。
  */
 import crypto from "node:crypto";
@@ -11,7 +12,7 @@ import { isDev } from "../config";
 import { Errors } from "../utils/response";
 import { invalidateBoardCaches, invalidateForumCaches } from "./cacheInvalidation";
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
-import { getPortalNotices } from "./jwxtTransport";
+import { beginLogin, getPortalNotices, logout, submitLogin } from "./jwxtTransport";
 import { fetchSchoolFeedDetails } from "./schoolCrawlerTransport";
 import { SCHOOL_FEED_DETAIL_BATCH, type SchoolFeedDetail } from "./schoolCrawlerCore";
 import {
@@ -21,22 +22,53 @@ import {
   PORTAL_NOTICE_MAX_PAGE_SIZE,
   PORTAL_NOTICE_PARSER,
   PORTAL_NOTICE_SOURCE_SLUG,
+  PortalLoginRejectedError,
   portalNoticeExternalId,
+  withPortalRelogin,
   type PortalNotice,
+  type PortalSession,
 } from "./portalNotices";
 
 // 首次同步有上百条积压；每轮只入库这么多，剩下的留给后面几轮，避免一轮抓取占住调度锁太久。
 const NEW_NOTICES_PER_RUN = 20;
 const SESSION_PURPOSE = "portal-notice-session";
 
-function readSessionToken(source: Pick<SchoolFeedSource, "id" | "sessionToken">) {
+function readSession(source: Pick<SchoolFeedSource, "id" | "sessionToken">): PortalSession | null {
   if (!source.sessionToken) return null;
   try {
-    const { value } = decryptJwxtSensitiveJson<{ token?: string }>(SESSION_PURPOSE, String(source.id), source.sessionToken);
-    return typeof value?.token === "string" && value.token ? value.token : null;
+    const { value } = decryptJwxtSensitiveJson<Partial<PortalSession>>(SESSION_PURPOSE, String(source.id), source.sessionToken);
+    if (typeof value?.token !== "string" || !value.token) return null;
+    return value as PortalSession;
   } catch {
     return null;
   }
+}
+
+function writeSession(sourceId: number, session: PortalSession) {
+  return encryptJwxtSensitiveJson(SESSION_PURPOSE, String(sourceId), session);
+}
+
+/** 后台列表用：有没有存账号密码、存的是哪个账号。密码本身不出服务端。 */
+export function portalSessionSummary(source: Pick<SchoolFeedSource, "id" | "sessionToken">) {
+  const session = readSession(source);
+  const autoRelogin = Boolean(session?.username && session.password);
+  return { autoRelogin, account: autoRelogin ? session!.username! : null };
+}
+
+/** 用账号密码走一遍统一认证，拿到一个服务端自己持有的教务会话。 */
+async function loginWithPassword(username: string, password: string) {
+  const begin = await beginLogin();
+  // 验证码只能人来填；这里没有提交过密码，不算被拒绝。
+  if (begin.needCaptcha) throw new Error("统一认证要求输入验证码，暂时不能自动登录");
+  const attempt = await submitLogin({ pendingId: begin.pendingId, username, password });
+  if (!attempt.ok || !attempt.token) throw new PortalLoginRejectedError(attempt.error || "统一认证没有接受这个账号密码");
+  return attempt.token;
+}
+
+/** 服务端自己登录出来的会话没有别人在用，换掉或解绑时顺手注销。 */
+async function discardOwnedSession(session: PortalSession | null, keepToken?: string) {
+  if (!session?.owned || session.token === keepToken) return;
+  await logout(session.token).catch(() => undefined);
 }
 
 function departmentSlug(department: string) {
@@ -84,14 +116,21 @@ function noticeContent(notice: PortalNotice, detail: SchoolFeedDetail | undefine
 }
 
 /** 取列表和取正文两步都要出网，测试时换成假的。 */
-const network = { listNotices: getPortalNotices, fetchDetails: fetchSchoolFeedDetails };
+const network = { listNotices: getPortalNotices, fetchDetails: fetchSchoolFeedDetails, login: loginWithPassword };
 
 export async function importPortalNotices(source: SchoolFeedSource, opts: { dryRun?: boolean } = {}, deps = network) {
-  const token = readSessionToken(source);
-  if (!token) throw new Error("还没有绑定门户登录态，请在后台用自己的账号登录教务后绑定");
+  const session = readSession(source);
+  if (!session) throw new Error("还没有绑定门户登录态，请在后台用自己的账号登录教务后绑定");
 
   const pageSize = Math.min(PORTAL_NOTICE_MAX_PAGE_SIZE, Math.max(50, source.maxPages * 50));
-  const page = await deps.listNotices(token, { pageSize });
+  const page = await withPortalRelogin(session, {
+    run: (token) => deps.listNotices(token, { pageSize }),
+    login: deps.login,
+    save: async (next, previous) => {
+      await prisma.schoolFeedSource.update({ where: { id: source.id }, data: { sessionToken: writeSession(source.id, next) } });
+      await discardOwnedSession(previous, next.token);
+    },
+  });
   if (isDev) console.log(`  [${source.slug}] ${page.notices.length}/${page.total} notices`);
 
   const byExternalId = new Map<string, PortalNotice>();
@@ -208,10 +247,31 @@ export async function portalNoticeExternalIds(limit = 3000) {
 }
 
 /** 把管理员当前的教务会话绑定为门户资讯的登录态；第一次绑定时顺带建好同步源。 */
-export async function bindPortalNoticeSession(userId: number, token: string) {
+export function bindPortalNoticeSession(userId: number, token: string) {
+  return bindPortalSession(userId, { token });
+}
+
+/** 用账号密码绑定：服务端自己登录，并把账号密码加密存下来，登录态过期后自动重登。 */
+export async function bindPortalNoticeCredentials(userId: number, username: string, password: string) {
+  let token: string;
+  try {
+    token = await loginWithPassword(username, password);
+  } catch (error: any) {
+    throw Errors.badRequest(`登录没有成功：${error?.message ?? "未知错误"}`);
+  }
+  const session: PortalSession = { token, username, password, owned: true };
+  try {
+    return await bindPortalSession(userId, session);
+  } catch (error) {
+    await discardOwnedSession(session);
+    throw error;
+  }
+}
+
+async function bindPortalSession(userId: number, session: PortalSession) {
   let total: number;
   try {
-    total = (await getPortalNotices(token, { pageSize: 1 })).total;
+    total = (await getPortalNotices(session.token, { pageSize: 1 })).total;
   } catch (error: any) {
     throw Errors.badRequest(`用这个登录态读不到门户资讯：${error?.message ?? "未知错误"}`);
   }
@@ -234,19 +294,23 @@ export async function bindPortalNoticeSession(userId: number, token: string) {
       },
     });
   }
+  const previous = readSession(source);
   await prisma.schoolFeedSource.update({
     where: { id: source.id },
     data: {
       sessionUserId: userId,
-      sessionToken: encryptJwxtSensitiveJson(SESSION_PURPOSE, String(source.id), { token }),
+      sessionToken: writeSession(source.id, session),
       sessionBoundAt: new Date(),
       lastError: null,
     },
   });
+  await discardOwnedSession(previous, session.token);
   return { sourceId: source.id, total };
 }
 
 export async function unbindPortalNoticeSession() {
+  const source = await prisma.schoolFeedSource.findUnique({ where: { slug: PORTAL_NOTICE_SOURCE_SLUG } });
+  if (source) await discardOwnedSession(readSession(source));
   await prisma.schoolFeedSource.updateMany({
     where: { slug: PORTAL_NOTICE_SOURCE_SLUG },
     data: { sessionUserId: null, sessionToken: null, sessionBoundAt: null },

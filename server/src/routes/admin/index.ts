@@ -18,7 +18,12 @@ import { adminOnly, modOrAbove, userDirectoryAccess } from "../../middleware/adm
 import { validate } from "../../middleware/validate";
 import { isModuleSuperAdmin } from "../../utils/moduleRoles";
 import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
-import { bindPortalNoticeSession, unbindPortalNoticeSession } from "../../services/portalNoticeCrawler";
+import {
+  bindPortalNoticeCredentials,
+  bindPortalNoticeSession,
+  portalSessionSummary,
+  unbindPortalNoticeSession,
+} from "../../services/portalNoticeCrawler";
 import {
   getFeatures,
   isGlobalPinnedTopic,
@@ -1591,12 +1596,17 @@ adminRouter.get("/feeds", adminOnly, async (_req, res, next) => {
       where: { id: { in: list.map((s) => s.sessionUserId).filter((id): id is number => typeof id === "number") } },
       select: { id: true, nickname: true, username: true },
     });
-    // 会话令牌（即使是密文）不出服务端，只告诉后台有没有绑定、是谁绑的。
-    ok(res, list.map(({ sessionToken, ...source }) => ({
-      ...source,
-      sessionBound: Boolean(sessionToken),
-      sessionUser: sessionUsers.find((u) => u.id === source.sessionUserId) ?? null,
-    })));
+    // 会话令牌和保存的密码（即使是密文）不出服务端，只告诉后台有没有绑定、是谁绑的、存的哪个账号。
+    ok(res, list.map(({ sessionToken, ...source }) => {
+      const saved = portalSessionSummary({ id: source.id, sessionToken });
+      return {
+        ...source,
+        sessionBound: Boolean(sessionToken),
+        sessionAutoRelogin: saved.autoRelogin,
+        sessionAccount: saved.account,
+        sessionUser: sessionUsers.find((u) => u.id === source.sessionUserId) ?? null,
+      };
+    }));
   } catch (e) { next(e); }
 });
 
@@ -1608,6 +1618,18 @@ adminRouter.post("/feeds/portal/session", adminOnly, async (req, res, next) => {
     ok(res, await bindPortalNoticeSession(req.user!.userId, token));
   } catch (e) { next(e); }
 });
+
+/** 用账号密码绑定并保存，登录态过期后服务端自动重新登录 */
+adminRouter.post(
+  "/feeds/portal/credentials",
+  adminOnly,
+  validate(z.object({ username: z.string().trim().min(1).max(64), password: z.string().min(1).max(256) })),
+  async (req, res, next) => {
+    try {
+      ok(res, await bindPortalNoticeCredentials(req.user!.userId, req.body.username, req.body.password));
+    } catch (e) { next(e); }
+  },
+);
 
 adminRouter.delete("/feeds/portal/session", adminOnly, async (_req, res, next) => {
   try {

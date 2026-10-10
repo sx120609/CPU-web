@@ -1763,6 +1763,8 @@ export const adminApi = {
   resetRunFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/reset-run`),
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
   bindPortalFeedSession: () => request.post<{ sourceId: number; total: number }>("/admin/feeds/portal/session"),
+  bindPortalFeedCredentials: (payload: { username: string; password: string }) =>
+    request.post<{ sourceId: number; total: number }>("/admin/feeds/portal/credentials", payload),
   unbindPortalFeedSession: () => request.delete<any>("/admin/feeds/portal/session"),
   feedDepartments: (options?: RequestOptions) => request.get<any[]>("/admin/feeds/departments", undefined, options),
   updateFeedDepartment: (id: number, patch: { announceDefault: boolean }) =>

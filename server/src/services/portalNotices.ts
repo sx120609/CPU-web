@@ -126,3 +126,58 @@ export function announcementOverridesFor(sources: AnnouncementSourceChoice[], se
     exclude: sources.filter((source) => source.announceDefault && !chosen.has(source.slug)).map((source) => source.slug),
   };
 }
+
+/** 后台绑定的门户登录态。存了账号密码时，令牌由服务端自己登录得到（owned），失效后可以自动重登。 */
+export type PortalSession = {
+  token: string;
+  username?: string;
+  password?: string;
+  owned?: boolean;
+  reloginAt?: number;
+};
+
+/** 学校明确拒绝了账号密码。不能再拿同一个密码重试，否则会把账号试到锁定。 */
+export class PortalLoginRejectedError extends Error {}
+
+// 重登后门户仍不认时不要每轮都去登录一次。
+export const PORTAL_RELOGIN_MIN_INTERVAL_MS = 30 * 60 * 1000;
+
+export function isPortalSessionExpiredError(error: unknown) {
+  if ((error as { status?: unknown } | null)?.status === 401) return true;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /登录态|会话已失效|尚未完成统一认证|未登录/.test(message);
+}
+
+/** 用绑定的登录态执行一次门户请求；登录态失效且存了账号密码时重新登录再试一次。 */
+export async function withPortalRelogin<T>(
+  session: PortalSession,
+  deps: {
+    run: (token: string) => Promise<T>;
+    login: (username: string, password: string) => Promise<string>;
+    save: (next: PortalSession, previous: PortalSession) => Promise<void>;
+    now?: () => number;
+  },
+): Promise<T> {
+  try {
+    return await deps.run(session.token);
+  } catch (error) {
+    if (!session.username || !session.password || !isPortalSessionExpiredError(error)) throw error;
+    const now = (deps.now ?? Date.now)();
+    if (session.reloginAt && now - session.reloginAt < PORTAL_RELOGIN_MIN_INTERVAL_MS) throw error;
+
+    let token: string;
+    try {
+      token = await deps.login(session.username, session.password);
+    } catch (loginError) {
+      const reason = loginError instanceof Error ? loginError.message : String(loginError);
+      if (loginError instanceof PortalLoginRejectedError) {
+        await deps.save({ token: session.token, owned: session.owned }, session);
+        throw new Error(`自动重新登录被统一认证拒绝，已停用保存的密码，请重新绑定：${reason}`);
+      }
+      throw new Error(`融合门户登录态已失效，自动重新登录没有成功：${reason}`);
+    }
+    const next: PortalSession = { ...session, token, owned: true, reloginAt: now };
+    await deps.save(next, session);
+    return deps.run(token);
+  }
+}

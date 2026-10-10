@@ -4,8 +4,12 @@ import {
   announcementOverridesFor,
   isDefaultAnnouncementDepartment,
   parsePortalNoticeResponse,
+  PORTAL_RELOGIN_MIN_INTERVAL_MS,
+  PortalLoginRejectedError,
   portalNoticeExternalId,
   resolveAnnouncementSelection,
+  withPortalRelogin,
+  type PortalSession,
 } from "../src/services/portalNotices";
 
 const article = (overrides: Record<string, unknown> = {}) => ({
@@ -89,4 +93,63 @@ test("新出现的部门按它自己的默认值处理，不受旧选择影响",
   const overrides = { include: ["dept-kyy"], exclude: ["xgc-notice"] };
   const later = [...sources, { slug: "dept-new", announceDefault: true }, { slug: "dept-staff", announceDefault: false }];
   assert.deepEqual(resolveAnnouncementSelection(later, overrides), ["jwc-notice", "dept-kyy", "dept-new"]);
+});
+
+test("登录态失效且存了账号密码时自动重登一次并保存新令牌", async () => {
+  const saved: PortalSession[] = [];
+  const logins: string[] = [];
+  const result = await withPortalRelogin({ token: "old", username: "2020", password: "pw" }, {
+    run: async (token) => {
+      if (token === "old") throw new Error("融合门户登录态已失效，需要重新登录");
+      return `list:${token}`;
+    },
+    login: async (username, password) => { logins.push(`${username}/${password}`); return "new"; },
+    save: async (next) => { saved.push(next); },
+    now: () => 1000,
+  });
+  assert.equal(result, "list:new");
+  assert.deepEqual(logins, ["2020/pw"]);
+  assert.deepEqual(saved, [{ token: "new", username: "2020", password: "pw", owned: true, reloginAt: 1000 }]);
+});
+
+test("没存账号密码、不是登录态问题、或刚重登过时不去登录", async () => {
+  const login = async () => { throw new Error("不该登录"); };
+  const save = async () => { throw new Error("不该保存"); };
+  const expired = async () => { throw new Error("教务会话已失效，请重新登录"); };
+  await assert.rejects(withPortalRelogin({ token: "t" }, { run: expired, login, save }), /会话已失效/);
+  await assert.rejects(
+    withPortalRelogin({ token: "t", username: "u", password: "p" }, {
+      run: async () => { throw new Error("融合门户暂时不可用（HTTP 502）"); }, login, save,
+    }),
+    /502/,
+  );
+  await assert.rejects(
+    withPortalRelogin({ token: "t", username: "u", password: "p", reloginAt: 1000 }, {
+      run: expired, login, save, now: () => 1000 + PORTAL_RELOGIN_MIN_INTERVAL_MS - 1,
+    }),
+    /会话已失效/,
+  );
+});
+
+test("统一认证拒绝密码后丢掉保存的密码，其他登录故障保留", async () => {
+  const expired = async () => { throw Object.assign(new Error("unauthorized"), { status: 401 }); };
+  const saved: PortalSession[] = [];
+  await assert.rejects(
+    withPortalRelogin({ token: "t", username: "u", password: "p", owned: true }, {
+      run: expired,
+      login: async () => { throw new PortalLoginRejectedError("密码错误"); },
+      save: async (next) => { saved.push(next); },
+    }),
+    /已停用保存的密码.*密码错误/,
+  );
+  assert.deepEqual(saved, [{ token: "t", owned: true }]);
+
+  await assert.rejects(
+    withPortalRelogin({ token: "t", username: "u", password: "p" }, {
+      run: expired,
+      login: async () => { throw new Error("统一认证要求输入验证码"); },
+      save: async () => { throw new Error("不该保存"); },
+    }),
+    /没有成功.*验证码/,
+  );
 });
