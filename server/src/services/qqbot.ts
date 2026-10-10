@@ -929,7 +929,7 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   });
   if (adFiltered === "blocked") return { ok: true };
 
-  if (dispatchQqGroupAssistant(groupContext, assistantPlan, adFiltered === "assistant")) return { ok: true };
+  if (await dispatchQqGroupAssistant(groupContext, assistantPlan, adFiltered === "assistant")) return { ok: true };
 
   await logQqBotMessage({
     direction: "inbound",
@@ -2722,7 +2722,7 @@ async function planQqGroupAssistant(
     quoted: quoted ? (quoted.fromBot ? "bot" : "other") : "none",
     quotedHasContent: Boolean(quoted && (cleanQqGroupAssistantText(quoted.text) || quoted.imageMessage || quoted.forward)),
     session: readQqGroupAssistantSession(groupId, qqId),
-    collecting: qqBotDailyAssistantBatches.has(qqBotDailyAssistantBatchKey(qqId, groupId)),
+    collecting: isQqBotAssistantCollecting(qqBotDailyAssistantBatchKey(qqId, groupId)),
     recentAnswers: countRecentQqGroupAssistantAnswers(groupId, qqId),
     proactiveCoolingDown: isQqGroupProactiveCoolingDown(groupId),
   });
@@ -2741,7 +2741,17 @@ async function planQqGroupAssistant(
   return { decision, question: nameCall.text, quoted };
 }
 
-function dispatchQqGroupAssistant(
+function isQqBotAssistantCollecting(batchKey: string) {
+  const batch = qqBotDailyAssistantBatches.get(batchKey);
+  return Boolean(batch && !batch.processing && batch.timer);
+}
+
+async function canSendQqGroupImplicitReply(groupId: string) {
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId } });
+  return group?.enabled === true && group.assistantProactiveReplyEnabled === true;
+}
+
+async function dispatchQqGroupAssistant(
   context: QqBotDailyAssistantContext & { groupId: string },
   plan: QqGroupAssistantPlan,
   assistantIntent: boolean,
@@ -2750,13 +2760,21 @@ function dispatchQqGroupAssistant(
   if (decision.action === "ignore") return false;
   if (decision.action === "proactive-candidate" && !assistantIntent) return false;
   const batchKey = qqBotDailyAssistantBatchKey(context.qqId, context.groupId);
+  const trigger = decision.action === "proactive-candidate" ? "proactive" : decision.trigger;
+  const pendingTrigger = qqBotDailyAssistantBatches.get(batchKey)?.trigger;
+  // Moderation may finish after the collecting timer or after an administrator
+  // disables replies. Recheck both instead of trusting the earlier plan.
+  if (trigger === "proactive" || trigger === "follow-up"
+    || (trigger === "continuation" && (pendingTrigger === "proactive" || pendingTrigger === "follow-up"))) {
+    if (!await canSendQqGroupImplicitReply(context.groupId)) return false;
+  }
+  if (trigger === "continuation" && !isQqBotAssistantCollecting(batchKey)) return false;
   if (decision.action === "summon") {
     // Listen for the question right away, so it may quote what it asks about.
     openQqGroupAssistantSession(context.groupId, context.qqId, "summoned");
     enqueueQqBotDailyAssistant(batchKey, context, { trigger: decision.trigger, question: "" });
     return true;
   }
-  const trigger = decision.action === "proactive-candidate" ? "proactive" : decision.trigger;
   // A question quoting something new is a new question even if the words match.
   if (!plan.quoted && isRepeatOfAnsweredQuestion(batchKey, context, plan.question)) return true;
   if (
@@ -2850,10 +2868,18 @@ function enqueueQqBotDailyAssistant(
   } else if (!batch.messages.length && !batch.imageMessages.length && !batch.quoted) {
     // A summon was waiting for its question; answer by quoting the question.
     batch.context = context;
+    // A new explicitly addressed question during generation starts a new turn;
+    // it must not inherit the previous turn's proactive/direct authorization.
+    if (batch.processing) {
+      batch.trigger = input.trigger;
+      batch.debounceMs = getQqBotDailyAssistantDebounceMs(input.trigger);
+      batch.sourceMessageIds = [];
+    }
   }
   // An explicit call makes a queued proactive batch respond on the shorter
   // direct-message delay. Continuation lines keep the batch's own delay.
-  if (batch.trigger === "proactive" && input.trigger !== "proactive" && input.trigger !== "continuation") {
+  if ((batch.trigger === "proactive" || batch.trigger === "follow-up")
+    && input.trigger !== "proactive" && input.trigger !== "follow-up" && input.trigger !== "continuation") {
     batch.trigger = input.trigger;
     batch.debounceMs = getQqBotDailyAssistantDebounceMs(input.trigger);
   }
@@ -2923,6 +2949,11 @@ async function processQqBotDailyAssistantBatch(
   imageMessages: unknown[] = [],
   options: { trigger: QqBotAssistantTrigger; quoted?: QqBotAssistantQuotedMessage | null } = { trigger: "private" },
 ) {
+  const canReply = () => context.event.message_type === "group"
+    && (options.trigger === "proactive" || options.trigger === "follow-up")
+    ? (context.groupId ? canSendQqGroupImplicitReply(context.groupId) : Promise.resolve(false))
+    : Promise.resolve(true);
+  if (!await canReply()) return false;
   const historyKey = `qqbot-assistant:${context.qqId}::${context.groupId || "private"}`;
   // A fresh group question only carries history while the member is still
   // mid-conversation; an old answer in the prompt gets re-answered or read
@@ -2955,6 +2986,7 @@ async function processQqBotDailyAssistantBatch(
   // already carries.
   const needsImage = imageMessages.length > 0 || Boolean(quoted?.imageMessage && !quoted.fromBot);
   if (needsImage && !preparedImages.length) {
+    if (!await canReply()) return false;
     await logHandledInboundMessage(context, "message", "assistant:vision-image-unavailable");
     await replyToEvent(context, appendQqBotAiDisclosure("图片暂时无法读取，请重新发送原图后再试。"), {
       renderMarkdownImage: true,
@@ -2978,6 +3010,7 @@ async function processQqBotDailyAssistantBatch(
       },
     });
   } catch (error) {
+    if (!await canReply()) return false;
     await logHandledInboundMessage(context, "message", "assistant:daily-chat-error");
     console.warn("[qqbot] daily assistant request failed", error instanceof Error ? error.message : error);
     await replyToEvent(
@@ -2990,6 +3023,7 @@ async function processQqBotDailyAssistantBatch(
     return true;
   }
 
+  if (!await canReply()) return false;
   rememberQqBotAssistantHistory(historyKey, [
     ...history,
     { role: "user", content: assistantMessage },
@@ -3003,10 +3037,12 @@ async function processQqBotDailyAssistantBatch(
   const generatedImageMessage = buildQqBotGeneratedImageMessage(response.images?.[0]?.url);
   let replyMessageId: string | undefined;
   if (generatedImageMessage) {
+    if (!await canReply()) return false;
     replyMessageId = await replyToEvent(context, generatedImageMessage);
   } else {
     const qrCodeEnabled = shouldSendQqBotQrCode(context.config);
     const renderedReply = await renderQqBotDailyAssistantReply(assistantMessage, response, { includeQrCode: qrCodeEnabled });
+    if (!await canReply()) return false;
     replyMessageId = await replyToEvent(context, renderedReply.message, {
       renderMarkdownImage: true,
       sourcePageUrl: qrCodeEnabled ? renderedReply.sourcePageUrl ?? undefined : undefined,
@@ -4179,7 +4215,7 @@ async function maybeHandleQqGroupAdFilter(input: {
             videoMaxBytes: 10 * 1024 * 1024,
           },
         });
-    if (review.action !== "block") return review.assistantIntent ? "assistant" : false;
+    if (review.action !== "block") return proactiveCandidate && review.assistantIntent ? "assistant" : false;
     const messageId = getQqBotMessageId(input.event);
     if (!messageId) {
       await logQqBotMessage({
