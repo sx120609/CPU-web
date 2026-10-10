@@ -91,7 +91,7 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
 
     // 调休按真实日期覆盖，而不是把课程永久挪到周六/周日。swap 允许跨周，
     // 因此先从来源日期解析教学周，再把来源课程放回目标日期。
-    if (wk > 0 && week?.days?.length === 7 && adjustments.length) {
+    if (wk > 0 && week?.days?.length === 7 && adjustments.some((item) => item.kind === "swap")) {
       const result: ScheduleCell[] = [];
       for (let day = 1; day <= 7; day += 1) {
         const date = normalizeCalendarWeekDays(week.days)[day - 1] || "";
@@ -113,7 +113,10 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
       return result.filter((cell) => cell.courses.length);
     }
     const edited = editedSources[0] ?? applyScheduleEditsToCells(source?.cells ?? null, context.scheduleEdits());
+    const dates = normalizeCalendarWeekDays(week?.days ?? []);
+    const offDays = new Set(adjustments.filter((item) => item.kind === "off").map((item) => item.date));
     return edited
+      .filter((cell) => !offDays.has(dates[cell.day - 1]))
       .map((cell) => ({ ...cell, courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses }))
       .filter((cell) => cell.courses.length);
   }

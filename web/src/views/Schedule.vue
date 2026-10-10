@@ -1235,6 +1235,7 @@ import {
 import { createSemesterScheduleLoader, type ScheduleResponse } from "@/views/schedule/semesterLoader";
 import { useScheduleBackground } from "@/views/schedule/useScheduleBackground";
 import { createScheduleViewModelHelpers } from "@/views/schedule/viewModels";
+import { officialScheduleCalendar } from "@/views/schedule/officialCalendar";
 import {
   buildScheduleWidgetLocalRecord,
   saveAndroidScheduleWidgetLocalDays,
@@ -1460,6 +1461,10 @@ const {
   restoreScheduleBackground,
   scheduleBackground,
 } = useScheduleBackground();
+// 仅 Web 教务课表采用学校已排好的补课；不改写共用校历缓存或原生桥数据。
+const displayCalendar = computed(() => scheduleSource.value === "jwxt"
+  ? officialScheduleCalendar(calendar.value)
+  : calendar.value);
 const {
   weekInfoFor,
   weekRangeFor,
@@ -1477,7 +1482,7 @@ const {
   courseFamilySourceKeys,
   dayLabel,
 } = createScheduleViewModelHelpers({
-  calendar: () => calendar.value,
+  calendar: () => displayCalendar.value,
   parsed: () => parsed.value,
   weeks: () => weeks.value,
   scheduleEdits: () => scheduleEdits.value,
@@ -1495,7 +1500,7 @@ function syncAndroidWidgetLocalDays() {
   if (disposed || !auth.isLoggedIn || !supportsAndroidScheduleWidgetLocalDays()) return;
   if (scheduleSource.value === "graduate-debug") return;
   const data = parsed.value;
-  const source = calendar.value;
+  const source = displayCalendar.value;
   if (!data?.currentSemester || !source?.weeks?.length) return;
   if (source.currentSemester && source.currentSemester !== data.currentSemester) return;
   // 小组件永远看当前学期；翻看往年学期时别把它换掉。
@@ -1531,7 +1536,7 @@ function syncCoupleSchedule() {
   if (disposed || loading.value || !auth.isLoggedIn || !auth.user?.id) return;
   if (scheduleSource.value === "graduate-debug") return;
   const data = parsed.value;
-  const source = calendar.value;
+  const source = displayCalendar.value;
   if (!data?.currentSemester || !source?.weeks?.length) return;
   if (source.currentSemester && source.currentSemester !== data.currentSemester) return;
   // 对方看到的永远是当前学期；翻看往年学期时不覆盖。
@@ -2570,7 +2575,7 @@ async function buildShareBody() {
   const body = buildSharePublishBody({
     semester: semester.value || parsed.value.currentSemester,
     schedule: { ...source, cells: applyScheduleEditsToCells(source.cells, scheduleEdits.value) },
-    calendar: calendar.value,
+    calendar: displayCalendar.value!,
     ownerName: auth.user?.nickname,
   });
   if (!body.schedule.cells.length) throw new Error("这个学期没有课程，没有可以分享的内容");
@@ -4044,7 +4049,7 @@ function pageIsPast(page: SchedulePageModel) {
 /** 休息卡下面的说明：放假时写原因。 */
 function dayEmptyNote(page: SchedulePageModel) {
   const date = pageDate(page);
-  const adjustment = date ? calendar.value?.adjustments?.find((item) => item.date === date) : undefined;
+  const adjustment = date ? displayCalendar.value?.adjustments?.find((item) => item.date === date) : undefined;
   if (adjustment?.kind !== "off") return "";
   return adjustment.note ? `放假：${adjustment.note}` : "这一天放假";
 }
@@ -4052,7 +4057,7 @@ function dayEmptyNote(page: SchedulePageModel) {
 const styledPageDays = computed(() => {
   const pages = new Map<string, StyledDay[]>();
   if (scheduleStyle.value === "classic" || viewMode.value !== "week") return pages;
-  const adjustments = calendar.value?.adjustments ?? [];
+  const adjustments = displayCalendar.value?.adjustments ?? [];
   const coupled = couple.active.value;
   for (const page of carouselPages.value) {
     const pieces = piecesFor(page);
@@ -4153,7 +4158,7 @@ const monthDays = computed(() => {
   const byWeek = new Map<number, WeekCourseBlock[]>();
   return buildMonthDays({
     monthKey: monthKey.value,
-    calendar: calendar.value,
+    calendar: displayCalendar.value,
     blocksFor: (weekNo, day) => {
       let blocks = byWeek.get(weekNo);
       if (!blocks) {
