@@ -51,39 +51,30 @@ body { display: grid; place-items: center; }
 .note { display: flex; align-items: center; gap: 12px; margin-top: 30px; font-size: 21px; color: var(--teal-soft); }
 .note svg { width: 24px; height: 24px; flex: none; }
 
-/* ---------- light UI surfaces ---------- */
-.surface { position: absolute; background: #fff; color: #172033; border-radius: 28px; box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08); }
-.phone { position: absolute; width: 384px; height: 812px; padding: 12px; border-radius: 62px; background: linear-gradient(145deg, #2a2f33, #0b0d0f 40%, #1b1f22); box-shadow: 0 70px 140px -30px rgba(0, 0, 0, 0.85), inset 0 0 0 1.5px rgba(255, 255, 255, 0.16); transform-style: preserve-3d; }
-.phone .screen { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 50px; background: #f2f3f5; color: #172033; }
-.island { position: absolute; top: 12px; left: 50%; width: 112px; height: 32px; margin-left: -56px; border-radius: 20px; background: #050505; z-index: 3; }
-.statusbar { display: flex; justify-content: space-between; align-items: center; height: 54px; padding: 8px 30px 0 34px; font-size: 15px; font-weight: 700; }
-.statusbar i { display: inline-block; width: 26px; height: 12px; border: 1.5px solid #172033; border-radius: 4px; position: relative; }
-.statusbar i::after { content: ""; position: absolute; inset: 1.5px 6px 1.5px 1.5px; background: #172033; border-radius: 1.5px; }
+/* ---------- devices built around real screenshots ---------- */
+.phone { position: absolute; width: 414px; height: 868px; padding: 12px; border-radius: 66px; transform-origin: 50% 50%;
+  background: linear-gradient(145deg, #2c3134, #0b0d0f 40%, #1c2023);
+  box-shadow: 0 80px 140px -30px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 0 1.5px rgba(255, 255, 255, 0.16); }
+.phone .screen { position: relative; width: 390px; height: 844px; overflow: hidden; border-radius: 54px; background: #fff; }
+.phone .status { position: absolute; left: 0; top: 0; width: 390px; height: 47px; display: flex; justify-content: space-between; align-items: center; padding: 6px 30px 0 44px;
+  font-size: 16px; font-weight: 700; color: #111; background-repeat: no-repeat; background-size: 390px 39850px; background-position: 0 0; }
+.phone .status .sys { display: flex; align-items: center; gap: 6px; }
+.phone .status .bars { display: flex; align-items: flex-end; gap: 2px; height: 11px; }
+.phone .status .bars i { display: block; width: 3px; border-radius: 1px; background: #111; }
+.phone .status .bat { position: relative; width: 25px; height: 12px; border: 1.5px solid rgba(17, 17, 17, 0.45); border-radius: 4px; }
+.phone .status .bat::after { content: ""; position: absolute; inset: 1.5px 5px 1.5px 1.5px; border-radius: 1.5px; background: #111; }
+.phone .island { position: absolute; left: 50%; top: 11px; width: 120px; height: 34px; margin-left: -60px; border-radius: 20px; background: #000; z-index: 2; }
+.phone .viewport { position: absolute; left: 0; top: 47px; width: 390px; height: 797px; overflow: hidden; }
+.phone .viewport img.frame { display: block; width: 390px; height: 797px; }
+.phone .scroller { position: absolute; left: 0; width: 390px; overflow: hidden; }
+.phone .scroller img { position: absolute; left: 0; top: 0; width: 390px; will-change: transform; }
+.phone .glare { position: absolute; inset: 0; border-radius: 54px; pointer-events: none; background: linear-gradient(115deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 28%); }
+.shot-card { position: absolute; overflow: hidden; border-radius: 22px; transform-origin: 50% 50%;
+  box-shadow: 0 50px 100px -24px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.07); }
+.shot-card img { display: block; width: 100%; }
 
-/* timetable */
-.tt-head { display: flex; justify-content: space-between; align-items: flex-end; padding: 6px 18px 12px; }
-.tt-head b { display: block; font-size: 26px; font-weight: 700; letter-spacing: 0.02em; }
-.tt-head small { display: block; margin-top: 4px; font-size: 12.5px; color: #6e6e73; }
-.seg { display: flex; padding: 3px; border-radius: 10px; background: #e4e6ea; font-size: 12.5px; font-weight: 500; }
-.seg span { padding: 5px 13px; border-radius: 8px; color: #6e6e73; }
-.seg span.on { background: #fff; color: #172033; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-.tt-days { display: grid; grid-template-columns: 26px repeat(5, 1fr); gap: 3px; padding: 0 8px 8px; text-align: center; font-size: 12px; color: #6e6e73; }
-.tt-days div b { display: block; margin: 3px auto 0; width: 26px; height: 26px; line-height: 26px; border-radius: 50%; font-size: 13px; color: #172033; font-weight: 500; }
-.tt-days div.today { color: #086f63; font-weight: 700; }
-.tt-days div.today b { background: #086f63; color: #fff; }
-.tt-grid { position: relative; height: 528px; margin: 0 8px; }
-.tt-time { position: absolute; left: 0; width: 26px; height: 48px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #9a9aa0; }
-.course { position: absolute; padding: 6px 6px; border-radius: 10px; overflow: hidden; font-size: 12.5px; line-height: 1.3; font-weight: 700; }
-.course small { display: block; margin-top: 4px; font-size: 10.5px; font-weight: 400; opacity: 0.8; }
-.nowline { position: absolute; left: 22px; right: 0; height: 2px; background: #ef4444; border-radius: 1px; }
-.nowline::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
-.tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; display: flex; justify-content: space-around; padding-top: 12px; background: rgba(255, 255, 255, 0.94); border-top: 1px solid #e6e7ea; font-size: 11px; color: #8e8e93; }
-.tabbar div { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.tabbar div i { width: 22px; height: 22px; border-radius: 7px; border: 2px solid currentColor; }
-.tabbar div.on { color: #086f63; font-weight: 700; }
-.tabbar div.on i { background: currentColor; }
-
-.widget { width: 340px; padding: 24px 26px; border-radius: 30px; }
+.widget { position: absolute; width: 340px; padding: 24px 26px; border-radius: 30px; background: #fff; color: #172033;
+  box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .widget .k { font-size: 14px; color: #6e6e73; letter-spacing: 0.08em; }
 .widget .v { margin-top: 10px; font-size: 32px; font-weight: 700; }
 .widget .m { margin-top: 6px; font-size: 16px; color: #3c4655; }
@@ -91,112 +82,17 @@ body { display: grid; place-items: center; }
 .widget .bar b { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #0f8f7f, #2a9d8c); border-radius: 3px; }
 .widget .dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #0f8f7f; vertical-align: 2px; }
 
-/* academic cards */
-.card-k { font-size: 16px; color: #6e6e73; letter-spacing: 0.06em; }
-.gpa { font-size: 116px; font-weight: 500; line-height: 1; letter-spacing: -0.02em; margin-top: 18px; font-variant-numeric: tabular-nums; }
-.gpa-sub { margin-top: 10px; font-size: 17px; color: #3c4655; }
-.bars { display: flex; align-items: flex-end; gap: 12px; height: 90px; margin-top: 26px; }
-.bars div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; justify-content: flex-end; }
-.bars b { display: block; width: 100%; border-radius: 6px 6px 3px 3px; background: #dcefeb; transform-origin: 50% 100%; }
-.bars div:last-child b { background: linear-gradient(180deg, #2a9d8c, #0f8f7f); }
-.bars span { font-size: 11px; color: #9a9aa0; }
-.exam { display: flex; align-items: center; gap: 18px; padding: 18px 0; border-top: 1px solid #eef0f2; }
-.exam:first-of-type { border-top: 0; }
-.exam .d { width: 64px; height: 64px; border-radius: 16px; background: #fff4e0; color: #9a5b06; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 24px; line-height: 1; }
-.exam .d small { font-size: 11px; font-weight: 500; margin-top: 5px; }
-.exam .t { flex: 1; }
-.exam .t b { display: block; font-size: 21px; }
-.exam .t small { display: block; margin-top: 6px; font-size: 14px; color: #6e6e73; }
-.exam .c { font-size: 14px; color: #086f63; font-weight: 700; white-space: nowrap; }
-.ring-wrap { position: relative; width: 210px; height: 210px; margin: 22px auto 0; }
-.ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.ring-wrap .lbl { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.ring-wrap .lbl b { font-size: 44px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.ring-wrap .lbl small { font-size: 14px; color: #6e6e73; margin-top: 4px; }
+.feed { position: absolute; left: 1000px; top: -160px; width: 900px; height: 1400px; transform-origin: 50% 40%;
+  -webkit-mask-image: linear-gradient(180deg, transparent 6%, #000 24%, #000 76%, transparent 94%); mask-image: linear-gradient(180deg, transparent 6%, #000 24%, #000 76%, transparent 94%); }
+.feed-col { position: absolute; top: 0; width: 420px; display: flex; flex-direction: column; gap: 22px; }
+.feed-col .shot-card { position: relative; }
 
-/* community feed */
-.feed { position: absolute; left: 1010px; top: -140px; width: 900px; height: 1400px; transform-origin: 50% 40%; -webkit-mask-image: linear-gradient(180deg, transparent 6%, #000 24%, #000 76%, transparent 94%); mask-image: linear-gradient(180deg, transparent 6%, #000 24%, #000 76%, transparent 94%); }
-.feed-col { position: absolute; top: 0; width: 410px; display: flex; flex-direction: column; gap: 22px; }
-.post { position: relative; padding: 26px 28px 22px; border-radius: 26px; background: #fff; color: #172033; box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.6); }
-.post .tag { display: inline-block; padding: 5px 12px; border-radius: 8px; font-size: 14px; font-weight: 700; }
-.post h4 { margin: 14px 0 0; font-size: 22px; line-height: 1.4; font-weight: 700; }
-.post p { margin: 10px 0 0; font-size: 16px; line-height: 1.6; color: #5b6472; }
-.post .meta { display: flex; align-items: center; gap: 10px; margin-top: 18px; font-size: 14px; color: #8e8e93; }
-.post .meta i { width: 26px; height: 26px; border-radius: 50%; flex: none; }
-.post .meta .sp { flex: 1; }
-.post .meta svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
-
-/* voice hub */
-.disc-wrap { position: absolute; left: 230px; top: 100px; width: 800px; height: 800px; }
-#spectrum { position: absolute; inset: 0; }
-.disc { position: absolute; left: 160px; top: 160px; width: 480px; height: 480px; border-radius: 50%;
-  background:
-    radial-gradient(circle, transparent 0 29%, rgba(255, 255, 255, 0.05) 29.3% 29.8%, transparent 30.2%),
-    repeating-radial-gradient(circle, #121516 0 2px, #181c1d 2px 4px),
-    #121516;
-  box-shadow: 0 60px 120px -30px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.07); }
-.disc::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 40deg, transparent 0 12%, rgba(255, 255, 255, 0.10) 16%, transparent 22% 62%, rgba(255, 255, 255, 0.07) 66%, transparent 72%); }
-.disc-label { position: absolute; left: 50%; top: 50%; width: 170px; height: 170px; margin: -85px 0 0 -85px; border-radius: 50%;
-  background: radial-gradient(circle, #040a09 0 7px, transparent 8px), radial-gradient(circle, transparent 0 44px, rgba(255, 255, 255, 0.18) 45px 46px, transparent 47px),
-    conic-gradient(from 0deg, #f5a524 0 9%, transparent 9% 100%), radial-gradient(circle at 35% 30%, #2bb3a0, #0b6f63 70%); }
-.disc-label::after { content: ""; position: absolute; inset: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #22a594, #0b6f63 75%); -webkit-mask: radial-gradient(circle, transparent 0 7px, #000 8px); mask: radial-gradient(circle, transparent 0 7px, #000 8px); }
-.np { position: absolute; left: 640px; top: 590px; width: 420px; padding: 26px 28px; }
-.np .k { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #c2410c; font-weight: 700; letter-spacing: 0.06em; }
-.np .k i { width: 8px; height: 8px; border-radius: 50%; background: #ea580c; }
-.np .song { margin-top: 12px; font-size: 30px; font-weight: 700; }
-.np .by { margin-top: 6px; font-size: 15px; color: #6e6e73; }
-.np .row { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; font-size: 14px; color: #6e6e73; }
-.np .prog { height: 4px; margin-top: 12px; border-radius: 2px; background: #f1ece6; overflow: hidden; }
-.np .prog b { display: block; width: 0; height: 100%; background: #ea580c; }
-.np .vote { padding: 7px 14px; border-radius: 999px; background: #fff1e6; color: #c2410c; font-weight: 700; }
-.lyric { position: absolute; left: 350px; top: 884px; width: 560px; text-align: center; }
-.lyric div { font-size: 24px; line-height: 1.9; letter-spacing: 0.1em; }
-
-/* services */
-.svc-grid { position: absolute; left: 1050px; top: 290px; display: grid; grid-template-columns: repeat(3, 196px); gap: 22px; }
-.svc { height: 176px; border-radius: 28px; border: 1px solid rgba(255, 255, 255, 0.12); background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025)); display: flex; flex-direction: column; justify-content: space-between; padding: 26px 24px; }
-.svc svg { width: 40px; height: 40px; fill: none; stroke: var(--teal-soft); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.svc span { font-size: 22px; color: #e9f4f2; }
-.notice { position: absolute; left: 1050px; top: 150px; width: 632px; padding: 20px 24px; display: flex; gap: 18px; align-items: center; border-radius: 24px; }
-.notice .ic { width: 50px; height: 50px; border-radius: 14px; background: #086f63; display: flex; align-items: center; justify-content: center; flex: none; }
-.notice .ic svg { width: 28px; height: 28px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.notice b { display: block; font-size: 19px; }
-.notice small { display: block; margin-top: 4px; font-size: 15px; color: #6e6e73; }
-.notice .when { margin-left: auto; align-self: flex-start; font-size: 13px; color: #9a9aa0; }
-
-/* devices */
-.laptop { position: absolute; left: 520px; top: 270px; width: 880px; }
+.laptop { position: absolute; left: 520px; top: 262px; width: 880px; transform-origin: 50% 60%; }
 .laptop .lid { padding: 16px; border-radius: 26px 26px 6px 6px; background: linear-gradient(180deg, #24292c, #0f1213); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.14), 0 80px 140px -40px rgba(0, 0, 0, 0.9); }
-.laptop .lcd { height: 520px; border-radius: 10px; overflow: hidden; background: #f2f3f5; color: #172033; }
+.laptop .lcd { height: 530px; border-radius: 10px; overflow: hidden; background: #f2f3f5; }
+.laptop .lcd img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
 .laptop .base { height: 20px; margin: 0 -60px; border-radius: 0 0 22px 22px; background: linear-gradient(180deg, #4a5154, #1b1f21); box-shadow: 0 30px 60px -10px rgba(0, 0, 0, 0.8); }
-.web-nav { display: flex; align-items: center; gap: 26px; height: 54px; padding: 0 26px; background: #fff; border-bottom: 1px solid #e6e7ea; font-size: 14px; color: #3c4655; }
-.web-nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; color: #172033; margin-right: 14px; }
-.web-nav .on { color: #086f63; font-weight: 700; }
-.web-nav .av { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #2a9d8c, #0b6f63); }
-.web-body { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; padding: 20px 24px; }
-.web-card { background: #fff; border-radius: 16px; padding: 18px 20px; }
-.web-card h5 { margin: 0 0 12px; font-size: 15px; }
-.hello { font-size: 26px; font-weight: 700; }
-.hello-sub { margin-top: 6px; font-size: 14px; color: #6e6e73; }
-.mini-course { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; font-size: 14px; }
-.mini-course b { font-size: 15px; }
-.mini-course span { margin-left: auto; font-size: 13px; opacity: 0.75; }
-.hot { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #f0f1f3; font-size: 13.5px; color: #3c4655; }
-.hot:first-of-type { border-top: 0; padding-top: 0; }
-.hot .tag { padding: 3px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700; }
-.hot em { margin-left: auto; font-style: normal; font-size: 12px; color: #9a9aa0; }
-.ann { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid #f0f1f3; font-size: 13.5px; line-height: 1.45; color: #3c4655; }
-.ann:first-of-type { border-top: 0; padding-top: 0; }
-.ann i { flex: none; width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: #0f8f7f; }
-.phone.sm { width: 238px; height: 500px; padding: 9px; border-radius: 42px; }
-.phone.sm .screen { border-radius: 34px; }
-.phone.sm .island { top: 9px; width: 70px; height: 20px; margin-left: -35px; }
-.day-head { padding: 44px 18px 10px; }
-.day-head b { display: block; font-size: 22px; }
-.day-head small { font-size: 12px; color: #6e6e73; }
-.day-item { margin: 10px 14px 0; padding: 12px 14px; border-radius: 14px; font-size: 13px; font-weight: 700; }
-.day-item small { display: block; margin-top: 4px; font-size: 11px; font-weight: 400; opacity: 0.8; }
-.platforms { position: absolute; left: 0; right: 0; top: 942px; display: flex; justify-content: center; align-items: center; gap: 30px; font-size: 26px; letter-spacing: 0.06em; color: #cfe3df; }
+.platforms { position: absolute; left: 0; right: 0; top: 950px; display: flex; justify-content: center; align-items: center; gap: 30px; font-size: 26px; letter-spacing: 0.06em; color: #cfe3df; }
 .platforms i { width: 4px; height: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); }
 
 /* finale */
@@ -266,50 +162,20 @@ body { display: grid; place-items: center; }
       <p class="desc">周视图、日视图随心切换，<br>离线也能打开，还能放上桌面。</p>
       <div class="tags"><span>周视图</span><span>日视图</span><span>离线可用</span><span>桌面小组件</span></div>
     </div>
-    <div class="phone" id="tt-phone" style="left: 1132px; top: 134px;">
-      <div class="screen">
-        <div class="island"></div>
-        <div class="statusbar"><span>13:42</span><i></i></div>
-        <div class="tt-head">
-          <div><b>第 6 周</b><small>10月12日 – 10月18日</small></div>
-          <div class="seg"><span class="on">周</span><span>日</span><span>月</span></div>
-        </div>
-        <div class="tt-days" id="tt-days"></div>
-        <div class="tt-grid" id="tt-grid"></div>
-        <div class="tabbar"><div><i></i>首页</div><div class="on"><i></i>课表</div><div><i></i>社区</div><div><i></i>我的</div></div>
-      </div>
-    </div>
-    <div class="surface widget" id="tt-widget" style="left: 1500px; top: 700px;">
-      <div class="k"><span class="dot"></span>下一节课 · 18 分钟后</div>
+    <div class="widget" id="tt-widget" style="left: 1520px; top: 690px;">
+      <div class="k"><span class="dot"></span>下一节课 · 10 分钟后</div>
       <div class="v">药理学实验</div>
-      <div class="m">14:00 – 16:25 · 实验楼 B</div>
+      <div class="m">13:30 – 17:05 · 实验楼312</div>
       <div class="bar"><b id="tt-widget-bar"></b></div>
     </div>
   </section>
 
   <!-- 4 · 教务 -->
   <section class="scene" id="s-academic">
-    <div class="surface" id="ac-gpa" style="left: 150px; top: 196px; width: 440px; padding: 34px 36px;">
-      <div class="card-k">学业概览 · 平均学分绩点</div>
-      <div class="gpa" id="gpa-num">0.00</div>
-      <div class="gpa-sub">较上学期 <b style="color: #086f63;">+0.06</b></div>
-      <div class="bars" id="gpa-bars"></div>
-    </div>
-    <div class="surface" id="ac-ring" style="left: 628px; top: 132px; width: 330px; padding: 30px 32px 34px;">
-      <div class="card-k">培养方案进度</div>
-      <div class="ring-wrap">
-        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="#e7f1ef" stroke-width="10"/><circle id="ring-arc" cx="60" cy="60" r="52" fill="none" stroke="#0f8f7f" stroke-width="10" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>
-        <div class="lbl"><b id="ring-num">0</b><small>/ 160 学分</small></div>
-      </div>
-    </div>
-    <div class="surface" id="ac-exam" style="left: 390px; top: 620px; width: 580px; padding: 18px 32px;">
-      <div class="exam"><div class="d">06<small>11月</small></div><div class="t"><b>药物分析 · 期中</b><small>09:00 – 11:00 · 教2-101</small></div><div class="c">还有 23 天</div></div>
-      <div class="exam"><div class="d">10<small>11月</small></div><div class="t"><b>物理化学 · 期中</b><small>14:00 – 16:00 · 教3-302</small></div><div class="c">还有 27 天</div></div>
-    </div>
     <div class="copy right">
       <div class="eyebrow"><span class="num">02</span><span class="rule"></span><span>教务 · ACADEMICS</span></div>
       <h2 class="title">教务信息，<br>一处即达。</h2>
-      <p class="desc">成绩、考试、培养方案与学业进度，<br>授权一次，自动整理得清清楚楚。</p>
+      <p class="desc">成绩、学业进度、培养方案与等级考试，<br>授权一次，自动整理得清清楚楚。</p>
       <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg><span>学校统一认证授权 · 不保存学校密码与验证码</span></div>
     </div>
   </section>
@@ -324,27 +190,12 @@ body { display: grid; place-items: center; }
     </div>
     <div class="feed" id="feed">
       <div class="feed-col" id="feed-a" style="left: 0;"></div>
-      <div class="feed-col" id="feed-b" style="left: 440px;"></div>
+      <div class="feed-col" id="feed-b" style="left: 450px;"></div>
     </div>
   </section>
 
   <!-- 6 · 药苑之声 -->
   <section class="scene" id="s-voice">
-    <div class="disc-wrap" id="disc-wrap">
-      <canvas id="spectrum" width="800" height="800"></canvas>
-      <div class="disc" id="disc"><div class="disc-label"></div></div>
-    </div>
-    <div class="surface np" id="np">
-      <div class="k"><i></i>正在播出 · 午间时段</div>
-      <div class="song">《夏日来信》</div>
-      <div class="by">投稿 · 匿名同学　|　今日第 3 首</div>
-      <div class="prog"><b id="np-prog"></b></div>
-      <div class="row"><span id="np-time">01:12 / 03:48</span><span class="vote">♥ 126 票</span></div>
-    </div>
-    <div class="lyric" id="lyric">
-      <div id="ly-a">把风装进信封里</div>
-      <div id="ly-b">寄给明天的自己</div>
-    </div>
     <div class="copy right">
       <div class="eyebrow"><span class="num">04</span><span class="rule"></span><span>药苑之声 · VOICEHUB</span></div>
       <h2 class="title">让喜欢的歌，<br>在校园里响起。</h2>
@@ -358,14 +209,8 @@ body { display: grid; place-items: center; }
     <div class="copy left">
       <div class="eyebrow"><span class="num">05</span><span class="rule"></span><span>服务 · SERVICES</span></div>
       <h2 class="title">公告不再错过，<br>服务触手可及。</h2>
-      <p class="desc">多个公告源自动汇总，<br>电费、图书馆、就业，一页直达。</p>
+      <p class="desc">多个公告源自动汇总，<br>电费、问卷、文件收集，一页直达。</p>
     </div>
-    <div class="surface notice" id="notice">
-      <div class="ic"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0"/></svg></div>
-      <div><b>教务通知 · 期中考试安排已发布</b><small>已同步到「校园公告」，点击查看全文</small></div>
-      <div class="when">刚刚</div>
-    </div>
-    <div class="svc-grid" id="svc-grid"></div>
   </section>
 
   <!-- 8 · 多端 -->
@@ -374,50 +219,13 @@ body { display: grid; place-items: center; }
       <h2 id="dev-title" style="position: static; transform: none; font-size: 60px; text-shadow: none;">一个拾间，每一块屏幕。</h2>
     </div>
     <div class="laptop" id="laptop">
-      <div class="lid"><div class="lcd">
-        <div class="web-nav"><span class="brand" id="nav-logo"></span><span class="on">首页</span><span>社区</span><span>教务</span><span>服务</span><span>药苑之声</span><span class="av"></span></div>
-        <div class="web-body">
-          <div class="web-card">
-            <div class="hello">下午好，CPUer</div>
-            <div class="hello-sub">10月14日 周三 · 今天还有 2 节课</div>
-            <div class="mini-course" style="background: hsl(350, 60%, 94%); color: hsl(350, 64%, 26%);"><b>药理学实验</b>14:00 – 16:25<span>实验楼 B</span></div>
-            <div class="mini-course" style="background: hsl(262, 60%, 95%); color: hsl(262, 54%, 30%);"><b>形势与政策</b>18:30 – 20:05<span>教1-101</span></div>
-            <div class="mini-course" style="background: hsl(168, 50%, 93%); color: hsl(168, 70%, 22%);"><b>宿舍电费</b>剩余 42.6 度<span>江宁 · 8 栋</span></div>
-          </div>
-          <div class="web-card" style="grid-row: span 2;">
-            <h5>校园公告</h5>
-            <div class="ann"><i></i>关于期中考试安排的通知</div>
-            <div class="ann"><i></i>图书馆国庆后开放时间调整</div>
-            <div class="ann"><i></i>秋季学期体育选项课补选说明</div>
-            <div class="ann"><i></i>就业指导讲座 · 简历与面试</div>
-            <div class="ann"><i></i>四六级考试报名提醒</div>
-            <div class="ann"><i></i>校园网维护时段公告</div>
-          </div>
-          <div class="web-card web-hot">
-            <h5>社区热帖</h5>
-            <div class="hot"><span class="tag" style="background:#e1f4f0;color:#086f63">课程点评</span>药理学怎么学比较高效？<em>128</em></div>
-            <div class="hot"><span class="tag" style="background:#eee8fb;color:#5b3fb0">树洞</span>今天的晚霞真的好看<em>312</em></div>
-            <div class="hot"><span class="tag" style="background:#e3ecfb;color:#2457a6">提问</span>有没有推荐的公选课？<em>45</em></div>
-          </div>
-        </div>
-      </div></div>
+      <div class="lid"><div class="lcd" id="laptop-lcd"></div></div>
       <div class="base"></div>
     </div>
-    <div class="phone sm" id="dev-phone" style="left: 300px; top: 430px;">
-      <div class="screen">
-        <div class="island"></div>
-        <div class="day-head"><b>今天 · 周三</b><small>第 6 周 · 10月14日</small></div>
-        <div class="day-item" style="background: hsl(190, 60%, 93%); color: hsl(190, 64%, 24%);">分析化学<small>10:05 – 11:40 · 教2-210</small></div>
-        <div class="day-item" style="background: hsl(350, 60%, 94%); color: hsl(350, 64%, 26%);">药理学实验<small>14:00 – 16:25 · 实验楼 B</small></div>
-        <div class="day-item" style="background: hsl(262, 60%, 95%); color: hsl(262, 54%, 30%);">形势与政策<small>18:30 – 20:05 · 教1-101</small></div>
-        <div class="day-item" style="background: #fff; color: #172033;">药苑之声 · 正在播出<small>《夏日来信》 · 126 票</small></div>
-        <div class="day-item" style="background: #fff; color: #172033;">宿舍电费<small>剩余 42.6 度 · 江宁 8 栋</small></div>
-      </div>
-    </div>
-    <div class="surface widget" id="dev-widget" style="left: 1330px; top: 560px; width: 300px;">
+    <div class="widget" id="dev-widget" style="left: 1330px; top: 600px; width: 300px;">
       <div class="k"><span class="dot"></span>桌面小组件</div>
       <div class="v" style="font-size: 28px;">药理学实验</div>
-      <div class="m">14:00 · 实验楼 B</div>
+      <div class="m">13:30 · 实验楼312</div>
     </div>
     <div class="platforms" id="platforms"><span>Web</span><i></i><span>Android</span><i></i><span>HarmonyOS</span><i></i><span>Windows</span><i></i><span>macOS</span></div>
   </section>
@@ -441,6 +249,8 @@ body { display: grid; place-items: center; }
 "use strict";
 
 const DURATION = 52;
+// capture.mjs 用真实前端拍下的界面截图和它们的尺寸清单。
+const SCREENS = "../../output/promo/screens";
 const $ = (id) => document.getElementById(id);
 const $$ = (root, sel) => Array.from(root.querySelectorAll(sel));
 
@@ -533,6 +343,7 @@ function prepareCopy(root) {
   if (desc) {
     desc.innerHTML = desc.innerHTML.split(/<br\s*\/?>/i).map((line) => `<span class="ln">${line}</span>`).join("");
   }
+  return root;
 }
 function animateCopy(root, t, t0, speed = 1) {
   const k = 1 / speed;
@@ -588,6 +399,58 @@ function sweep(root, t, t0, dur) {
   root.querySelector(".sheen").setAttribute("transform", `rotate(18 54 54) translate(${(p * 150).toFixed(2)} 0)`);
 }
 
+/* ---------- devices around real screenshots ---------- */
+let MANIFEST = {};
+const shotUrl = (file) => `${SCREENS}/${file}`;
+/** A phone whose screen is a real capture, with a status bar that continues the page's own top colour. */
+function phone(id, shot, { scroll = false, time = "13:20" } = {}) {
+  const m = MANIFEST[shot];
+  const el = document.createElement("div");
+  el.className = "phone";
+  el.id = id;
+  const scroller = scroll && m.full
+    ? `<div class="scroller" style="top:${m.headerBottom}px;height:${m.tabTop - m.headerBottom}px"><img src="${shotUrl(m.full)}" style="margin-top:${-m.headerBottom}px" alt=""></div>`
+    : "";
+  el.innerHTML = `<div class="screen">
+      <div class="status" style="background-image:url('${shotUrl(m.file)}')"><span>${time}</span>
+        <span class="sys"><span class="bars"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i></span><span class="bat"></span></span></div>
+      <div class="island"></div>
+      <div class="viewport"><img class="frame" src="${shotUrl(m.file)}" alt="">${scroller}</div>
+      <div class="glare"></div>
+    </div>`;
+  return el;
+}
+function setScroll(el, y) {
+  const img = el.querySelector(".scroller img");
+  if (img) img.style.transform = `translateY(${(-y).toFixed(1)}px)`;
+}
+/** A single component cut out of a real page, floating on its own. */
+function card(file, width, radius = 22) {
+  const el = document.createElement("div");
+  el.className = "shot-card";
+  el.style.width = `${width}px`;
+  el.style.borderRadius = `${radius}px`;
+  el.innerHTML = `<img src="${shotUrl(file)}" alt="">`;
+  return el;
+}
+function place(el, scene, left, top, z = 0) {
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  if (z) el.style.zIndex = String(z);
+  $(scene).appendChild(el);
+  return el;
+}
+/** Shared entrance + drift for a 3D-tilted device or card. */
+function float(el, t, start, { from = [0, 120, 0], ry = [0, 0], rx = [10, 5], rz = [0, 0], scale = 1, dur = 1.6, drift = null, persp = 2400, blur = 10 } = {}) {
+  const p = prog(t, start, dur, ease.outQuart);
+  const d = drift ? clamp((t - drift[0]) / (drift[1] - drift[0])) : 0;
+  el.style.opacity = p.toFixed(3);
+  el.style.transform = `perspective(${persp}px) translate3d(${((1 - p) * from[0]).toFixed(1)}px, ${((1 - p) * from[1]).toFixed(1)}px, ${((1 - p) * from[2]).toFixed(1)}px) ` +
+    `rotateY(${lerp(ry[0], ry[1], d).toFixed(2)}deg) rotateX(${lerp(rx[0], rx[1], d).toFixed(2)}deg) rotateZ(${lerp(rz[0], rz[1], d).toFixed(2)}deg) scale(${scale})`;
+  el.style.filter = p < 0.99 && blur ? `blur(${((1 - p) * blur).toFixed(2)}px)` : "";
+  return p;
+}
+
 /* ---------- background ---------- */
 const orbs = {
   // [x, y, radius, alpha]
@@ -602,7 +465,7 @@ const orbs = {
       [40.6, [960, 160, 1000, 0.14]], [43.6, [960, 180, 1000, 0.14]], [44.6, [960, 980, 1100, 0.10]], [49, [960, 980, 1100, 0.10]], [51.6, [960, 980, 1100, 0]]],
   C: [[0, [960, 540, 400, 0]], [5.6, [960, 540, 420, 0]], [6.6, [960, 520, 520, 0.12]], [11.4, [960, 470, 520, 0.08]], [12.6, [1720, 920, 640, 0.06]],
       [17.6, [1700, 900, 640, 0.06]], [18.6, [280, 920, 640, 0.07]], [23.6, [300, 900, 640, 0.07]], [24.6, [1700, 160, 600, 0.05]],
-      [29.6, [1700, 180, 600, 0.05]], [30.6, [630, 540, 820, 0.22]], [35.6, [630, 540, 820, 0.22]], [36.6, [1700, 200, 600, 0.05]],
+      [29.6, [1700, 180, 600, 0.05]], [30.6, [560, 540, 860, 0.22]], [35.6, [560, 540, 860, 0.22]], [36.6, [1700, 200, 600, 0.05]],
       [43.6, [1600, 200, 600, 0.05]], [44.6, [960, 420, 560, 0.08]], [49, [960, 420, 560, 0.08]], [51.6, [960, 420, 560, 0]]],
 };
 const orbColor = { A: "15, 143, 127", B: "30, 74, 120", C: "245, 158, 11" };
@@ -708,252 +571,119 @@ scene("s-brand", 5.4, 12.05, (t) => {
   rise($("brand-sub"), t, 9.05, { dur: 1.2, y: 14 });
 });
 
-/* 3 · Schedule */
-const COURSE_HUE = { 药物化学: 168, 大学英语: 215, 体育: 140, 药理学: 350, 有机化学: 32, "形势与|政策": 262, 高等数学: 230, 分析化学: 190, "药理学|实验": 350, 生物化学: 145, 药物分析: 20, "有机化学|实验": 32 };
-const COURSES = [
-  [0, 1, 2, "药物化学", "教2-301"], [0, 3, 2, "大学英语", "教1-207"], [0, 7, 2, "体育", "体育馆"],
-  [1, 1, 2, "药理学", "教3-205"], [1, 3, 2, "高等数学", "教1-305"], [1, 5, 2, "有机化学", "教2-104"],
-  [2, 3, 2, "分析化学", "教2-210"], [2, 6, 3, "药理学|实验", "实验楼 B"], [2, 9, 2, "形势与|政策", "教1-101"],
-  [3, 1, 3, "生物化学", "教3-402"], [3, 6, 2, "药物分析", "教2-305"],
-  [4, 3, 3, "有机化学|实验", "实验楼 A"], [4, 7, 2, "大学英语", "教1-207"],
-];
-(() => {
-  $("tt-days").innerHTML = "<div></div>" + ["一", "二", "三", "四", "五"].map((d, i) => `<div class="${i === 2 ? "today" : ""}">周${d}<b>${12 + i}</b></div>`).join("");
-  const grid = $("tt-grid");
-  const ROW = 48;
-  const colW = (360 - 16 - 26 - 4 * 3) / 5;
-  let html = "";
-  for (let p = 0; p < 11; p += 1) html += `<div class="tt-time" style="top:${p * ROW}px">${p + 1}</div>`;
-  COURSES.forEach(([d, p, n, name, room]) => {
-    const h = COURSE_HUE[name];
-    html += `<div class="course" style="left:${29 + d * (colW + 3)}px;top:${(p - 1) * ROW + 1.5}px;width:${colW}px;height:${n * ROW - 3}px;` +
-      `background:hsl(${h},62%,93%);color:hsl(${h},64%,25%);box-shadow:inset 0 0 0 1px hsla(${h},50%,55%,.22)">${name.replace("|", "<br>")}<small>@${room}</small></div>`;
+/* 3–8 · Feature scenes, built from the real-UI captures once the manifest is loaded */
+function buildFeatureScenes() {
+  /* 3 · Schedule */
+  const ttCopy = prepareCopy($("s-schedule").querySelector(".copy"));
+  const ttPhone = place(phone("tt-phone", "schedule-week"), "s-schedule", 1110, 106);
+  scene("s-schedule", 11.75, 18.1, (t) => {
+    animateCopy(ttCopy, t, 12.3);
+    float(ttPhone, t, 11.9, { from: [0, 160, 0], ry: [-21, -12], rx: [7, 4], rz: [1.5, 0], scale: 0.96, dur: 1.8, drift: [12, 18] });
+    const w = $("tt-widget");
+    const pw = prog(t, 14.55, 1.3, ease.outQuart);
+    const drift = clamp((t - 12) / 6);
+    w.style.opacity = pw.toFixed(3);
+    w.style.transform = `perspective(2000px) translate(${((1 - pw) * 60).toFixed(1)}px, ${((1 - pw) * 30 - 10 * drift).toFixed(1)}px) rotateY(${(-14 + 6 * drift).toFixed(2)}deg) rotateX(5deg)`;
+    $("tt-widget-bar").style.width = `${(prog(t, 15.2, 2.4, ease.inOutCubic) * 64).toFixed(2)}%`;
   });
-  html += `<div class="nowline" id="tt-now" style="top:${4.9 * ROW}px"></div>`;
-  grid.innerHTML = html;
-})();
-const ttCopy = $("s-schedule").querySelector(".copy");
-prepareCopy(ttCopy);
-scene("s-schedule", 11.75, 18.1, (t) => {
-  animateCopy(ttCopy, t, 12.3);
-  const phone = $("tt-phone");
-  const pin = prog(t, 11.9, 1.8, ease.outQuart);
-  const drift = clamp((t - 12) / 6);
-  phone.style.opacity = pin.toFixed(3);
-  phone.style.transform = `perspective(2400px) translateY(${((1 - pin) * 160).toFixed(1)}px) rotateY(${lerp(-38, -21, pin) + 8 * drift}deg) rotateX(${(lerp(14, 7, pin) - 2 * drift).toFixed(2)}deg) rotateZ(${(1.5 - 1.5 * drift).toFixed(2)}deg)`;
-  $$(phone, ".course").forEach((c, i) => {
-    const p = prog(t, 12.85 + i * 0.075, 0.75, ease.outQuart);
-    c.style.opacity = p.toFixed(3);
-    c.style.transform = `translateY(${((1 - p) * 14).toFixed(2)}px) scale(${lerp(0.86, 1, p).toFixed(4)})`;
+
+  /* 4 · Academics */
+  const acCopy = prepareCopy($("s-academic").querySelector(".copy"));
+  const acPhone = place(phone("ac-phone", "jwxt-grades", { scroll: true }), "s-academic", 360, 106);
+  const prog0 = MANIFEST["jwxt-progress"]["progress-overall"][0];
+  const acProgress = place(card(prog0.file, 430, 18), "s-academic", 90, 640, 3);
+  const grade0 = MANIFEST["jwxt-grades"]["grade-card"][0];
+  const acGrade = place(card(grade0.file, 400, 16), "s-academic", 560, 560, 3);
+  scene("s-academic", 17.75, 24.1, (t) => {
+    animateCopy(acCopy, t, 18.35);
+    float(acPhone, t, 17.9, { from: [0, 160, 0], ry: [18, 10], rx: [7, 4], scale: 0.96, dur: 1.8, drift: [18, 24] });
+    setScroll(acPhone, 620 * prog(t, 19.3, 4.2, ease.inOutCubic));
+    float(acProgress, t, 18.7, { from: [-60, 80, 120], ry: [16, 9], rx: [8, 4], dur: 1.6, drift: [18, 24] });
+    float(acGrade, t, 19.0, { from: [60, -40, 120], ry: [14, 8], rx: [6, 3], dur: 1.6, drift: [18, 24] });
   });
-  const now = $("tt-now");
-  const pn = prog(t, 14.0, 0.9, ease.outCubic);
-  now.style.opacity = pn.toFixed(3);
-  now.style.transform = `scaleX(${pn.toFixed(4)})`;
-  now.style.transformOrigin = "0 50%";
 
-  const w = $("tt-widget");
-  const pw = prog(t, 14.55, 1.3, ease.outQuart);
-  w.style.opacity = pw.toFixed(3);
-  w.style.transform = `perspective(2000px) translate(${((1 - pw) * 60).toFixed(1)}px, ${((1 - pw) * 30 - 10 * drift).toFixed(1)}px) rotateY(${(-14 + 6 * drift).toFixed(2)}deg) rotateX(5deg)`;
-  $("tt-widget-bar").style.width = `${(prog(t, 15.2, 2.4, ease.inOutCubic) * 64).toFixed(2)}%`;
-});
-
-/* 4 · Academics */
-(() => {
-  const vals = [3.41, 3.52, 3.58, 3.70, 3.76];
-  const labels = ["大一上", "大一下", "大二上", "大二下", "大三上"];
-  $("gpa-bars").innerHTML = vals.map((v, i) => `<div><b style="height:${((v - 3.0) / 0.8 * 100).toFixed(1)}%"></b><span>${labels[i]}</span></div>`).join("");
-})();
-const acCopy = $("s-academic").querySelector(".copy");
-prepareCopy(acCopy);
-scene("s-academic", 17.75, 24.1, (t) => {
-  animateCopy(acCopy, t, 18.35);
-  const drift = clamp((t - 18) / 6);
-  const card = (id, start, depth, ry) => {
-    const el = $(id);
-    const p = prog(t, start, 1.6, ease.outQuart);
-    const bob = Math.sin((t - start) * 0.9 + depth) * 6;
-    el.style.opacity = p.toFixed(3);
-    el.style.transform = `perspective(2200px) translate(${(-40 * drift * depth).toFixed(1)}px, ${((1 - p) * 120 + bob).toFixed(1)}px) rotateY(${(ry + 8 * drift).toFixed(2)}deg) rotateX(${(lerp(18, 6, p)).toFixed(2)}deg)`;
-    el.style.filter = p < 0.99 ? `blur(${((1 - p) * 10).toFixed(2)}px)` : "";
-  };
-  card("ac-gpa", 18.15, 1.0, 16);
-  card("ac-ring", 18.4, 0.6, 18);
-  card("ac-exam", 18.65, 1.4, 14);
-  const g = prog(t, 18.7, 1.9, ease.outCubic);
-  $("gpa-num").textContent = (3.76 * g).toFixed(2);
-  $$($("gpa-bars"), "b").forEach((b, i) => { b.style.transform = `scaleY(${prog(t, 19.0 + i * 0.1, 1.0, ease.outQuart).toFixed(4)})`; });
-  const r = prog(t, 18.9, 2.0, ease.outCubic);
-  $("ring-arc").style.strokeDashoffset = (1 - 0.8 * r).toFixed(4);
-  $("ring-num").textContent = Math.round(128 * r);
-});
-
-/* 5 · Community */
-const TAGS = {
-  课程点评: ["#e1f4f0", "#086f63"], 提问: ["#e3ecfb", "#2457a6"], 树洞: ["#eee8fb", "#5b3fb0"], 二手交流: ["#fdf0d9", "#9a5b06"],
-};
-const POSTS = [
-  ["课程点评", "药理学怎么学比较高效？", "每章结束后把机制图自己画一遍，期末复习会轻松很多。", "CPUer", 128, 36, "3 分钟前"],
-  ["树洞", "期末周第三天，给自己打打气", "一起加油，熬过这周就放假啦。", "匿名同学", 256, 58, "12 分钟前"],
-  ["提问", "江宁校区图书馆晚上几点闭馆？", "想找个能待到晚上的自习位置，求推荐。", "CPUer", 12, 24, "20 分钟前"],
-  ["二手交流", "出《有机化学》教材，笔记很全", "九成新，重点都标出来了，江宁校区自取。", "CPUer", 18, 9, "半小时前"],
-  ["课程点评", "分析化学实验：一定要提前预习", "数据处理最容易丢分，模板可以先熟悉一下。", "CPUer", 87, 21, "1 小时前"],
-  ["树洞", "今天的晚霞真的好看", "从实验楼出来抬头，整片天都是橘色的。", "匿名同学", 312, 40, "1 小时前"],
-  ["提问", "有没有推荐的公选课？", "想选一门轻松又有收获的，大家都选了什么？", "CPUer", 45, 67, "2 小时前"],
-  ["二手交流", "求一个宿舍用的台灯", "能正常用就行，价格好商量。", "CPUer", 6, 11, "3 小时前"],
-  ["课程点评", "大学英语听说课体验分享", "多开口就对了，老师会给很具体的反馈。", "CPUer", 64, 15, "4 小时前"],
-  ["树洞", "第一次在药苑之声点的歌被播了", "午饭的时候听到，开心了一下午。", "匿名同学", 198, 33, "5 小时前"],
-];
-const ICON_HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>';
-const ICON_REPLY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>';
-(() => {
-  const avatar = (who, i) => who === "匿名同学" ? "linear-gradient(135deg,#c9c2e8,#8f84c4)" : `linear-gradient(135deg,hsl(${(i * 47) % 360},55%,70%),hsl(${(i * 47 + 40) % 360},50%,52%))`;
-  const card = ([tag, title, body, who, likes, replies, when], i) => `<div class="post"><span class="tag" style="background:${TAGS[tag][0]};color:${TAGS[tag][1]}">${tag}</span>` +
-    `<h4>${title}</h4><p>${body}</p><div class="meta"><i style="background:${avatar(who, i)}"></i>${who} · ${when}<span class="sp"></span>${ICON_HEART}${likes}　${ICON_REPLY}${replies}</div></div>`;
-  $("feed-a").innerHTML = POSTS.filter((_, i) => i % 2 === 0).map(card).join("");
-  $("feed-b").innerHTML = POSTS.filter((_, i) => i % 2 === 1).map((p, i) => card(p, i + 5)).join("");
-})();
-const coCopy = $("s-community").querySelector(".copy");
-prepareCopy(coCopy);
-scene("s-community", 23.75, 30.1, (t) => {
-  animateCopy(coCopy, t, 24.35);
-  const p = prog(t, 23.9, 1.8, ease.outQuart);
-  const feed = $("feed");
-  feed.style.opacity = p.toFixed(3);
-  feed.style.transform = `perspective(2600px) translateY(${((1 - p) * 80).toFixed(1)}px) rotateX(${lerp(30, 20, p).toFixed(2)}deg) rotateY(-16deg) rotateZ(5deg)`;
-  const lt = t - 23.5;
-  $("feed-a").style.transform = `translateY(${(140 - lt * 46).toFixed(1)}px)`;
-  $("feed-b").style.transform = `translateY(${(-40 - lt * 30).toFixed(1)}px)`;
-  $$(feed, ".post").forEach((post, i) => {
-    const q = prog(t, 24.0 + (i % 5) * 0.12 + (i % 2) * 0.06, 1.2, ease.outQuart);
-    post.style.opacity = q.toFixed(3);
+  /* 5 · Community: real feed cards on a tilted, drifting plane */
+  const coCopy = prepareCopy($("s-community").querySelector(".copy"));
+  const feedCards = MANIFEST["forum-feed"]["feed-card"];
+  feedCards.forEach((c, i) => $(i % 2 ? "feed-b" : "feed-a").appendChild(card(c.file, 420, 24)));
+  scene("s-community", 23.75, 30.1, (t) => {
+    animateCopy(coCopy, t, 24.35);
+    const p = prog(t, 23.9, 1.8, ease.outQuart);
+    const feed = $("feed");
+    feed.style.opacity = p.toFixed(3);
+    feed.style.transform = `perspective(2600px) translateY(${((1 - p) * 80).toFixed(1)}px) rotateX(${lerp(30, 20, p).toFixed(2)}deg) rotateY(-16deg) rotateZ(5deg)`;
+    const lt = t - 23.5;
+    $("feed-a").style.transform = `translateY(${(230 - lt * 46).toFixed(1)}px)`;
+    $("feed-b").style.transform = `translateY(${(60 - lt * 30).toFixed(1)}px)`;
+    $$(feed, ".shot-card").forEach((el, i) => {
+      el.style.opacity = prog(t, 24.0 + Math.floor(i / 2) * 0.12 + (i % 2) * 0.06, 1.2, ease.outQuart).toFixed(3);
+    });
   });
-});
 
-/* 6 · VoiceHub */
-const voCopy = $("s-voice").querySelector(".copy");
-prepareCopy(voCopy);
-function paintSpectrum(t, alpha) {
-  const ctx = $("spectrum").getContext("2d");
-  ctx.clearRect(0, 0, 800, 800);
-  if (alpha <= 0) return;
-  const beat = Math.pow(1 - ((t * 2) % 1), 3);
-  const N = 120;
-  ctx.save();
-  ctx.translate(400, 400);
-  for (let i = 0; i < N; i += 1) {
-    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
-    const k = i / N;
-    const v = 0.35 + 0.3 * Math.sin(t * 3.1 + k * 19) * Math.sin(t * 1.7 + k * 7.3) + 0.25 * Math.sin(t * 5.3 + k * 41) + 0.35 * beat * (0.6 + 0.4 * Math.sin(k * 12 + t));
-    const len = 10 + Math.max(0, v) * 70;
-    const r0 = 268;
-    ctx.strokeStyle = `rgba(${i % 3 === 0 ? "245, 165, 36" : "95, 211, 193"}, ${(0.35 + 0.5 * clamp(v)) * alpha})`;
-    ctx.lineWidth = 4;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
-    ctx.lineTo(Math.cos(a) * (r0 + len), Math.sin(a) * (r0 + len));
-    ctx.stroke();
-  }
-  ctx.restore();
+  /* 6 · VoiceHub: the broadcast schedule behind, the lyric player in front */
+  const voCopy = prepareCopy($("s-voice").querySelector(".copy"));
+  const voBack = place(phone("vo-back", "voicehub-schedule", { time: "12:12" }), "s-voice", 170, 140);
+  const voFront = place(phone("vo-front", "voicehub-lyrics", { time: "12:12" }), "s-voice", 560, 96, 2);
+  scene("s-voice", 29.75, 36.1, (t) => {
+    animateCopy(voCopy, t, 30.35);
+    float(voBack, t, 29.9, { from: [-80, 120, 0], ry: [20, 14], rx: [6, 3], rz: [-2, -1], scale: 0.84, dur: 1.8, drift: [30, 36] });
+    float(voFront, t, 30.3, { from: [40, 160, 0], ry: [14, 8], rx: [6, 3], scale: 0.96, dur: 1.8, drift: [30, 36] });
+  });
+
+  /* 7 · Services: the services page, with the aggregated announcements pulled out in front */
+  const svCopy = prepareCopy($("s-services").querySelector(".copy"));
+  const svPhone = place(phone("sv-phone", "services-phone", { scroll: true }), "s-services", 1290, 106);
+  const ann = MANIFEST["announcements-phone"]["announce-list"][0];
+  const svNotice = place(card(ann.file, 420, 18), "s-services", 880, 330, 3);
+  scene("s-services", 35.75, 40.1, (t) => {
+    animateCopy(svCopy, t, 36.25, 1.25);
+    float(svPhone, t, 35.9, { from: [0, 140, 0], ry: [-18, -11], rx: [6, 3], scale: 0.96, dur: 1.5, drift: [36, 40] });
+    setScroll(svPhone, 300 * prog(t, 37.0, 2.8, ease.inOutCubic));
+    float(svNotice, t, 36.7, { from: [-60, 60, 140], ry: [-14, -8], rx: [6, 3], dur: 1.4, drift: [36, 40] });
+  });
+
+  /* 8 · Devices */
+  $("laptop-lcd").innerHTML = `<img src="${shotUrl(MANIFEST["home-desktop"].file)}" alt="">`;
+  const devPhone = place(phone("dev-phone", "home-phone"), "s-devices", 190, 196, 2);
+  scene("s-devices", 39.75, 44.05, (t) => {
+    const push = 1 + 0.035 * ease.inOutSine(clamp((t - 40) / 4));
+    revealChars($("dev-title"), t, 40.15, { stagger: 0.04, dur: 0.9 });
+    const lap = $("laptop");
+    const pl = prog(t, 40.0, 1.5, ease.outQuart);
+    lap.style.opacity = pl.toFixed(3);
+    lap.style.transform = `perspective(2600px) translateY(${((1 - pl) * 90).toFixed(1)}px) rotateX(${lerp(16, 4, pl).toFixed(2)}deg) scale(${push.toFixed(4)})`;
+    float(devPhone, t, 40.35, { from: [-80, 50, 0], ry: [24, 16], rx: [4, 3], scale: 0.6, dur: 1.4, drift: [40, 44] });
+    const w = $("dev-widget");
+    const pw = prog(t, 40.6, 1.4, ease.outQuart);
+    w.style.opacity = pw.toFixed(3);
+    w.style.transform = `perspective(2200px) translate(${((1 - pw) * 80 + 14 * (push - 1) * 40).toFixed(1)}px, ${((1 - pw) * 50).toFixed(1)}px) rotateY(${lerp(-30, -14, pw).toFixed(2)}deg) rotateX(4deg)`;
+    $$($("platforms"), "span, i").forEach((el, i) => rise(el, t, 40.9 + i * 0.06, { dur: 0.9, y: 12, blur: 6 }));
+  }, { fadeOut: 0.5 });
 }
-scene("s-voice", 29.75, 36.1, (t) => {
-  animateCopy(voCopy, t, 30.35);
-  const p = prog(t, 29.9, 2.0, ease.outQuart);
-  const wrap = $("disc-wrap");
-  wrap.style.opacity = p.toFixed(3);
-  wrap.style.transform = `scale(${lerp(0.85, 1, p).toFixed(4)}) translateY(${(-12 * clamp((t - 30) / 6)).toFixed(1)}px)`;
-  $("disc").style.transform = `rotate(${(t * 28).toFixed(2)}deg)`;
-  paintSpectrum(t, prog(t, 30.4, 1.5));
-  const np = $("np");
-  const q = prog(t, 30.9, 1.4, ease.outQuart);
-  np.style.opacity = q.toFixed(3);
-  np.style.transform = `perspective(2000px) translate(${((1 - q) * 50).toFixed(1)}px, ${((1 - q) * 30).toFixed(1)}px) rotateY(-10deg) rotateX(4deg)`;
-  const secs = 72 + (t - 30);
-  $("np-time").textContent = `0${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")} / 03:48`;
-  $("np-prog").style.width = `${((secs / 228) * 100).toFixed(2)}%`;
-  rise($("ly-a"), t, 31.5, { dur: 1.2, y: 14 });
-  rise($("ly-b"), t, 31.8, { dur: 1.2, y: 14 });
-  const sing = prog(t, 32.8, 1.6, ease.inOutCubic);
-  $("ly-a").style.color = `rgba(241, 247, 246, ${lerp(0.95, 0.4, sing).toFixed(3)})`;
-  $("ly-b").style.color = `rgba(${Math.round(lerp(150, 245, sing))}, ${Math.round(lerp(170, 190, sing))}, ${Math.round(lerp(165, 110, sing))}, ${lerp(0.5, 1, sing).toFixed(3)})`;
-});
-
-/* 7 · Services */
-const SERVICES = [
-  ["校园公告", '<path d="M4 10v4h3l6 4.5v-13L7 10H4z"/><path d="M16.5 9a4 4 0 0 1 0 6"/><path d="M19 6.5a7.5 7.5 0 0 1 0 11"/>'],
-  ["电费查询", '<path d="M13 2.5 4.5 14H11l-1 7.5L18.5 10H12l1-7.5z"/>'],
-  ["图书馆", '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19"/><path d="M9 7.5h6"/>'],
-  ["就业信息", '<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M3 12.5h18"/>'],
-  ["心理中心", '<path d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.2a4.2 4.2 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/>'],
-  ["在线问卷", '<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 3.5h6v2.5H9z"/><path d="m9 13 2 2 4-4.5"/>'],
-  ["文件收集", '<path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2.2h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 16.5v-5"/><path d="m9.5 13.8 2.5-2.5 2.5 2.5"/>'],
-  ["拾间 AI", '<path d="m11 3.5 1.7 4.8 4.8 1.7-4.8 1.7L11 16.5l-1.7-4.8L4.5 10l4.8-1.7z"/><path d="m18 14.5.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>'],
-  ["校园网", '<path d="M2.5 9.5a14 14 0 0 1 19 0"/><path d="M5.5 13a9.5 9.5 0 0 1 13 0"/><path d="M8.7 16.4a5 5 0 0 1 6.6 0"/><circle cx="12" cy="19.6" r=".9"/>'],
-];
-$("svc-grid").innerHTML = SERVICES.map(([label, path]) => `<div class="svc"><svg viewBox="0 0 24 24">${path}</svg><span>${label}</span></div>`).join("");
-const svCopy = $("s-services").querySelector(".copy");
-prepareCopy(svCopy);
-scene("s-services", 35.75, 40.1, (t) => {
-  animateCopy(svCopy, t, 36.25, 1.25);
-  const drift = clamp((t - 36) / 4);
-  const grid = $("svc-grid");
-  grid.style.transform = `perspective(2400px) rotateY(${(-16 + 6 * drift).toFixed(2)}deg) rotateX(${(8 - 2 * drift).toFixed(2)}deg) translateY(${(36 - 20 * drift).toFixed(1)}px)`;
-  $$(grid, ".svc").forEach((tile, i) => {
-    const row = Math.floor(i / 3);
-    const col = i % 3;
-    const p = prog(t, 36.2 + (row + col) * 0.09, 1.1, ease.outQuart);
-    tile.style.opacity = p.toFixed(3);
-    tile.style.transform = `translateY(${((1 - p) * 40).toFixed(1)}px) scale(${lerp(0.9, 1, p).toFixed(4)})`;
-  });
-  const n = $("notice");
-  const q = prog(t, 37.2, 1.2, ease.outQuart);
-  n.style.opacity = q.toFixed(3);
-  n.style.transform = `perspective(2400px) translateY(${((1 - q) * -50 - 18 * drift).toFixed(1)}px) rotateY(${(-16 + 6 * drift).toFixed(2)}deg) rotateX(${(8 - 2 * drift).toFixed(2)}deg) scale(${lerp(0.94, 1, q).toFixed(4)})`;
-});
-
-/* 8 · Devices */
-$("nav-logo").innerHTML = `<svg viewBox="12 12 84 84" width="24" height="24"><rect x="12" y="12" width="84" height="84" rx="18" fill="#0F8F7F"/><rect x="30" y="31" width="48" height="8" rx="2" fill="#fff"/><rect x="30" y="47" width="48" height="8" rx="2" fill="#fff"/><rect x="30" y="63" width="30" height="8" rx="2" fill="#fff"/><path d="M70 61l6 6l13 -17l6 5l-18 24l-13 -12z" fill="#F59E0B"/></svg>药大拾间`;
-scene("s-devices", 39.75, 44.05, (t) => {
-  const push = 1 + 0.035 * ease.inOutSine(clamp((t - 40) / 4));
-  revealChars($("dev-title"), t, 40.15, { stagger: 0.04, dur: 0.9 });
-  const lap = $("laptop");
-  const pl = prog(t, 40.0, 1.5, ease.outQuart);
-  lap.style.opacity = pl.toFixed(3);
-  lap.style.transform = `perspective(2600px) translateY(${((1 - pl) * 90).toFixed(1)}px) rotateX(${lerp(16, 4, pl).toFixed(2)}deg) scale(${push.toFixed(4)})`;
-  const ph = $("dev-phone");
-  const pp = prog(t, 40.35, 1.4, ease.outQuart);
-  ph.style.opacity = pp.toFixed(3);
-  ph.style.transform = `perspective(2200px) translate(${((1 - pp) * -80 - 14 * (push - 1) * 40).toFixed(1)}px, ${((1 - pp) * 50).toFixed(1)}px) rotateY(${lerp(30, 14, pp).toFixed(2)}deg) rotateX(4deg)`;
-  const w = $("dev-widget");
-  const pw = prog(t, 40.6, 1.4, ease.outQuart);
-  w.style.opacity = pw.toFixed(3);
-  w.style.transform = `perspective(2200px) translate(${((1 - pw) * 80 + 14 * (push - 1) * 40).toFixed(1)}px, ${((1 - pw) * 50).toFixed(1)}px) rotateY(${lerp(-30, -14, pw).toFixed(2)}deg) rotateX(4deg)`;
-  $$($("platforms"), "span, i").forEach((el, i) => rise(el, t, 40.9 + i * 0.06, { dur: 0.9, y: 12, blur: 6 }));
-}, { fadeOut: 0.5 });
 
 /* 9 · End card */
 $("end-logo").innerHTML = logoSvg("lg2");
-scene("s-end", 43.85, 52, (t) => {
-  const logo = $("end-logo");
-  drawLogo(logo, t, 44.0, { speed: 1.15 });
-  sweep(logo, t, 46.6, 1.3);
-  const pl = prog(t, 44.0, 1.4);
-  logo.style.transform = `scale(${lerp(0.82, 1, pl).toFixed(4)})`;
-  logo.style.filter = "drop-shadow(0 0 46px rgba(32, 190, 168, 0.4))";
-  const wm = $("end-wm");
-  const pw = prog(t, 44.55, 2.0, ease.outQuart);
-  wm.style.opacity = pw.toFixed(3);
-  wm.style.letterSpacing = `${lerp(0.5, 0.24, pw).toFixed(3)}em`;
-  wm.style.textIndent = `${lerp(0.5, 0.24, pw).toFixed(3)}em`;
-  wm.style.filter = pw < 0.99 ? `blur(${((1 - pw) * 18).toFixed(2)}px)` : "";
-  wm.style.backgroundPosition = `${lerp(100, 0, prog(t, 46.4, 1.8, ease.inOutCubic)).toFixed(2)}% 0`;
-  revealChars($("end-tag"), t, 45.4, { stagger: 0.07, dur: 1.2, rise: 0.25 });
-  rise($("end-url"), t, 46.4, { dur: 1.2, y: 12 });
-  $("end-url").style.transform += " translateX(-50%)";
-  rise($("end-disc"), t, 47.0, { dur: 1.4, y: 0, blur: 0 });
-}, { fadeOut: 0 });
+function buildEndScene() {
+  scene("s-end", 43.85, 52, (t) => {
+    const logo = $("end-logo");
+    drawLogo(logo, t, 44.0, { speed: 1.15 });
+    sweep(logo, t, 46.6, 1.3);
+    const pl = prog(t, 44.0, 1.4);
+    logo.style.transform = `scale(${lerp(0.82, 1, pl).toFixed(4)})`;
+    logo.style.filter = "drop-shadow(0 0 46px rgba(32, 190, 168, 0.4))";
+    const wm = $("end-wm");
+    const pw = prog(t, 44.55, 2.0, ease.outQuart);
+    wm.style.opacity = pw.toFixed(3);
+    wm.style.letterSpacing = `${lerp(0.5, 0.24, pw).toFixed(3)}em`;
+    wm.style.textIndent = `${lerp(0.5, 0.24, pw).toFixed(3)}em`;
+    wm.style.filter = pw < 0.99 ? `blur(${((1 - pw) * 18).toFixed(2)}px)` : "";
+    wm.style.backgroundPosition = `${lerp(100, 0, prog(t, 46.4, 1.8, ease.inOutCubic)).toFixed(2)}% 0`;
+    revealChars($("end-tag"), t, 45.4, { stagger: 0.07, dur: 1.2, rise: 0.25 });
+    rise($("end-url"), t, 46.4, { dur: 1.2, y: 12 });
+    $("end-url").style.transform += " translateX(-50%)";
+    rise($("end-disc"), t, 47.0, { dur: 1.4, y: 0, blur: 0 });
+  }, { fadeOut: 0 });
+}
 
 /* chapter marker for the five feature scenes */
 const CHAPTERS = [[12, 18], [18, 24], [24, 30], [30, 36], [36, 40]];
@@ -996,8 +726,14 @@ const params = new URLSearchParams(location.search);
 window.__duration = DURATION;
 window.__seek = (t) => render(t);
 window.__ready = (async () => {
+  const res = await fetch(`${SCREENS}/manifest.json`);
+  if (!res.ok) throw new Error("缺少 output/promo/screens/manifest.json，请先运行 node tools/promo-video/capture.mjs");
+  MANIFEST = await res.json();
+  buildFeatureScenes();
+  buildEndScene();
   await Promise.all([400, 500, 700].map((w) => document.fonts.load(`${w} 40px HS`, "药大拾间课表成绩")));
   await document.fonts.ready;
+  await Promise.all($$(document, "img").map((img) => img.decode().catch(() => { throw new Error(`图片加载失败：${img.src}`); })));
   return true;
 })();
 

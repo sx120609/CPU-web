@@ -90,8 +90,8 @@ try {
     if (audio) ffArgs.push("-i", audio);
     ffArgs.push(
       // 轻微的亮度颗粒同时充当抖动，压住深色渐变的色带。
-      "-vf", "format=yuv420p,noise=c0s=5:c0f=t+u",
-      "-c:v", "libx264", "-preset", args.preset || "slow", "-crf", args.crf || "16", "-profile:v", "high",
+      "-vf", "format=yuv420p,noise=c0s=4:c0f=t+u",
+      "-c:v", "libx264", "-preset", args.preset || "slow", "-crf", args.crf || "18", "-profile:v", "high",
       "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
     );
     if (audio) ffArgs.push("-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest");
