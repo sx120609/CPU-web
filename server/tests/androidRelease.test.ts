@@ -7,6 +7,8 @@ test("release metadata rejects changed identity, certificate and inconsistent fi
   assert.throws(()=>validateAndroidRelease({...publishedAndroidRelease, packageName:"other.app"}));
   assert.throws(()=>validateAndroidRelease({...publishedAndroidRelease, certificateSha256:"0".repeat(64)}));
   assert.throws(()=>validateAndroidRelease({...publishedAndroidRelease, fileName:"CPU-Web-Android-V999.apk"}));
+  assert.throws(()=>validateAndroidRelease({...publishedAndroidRelease, minSupportedVersionCode:publishedAndroidRelease.versionCode+1}));
+  assert.throws(()=>validateAndroidRelease({...publishedAndroidRelease, minSupportedVersionCode:0}));
 });
 
 test("enterprise readback detects truncated and same-size corrupted files", () => {

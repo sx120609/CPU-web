@@ -1,4 +1,4 @@
-export type AndroidReleaseInfo = { versionCode: number; versionName: string; fileName: string };
+export type AndroidReleaseInfo = { versionCode: number; versionName: string; fileName: string; minSupportedVersionCode: number };
 
 /** Read the live release; a long-lived WebView must not rely on its bundled version. */
 export async function fetchAndroidRelease(fetcher: typeof fetch = fetch): Promise<AndroidReleaseInfo> {
@@ -15,7 +15,10 @@ export async function fetchAndroidRelease(fetcher: typeof fetch = fetch): Promis
       || value.fileName !== `CPU-Web-Android-V${value.versionCode}.apk`) {
       throw new Error('更新信息无效');
     }
-    return { versionCode: value.versionCode, versionName: value.versionName, fileName: value.fileName };
+    // A missing or inconsistent floor never blocks anyone; it only turns the prompt back into a reminder.
+    const floor = value.minSupportedVersionCode;
+    const minSupportedVersionCode = Number.isSafeInteger(floor) && floor >= 1 && floor <= value.versionCode ? floor : 0;
+    return { versionCode: value.versionCode, versionName: value.versionName, fileName: value.fileName, minSupportedVersionCode };
   } finally {
     clearTimeout(timer);
   }

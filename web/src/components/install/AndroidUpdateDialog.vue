@@ -6,7 +6,8 @@
     append-to-body
     class="android-update-dialog"
     :show-close="false"
-    :close-on-click-modal="true"
+    :close-on-click-modal="!updateRequired"
+    :close-on-press-escape="!updateRequired"
     :aria-label="headline"
   >
     <div class="android-update-panel">
@@ -38,6 +39,9 @@
       <p v-else-if="promptKind === 'install'" class="update-lead">
         下载药大拾间 Android 客户端 {{ latestVersionLabel }}。
       </p>
+      <p v-else-if="updateRequired" class="update-lead">
+        当前版本已停止支持，请更新到 {{ latestRelease.versionName }} 后继续使用。
+      </p>
       <p v-else-if="promptKind === 'widget'" class="update-lead">
         当前客户端版本较低，更新后可使用桌面小组件。
       </p>
@@ -51,7 +55,7 @@
         {{ primaryButtonText }}
       </el-button>
       <div class="update-links">
-        <button type="button" @click="open = false">稍后</button>
+        <button v-if="!updateRequired" type="button" @click="open = false">稍后</button>
         <button v-if="canInAppUpdate" type="button" @click="openBrowserDownload">浏览器下载</button>
         <button v-if="isAndroidNativeApp()" type="button" @click="copyBrowserDownload">复制下载链接</button>
       </div>
@@ -64,7 +68,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { parseAndroidUpdateState } from "@/utils/androidUpdateState";
 import { fetchAndroidRelease } from "@/utils/androidReleaseCheck";
-import { isAndroidUpdateAvailable } from "@/utils/androidUpdatePolicy";
+import { isAndroidUpdateAvailable, isAndroidUpdateRequired } from "@/utils/androidUpdatePolicy";
 import { ElMessage } from "element-plus";
 import {
   ANDROID_UPDATE_PROMPT_EVENT,
@@ -116,8 +120,10 @@ let releasePollTimer = 0;
 let lastReleaseCheck = 0;
 let releaseCheck: Promise<void> | null = null;
 let disposed = false;
-const latestRelease = ref({ versionCode: ANDROID_APP_LATEST_VERSION_CODE, versionName: ANDROID_APP_LATEST_VERSION_NAME, fileName: ANDROID_APP_DOWNLOAD_FILE_NAME });
+// The floor comes only from the live manifest, so a cached bundle can never force an update on its own.
+const latestRelease = ref({ versionCode: ANDROID_APP_LATEST_VERSION_CODE, versionName: ANDROID_APP_LATEST_VERSION_NAME, fileName: ANDROID_APP_DOWNLOAD_FILE_NAME, minSupportedVersionCode: 0 });
 const updateAvailable = computed(() => isAndroidUpdateAvailable(isAndroidNativeApp(), currentVersionCode.value, latestRelease.value.versionCode));
+const updateRequired = computed(() => isAndroidUpdateRequired(isAndroidNativeApp(), currentVersionCode.value, latestRelease.value.minSupportedVersionCode));
 const nativeUpdate = ref(parseAndroidUpdateState("{}"));
 const hasPendingUpdate = computed(() => nativeUpdate.value.phase !== "idle");
 const updateBusy = computed(() => ["downloading", "paused", "validating", "installing"].includes(nativeUpdate.value.phase));
@@ -145,6 +151,7 @@ const headline = computed(() => {
   if (["ready", "permission"].includes(nativeUpdate.value.phase)) return "更新已下载";
   if (hasPendingUpdate.value) return "正在更新";
   if (saveOnly.value) return "已是最新版";
+  if (updateRequired.value) return "需要更新";
   if (promptKind.value === "install") return "下载 Android 客户端";
   return "发现新版本";
 });
@@ -257,12 +264,17 @@ async function showRequestedPrompt(detail: AndroidUpdatePromptDetail) {
 
 function autoPromptIfNeeded() {
   autoPromptTimer = 0;
-  if (autoPromptedVersion === latestRelease.value.versionCode || hasPendingUpdate.value) return;
   if (!shouldAutoPromptAndroidUpdate(
     window.location.hostname,
     updateAvailable.value,
     isAndroidLegacyMajorUpgrade(),
   )) return;
+  // A required update comes back on every check, including after a failed or interrupted download.
+  if (updateRequired.value) {
+    if (!open.value) openPrompt("app", true);
+    return;
+  }
+  if (autoPromptedVersion === latestRelease.value.versionCode || hasPendingUpdate.value) return;
   autoPromptedVersion = latestRelease.value.versionCode;
   if (!ANDROID_APP_AUTO_UPDATE_PROMPT_ENABLED) {
     const key = `cpu-android-install-repair-${latestRelease.value.versionCode}`;
@@ -340,7 +352,7 @@ async function downloadAndroidUpdate() {
       const started = bridge.downloadAndInstallApk(absoluteUrl, latestRelease.value.fileName);
       if (started !== false) {
         if (readUpdateStatus()) pollUpdateStatus();
-        else open.value = false;
+        else if (!updateRequired.value) open.value = false;
         ElMessage.success("已开始下载更新");
         return;
       }

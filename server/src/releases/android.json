@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "versionCode": 59,
   "versionName": "4.0.18",
+  "minSupportedVersionCode": 59,
   "packageName": "cn.lizmt.cpuweb",
   "fileName": "CPU-Web-Android-V59.apk",
   "size": 12351778,

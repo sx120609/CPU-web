@@ -20,3 +20,10 @@ test('rejects failures and malformed manifests rather than claiming the installe
   }
   await assert.rejects(fetchAndroidRelease((async () => new Response('', {status:503})) as typeof fetch));
 });
+test('reads the minimum supported version and ignores an inconsistent floor', async () => {
+  const read = (value: object) => fetchAndroidRelease((async () => new Response(JSON.stringify({ code: 0, data: value }))) as typeof fetch);
+  assert.equal((await read({ ...release(59), minSupportedVersionCode: 59 })).minSupportedVersionCode, 59);
+  assert.equal((await read(release(59))).minSupportedVersionCode, 0);
+  assert.equal((await read({ ...release(59), minSupportedVersionCode: 60 })).minSupportedVersionCode, 0);
+  assert.equal((await read({ ...release(59), minSupportedVersionCode: '59' })).minSupportedVersionCode, 0);
+});

@@ -7,6 +7,8 @@ export const ANDROID_RELEASE_CERTIFICATE = "c18b7adc4fc870f75fe3c6c33d643fa4233a
 export function validateAndroidRelease(value: AndroidRelease) {
   if (value.schemaVersion !== 1 || !Number.isSafeInteger(value.versionCode) || value.versionCode < 1
     || value.packageName !== "cn.lizmt.cpuweb" || value.fileName !== `CPU-Web-Android-V${value.versionCode}.apk`
+    || !Number.isSafeInteger(value.minSupportedVersionCode) || value.minSupportedVersionCode < 1
+    || value.minSupportedVersionCode > value.versionCode
     || !/^\d+\.\d+\.\d+$/.test(value.versionName) || !Number.isSafeInteger(value.size) || value.size < 65536
     || !/^[a-f0-9]{64}$/.test(value.sha256) || value.certificateSha256 !== ANDROID_RELEASE_CERTIFICATE
     || !/^[a-f0-9]{40}$/.test(value.sourceCommit) || !Number.isSafeInteger(value.buildRun) || value.buildRun <= 0) {

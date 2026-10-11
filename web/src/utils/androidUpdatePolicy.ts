@@ -17,6 +17,11 @@ export function shouldPromptAndroidInstallRepair(nativeClient: boolean, versionC
   return nativeClient && versionCode >= 21 && versionCode < ANDROID_STAGED_INSTALL_MIN_VERSION_CODE;
 }
 
+/** Below the published floor the prompt cannot be dismissed; an unknown installed version is never forced. */
+export function isAndroidUpdateRequired(nativeClient: boolean, currentVersionCode: number, minSupportedVersionCode: number) {
+  return nativeClient && currentVersionCode > 0 && currentVersionCode < minSupportedVersionCode;
+}
+
 export function isAndroidUpdateAvailable(
   nativeClient: boolean,
   currentVersionCode: number,

@@ -51,6 +51,8 @@ async function verifyPackage(apkPath: string, release: AndroidRelease) {
 async function main() {
   const candidate = arg("candidate");
   const release: AndroidRelease = candidate ? JSON.parse(await readFile(path.resolve(candidate), "utf8")) : publishedAndroidRelease;
+  // A candidate without its own floor keeps the published one, so promoting never silently lifts a forced update.
+  release.minSupportedVersionCode ??= publishedAndroidRelease.minSupportedVersionCode;
   validateAndroidRelease(release);
   const publicOnly = process.argv.includes("--public-only");
   if (!publicOnly) {
