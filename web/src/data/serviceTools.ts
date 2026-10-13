@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -21,6 +21,21 @@ export interface ServiceTool {
 }
 
 export const serviceTools: ServiceTool[] = [
+  {
+    slug: "workshop",
+    name: "创意工坊",
+    summary: "发现同学制作的小游戏和实用工具，也可以分享自己的作品",
+    description: "上传网页作品，站长审核通过后向大家开放使用。",
+    icon: "tools",
+    status: "ready",
+    category: "创作",
+    routeName: "workshop",
+    componentKey: "workshop",
+    accent: "#0f766e",
+    iconComponent: Tools,
+    badge: "共同创作",
+    badgeType: "success",
+  },
   {
     slug: "department_contacts",
     name: "部门联系",

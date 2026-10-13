@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "workshop-text-lens",
+  "type": "tool",
+  "name": "文本透镜",
+  "version": "1.0.0",
+  "description": "统计中文字符、英文单词、段落与预计阅读时间，适用于文稿检查。",
+  "entry": "index.html",
+  "permissions": ["storage"]
+}

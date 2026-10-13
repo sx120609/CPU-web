@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "workshop-star-catcher",
+  "type": "game",
+  "name": "星星接力",
+  "version": "1.0.0",
+  "description": "30 秒内点亮星星，练习反应速度。点击、触摸或空格均可操作。",
+  "entry": "index.html",
+  "permissions": ["storage"],
+  "game": { "orientation": "portrait", "controls": ["pointer", "keyboard", "touch"], "aspectRatio": 0.5658 }
+}

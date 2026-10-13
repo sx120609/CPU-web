@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../workshop-sdk/scripts/build-templates.mjs",
     "dev": "vite",
+    "prebuild": "node ../workshop-sdk/scripts/build-templates.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --port 5173",
     "type-check": "vue-tsc --noEmit"

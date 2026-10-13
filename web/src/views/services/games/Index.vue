@@ -11,6 +11,8 @@
       </div>
     </header>
 
+    <router-link class="pk-notice" to="/workshop?type=game">去创意工坊发现更多游戏，或分享你的创作 →</router-link>
+
     <div class="games-hub-list">
       <button
         v-for="game in miniGames"

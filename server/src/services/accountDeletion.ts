@@ -10,9 +10,11 @@ import { refreshBoardTopicCounts, refreshTopicReplyStats } from "./forumStats";
 import { voiceHubProxyConfig } from "./voiceHubProxy";
 import { purgeAccountMediaCaches } from "./accountDeletionCdn";
 import { deleteCoupleDataForUser } from "./coupleSchedule";
+import { eraseWorkshopAccountData, lockWorkshopAuthor, revokeWorkshopAccountWorks } from "./workshopAccountDeletion";
+import { removeWorkshopPackage } from "./workshopPackage";
 
 export const ACCOUNT_DELETION_CONFIRMATION = "删除我的账户";
-type DeletionPayload = { username: string; tokens: string[]; sessionKeys: string[]; mediaPaths: string[]; receipt: string };
+type DeletionPayload = { username: string; tokens: string[]; sessionKeys: string[]; mediaPaths: string[]; receipt: string; workshopPackageKeys?: string[] };
 function receiptHash(receipt: string) { return createHash("sha256").update(receipt).digest("hex"); }
 function encryptPayload(userId: number, payload: DeletionPayload) { return encryptJwxtSensitiveJson("account-deletion", String(userId), payload); }
 function decodePayload(job: { userId: number; encryptedPayload: string | null }) {
@@ -29,8 +31,11 @@ export async function requestAccountDeletion(userId: number, currentJwxtToken?: 
   const sessions = await collectAccountSessions(userId, currentJwxtToken);
   const receipt = clientReceipt || randomBytes(32).toString("base64url");
   const job = await prisma.$transaction(async (tx) => {
+    // Uploads take this same lock and recheck account status before creating a draft.
+    await lockWorkshopAuthor(tx, userId);
     const changed = await tx.user.updateMany({ where: { id: userId, status: { notIn: ["deleting", "deleted"] } }, data: { status: "deleting", aiConsentVersion: null, aiConsentAgreedAt: null } });
     if (!changed.count) throw Errors.conflict("账户已提交删除");
+    await revokeWorkshopAccountWorks(tx, userId);
     await tx.scheduleWidgetToken.updateMany({ where: { userId }, data: { revokedAt: new Date(), cachedPayload: null, cachedAt: null } });
     await tx.announcementPreference.deleteMany({ where: { userId } });
     await tx.oAuthAccessToken.deleteMany({ where: { userId } });
@@ -70,8 +75,11 @@ export function managedDeletionPath(value: unknown, ownerId?: number) {
 }
 
 async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, payload: DeletionPayload) {
+  const workshopPackageKeys = [...new Set([
+    ...(payload.workshopPackageKeys ?? []), ...await eraseWorkshopAccountData(tx, userId),
+  ])];
   const user = await tx.user.findUnique({ where: { id: userId } });
-  if (!user) return payload;
+  if (!user) return { ...payload, workshopPackageKeys };
   const files = await tx.fileCollectFile.findMany({ where: { submission: { OR: [{ submitterId: userId }, { task: { createdById: userId } }, ...(user.studentSso ? [{ identity: payload.username }] : [])] } }, select: { path: true } });
   const [images, videos, topics, replies, qqBindings, wechat, lostImages, marketImages, generatedImages, directConversations] = await Promise.all([
     tx.forumImageAsset.findMany({ where: { createdById: userId }, select: { url: true } }),
@@ -158,7 +166,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   } });
   await refreshBoardTopicCounts(topics.map((row) => row.boardId), tx);
   for (const topicId of new Set(replies.map((row) => row.topicId))) await refreshTopicReplyStats(topicId, tx);
-  return { ...payload, mediaPaths: [...mediaPaths] };
+  return { ...payload, mediaPaths: [...mediaPaths], workshopPackageKeys };
 }
 
 async function eraseVoiceHub(jobId: string, receipt: string) {
@@ -166,7 +174,7 @@ async function eraseVoiceHub(jobId: string, receipt: string) {
   if (!response.ok || !(await response.json() as { deleted?: boolean }).deleted) throw new Error("VoiceHub account cleanup not confirmed");
 }
 
-type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void> };
+type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void>; deleteWorkshopPackage?: typeof removeWorkshopPackage };
 export async function processAccountDeletion(id: string, dependencies: CleanupDependencies = { deleteMedia: deleteMediaAsset, deleteSessions: deleteAccountSessions, deleteVoiceHub: eraseVoiceHub, purgeMedia: purgeAccountMediaCaches }) {
   let job = await prisma.accountDeletionJob.findUnique({ where: { id } });
   if (!job || job.status === "completed") return;
@@ -184,6 +192,10 @@ export async function processAccountDeletion(id: string, dependencies: CleanupDe
     }
     cleanupStep = "sessions";
     await dependencies.deleteSessions(payload.tokens, payload.sessionKeys);
+    cleanupStep = "workshop";
+    for (const packageKey of payload.workshopPackageKeys ?? []) {
+      await (dependencies.deleteWorkshopPackage ?? removeWorkshopPackage)(packageKey);
+    }
     cleanupStep = "media";
     for (const path of payload.mediaPaths) {
       await dependencies.deleteMedia(path);

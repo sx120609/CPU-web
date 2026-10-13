@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "my-extension",
+  "type": "extension",
+  "name": "我的插件",
+  "version": "1.0.0",
+  "description": "可编辑的通用插件模板。",
+  "entry": "index.html",
+  "permissions": [],
+  "extension": { "slots": ["dialog"] }
+}

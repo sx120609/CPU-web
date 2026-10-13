@@ -1,0 +1,20 @@
+:root {
+  color-scheme: light dark;
+  font:
+    16px system-ui,
+    sans-serif;
+}
+body {
+  margin: 0;
+  padding: 24px;
+}
+main {
+  max-width: 480px;
+  margin: auto;
+}
+button {
+  font: inherit;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}

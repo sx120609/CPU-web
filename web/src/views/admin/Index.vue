@@ -3,6 +3,7 @@
     <div class="admin-head">
       <h1 class="title"><AppIcon name="tools" /> 管理后台</h1>
       <div class="user-tag">
+        <router-link v-if="auth.isAdmin" to="/workshop/review"><el-button size="small">创意工坊审核</el-button></router-link>
         <el-button v-if="canOpenVoiceHub" size="small" @click="openVoiceHubDashboard">
           药苑之声控制台
         </el-button>

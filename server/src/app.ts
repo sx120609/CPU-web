@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
+import { workshopRouter, workshopRuntimeRouter } from "./routes/workshop";
 import { androidDownloadHandler, LEGACY_ANDROID_DOWNLOAD_PATH } from "./routes/androidDownload";
 import { qqBotAdReportRouter } from "./routes/qqbotAdReport";
 import { qqBotAiReplyRouter } from "./routes/qqbotAiReply";
@@ -96,6 +97,8 @@ export function createApp(options: { workers?: boolean } = {}) {
     },
     filestoreHandler,
   );
+  // 作品资源只认短期运行凭据，不加载主站会话；沙箱响应自行设置隔离策略。
+  app.use("/api/workshop-runtime", workshopRuntimeRouter);
   // 未登录的认证入口只接收账号、验证码和加密凭据，先用小上限解析；已解析的请求会被全局解析器跳过。
   app.use("/api/auth", express.json({ limit: "1mb" }));
   // 桌面端截图保持原始 PNG（最大 8MB）；Base64 与 JSON 封装后会略高于 10MB。
@@ -107,6 +110,7 @@ export function createApp(options: { workers?: boolean } = {}) {
     receiveCspReport,
   );
   app.use("/api", browserSessionMiddleware, requestOriginAndCsrfProtection);
+  app.use("/api/workshop", workshopRouter);
   app.use(["/api/auth", "/api/user", "/api/jwxt", "/api/admin", "/api/courses/sync", "/api/live-activities"], (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Pragma", "no-cache");

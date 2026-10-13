@@ -1,6 +1,7 @@
 <template>
   <el-config-provider :locale="zhCn" :z-index="5000">
     <router-view :key="routeViewKey" />
+    <ExtensionHost :blocked="dataAuthOpen || strongNoticeOpen || directNoticeOpen || inAppTipOpen" />
     <SmartPostTaskIndicator />
     <AndroidUpdateDialog />
     <LegacyDomainMigrationDialog />
@@ -167,6 +168,7 @@ import { authApi } from "@/api/auth";
 import { messageApi } from "@/api/message";
 import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import AndroidUpdateDialog from "@/components/install/AndroidUpdateDialog.vue";
+import ExtensionHost from "@/views/workshop/ExtensionHost.vue";
 import SmartPostTaskIndicator from "@/components/forum/SmartPostTaskIndicator.vue";
 import LegacyDomainMigrationDialog from "@/components/common/LegacyDomainMigrationDialog.vue";
 import { detectInAppBrowser, isWechatServiceClient, shouldAutoSuggestExternalBrowser } from "@/utils/inAppBrowser";

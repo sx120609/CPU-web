@@ -156,6 +156,13 @@ model User {
   campusAssistantConversations CampusAssistantConversation[]
   oauthAuthorizationCodes      OAuthAuthorizationCode[]
   oauthAccessTokens            OAuthAccessToken[]
+  workshopWorks                WorkshopWork[]
+  workshopReviewedVersions     WorkshopVersion[] @relation("WorkshopReviewer")
+  workshopFavorites            WorkshopFavorite[]
+  workshopReports              WorkshopReport[] @relation("WorkshopReporter")
+  workshopResolvedReports      WorkshopReport[] @relation("WorkshopReportResolver")
+  workshopSaves                WorkshopSave[]
+  workshopAuditEvents          WorkshopAudit[]
   forumReactions               ForumReaction[]
   verificationApplications     UserVerificationApplication[] @relation("VerificationApplicant")
   reviewedVerifications        UserVerificationApplication[] @relation("VerificationReviewer")
@@ -2725,6 +2732,116 @@ model OAuthAccessToken {
   @@index([clientId, expiresAt])
 }
 
+// 创意工坊：每个上传版本独立审核；公开目录始终读取 publishedVersion。
+model WorkshopWork {
+  id                 String   @id @default(uuid())
+  slug               String   @unique
+  authorId           Int
+  disabled           Boolean  @default(false)
+  publishedVersionId String?  @unique
+  runtimeRevision    Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  author             User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  versions           WorkshopVersion[] @relation("WorkshopVersions")
+  publishedVersion   WorkshopVersion? @relation("WorkshopPublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  favorites          WorkshopFavorite[]
+  reports            WorkshopReport[]
+  saves              WorkshopSave[]
+  audits             WorkshopAudit[]
+
+  @@index([authorId, updatedAt])
+  @@index([disabled, updatedAt])
+}
+
+model WorkshopVersion {
+  id              String   @id @default(uuid())
+  workId          String
+  version         String
+  name            String
+  description     String
+  type            String
+  manifest        Json
+  files           Json
+  packageKey      String   @unique
+  totalBytes      Int
+  status          String   @default("DRAFT")
+  runtimeRevision Int      @default(0)
+  reviewReason    String?
+  reviewerId      Int?
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  work            WorkshopWork @relation("WorkshopVersions", fields: [workId], references: [id], onDelete: Cascade)
+  placements      WorkshopPlacement[]
+  publishedFor    WorkshopWork? @relation("WorkshopPublishedVersion")
+  reviewer        User? @relation("WorkshopReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  audits          WorkshopAudit[]
+
+  @@unique([workId, version])
+  @@index([status, submittedAt])
+  @@index([workId, createdAt])
+}
+
+model WorkshopFavorite {
+  workId    String
+  userId    Int
+  createdAt DateTime @default(now())
+  work      WorkshopWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workId, userId])
+  @@index([userId, createdAt])
+}
+
+model WorkshopReport {
+  id         String   @id @default(uuid())
+  workId     String
+  reporterId Int
+  reason     String
+  createdAt  DateTime @default(now())
+  work       WorkshopWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  resolvedAt DateTime?
+  resolution String?
+  resolvedById Int?
+  reporter   User @relation("WorkshopReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  resolvedBy User? @relation("WorkshopReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([resolvedAt, createdAt])
+  @@index([workId, createdAt])
+  @@index([reporterId, createdAt])
+}
+
+model WorkshopSave {
+  workId    String
+  userId    Int
+  data      Json
+  bytes     Int
+  updatedAt DateTime @updatedAt
+  work      WorkshopWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workId, userId])
+  @@index([userId, updatedAt])
+}
+
+model WorkshopAudit {
+  id        String   @id @default(uuid())
+  workId    String
+  versionId String?
+  actorId   Int?
+  action    String
+  reason    String?
+  createdAt DateTime @default(now())
+  work      WorkshopWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  version   WorkshopVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  actor     User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workId, createdAt])
+  @@index([versionId, createdAt])
+}
+
 // Immutable school timing retained for all issued mapping leases and in-flight starts.
 model LiveActivityScheduleVersion {
   id             String   @id
@@ -2733,4 +2850,14 @@ model LiveActivityScheduleVersion {
   periods        String
   broadcastUntil DateTime @default(now())
   createdAt      DateTime @default(now())
+}
+
+// Explicit exact-version site activation, independent from publication.
+model WorkshopPlacement {
+  slot      String @id
+  versionId String
+  updatedAt DateTime @updatedAt
+  version   WorkshopVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
 }

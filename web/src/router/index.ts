@@ -180,6 +180,12 @@ export const router = createRouter({
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
         { path: "services", name: "services", component: loadServicesView, meta: { title: "校园服务", public: true } },
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
+        { path: "workshop", name: "workshop", component: () => import("@/views/workshop/Index.vue"), meta: { title: "创意工坊", public: true } },
+        { path: "workshop/develop", name: "workshop-develop", component: () => import("@/views/workshop/Develop.vue"), meta: { title: "工坊开发指南", public: true } },
+        { path: "workshop/mine", name: "workshop-manage", component: () => import("@/views/workshop/Manage.vue"), meta: { title: "我的作品" } },
+        { path: "workshop/review", name: "workshop-review", component: () => import("@/views/workshop/Review.vue"), meta: { title: "工坊审核", requireAdmin: true } },
+        { path: "workshop/:id", name: "workshop-detail", component: () => import("@/views/workshop/Detail.vue"), meta: { title: "作品详情", public: true } },
+        { path: "workshop/:id/run", name: "workshop-player", component: () => import("@/views/workshop/Player.vue"), meta: { title: "运行作品", public: true, fullWidthContent: true } },
         { path: "services/tools/assessment-form", name: "service-assessment-form", component: () => import("@/views/services/AssessmentFormTool.vue"), meta: { title: "综测填表工具", public: true } },
         { path: "services/tools/games", name: "service-games", component: () => import("@/views/services/games/Index.vue"), meta: { title: "小游戏", public: true, miniGame: true } },
         { path: "services/tools/yaoda-can-fly", name: "service-yaoda-can-fly", component: () => import("@/views/services/games/YaodaCanFly.vue"), meta: { nativeChrome: "page", title: "药大人能飞", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
@@ -363,6 +369,9 @@ router.beforeEach(async (to) => {
     if (!auth.user) return { name: "login", query: { redirect: to.fullPath } };
   }
   // 管理后台：主站管理人员、模块超级管理员，以及失物招领管理员可进对应分区。
+  if (to.meta.requireAdmin && auth.user?.role !== "admin") {
+    return { name: "workshop" };
+  }
   if (to.meta.requireMod) {
     if (!auth.canAccessModuleAdmin) {
       return { name: "home" };

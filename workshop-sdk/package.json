@@ -1,0 +1,8 @@
+{
+  "name": "@cpu-web/workshop-sdk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": { "types": "./src/sdk.d.ts", "default": "./src/sdk.js" }, "./shells": { "types": "./src/shells.d.ts", "default": "./src/shells.js" } },
+  "bin": { "cpu-workshop": "./bin/cli.mjs" }
+}

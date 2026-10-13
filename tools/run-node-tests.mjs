@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs every Node.js test file in server/tests and web/tests with the loader each one needs.
+// Runs Node.js tests for the server, web client and workshop SDK with their required loaders.
 //
 //   node tools/run-node-tests.mjs                      all discovered files except EXCLUDED below
 //   node tools/run-node-tests.mjs schedule forum       only files whose repository path contains a filter
@@ -14,7 +14,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const TEST_DIRECTORIES = ['server/tests', 'web/tests']
+const TEST_DIRECTORIES = ['server/tests', 'web/tests', 'workshop-sdk/tests']
 const TEST_FILE = /\.test\.(?:ts|mjs)$/u
 
 // Files that cannot run in the dependency-only unit phase. Keep each reason precise.

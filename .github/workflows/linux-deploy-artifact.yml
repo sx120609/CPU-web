@@ -80,6 +80,11 @@ jobs:
           APNS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cpu_apns_regression
         run: node tools/run-node-tests.mjs server/tests/apnsPoolPostgres.test.ts
 
+      - name: Verify workshop account erasure and package cleanup retries on PostgreSQL
+        env:
+          WORKSHOP_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cpu_apns_regression?schema=workshop_test
+        run: node tools/run-node-tests.mjs server/tests/workshopDeletionPostgres.test.ts
+
       - name: Verify HarmonyOS schedule bridges and shared visual tokens
         shell: bash
         run: |
