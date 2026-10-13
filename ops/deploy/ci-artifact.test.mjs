@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { createServer } from 'node:http'
+import { promisify } from 'node:util'
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -152,7 +154,8 @@ test('release artifact transport resumes partial downloads and keeps a hard tota
       encoding: 'utf8',
     })
     const pinnedInvocation = readFileSync(record, 'utf8')
-    assert.match(pinnedInvocation, /cpu-web-linux-b{40}\.tar\.gz\?commit=b{40}&attempt=3/u)
+    assert.match(pinnedInvocation, /cpu-web-linux-b{40}\.tar\.gz(?: |$)/u)
+    assert.doesNotMatch(pinnedInvocation, /\?commit=|attempt=|Cache-Control|--retry-all-errors/u)
     assert.doesNotMatch(pinnedInvocation, /COMMIT_SHA/u)
 
     writeFileSync(destination, 'partial')
@@ -165,6 +168,92 @@ test('release artifact transport resumes partial downloads and keeps a hard tota
     assert.ok(Date.now() - startedAt < 4_000, 'release fetch did not stop within the hard timeout')
     assert.equal(readFileSync(destination, 'utf8'), 'partial')
   } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a failed HTTP transfer keeps its bytes and the next mirror resumes without cache busting', { skip: process.platform === 'win32' }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cpu-artifact-http-test-'))
+  const destination = path.join(root, 'bundle.part')
+  const commit = 'c'.repeat(40)
+  const payload = Buffer.alloc(256 * 1024, 'artifact')
+  const prefixSize = 64 * 1024
+  const requests = []
+  const server = createServer((request, response) => {
+    requests.push({ url: request.url, range: request.headers.range, cacheControl: request.headers['cache-control'] })
+    if (request.url.startsWith('/primary/')) {
+      response.writeHead(200, { 'Content-Length': payload.length })
+      response.write(payload.subarray(0, prefixSize))
+      setTimeout(() => response.destroy(), 50)
+    } else {
+      const start = Number(request.headers.range?.match(/^bytes=(\d+)-$/u)?.[1] || 0)
+      response.writeHead(206, {
+        'Content-Length': payload.length - start,
+        'Content-Range': `bytes ${start}-${payload.length - 1}/${payload.length}`,
+      })
+      response.end(payload.subarray(start))
+    }
+  })
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    const script = `set -eu
+      log() { echo "$*"; }; warn() { echo "$*" >&2; }
+      DEPLOY_ARTIFACT_RELEASE_TIMEOUT_SECONDS=10
+      DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT=10240
+      DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS=30
+      ${shellFunction('fetch_ci_artifact_release_transport')}
+      fetch_ci_artifact_release_transport ${commit} 1 "$DESTINATION" "$RELEASE_URL"`
+    const run = mirror => promisify(execFile)('bash', ['-c', script], {
+      env: { ...process.env, DESTINATION: destination, RELEASE_URL: `${origin}/${mirror}/cpu-web-linux-COMMIT_SHA.tar.gz` },
+      timeout: 15_000,
+    })
+    await assert.rejects(run('primary'), error => error.code === 18)
+    assert.equal(requests.length, 1, 'a failed mirror must not retry internally and discard downloaded bytes')
+    assert.deepEqual(readFileSync(destination), payload.subarray(0, prefixSize))
+    await run('fallback')
+    assert.deepEqual(readFileSync(destination), payload)
+    assert.deepEqual(requests, [
+      { url: `/primary/cpu-web-linux-${commit}.tar.gz`, range: undefined, cacheControl: undefined },
+      { url: `/fallback/cpu-web-linux-${commit}.tar.gz`, range: `bytes=${prefixSize}-`, cacheControl: undefined },
+    ])
+  } finally {
+    server.closeAllConnections()
+    await new Promise(resolve => server.close(resolve))
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a trickling HTTP mirror is abandoned promptly with its partial download intact', { skip: process.platform === 'win32' }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cpu-artifact-trickle-test-'))
+  const destination = path.join(root, 'bundle.part')
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Length': 100_000 })
+    response.write('part')
+    const timer = setInterval(() => response.write('.'), 100)
+    response.on('close', () => clearInterval(timer))
+  })
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    const script = `set -eu
+      log() { echo "$*"; }; warn() { echo "$*" >&2; }
+      DEPLOY_ARTIFACT_RELEASE_TIMEOUT_SECONDS=10
+      DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT=10240
+      DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS=1
+      ${shellFunction('fetch_ci_artifact_release_transport')}
+      fetch_ci_artifact_release_transport ${'d'.repeat(40)} 1 "$DESTINATION" "$RELEASE_URL"`
+    const startedAt = Date.now()
+    await assert.rejects(promisify(execFile)('bash', ['-c', script], {
+      env: { ...process.env, DESTINATION: destination, RELEASE_URL: `http://127.0.0.1:${server.address().port}/COMMIT_SHA.tar.gz` },
+      timeout: 5_000,
+    }), error => error.code === 28)
+    assert.ok(Date.now() - startedAt < 4_000, 'slow transfer must fail over before the full download timeout')
+    assert.match(readFileSync(destination, 'utf8'), /^part\.+$/u)
+    assert.match(deploy, /DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT="\$\{DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT:-10240\}"/u)
+    assert.match(deploy, /DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS="\$\{DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS:-30\}"/u)
+  } finally {
+    server.closeAllConnections()
+    await new Promise(resolve => server.close(resolve))
     rmSync(root, { recursive: true, force: true })
   }
 })

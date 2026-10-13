@@ -35,9 +35,9 @@
 | `DEPLOY_CI_GIT_LOW_SPEED_LIMIT` / `DEPLOY_CI_GIT_LOW_SPEED_SECONDS` | Git HTTP 连续 30 秒低于 10 KiB/s 时中止本次拉取，并进入受限重试 |
 | `DEPLOY_ARTIFACT_URL` | 制品分支拉取失败后的首选 Release 地址；默认使用生产机实测更快且支持断点续传的 `gh.noki.eu.org` 镜像 |
 | `DEPLOY_ARTIFACT_FALLBACK_URL` | 首选 Release 地址失败后的备用地址；默认回退到 `ghfast.top`，沿用同一分片继续下载 |
-| `DEPLOY_ARTIFACT_PRIMARY_TIMEOUT_SECONDS` | 首选 Release 镜像单次最多使用1800秒；超时保留分片并自动切换备用地址 |
+| `DEPLOY_ARTIFACT_PRIMARY_TIMEOUT_SECONDS` | 首选 Release 镜像单次最多使用1800秒；低速或失败时提前保留分片并切换备用地址 |
 | `DEPLOY_ARTIFACT_RELEASE_TIMEOUT_SECONDS` | Release 单次下载总时限，默认1800秒；下载文件保留并在重试或下次部署时续传 |
-| `DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT` / `DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS` | Release连续120秒低于1字节/秒才判定停滞；正常慢速下载不会被误杀，并显示实时进度 |
+| `DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT` / `DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS` | Release连续30秒低于10 KiB/s时切换下载通道，保留分片；可按实际网络调整，并显示实时进度 |
 | `ADMIN_DEPLOY_TIMEOUT_SECONDS` | 后台部署 runner 默认最多运行 7200 秒；超时先终止部署进程组，10 秒后仍未退出则强制结束并释放锁 |
 
 默认在站点配置和其所在目录下的绝对路径 include 中寻找唯一的主站代理文件。间接 upstream、多个匹配文件、外部配置或不明确的匹配会停止更新，需明确指定 `DEPLOY_NGINX_CONFIG`。检测到配置被其他操作修改时不覆盖。不要同时通过宝塔或另一个工具修改同一代理配置。
@@ -95,9 +95,10 @@ GitHub Actions 在 Ubuntu 24.04 / Node.js 24 下运行准备失败、配置冲�
 
 ### 慢速产物下载
 
-默认优先通过按提交固定的 `cpu-web-linux-COMMIT_SHA.tar.gz` Release 资产下载，再回退到 Git transport。每个 SHA 的资产独立发布，即使 main 已前进也能取得对应版本，不再依赖会被镜像缓存的共享文件名。
+默认优先通过按提交固定的 `cpu-web-linux-COMMIT_SHA.tar.gz` Release 资产下载，再回退到 Git transport。每个 SHA 的资产独立发布，即使 main 已前进也能取得对应版本，不再依赖会被镜像缓存的共享文件名。固定 SHA 地址不追加随机尝试参数或禁用缓存请求头，允许镜像复用完整文件；自定义共享地址仍追加提交参数。
 
-- 单次 HTTP 下载默认允许 1800 秒；使用断点续传，只有连续120秒低于1字节/秒才判为停滞。
+- 单次 HTTP 下载默认允许 1800 秒；连续30秒低于10 KiB/s时提前切换备用通道，避免几百字节/秒的传输长时间占用部署锁。
+- 禁用 curl 内部重试，由部署程序切换通道并从已保存的字节位置续传，避免 curl 重试时截断本轮已下载内容。
 - Git回退默认允许600秒，不再20秒终止传输。
 - 等待对应产物默认3600秒；后台部署任务总上限7200秒，可通过原有环境变量调整。
 - 仍保留完整SHA、包清单和组件哈希验证，不接受其他提交的包，不回退生产机编译。

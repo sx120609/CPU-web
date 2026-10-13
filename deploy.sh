@@ -83,8 +83,8 @@ DEPLOY_ARTIFACT_URL="${DEPLOY_ARTIFACT_URL:-https://gh.noki.eu.org/https://githu
 DEPLOY_ARTIFACT_FALLBACK_URL="${DEPLOY_ARTIFACT_FALLBACK_URL:-https://ghfast.top/https://github.com/sx120609/CPU-web/releases/download/deploy-artifacts/cpu-web-linux-COMMIT_SHA.tar.gz}"
 DEPLOY_ARTIFACT_PRIMARY_TIMEOUT_SECONDS="${DEPLOY_ARTIFACT_PRIMARY_TIMEOUT_SECONDS:-1800}"
 DEPLOY_ARTIFACT_RELEASE_TIMEOUT_SECONDS="${DEPLOY_ARTIFACT_RELEASE_TIMEOUT_SECONDS:-1800}"
-DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT="${DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT:-1}"
-DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS="${DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS:-120}"
+DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT="${DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT:-10240}"
+DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS="${DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS:-30}"
 DEPLOY_ARTIFACT_GIT_SOURCE="${DEPLOY_ARTIFACT_GIT_SOURCE:-refs/heads/deploy-artifacts}"
 DEPLOY_ARTIFACT_GIT_REF="${DEPLOY_ARTIFACT_GIT_REF:-refs/remotes/origin/deploy-artifacts}"
 DEPLOY_ARTIFACT_READY=0
@@ -1518,21 +1518,26 @@ fetch_ci_artifact_release_transport() {
     warn "CI release download destination is not a regular file"
     return 1
   fi
-  [[ "$release_url" == *\?* ]] && separator='&'
+  # A commit-bound filename is immutable. Cache-busting it forces mirrors to
+  # fetch GitHub again, which can turn a cached download into a stalled one.
+  # Keep a commit key only for custom, shared artifact URLs.
+  if [[ "$release_url" != *"$commit"* ]]; then
+    [[ "$release_url" == *\?* ]] && separator='&'
+    release_url="${release_url}${separator}commit=$commit"
+  fi
   [ -s "$destination" ] && resume_args=(--continue-at -)
   log "Fetching resumable CI release artifact from $release_url (attempt $attempt, timeout ${release_timeout}s)"
+  # curl's internal retries truncate bytes written by the failed transfer.
+  # Let download_ci_artifact try the next transport with the saved byte range.
   if timeout --signal=TERM --kill-after=5s "${release_timeout}s" \
-    curl --fail --location \
-      --connect-timeout 30 \
-      --retry 3 \
-      --retry-all-errors \
-      --retry-delay 3 \
+    curl --disable --fail --location --show-error \
+      --connect-timeout 15 \
+      --retry 0 \
       --speed-limit "$DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_LIMIT" \
       --speed-time "$DEPLOY_ARTIFACT_RELEASE_LOW_SPEED_SECONDS" \
       --progress-bar \
-      -H 'Cache-Control: no-cache' \
       "${resume_args[@]}" \
-      "${release_url}${separator}commit=$commit&attempt=$attempt" \
+      "$release_url" \
       -o "$destination"; then
     return 0
   else
