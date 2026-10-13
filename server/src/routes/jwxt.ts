@@ -33,7 +33,8 @@ import {
   type GraduateSchedulePayload,
   type GraduateTermOption,
 } from "../services/graduateScheduleParser";
-import { normalizeGraduateSemesterLabel, type GraduateScheduleFetchResult } from "../services/graduateScheduleService";
+import { normalizeGraduateSemesterLabel } from "../services/graduateScheduleService";
+import { graduateScheduleData } from "../services/graduateScheduleData";
 import {
   detectAcademicIdentityFromProbes,
   isRecognizableUndergraduateSchedule,
@@ -64,7 +65,6 @@ export const jwxtRouter = Router();
 
 const JWXT_STATUS_CACHE_TTL_MS = 60_000;
 const JWXT_IDENTITY_CACHE_TTL_MS = 5 * 60_000;
-const JWXT_SCHEDULE_CACHE_TTL_MS = 5 * 60_000;
 const JWXT_GRADES_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_MIDTERM_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_EXAMS_CACHE_TTL_MS = 30 * 60_000;
@@ -267,12 +267,14 @@ async function loadGraduateScheduleResponse(
   token: string,
   requestedSemester: string,
   requestedTermcode: string,
+  refresh: boolean,
 ) {
   try {
-    return await getGraduateSchedule(token, {
-      semester: requestedSemester || undefined,
-      termcode: requestedTermcode || undefined,
-    }) as GraduateScheduleFetchResult | Awaited<ReturnType<typeof buildGraduateDebugScheduleResponse>>;
+    return await graduateScheduleData.read(token, {
+      semester: requestedSemester,
+      termcode: requestedTermcode,
+      refresh,
+    });
   } catch (error) {
     if (process.env.NODE_ENV === "production") throw error;
     return buildGraduateDebugScheduleResponse(requestedSemester, requestedTermcode);
@@ -690,15 +692,7 @@ jwxtRouter.get("/graduate-schedule", async (req, res, next) => {
     const semester = req.query.semester ? String(req.query.semester).trim() : "";
     const termcode = req.query.termcode ? String(req.query.termcode).trim() : "";
     const refresh = req.query.refresh === "1" || req.query.refresh === "true";
-    const cacheId = jwxtTokenCacheId(t);
-    const result = refresh
-      ? await loadGraduateScheduleResponse(t, semester, termcode)
-      : await withCache(
-        "jwxt-graduate-schedule",
-        [cacheId, semester || "_", termcode || "_"],
-        JWXT_SCHEDULE_CACHE_TTL_MS,
-        async () => loadGraduateScheduleResponse(t, semester, termcode),
-      );
+    const result = await loadGraduateScheduleResponse(t, semester, termcode, refresh);
     res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
     ok(res, result);
   } catch (e) { next(e); }
