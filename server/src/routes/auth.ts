@@ -5,6 +5,7 @@ import { signToken } from "../utils/jwt";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
+import { securityRateLimit } from "../middleware/securityRateLimit";
 import { beginLogin, logout as logoutJwxt, submitLogin } from "../services/jwxtTransport";
 import { releaseExpiredMutes } from "../services/userModeration";
 import { isDev } from "../config";
@@ -42,7 +43,13 @@ const encryptedCredentialsSchema = z.object({
 //   - 走过学校 SSO 的账号（studentSso=true）禁用此入口，避免与统一身份认证混淆
 //   - 其他账号（新生 / 毕业生 / 站务 / 管理员等）允许凭密码登录
 //   - 公开注册已禁用，账号统一由 admin 后台开通，所以放开 role 限制是安全的
-authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
+// 按用户名计数，不按 IP（校园网共用出口）：既挡住针对单个账号的暴力尝试，也不会让整栋楼互相占用额度。
+const passwordLoginLimit = securityRateLimit("password-login", 20, 10 * 60_000, (req) => {
+  const username = typeof req.body?.username === "string" ? req.body.username.trim().toLowerCase().slice(0, 128) : "";
+  return username ? `username\0${username}` : undefined;
+});
+
+authRouter.post("/login", validate(loginSchema), passwordLoginLimit, async (req, res, next) => {
   try {
     const { username, password } = req.body;
     await releaseExpiredMutes();

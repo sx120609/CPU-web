@@ -26,5 +26,6 @@ export const Errors = {
   badRequest: (msg = "请求参数错误") => new HttpError(400, 4000, msg),
   conflict: (msg = "冲突") => new HttpError(409, 4009, msg),
   badGateway: (msg = "上游服务暂时不可用") => new HttpError(502, 5002, msg),
+  busy: (msg = "当前访问人数较多，请稍后重试") => new HttpError(503, 5031, msg),
   server: (msg = "服务器内部错误") => new HttpError(500, 5000, msg),
 };
