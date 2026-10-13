@@ -2,6 +2,7 @@ import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from "
 import { ElMessage } from "element-plus";
 import { reactive } from "vue";
 import { detectAnalyticsClient } from "@/utils/clientInfo";
+import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
 
 export interface ApiResponse<T> {
   code: number;
@@ -369,7 +370,9 @@ instance.interceptors.response.use(
   },
   (err: AxiosError<ApiResponse<unknown>>) => {
     const config = err.config as RequestOptions | undefined;
-    if (err.response?.status === 401) {
+    if (err.response?.status === 426 && err.response.data?.code === 4260) {
+      requestAndroidUpdatePrompt({ source: "auto", required: true });
+    } else if (err.response?.status === 401) {
       clearToken();
       sessionStorage.removeItem("cpu-jwxt-token");
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));

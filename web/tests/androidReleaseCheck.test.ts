@@ -20,3 +20,22 @@ test('rejects failures and malformed manifests rather than claiming the installe
   }
   await assert.rejects(fetchAndroidRelease((async () => new Response('', {status:503})) as typeof fetch));
 });
+
+test('reads the shared update deadline and server clock and rejects invalid enforcement metadata', async () => {
+  const updateRequirement = {
+    minimumVersionCode: 47, startsAt: '2026-10-13T08:00:00Z',
+    deadlineAt: '2026-10-16T08:00:00Z', message: '安全更新',
+  };
+  const data = { ...release(47), updateRequirement, serverTime: '2026-10-14T08:00:00Z' };
+  const read = (value: unknown) => fetchAndroidRelease((async () => new Response(JSON.stringify({ code: 0, data: value }))) as typeof fetch);
+  assert.deepEqual((await read(data)).updateRequirement, updateRequirement);
+  assert.equal((await read(data)).serverTime, data.serverTime);
+  for (const change of [
+    { minimumVersionCode: 48 }, { minimumVersionCode: 0 }, { minimumVersionCode: '47' },
+    { startsAt: 'invalid' }, { startsAt: 42 }, { deadlineAt: 'invalid' },
+    { deadlineAt: updateRequirement.startsAt }, { message: '' },
+  ]) await assert.rejects(read({ ...data, updateRequirement: { ...updateRequirement, ...change } }));
+  await assert.rejects(read({ ...data, serverTime: 'invalid' }));
+  await assert.rejects(read({ ...data, serverTime: undefined }));
+  await assert.rejects(read({ ...data, updateRequirement: null }));
+});

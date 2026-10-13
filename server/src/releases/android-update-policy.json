@@ -1,0 +1,6 @@
+{
+  "campaign": "android-security-v59",
+  "minimumVersionCode": 59,
+  "gracePeriodHours": 72,
+  "message": "最新版修复了大量 Bug 和安全问题，请及时更新。"
+}

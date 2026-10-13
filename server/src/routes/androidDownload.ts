@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import { hasAndroidPdsShare, resolveAndroidDownload } from "../services/pdsShare";
 import { publishedAndroidRelease } from "../services/androidRelease";
+import { getAndroidUpdateRequirement } from "../services/androidUpdateRequirement";
 
 export const LEGACY_ANDROID_DOWNLOAD_PATH = /^\/downloads\/CPU-Web-(?:Android-)?V\d+\.apk$/i;
 
@@ -29,7 +30,17 @@ export function createAndroidDownloadHandler(dependencies = {
 
 export const androidDownloadHandler = createAndroidDownloadHandler();
 
-export const androidReleaseHandler: RequestHandler = (_req, res) => {
-  res.setHeader("Cache-Control", "no-store");
-  res.json({ code: 0, data: { ...publishedAndroidRelease, downloadUrl: "/api/site/downloads/android-app" }, message: "" });
-};
+export function createAndroidReleaseHandler(readRequirement = getAndroidUpdateRequirement): RequestHandler {
+  return async (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const updateRequirement = await readRequirement();
+      res.json({ code: 0, data: {
+        ...publishedAndroidRelease, downloadUrl: "/api/site/downloads/android-app",
+        updateRequirement, serverTime: new Date().toISOString(),
+      }, message: "" });
+    } catch (error) { next(error); }
+  };
+}
+
+export const androidReleaseHandler = createAndroidReleaseHandler();

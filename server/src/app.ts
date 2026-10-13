@@ -4,6 +4,7 @@ import compression from "compression";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
+import { androidUpdateGate } from "./middleware/androidUpdate";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
 import { workshopRouter, workshopRuntimeRouter } from "./routes/workshop";
@@ -72,13 +73,14 @@ export function createApp(options: { workers?: boolean } = {}) {
   const app = express();
   const deploymentRelay = createDeploymentRelay();
   app.use(deploymentRelay.middleware);
+  app.use(securityHeaders);
+  app.use("/api", androidUpdateGate);
 
   // VoiceHub 需要保留原始请求体（音乐导入、上传等），因此必须在 JSON 解析器之前转发。
   app.use(voiceHubProxyMiddleware);
 
   // 部署脚本的反向代理位于本机/私网；不要信任公网客户端伪造的 X-Forwarded-For。
   app.set("trust proxy", "loopback, linklocal, uniquelocal");
-  app.use(securityHeaders);
   app.use(compression({
     threshold: 1024,
   }));

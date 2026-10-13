@@ -1,17 +1,24 @@
 <template>
   <el-dialog
-    v-model="open"
+    v-model="dialogOpen"
     width="340"
     align-center
     append-to-body
     class="android-update-dialog"
     :show-close="false"
-    :close-on-click-modal="true"
+    :close-on-click-modal="!updateRequired"
+    :close-on-press-escape="!updateRequired"
     :aria-label="headline"
   >
     <div class="android-update-panel">
       <img class="update-icon" src="/icon-192-v3.png" alt="" width="56" height="56" />
       <h2 class="update-title">{{ headline }}</h2>
+
+      <div v-if="requirementState !== 'none' || updateRequired" class="update-requirement" role="status">
+        <p>{{ latestRelease.updateRequirement?.message || '最新版修复了大量 Bug 和安全问题，请及时更新。' }}</p>
+        <p v-if="updateRequired">三天更新期限已到，请更新至最新版后继续使用在线功能。</p>
+        <p v-else>请在 {{ deadlineLabel }}（北京时间）前更新至最新版，三天期限结束后将停止旧版在线功能。</p>
+      </div>
 
       <div v-if="showVersionStep" class="update-versions" :aria-label="`当前版本 ${currentVersionShort}，新版本 ${latestRelease.versionName}`">
         <span class="update-version">{{ currentVersionShort }}</span>
@@ -41,17 +48,18 @@
       <p v-else-if="promptKind === 'widget'" class="update-lead">
         当前客户端版本较低，更新后可使用桌面小组件。
       </p>
-      <p v-else class="update-lead">近期小版本更新频繁，建议持续追更，获得更好体验。</p>
+      <p v-else-if="requirementState === 'none' && !updateRequired" class="update-lead">近期小版本更新频繁，建议持续追更，获得更好体验。</p>
+      <p v-if="pendingUpdateUnsupported" class="update-lead">旧安装包无法满足本次更新要求，请在浏览器下载最新版。</p>
 
       <ul v-if="notes.length" class="update-notes">
         <li v-for="note in notes" :key="note">{{ note }}</li>
       </ul>
 
-      <el-button class="update-primary" type="primary" size="large" :disabled="updateBusy" @click="downloadAndroidUpdate">
+      <el-button class="update-primary" type="primary" size="large" :disabled="updateBusy && !pendingUpdateUnsupported" @click="downloadAndroidUpdate">
         {{ primaryButtonText }}
       </el-button>
       <div class="update-links">
-        <button type="button" @click="open = false">稍后</button>
+        <button v-if="!updateRequired" type="button" @click="open = false">稍后</button>
         <button v-if="canInAppUpdate" type="button" @click="openBrowserDownload">浏览器下载</button>
         <button v-if="isAndroidNativeApp()" type="button" @click="copyBrowserDownload">复制下载链接</button>
       </div>
@@ -63,8 +71,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { parseAndroidUpdateState } from "@/utils/androidUpdateState";
-import { fetchAndroidRelease } from "@/utils/androidReleaseCheck";
-import { isAndroidUpdateAvailable } from "@/utils/androidUpdatePolicy";
+import { fetchAndroidRelease, type AndroidReleaseInfo } from "@/utils/androidReleaseCheck";
+import { androidUpdateRequirementState, isAndroidUpdateAvailable } from "@/utils/androidUpdatePolicy";
 import { ElMessage } from "element-plus";
 import {
   ANDROID_UPDATE_PROMPT_EVENT,
@@ -104,6 +112,12 @@ interface AndroidBridge {
 
 const router = useRouter();
 const open = ref(false);
+const serverRequiresUpdate = ref(false);
+const policyNow = ref(0);
+const dialogOpen = computed({
+  get: () => open.value,
+  set: value => { if (value || !updateRequired.value) open.value = value; },
+});
 function notifyNativeUpdateVisibility(visible: boolean) {
   if (isAndroidNativeApp()) (window as any).CPUTimeNative?.postNative?.({ type: "androidUpdatePrompt", visible });
 }
@@ -113,10 +127,12 @@ let autoPromptedVersion = 0;
 let autoPromptTimer = 0;
 let updatePollTimer = 0;
 let releasePollTimer = 0;
-let lastReleaseCheck = 0;
+let deadlineTimer = 0;
+let serverClock: { now: number; receivedAt: number } | null = null;
+let lastReleaseCheck = -Infinity;
 let releaseCheck: Promise<void> | null = null;
 let disposed = false;
-const latestRelease = ref({ versionCode: ANDROID_APP_LATEST_VERSION_CODE, versionName: ANDROID_APP_LATEST_VERSION_NAME, fileName: ANDROID_APP_DOWNLOAD_FILE_NAME });
+const latestRelease = ref<AndroidReleaseInfo>({ versionCode: ANDROID_APP_LATEST_VERSION_CODE, versionName: ANDROID_APP_LATEST_VERSION_NAME, fileName: ANDROID_APP_DOWNLOAD_FILE_NAME });
 const updateAvailable = computed(() => isAndroidUpdateAvailable(isAndroidNativeApp(), currentVersionCode.value, latestRelease.value.versionCode));
 const nativeUpdate = ref(parseAndroidUpdateState("{}"));
 const hasPendingUpdate = computed(() => nativeUpdate.value.phase !== "idle");
@@ -124,6 +140,20 @@ const updateBusy = computed(() => ["downloading", "paused", "validating", "insta
 
 const currentVersionCode = computed(() => getAndroidNativeVersionCode());
 const currentVersionName = computed(() => getAndroidNativeVersionName());
+const requirementState = computed(() => androidUpdateRequirementState(
+  isAndroidNativeApp(), currentVersionCode.value, latestRelease.value.updateRequirement, policyNow.value,
+));
+const updateRequired = computed(() => isAndroidNativeApp() && (serverRequiresUpdate.value || requirementState.value === "required"));
+const pendingUpdateUnsupported = computed(() => {
+  if (!hasPendingUpdate.value || requirementState.value === "none") return false;
+  const target = /^CPU-Web-Android-V(\d+)\.apk$/i.exec(nativeUpdate.value.fileName)?.[1];
+  return target !== undefined && Number(target) < latestRelease.value.updateRequirement!.minimumVersionCode;
+});
+const deadlineLabel = computed(() => latestRelease.value.updateRequirement
+  ? new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date(latestRelease.value.updateRequirement.deadlineAt)) : "");
+watch(updateRequired, required => { if (required) openPrompt("app", true); });
 const currentVersionLabel = computed(() => {
   if (currentVersionName.value && currentVersionCode.value) return `${currentVersionName.value} (${currentVersionCode.value})`;
   if (currentVersionName.value) return currentVersionName.value;
@@ -141,6 +171,7 @@ const currentVersionShort = computed(() => currentVersionName.value || (currentV
 const showVersionStep = computed(() => isAndroidNativeApp() && updateAvailable.value && !saveOnly.value);
 const showPercent = computed(() => nativeUpdate.value.phase === "downloading" && nativeUpdate.value.totalBytes > 0);
 const headline = computed(() => {
+  if (updateRequired.value) return "请先更新客户端";
   if (nativeUpdate.value.phase === "failed") return "更新没有完成";
   if (["ready", "permission"].includes(nativeUpdate.value.phase)) return "更新已下载";
   if (hasPendingUpdate.value) return "正在更新";
@@ -159,6 +190,7 @@ const notes = computed(() => {
   return list;
 });
 const primaryButtonText = computed(() => {
+  if (pendingUpdateUnsupported.value) return "在浏览器下载最新版";
   if (saveOnly.value) return "在浏览器保存安装包";
   if (["ready", "permission"].includes(nativeUpdate.value.phase)) return "继续安装";
   if (nativeUpdate.value.phase === "failed") return "重试下载";
@@ -186,23 +218,30 @@ onBeforeUnmount(() => {
   if (autoPromptTimer) window.clearTimeout(autoPromptTimer);
   if (updatePollTimer) window.clearInterval(updatePollTimer);
   if (releasePollTimer) window.clearInterval(releasePollTimer);
+  if (deadlineTimer) window.clearTimeout(deadlineTimer);
   document.removeEventListener("visibilitychange", onVisible);
   window.removeEventListener("focus", onVisible);
 });
 
 function onVisible() {
+  syncPolicyClock();
   resumeUpdateStatus();
   if (!document.hidden) void checkRelease(false);
 }
 
 async function checkRelease(manual: boolean): Promise<boolean> {
   if (!isAndroidNativeApp() || (!manual && document.hidden)) return false;
-  if (!manual && lastReleaseCheck && Date.now() - lastReleaseCheck < 60_000) return true;
+  if (!manual && performance.now() - lastReleaseCheck < 60_000) return true;
   try {
     if (!releaseCheck) {
       releaseCheck = fetchAndroidRelease().then(value => {
-        if (!disposed) latestRelease.value = value;
-        lastReleaseCheck = Date.now();
+        if (!disposed) {
+          latestRelease.value = value;
+          if (value.serverTime) serverClock = { now: Date.parse(value.serverTime), receivedAt: performance.now() };
+          syncPolicyClock();
+          scheduleDeadline();
+        }
+        lastReleaseCheck = performance.now();
       }).finally(() => { releaseCheck = null; });
     }
     await releaseCheck;
@@ -213,6 +252,21 @@ async function checkRelease(manual: boolean): Promise<boolean> {
     if (manual) ElMessage.warning("暂时无法检查更新，请稍后重试");
     return false;
   }
+}
+
+function syncPolicyClock() {
+  if (serverClock) policyNow.value = serverClock.now + Math.max(0, performance.now() - serverClock.receivedAt);
+}
+
+function scheduleDeadline() {
+  if (deadlineTimer) window.clearTimeout(deadlineTimer);
+  deadlineTimer = 0;
+  if (requirementState.value !== "grace" || !latestRelease.value.updateRequirement) return;
+  const remaining = Date.parse(latestRelease.value.updateRequirement.deadlineAt) - policyNow.value;
+  deadlineTimer = window.setTimeout(() => {
+    syncPolicyClock();
+    scheduleDeadline();
+  }, Math.min(Math.max(1, remaining), 2_147_483_647));
 }
 
 function readUpdateStatus() {
@@ -250,13 +304,22 @@ function onPromptEvent(event: Event) {
 }
 
 async function showRequestedPrompt(detail: AndroidUpdatePromptDetail) {
+  if (detail.required && isAndroidNativeApp()) serverRequiresUpdate.value = true;
   readUpdateStatus();
-  if (isAndroidNativeApp() && !hasPendingUpdate.value && !await checkRelease(true)) return;
+  if (isAndroidNativeApp() && !await checkRelease(detail.source !== "auto") && !hasPendingUpdate.value && !updateRequired.value) return;
   openPrompt(detail.kind ?? "app", detail.source === "auto");
 }
 
 function autoPromptIfNeeded() {
   autoPromptTimer = 0;
+  // Required campaigns also cover 2.x clients pinned to the legacy hostname.
+  if (requirementState.value !== "none" || updateRequired.value) {
+    if (updateRequired.value || autoPromptedVersion !== latestRelease.value.versionCode) {
+      autoPromptedVersion = latestRelease.value.versionCode;
+      openPrompt("app", true);
+    }
+    return;
+  }
   if (autoPromptedVersion === latestRelease.value.versionCode || hasPendingUpdate.value) return;
   if (!shouldAutoPromptAndroidUpdate(
     window.location.hostname,
@@ -282,7 +345,7 @@ function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
     return;
   }
   readUpdateStatus();
-  if (kind === "app" && !updateAvailable.value && !hasPendingUpdate.value) {
+  if (kind === "app" && !updateAvailable.value && !hasPendingUpdate.value && !updateRequired.value) {
     if (!auto) ElMessage.success(`当前已是最新版 ${currentVersionLabel.value}`);
     return;
   }
@@ -301,6 +364,10 @@ function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
 }
 
 async function downloadAndroidUpdate() {
+  if (pendingUpdateUnsupported.value) {
+    openBrowserDownload();
+    return;
+  }
   const currentBridge = getAndroidBridge();
   if (saveOnly.value) {
     openExternalDownload(new URL(ANDROID_APP_DOWNLOAD_URL, window.location.origin).toString());
@@ -340,7 +407,7 @@ async function downloadAndroidUpdate() {
       const started = bridge.downloadAndInstallApk(absoluteUrl, latestRelease.value.fileName);
       if (started !== false) {
         if (readUpdateStatus()) pollUpdateStatus();
-        else open.value = false;
+        else if (!updateRequired.value) open.value = false;
         ElMessage.success("已开始下载更新");
         return;
       }
@@ -482,6 +549,21 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
   font-size: var(--cpu-fs-s);
 }
 
+.update-requirement {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+  text-align: left;
+}
+
+.update-requirement p { margin: 0; }
+.update-requirement p + p { margin-top: 8px; }
+
 .update-status {
   width: 100%;
   margin-top: 16px;
@@ -521,6 +603,7 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
 
 .update-primary {
   width: 100%;
+  min-height: 48px;
   margin-top: 18px;
   border-radius: var(--cpu-radius-m);
   font-weight: 600;
@@ -535,7 +618,7 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
 }
 
 .update-links button {
-  min-height: 36px;
+  min-height: 48px;
   padding: 0 10px;
   border: 0;
   border-radius: var(--cpu-radius-s);
@@ -559,6 +642,8 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
 <style>
 .el-dialog.android-update-dialog {
   max-width: calc(100vw - 48px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   padding: 24px 20px 12px;
   border-radius: 18px;
 }

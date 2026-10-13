@@ -7,10 +7,29 @@ import {
   shouldPromptAndroidInstallRepair,
   ANDROID_BROWSER_DOWNLOAD_PAGE,
   isObsoleteAndroidUpdateFailure,
+  androidUpdateRequirementState,
 } from "../src/utils/androidUpdatePolicy";
 
 test("安卓客户端启用自动更新提示", () => {
   assert.equal(ANDROID_APP_AUTO_UPDATE_PROMPT_ENABLED, true);
+});
+
+test("安卓必需更新以统一截止时间判断，最新版和其他平台不受限制", () => {
+  const requirement = {
+    minimumVersionCode: 59, startsAt: "2026-10-13T08:00:00Z",
+    deadlineAt: "2026-10-16T08:00:00Z", message: "安全更新",
+  };
+  const start = Date.parse(requirement.startsAt);
+  const deadline = Date.parse(requirement.deadlineAt);
+  assert.equal(androidUpdateRequirementState(true, 58, requirement, start - 1), "none");
+  assert.equal(androidUpdateRequirementState(true, 58, requirement, start), "grace");
+  assert.equal(androidUpdateRequirementState(true, 1, requirement, deadline - 1), "grace");
+  assert.equal(androidUpdateRequirementState(true, 58, requirement, deadline), "required");
+  assert.equal(androidUpdateRequirementState(true, 0, requirement, deadline), "required");
+  assert.equal(androidUpdateRequirementState(true, 59, requirement, deadline), "none");
+  assert.equal(androidUpdateRequirementState(true, 60, requirement, deadline), "none");
+  assert.equal(androidUpdateRequirementState(false, 58, requirement, deadline), "none");
+  assert.equal(androidUpdateRequirementState(true, 58, undefined, deadline), "none");
 });
 
 test("旧版和未声明修复能力的客户端必须使用浏览器", () => {

@@ -6,6 +6,7 @@ export const ANDROID_UPDATE_PROMPT_EVENT = "cpu:android-update-prompt";
 export type AndroidUpdatePromptDetail = {
   kind?: AndroidUpdatePromptKind;
   source?: AndroidUpdatePromptSource;
+  required?: boolean;
 };
 
 export function requestAndroidUpdatePrompt(detail: AndroidUpdatePromptDetail = {}) {
@@ -13,6 +14,7 @@ export function requestAndroidUpdatePrompt(detail: AndroidUpdatePromptDetail = {
     detail: {
       kind: detail.kind ?? "app",
       source: detail.source ?? "manual",
+      required: detail.required ?? false,
     },
   }));
 }

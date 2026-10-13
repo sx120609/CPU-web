@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createApp, startAppWorkers } from "./app";
+import { getAndroidUpdateRequirement } from "./services/androidUpdateRequirement";
 import { waitForBackgroundOwnership } from "./utils/deploymentWorkers";
 import { config } from "./config";
 import { ensureBuiltinBoards } from "./services/defaultBoards";
@@ -47,6 +48,8 @@ async function start() {
     console.warn("loadStorageConfig failed:", e?.message);
   });
 
+  // Persist the rollout once before accepting requests, never per device.
+  await getAndroidUpdateRequirement();
   const app = createApp({ workers: false });
   if (remoteGateway) await remoteGateway.start();
   const server = createServer(app);
