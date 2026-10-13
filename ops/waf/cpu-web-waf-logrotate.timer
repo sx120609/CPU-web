@@ -1,0 +1,11 @@
+[Unit]
+Description=Check CPU-web WAF log size every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Unit=cpu-web-waf-logrotate.service
+
+[Install]
+WantedBy=timers.target

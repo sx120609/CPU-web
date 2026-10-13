@@ -1,0 +1,8 @@
+[Unit]
+Description=Rotate CPU-web WAF request metadata
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate --state /var/lib/cpu-web-waf/logrotate.state /etc/cpu-web-waf/logrotate.conf
+Nice=19
+IOSchedulingClass=idle

@@ -116,6 +116,18 @@ jobs:
             ops/deploy/agent-update.test.mjs ops/deploy/ci-artifact.test.mjs \
             ops/deploy/blue-green.test.mjs ops/deploy/agent-gateway.test.mjs ops/deploy/qqbot-handoff.test.mjs
 
+      - name: Test dynamic WAF policy and companion packaging
+        run: python3 -m unittest discover -s ops/waf -p test_waf.py -v
+
+      - name: Verify dynamic WAF with real nginx and isolated nftables
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y nginx nftables iproute2
+          REQUIRE_WAF_NGINX=1 python3 -m unittest discover -s ops/waf -p test_nginx.py -v
+          sudo unshare --net env CPU_WAF_NETNS_TEST=1 python3 ops/waf/test_kernel.py -v
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -186,6 +198,7 @@ jobs:
           tar -C deploy-bundle -czf cpu-web-linux-deploy.tar.gz \
             manifest.json server-dist.tar.gz web-dist.tar.gz voicehub-output.tar.gz
           sha256sum cpu-web-linux-deploy.tar.gz > cpu-web-linux-deploy.tar.gz.sha256
+          python3 ops/waf/package.py --commit "$GITHUB_SHA" --output .
 
       - name: Upload immutable workflow artifact
         uses: actions/upload-artifact@v4
@@ -195,6 +208,8 @@ jobs:
             cpu-web-linux-deploy.tar.gz
             cpu-web-linux-deploy.tar.gz.sha256
             android-release-verification.json
+            cpu-web-waf-${{ github.sha }}.tar.gz
+            cpu-web-waf-${{ github.sha }}.tar.gz.sha256
           compression-level: 0
           retention-days: 14
           if-no-files-found: error
