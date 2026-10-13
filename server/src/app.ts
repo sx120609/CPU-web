@@ -73,14 +73,15 @@ export function createApp(options: { workers?: boolean } = {}) {
   const app = express();
   const deploymentRelay = createDeploymentRelay();
   app.use(deploymentRelay.middleware);
-  app.use(securityHeaders);
-  app.use("/api", androidUpdateGate);
 
   // VoiceHub 需要保留原始请求体（音乐导入、上传等），因此必须在 JSON 解析器之前转发。
+  // Nuxt 的内联启动配置不能套用主站 SPA 的 CSP；保留子应用自己的响应策略。
   app.use(voiceHubProxyMiddleware);
 
   // 部署脚本的反向代理位于本机/私网；不要信任公网客户端伪造的 X-Forwarded-For。
   app.set("trust proxy", "loopback, linklocal, uniquelocal");
+  app.use(securityHeaders);
+  app.use("/api", androidUpdateGate);
   app.use(compression({
     threshold: 1024,
   }));
