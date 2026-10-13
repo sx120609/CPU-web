@@ -91,9 +91,13 @@ export function createApp(options: { workers?: boolean } = {}) {
     if (req.path === "/api/health") return next();
     return fail(res, 5030, getDatabaseMaintenanceMessage(), 503);
   });
+  // 过载时的全站准入（见 middleware/admissionControl.ts），所有公开动态入口共用一个实例、各自成组。
+  const admission = createAdmissionControl();
+  app.use(["/share", "/uploads", "/qqbot"], admission.middleware);
   app.use(
     "/filestore",
     browserSessionMiddleware,
+    admission.middleware,
     requestOriginAndCsrfProtection,
     (req, res, next) => {
       if (req.path.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
@@ -103,9 +107,8 @@ export function createApp(options: { workers?: boolean } = {}) {
   );
   // 作品资源只认短期运行凭据，不加载主站会话；沙箱响应自行设置隔离策略。
   app.use("/api/workshop-runtime", workshopRuntimeRouter);
-  // 过载时的全站准入（见 middleware/admissionControl.ts）：要在解析请求体之前决定，被拒的请求不再读取正文。
-  // 先加载浏览器会话，才能把 Cookie 登录的用户与匿名请求区分开。
-  app.use("/api", browserSessionMiddleware, createAdmissionControl().middleware);
+  // 准入要在解析请求体之前决定，被拒的请求不再读取正文；先加载浏览器会话，才能区分 Cookie 登录用户与匿名请求。
+  app.use("/api", browserSessionMiddleware, admission.middleware);
   // 未登录的认证入口只接收账号、验证码和加密凭据，先用小上限解析；已解析的请求会被全局解析器跳过。
   app.use("/api/auth", express.json({ limit: "1mb" }));
   // 桌面端截图保持原始 PNG（最大 8MB）；Base64 与 JSON 封装后会略高于 10MB。

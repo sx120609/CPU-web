@@ -14,6 +14,7 @@ import { loadJwxtAgentRuntimeConfig } from "./services/jwxtAgentConfig";
 import { attachVoiceHubGateway, voiceHubProxyConfig } from "./services/voiceHubProxy";
 import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
 import { startAccountDeletionWorker } from "./services/accountDeletion";
+import { flushTopicViews } from "./services/topicViewCounter";
 
 async function start() {
   const managedRelease = Boolean(process.env.CPU_WEB_RELEASE_SHA);
@@ -74,7 +75,8 @@ async function start() {
         process.exit(1);
         return;
       }
-      process.exit(0);
+      // 合并中的帖子浏览数在退出前写回数据库。
+      void flushTopicViews().finally(() => process.exit(0));
     });
   };
   process.once("SIGTERM", () => shutdown("SIGTERM"));

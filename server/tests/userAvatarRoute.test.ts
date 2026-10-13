@@ -72,4 +72,9 @@ test("头像缓存每个用户只保留一份，请求新版本时立即回源",
   avatar = null;
   assert.equal((await request(`?v=${secondVersion}`)).status, 200);
   assert.equal((await request(`?v=${"0".repeat(16)}`)).status, 404);
+  assert.equal(loads, 4);
+
+  // 随机版本号不能让每个请求都回源：连续回源额度用完后复用缓存。
+  for (let index = 0; index < 20; index += 1) await request(`?v=${index.toString(16).padStart(16, "a")}`);
+  assert.equal(loads, 4);
 });

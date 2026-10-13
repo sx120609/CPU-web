@@ -107,3 +107,11 @@ test("health checks are never shed", () => {
   assert.equal(send(controller, "/api/ready?x=1", 1_000), 1_000);
   assert.equal(controller.pendingCount, 0);
 });
+
+test("entries outside /api get their own groups", () => {
+  const controller = new AdmissionController();
+  assert.equal(controller.laneKey("/api/Topics/12?x=1"), "topics");
+  assert.equal(controller.laneKey("/uploads/forum/a.png"), "/uploads");
+  assert.equal(controller.laneKey("/filestore/api/qrcode?data=x"), "/filestore");
+  assert.equal(controller.laneKey("/share/topic/1/card.png"), "/share");
+});

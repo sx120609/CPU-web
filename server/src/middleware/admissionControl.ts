@@ -83,10 +83,12 @@ export class AdmissionController {
     this.headroom = this.options.maxHeadroom;
   }
 
-  /** 请求所属的匿名分组：/api/<第一段>，统一小写（Express 路由不区分大小写）。 */
+  /** 请求所属的匿名分组：/api/<第一段>，其他入口为 /<第一段>；统一小写（Express 路由不区分大小写）。 */
   laneKey(path: string) {
-    const match = /^\/api\/([A-Za-z0-9-]{1,40})(?:[/?]|$)/.exec(path);
-    return match ? match[1].toLowerCase() : "";
+    const api = /^\/api\/([A-Za-z0-9-]{1,40})(?:[/?]|$)/.exec(path);
+    if (api) return api[1].toLowerCase();
+    const other = /^\/([A-Za-z0-9-]{1,40})(?:[/?]|$)/.exec(path);
+    return other ? `/${other[1].toLowerCase()}` : "";
   }
 
   admit(path: string, identity: string | null, now = Date.now()): AdmissionDecision {
