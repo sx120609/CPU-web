@@ -27,6 +27,13 @@ def feed(detector, count, **options):
 
 
 class DetectionTests(unittest.TestCase):
+    def test_default_service_has_no_kernel_firewall_permission(self):
+        service = Path(__file__).with_name('cpu-web-waf.service').read_text()
+        line = next(line for line in service.splitlines() if line.startswith('CapabilityBoundingSet='))
+        self.assertNotIn('CAP_NET_ADMIN', line)
+        self.assertIn('CAP_NET_BIND_SERVICE', line)
+        self.assertIn('NoNewPrivileges=true', service)
+
     def test_shared_campus_can_never_be_ip_isolated_even_during_attack(self):
         d = Detector(config(sharedIngress=True, mode="adaptive", attackRequestsPerSecond=10))
         feed(d, 50000)
