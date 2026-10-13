@@ -187,6 +187,8 @@ v1 提供隔离运行、受控网站接口、作品存档、生命周期通知�
 - 数据模型在 `server/prisma/schema.prisma`。仓库现有 `npm run db:migrate --prefix server` 最后的 `prisma db push` 会同步新增表和字段；`20261012203000_add_workshop/migration.sql`、`20261012213000_add_workshop_placements/migration.sql`、`20261012223000_workshop_report_resolution/migration.sql` 分别保存工坊表、站点扩展位置表和举报处理字段增量，供人工审阅。不要将非幂等 SQL 再加入每次重复执行的迁移链。生产数据库操作沿用项目发布流程。
 - 本地默认包目录是 `server/workshop-packages/`。生产显式设置 `WORKSHOP_STORAGE_ROOT` 指向发布目录之外的持久目录，权限仅授予后端进程，并与数据库一起备份；只备份数据库不能恢复作品文件。
 - 设置 `WORKSHOP_MAIN_ORIGIN` 为主站 HTTPS origin。推荐使用独立的 `WORKSHOP_RUNTIME_ORIGIN`，反向代理仅开放 `/api/workshop-runtime/`，保留后端的 CSP/CORS 响应头，不附加 `X-Frame-Options: DENY`，不缓存这些资源，也不承载其他主站 API。未配置独立域名时，响应上的 `sandbox allow-scripts` 与 iframe 同时强制隔离，直接打开资源地址也不能获得主站源权限。
+- 未配置 `WORKSHOP_RUNTIME_ORIGIN` 时，作品地址取自申请运行凭据的主站页面（请求的 `Origin`，须在允许列表内），并写入凭据供资源响应的 CSP 使用；不从请求的协议和 `Host` 推断。反向代理不转发公开域名时，后端看到的是 `http://127.0.0.1:<端口>`，主站页面的 `frame-src` 会拦下这样的地址，浏览器只显示“已阻止此内容”。
+- 入口文档请求出错（凭据失效、版本被撤销、文件缺失）时返回主站可以嵌入的静态说明页，不带脚本；子资源请求仍返回 JSON 错误。作品页同时向服务端查询一次失败原因并直接显示，不必等到连接超时。
 - 反向代理为 `/api/workshop/packages` 配置略大于 20 MiB 的请求上限（例如 21 MiB，以容纳 multipart 开销）；实际 ZIP 上限由后端校验。禁止将包目录直接配置成静态目录，否则会绕过审核和撤销检查。
 - 运行 URL 含短期访问凭据。预览有效期 30 分钟，公开运行资源有效期 2 小时；代理访问日志应跳过或遮蔽 `/api/workshop-runtime/` 的凭据段，不把完整 URL 写入分析系统。应用自身不记录该资源路由。链接过期后需重新打开作品，保存的进度仍保留。
 - 提交、审核、下架与停用保留 `WorkshopAudit` 记录。审核状态或公开版本改变会撤销相关旧运行链接；每次资源请求都检查当前状态。已打开的正式作品页每 30 秒检查公开状态，回到前台时也立即检查并关闭失效作品。

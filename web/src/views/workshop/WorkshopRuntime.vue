@@ -211,6 +211,30 @@ function stop() {
   syncMotion();
   finishConsent(false, "作品已关闭");
 }
+// 入口文档打不开时作品不会握手，页面只能等到连接超时。直接向服务端问一次，把真实原因显示出来。
+async function reportEntryFailure(href: string, seq: number) {
+  try {
+    const options = { credentials: "omit", cache: "no-store" } as const;
+    const probe = await fetch(href, { ...options, method: "HEAD" });
+    if (probe.ok || seq !== generation) return;
+    const detail = await fetch(href, {
+      ...options,
+      headers: { Accept: "application/json" },
+    });
+    const body = (await detail.json().catch(() => null)) as {
+      message?: unknown;
+    } | null;
+    if (seq !== generation) return;
+    stop();
+    error.value =
+      typeof body?.message === "string" && body.message
+        ? body.message
+        : "作品启动失败";
+    emit("error", error.value);
+  } catch {
+    // 独立资源域名不允许跨源读取时，沿用连接超时提示。
+  }
+}
 async function checkAvailability() {
   if (props.preview || !url.value) return;
   const seq = generation;
@@ -255,6 +279,7 @@ async function start() {
     )
       throw new Error("作品运行地址无效");
     url.value = target.href;
+    void reportEntryFailure(target.href, seq);
     await nextTick();
     if (seq !== generation || !frame.value) return;
     bridge = createWorkshopBridge({

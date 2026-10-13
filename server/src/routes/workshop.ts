@@ -1,5 +1,5 @@
 import path from "node:path";
-import { Router, type RequestHandler } from "express";
+import { Router, type ErrorRequestHandler, type RequestHandler } from "express";
 import multer from "multer";
 import { z } from "zod";
 import { authOptional, authRequired } from "../middleware/auth";
@@ -34,6 +34,7 @@ import { assertWorkshopAdmin } from "../services/workshopPolicy";
 import {
   issueWorkshopRuntime,
   loadWorkshopRuntime,
+  sendWorkshopRuntimeErrorPage,
   workshopRuntimeHeaders,
 } from "../services/workshopRuntime";
 
@@ -502,3 +503,15 @@ workshopRuntimeRouter.get(
     );
   }),
 );
+// 入口文档出错时仍在作品 iframe 里加载：返回主站可以嵌入的说明页，否则浏览器只显示“已阻止此内容”。
+// 脚本、图片等子资源请求继续走统一的 JSON 错误。
+const workshopRuntimeErrors: ErrorRequestHandler = (error, req, res, next) => {
+  const destination = req.get("sec-fetch-dest");
+  const navigation = destination
+    ? destination === "iframe" || destination === "document"
+    : req.accepts(["json", "html"]) === "html";
+  if (res.headersSent || !navigation) return next(error);
+  if (error instanceof HttpError) return sendWorkshopRuntimeErrorPage(req, res, error.status, error.message);
+  sendWorkshopRuntimeErrorPage(req, res, 500, "作品暂时无法打开，请稍后重试");
+};
+workshopRuntimeRouter.use(workshopRuntimeErrors);

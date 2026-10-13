@@ -23,6 +23,8 @@ const ticketSchema = z
     viewerId: z.number().int().positive().optional(),
     expires: z.number().int().positive(),
     frameOrigins: z.array(z.string().max(300)).min(1).max(20),
+    // Where the work is served from. Absent on tickets issued before this field existed.
+    origin: z.string().max(300).optional(),
   })
   .strict();
 type Ticket = z.infer<typeof ticketSchema>;
@@ -46,19 +48,39 @@ function origin(value: string) {
   }
   return url.origin;
 }
+/**
+ * Without a dedicated runtime origin the work is served by the main site, so
+ * its public address is the page that asked for the ticket. The request's own
+ * protocol and Host are the last resort: behind a reverse proxy that does not
+ * forward them they read `http://127.0.0.1:<port>`, an address the main page's
+ * `frame-src` blocks.
+ */
 export function workshopRuntimeOrigin(req: Request) {
   const configured = process.env.WORKSHOP_RUNTIME_ORIGIN?.trim();
-  return origin(configured || `${req.protocol}://${req.get("host")}`);
+  if (configured) return origin(configured);
+  const requested = req.get("origin");
+  if (requested && requested !== "null") {
+    const page = origin(requested);
+    if (frameOrigins(req).includes(page)) return page;
+  }
+  const main = process.env.WORKSHOP_MAIN_ORIGIN?.trim();
+  if (main) return origin(main);
+  if (config.nodeEnv === "production" && config.corsAllowedOrigins.length)
+    return origin(config.corsAllowedOrigins[0]);
+  return origin(`${req.protocol}://${req.get("host")}`);
 }
-function frameOrigins(req: Request) {
+function configuredFrameOrigins(req: Request) {
   const allowed = config.corsAllowedOrigins.map((item) => origin(item));
   const main = process.env.WORKSHOP_MAIN_ORIGIN?.trim();
   if (main) allowed.push(origin(main));
+  if (config.nodeEnv !== "production") allowed.push(origin(`${req.protocol}://${req.get("host")}`));
+  return allowed;
+}
+function frameOrigins(req: Request) {
+  const allowed = configuredFrameOrigins(req);
   const requested = req.get("origin");
-  if (config.nodeEnv !== "production") {
-    allowed.push(origin(`${req.protocol}://${req.get("host")}`));
-    if (requested && requested !== "null") allowed.push(origin(requested));
-  }
+  if (config.nodeEnv !== "production" && requested && requested !== "null")
+    allowed.push(origin(requested));
   if (!allowed.length) throw Errors.server("请配置工坊主站域名 WORKSHOP_MAIN_ORIGIN");
   if (requested && requested !== "null" && !allowed.includes(origin(requested)))
     throw Errors.forbidden("工坊请求来自未授权的主站");
@@ -93,7 +115,7 @@ export function verifyWorkshopTicket(
   if (
     !result.success ||
     result.data.expires <= now ||
-    result.data.frameOrigins.some((item) => {
+    [...result.data.frameOrigins, ...(result.data.origin ? [result.data.origin] : [])].some((item) => {
       try {
         return origin(item) !== item;
       } catch {
@@ -129,6 +151,7 @@ export async function issueWorkshopRuntime(
     if (version.work.disabled) throw Errors.forbidden("作品已被停用");
   }
   const expires = Date.now() + (options.kind === "preview" ? 30 : 120) * 60 * 1000;
+  const runtimeOrigin = workshopRuntimeOrigin(req);
   const ticket = signWorkshopTicket({
     kind: options.kind,
     workId: version.workId,
@@ -138,11 +161,12 @@ export async function issueWorkshopRuntime(
     ...(options.kind === "preview" ? { viewerId: viewer!.userId } : {}),
     expires,
     frameOrigins: frameOrigins(req),
+    origin: runtimeOrigin,
   });
   const manifest = version.manifest as unknown as WorkshopManifest;
   const entry = manifest.entry.split("/").map(encodeURIComponent).join("/");
   return {
-    url: `${workshopRuntimeOrigin(req)}/api/workshop-runtime/${ticket}/${entry}`,
+    url: `${runtimeOrigin}/api/workshop-runtime/${ticket}/${entry}`,
     expiresAt: new Date(expires).toISOString(),
     versionId: version.id,
   };
@@ -172,10 +196,11 @@ export async function loadWorkshopRuntime(value: string) {
 export function workshopRuntimeHeaders(
   req: Request,
   res: Response,
-  ticket: Pick<Ticket, "frameOrigins">,
+  ticket: Pick<Ticket, "frameOrigins" | "origin">,
   encoded: string,
 ) {
-  const own = `${workshopRuntimeOrigin(req)}/api/workshop-runtime/${encoded}/`;
+  // The sandboxed document has an opaque origin, so 'self' matches nothing: name the work's own files.
+  const own = `${ticket.origin ?? workshopRuntimeOrigin(req)}/api/workshop-runtime/${encoded}/`;
   const csp = [
     "sandbox allow-scripts",
     "default-src 'none'",
@@ -203,6 +228,54 @@ export function workshopRuntimeHeaders(
   res.setHeader(
     "Permissions-Policy",
     "accelerometer=(), gyroscope=(), magnetometer=(), camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), clipboard-read=(), clipboard-write=(), fullscreen=()",
+  );
+}
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+
+/**
+ * A failed entry document still loads inside the work's iframe. The site-wide
+ * headers forbid framing, so the browser would replace it with its own
+ * "content blocked" page and hide the reason. Send a static, script-free page
+ * that the main site may frame instead.
+ */
+export function sendWorkshopRuntimeErrorPage(
+  req: Request,
+  res: Response,
+  status: number,
+  message: string,
+) {
+  let ancestors: string[] = [];
+  try {
+    ancestors = [...new Set(configuredFrameOrigins(req))].slice(0, 20);
+    // The dev client's origin is only known when the ticket is issued.
+    if (config.nodeEnv !== "production") ancestors.push("http://localhost:*", "http://127.0.0.1:*");
+  } catch {
+    // A misconfigured origin keeps the page unframeable, as before.
+  }
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "sandbox",
+      "default-src 'none'",
+      "style-src 'unsafe-inline'",
+      "base-uri 'none'",
+      "form-action 'none'",
+      `frame-ancestors ${ancestors.length ? ancestors.join(" ") : "'none'"}`,
+    ].join("; "),
+  );
+  if (ancestors.length) res.removeHeader("X-Frame-Options");
+  res.removeHeader("Access-Control-Allow-Credentials");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.status(status).send(
+    `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>作品无法打开</title>` +
+      `<style>html{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:14px/1.6 system-ui,sans-serif}main{padding:24px;text-align:center}h1{margin:0 0 8px;font-size:16px}p{margin:0;opacity:.7}</style>` +
+      `<main><h1>${escapeHtml(message)}</h1><p>请关闭作品后重新打开。</p></main></html>`,
   );
 }
 
