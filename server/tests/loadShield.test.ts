@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConcurrencyGate, ConcurrencyGateFullError, TtlLru } from "../src/utils/loadShield";
+import { ConcurrencyGate, ConcurrencyGateFullError, TtlLru, createWindowBudget } from "../src/utils/loadShield";
 
 test("concurrent misses for one key run the loader once", async () => {
   const cache = new TtlLru<number>({ maxEntries: 10 });
@@ -85,4 +85,11 @@ test("the gate caps concurrency and rejects work beyond its queue", async () => 
   assert.equal(peak, 2);
   assert.equal(gate.active, 0);
   assert.equal(await gate.run(async () => "again"), "again");
+});
+
+test("a window budget allows a fixed number of events per window", () => {
+  const take = createWindowBudget(2, 1_000);
+  assert.deepEqual([take(0), take(10), take(20)], [true, true, false]);
+  assert.equal(take(999), false);
+  assert.deepEqual([take(1_000), take(1_001), take(1_002)], [true, true, false]);
 });

@@ -105,3 +105,17 @@ export class ConcurrencyGate {
     }
   }
 }
+
+/** 固定窗口计数：每个窗口最多放行 limit 次。用于给"谁都能触发"的日志、写入设置全局上限。 */
+export function createWindowBudget(limit: number, windowMs: number) {
+  let startedAt = Number.NEGATIVE_INFINITY;
+  let count = 0;
+  return (now = Date.now()) => {
+    if (now - startedAt >= windowMs) {
+      startedAt = now;
+      count = 0;
+    }
+    count += 1;
+    return count <= limit;
+  };
+}

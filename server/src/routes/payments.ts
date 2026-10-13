@@ -33,6 +33,7 @@ import {
 } from "../services/sponsor";
 import { awardSponsorAssistantPoints } from "../services/campusAssistantPoints";
 import { iosCommerceUnavailable } from "../middleware/iosCommerce";
+import { createWindowBudget } from "../utils/loadShield";
 
 export const paymentsRouter = Router();
 paymentsRouter.use("/sponsor", iosCommerceUnavailable);
@@ -358,6 +359,9 @@ paymentsRouter.get("/sponsor/ranking", async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
+const BAD_SIGN_PAYLOAD_LIMIT = 2_048;
+const takeBadSignLogBudget = createWindowBudget(30, 60_000);
+
 paymentsRouter.all("/epay/notify", async (req, res, next) => {
   let logId: number | null = null;
   try {
@@ -368,20 +372,32 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
       : null;
     const merchantKey = await getEpayMerchantKey();
     const signOk = Boolean(merchantKey && verifyEpayParams(params, merchantKey));
+    if (!signOk) {
+      // 验签失败的回调谁都能伪造：只抽样保留截断后的载荷用于排查，不能让洪泛把任意大小的正文逐条写进数据库。
+      if (takeBadSignLogBudget()) {
+        await prisma.sponsorPaymentLog.create({
+          data: {
+            orderId: existingOrder?.id ?? null,
+            outTradeNo: outTradeNo ? outTradeNo.slice(0, 128) : null,
+            rawPayload: JSON.stringify(params).slice(0, BAD_SIGN_PAYLOAD_LIMIT),
+            signOk,
+            result: "bad-sign",
+          },
+        });
+      }
+      res.type("text/plain").status(400).send("fail");
+      return;
+    }
     const log = await prisma.sponsorPaymentLog.create({
       data: {
         orderId: existingOrder?.id ?? null,
         outTradeNo: outTradeNo || null,
         rawPayload: JSON.stringify(params),
         signOk,
-        result: signOk ? "received" : "bad-sign",
+        result: "received",
       },
     });
     logId = log.id;
-    if (!signOk) {
-      res.type("text/plain").status(400).send("fail");
-      return;
-    }
     if (params.trade_status !== "TRADE_SUCCESS") {
       await prisma.sponsorPaymentLog.update({ where: { id: logId }, data: { handled: true, result: "ignored-status" } });
       res.type("text/plain").send("success");

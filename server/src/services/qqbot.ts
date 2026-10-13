@@ -146,6 +146,7 @@ import {
   type CampusAssistantMessage,
   type CampusAssistantResponse,
 } from "./campusAssistant";
+import { createWindowBudget } from "../utils/loadShield";
 
 export { buildQqBotDebugExport };
 export { connectQqBotWebSocket };
@@ -656,10 +657,13 @@ export async function deleteUserQqBinding(userId: number, bindingId?: number) {
   return { ok: true };
 }
 
+const takeRejectedWebhookLogBudget = createWindowBudget(30, 60_000);
+
 export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | null) {
   const config = await getQqBotConfigRaw();
   if (config.webhookSecret && secret !== config.webhookSecret) {
-    await logQqBotMessage({
+    // 鉴权失败的请求谁都能发：只抽样记录，避免洪泛逐条把载荷写进日志表。
+    if (takeRejectedWebhookLogBudget()) await logQqBotMessage({
       direction: "inbound",
       eventType: "webhook",
       status: "error",
