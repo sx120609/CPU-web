@@ -3,11 +3,11 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { createServer, request } from 'node:http'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
-import { hasSchemaChanges, linkSharedDirectory, configSnapshots, restoreConfigs, findProxyConfig, resolveProxyConfigs, publishWebAssets, verifyWeb } from './blue-green.mjs'
+import { hasSchemaChanges, linkSharedDirectory, collectWorkshopPackages, SHARED_SERVER_DIRECTORIES, configSnapshots, restoreConfigs, findProxyConfig, resolveProxyConfigs, publishWebAssets, verifyWeb } from './blue-green.mjs'
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)))
 const close = server => new Promise(resolve => server.close(resolve))
@@ -136,6 +136,42 @@ test('shared uploads preserve archived samples and live contents', { skip: proce
   assert.equal(await readFile(path.join(`${target}.packaged`, 'sample.txt'), 'utf8'), 'archived sample')
   await writeFile(path.join(target, 'new.txt'), 'new upload')
   assert.equal(await readFile(path.join(source, 'new.txt'), 'utf8'), 'new upload')
+})
+
+test('workshop packages are shared between releases and recovered from releases that kept their own', async t => {
+  assert.ok(SHARED_SERVER_DIRECTORIES.includes('workshop-packages'))
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cpu-workshop-packages-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const releases = path.join(root, 'releases'), shared = path.join(root, 'shared')
+  const first = '11111111-1111-4111-8111-111111111111', second = '22222222-2222-4222-8222-222222222222', third = '33333333-3333-4333-8333-333333333333'
+  const packages = release => path.join(releases, release, 'server', 'workshop-packages')
+  const put = async (directory, key, text) => {
+    await mkdir(path.join(directory, key, 'assets'), { recursive: true })
+    await writeFile(path.join(directory, key, 'index.html'), text)
+    await writeFile(path.join(directory, key, 'assets', 'main.js'), `${text} script`)
+  }
+  await put(packages('old-a'), first, 'first from old-a')
+  await put(packages('old-b'), first, 'a different copy that must not win')
+  await put(packages('old-b'), second, 'second')
+  await mkdir(path.join(packages('old-b'), 'not-a-package'))
+  await writeFile(path.join(packages('old-b'), 'stray.txt'), 'ignored')
+  await mkdir(path.join(releases, 'frontend-only', 'web'), { recursive: true })
+  // A release that already links the shared directory contributes nothing new.
+  await put(shared, third, 'third, already shared')
+  await mkdir(path.join(releases, 'linked', 'server'), { recursive: true })
+  await symlink(shared, packages('linked'), 'junction')
+
+  assert.equal(await collectWorkshopPackages(releases, shared), 2)
+  assert.deepEqual((await readdir(shared)).sort(), [first, second, third])
+  assert.match(await readFile(path.join(shared, first, 'index.html'), 'utf8'), /^(first from old-a|a different copy that must not win)$/)
+  assert.equal(await readFile(path.join(shared, second, 'assets', 'main.js'), 'utf8'), 'second script')
+  assert.equal(await readFile(path.join(shared, third, 'index.html'), 'utf8'), 'third, already shared')
+  // The old releases keep their copies, and a second pass has nothing left to do.
+  assert.equal(await readFile(path.join(packages('old-b'), second, 'index.html'), 'utf8'), 'second')
+  const kept = await readFile(path.join(shared, first, 'index.html'), 'utf8')
+  assert.equal(await collectWorkshopPackages(releases, shared), 0)
+  assert.equal(await readFile(path.join(shared, first, 'index.html'), 'utf8'), kept)
+  assert.equal(await collectWorkshopPackages(path.join(root, 'missing'), shared), 0)
 })
 
 test('multi-file routing restores partial switches and refuses external edits before rollback', async t => {

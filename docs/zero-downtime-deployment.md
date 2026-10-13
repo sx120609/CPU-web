@@ -7,7 +7,7 @@
 ## 正常流程
 
 1. `flock` 串行化更新，拉取代码并验证精确 SHA 制品及各组件 SHA-256。
-2. 在 `.deploy/blue-green/releases/<sha>-<attempt>/` 提取源文件和制品，安装独立依赖、生成 Prisma 客户端。上传目录、运行数据、VoiceHub 头像和备份继续共享；不会删除旧版本目录。
+2. 在 `.deploy/blue-green/releases/<sha>-<attempt>/` 提取源文件和制品，安装独立依赖、生成 Prisma 客户端。上传目录、运行数据、创意工坊作品包、VoiceHub 头像和备份继续共享；不会删除旧版本目录。
 3. 将网页资源同步到已配置的存储，保留本地旧哈希资源。先验证入口 JS/CSS 的 HTTP 状态和 Content-Type，再替换入口 HTML。
 4. 后端/VoiceHub 有变化时，在备用的本机端口启动新实例。后端必须完成配置加载、数据库检查及已配置 Redis 的可用性检查。`/api/ready` 返回就绪状态及实例完整 SHA。
 5. 保存恢复记录和 Nginx 原始配置，检查配置并平滑 reload。通过公网 `/api/ready` 核对新 SHA，并检查实际页面入口及资源。

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:net'
-import { access, glob, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
+import { access, cp, glob, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
@@ -168,6 +168,41 @@ export async function linkSharedDirectory(source, target) {
   await symlink(source, target, 'dir')
 }
 
+// Directories under server/ that every release shares with the base checkout.
+export const SHARED_SERVER_DIRECTORIES = ['uploads', 'runtime', 'workshop-packages']
+
+/**
+ * Releases cut before workshop packages were shared kept them inside the
+ * release, so each deployment started with none. Copy every package found in
+ * an old release into the shared directory. Packages are immutable and named by
+ * a random key, so an existing one is never replaced.
+ */
+export async function collectWorkshopPackages(releases, shared) {
+  await mkdir(shared, { recursive: true, mode: 0o700 })
+  let collected = 0
+  for (const release of await readdir(releases).catch(() => [])) {
+    const directory = path.join(releases, release, 'server', 'workshop-packages')
+    const stats = await lstat(directory).catch(() => null)
+    // A symlink is a release that already uses the shared directory.
+    if (!stats?.isDirectory() || stats.isSymbolicLink()) continue
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^[a-f0-9-]{36}$/.test(entry.name)) continue
+      const target = path.join(shared, entry.name)
+      if (await exists(target)) continue
+      // Copy under a name the server never serves, then move it into place in one step.
+      const staging = path.join(shared, `.incoming-${entry.name}-${randomUUID().slice(0, 8)}`)
+      try {
+        await cp(path.join(directory, entry.name), staging, { recursive: true, errorOnExist: true })
+        await rename(staging, target)
+        collected++
+      } finally {
+        await rm(staging, { recursive: true, force: true })
+      }
+    }
+  }
+  return collected
+}
+
 export async function verifyWeb(base, html, { entry = false } = {}) {
   const paths = [...html.matchAll(/(?:src|href)=["']([^"']*\/assets\/[^"']+\.(?:js|css))["']/g)].map(match => match[1])
   if (!paths.length) throw new Error('The web artifact has no entry JS/CSS')
@@ -238,6 +273,10 @@ export async function deploy() {
   const activate = async candidate => {
     await atomicWrite(marker, candidate.id)
     await run('pm2', ['save'])
+  }
+  const recoverWorkshopPackages = async () => {
+    const collected = await collectWorkshopPackages(path.join(stateDir, 'releases'), path.join(root, 'server', 'workshop-packages'))
+    if (collected) log(`Recovered ${collected} workshop package(s) from earlier releases into the shared directory`)
   }
   const waitForUpstream = port => waitForUpstreamIdle(port, drainSeconds, {
     connections: async target => Boolean(await run('ss', ['-Hnt', 'state', 'established', `( sport = :${target} or dport = :${target} )`])),
@@ -311,6 +350,7 @@ export async function deploy() {
     }
   }
   if (finishedDraining && state.active.commit === commit) {
+    await recoverWorkshopPackages()
     log(`Pending deployment completed: ${commit}`)
     return
   }
@@ -360,9 +400,10 @@ export async function deploy() {
     await run('tar', ['-xzf', path.join(artifact, 'server-dist.tar.gz'), '-C', serverDir])
     if (voiceChanged) await run('tar', ['-xzf', path.join(artifact, 'voicehub-output.tar.gz'), '-C', voiceDir])
     await symlink(path.join(root, 'server', '.env'), path.join(serverDir, '.env'))
-    for (const directory of ['uploads', 'runtime']) {
+    for (const directory of SHARED_SERVER_DIRECTORIES) {
       await linkSharedDirectory(path.join(root, 'server', directory), path.join(serverDir, directory))
     }
+    await recoverWorkshopPackages()
     if (voiceChanged) {
       for (const directory of ['backups', 'storage', 'logs']) {
         await linkSharedDirectory(path.join(root, 'voicehub', directory), path.join(voiceDir, directory))
@@ -506,6 +547,8 @@ export async function deploy() {
       retire: old => retire(old, candidate, candidate.oldWorkers), activate,
     })
     if (!complete) throw new Error('Traffic switched successfully, but old connections have not drained. Both instances are retained; rerun update to finish.')
+    // The previous instance kept accepting uploads until it retired; pick up what it stored meanwhile.
+    await recoverWorkshopPackages()
     log(`Deployment complete: ${commit}; previous release retained on disk for recovery`)
   } catch (error) {
     if (!switching) {

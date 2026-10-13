@@ -259,7 +259,9 @@ export function inspectWorkshopZip(buffer: Buffer): ZipEntry[] {
 }
 
 export function workshopStorageRoot() {
-  // Outside publicly served uploads. Operators must persist this alongside the database.
+  // Outside publicly served uploads. The default sits in the server directory: blue-green
+  // releases link it to the base checkout (ops/deploy/blue-green.mjs), so packages outlive
+  // a deployment. Back it up together with the database.
   return path.resolve(
     process.env.WORKSHOP_STORAGE_ROOT?.trim() || path.join(__dirname, "../../workshop-packages"),
   );
