@@ -101,6 +101,12 @@ function jwxtTokenCacheId(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex").slice(0, 24);
 }
 
+// 按教务会话计数，不按 IP（校园网共用出口）；没有令牌的请求才退回 IP。
+function byJwxtToken(req: any) {
+  const token = getToken(req);
+  return token ? `jwxt\0${jwxtTokenCacheId(token)}` : undefined;
+}
+
 async function readGraduateDebugFixture() {
   for (const filePath of GRAD_SCHEDULE_DEBUG_FIXTURE_CANDIDATES) {
     try {
@@ -803,7 +809,7 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
 });
 
 /** i.cpu.edu.cn 融合门户应用列表 */
-jwxtRouter.get("/iapps/icon", securityRateLimit("jwxt-iapp-icon", 300, 60_000), async (req, res, next) => {
+jwxtRouter.get("/iapps/icon", securityRateLimit("jwxt-iapp-icon", 300, 60_000, byJwxtToken), async (req, res, next) => {
   try {
     const iconPath = String(req.query.path ?? "").trim();
     if (!I_SERVICE_ICON_PATH_PATTERN.test(iconPath)) throw Errors.badRequest("无效的应用图标路径");
@@ -874,7 +880,7 @@ function queryText(value: unknown) {
 }
 
 /** 课表、成绩之外的教务数据：等级考试、选课、教材、毕业审核、学籍、空教室、全校课表检索等。 */
-jwxtRouter.get("/records", securityRateLimit("jwxt-records", 90, 60_000), async (req, res, next) => {
+jwxtRouter.get("/records", securityRateLimit("jwxt-records", 90, 60_000, byJwxtToken), async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
@@ -920,7 +926,7 @@ jwxtRouter.get("/records", securityRateLimit("jwxt-records", 90, 60_000), async 
  * 成绩单 PDF；每次现取，不进缓存。
  * 默认给电子证明平台的中文预览件，variant=ecert-en 是英文，variant=jwxt 是教务系统导出的版本。
  */
-jwxtRouter.get("/transcript.pdf", securityRateLimit("jwxt-transcript", 6, 60_000), async (req, res, next) => {
+jwxtRouter.get("/transcript.pdf", securityRateLimit("jwxt-transcript", 6, 60_000, byJwxtToken), async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");

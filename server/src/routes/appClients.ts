@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { androidClientHeartbeatSchema, androidClientMetricsSchema, recordAndroidClientHeartbeat, recordAndroidClientMetrics } from "../services/androidClientStats";
 import { desktopInstallReportSchema, recordDesktopInstallReport } from "../services/desktopInstallReports";
@@ -8,8 +8,14 @@ import { Errors, ok } from "../utils/response";
 
 export const appClientRouter = Router();
 
+// 按安装计数，不按 IP：校园网整栋楼共用一个出口，按 IP 会让多数设备的心跳被拒。
+const byInstall = (req: Request) => {
+  const installId = req.body?.installId;
+  return typeof installId === "string" && /^[0-9a-f-]{36}$/i.test(installId) ? `install\0${installId.toLowerCase()}` : undefined;
+};
+
 // Anonymous launches are counted too; a session only links the install to its account.
-appClientRouter.post("/ios/heartbeat", securityRateLimit("ios-client-heartbeat", 30, 60_000), async (req, res, next) => {
+appClientRouter.post("/ios/heartbeat", securityRateLimit("ios-client-heartbeat", 30, 60_000, byInstall), async (req, res, next) => {
   const parsed = iosClientHeartbeatSchema.safeParse(req.body);
   if (!parsed.success) return next(Errors.badRequest("客户端信息格式不正确"));
   try {
@@ -22,7 +28,7 @@ appClientRouter.post("/ios/heartbeat", securityRateLimit("ios-client-heartbeat",
 
 // MetricKit performance reports and crash / hang diagnostics. Idempotent, so
 // the client may retry a batch until it is acknowledged.
-appClientRouter.post("/ios/metrics", securityRateLimit("ios-client-metrics", 20, 60_000), async (req, res, next) => {
+appClientRouter.post("/ios/metrics", securityRateLimit("ios-client-metrics", 20, 60_000, byInstall), async (req, res, next) => {
   const parsed = iosClientMetricsSchema.safeParse(req.body);
   if (!parsed.success) return next(Errors.badRequest("诊断数据格式不正确"));
   try {
@@ -33,7 +39,7 @@ appClientRouter.post("/ios/metrics", securityRateLimit("ios-client-metrics", 20,
 });
 
 // The native Android shell: same contract as the iOS heartbeat above.
-appClientRouter.post("/android/heartbeat", securityRateLimit("android-client-heartbeat", 30, 60_000), async (req, res, next) => {
+appClientRouter.post("/android/heartbeat", securityRateLimit("android-client-heartbeat", 30, 60_000, byInstall), async (req, res, next) => {
   const parsed = androidClientHeartbeatSchema.safeParse(req.body);
   if (!parsed.success) return next(Errors.badRequest("客户端信息格式不正确"));
   try {
@@ -46,7 +52,7 @@ appClientRouter.post("/android/heartbeat", securityRateLimit("android-client-hea
 
 // Daily launch / exit-reason summaries and crash / ANR stack traces. Idempotent,
 // so the client may retry a batch until it is acknowledged.
-appClientRouter.post("/android/metrics", securityRateLimit("android-client-metrics", 20, 60_000), async (req, res, next) => {
+appClientRouter.post("/android/metrics", securityRateLimit("android-client-metrics", 20, 60_000, byInstall), async (req, res, next) => {
   const parsed = androidClientMetricsSchema.safeParse(req.body);
   if (!parsed.success) return next(Errors.badRequest("诊断数据格式不正确"));
   try {
@@ -57,7 +63,7 @@ appClientRouter.post("/android/metrics", securityRateLimit("android-client-metri
 });
 
 // The native HarmonyOS shell: same contract as the heartbeats above.
-appClientRouter.post("/harmony/heartbeat", securityRateLimit("harmony-client-heartbeat", 30, 60_000), async (req, res, next) => {
+appClientRouter.post("/harmony/heartbeat", securityRateLimit("harmony-client-heartbeat", 30, 60_000, byInstall), async (req, res, next) => {
   const parsed = harmonyClientHeartbeatSchema.safeParse(req.body);
   if (!parsed.success) return next(Errors.badRequest("客户端信息格式不正确"));
   try {
