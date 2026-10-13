@@ -65,6 +65,9 @@ export function createGameShell({
     settings: Object.fromEntries(settings.map((item) => [item.id, !!item.default])),
   };
   let storageAvailable = false;
+  // Set once the host reports the `leaderboard` permission; rounds counts finished games.
+  let leaderboard = false;
+  let rounds = 0;
   let persistence = Promise.resolve();
   function persist() {
     if (!storageAvailable) return;
@@ -104,10 +107,42 @@ export function createGameShell({
   function modal(titleText, body, controls) {
     overlay.replaceChildren();
     const card = element("div", "cw-modal");
-    card.append(element("h2", "", titleText), element("p", "", body), ...controls);
+    const text = element("p", "", body);
+    card.append(element("h2", "", titleText), text, ...controls);
     overlay.append(card);
     overlay.hidden = false;
     controls[0]?.focus();
+    return text;
+  }
+  async function showLeaderboard() {
+    const content = openPanel("排行榜");
+    content.append(element("p", "", "正在读取排行榜…"));
+    try {
+      const board = await sdk.getLeaderboard({ limit: 30 });
+      if (!content.isConnected) return;
+      content.replaceChildren();
+      if (!board.entries.length) content.append(element("p", "", "还没有人上榜，来当第一个吧。"));
+      for (const entry of board.entries) {
+        const row = element("article", entry.me ? "cw-history cw-rank cw-rank-me" : "cw-history cw-rank");
+        row.append(
+          element("b", "", String(entry.rank)),
+          element("span", "", entry.nickname),
+          element("strong", "", `${entry.score} 分`),
+        );
+        content.append(row);
+      }
+      content.append(
+        element(
+          "p",
+          "cw-notice",
+          board.me
+            ? `你的最好成绩 ${board.me.score} 分，排第 ${board.me.rank} 名，共 ${board.total} 人上榜。`
+            : "登录后玩一局，成绩就会计入排行榜。",
+        ),
+      );
+    } catch (error) {
+      if (content.isConnected) content.replaceChildren(element("p", "", `排行榜暂时读不到：${error.message}`));
+    }
   }
   function pause() {
     if (phase !== "playing") return;
@@ -201,6 +236,9 @@ export function createGameShell({
     try {
       const env = await sdk.getEnvironment();
       storageAvailable = env.storageAvailable;
+      leaderboard = Array.isArray(env.capabilities) && env.capabilities.includes("leaderboard");
+      // Only works that declare the permission get the button, next to the local history.
+      if (leaderboard && !disposed) actions.insertBefore(button("排行榜", showLeaderboard), actions.lastChild);
       if (storageAvailable) {
         try {
           const saved = documentValue(await sdk.getSave()).gameShell;
@@ -251,10 +289,26 @@ export function createGameShell({
       state.history.unshift({ score, summary, at: Date.now() });
       state.history = state.history.slice(0, 30);
       persist();
-      modal(`${score} 分`, `${summary} · 最高 ${state.best} 分`, [
+      const result = `${summary} · 最高 ${state.best} 分`;
+      const text = modal(`${score} 分`, result, [
         button("再来一局", start, "cw-button cw-primary"),
         button("返回主页", showMenu),
       ]);
+      // The board takes whole, non-negative scores; anything else stays a local record.
+      if (leaderboard && Number.isSafeInteger(score) && score >= 0 && score <= 999999999) {
+        const round = ++rounds;
+        sdk
+          .submitScore(score)
+          .then((outcome) => {
+            if (disposed || round !== rounds || phase !== "over") return;
+            if (outcome.recorded) text.textContent = `${result} · 排行榜第 ${outcome.rank} 名`;
+            else if (outcome.reason === "login") text.textContent = `${result} · 登录后成绩计入排行榜`;
+            else text.textContent = `${result} · 预览时成绩不计入排行榜`;
+          })
+          .catch(() => {
+            /* The local record above is already saved; the ranking is a bonus. */
+          });
+      }
     },
     destroy() {
       disposed = true;

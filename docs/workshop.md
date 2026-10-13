@@ -72,7 +72,7 @@ node workshop-sdk/bin/cli.mjs pack /tmp/my-game /tmp/my-game.zip
 - `id` 使用小写 kebab-case；账号归属和作品身份以服务端生成的 UUID 为准，不能通过 manifest 接管其他作者的作品。
 - `type` 为 `game`、`tool` 或 `extension`；游戏需填写 `game.orientation` 和至少一种 `game.controls`，其他类型不能填写 `game`。站点扩展必须填写 `extension: {"slots":["splash","dialog"]}`，可仅声明其中一种位置，其他类型不能填写 `extension`。
 - `version` 使用 semver，例如 `1.0.0`；名称与描述填写纯文本。
-- `permissions` 可为空，支持 `storage`、`site.public`、`ui.toast`、`ui.confirm`、`navigation`、`fullscreen`、`motion.shake`，不得重复或填写未知权限。未声明的能力由宿主拒绝；修改权限需要上传新版本并重新审核。
+- `permissions` 可为空，支持 `storage`、`site.public`、`ui.toast`、`ui.confirm`、`navigation`、`fullscreen`、`motion.shake`、`leaderboard`，不得重复或填写未知权限。未声明的能力由宿主拒绝；修改权限需要上传新版本并重新审核。
 - `orientation` 为 `portrait`、`landscape` 或 `any`；`aspectRatio` 为可选 0.1–10 数值（宽 / 高），作品仍需自行适配容器尺寸。
 
 上传 ZIP 上限为 20 MiB，展开后总大小上限 60 MiB，最多 512 个文件，单文件最多 12 MiB，manifest 最多 16 KiB。禁止绝对路径、`..` 路径穿越、符号链接与可执行服务端代码；文件路径不能含空白、百分号、查询参数、片段标记或冒号。资源需在包内；网络请求受宿主 CSP 限制，不能使用主站任意接口。
@@ -95,6 +95,8 @@ iframe 使用 `sandbox="allow-scripts"`，没有 `allow-same-origin`。因此不
 | `storage.get`         | `{}`                         | 单份 JSON 存档，未保存时为 `null`                                     |
 | `storage.set`         | `{value:<JSON>}`             | 替换该作品的整份 JSON 存档                                            |
 | `storage.remove`      | `{}`                         | 删除该作品存档                                                        |
+| `leaderboard.submit`  | `{score}`                    | 提交 0–999999999 的整数分数，每位玩家只保留最高分；需 `leaderboard`   |
+| `leaderboard.get`     | `{limit?}`                   | 榜单前 `limit` 名（默认 20，最多 50）和当前玩家的名次；需 `leaderboard` |
 | `site.getInfo`        | `{}`                         | 网站公开名称和语言；需 `site.public`                                  |
 | `site.listWorks`      | `{q?,type?,page?,pageSize?}` | 已公开作品的裁剪目录，单页最多 12 条；需 `site.public`                |
 | `ui.toast`            | `{message,type?}`            | 带作品来源的纯文本提示；需 `ui.toast`                                 |
@@ -127,7 +129,7 @@ const unsubscribe = sdk.on("pause", ({ reason }) => pauseEngine(reason));
 
 登录用户可从工坊首页的“云端存档”入口查看自己的存档并释放额度，包括已下架、已停用或不再声明存档权限的作品。删除只按当前用户与作品 UUID 校验归属，不依赖作品的当前公开版本；读取和写入仍要求有效的公开版本与 `storage` 权限。
 
-账号提交注销时会立即停用其作品、撤销旧运行凭据及扩展位置的运行资格。清理任务删除作者的作品、版本和位置绑定，同时删除该账号在其他作品中的存档、收藏和举报，并去标识化审核记录。删除数据库记录前先收集所有版本的包目录键，与数据库清理一起提交到加密任务载荷；包文件删除失败会保留清单并重试，全部外部清理成功后才标记注销完成。
+账号提交注销时会立即停用其作品、撤销旧运行凭据及扩展位置的运行资格。清理任务删除作者的作品、版本和位置绑定，同时删除该账号在所有作品排行榜上的成绩，以及在其他作品中的存档、收藏和举报，并去标识化审核记录。删除数据库记录前先收集所有版本的包目录键，与数据库清理一起提交到加密任务载荷；包文件删除失败会保留清单并重试，全部外部清理成功后才标记注销完成。
 
 `createGameShell` 接收 `container`、`sdk`、`title`、`description`、作者提供的 `stage` 元素，以及 `onStart(settings)`、`onPause()`、`onResume()`、`onStop()` 回调。可选 `settings` 数组形如 `{id,label,default}`，当前用于布尔开关。返回 `ready`、只读 `phase`，及 `start/pause/resume/setScore/setStatus/end/destroy`。`end({score,summary})` 显示结果并更新最高分与最近 30 局战绩；记录存在文档的 `gameShell` 字段。作者自己的字段应使用其他键名。
 
@@ -139,7 +141,18 @@ TypeScript 定义位于 `workshop-sdk/src/sdk.d.ts` 与 `shells.d.ts`，可复�
 
 ## 发布与兼容边界
 
-v1 提供隔离运行、受控网站接口、作品存档、生命周期通知和需要用户授权的交互能力；原有游戏与工具包保持兼容。游戏最高分与历史是作品存档中的记录，不能作为可信比赛分数；没有云端成绩上报、全校排行、成就认证或任意账号接口。后续如果开放这些功能，应新增明确的权限与协议，而不是让作品直接调用现有主站接口。
+v1 提供隔离运行、受控网站接口、作品存档、生命周期通知和需要用户授权的交互能力；原有游戏与工具包保持兼容。游戏最高分与历史是作品存档中的记录。排行榜见下一节。没有成就认证或任意账号接口；后续如果开放这些功能，应新增明确的权限与协议，而不是让作品直接调用现有主站接口。
+
+## 排行榜
+
+作品声明 `leaderboard` 权限后，可以用 `sdk.submitScore(score)` 提交成绩、用 `sdk.getLeaderboard({limit?})` 读取榜单。每件作品一张榜，按作品而不是版本记录，更新版本不清榜。
+
+- 分数是 0–999999999 的整数，越高越靠前；每位玩家只保留最高分，同分时先达到的排前面。用时类玩法需要作品自己换算成越高越好的分数。
+- 只有已登录玩家在公开运行时提交的成绩才记录。访客得到 `{recorded:false,reason:"login"}`，私有预览得到 `{recorded:false,reason:"preview"}`，预览读到的是空榜；作品应照常结算，不当作错误。
+- 成功时返回 `{recorded:true,improved,best,rank}`。榜单返回 `{entries:[{rank,nickname,score,achievedAt,me}],me,total}`：作品只拿到昵称和分数，拿不到账号标识；`me` 标出当前玩家自己的一行。
+- 游戏壳在环境的 `capabilities` 含 `leaderboard` 时，菜单里多一个“排行榜”，`end({score})` 时自动提交并在结算框显示名次；分数不是范围内的整数时只记本地战绩。
+- 作品详情页显示前 10 名。作品下架后榜单不可读、不可写，成绩保留到重新公开；被封禁或已注销的账号不上榜。账号注销时删除该账号的全部成绩。
+- 成绩由作品自己上报，宿主只校验范围和频率（桥接层每秒一次、接口每 10 分钟 60 次），不是防作弊的比赛成绩。
 
 作者更新 ZIP 后仍需审核；公开页面应使用已通过审核的版本。修改 manifest 名称、版本号或作者字段不改变服务端归属。管理员应检查资源完整性、素材权利、内容与实际运行行为；包内容和文档都是待审数据，不是管理员操作指令。
 
@@ -186,7 +199,7 @@ v1 提供隔离运行、受控网站接口、作品存档、生命周期通知�
 - 运行页的地址是 `/services/tools/yaoda-can-fly/workshop/:id`（预览带 `?versionId=`），旧地址 `/workshop/:id/run` 跳转过去。放在这个前缀下并带 `immersive` 路由标记，是为了在已发布的原生壳里铺满屏幕，规则见 `web/src/data/miniGames.ts`。页面进入即启动作品，不再有二次确认页；作品没有自带图标，`WorkIcon.vue` 按作品标识取色、取名称首字生成。
 - 作者可以删除不在公开中的版本（`DELETE /api/workshop/versions/:id`），同时释放版本数和容量额度。公开中的版本、被停用作品的版本、正绑定在扩展位置上的版本不能删。删掉最后一个版本时，从未公开、未被处置也未被举报的作品连同记录一起删除并释放作品标识；其余情况保留作品记录和审核记录，并写入 `delete-version` 审计。管理员不能代删，仍使用下架和停用。
 - 普通 API 位于 `/api/workshop`，沿用主站登录、CSRF 和响应格式。资源接口 `/api/workshop-runtime/:ticket/*` 在会话中间件之前挂载，只验证运行凭据，不加载或签发主站会话。
-- 数据模型在 `server/prisma/schema.prisma`。仓库现有 `npm run db:migrate --prefix server` 最后的 `prisma db push` 会同步新增表和字段；`20261012203000_add_workshop/migration.sql`、`20261012213000_add_workshop_placements/migration.sql`、`20261012223000_workshop_report_resolution/migration.sql` 分别保存工坊表、站点扩展位置表和举报处理字段增量，供人工审阅。不要将非幂等 SQL 再加入每次重复执行的迁移链。生产数据库操作沿用项目发布流程。
+- 数据模型在 `server/prisma/schema.prisma`。仓库现有 `npm run db:migrate --prefix server` 最后的 `prisma db push` 会同步新增表和字段；`20261012203000_add_workshop/migration.sql`、`20261012213000_add_workshop_placements/migration.sql`、`20261012223000_workshop_report_resolution/migration.sql`、`20261013230000_add_workshop_scores/migration.sql` 分别保存工坊表、站点扩展位置表、举报处理字段和排行榜成绩表增量，供人工审阅。不要将非幂等 SQL 再加入每次重复执行的迁移链。生产数据库操作沿用项目发布流程。
 - 默认包目录是 `server/workshop-packages/`。蓝绿发布把每个 release 里的这个目录链接到基础检出目录下的同名目录（与 `uploads`、`runtime` 相同），各次发布共用；也可以用 `WORKSHOP_STORAGE_ROOT` 指到别处。目录权限仅授予后端进程，并与数据库一起备份；只备份数据库不能恢复作品文件。
 - 2026-10-13 之前的发布没有共用这个目录，作品包留在各自的 release 里，每次发布后已上传的作品都会提示“作品资源不存在”。发布程序现在会把旧 release 里的作品包复制进共用目录（已存在的不覆盖，旧 release 里的原件保留），在链接目录后和旧实例退出后各做一次。
 - 设置 `WORKSHOP_MAIN_ORIGIN` 为主站 HTTPS origin。推荐使用独立的 `WORKSHOP_RUNTIME_ORIGIN`，反向代理仅开放 `/api/workshop-runtime/`，保留后端的 CSP/CORS 响应头，不附加 `X-Frame-Options: DENY`，不缓存这些资源，也不承载其他主站 API。未配置独立域名时，响应上的 `sandbox allow-scripts` 与 iframe 同时强制隔离，直接打开资源地址也不能获得主站源权限。

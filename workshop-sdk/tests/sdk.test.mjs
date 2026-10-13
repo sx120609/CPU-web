@@ -240,6 +240,8 @@ test("local preview cannot impersonate site capabilities", async () => {
       "requestFullscreen",
       "requestShake",
       "close",
+      "submitScore",
+      "getLeaderboard",
     ])
       await assert.rejects(
         sdk[method](),
@@ -247,5 +249,35 @@ test("local preview cannot impersonate site capabilities", async () => {
       );
   } finally {
     globalThis.window = previous;
+  }
+});
+
+test("leaderboard calls carry the score and the requested size to the host", async () => {
+  const host = harness();
+  const sdk = createWorkshopSDK({ timeout: 1000 });
+  try {
+    const port = host.connect();
+    const calls = [];
+    port.on("message", (req) => {
+      calls.push([req.method, req.params]);
+      port.postMessage({
+        type: "response",
+        id: req.id,
+        result: req.method === "leaderboard.submit"
+          ? { recorded: true, improved: true, best: 120, rank: 3 }
+          : { entries: [{ rank: 1, nickname: "甲", score: 300, achievedAt: "2026-10-13T00:00:00.000Z", me: false }], me: { rank: 3, score: 120 }, total: 5 },
+      });
+    });
+    assert.deepEqual(await sdk.submitScore(120), { recorded: true, improved: true, best: 120, rank: 3 });
+    assert.equal((await sdk.getLeaderboard({ limit: 10 })).me.rank, 3);
+    await sdk.getLeaderboard();
+    assert.deepEqual(calls, [
+      ["leaderboard.submit", { score: 120 }],
+      ["leaderboard.get", { limit: 10 }],
+      ["leaderboard.get", {}],
+    ]);
+  } finally {
+    sdk.destroy();
+    host.dispose();
   }
 });

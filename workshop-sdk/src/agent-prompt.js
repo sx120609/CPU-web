@@ -40,9 +40,9 @@ ${JSON.stringify(manifest, null, 2)}
 id 匹配 /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/，最长 80 字符；name 1–80 字符，description 1–2000 字符，均为无 HTML 标签的纯文本；version 为 semver，最长 80 字符。entry 是包内 HTML 路径，只允许示例中的顶层字段。非游戏不能含 game，非扩展不能含 extension。游戏 controls 非空且不重复，值仅 pointer/keyboard/touch；orientation 仅 portrait/landscape/any；aspectRatio 可选 0.1–10（宽/高）。extension.slots 非空且不重复，仅 splash/dialog。扩展公开审核与站长启用确切版本是独立步骤，不会自动全站运行；splash 最长 15 秒，dialog 最长 120 秒，宿主保留跳过/关闭权。
 
 【权限与 SDK】
-permissions 默认 []，只声明必要能力、不重复：storage → getSave/setSave/removeSave/updateSave；site.public → getSiteInfo/listWorks；ui.toast → showToast；ui.confirm → confirm；navigation → openPage；fullscreen → requestFullscreen；motion.shake → requestShake。ready/getEnvironment/on/destroy/close 不需额外权限。listWorks 仅公开裁剪字段、单页最多 12 条；openPage 目标只有 workshop/games/tools。
+permissions 默认 []，只声明必要能力、不重复：storage → getSave/setSave/removeSave/updateSave；site.public → getSiteInfo/listWorks；ui.toast → showToast；ui.confirm → confirm；navigation → openPage；fullscreen → requestFullscreen；motion.shake → requestShake；leaderboard → submitScore/getLeaderboard。ready/getEnvironment/on/destroy/close 不需额外权限。listWorks 仅公开裁剪字段、单页最多 12 条；openPage 目标只有 workshop/games/tools。
 import { createWorkshopSDK, createLocalPreviewSDK } from './workshop/sdk.js';
-页面共享一个 SDK 实例，await sdk.ready 后获取环境。结合 capabilities/storageAvailable 和实际请求结果判断能力，捕获拒绝、超时和不支持。不存在账号、排行榜、云端成绩、认证成就、任意 API、原始传感器等接口，不得虚构方法或绕过消息协议。
+页面共享一个 SDK 实例，await sdk.ready 后获取环境。结合 capabilities/storageAvailable 和实际请求结果判断能力，捕获拒绝、超时和不支持。排行榜：submitScore(score) 只收 0–999999999 的整数，分数越高越靠前，每位玩家只保留最高分；返回 {recorded:true,improved,best,rank}，访客返回 {recorded:false,reason:"login"}，私有预览返回 {recorded:false,reason:"preview"}，这两种情况照常显示本局成绩，不要报错。getLeaderboard({limit?}) 最多 50 条，返回 {entries:[{rank,nickname,score,achievedAt,me}],me,total}，只有昵称和分数。游戏壳在声明 leaderboard 后自动提供“排行榜”按钮并在 end({score}) 时提交，使用游戏壳时不要重复实现。用时类玩法先换算成越高越好的整数分。成绩由作品上报，不是防作弊的比赛成绩。不存在账号资料、认证成就、任意 API、原始传感器等接口，不得虚构方法或绕过消息协议。
 JSON 存档每作品最多 64 KiB，账号总额 2 MiB；无存档仍提供临时体验。updateSave 仅串行化同实例操作，不是跨页面事务；保留其他字段，游戏壳占用 gameShell。不保存密码、令牌或不必要个人信息。
 
 【隔离安全】

@@ -25,6 +25,6 @@ TypeScript 声明保留在 `src/sdk.d.ts`、`src/shells.d.ts` 中，按需复制
 
 插件使用 `type: "extension"`，必须声明 `extension: { "slots": ["splash"] }` 或 `dialog`，也可声明两者。游戏与工具不能包含 `extension`。通用插件模板只演示连接环境与关闭自身，不包含广告或传感器演示。
 
-权限为 `storage`、`site.public`、`ui.toast`、`ui.confirm`、`navigation`、`fullscreen`、`motion.shake`，需在 manifest 中按需声明。SDK 提供 `getSiteInfo()`、`listWorks({q?,type?,page?,pageSize?})`（每页最多 12）、`showToast({message,type?})`、`confirm({title,message})`、`openPage("workshop"|"games"|"tools")`、`requestFullscreen()`、`close()` 与 `requestShake()`。宿主不可用时请求会拒绝；本地预览仅提供本地存档与静态环境，其他宿主能力明确返回 `UNSUPPORTED`。确认与权限交互默认超时 60 秒，普通请求 8 秒，可用 `createWorkshopSDK({timeout,interactionTimeout})` 调整。
+权限为 `storage`、`site.public`、`ui.toast`、`ui.confirm`、`navigation`、`fullscreen`、`motion.shake`、`leaderboard`，需在 manifest 中按需声明。排行榜用 `submitScore(score)`（0–999999999 的整数，越高越靠前，每人只留最高分）和 `getLeaderboard({limit?})`；游戏模板默认声明了它，游戏壳会自动提交成绩并提供“排行榜”按钮。SDK 提供 `getSiteInfo()`、`listWorks({q?,type?,page?,pageSize?})`（每页最多 12）、`showToast({message,type?})`、`confirm({title,message})`、`openPage("workshop"|"games"|"tools")`、`requestFullscreen()`、`close()` 与 `requestShake()`。宿主不可用时请求会拒绝；本地预览仅提供本地存档与静态环境，其他宿主能力明确返回 `UNSUPPORTED`。确认与权限交互默认超时 60 秒，普通请求 8 秒，可用 `createWorkshopSDK({timeout,interactionTimeout})` 调整。
 
 环境新增 `slot`、`viewport`、`capabilities`、`motionSupported`；不会返回账号信息。事件支持 `pause`/`resume`（`{reason?}`）、`show`/`hide`（`{}`）、`themechange`（`{theme}`）、`resize`（`{width,height}`）及 `shake`（`{}`），不提供原始传感器读数。摇动权限由宿主原生确认与真实用户操作授权；postMessage 本身不会触发 iOS 传感器权限。

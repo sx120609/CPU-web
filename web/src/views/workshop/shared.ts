@@ -69,6 +69,7 @@ const permissionNames: Record<WorkshopPermission, string> = {
   navigation: "经你确认后跳转站内页面",
   fullscreen: "经你确认后全屏",
   "motion.shake": "经你授权后感应摇一摇",
+  leaderboard: "把你的成绩记入排行榜，其他人能看到你的昵称和分数",
 };
 export function permissionList(permissions?: readonly string[]) {
   return (permissions ?? []).map(

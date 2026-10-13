@@ -33,7 +33,7 @@ test("erasure captures every package before deleting rows and scopes personal cl
       findMany: async (args: any) => { assert.deepEqual(args.where, { work: { authorId: 7 } }); captured = true; return [{ packageKey: "published" }, { packageKey: "draft" }]; },
       updateMany: record("reviews"),
     },
-    workshopSave: { deleteMany: record("saves") }, workshopFavorite: { deleteMany: record("favorites") },
+    workshopSave: { deleteMany: record("saves") }, workshopScore: { deleteMany: record("scores") }, workshopFavorite: { deleteMany: record("favorites") },
     workshopReport: { deleteMany: record("reports"), updateMany: record("resolutions") },
     workshopAudit: { updateMany: record("audits") },
     workshopWork: { updateMany: record("revoke"), deleteMany: async (args: any) => {
@@ -42,7 +42,7 @@ test("erasure captures every package before deleting rows and scopes personal cl
   } as unknown as Prisma.TransactionClient;
   assert.deepEqual(await eraseWorkshopAccountData(tx, 7), ["published", "draft"]);
   for (const [label, args] of calls) {
-    const key = ({ revoke: "authorId", works: "authorId", saves: "userId", favorites: "userId", reports: "reporterId", resolutions: "resolvedById", audits: "actorId", reviews: "reviewerId" } as Record<string, string>)[label];
+    const key = ({ revoke: "authorId", works: "authorId", saves: "userId", scores: "userId", favorites: "userId", reports: "reporterId", resolutions: "resolvedById", audits: "actorId", reviews: "reviewerId" } as Record<string, string>)[label];
     assert.deepEqual(args.where, { [key]: 7 });
   }
 });

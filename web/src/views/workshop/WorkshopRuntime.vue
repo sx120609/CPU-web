@@ -303,6 +303,11 @@ async function start() {
         storageAvailable:
           selected.manifest.permissions?.includes("storage") || false,
         storageScope: props.preview ? "preview" : cloud ? "account" : "browser",
+        // 成绩只在正式运行且已登录时计入排行榜。
+        leaderboardAvailable:
+          (selected.manifest.permissions?.includes("leaderboard") || false) &&
+          Boolean(userId) &&
+          !props.preview,
         game: selected.manifest.game,
       }),
       storage: {
@@ -332,6 +337,16 @@ async function start() {
         },
       },
       handlers: {
+        // 预览的版本还没公开，没有榜可读，成绩也不计入。
+        getLeaderboard: (limit) =>
+          props.preview
+            ? Promise.resolve({ entries: [], me: null, total: 0 })
+            : workshopApi.leaderboard(id, { versionId: selected.id, limit }),
+        async submitScore(score) {
+          if (props.preview) return { recorded: false, reason: "preview" };
+          if (!userId) return { recorded: false, reason: "login" };
+          return { recorded: true, ...(await workshopApi.submitScore(id, selected.id, score)) };
+        },
         getSiteInfo: () => workshopApi.publicSite(),
         listWorks: (params) => workshopApi.publicCatalog(params),
         toast: (params) => {

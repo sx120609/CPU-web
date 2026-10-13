@@ -101,6 +101,13 @@ export function isWorkshopTicketCurrent(
   return Boolean(ticket.viewerId === viewer?.userId && canManageWorkshop(work, viewer));
 }
 
+/** Scores are whole numbers and higher is better. */
+export const WORKSHOP_SCORE_MAX = 999_999_999;
+export const WORKSHOP_LEADERBOARD_MAX_ENTRIES = 50;
+export function isWorkshopScore(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= WORKSHOP_SCORE_MAX;
+}
+
 export const WORKSHOP_SAVE_MAX_BYTES = 64 * 1024;
 export const WORKSHOP_SAVE_ACCOUNT_BYTES = 2 * 1024 * 1024;
 /** JSON wire size is also our quota measure; reject objects that cannot be JSON. */

@@ -100,6 +100,7 @@ export const workshopManifestSchema = z
           "navigation",
           "fullscreen",
           "motion.shake",
+          "leaderboard",
         ]),
       )
       .max(32)

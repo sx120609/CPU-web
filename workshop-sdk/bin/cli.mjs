@@ -135,6 +135,7 @@ export function validateManifest(manifest) {
             "navigation",
             "fullscreen",
             "motion.shake",
+            "leaderboard",
           ].includes(value),
         ) &&
         new Set(manifest.permissions).size === manifest.permissions.length),

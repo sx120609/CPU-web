@@ -72,6 +72,25 @@
         <p class="wk-text wk-detail-text">{{ version.description }}</p>
       </section>
 
+      <section v-if="hasBoard" class="wk-group wk-group--flush">
+        <div class="wk-group-head">
+          <div>
+            <h2 class="wk-h2">排行榜</h2>
+            <p class="wk-sub">{{ boardHint }}</p>
+          </div>
+        </div>
+        <ol v-if="board?.entries.length" class="wk-detail-board">
+          <li v-for="entry in board.entries" :key="entry.rank" :class="{ 'is-me': entry.me }">
+            <b :class="{ 'is-first': entry.rank === 1 }">{{ entry.rank }}</b>
+            <span>{{ entry.nickname }}</span>
+            <strong>{{ entry.score }}</strong>
+          </li>
+        </ol>
+        <p v-if="board?.me && !board.entries.some((entry) => entry.me)" class="wk-detail-board-me">
+          你排第 {{ board.me.rank }} 名，最好成绩 {{ board.me.score }} 分
+        </p>
+      </section>
+
       <section class="wk-group">
         <h2 class="wk-h2">信息</h2>
         <dl class="wk-facts wk-detail-facts">
@@ -163,7 +182,7 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ArrowLeft, Star, StarFilled, Warning } from "@element-plus/icons-vue";
-import { workshopApi, type WorkshopWork } from "@/api/workshop";
+import { workshopApi, type WorkshopLeaderboard, type WorkshopWork } from "@/api/workshop";
 import { useAuthStore } from "@/stores/auth";
 import WorkIcon from "./WorkIcon.vue";
 import {
@@ -200,6 +219,19 @@ const state = computed(() => workState(work.value!));
 const permissions = computed(() =>
   permissionList(version.value?.manifest.permissions?.filter((item) => item !== "storage")),
 );
+// 排行榜只在公开运行时记录，所以只给能打开的作品显示。
+const hasBoard = computed(
+  () => canUse.value && Boolean(version.value?.manifest.permissions?.includes("leaderboard")),
+);
+const board = ref<WorkshopLeaderboard | null>(null);
+const boardFailed = ref(false);
+const boardHint = computed(() => {
+  if (boardFailed.value) return "暂时读不到，稍后再试";
+  if (!board.value) return "正在读取…";
+  if (!board.value.total) return "还没有人上榜，来当第一个";
+  const scope = board.value.total > board.value.entries.length ? `前 ${board.value.entries.length} 名，共 ${board.value.total} 人上榜` : `共 ${board.value.total} 人上榜`;
+  return auth.isLoggedIn ? scope : `${scope} · 登录后成绩才会计入`;
+});
 const loading = ref(true);
 const error = ref("");
 const favoriteBusy = ref(false);
@@ -231,7 +263,19 @@ async function load() {
   work.value = null;
   try {
     const data = await workshopApi.detail(String(route.params.id));
-    if (id === requestId) work.value = data;
+    if (id !== requestId) return;
+    work.value = data;
+    board.value = null;
+    boardFailed.value = false;
+    if (hasBoard.value)
+      workshopApi.leaderboard(data.id, { limit: 10 }).then(
+        (result) => {
+          if (id === requestId) board.value = result;
+        },
+        () => {
+          if (id === requestId) boardFailed.value = true;
+        },
+      );
   } catch (e) {
     if (id === requestId) error.value = workshopError(e, "作品不存在或暂时无法访问");
   } finally {
@@ -323,6 +367,45 @@ watch(() => route.params.id, load, { immediate: true });
 .wk-detail-facts { margin-top: 10px; }
 .wk-detail-permission { display: block; }
 .wk-detail-reason { margin-top: 6px; }
+.wk-detail-board {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wk-detail-board li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--cpu-border-soft);
+  font-size: var(--cpu-fs-m);
+}
+.wk-detail-board li.is-me { background: var(--cpu-primary-soft); }
+.wk-detail-board b {
+  width: 24px;
+  flex: 0 0 auto;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-l);
+  font-weight: 700;
+  text-align: center;
+}
+.wk-detail-board b.is-first { color: var(--cpu-hue-amber-ink); }
+.wk-detail-board span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-detail-board strong { flex: 0 0 auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wk-detail-board-me {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--cpu-border-soft);
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+}
 .wk-detail-report {
   display: inline-flex;
   align-items: center;

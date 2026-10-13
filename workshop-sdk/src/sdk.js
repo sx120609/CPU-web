@@ -108,6 +108,8 @@ export function createWorkshopSDK({
       request("fullscreen.request", {}, interactionTimeout),
     close: () => request("runtime.close"),
     requestShake: () => request("motion.requestShake", {}, interactionTimeout),
+    submitScore: (score) => request("leaderboard.submit", { score }),
+    getLeaderboard: (params = {}) => request("leaderboard.get", params),
     getSave: () => enqueue(() => request("storage.get")),
     setSave: (value) => enqueue(() => request("storage.set", { value })),
     removeSave: () => enqueue(() => request("storage.remove")),
@@ -199,6 +201,8 @@ export function createLocalPreviewSDK({
     requestFullscreen: unsupportedPreview,
     close: unsupportedPreview,
     requestShake: unsupportedPreview,
+    submitScore: unsupportedPreview,
+    getLeaderboard: unsupportedPreview,
     getSave: () => enqueue(read),
     setSave: (value) => enqueue(() => write(value)),
     removeSave: () =>

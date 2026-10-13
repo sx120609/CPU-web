@@ -9,7 +9,8 @@ export type WorkshopPermission =
   | "ui.confirm"
   | "navigation"
   | "fullscreen"
-  | "motion.shake";
+  | "motion.shake"
+  | "leaderboard";
 export interface WorkshopPlacement {
   slot: WorkshopSlot;
   workId: string;
@@ -104,6 +105,11 @@ export interface WorkshopAudit {
   action: string;
   reason: string | null;
   createdAt: string;
+}
+export interface WorkshopLeaderboard {
+  entries: { rank: number; nickname: string; score: number; achievedAt: string; me: boolean }[];
+  me: { rank: number; score: number } | null;
+  total: number;
 }
 export interface WorkshopSaveSummary {
   workId: string;
@@ -265,6 +271,14 @@ export const workshopApi = {
     request.post(
       `/workshop/admin/works/${encodeURIComponent(id)}/state`,
       { action },
+      writeOptions,
+    ),
+  leaderboard: (id: string, params: { versionId?: string; limit?: number } = {}) =>
+    request.get<WorkshopLeaderboard>(`${workPath(id)}/leaderboard`, params, readOptions),
+  submitScore: (id: string, versionId: string, score: number) =>
+    request.post<{ improved: boolean; best: number; rank: number }>(
+      `${workPath(id)}/leaderboard`,
+      { versionId, score },
       writeOptions,
     ),
   getStorage: (id: string, versionId: string) =>

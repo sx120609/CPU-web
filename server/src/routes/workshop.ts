@@ -25,9 +25,11 @@ import {
   listWorkshopWorks,
   readWorkshopSave,
   listWorkshopSaves,
+  readWorkshopLeaderboard,
   reportWorkshopWork,
   reviewWorkshopVersion,
   setWorkshopWorkState,
+  submitWorkshopScore,
   submitWorkshopVersion,
   writeWorkshopSave,
 } from "../services/workshop";
@@ -325,6 +327,36 @@ workshopRouter.post(
   ),
 );
 
+workshopRouter.get(
+  "/works/:id/leaderboard",
+  authOptional,
+  route(async (req, res) => {
+    const query = z
+      .object({
+        versionId: idSchema.optional(),
+        limit: z.coerce.number().int().min(1).max(50).optional(),
+      })
+      .parse(req.query);
+    ok(res, await readWorkshopLeaderboard(idSchema.parse(req.params.id), query, req.user));
+  }),
+);
+workshopRouter.post(
+  "/works/:id/leaderboard",
+  authRequired,
+  limit("score", 60, 10 * 60 * 1000),
+  validate(z.object({ versionId: idSchema, score: z.number() }).strict()),
+  route(async (req, res) =>
+    ok(
+      res,
+      await submitWorkshopScore(
+        idSchema.parse(req.params.id),
+        req.body.versionId,
+        req.body.score,
+        req.user!,
+      ),
+    ),
+  ),
+);
 workshopRouter.get(
   "/storage",
   authRequired,

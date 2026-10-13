@@ -10,7 +10,9 @@ import {
   assertWorkshopVersionDeletion,
   canManageWorkshop,
   isWorkshopPublished,
+  isWorkshopScore,
   workshopSaveBytes,
+  WORKSHOP_LEADERBOARD_MAX_ENTRIES,
   WORKSHOP_SAVE_ACCOUNT_BYTES,
   type WorkshopViewer,
 } from "./workshopPolicy";
@@ -590,6 +592,93 @@ async function storageWork(tx: Tx, id: string, versionId: string) {
     throw Errors.conflict("作品已更新或下架，请重新打开作品");
   if (!manifest.permissions?.includes("storage")) throw Errors.forbidden("此作品未申请存档权限");
   return work;
+}
+// Accounts that no longer take part are left off every board, including their own rank.
+const rankedPlayer = { status: { notIn: ["banned", "deleting", "deleted"] } };
+async function leaderboardWork(tx: Tx, id: string, versionId?: string) {
+  const work = await publicWork(id, tx);
+  const manifest = work.publishedVersion!.manifest as unknown as WorkshopManifest;
+  if (versionId && work.publishedVersionId !== versionId)
+    throw Errors.conflict("作品已更新或下架，请重新打开作品");
+  if (!manifest.permissions?.includes("leaderboard"))
+    throw Errors.forbidden("此作品未申请排行榜权限");
+  return work;
+}
+async function scoreRank(tx: Tx, workId: string, own: { score: number; achievedAt: Date; userId: number }) {
+  // Ties rank by who got there first.
+  const ahead = await tx.workshopScore.count({
+    where: {
+      workId,
+      user: rankedPlayer,
+      OR: [
+        { score: { gt: own.score } },
+        { score: own.score, achievedAt: { lt: own.achievedAt } },
+        { score: own.score, achievedAt: own.achievedAt, userId: { lt: own.userId } },
+      ],
+    },
+  });
+  return ahead + 1;
+}
+export async function readWorkshopLeaderboard(
+  id: string,
+  options: { versionId?: string; limit?: number },
+  viewer?: WorkshopViewer,
+  db: Database = prisma,
+) {
+  await leaderboardWork(db, id, options.versionId);
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), WORKSHOP_LEADERBOARD_MAX_ENTRIES);
+  const where = { workId: id, user: rankedPlayer };
+  const [rows, total, own] = await Promise.all([
+    db.workshopScore.findMany({
+      where,
+      orderBy: [{ score: "desc" }, { achievedAt: "asc" }, { userId: "asc" }],
+      take: limit,
+      select: { userId: true, score: true, achievedAt: true, user: { select: { nickname: true } } },
+    }),
+    db.workshopScore.count({ where }),
+    viewer
+      ? db.workshopScore.findFirst({ where: { ...where, userId: viewer.userId } })
+      : null,
+  ]);
+  return {
+    // Nickname and score only: a work never learns who the players are.
+    entries: rows.map((row, index) => ({
+      rank: index + 1,
+      nickname: row.user.nickname,
+      score: row.score,
+      achievedAt: row.achievedAt,
+      me: row.userId === viewer?.userId,
+    })),
+    me: own ? { rank: await scoreRank(db, id, own), score: own.score } : null,
+    total,
+  };
+}
+export async function submitWorkshopScore(
+  id: string,
+  versionId: string,
+  score: unknown,
+  viewer: WorkshopViewer,
+  db: Database = prisma,
+) {
+  if (!isWorkshopScore(score)) throw Errors.badRequest("分数必须是 0 到 999999999 之间的整数");
+  return db.$transaction(async (tx) => {
+    await leaderboardWork(tx, id, versionId);
+    const player = await tx.user.findUnique({ where: { id: viewer.userId }, select: { status: true } });
+    if (!player || rankedPlayer.status.notIn.includes(player.status))
+      throw Errors.forbidden("账户已停止访问，无法记录成绩");
+    // One statement keeps the best score even when two games finish at once.
+    const improved = await tx.$queryRaw<{ score: number }[]>`
+      INSERT INTO "WorkshopScore" ("workId", "userId", "score", "achievedAt")
+      VALUES (${id}, ${viewer.userId}, ${score}, NOW())
+      ON CONFLICT ("workId", "userId") DO UPDATE
+        SET "score" = EXCLUDED."score", "achievedAt" = EXCLUDED."achievedAt"
+        WHERE "WorkshopScore"."score" < EXCLUDED."score"
+      RETURNING "score"`;
+    const own = await tx.workshopScore.findUniqueOrThrow({
+      where: { workId_userId: { workId: id, userId: viewer.userId } },
+    });
+    return { improved: improved.length > 0, best: own.score, rank: await scoreRank(tx, id, own) };
+  });
 }
 export async function readWorkshopSave(id: string, versionId: string, viewer: WorkshopViewer) {
   await storageWork(prisma, id, versionId);

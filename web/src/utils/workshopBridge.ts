@@ -43,7 +43,11 @@ export interface WorkshopCapabilityResult {
   enabled: boolean;
   reason?: string;
 }
+/** Scores are whole numbers; higher is better. Same bounds as the server. */
+export const WORKSHOP_SCORE_MAX = 999_999_999;
 export interface WorkshopBridgeHandlers {
+  getLeaderboard(limit: number): Promise<unknown>;
+  submitScore(score: number): Promise<unknown>;
   getSiteInfo(): Promise<unknown>;
   listWorks(params: WorkshopListParams): Promise<unknown>;
   toast(params: WorkshopToastParams): void | Promise<void>;
@@ -99,6 +103,7 @@ export function createWorkshopBridge(options: BridgeOptions) {
   let chain = Promise.resolve();
 
   const uiCalls = new Map<string, number>();
+  let lastScoreAt = 0;
   const allowed = (permission: string) =>
     options.permissions
       ? options.permissions.includes(permission)
@@ -168,6 +173,31 @@ export function createWorkshopBridge(options: BridgeOptions) {
         )
           throw new Error("分页参数不正确");
       return handler("listWorks", "site.public")(data as WorkshopListParams);
+    }
+    if (method === "leaderboard.get") {
+      const data = paramsObject(params, ["limit"]);
+      if (
+        data.limit !== undefined &&
+        (!Number.isSafeInteger(data.limit) ||
+          (data.limit as number) < 1 ||
+          (data.limit as number) > 50)
+      )
+        throw new Error("排行榜条数不正确");
+      return handler("getLeaderboard", "leaderboard")((data.limit as number | undefined) ?? 20);
+    }
+    if (method === "leaderboard.submit") {
+      const data = paramsObject(params, ["score"]);
+      if (
+        !Number.isSafeInteger(data.score) ||
+        (data.score as number) < 0 ||
+        (data.score as number) > WORKSHOP_SCORE_MAX
+      )
+        throw new Error("分数必须是 0 到 999999999 之间的整数");
+      const fn = handler("submitScore", "leaderboard");
+      const now = Date.now();
+      if (now - lastScoreAt < 1000) throw new Error("成绩提交过于频繁，请稍后重试");
+      lastScoreAt = now;
+      return fn(data.score as number);
     }
     if (method === "ui.toast") {
       const data = paramsObject(params, ["message", "type"]);

@@ -54,6 +54,11 @@ test("workshop account erasure revokes tickets, removes owned records and retrie
     };
     const owned = await makeWork(owner.id, "extension"), untouched = await makeWork(other.id);
     await db.workshopPlacement.create({ data: { slot: "dialog", versionId: owned.version.id } });
+    await db.workshopScore.createMany({ data: [
+      { workId: owned.work.id, userId: other.id, score: 10 },
+      { workId: untouched.work.id, userId: owner.id, score: 20 },
+      { workId: untouched.work.id, userId: other.id, score: 30 },
+    ] });
     await db.workshopSave.createMany({ data: [
       { workId: owned.work.id, userId: owner.id, data: { private: "owner" }, bytes: 20 },
       { workId: owned.work.id, userId: other.id, data: { private: "other" }, bytes: 20 },
@@ -88,6 +93,9 @@ test("workshop account erasure revokes tickets, removes owned records and retrie
     assert.equal(await db.workshopWork.count({ where: { authorId: owner.id } }), 0);
     assert.equal(await db.workshopPlacement.count({ where: { versionId: owned.version.id } }), 0);
     assert.equal(await db.workshopSave.count({ where: { userId: owner.id } }), 0);
+    // The erased account's scores go; other players' scores on other works stay.
+    assert.equal(await db.workshopScore.count({ where: { userId: owner.id } }), 0);
+    assert.equal(await db.workshopScore.count({ where: { workId: untouched.work.id, userId: other.id } }), 1);
     assert.equal(await db.workshopFavorite.count({ where: { userId: owner.id } }), 0);
     assert.equal(await db.workshopReport.count({ where: { reporterId: owner.id } }), 0);
     const cleanedAudit = await db.workshopAudit.findUniqueOrThrow({ where: { id: audit.id } });
@@ -203,6 +211,88 @@ test("authors delete non-public versions, which frees quota and, for never-publi
     await db.workshopReport.create({ data: { workId: reported.id, reporterId: stranger.id, reason: "keep the record" } });
     assert.equal((await deleteWorkshopVersion(reportedVersion.id, viewer, db)).workDeleted, false);
     assert.equal(await db.workshopReport.count({ where: { workId: reported.id } }), 1);
+  } finally {
+    await db.user.deleteMany({ where: { id: { in: users } } });
+    await db.$disconnect();
+  }
+});
+
+test("a work's leaderboard keeps each player's best score and ranks ties by who got there first", {
+  skip: !process.env.WORKSHOP_TEST_DATABASE_URL,
+  timeout: 120_000,
+}, async () => {
+  const url = new URL(process.env.WORKSHOP_TEST_DATABASE_URL!);
+  assert.equal(url.hostname, "127.0.0.1");
+  assert.equal(url.searchParams.get("schema"), "workshop_test");
+  const serverRoot = path.resolve(__dirname, "..");
+  await promisify(execFile)(process.execPath, [
+    path.join(serverRoot, "node_modules/prisma/build/index.js"), "db", "push", "--skip-generate", "--schema", path.join(serverRoot, "prisma/schema.prisma"),
+  ], { cwd: serverRoot, env: { ...process.env, DATABASE_URL: url.href } });
+  const db = new PrismaClient({ datasources: { db: { url: url.href } } });
+  const users: number[] = [];
+  try {
+    const { readWorkshopLeaderboard, submitWorkshopScore } = await import("../src/services/workshop");
+    const player = async (nickname: string) => {
+      const user = await db.user.create({ data: { username: `workshop-score-${randomUUID()}`, passwordHash: "test", nickname } });
+      users.push(user.id);
+      return { userId: user.id, role: "user" };
+    };
+    const [author, first, second, third] = [await player("作者"), await player("甲"), await player("乙"), await player("丙")];
+    const makeWork = async (permissions: string[]) => {
+      const work = await db.workshopWork.create({ data: { slug: `work-${randomUUID()}`, authorId: author.userId } });
+      const version = await db.workshopVersion.create({ data: {
+        workId: work.id, version: "1.0.0", name: "Ranked", description: "Test", type: "game",
+        manifest: { schemaVersion: 1, id: work.slug, type: "game", name: "Ranked", description: "Test", version: "1.0.0", entry: "index.html", permissions },
+        files: ["index.html"], packageKey: randomUUID(), totalBytes: 24, status: "APPROVED",
+      } });
+      await db.workshopWork.update({ where: { id: work.id }, data: { publishedVersionId: version.id } });
+      return { workId: work.id, versionId: version.id };
+    };
+    const ranked = await makeWork(["leaderboard"]), plain = await makeWork(["storage"]);
+    const submit = (viewer: { userId: number; role: string }, score: unknown) =>
+      submitWorkshopScore(ranked.workId, ranked.versionId, score, viewer, db);
+
+    assert.deepEqual(await submit(first, 100), { improved: true, best: 100, rank: 1 });
+    assert.deepEqual(await submit(second, 250), { improved: true, best: 250, rank: 1 });
+    assert.deepEqual(await submit(first, 60), { improved: false, best: 100, rank: 2 });
+    // Equal scores: the earlier one keeps the higher place.
+    assert.deepEqual(await submit(third, 100), { improved: true, best: 100, rank: 3 });
+    assert.deepEqual(await submit(first, 300), { improved: true, best: 300, rank: 1 });
+    assert.equal(await db.workshopScore.count({ where: { workId: ranked.workId } }), 3);
+
+    const board = await readWorkshopLeaderboard(ranked.workId, { versionId: ranked.versionId }, third, db);
+    assert.deepEqual(board.entries.map(({ rank, nickname, score, me }) => ({ rank, nickname, score, me })), [
+      { rank: 1, nickname: "甲", score: 300, me: false },
+      { rank: 2, nickname: "乙", score: 250, me: false },
+      { rank: 3, nickname: "丙", score: 100, me: true },
+    ]);
+    assert.deepEqual(board.me, { rank: 3, score: 100 });
+    assert.equal(board.total, 3);
+    assert.ok(!("userId" in board.entries[0]));
+
+    // Visitors read the board; a short list still reports the full size and nobody as "me".
+    const visitor = await readWorkshopLeaderboard(ranked.workId, { limit: 2 }, undefined, db);
+    assert.equal(visitor.entries.length, 2); assert.equal(visitor.total, 3); assert.equal(visitor.me, null);
+    assert.equal((await readWorkshopLeaderboard(ranked.workId, {}, author, db)).me, null);
+
+    for (const score of [-1, 1.5, 1_000_000_000, "100", null])
+      await assert.rejects(submit(first, score), /整数/);
+    await assert.rejects(submitWorkshopScore(plain.workId, plain.versionId, 5, first, db), /未申请排行榜权限/);
+    await assert.rejects(readWorkshopLeaderboard(plain.workId, {}, first, db), /未申请排行榜权限/);
+    await assert.rejects(submitWorkshopScore(ranked.workId, randomUUID(), 5, first, db), /已更新或下架/);
+
+    // A banned player drops off the board and cannot add to it; everyone below moves up.
+    await db.user.update({ where: { id: second.userId }, data: { status: "banned" } });
+    await assert.rejects(submit(second, 999), /账户已停止访问/);
+    const afterBan = await readWorkshopLeaderboard(ranked.workId, {}, third, db);
+    assert.deepEqual(afterBan.entries.map((entry) => entry.nickname), ["甲", "丙"]);
+    assert.deepEqual(afterBan.me, { rank: 2, score: 100 });
+
+    // Unpublished: no reads, no writes; the scores themselves stay for a later release.
+    await db.workshopWork.update({ where: { id: ranked.workId }, data: { publishedVersionId: null } });
+    await assert.rejects(submit(first, 400), /尚未公开或已下架/);
+    await assert.rejects(readWorkshopLeaderboard(ranked.workId, {}, first, db), /尚未公开或已下架/);
+    assert.equal(await db.workshopScore.count({ where: { workId: ranked.workId } }), 3);
   } finally {
     await db.user.deleteMany({ where: { id: { in: users } } });
     await db.$disconnect();

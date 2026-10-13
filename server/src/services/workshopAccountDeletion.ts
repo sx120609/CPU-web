@@ -21,6 +21,7 @@ export async function eraseWorkshopAccountData(tx: Prisma.TransactionClient, use
     select: { packageKey: true },
   });
   await tx.workshopSave.deleteMany({ where: { userId } });
+  await tx.workshopScore.deleteMany({ where: { userId } });
   await tx.workshopFavorite.deleteMany({ where: { userId } });
   await tx.workshopReport.deleteMany({ where: { reporterId: userId } });
   await tx.workshopAudit.updateMany({

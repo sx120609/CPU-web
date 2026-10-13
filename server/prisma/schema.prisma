@@ -162,6 +162,7 @@ model User {
   workshopReports              WorkshopReport[] @relation("WorkshopReporter")
   workshopResolvedReports      WorkshopReport[] @relation("WorkshopReportResolver")
   workshopSaves                WorkshopSave[]
+  workshopScores               WorkshopScore[]
   workshopAuditEvents          WorkshopAudit[]
   forumReactions               ForumReaction[]
   verificationApplications     UserVerificationApplication[] @relation("VerificationApplicant")
@@ -2748,6 +2749,7 @@ model WorkshopWork {
   favorites          WorkshopFavorite[]
   reports            WorkshopReport[]
   saves              WorkshopSave[]
+  scores             WorkshopScore[]
   audits             WorkshopAudit[]
 
   @@index([authorId, updatedAt])
@@ -2824,6 +2826,21 @@ model WorkshopSave {
 
   @@id([workId, userId])
   @@index([userId, updatedAt])
+}
+
+// Best score per player in a work that declares the `leaderboard` permission.
+// Reported by the work itself: a ranking among players, not a verified result.
+model WorkshopScore {
+  workId     String
+  userId     Int
+  score      Int
+  achievedAt DateTime @default(now())
+  work       WorkshopWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workId, userId])
+  @@index([workId, score, achievedAt])
+  @@index([userId])
 }
 
 model WorkshopAudit {

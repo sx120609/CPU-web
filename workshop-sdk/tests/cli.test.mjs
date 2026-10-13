@@ -40,6 +40,7 @@ test("generic extension scaffold packs and validates supported slots and permiss
         "navigation",
         "fullscreen",
         "motion.shake",
+        "leaderboard",
       ],
     });
     for (const extension of [

@@ -342,3 +342,52 @@ test("disposed bridge suppresses pending async responses", async () => {
     h.close();
   }
 });
+
+test("leaderboard needs its permission, whole scores in range, and paces submissions", async () => {
+  const scores: number[] = [];
+  const limits: number[] = [];
+  const h = harness(true, {
+    permissions: ["leaderboard"],
+    handlers: {
+      getLeaderboard: async (limit) => {
+        limits.push(limit);
+        return { entries: [], me: null, total: 0 };
+      },
+      submitScore: async (score) => {
+        scores.push(score);
+        return { recorded: true, improved: true, best: score, rank: 1 };
+      },
+    },
+  });
+  try {
+    h.hello();
+    const port = h.port!;
+    assert.deepEqual((await request(port, "leaderboard.get")).result, { entries: [], me: null, total: 0 });
+    await request(port, "leaderboard.get", { limit: 50 });
+    assert.deepEqual(limits, [20, 50]);
+    for (const params of [{ limit: 0 }, { limit: 51 }, { limit: 2.5 }, { userId: 1 }])
+      assert.ok((await request(port, "leaderboard.get", params)).error);
+    for (const score of [-1, 1.5, 1_000_000_000, "100", null, Number.NaN])
+      assert.match((await request(port, "leaderboard.submit", { score })).error!.message, /整数/);
+    assert.ok((await request(port, "leaderboard.submit", { score: 10, nickname: "forged" })).error);
+    assert.deepEqual((await request(port, "leaderboard.submit", { score: 88 })).result, {
+      recorded: true, improved: true, best: 88, rank: 1,
+    });
+    assert.match((await request(port, "leaderboard.submit", { score: 99 })).error!.message, /频繁/);
+    assert.deepEqual(scores, [88]);
+  } finally {
+    h.close();
+  }
+
+  const undeclared = harness(true, {
+    permissions: ["storage"],
+    handlers: { getLeaderboard: async () => ({}), submitScore: async () => ({}) },
+  });
+  try {
+    undeclared.hello();
+    for (const [method, params] of [["leaderboard.get", {}], ["leaderboard.submit", { score: 1 }]] as const)
+      assert.match((await request(undeclared.port!, method, params)).error!.message, /未声明所需权限/);
+  } finally {
+    undeclared.close();
+  }
+});
