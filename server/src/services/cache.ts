@@ -65,6 +65,7 @@ const DURABLE_EPHEMERAL_PREFIXES = [
   buildRedisKey("jwxt", "agent-session-replica") + ":",
   buildRedisKey("jwxt", "user-session") + ":",
 ];
+const SESSION_REVOCATION_KEY_PREFIX = buildRedisKey("auth", "browser-session-revoked") + ":";
 let durableStoreUnavailableLogged = false;
 
 function isDurableEphemeralKey(key: string) {
@@ -464,10 +465,28 @@ export async function deleteSubjectCacheEntries(subjectHash: string) {
   }
 }
 
+// Redis 正常但没查到时才回退数据库，用于 Redis 被清空后恢复会话。伪造的随机会话 Cookie 每次都会走到这里，
+// 所以这条路径有全局速率预算；Redis 不可用时数据库是唯一存储，不受此限制。
+const durableMissBudget = { tokens: 50, updatedAt: Date.now() };
+const DURABLE_MISS_PER_SECOND = 20;
+const DURABLE_MISS_BURST = 50;
+
+export function takeDurableMissBudget(now = Date.now()) {
+  durableMissBudget.tokens = Math.min(
+    DURABLE_MISS_BURST,
+    durableMissBudget.tokens + ((now - durableMissBudget.updatedAt) / 1000) * DURABLE_MISS_PER_SECOND,
+  );
+  durableMissBudget.updatedAt = now;
+  if (durableMissBudget.tokens < 1) return false;
+  durableMissBudget.tokens -= 1;
+  return true;
+}
+
 export async function getEphemeralValue(key: string) {
   const shared = await readRedisString(key);
   if (shared.available && shared.value !== null) return shared.value;
-  if (isDurableEphemeralKey(key)) {
+  // 撤销标记必须查到底：漏查会让已退出的会话继续有效。其余键查不到只会被当作未登录。
+  if (isDurableEphemeralKey(key) && (!shared.available || key.startsWith(SESSION_REVOCATION_KEY_PREFIX) || takeDurableMissBudget())) {
     const durable = await readDurableEphemeralValue(key);
     if (durable) {
       // Redis 被清空或短暂不可用时，用数据库中的加密副本恢复热缓存。

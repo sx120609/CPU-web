@@ -32,6 +32,7 @@ import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
 import { authOptional } from "./middleware/auth";
+import { createAdmissionControl } from "./middleware/admissionControl";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
 import { voiceHubProxyMiddleware } from "./services/voiceHubProxy";
 import { startWechatNotificationPoller } from "./services/wechatService";
@@ -102,6 +103,9 @@ export function createApp(options: { workers?: boolean } = {}) {
   );
   // 作品资源只认短期运行凭据，不加载主站会话；沙箱响应自行设置隔离策略。
   app.use("/api/workshop-runtime", workshopRuntimeRouter);
+  // 过载时的全站准入（见 middleware/admissionControl.ts）：要在解析请求体之前决定，被拒的请求不再读取正文。
+  // 先加载浏览器会话，才能把 Cookie 登录的用户与匿名请求区分开。
+  app.use("/api", browserSessionMiddleware, createAdmissionControl().middleware);
   // 未登录的认证入口只接收账号、验证码和加密凭据，先用小上限解析；已解析的请求会被全局解析器跳过。
   app.use("/api/auth", express.json({ limit: "1mb" }));
   // 桌面端截图保持原始 PNG（最大 8MB）；Base64 与 JSON 封装后会略高于 10MB。
@@ -112,7 +116,7 @@ export function createApp(options: { workers?: boolean } = {}) {
     express.json({ type: ["application/csp-report", "application/reports+json"], limit: "32kb" }),
     receiveCspReport,
   );
-  app.use("/api", browserSessionMiddleware, requestOriginAndCsrfProtection);
+  app.use("/api", requestOriginAndCsrfProtection);
   app.use("/api/workshop", workshopRouter);
   app.use(["/api/auth", "/api/user", "/api/jwxt", "/api/admin", "/api/courses/sync", "/api/live-activities"], (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
