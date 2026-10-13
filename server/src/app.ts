@@ -5,7 +5,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
 import { androidUpdateGate } from "./middleware/androidUpdate";
-import { router } from "./routes";
+import { router, apiAdmissionPaths } from "./routes";
 import { shareRouter } from "./routes/share";
 import { workshopRouter, workshopRuntimeRouter } from "./routes/workshop";
 import { androidDownloadHandler, LEGACY_ANDROID_DOWNLOAD_PATH } from "./routes/androidDownload";
@@ -92,7 +92,7 @@ export function createApp(options: { workers?: boolean } = {}) {
     return fail(res, 5030, getDatabaseMaintenanceMessage(), 503);
   });
   // 过载时的全站准入（见 middleware/admissionControl.ts），所有公开动态入口共用一个实例、各自成组。
-  const admission = createAdmissionControl();
+  const admission = createAdmissionControl({}, [...apiAdmissionPaths, "/api/security", "/api/workshop", "/share", "/uploads", "/qqbot", "/filestore"]);
   app.use(["/share", "/uploads", "/qqbot"], admission.middleware);
   app.use(
     "/filestore",

@@ -78,9 +78,16 @@ export class AdmissionController {
   private userRejected = 0;
   pressure = false;
 
-  constructor(options: Partial<AdmissionOptions> = {}, private readonly log: (message: string) => void = () => undefined) {
+  constructor(options: Partial<AdmissionOptions> = {}, private readonly log: (message: string) => void = () => undefined, paths: readonly string[] = []) {
     this.options = { ...DEFAULT_ADMISSION_OPTIONS, ...options };
     this.headroom = this.options.maxHeadroom;
+    // Only server-owned mount paths allocate lanes, before their first request.
+    for (const path of paths) {
+      const key = this.laneKey(path);
+      if (!key || this.lanes.has(key)) continue;
+      if (this.lanes.size >= this.options.maxLanes) throw new Error("Too many configured admission lanes");
+      this.lanes.set(key, { arrivals: 0, baseline: 0, samples: 0, bucket: null, rejected: 0 });
+    }
   }
 
   /** 请求所属的匿名分组：/api/<第一段>，其他入口为 /<第一段>；统一小写（Express 路由不区分大小写）。 */
@@ -137,10 +144,10 @@ export class AdmissionController {
     } else {
       lane.bucket = null;
     }
-    return this.track(() => undefined, () => undefined, key);
+    return this.track(() => undefined, () => undefined);
   }
 
-  private track(onRelease: () => void, onAcquire: () => void, laneKey?: string) {
+  private track(onRelease: () => void, onAcquire: () => void) {
     onAcquire();
     this.pending += 1;
     let released = false;
@@ -151,10 +158,6 @@ export class AdmissionController {
         released = true;
         this.pending -= 1;
         onRelease();
-        // 只为真实存在的接口建分组；乱写的路径都落在同一个"未路由"分组里，无法挤占分组表。
-        if (laneKey && status !== undefined && status !== 404 && !this.lanes.has(laneKey) && this.lanes.size < this.options.maxLanes) {
-          this.lanes.set(laneKey, { arrivals: 0, baseline: 0, samples: 0, bucket: null, rejected: 0 });
-        }
       },
     };
   }
@@ -163,6 +166,7 @@ export class AdmissionController {
   tick(lagMs: number) {
     const options = this.options;
     const overloaded = lagMs > options.lagThresholdMs || this.pending > options.pendingThreshold;
+    const trainBaseline = !this.pressure && !overloaded;
     this.overloadedTicks = overloaded ? this.overloadedTicks + 1 : 0;
     this.healthyTicks = overloaded ? 0 : this.healthyTicks + 1;
 
@@ -186,7 +190,7 @@ export class AdmissionController {
     for (const lane of [...this.lanes.values(), this.unrouted]) {
       const rate = lane.arrivals / seconds;
       lane.arrivals = 0;
-      if (this.pressure) continue;
+      if (!trainBaseline || this.pressure) continue;
       lane.samples += 1;
       const halfLife = rate > lane.baseline ? options.baselineRiseHalfLifeMs : options.baselineFallHalfLifeMs;
       // 冷启动时先用算术平均，尽快得到可用的基线。
@@ -227,8 +231,8 @@ function requestIdentity(req: Request) {
   return null;
 }
 
-export function createAdmissionControl(options: Partial<AdmissionOptions> = {}) {
-  const controller = new AdmissionController(options, (message) => console.warn(message));
+export function createAdmissionControl(options: Partial<AdmissionOptions> = {}, paths: readonly string[] = []) {
+  const controller = new AdmissionController(options, (message) => console.warn(message), paths);
   // 用短周期定时器的迟到时间衡量事件循环延迟。不用 monitorEventLoopDelay：实测在洪泛把事件循环占满时
   // 它一个样本都采不到，"没有样本"会被误读成"没有延迟"，服务器越卡越不触发保护。
   const PROBE_MS = 20;

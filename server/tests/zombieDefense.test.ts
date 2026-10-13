@@ -1013,7 +1013,7 @@ test("云端对局接口挂在小游戏自己的路径下，账号注销时一�
   const routes = readFileSync(new URL("../src/routes/index.ts", import.meta.url), "utf8");
   const deletion = readFileSync(new URL("../src/services/accountDeletion.ts", import.meta.url), "utf8");
   const router = readFileSync(new URL("../../web/src/router/index.ts", import.meta.url), "utf8");
-  assert.match(routes, /router\.use\("\/tools\/zombie-defense", zombieDefenseRouter\);[\s\S]*router\.use\("\/tools", toolsRouter\);/u);
+  assert.match(routes, /mount\("\/tools\/zombie-defense", zombieDefenseRouter\);[\s\S]*mount\("\/tools", toolsRouter\);/u);
   assert.match(deletion, /\["zombieDefenseAttempt", "userId"\], \["zombieDefenseAchievement", "userId"\]/u);
   const route = router.split("\n").find((line) => line.includes('name: "service-zombie-defense"')) || "";
   assert.match(route, /path: "services\/tools\/yaoda-can-fly\/zombie-defense"/u);

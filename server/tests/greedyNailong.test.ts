@@ -446,7 +446,7 @@ test("云端对局接口挂在小游戏自己的路径下，账号注销时一�
   const deletion = readFileSync(new URL("../src/services/accountDeletion.ts", import.meta.url), "utf8");
   const router = readFileSync(new URL("../../web/src/router/index.ts", import.meta.url), "utf8");
   const games = readFileSync(new URL("../../web/src/data/miniGames.ts", import.meta.url), "utf8");
-  assert.match(routes, /router\.use\("\/tools\/greedy-nailong", greedyNailongRouter\);[\s\S]*router\.use\("\/tools", toolsRouter\);/u);
+  assert.match(routes, /mount\("\/tools\/greedy-nailong", greedyNailongRouter\);[\s\S]*mount\("\/tools", toolsRouter\);/u);
   assert.match(deletion, /\["greedyNailongAttempt", "userId"\], \["greedyNailongAchievement", "userId"\]/u);
   const route = router.split("\n").find((line) => line.includes('name: "service-greedy-nailong"')) || "";
   // 已发布的原生壳只对 /services/tools/yaoda-can-fly 这个前缀隐藏自己的顶栏和底栏；鸿蒙壳看的是 immersive。
