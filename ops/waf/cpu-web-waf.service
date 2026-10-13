@@ -15,7 +15,7 @@ NoNewPrivileges=true
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_NET_BIND_SERVICE
 ProtectSystem=strict
 ProtectHome=true
-ReadOnlyPaths=/var/log/nginx
+# nginx -t opens access logs; ProtectSystem already makes all other paths read-only.
 ReadWritePaths=/var/lib/cpu-web-waf
 ReadWritePaths=/var/log/nginx -/www/wwwlogs -/www/server/nginx/logs
 PrivateTmp=true

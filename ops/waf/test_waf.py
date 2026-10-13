@@ -33,6 +33,14 @@ class DetectionTests(unittest.TestCase):
         self.assertNotIn('CAP_NET_ADMIN', line)
         self.assertIn('CAP_NET_BIND_SERVICE', line)
         self.assertIn('NoNewPrivileges=true', service)
+        readonly = set()
+        writable = set()
+        for directive in service.splitlines():
+            if directive.startswith('ReadOnlyPaths='):
+                readonly.update(directive.split('=', 1)[1].split())
+            if directive.startswith('ReadWritePaths='):
+                writable.update(directive.split('=', 1)[1].split())
+        self.assertFalse(readonly & writable, 'read-only paths override writable paths in systemd')
 
     def test_shared_campus_can_never_be_ip_isolated_even_during_attack(self):
         d = Detector(config(sharedIngress=True, mode="adaptive", attackRequestsPerSecond=10))
