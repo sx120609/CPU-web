@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { monitorEventLoopDelay } from "node:perf_hooks";
+import { performance } from "node:perf_hooks";
 import { verifySessionTokenSignature, verifyToken } from "../utils/jwt";
 
 // 全站 CC 兜底：按服务器负载准入，不按 IP 区分访问者（校园网成千上万人共用一个出口）。
@@ -229,12 +229,22 @@ function requestIdentity(req: Request) {
 
 export function createAdmissionControl(options: Partial<AdmissionOptions> = {}) {
   const controller = new AdmissionController(options, (message) => console.warn(message));
-  const histogram = monitorEventLoopDelay({ resolution: 10 });
-  histogram.enable();
+  // 用短周期定时器的迟到时间衡量事件循环延迟。不用 monitorEventLoopDelay：实测在洪泛把事件循环占满时
+  // 它一个样本都采不到，"没有样本"会被误读成"没有延迟"，服务器越卡越不触发保护。
+  const PROBE_MS = 20;
+  let lastProbe = performance.now();
+  let worstLagMs = 0;
+  const probe = setInterval(() => {
+    const now = performance.now();
+    worstLagMs = Math.max(worstLagMs, now - lastProbe - PROBE_MS);
+    lastProbe = now;
+  }, PROBE_MS);
+  probe.unref?.();
   let ticks = 0;
   const timer = setInterval(() => {
-    const lagMs = histogram.count > 0 ? histogram.percentile(99) / 1e6 : 0;
-    histogram.reset();
+    // 探针迟迟没有运行时，等待本身就是延迟。
+    const lagMs = Math.max(worstLagMs, performance.now() - lastProbe - PROBE_MS);
+    worstLagMs = 0;
     controller.tick(lagMs);
     ticks += 1;
     if (controller.pressure && ticks % Math.max(1, Math.round(10_000 / controller.options.tickMs)) === 0) {
