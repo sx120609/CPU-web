@@ -101,6 +101,15 @@ export async function buildOneDriveChinaAuthorization(input: {
   };
 }
 
+/** 回调里的 state 是否由本站后台签发；只有真实的授权流程才允许把结果写回存储配置。 */
+export function isOneDriveChinaAuthState(state: string) {
+  try {
+    return (jwt.verify(String(state || ""), config.jwtSecret) as AuthStatePayload).kind === "onedrive-cn";
+  } catch {
+    return false;
+  }
+}
+
 export async function completeOneDriveChinaAuthorization(input: {
   code: string;
   state: string;

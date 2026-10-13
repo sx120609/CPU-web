@@ -15,6 +15,7 @@ import {
 } from "../services/tomatoNoodlePolicy";
 import { publicFlightName } from "../services/yaodaFlightPolicy";
 import { publicAvatarValue } from "../utils/publicAvatar";
+import { withCache } from "../services/cache";
 
 export const tomatoNoodleRouter = Router();
 
@@ -154,7 +155,9 @@ async function unlockAchievementsForUser(userId: number, unlockedAt: Date) {
 
 tomatoNoodleRouter.get("/leaderboard", authOptional, async (req, res, next) => {
   try {
-    ok(res, await loadLeaderboard(req.user?.userId));
+    // 匿名访客看到的是同一份榜单：短时缓存，避免每次请求都对全部成绩做聚合。
+    const userId = req.user?.userId;
+    ok(res, userId ? await loadLeaderboard(userId) : await withCache("game-leaderboard", ["tomato-egg-noodles"], 15_000, () => loadLeaderboard()));
   } catch (error) {
     next(error);
   }

@@ -2,9 +2,25 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { decodeDataAvatar } from "../utils/publicAvatar";
 import { withCache } from "../services/cache";
+import { TtlLru } from "../utils/loadShield";
 
 export const userAvatarRouter = Router();
 const AVATAR_VERSION_RE = /^[a-f0-9]{16}$/;
+
+const AVATAR_REFRESH_BURST = 3;
+const AVATAR_REFRESH_INTERVAL_MS = 10_000;
+const avatarRefreshBudget = new TtlLru<{ tokens: number; updatedAt: number }>({ maxEntries: 20_000 });
+
+function takeAvatarRefresh(id: number, now = Date.now()) {
+  const key = String(id);
+  const budget = avatarRefreshBudget.get(key, now) ?? { tokens: AVATAR_REFRESH_BURST, updatedAt: now };
+  budget.tokens = Math.min(AVATAR_REFRESH_BURST, budget.tokens + (now - budget.updatedAt) / AVATAR_REFRESH_INTERVAL_MS);
+  budget.updatedAt = now;
+  const allowed = budget.tokens >= 1;
+  if (allowed) budget.tokens -= 1;
+  avatarRefreshBudget.set(key, budget, AVATAR_REFRESH_BURST * AVATAR_REFRESH_INTERVAL_MS, now);
+  return allowed;
+}
 
 userAvatarRouter.get("/:id", async (req, res, next) => {
   try {
@@ -19,7 +35,9 @@ userAvatarRouter.get("/:id", async (req, res, next) => {
     }, { refresh });
     let avatar = await loadAvatar();
     let decoded = avatar ? decodeDataAvatar(avatar) : null;
-    if (AVATAR_VERSION_RE.test(requestedVersion) && decoded?.version !== requestedVersion) {
+    // 版本号由请求方随意填写：每个用户可以连续强制回源 3 次（连续换头像仍立即生效），之后每 10 秒恢复一次，
+    // 随机版本号刷不穿缓存。
+    if (AVATAR_VERSION_RE.test(requestedVersion) && decoded?.version !== requestedVersion && takeAvatarRefresh(id)) {
       avatar = await loadAvatar(true);
       decoded = avatar ? decodeDataAvatar(avatar) : null;
     }

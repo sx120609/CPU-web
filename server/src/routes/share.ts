@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import QRCode from "qrcode";
-import { Resvg } from "@resvg/resvg-js";
+import { renderAsync } from "@resvg/resvg-js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "../prisma";
@@ -8,6 +8,7 @@ import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
 import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
 import { presentAnonymousAlias } from "../services/userTrust";
+import { ConcurrencyGate, ConcurrencyGateFullError, TtlLru } from "../utils/loadShield";
 
 export const shareRouter = Router();
 
@@ -17,6 +18,24 @@ const SHARE_CARD_FONT_FILES = [
   "C:/Windows/Fonts/simhei.ttf",
   "C:/Windows/Fonts/simsun.ttc",
 ];
+
+// 分享页曾被 CC 洪泛。这里不按 IP 限流（校园网统一出口），而是让源站对重复请求几乎零成本：
+// 帖子数据短时缓存、卡片图渲染结果缓存、同一内容的并发请求只算一次，渲染并发与排队有硬上限。
+const TOPIC_CACHE_TTL_MS = 30_000;
+const CARD_CACHE_TTL_MS = 10 * 60_000;
+const MAX_TOPIC_ID = 2_147_483_647;
+
+type ShareTopic = NonNullable<Awaited<ReturnType<typeof queryShareTopic>>>;
+
+const topicCache = new TtlLru<ShareTopic | null>({
+  maxEntries: 5_000,
+  maxBytes: 16 * 1024 * 1024,
+  sizeOf: (topic) => 512 + 2 * ((topic?.title.length ?? 0) + (topic?.content.length ?? 0)),
+});
+const cardCache = new TtlLru<Buffer>({ maxEntries: 512, maxBytes: 48 * 1024 * 1024, sizeOf: (png) => png.length });
+// resvg 在 libuv 线程池里渲染，线程池同时承担文件、DNS 与加密；只给卡片留少量名额。
+const cardRenderGate = new ConcurrencyGate(2, 16);
+let fallbackCardPng: Promise<Buffer> | null = null;
 
 shareRouter.get("/topic/:id", async (req, res, next) => {
   try {
@@ -30,6 +49,7 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
     const shareUrl = `${origin}/share/topic/${topic.id}`;
     const imageUrl = `${origin}/share/topic/${topic.id}/card.png`;
     const description = buildTopicDescription(topic);
+    res.setHeader("Cache-Control", "public, max-age=60");
     res.type("html").send(renderTopicSharePage({
       shareUrl,
       topicUrl,
@@ -49,31 +69,55 @@ shareRouter.get("/topic/:id/card.png", async (req, res, next) => {
   try {
     const topic = await loadShareTopic(req.params.id);
     if (!topic) {
-      const fallbackSvg = renderFallbackCardSvg("药大拾间", "分享内容不存在或暂不可用");
-      const fallbackPng = renderSvgToPng(fallbackSvg);
-      res.status(404).type("image/png").send(fallbackPng);
+      res.status(404).type("image/png").send(await loadFallbackCardPng());
       return;
     }
     const origin = resolvePublicOrigin(req);
-    const svg = await renderTopicCardSvg(topic, origin);
-    const png = renderSvgToPng(svg);
+    const png = await cardCache.load(`${topic.id}\0${origin}`, CARD_CACHE_TTL_MS, () => cardRenderGate.run(
+      async () => renderSvgToPng(await renderTopicCardSvg(topic, origin)),
+    ));
     res.setHeader("Content-Type", "image/png");
     res.setHeader("Cache-Control", "public, max-age=600");
     res.send(png);
   } catch (error) {
+    if (error instanceof ConcurrencyGateFullError) {
+      res.setHeader("Retry-After", "5");
+      res.setHeader("Cache-Control", "no-store");
+      res.status(503).type("text/plain").send("busy");
+      return;
+    }
     next(error);
   }
 });
 
-async function loadShareTopic(idParam: string) {
+function loadFallbackCardPng() {
+  if (!fallbackCardPng) {
+    fallbackCardPng = renderSvgToPng(renderFallbackCardSvg("药大拾间", "分享内容不存在或暂不可用"));
+    fallbackCardPng.catch(() => {
+      fallbackCardPng = null;
+    });
+  }
+  return fallbackCardPng;
+}
+
+export function parseShareTopicId(idParam: string) {
+  if (!/^\d{1,10}$/.test(idParam)) return null;
   const id = Number(idParam);
-  if (!Number.isFinite(id) || id <= 0) return null;
+  return id > 0 && id <= MAX_TOPIC_ID ? id : null;
+}
+
+async function loadShareTopic(idParam: string) {
+  const id = parseShareTopicId(idParam);
+  if (id === null) return null;
+  return topicCache.load(String(id), TOPIC_CACHE_TTL_MS, () => queryShareTopic(id));
+}
+
+async function queryShareTopic(id: number) {
   const topic = await prisma.topic.findUnique({
     where: { id },
     include: {
       board: { select: { name: true, slug: true, type: true, color: true, icon: true } },
       author: { select: { nickname: true } },
-      tags: { include: { tag: true } },
     },
   });
   if (!topic || topic.hidden || !topic.board || isRetiredBoardSlug(topic.board.slug) || !isBoardTypeEnabled(topic.board.type)) return null;
@@ -285,8 +329,9 @@ function renderFallbackCardSvg(title: string, description: string) {
 </svg>`;
 }
 
-export function renderSvgToPng(svg: string) {
-  const resvg = new Resvg(svg, {
+export async function renderSvgToPng(svg: string) {
+  // renderAsync 在线程池里栅格化，不阻塞事件循环；同步渲染一张卡片会让全站请求一起排队。
+  const image = await renderAsync(svg, {
     fitTo: {
       mode: "width",
       value: 720,
@@ -297,7 +342,7 @@ export function renderSvgToPng(svg: string) {
       defaultFontFamily: "Microsoft YaHei",
     },
   });
-  return resvg.render().asPng();
+  return image.asPng();
 }
 
 let cachedSiteLogoDataUrl = "";

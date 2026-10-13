@@ -25,8 +25,9 @@ async function increment(key: string, windowMs: number) {
 }
 
 /**
- * 默认按 IP（登录接口再加用户名）计数。校园网里很多人共用一个出口 IP，已登录的接口
- * 传 `subject` 改成按账号计数，免得一个人把整栋楼的额度用完。
+ * 计数对象依次取：`subject` 给出的标识（设备、令牌等）→ 已登录账号 → IP（登录接口再加用户名）。
+ * 校园网里成千上万人共用一个出口 IP，按 IP 计数会让一个人把整栋楼的额度用完，所以只在
+ * 请求里没有任何更细的标识时才退回 IP。
  */
 export function securityRateLimit(
   namespace: string,
@@ -36,7 +37,9 @@ export function securityRateLimit(
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const who = subject?.(req);
+      const explicit = subject?.(req);
+      const userId = (req as Request & { user?: { userId?: number } }).user?.userId;
+      const who = explicit ?? (userId ? `user\0${userId}` : undefined);
       const count = await increment(requestKey(req, namespace, who === undefined ? undefined : String(who)), windowMs);
       res.setHeader("X-RateLimit-Limit", String(limit));
       res.setHeader("X-RateLimit-Remaining", String(Math.max(0, limit - count)));

@@ -41,6 +41,7 @@ import {
   verifyFileCollectPreviewToken,
 } from "../utils/officePreview";
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
+import { ConcurrencyGate, ConcurrencyGateFullError, TtlLru } from "../utils/loadShield";
 
 const MOUNT_PATH = "/filestore";
 const APP_PATH = "/services/tools/filestore";
@@ -1225,6 +1226,9 @@ function filenameHeader(name: string) {
   return `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
+const qrCodeCache = new TtlLru<Buffer>({ maxEntries: 1_000, maxBytes: 16 * 1024 * 1024, sizeOf: (png) => png.length });
+const qrCodeGate = new ConcurrencyGate(2, 16);
+
 async function handleFilestoreUtilityRoute(req: Request, res: Response, user: FilestoreAccessUser | null) {
   const target = upstreamPath(req).split("?")[0];
   if (req.method === "GET" && target === "/api/health") {
@@ -1245,16 +1249,25 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const width = Number.isFinite(requestedSize)
       ? Math.min(640, Math.max(120, Math.round(requestedSize)))
       : 260;
-    const png = await QRCode.toBuffer(data, {
-      type: "png",
-      width,
-      margin: 1,
-      errorCorrectionLevel: "M",
-      color: {
-        dark: "#172033",
-        light: "#ffffffff",
-      },
-    });
+    let png: Buffer;
+    try {
+      // 内容由请求方任意指定：结果按内容缓存，生成时限并发、限排队，洪泛不能把事件循环占满。
+      png = await qrCodeCache.load(`${width}\0${data}`, 10 * 60_000, () => qrCodeGate.run(() => QRCode.toBuffer(data, {
+        type: "png",
+        width,
+        margin: 1,
+        errorCorrectionLevel: "M",
+        color: {
+          dark: "#172033",
+          light: "#ffffffff",
+        },
+      })));
+    } catch (error) {
+      if (!(error instanceof ConcurrencyGateFullError)) throw error;
+      res.setHeader("Retry-After", "5");
+      res.status(503).type("text/plain; charset=utf-8").send("二维码生成繁忙，请稍后重试");
+      return true;
+    }
     res.setHeader("Content-Type", "image/png");
     res.setHeader("Cache-Control", "private, max-age=300");
     res.end(png);

@@ -88,7 +88,25 @@ export function normalizeResponse(row: any) {
   };
 }
 
-export async function ensureSystemQuestionnaires() {
+// /api/tools 的每个请求都会调用这里。原来每次都写一次库，匿名洪泛下就是每请求一次 upsert；
+// 现在最多每分钟校正一次，并发请求共用同一次写入。
+const SYSTEM_QUESTIONNAIRE_REFRESH_MS = 60_000;
+let systemQuestionnairesEnsuredAt = 0;
+let systemQuestionnairesPending: Promise<void> | null = null;
+
+export function ensureSystemQuestionnaires() {
+  if (Date.now() - systemQuestionnairesEnsuredAt < SYSTEM_QUESTIONNAIRE_REFRESH_MS) return Promise.resolve();
+  systemQuestionnairesPending ??= writeSystemQuestionnaires()
+    .then(() => {
+      systemQuestionnairesEnsuredAt = Date.now();
+    })
+    .finally(() => {
+      systemQuestionnairesPending = null;
+    });
+  return systemQuestionnairesPending;
+}
+
+async function writeSystemQuestionnaires() {
   await ensureSystemQuestionnaire("feedback", {
     slug: "system-feedback",
     title: "需求反馈",

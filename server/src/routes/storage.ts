@@ -1,15 +1,19 @@
 import { Router } from "express";
-import { completeOneDriveChinaAuthorization } from "../services/oneDriveChina";
+import { completeOneDriveChinaAuthorization, isOneDriveChinaAuthState } from "../services/oneDriveChina";
 import { setOneDriveChinaLastError } from "../services/storageConfig";
 
 export const storageRouter = Router();
 
 storageRouter.get("/onedrive-cn/callback", async (req, res) => {
+  // 回调地址是公开的。state 未通过签名校验时只把错误带回页面，不写存储配置：
+  // 否则任何人都能用 ?error=x 反复触发整套配置落库与多实例广播，还能篡改后台显示的错误。
+  const trusted = isOneDriveChinaAuthState(String(req.query.state || "").trim());
+  const recordError = (message: string) => (trusted ? setOneDriveChinaLastError(message).catch(() => null) : null);
   const oauthError = String(req.query.error || "").trim();
   const oauthErrorDescription = String(req.query.error_description || "").trim();
   if (oauthError) {
     const message = oauthErrorDescription || oauthError || "用户取消了世纪互联 OneDrive 授权";
-    await setOneDriveChinaLastError(message).catch(() => null);
+    await recordError(message);
     res.redirect(302, `/admin?tab=media-storage&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
     return;
   }
@@ -18,7 +22,7 @@ storageRouter.get("/onedrive-cn/callback", async (req, res) => {
   const state = String(req.query.state || "").trim();
   if (!code || !state) {
     const message = "世纪互联 OneDrive 授权回调缺少 code 或 state";
-    await setOneDriveChinaLastError(message).catch(() => null);
+    await recordError(message);
     res.redirect(302, `/admin?tab=media-storage&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
     return;
   }
@@ -32,7 +36,7 @@ storageRouter.get("/onedrive-cn/callback", async (req, res) => {
     res.redirect(302, "/admin?tab=media-storage&storageAuth=success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "世纪互联 OneDrive 授权失败";
-    await setOneDriveChinaLastError(message).catch(() => null);
+    await recordError(message);
     res.redirect(302, `/admin?tab=media-storage&storageAuth=error&storageAuthMessage=${encodeURIComponent(message)}`);
   }
 });

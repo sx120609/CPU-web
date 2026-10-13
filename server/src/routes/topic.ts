@@ -43,6 +43,7 @@ import {
 } from "../services/topicSmartPostJob";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
+import { recordTopicView, unflushedTopicViews } from "../services/topicViewCounter";
 import { containsForumModerationPlaceholder } from "../services/forumContentEditing";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { allowsCampusLifeCampaignAnonymousPost } from "../services/forumAds";
@@ -169,6 +170,8 @@ function scheduleTopicAiTags(input: Parameters<typeof generateTopicAiTags>[0], t
   });
 }
 
+const MAX_TOPIC_LIST_PAGE = 500;
+
 /**
  * 列表：?board=slug&page=1&size=20&sort=hot|new
  * 二手板块还支持 marketKind/category/campus 结构化筛选。
@@ -176,8 +179,12 @@ function scheduleTopicAiTags(input: Parameters<typeof generateTopicAiTags>[0], t
 topicRouter.get("/", async (req, res, next) => {
   try {
     const boardSlug = req.query.board ? String(req.query.board) : undefined;
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
+    const requestedPage = Math.floor(Number(req.query.page ?? 1));
+    const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
+    const requestedSize = Math.floor(Number(req.query.size ?? 20));
+    const size = Number.isFinite(requestedSize) ? Math.min(50, Math.max(5, requestedSize)) : 20;
+    // 极深的分页只会让数据库扫描并丢弃大量行，任意页码还能刷穿缓存；超出范围直接返回空页。
+    if (page > MAX_TOPIC_LIST_PAGE) return ok(res, { page, size, total: 0, list: [] });
     const sort = String(req.query.sort ?? "new");
     const pinnedMode = req.query.pinned ? String(req.query.pinned) : "include";
     const q = String(req.query.q ?? "").trim().slice(0, 80);
@@ -344,15 +351,12 @@ topicRouter.post(
       const visibleIds = visible.map((item) => item.id);
       if (!visibleIds.length) return ok(res, { views: [] });
 
-      await prisma.topic.updateMany({
-        where: { id: { in: visibleIds }, hidden: false },
-        data: { viewCount: { increment: 1 } },
-      });
-      const updated = await prisma.topic.findMany({
+      for (const id of visibleIds) recordTopicView(id);
+      const current = await prisma.topic.findMany({
         where: { id: { in: visibleIds } },
         select: { id: true, viewCount: true },
       });
-      ok(res, { views: updated });
+      ok(res, { views: current.map((item) => ({ id: item.id, viewCount: item.viewCount + unflushedTopicViews(item.id) })) });
     } catch (e) { next(e); }
   },
 );
@@ -488,19 +492,11 @@ topicRouter.get("/:id", async (req, res, next) => {
     if (topic.hidden && !canSeeHidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
-    const [presented, updatedViews] = await Promise.all([
-      decodeTopicForViewerWithImages(topic, req.user),
-      topic.hidden
-        ? Promise.resolve(null)
-        : prisma.topic.update({
-            where: { id },
-            data: { viewCount: { increment: 1 } },
-            select: { viewCount: true },
-          }).catch(() => null),
-    ]);
+    if (!topic.hidden) recordTopicView(id);
+    const presented = await decodeTopicForViewerWithImages(topic, req.user);
     ok(res, {
       ...presented,
-      viewCount: updatedViews?.viewCount ?? topic.viewCount,
+      viewCount: topic.viewCount + unflushedTopicViews(id),
     });
   } catch (e) { next(e); }
 });

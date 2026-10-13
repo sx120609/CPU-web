@@ -14,6 +14,7 @@ import { loadJwxtAgentRuntimeConfig } from "./services/jwxtAgentConfig";
 import { attachVoiceHubGateway, voiceHubProxyConfig } from "./services/voiceHubProxy";
 import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
 import { startAccountDeletionWorker } from "./services/accountDeletion";
+import { drainTopicViews } from "./services/topicViewCounter";
 
 async function start() {
   const managedRelease = Boolean(process.env.CPU_WEB_RELEASE_SHA);
@@ -68,13 +69,19 @@ async function start() {
     }, 120_000);
     forceExit.unref();
     server.close((error) => {
-      clearTimeout(forceExit);
       if (error) {
         console.error("[lifecycle] 服务关闭失败", error);
         process.exit(1);
         return;
       }
-      process.exit(0);
+      // 合并中的帖子浏览数在退出前写回数据库。
+      void drainTopicViews().then(() => {
+        clearTimeout(forceExit);
+        process.exit(0);
+      }, (error) => {
+        console.error("[lifecycle] Failed to drain topic views", error);
+        process.exit(1);
+      });
     });
   };
   process.once("SIGTERM", () => shutdown("SIGTERM"));

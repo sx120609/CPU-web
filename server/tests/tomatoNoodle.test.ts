@@ -218,6 +218,6 @@ test("云端成就覆盖局数、单局分数、单局碗数与累计", () => {
 test("云端对局接口挂在小游戏自己的路径下，账号注销时一并清理", () => {
   const routes = readFileSync(new URL("../src/routes/index.ts", import.meta.url), "utf8");
   const deletion = readFileSync(new URL("../src/services/accountDeletion.ts", import.meta.url), "utf8");
-  assert.match(routes, /router\.use\("\/tools\/tomato-egg-noodles", tomatoNoodleRouter\);[\s\S]*router\.use\("\/tools", toolsRouter\);/u);
+  assert.match(routes, /mount\("\/tools\/tomato-egg-noodles", tomatoNoodleRouter\);[\s\S]*mount\("\/tools", toolsRouter\);/u);
   assert.match(deletion, /\["tomatoNoodleAttempt", "userId"\], \["tomatoNoodleAchievement", "userId"\]/u);
 });

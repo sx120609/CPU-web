@@ -4,6 +4,8 @@ import * as remote from "./jwxtRemote";
 import * as agentRemote from "./jwxtAgentRemote";
 import * as loginPool from "./ssoLoginPool";
 import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
+import { ConcurrencyGate, ConcurrencyGateFullError } from "../utils/loadShield";
+import { Errors } from "../utils/response";
 
 type Transport = typeof local;
 
@@ -17,19 +19,34 @@ export function isRemoteMode() {
   return agentRemote.hasRemoteJwxtAgent() || Boolean(config.jwxtProxyUrl);
 }
 
+// 学校 SSO 是第三方系统，登录入口又必须对未登录访客开放：洪泛不能经由本站原样转发过去，
+// 否则拖垮的是学校的认证服务，登录节点也可能被学校封禁。额度远高于选课高峰的正常并发，只截住洪泛。
+const ssoLoginGate = new ConcurrencyGate(64, 256);
+
+async function throughSsoLoginGate<T>(task: () => Promise<T>) {
+  try {
+    return await ssoLoginGate.run(task);
+  } catch (error) {
+    if (error instanceof ConcurrencyGateFullError) throw Errors.busy("当前登录人数较多，请稍后重试");
+    throw error;
+  }
+}
+
 export function beginLogin(): ReturnType<typeof local.beginLogin> {
-  return loginPool.isDedicatedSsoLoginPool()
+  return throughSsoLoginGate(() => (loginPool.isDedicatedSsoLoginPool()
     ? loginPool.beginLogin()
-    : queryImpl().beginLogin();
+    : queryImpl().beginLogin()) as ReturnType<typeof local.beginLogin>);
 }
 
 export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials }) {
-  if (loginPool.isPooledPendingId(args.pendingId)) return loginPool.submitLogin(args);
-  if ("credentials" in args) {
-    if (!agentRemote.isJwxtAgentQueryMode()) throw new Error("当前登录节点不支持加密登录凭据");
-    return agentRemote.submitLogin(args);
-  }
-  return queryImpl().submitLogin(args);
+  return throughSsoLoginGate(async () => {
+    if (loginPool.isPooledPendingId(args.pendingId)) return loginPool.submitLogin(args);
+    if ("credentials" in args) {
+      if (!agentRemote.isJwxtAgentQueryMode()) throw new Error("当前登录节点不支持加密登录凭据");
+      return agentRemote.submitLogin(args);
+    }
+    return queryImpl().submitLogin(args);
+  });
 }
 
 export function logout(token: string) { return queryImpl().logout(token); }

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { authOptional, authRequired } from "../middleware/auth";
 import { authRouter } from "./auth";
 import { userRouter } from "./user";
@@ -45,53 +45,58 @@ import { appClientRouter } from "./appClients";
 import { coupleRouter } from "./couple";
 
 export const router = Router();
-router.use("/privacy", privacyRouter);
-router.use("/schedule-shares", scheduleShareRouter);
-router.use("/live-activities", liveActivityRouter);
-router.use("/app-clients", authOptional, appClientRouter);
+export const apiAdmissionPaths: string[] = [];
+function mount(path: string, ...handlers: RequestHandler[]) {
+  apiAdmissionPaths.push('/api' + path);
+  router.use(path, ...handlers);
+}
+mount("/privacy", privacyRouter);
+mount("/schedule-shares", scheduleShareRouter);
+mount("/live-activities", liveActivityRouter);
+mount("/app-clients", authOptional, appClientRouter);
 
 // 公开路径
-router.use("/auth", authRouter);
-router.use("/user-avatars", userAvatarRouter);
-router.use("/boards", authOptional, boardRouter);
-router.use("/announcements", announcementsRouter);
-router.use("/topics", authOptional, topicRouter);
-router.use("/replies", authOptional, replyRouter);
-router.use("/services", servicesRouter);
-router.use("/courses", authOptional, courseRouter);
-router.use("/search", authOptional, searchRouter);
-router.use("/home", authOptional, homeRouter);
-router.use("/site", siteRouter);
-router.use("/forum-ads", forumAdsRouter);
-router.use("/vip", vipRouter);
-router.use("/storage", storageRouter);
-router.use("/tools/yaoda-can-fly", yaodaFlightRouter);
-router.use("/tools/tomato-egg-noodles", tomatoNoodleRouter);
-router.use("/tools/zombie-defense", zombieDefenseRouter);
-router.use("/tools/yaoda-nai", yaodaNaiRouter);
-router.use("/tools/greedy-nailong", greedyNailongRouter);
-router.use("/tools/department-contacts", departmentContactsRouter);
-router.use("/tools", toolsRouter);
-router.use("/payments", paymentsRouter);
-router.use("/qqbot", qqBotRouter);
-router.use("/wechat", wechatRouter);
-router.use("/course-bot", authRequired, courseBotRouter);
-router.use("/lost-found", lostFoundRouter);
-router.use("/integrations", integrationsRouter);
-router.use("/oauth", oauthRouter);
+mount("/auth", authRouter);
+mount("/user-avatars", userAvatarRouter);
+mount("/boards", authOptional, boardRouter);
+mount("/announcements", announcementsRouter);
+mount("/topics", authOptional, topicRouter);
+mount("/replies", authOptional, replyRouter);
+mount("/services", servicesRouter);
+mount("/courses", authOptional, courseRouter);
+mount("/search", authOptional, searchRouter);
+mount("/home", authOptional, homeRouter);
+mount("/site", siteRouter);
+mount("/forum-ads", forumAdsRouter);
+mount("/vip", vipRouter);
+mount("/storage", storageRouter);
+mount("/tools/yaoda-can-fly", yaodaFlightRouter);
+mount("/tools/tomato-egg-noodles", tomatoNoodleRouter);
+mount("/tools/zombie-defense", zombieDefenseRouter);
+mount("/tools/yaoda-nai", yaodaNaiRouter);
+mount("/tools/greedy-nailong", greedyNailongRouter);
+mount("/tools/department-contacts", departmentContactsRouter);
+mount("/tools", toolsRouter);
+mount("/payments", paymentsRouter);
+mount("/qqbot", qqBotRouter);
+mount("/wechat", wechatRouter);
+mount("/course-bot", authRequired, courseBotRouter);
+mount("/lost-found", lostFoundRouter);
+mount("/integrations", integrationsRouter);
+mount("/oauth", oauthRouter);
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
-router.use("/jwxt", revokedCredentialGate, jwxtRouter);
+mount("/jwxt", revokedCredentialGate, jwxtRouter);
 
 // 站内登录后
-router.use("/user", authRequired, userRouter);
-router.use("/likes", authRequired, likeRouter);
-router.use("/messages", authRequired, messageRouter);
-router.use("/direct-messages", authRequired, directMessageRouter);
-router.use("/couple", authRequired, coupleRouter);
-router.use("/forum-reports", authRequired, forumReportRouter);
-router.use("/account-verification", authRequired, accountVerificationRouter);
-router.use("/uploads", authOptional, uploadRouter);
+mount("/user", authRequired, userRouter);
+mount("/likes", authRequired, likeRouter);
+mount("/messages", authRequired, messageRouter);
+mount("/direct-messages", authRequired, directMessageRouter);
+mount("/couple", authRequired, coupleRouter);
+mount("/forum-reports", authRequired, forumReportRouter);
+mount("/account-verification", authRequired, accountVerificationRouter);
+mount("/uploads", authOptional, uploadRouter);
 
 // 管理后台：需登录 + 内部按 role 分级
-router.use("/admin", authRequired, adminRouter);
+mount("/admin", authRequired, adminRouter);
