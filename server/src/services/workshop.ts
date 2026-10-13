@@ -7,6 +7,7 @@ import {
   assertWorkshopAdmin,
   assertWorkshopReview,
   assertWorkshopSubmission,
+  assertWorkshopVersionDeletion,
   canManageWorkshop,
   isWorkshopPublished,
   workshopSaveBytes,
@@ -313,6 +314,56 @@ export async function submitWorkshopVersion(
       data: { workId: version.workId, versionId: id, actorId: viewer.userId, action: "submit" },
     });
     return { versionId: id, status: "PENDING" };
+  });
+}
+
+/**
+ * Authors may remove any version that is not the public one, which also frees
+ * its share of the per-author quota. The caller deletes the returned package.
+ */
+export async function deleteWorkshopVersion(
+  id: string,
+  viewer: WorkshopViewer,
+  db: Database = prisma,
+) {
+  return db.$transaction(async (tx) => {
+    const owner = await tx.workshopVersion.findUnique({
+      where: { id },
+      select: { work: { select: { authorId: true } } },
+    });
+    if (!owner) throw Errors.notFound("作品版本不存在");
+    // Same lock order as an upload: author, then work.
+    await lockWorkshopAuthor(tx, owner.work.authorId);
+    const version = await loadVersion(tx, id);
+    assertWorkshopVersionDeletion(version.work, version, viewer);
+    if (await tx.workshopPlacement.count({ where: { versionId: id } }))
+      throw Errors.conflict("这个版本正在网站上作为扩展启用，不能删除");
+    await tx.workshopVersion.delete({ where: { id } });
+    const workId = version.workId;
+    const [remaining, reports, moderated] = await Promise.all([
+      tx.workshopVersion.count({ where: { workId } }),
+      tx.workshopReport.count({ where: { workId } }),
+      tx.workshopAudit.count({
+        where: { workId, action: { notIn: ["submit", "reject", "delete-version"] } },
+      }),
+    ]);
+    // A work that was never public, sanctioned or reported disappears with its last
+    // version, which frees its ID. Otherwise its record stays.
+    const workDeleted = !remaining && !reports && !moderated;
+    if (workDeleted) {
+      await tx.workshopWork.delete({ where: { id: workId } });
+    } else {
+      await tx.workshopAudit.create({
+        data: {
+          workId,
+          actorId: viewer.userId,
+          action: "delete-version",
+          reason: `v${version.version}`,
+        },
+      });
+      await tx.workshopWork.update({ where: { id: workId }, data: { updatedAt: new Date() } });
+    }
+    return { workId, workDeleted, packageKey: version.packageKey };
   });
 }
 

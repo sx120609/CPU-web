@@ -15,6 +15,7 @@ import {
 import {
   createWorkshopDraft,
   deleteWorkshopSave,
+  deleteWorkshopVersion,
   favoriteWorkshopWork,
   getWorkshopWork,
   listWorkshopQueue,
@@ -252,6 +253,22 @@ workshopRouter.post(
   route(async (req, res) =>
     ok(res, await submitWorkshopVersion(idSchema.parse(req.params.id), req.user!)),
   ),
+);
+workshopRouter.delete(
+  "/versions/:id",
+  authRequired,
+  limit("delete-version", 30, 10 * 60 * 1000),
+  route(async (req, res) => {
+    const { packageKey, ...result } = await deleteWorkshopVersion(
+      idSchema.parse(req.params.id),
+      req.user!,
+    );
+    // The row is gone, so the files can no longer be served; a failed cleanup only leaves them on disk.
+    await removeWorkshopPackage(packageKey).catch(() => {
+      console.warn("[workshop] package cleanup failed after version deletion");
+    });
+    ok(res, result);
+  }),
 );
 workshopRouter.post(
   "/versions/:id/preview",

@@ -125,3 +125,86 @@ test("workshop account erasure revokes tickets, removes owned records and retrie
     delete (globalThis as any).prisma;
   }
 });
+
+test("authors delete non-public versions, which frees quota and, for never-public works, the work itself", {
+  skip: !process.env.WORKSHOP_TEST_DATABASE_URL,
+  timeout: 120_000,
+}, async () => {
+  const url = new URL(process.env.WORKSHOP_TEST_DATABASE_URL!);
+  assert.equal(url.hostname, "127.0.0.1");
+  assert.equal(url.searchParams.get("schema"), "workshop_test");
+  const serverRoot = path.resolve(__dirname, "..");
+  await promisify(execFile)(process.execPath, [
+    path.join(serverRoot, "node_modules/prisma/build/index.js"), "db", "push", "--skip-generate", "--schema", path.join(serverRoot, "prisma/schema.prisma"),
+  ], { cwd: serverRoot, env: { ...process.env, DATABASE_URL: url.href } });
+  const db = new PrismaClient({ datasources: { db: { url: url.href } } });
+  const users: number[] = [];
+  try {
+    const { deleteWorkshopVersion } = await import("../src/services/workshop");
+    const author = await db.user.create({ data: { username: `workshop-author-${randomUUID()}`, passwordHash: "test", nickname: "Author" } });
+    const stranger = await db.user.create({ data: { username: `workshop-stranger-${randomUUID()}`, passwordHash: "test", nickname: "Stranger" } });
+    users.push(author.id, stranger.id);
+    const viewer = { userId: author.id, role: "user" };
+    const makeVersion = (workId: string, slug: string, version: string, status = "DRAFT") => db.workshopVersion.create({ data: {
+      workId, version, name: "Test work", description: "Test", type: "tool",
+      manifest: { schemaVersion: 1, id: slug, type: "tool", name: "Test work", description: "Test", version, entry: "index.html" },
+      files: ["index.html"], packageKey: randomUUID(), totalBytes: 24, status,
+    } });
+
+    // A published work: old and draft versions can go, the public one cannot.
+    const live = await db.workshopWork.create({ data: { slug: `work-${randomUUID()}`, authorId: author.id } });
+    const published = await makeVersion(live.id, live.slug, "1.0.0", "APPROVED");
+    const draft = await makeVersion(live.id, live.slug, "1.1.0");
+    await db.workshopWork.update({ where: { id: live.id }, data: { publishedVersionId: published.id } });
+    await db.workshopAudit.create({ data: { workId: live.id, versionId: published.id, action: "approve" } });
+
+    await assert.rejects(deleteWorkshopVersion(draft.id, { userId: stranger.id, role: "user" }, db), /只有作者/);
+    await assert.rejects(deleteWorkshopVersion(draft.id, { userId: stranger.id, role: "admin" }, db), /只有作者/);
+    await assert.rejects(deleteWorkshopVersion(published.id, viewer, db), /公开中的版本不能删除/);
+    await assert.rejects(deleteWorkshopVersion(randomUUID(), viewer, db), /不存在/);
+
+    const removed = await deleteWorkshopVersion(draft.id, viewer, db);
+    assert.deepEqual(removed, { workId: live.id, workDeleted: false, packageKey: draft.packageKey });
+    assert.equal(await db.workshopVersion.count({ where: { workId: live.id } }), 1);
+    const trail = await db.workshopAudit.findFirstOrThrow({ where: { workId: live.id, action: "delete-version" } });
+    assert.equal(trail.actorId, author.id); assert.equal(trail.reason, "v1.1.0"); assert.equal(trail.versionId, null);
+
+    // Disabled works are under moderation; a version bound to a site placement is in use.
+    const second = await makeVersion(live.id, live.slug, "1.2.0");
+    await db.workshopWork.update({ where: { id: live.id }, data: { disabled: true } });
+    await assert.rejects(deleteWorkshopVersion(second.id, viewer, db), /已被停用/);
+    await db.workshopWork.update({ where: { id: live.id }, data: { disabled: false } });
+    await db.workshopPlacement.deleteMany({ where: { slot: "splash" } });
+    await db.workshopPlacement.create({ data: { slot: "splash", versionId: second.id } });
+    await assert.rejects(deleteWorkshopVersion(second.id, viewer, db), /作为扩展启用/);
+    await db.workshopPlacement.delete({ where: { slot: "splash" } });
+
+    // Unpublished, its last versions deleted: the review history keeps the work row.
+    await db.workshopWork.update({ where: { id: live.id }, data: { publishedVersionId: null } });
+    await deleteWorkshopVersion(second.id, viewer, db);
+    assert.equal((await deleteWorkshopVersion(published.id, viewer, db)).workDeleted, false);
+    assert.equal(await db.workshopWork.count({ where: { id: live.id } }), 1);
+    assert.equal(await db.workshopVersion.count({ where: { workId: live.id } }), 0);
+
+    // A work that never went public goes away with its last version, freeing its ID.
+    const scratch = await db.workshopWork.create({ data: { slug: `work-${randomUUID()}`, authorId: author.id } });
+    const only = await makeVersion(scratch.id, scratch.slug, "0.1.0");
+    await db.workshopAudit.createMany({ data: [
+      { workId: scratch.id, versionId: only.id, actorId: author.id, action: "submit" },
+      { workId: scratch.id, versionId: only.id, action: "reject", reason: "needs work" },
+    ] });
+    assert.equal((await deleteWorkshopVersion(only.id, viewer, db)).workDeleted, true);
+    assert.equal(await db.workshopWork.count({ where: { id: scratch.id } }), 0);
+    assert.equal(await db.workshopAudit.count({ where: { workId: scratch.id } }), 0);
+
+    // A reported work stays even when it was never reviewed.
+    const reported = await db.workshopWork.create({ data: { slug: `work-${randomUUID()}`, authorId: author.id } });
+    const reportedVersion = await makeVersion(reported.id, reported.slug, "0.1.0");
+    await db.workshopReport.create({ data: { workId: reported.id, reporterId: stranger.id, reason: "keep the record" } });
+    assert.equal((await deleteWorkshopVersion(reportedVersion.id, viewer, db)).workDeleted, false);
+    assert.equal(await db.workshopReport.count({ where: { workId: reported.id } }), 1);
+  } finally {
+    await db.user.deleteMany({ where: { id: { in: users } } });
+    await db.$disconnect();
+  }
+});

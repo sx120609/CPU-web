@@ -22,8 +22,7 @@
       referrerpolicy="no-referrer"
     />
     <div v-if="fullscreen" class="runtime-fullscreen-controls">
-      <el-button @click="exitFullscreen">退出全屏</el-button
-      ><el-button @click="emit('close')">关闭作品</el-button>
+      <el-button size="small" @click="exitFullscreen">退出全屏</el-button>
     </div>
     <p v-if="connectionHint" class="runtime-status" role="status">
       {{ connectionHint }}
@@ -35,19 +34,21 @@
       aria-modal="true"
       :aria-label="consentTitle"
     >
-      <p>
-        来自作品「{{ version.name }}」的请求：{{ consentTitle }}：{{
-          consentMessage
-        }}
-      </p>
-      <el-button @click="finishConsent(false)">取消</el-button
-      ><el-button type="primary" @click="grantConsent">{{
-        pending === "motion"
-          ? "启用摇一摇"
-          : pending === "fullscreen"
-            ? "进入全屏"
-            : "同意"
-      }}</el-button>
+      <div class="runtime-consent-card">
+        <small>来自作品「{{ version.name }}」</small>
+        <b>{{ consentTitle }}</b>
+        <p>{{ consentMessage }}</p>
+        <div class="runtime-consent-actions">
+          <el-button @click="finishConsent(false)">取消</el-button>
+          <el-button type="primary" @click="grantConsent">{{
+            pending === "motion"
+              ? "启用摇一摇"
+              : pending === "fullscreen"
+                ? "进入全屏"
+                : "同意"
+          }}</el-button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -461,42 +462,67 @@ defineExpose({ stop, enterFullscreen: () => stage.value?.requestFullscreen() });
   height: 100%;
   min-height: 0;
 }
+.workshop-runtime > p {
+  margin: 0;
+  padding: 16px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
+  text-align: center;
+}
 .workshop-runtime iframe {
   display: block;
   width: 100%;
   height: 100%;
   border: 0;
 }
+/* 作品请求确认时盖住作品本身，按钮在 iframe 之外，作品无法代点。 */
 .runtime-consent {
   position: absolute;
   inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.5);
+}
+.runtime-consent-card {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  padding: 24px;
+  width: min(360px, 100%);
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   color: var(--cpu-text);
-  z-index: 2;
 }
-.runtime-consent p {
-  flex-basis: 100%;
-  text-align: center;
+.runtime-consent-card small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.runtime-consent-card b { font-size: var(--cpu-fs-l); font-weight: 600; }
+.runtime-consent-card p {
+  margin: 0;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
+.runtime-consent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.runtime-consent-actions .el-button + .el-button { margin-left: 0; }
 .runtime-fullscreen-controls {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   z-index: 3;
-  display: flex;
-  gap: 8px;
+  opacity: 0.85;
 }
 .runtime-status {
   position: absolute;
+  right: 0;
   bottom: 0;
   left: 0;
-  right: 0;
-  padding: 12px;
   background: var(--cpu-card);
 }
 .workshop-runtime:fullscreen {

@@ -1,7 +1,8 @@
 <template>
   <el-dialog
     :model-value="true"
-    title="审核私密预览"
+    class="wk-dialog"
+    title="预览和记录"
     width="min(1200px, 96vw)"
     style="--cpu-dialog-max-width: 1200px"
     destroy-on-close
@@ -10,7 +11,7 @@
     <div v-if="loading" role="status"><el-skeleton :rows="4" animated /></div>
     <el-alert v-else-if="error" :title="error" type="error" :closable="false" />
     <template v-else-if="selected">
-      <div class="ws-actions preview-toolbar">
+      <div class="wk-actions preview-toolbar">
         <el-select v-model="versionId" aria-label="预览版本" :disabled="busy">
           <el-option
             v-for="version in versions"
@@ -26,12 +27,12 @@
           ></el-radio-group
         >
         <el-select v-model="slot" aria-label="模拟位置" :disabled="busy">
-          <el-option label="独立页面" value="page" />
+          <el-option label="单独打开" value="page" />
           <el-option
             v-for="position in selected.manifest.extension?.slots || []"
             :key="position"
             :value="position"
-            :label="position === 'splash' ? '开屏' : '弹窗小工具'"
+            :label="position === 'splash' ? '开屏' : '小工具'"
           />
         </el-select>
         <el-button :disabled="disabled" @click="restart">重启预览</el-button
@@ -59,34 +60,29 @@
                 :slot="slot"
                 @close="stop"
               />
-              <p v-else class="pk-muted">预览已关闭，可点击重启。</p>
+              <p v-else class="wk-empty">预览已关闭，点“重启预览”再开。</p>
             </div>
           </div>
         </div>
         <aside class="preview-inspector">
-          <h3>{{ selected.name }} · v{{ selected.version }}</h3>
-          <p class="pk-muted">
-            {{ statusLabels[selected.status] }} ·
-            {{ workshopDate(selected.createdAt) }}
+          <h3 class="wk-h2">{{ selected.name }}</h3>
+          <p class="wk-meta">
+            <span>v{{ selected.version }}</span>
+            <span>{{ statusLabels[selected.status] }}</span>
+            <span>{{ workshopDate(selected.createdAt) }} 上传</span>
           </p>
-          <p>{{ selected.description }}</p>
-          <p>申请权限：{{ permissionText(selected.manifest.permissions) }}</p>
-          <p v-if="selected.manifest.extension">
-            申请位置：{{
-              selected.manifest.extension.slots
-                .map((s) => (s === "splash" ? "开屏" : "弹窗小工具"))
-                .join("、")
-            }}
-          </p>
-          <p v-if="disabled" class="pk-muted">
-            作品已停用，仅可查看版本与操作记录。
-          </p>
-          <p class="pk-muted">
-            存档与正式运行隔离。切换版本或关闭预览会立即卸载运行框。
-          </p>
-          <p v-if="selected.reviewReason">
-            审核意见：{{ selected.reviewReason }}
-          </p>
+          <p class="wk-text preview-description">{{ selected.description }}</p>
+          <dl class="wk-facts">
+            <dt>申请权限</dt>
+            <dd>{{ permissionText(selected.manifest.permissions) }}</dd>
+            <template v-if="selected.manifest.extension">
+              <dt>申请位置</dt>
+              <dd>{{ selected.manifest.extension.slots.map(slotLabel).join("、") }}</dd>
+            </template>
+          </dl>
+          <p v-if="disabled" class="wk-note is-warn">作品已停用，只能查看版本和操作记录。</p>
+          <p v-if="selected.reviewReason" class="wk-note is-danger">审核意见：{{ selected.reviewReason }}</p>
+          <p class="wk-sub">预览用的存档和正式运行分开。</p>
           <el-input
             v-if="selected.status === 'PENDING'"
             v-model="reason"
@@ -94,27 +90,27 @@
             :rows="3"
             maxlength="1000"
             show-word-limit
-            placeholder="审核备注；退回时必填"
+            placeholder="备注；退回时必填"
             aria-label="预览审核意见"
             :disabled="busy"
           />
           <div
             v-if="selected.status === 'PENDING'"
-            class="ws-actions preview-toolbar"
+            class="wk-actions preview-toolbar"
           >
             <el-button
-              type="success"
+              type="primary"
               :disabled="disabled || busy"
               :loading="busy"
               @click="review('approve')"
-              >通过并发布此版本</el-button
+              >通过并公开</el-button
             >
             <el-button
               type="danger"
               plain
               :disabled="busy || !reason.trim()"
               @click="review('reject')"
-              >退回此版本</el-button
+              >退回</el-button
             >
           </div>
           <div
@@ -126,27 +122,29 @@
             "
             class="preview-toolbar"
           >
-            <p>已公开，可单独启用主站位置：</p>
+            <p class="wk-sub">已公开，可以在网站上启用：</p>
             <el-button
               v-for="position in selected.manifest.extension.slots"
               :key="position"
               :disabled="busy"
               @click="emit('enable', position, selected.id)"
-              >启用{{ position === "splash" ? "开屏" : "小工具" }}</el-button
+              >启用{{ slotLabel(position) }}</el-button
             >
           </div>
-          <h3>操作记录</h3>
+          <h3 class="wk-h3 preview-audit-title">操作记录</h3>
           <p v-if="auditError" role="alert">
             {{ auditError }}
             <el-button size="small" @click="loadAudits">重试</el-button>
           </p>
-          <p v-else-if="!audits.length" class="pk-muted">暂无操作记录</p>
+          <p v-else-if="!audits.length" class="wk-sub">还没有操作记录</p>
           <div v-for="audit in audits" :key="audit.id" class="preview-audit">
-            <b>{{ actionLabel(audit.action) }}</b> ·
-            {{ audit.actor?.nickname || "系统"
-            }}<span v-if="audit.version"> · v{{ audit.version.version }}</span>
-            <p class="pk-muted">{{ workshopDate(audit.createdAt) }}</p>
-            <p v-if="audit.reason">{{ auditReason(audit) }}</p>
+            <b>{{ actionLabel(audit.action) }}</b>
+            <p class="wk-meta">
+              <span>{{ audit.actor?.nickname || "系统" }}</span>
+              <span v-if="audit.version">v{{ audit.version.version }}</span>
+              <span>{{ workshopDate(audit.createdAt) }}</span>
+            </p>
+            <p v-if="audit.reason" class="wk-sub">{{ auditReason(audit) }}</p>
           </div>
           <el-pagination
             v-if="auditTotal > 6"
@@ -176,10 +174,12 @@ import { useAuthStore } from "@/stores/auth";
 import WorkshopRuntime from "./WorkshopRuntime.vue";
 import {
   permissionText,
+  slotLabel,
   statusLabels,
   workshopDate,
   workshopError,
 } from "./shared";
+import "./workshop.css";
 const props = defineProps<{ work: WorkshopWork }>();
 const emit = defineEmits<{
   close: [];
@@ -252,8 +252,6 @@ async function loadAudits() {
   }
 }
 function auditReason(audit: WorkshopAudit) {
-  const slotLabel = (slot: string) =>
-    ({ splash: "开屏", dialog: "弹窗小工具" })[slot] || slot;
   if (audit.action === "placement-remove") return slotLabel(audit.reason || "");
   if (audit.action === "placement-set" && audit.reason) {
     try {
@@ -274,6 +272,7 @@ function actionLabel(action: string) {
         disable: "停用",
         enable: "解除停用",
         submit: "提交审核",
+        "delete-version": "作者删除版本",
         resolve_report: "处理举报",
         "placement-set": "启用扩展位置",
         "placement-remove": "关闭扩展位置",
@@ -401,8 +400,8 @@ onBeforeUnmount(() => {
 .preview-canvas {
   min-width: 0;
   background: var(--cpu-bg);
-  border: 1px solid var(--cpu-border);
-  border-radius: 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-l);
   padding: 12px;
 }
 .preview-canvas.mobile {
@@ -437,12 +436,24 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.preview-inspector p {
-  margin: 10px 0;
+.preview-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
+.preview-inspector p { margin: 0; }
+.preview-description {
+  max-height: 160px;
+  overflow-y: auto;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+}
+.preview-inspector .preview-toolbar { margin: 0; }
+.preview-audit-title { margin-top: 6px; }
 .preview-audit {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--cpu-border);
+  padding: 8px 0;
+  border-top: 1px solid var(--cpu-border-soft);
+  font-size: var(--cpu-fs-s);
 }
 @media (max-width: 760px) {
   .preview-layout {

@@ -36,6 +36,17 @@ export function assertWorkshopSubmission(
     throw Errors.conflict("只有草稿、退回版本或已下架的版本可以提交审核");
   }
 }
+export function assertWorkshopVersionDeletion(
+  work: WorkshopPolicyWork,
+  version: Pick<WorkshopPolicyVersion, "id">,
+  viewer: WorkshopViewer,
+) {
+  if (work.authorId !== viewer.userId) throw Errors.forbidden("只有作者可以删除作品版本");
+  // A disabled work is under moderation: its content stays as evidence.
+  if (work.disabled) throw Errors.forbidden("作品已被停用，请联系管理员");
+  if (work.publishedVersionId === version.id)
+    throw Errors.conflict("公开中的版本不能删除。发布新版本替换它，或联系管理员下架");
+}
 export function assertWorkshopReview(
   work: WorkshopPolicyWork,
   version: WorkshopPolicyVersion,

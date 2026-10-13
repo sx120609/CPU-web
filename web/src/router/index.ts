@@ -185,7 +185,9 @@ export const router = createRouter({
         { path: "workshop/mine", name: "workshop-manage", component: () => import("@/views/workshop/Manage.vue"), meta: { title: "我的作品" } },
         { path: "workshop/review", name: "workshop-review", component: () => import("@/views/workshop/Review.vue"), meta: { title: "工坊审核", requireAdmin: true } },
         { path: "workshop/:id", name: "workshop-detail", component: () => import("@/views/workshop/Detail.vue"), meta: { title: "作品详情", public: true } },
-        { path: "workshop/:id/run", name: "workshop-player", component: () => import("@/views/workshop/Player.vue"), meta: { title: "运行作品", public: true, fullWidthContent: true } },
+        // 运行页铺满屏幕，路径和 meta 的要求同小游戏（见 data/miniGames.ts）；旧地址跳到新地址。
+        { path: "workshop/:id/run", redirect: (to) => ({ name: "workshop-player", params: { id: to.params.id }, query: to.query }) },
+        { path: "services/tools/yaoda-can-fly/workshop/:id", name: "workshop-player", component: () => import("@/views/workshop/Player.vue"), meta: { nativeChrome: "page", title: "创意工坊", public: true, fullWidthContent: true, immersive: true } },
         { path: "services/tools/assessment-form", name: "service-assessment-form", component: () => import("@/views/services/AssessmentFormTool.vue"), meta: { title: "综测填表工具", public: true } },
         { path: "services/tools/games", name: "service-games", component: () => import("@/views/services/games/Index.vue"), meta: { title: "小游戏", public: true, miniGame: true } },
         { path: "services/tools/yaoda-can-fly", name: "service-yaoda-can-fly", component: () => import("@/views/services/games/YaodaCanFly.vue"), meta: { nativeChrome: "page", title: "药大人能飞", public: true, fullWidthContent: true, miniGame: true, immersive: true } },

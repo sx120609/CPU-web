@@ -192,6 +192,11 @@ export const workshopApi = {
       undefined,
       writeOptions,
     ),
+  deleteVersion: (id: string) =>
+    request.delete<{ workId: string; workDeleted: boolean }>(
+      `/workshop/versions/${encodeURIComponent(id)}`,
+      writeOptions,
+    ),
   preview: (id: string) =>
     request.post<WorkshopRuntimeTicket>(
       `/workshop/versions/${encodeURIComponent(id)}/preview`,

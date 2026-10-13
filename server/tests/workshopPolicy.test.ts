@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { PrismaClient } from "@prisma/client";
 import {
   assertWorkshopSubmission,
+  assertWorkshopVersionDeletion,
   canManageWorkshop,
   isWorkshopTicketCurrent,
   workshopSaveBytes,
@@ -283,4 +284,13 @@ test("competing report resolutions accept one administrator and record one audit
   const success = results.find((result) => result.status === "fulfilled");
   assert.ok(success?.status === "fulfilled");
   assert.deepEqual(success.value.resolvedBy, { id: admin.userId, nickname: "管理员" });
+});
+
+test("only the author deletes a version, and never the public one or one under moderation", () => {
+  const work = { id: workId, authorId: owner.userId, disabled: false, publishedVersionId: priorId, runtimeRevision: 1 };
+  assert.doesNotThrow(() => assertWorkshopVersionDeletion(work, { id: versionId }, owner));
+  assert.throws(() => assertWorkshopVersionDeletion(work, { id: versionId }, admin), /只有作者/u);
+  assert.throws(() => assertWorkshopVersionDeletion(work, { id: versionId }, stranger), /只有作者/u);
+  assert.throws(() => assertWorkshopVersionDeletion(work, { id: priorId }, owner), /公开中的版本不能删除/u);
+  assert.throws(() => assertWorkshopVersionDeletion({ ...work, disabled: true }, { id: versionId }, owner), /已被停用/u);
 });

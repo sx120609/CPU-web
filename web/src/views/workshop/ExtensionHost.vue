@@ -1,10 +1,12 @@
 <template>
-  <el-button
+  <button
     v-if="allowed && dialogPlacement && !blocked && !opened"
+    type="button"
     class="extension-entry"
     @click="open(dialogPlacement)"
-    >站点扩展</el-button
   >
+    {{ dialogPlacement.version.name }}
+  </button>
   <div
     v-if="opened"
     class="extension-overlay"
@@ -17,11 +19,11 @@
       :class="{ splash: opened.slot === 'splash' }"
     >
       <header>
-        <span>{{ opened.version.name }} · 站点扩展</span
-        ><el-button @click="close"
-          >{{ opened.slot === "splash" ? "跳过，继续浏览" : "关闭" }} ·
-          {{ remaining }}s</el-button
-        >
+        <span class="extension-name">
+          <b>{{ opened.version.name }}</b>
+          <small>来自创意工坊的扩展</small>
+        </span>
+        <el-button size="small" @click="close">{{ opened.slot === "splash" ? "跳过" : "关闭" }} {{ remaining }}s</el-button>
       </header>
       <WorkshopRuntime
         :key="opened.version.id"
@@ -183,10 +185,24 @@ onBeforeUnmount(() => {
 <style scoped>
 .extension-entry {
   position: fixed;
-  left: 18px;
   bottom: 28px;
+  left: 18px;
   z-index: 1000;
-  box-shadow: var(--cpu-shadow-card);
+  max-width: 180px;
+  min-height: 36px;
+  padding: 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-float);
+  color: var(--cpu-text);
+  font: inherit;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 :global(html[data-cpu-web-tabbar] .extension-entry) {
   bottom: calc(var(--cpu-web-tabbar-reserve, 56px) + 28px);
@@ -194,34 +210,40 @@ onBeforeUnmount(() => {
 .extension-overlay {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 0.45);
   z-index: 4000;
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.5);
 }
 .extension-panel {
   display: flex;
-  flex-direction: column;
   width: min(720px, 100%);
   height: min(740px, 85dvh);
-  background: var(--cpu-card);
-  border-radius: var(--cpu-radius-l);
+  flex-direction: column;
   overflow: hidden;
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-card);
 }
 .extension-panel header {
   display: flex;
-  gap: 12px;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  flex-shrink: 0;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--cpu-border-soft);
   color: var(--cpu-text);
 }
-.extension-panel .workshop-runtime {
-  flex: 1;
+.extension-name { display: flex; min-width: 0; flex-direction: column; line-height: 1.35; }
+.extension-name b {
+  overflow: hidden;
+  font-size: var(--cpu-fs-m);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.extension-panel.splash {
-  width: min(960px, 100%);
-}
+.extension-name small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.extension-panel .workshop-runtime { flex: 1; }
+.extension-panel.splash { width: min(960px, 100%); }
 </style>

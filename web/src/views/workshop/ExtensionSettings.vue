@@ -1,50 +1,48 @@
 <template>
-  <section class="pk-card">
-    <h2 class="pk-h2">站点扩展设置</h2>
-    <p class="pk-muted">
-      审核公开后仍需单独启用。开屏最多 15 秒，小工具最多 120
-      秒；更换公开版本不会自动更新这里的绑定。
-    </p>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <div v-for="slot in slots" :key="slot" class="ws-version">
-      <div class="ws-version-copy">
-        <b>{{ slot === "splash" ? "公开页面开屏" : "主动打开的小工具" }}</b>
-        <p>
-          {{ binding(slot)?.version.name || "未启用"
-          }}<span v-if="binding(slot)">
-            · v{{ binding(slot)?.version.version
-            }}{{ binding(slot)?.active === false ? " · 当前不可用" : "" }}</span
-          >
-        </p>
-        <p v-if="binding(slot)" class="pk-muted">
-          申请权限：{{
-            permissionText(binding(slot)!.version.manifest.permissions)
-          }}
-        </p>
-        <el-select
-          v-model="selected[slot]"
-          placeholder="选择已公开的扩展版本"
-          clearable
-          style="width: min(420px, 100%)"
-          ><el-option
-            v-for="work in candidates(slot)"
-            :key="work.id"
-            :label="`${work.version!.name} · v${work.version!.version}`"
-            :value="work.version!.id"
-        /></el-select>
+  <section class="wk-group wk-group--flush">
+    <div class="wk-group-head">
+      <div>
+        <h2 class="wk-h2">扩展位置</h2>
+        <p class="wk-sub">扩展审核公开后，还要在这里启用才会出现在网站上。开屏最长 15 秒，小工具最长 120 秒；扩展出了新版本不会自动换过来。</p>
       </div>
-      <div class="ws-actions">
-        <el-button
-          :loading="busy === slot"
-          :disabled="!selected[slot]"
-          @click="save(slot, selected[slot])"
-          >启用所选版本</el-button
-        ><el-button
-          :disabled="!binding(slot)"
-          :loading="busy === slot"
-          @click="save(slot, null)"
-          >关闭位置</el-button
-        >
+    </div>
+    <p v-if="error" class="wk-note is-danger wk-placement-error" role="alert">{{ error }}</p>
+    <div class="wk-rows">
+      <div v-for="slot in slots" :key="slot" class="wk-row wk-placement">
+        <div class="wk-row-copy">
+          <div class="wk-row-title">
+            <span>{{ slot === "splash" ? "开屏" : "小工具" }}</span>
+            <em class="wk-chip" :class="binding(slot) ? (binding(slot)?.active === false ? 'is-warn' : 'is-ok') : ''">{{
+              binding(slot) ? (binding(slot)?.active === false ? "暂不可用" : "已启用") : "未启用"
+            }}</em>
+          </div>
+          <p class="wk-sub">
+            {{ slot === "splash" ? "打开公开页面时出现一次" : "页面角落的按钮，点了才打开" }}
+          </p>
+          <p v-if="binding(slot)" class="wk-meta">
+            <span>{{ binding(slot)!.version.name }}</span>
+            <span>v{{ binding(slot)!.version.version }}</span>
+            <span>权限：{{ permissionText(binding(slot)!.version.manifest.permissions) }}</span>
+          </p>
+        </div>
+        <div class="wk-placement-controls">
+          <el-select v-model="selected[slot]" placeholder="选择已公开的扩展" clearable :aria-label="slot === 'splash' ? '开屏使用的扩展' : '小工具使用的扩展'">
+            <el-option
+              v-for="work in candidates(slot)"
+              :key="work.id"
+              :label="`${work.version!.name} · v${work.version!.version}`"
+              :value="work.version!.id"
+            />
+          </el-select>
+          <el-button
+            type="primary"
+            :loading="busy === slot"
+            :disabled="!selected[slot]"
+            @click="save(slot, selected[slot])"
+            >启用</el-button
+          >
+          <el-button :disabled="!binding(slot)" :loading="busy === slot" @click="save(slot, null)">关闭</el-button>
+        </div>
       </div>
     </div>
   </section>
@@ -131,9 +129,9 @@ async function save(slot: WorkshopSlot, versionId: string | null) {
   try {
     await ElMessageBox.confirm(
       versionId
-        ? "确认在主站启用所选公开版本？请核对内容和申请权限。"
-        : "确认关闭此位置？",
-      "站点扩展设置",
+        ? "在网站上启用这个扩展？启用前请核对内容和申请的权限。"
+        : "关闭这个位置？",
+      "扩展位置",
       { dangerouslyUseHTMLString: false },
     );
   } catch {
@@ -161,3 +159,18 @@ onBeforeUnmount(() => {
 });
 onMounted(load);
 </script>
+
+<style scoped>
+.wk-placement-error { margin: 0 16px 12px; }
+.wk-placement-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.wk-placement-controls .el-select { width: 220px; }
+.wk-placement-controls .el-button + .el-button { margin-left: 0; }
+@media (max-width: 600px) {
+  .wk-placement-controls, .wk-placement-controls .el-select { width: 100%; }
+}
+</style>
