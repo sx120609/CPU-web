@@ -28,6 +28,21 @@ test("deployment log response is bounded to recent output", () => {
   assert.equal(lines.at(-1), "line-299");
 });
 
+test("deployment logs retain the latest curl progress instead of freezing at the first updates", () => {
+  const updates = Array.from({ length: 400 }, (_, index) => `${"#".repeat(72)} ${(index / 4).toFixed(1)}%`);
+  const lines = sanitizeDeploymentLog(`[deploy] downloading\r\n${updates.join("\r")}`);
+  assert.equal(lines.length, 240);
+  assert.equal(lines[0], updates[160]);
+  assert.equal(lines.at(-1), updates.at(-1));
+  assert.equal(lines.some(line => line.includes("\r")), false);
+});
+
+test("deployment logs handle mixed terminal newlines without losing redaction or completion", () => {
+  assert.deepEqual(sanitizeDeploymentLog(
+    "[deploy] downloading\r\n10%\rTOKEN=private-token\r100%\r\n[deploy] complete\n",
+  ), ["[deploy] downloading", "10%", "TOKEN=***", "100%", "[deploy] complete"]);
+});
+
 test("successful deployment baseline recovers a runner interrupted by PM2 reload", () => {
   assert.equal(deploymentBaselineConfirmsCompletion({
     currentCommit: "abc123",

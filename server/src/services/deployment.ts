@@ -266,7 +266,10 @@ export function sanitizeDeploymentLog(raw: string) {
     .replace(/(https?:\/\/[^:/\s]+:)[^@\s]+@/gi, "$1***@")
     .replace(/[^\t\n\r\x20-\x7e\u0080-\uffff]/g, "");
   return cleaned
-    .split(/\r?\n/)
+    // curl redraws progress with a bare carriage return. Split those updates
+    // before bounding lines so the UI shows the latest progress, not the first
+    // 2,000 characters of one ever-growing terminal line.
+    .split(/\r\n|[\r\n]/)
     .map((line) => line.slice(0, 2_000))
     .filter((line, index, lines) => line || index < lines.length - 1)
     .slice(-MAX_LOG_LINES);
