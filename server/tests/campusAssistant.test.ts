@@ -6,7 +6,6 @@ import {
   buildAssistantMessages,
   buildCampusAssistantImageIntentMessages,
   buildSystemPrompt,
-  CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME,
   extractPartialJsonStringValue,
   filterUnavailableDataSuggestions,
   guardCampusAssistantResponse,
@@ -1582,18 +1581,16 @@ test("forum access is open to guests and no longer requires manual activation", 
   await ensureForumAccessEnabled(1, "user");
 });
 
-test("拾间AI对外只告知固定品牌模型名称，不泄露真实上游模型", () => {
+test("拾间AI如实告知线路上实际使用的模型名称", () => {
   const prompt = buildSystemPrompt([], false, "example-model-2026");
 
-  assert.equal(CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME, "基于Qwen3.8和GPT5.6混合训练的拾间大模型");
-  assert.match(prompt, /你对外使用的模型名称固定为“基于Qwen3\.8和GPT5\.6混合训练的拾间大模型”/);
+  assert.match(prompt, /你当前使用的模型是“example-model-2026”/);
   assert.match(prompt, /只有用户主动询问你是什么模型或具体模型名称时/);
-  assert.match(prompt, /我是 基于Qwen3\.8和GPT5\.6混合训练的拾间大模型/);
+  assert.match(prompt, /我使用的是 example-model-2026/);
   assert.match(prompt, /普通问候、介绍自己或“你是谁”这类问题/);
-  assert.match(prompt, /其他情况下绝不主动提及模型/);
-  assert.match(prompt, /不要说“当前处理本次对话的模型名称是”/);
-  assert.doesNotMatch(prompt, /Deepseek v5/);
-  assert.doesNotMatch(prompt, /example-model-2026/);
+  assert.match(prompt, /其他情况下不主动提及模型/);
+  assert.doesNotMatch(prompt, /Qwen3\.8|GPT5\.6|混合训练/);
+  assert.doesNotMatch(buildSystemPrompt([], false, "qwen3:8b"), /不得向用户透露真实上游模型/);
 });
 
 test("拾间AI明确说明药大拾间不是学校官方平台", () => {

@@ -248,3 +248,51 @@ test("Claude model catalog reads /v1/models in one page", () => {
     ["https://relay.example.com/claude/v1/models?limit=1000"],
   );
 });
+
+async function captureChatRequests(model: string, responder: (body: any, attempt: number) => Response) {
+  const originalFetch = globalThis.fetch;
+  const bodies: any[] = [];
+  globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    bodies.push(body);
+    return responder(body, bodies.length);
+  }) as typeof fetch;
+  try {
+    const result = await sendAiJsonRequest({
+      endpoint: `https://relay-${model}.example.com/v1/chat/completions`,
+      apiKey: "sk",
+      model,
+      temperature: 0.1,
+      maxTransientRetries: 0,
+      messages: [{ role: "user", content: "测试" }],
+    });
+    return { result, bodies };
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+const okChat = () => new Response(JSON.stringify({ choices: [{ message: { content: "{}" }, finish_reason: "stop" }] }), {
+  headers: { "Content-Type": "application/json" },
+});
+
+test("Claude models behind an OpenAI-compatible relay are sent without temperature", async () => {
+  const { result, bodies } = await captureChatRequests("claude-haiku-5-5", okChat);
+  assert.equal(result.response.ok, true);
+  assert.equal(bodies.length, 1);
+  assert.equal("temperature" in bodies[0], false);
+  const other = await captureChatRequests("gpt-6-luna", okChat);
+  assert.equal(other.bodies[0].temperature, 0.1);
+});
+
+test("a model that rejects temperature is retried once without it and remembered", async () => {
+  const rejecting = (body: any) => "temperature" in body
+    ? new Response(JSON.stringify({ error: { message: "o9-mini does not support non-default temperature", type: "invalid_request_error" } }), { status: 400 })
+    : okChat();
+  const first = await captureChatRequests("o9-mini", rejecting);
+  assert.equal(first.result.response.ok, true);
+  assert.deepEqual(first.bodies.map((body) => "temperature" in body), [true, false]);
+  const second = await captureChatRequests("o9-mini", rejecting);
+  assert.equal(second.result.response.ok, true);
+  assert.deepEqual(second.bodies.map((body) => "temperature" in body), [false]);
+});

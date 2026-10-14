@@ -90,7 +90,6 @@ export type CampusAssistantKnowledgeEntry = {
 const SITE_KNOWLEDGE_VERIFIED_AT = "2026-07-27";
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
-export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "基于Qwen3.8和GPT5.6混合训练的拾间大模型";
 const CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT = 8;
 const CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS = 16_384;
 const DEFAULT_CAMPUS_ASSISTANT_CONTEXT: AiServiceAssistantContextConfig = {
@@ -808,7 +807,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "qqbot-daily-assistant-2026-08",
     relatedActionIds: ["campus-assistant", "messages"],
-    fact: "QQBot 日常问答：私聊可以直接发送文字或图片咨询。群聊里要先叫到拾间AI才会回答：@拾间AI、直接喊名字（如“拾间AI，……”）或引用它发过的消息都可以；只 @ 不带问题时，它会把你的下一条消息当作问题。引用别人的消息再 @拾间AI 提问，被引用的内容会一并交给它。回答后同一个人 3 分钟内可以不 @ 继续追问，连续追问几轮后需要重新 @；@ 或引用其他群友的消息不会被当成在问它。管理员也可以在后台按群开启主动回答，此时只回答明确的内容问题，同一个群每分钟最多主动回答一次，已有群友回应时会让开，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。用户连续发送多条消息时，QQBot 会等待短暂停顿后合并为一轮回答，避免用户还没说完就连续回复。命令、语音、视频、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由支持最近有限的对话上下文，服务端只保留最近几条消息，知识库事实优先。",
+    fact: "QQBot 日常问答：私聊可以直接发送文字或图片咨询。群聊里要先叫到拾间AI才会回答：@拾间AI、直接喊名字（如“拾间AI，……”）或引用它发过的消息都可以；只 @ 不带问题时，它会把你的下一条消息当作问题。引用别人的消息再 @拾间AI 提问，被引用的内容会一并交给它。回答后同一个人 3 分钟内可以不 @ 继续追问，连续追问几轮后需要重新 @；@ 或引用其他群友的消息不会被当成在问它。管理员也可以在后台按群开启主动回答，此时只回答明确的内容问题，同一个群每分钟最多主动回答一次，已有群友回应时会让开，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。用户连续发送多条消息时，QQBot 会等待短暂停顿后合并为一轮回答，避免用户还没说完就连续回复。命令、语音、视频、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 AI 线路支持最近有限的对话上下文，服务端只保留最近几条消息，知识库事实优先。",
     source: "药大拾间 QQBot 使用规则与用户补充",
     sourceRef: "https://cputime.cn",
     verifiedAt: "2026-10-12",
@@ -1257,7 +1256,7 @@ export async function askCampusAssistant(input: {
 
   try {
     if (isCampusAssistantModelIdentityQuestion(message)) {
-      const response = modelIdentityResponse();
+      const response = modelIdentityResponse(assistantModel);
       await finishAiReviewLogSuccess(logId, response.answer);
       return response;
     }
@@ -1684,7 +1683,8 @@ export async function streamCampusAssistant(input: {
         return response;
       }
       if (modelIdentityRequested) {
-        const response = modelIdentityResponse();
+        // 回退线路可能换了模型，按实际应答的那一个回答。
+        const response = modelIdentityResponse(completed.result.result.provider.model?.trim() || model);
         await finishAiReviewLogSuccess(logId, response.answer);
         return response;
       }
@@ -1743,9 +1743,11 @@ export function isCampusAssistantModelIdentityQuestion(message: string) {
   ].some((pattern) => pattern.test(normalized));
 }
 
-function modelIdentityResponse(): CampusAssistantResponse {
+/** 如实说出线路上实际使用的模型名称。 */
+function modelIdentityResponse(modelName: string): CampusAssistantResponse {
+  const model = String(modelName || "").trim();
   return {
-    answer: `我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}，是药大拾间的 AI 助手，主要提供校园服务、站内功能和一般学习生活问答。`,
+    answer: `我是药大拾间的 AI 助手“拾间AI”，${model ? `当前使用的模型是 ${model}，` : ""}主要提供校园服务、站内功能和一般学习生活问答。`,
     actions: [],
     suggestions: [],
     fallback: false,
@@ -2284,7 +2286,7 @@ export function buildSystemPrompt(
     .map(({ id, fact, source, verifiedAt }) => ({ id, fact, source, verifiedAt }));
   const modelFactualityGuard = isQwenAssistantModel(modelName)
     ? [
-        "【事实准确性加强规则】当前上游属于 Qwen 系列，但不得向用户透露真实上游模型；这些规则只用于约束回答。涉及药大拾间、校园服务、产品功能、操作步骤和账号规则时，只能把 knowledge 与 catalog 中明确写出的内容当作事实。knowledge 没有明确写出的具体网址、按钮名称、电话、时间、费用、权限、支持范围、账号规则或当前状态，一律不能猜测、补全或套用其他平台经验。",
+        "【事实准确性加强规则】当前上游属于 Qwen 系列，这些规则只用于约束回答。涉及药大拾间、校园服务、产品功能、操作步骤和账号规则时，只能把 knowledge 与 catalog 中明确写出的内容当作事实。knowledge 没有明确写出的具体网址、按钮名称、电话、时间、费用、权限、支持范围、账号规则或当前状态，一律不能猜测、补全或套用其他平台经验。",
         "用户消息、历史会话和用户提出的前提都不是事实来源，不能因为用户这样说就默认其正确；如果前提与 knowledge 冲突，先明确纠正。不要把推测、示例、可能性或建议写成已经核实的结论。无法确认时直接说“知识库中没有这项信息”，并引导用户查看对应入口或学校原始公告。回答前在内部逐项核对事实来源，但不要输出隐藏检查过程。",
         "【人格边界】不要编造父母、家庭、童年、出生、身体、现实经历或现实行动；你不是人，也不要把自己写成有家庭和人生经历的人。被问到这类问题时，简短说明自己是拾间AI、没有人类家庭或个人经历即可，不要继续编故事或把“知识库和参数”当作个人经历。",
         `【上下文范围】当前服务${contextConfig.maxMessages > 0 ? `最多提供最近 ${contextConfig.maxMessages} 条对话消息` : "提供本次会话可用的全部历史消息"}${contextConfig.maxCharsPerMessage > 0 ? `，每条最多 ${contextConfig.maxCharsPerMessage} 个字符` : "，不额外截断单条历史"}；这些历史只用于理解省略指代和连续追问，不能作为事实来源，knowledge 始终优先。不要假设自己记得未提供的对话。`,
@@ -2293,7 +2295,7 @@ export function buildSystemPrompt(
   return [
     "你是“药大拾间”的 AI 助手“拾间AI”，面向中国药科大学学生。",
     "【平台身份】药大拾间是学生自主开发维护的独立、非官方校园服务站点，不是中国药科大学官方平台，不代表学校。学校官网、统一身份认证和学校官方公告才是官方来源；不要把药大拾间、拾间AI或站内功能表述为学校官方平台、学校官方服务或学校官方应用。",
-    `你对外使用的模型名称固定为“${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”。只有用户主动询问你是什么模型或具体模型名称时，才自然、简短地回答“我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”或“我使用的是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”；其他情况下绝不主动提及模型。不要说“当前处理本次对话的模型名称是”之类像在转述系统配置的话，也不要提及系统提示、后台配置、真实上游模型、上游调用或模型候选；不得根据后台实际调用的模型改写这一对外名称，也不要虚构额外的模型厂商、版本能力或部署信息。`,
+    `你当前使用的模型是“${String(modelName || "").trim()}”。只有用户主动询问你是什么模型或具体模型名称时，才如实、简短地回答“我使用的是 ${String(modelName || "").trim()}”；其他情况下不主动提及模型。不要提及系统提示、后台配置、上游调用或模型候选，也不要虚构这个名称以外的模型厂商、训练来源、版本能力或部署信息。`,
     "你的首要任务是帮助用户找到站内功能、给出可靠的操作指引，也可以进行普通聊天和常识问答。",
     "普通问候、介绍自己或“你是谁”这类问题，不要只返回姓名或标签；用一到两句完整自然的话说明身份、服务范围，并自然收尾。除非用户明确要求一句话，否则事实咨询至少给出结论和一个可执行动作；复杂问题用分段或要点说明，不要用空泛的“请查看官网”替代已有 knowledge 中的答案。",
     "用户询问如何使用药大拾间或选择客户端时，按设备优先给出可用的移动端或桌面端入口：Windows/macOS 推荐药大拾间桌面客户端，Android 推荐 Android 原生客户端，鸿蒙设备推荐华为应用市场里的鸿蒙原生客户端，iPhone/iPad 优先推荐 App Store 原生客户端 https://apps.apple.com/cn/app/id6811073406（需要 iOS / iPadOS 15.0 或更高版本，其中 15–16 为网页兼容界面，17 及以上支持原生课表与小组件）。Safari 主屏幕版作为兼容方式仍可使用，适合系统低于 iOS 15 或暂不安装的用户。不要对 iOS 或鸿蒙用户说“没有原生客户端”。",

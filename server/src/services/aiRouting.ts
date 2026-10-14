@@ -328,6 +328,8 @@ export async function testAiRoute(route: AiRouteTestInput): Promise<AiRouteTest>
       provider: route.provider,
       model: route.model.trim(),
       messages: [{ role: "user", content: "这是一次连通性检查。请只输出 JSON：{\"ok\":true}" }],
+      // 和各场景一样带上 temperature，模型不接受这类参数时测试也能发现。
+      temperature: 0.1,
       maxTokens: 64,
       maxTransientRetries: 0,
       timeoutMs: ROUTE_TEST_TIMEOUT_MS,

@@ -117,6 +117,8 @@ export async function filterAiProviderCandidatesByModel(
 
 const promptCacheKeySupport = new Map<string, boolean>();
 const promptCacheRetentionSupport = new Map<string, boolean>();
+/** 上游明确拒绝过 temperature 的“地址 + 模型”，之后不再发送。 */
+const temperatureSupport = new Map<string, boolean>();
 export const AI_UPSTREAM_TIMEOUT_MS = 90_000;
 const AI_RESPONSE_BODY_TIMEOUT_MS = 120_000;
 const AI_RESPONSE_BODY_CLOSED = Symbol("ai-response-body-closed");
@@ -581,6 +583,15 @@ async function sendAiUpstreamRequestWithSignal(input: {
   const maxTransientRetries = Number.isFinite(configuredRetries)
     ? Math.max(0, Math.min(3, Math.floor(configuredRetries)))
     : 3;
+  const temperatureKey = `${supportKey}:${String(input.body.model || "").trim().toLowerCase()}`;
+  // 较新的 Claude 模型不接受非默认 temperature，经 OpenAI 兼容中转调用时也一样，所以按模型名直接不发。
+  let omitTemperature = isClaudeModelName(input.body.model) || temperatureSupport.get(temperatureKey) === false;
+  const requestBody = () => {
+    if (anthropic) return input.body;
+    const body = withPromptCacheOptions(input.body, promptCacheKeyApplied ? promptCacheKey : "", promptCacheRetentionApplied);
+    if (omitTemperature) delete body.temperature;
+    return body;
+  };
 
   const execute = () => fetch(input.endpoint, {
     method: "POST",
@@ -589,16 +600,19 @@ async function sendAiUpstreamRequestWithSignal(input: {
       ...buildAiUpstreamAuthHeaders(input.endpoint, input.apiKey, anthropic),
     },
     signal: input.signal,
-    body: JSON.stringify(anthropic ? input.body : withPromptCacheOptions(
-      input.body,
-      promptCacheKeyApplied ? promptCacheKey : "",
-      promptCacheRetentionApplied,
-    )),
+    body: JSON.stringify(requestBody()),
   });
 
   const executeWithPromptCacheFallback = async () => {
     let response = await execute();
     let errorText = response.ok ? "" : await response.clone().text().catch(() => "");
+
+    if (!response.ok && !omitTemperature && "temperature" in input.body && shouldDisableTemperature(response.status, errorText)) {
+      temperatureSupport.set(temperatureKey, false);
+      omitTemperature = true;
+      response = await execute();
+      errorText = response.ok ? "" : await response.clone().text().catch(() => "");
+    }
 
     if (!response.ok && promptCacheRetentionApplied && shouldDisablePromptCacheRetention(response.status, errorText)) {
       promptCacheRetentionSupport.set(supportKey, false);
@@ -1312,6 +1326,17 @@ function shouldDisablePromptCacheKey(status: number, responseText: string) {
       || text.includes("unexpected")
       || text.includes("invalid")
     );
+}
+
+function isClaudeModelName(model: unknown) {
+  return /(?:^|[\/:._-])claude(?:[._-]|$)/i.test(String(model || "").trim());
+}
+
+function shouldDisableTemperature(status: number, responseText: string) {
+  if (status !== 400 && status !== 422) return false;
+  const text = String(responseText || "").toLowerCase();
+  return text.includes("temperature")
+    && /unsupported|not support|does not support|non-default|only the default|deprecated|not allowed|unknown|unrecognized|extra inputs|invalid/.test(text);
 }
 
 function shouldDisablePromptCacheRetention(status: number, responseText: string) {
