@@ -183,7 +183,9 @@ watch([workId, previewId, () => auth.sessionVersion], load, { immediate: true })
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: env(safe-area-inset-top, 0px) 8px 0;
+  /* 原生壳（安卓/iOS Next/鸿蒙）已把 WebView 放在状态栏下方，MainLayout 会把这个变量置 0；
+     直接用 env() 会在安卓上再留一截状态栏高度的空白。iOS 浏览器和 PWA 仍取系统安全区。 */
+  padding: var(--cpu-safe-area-inset-top, 0px) 8px 0;
   border-bottom: 1px solid var(--cpu-border-soft);
   background: var(--cpu-card);
 }
