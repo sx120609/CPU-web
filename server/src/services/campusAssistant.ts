@@ -1289,7 +1289,7 @@ export async function askCampusAssistant(input: {
     let parsed: unknown;
     try {
       const completed = await resolveDepartmentContactModelRound(result,
-        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(assistantModel) }), (context) => {
+        (content) => parseAssistantJson(content, { allowPlainText: allowsPlainTextAssistantAnswer(assistantModel) }), (context) => {
           directoryContext = context;
           return generate(context);
         }, undefined, (_result, value, toolContext) => {
@@ -1301,7 +1301,7 @@ export async function askCampusAssistant(input: {
       parsed = completed.parsed;
       directoryContext = completed.context;
     } catch (error) {
-      if (!isQwenAssistantModel(assistantModel)) throw error;
+      if (!allowsPlainTextAssistantAnswer(assistantModel)) throw error;
       const repaired = await repairCampusAssistantResponse({
         message,
         history: input.history,
@@ -1318,7 +1318,7 @@ export async function askCampusAssistant(input: {
         signal: input.signal,
       });
       if (!repaired) {
-        await finishAiReviewLogError(logId, "AI_RESPONSE_FORMAT", error instanceof Error ? error.message : String(error));
+        await finishAiReviewLogError(logId, "AI_RESPONSE_FORMAT", assistantFailureDetail(error));
         return fallbackAssistantResponse(deterministicActions, true);
       }
       const repairedImagePrompt = await resolveCampusAssistantImagePromptWithAi(
@@ -1399,7 +1399,7 @@ export async function askCampusAssistant(input: {
     await finishAiReviewLogSuccess(logId, response.answer);
     return response;
   } catch (error) {
-    await finishAiReviewLogError(logId, error instanceof Error ? error.message : String(error));
+    await finishAiReviewLogError(logId, error instanceof Error ? error.message : String(error), assistantRawContent(error));
     console.warn("[campus-assistant] AI request failed", error instanceof Error ? error.message : error);
     return fallbackAssistantResponse(deterministicActions, true);
   }
@@ -1460,7 +1460,7 @@ async function repairCampusAssistantResponse(input: {
         signal: input.signal,
       });
       const completed = await resolveDepartmentContactModelRound(await generate(),
-        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(input.model) }), generate, input.directoryContext,
+        (content) => parseAssistantJson(content, { allowPlainText: allowsPlainTextAssistantAnswer(input.model) }), generate, input.directoryContext,
         (_result, value, toolContext) => {
           groundDepartmentContactResponse(guardCampusAssistantResponse(filterUnavailableDataSuggestions(
             normalizeAssistantResponse(value, input.availableActions, input.deterministicActions),
@@ -1670,7 +1670,7 @@ export async function streamCampusAssistant(input: {
         return { content, emittedAnswer, restrictedOutput, result };
       };
       const completed = await resolveDepartmentContactModelRound(await generate(),
-        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(model) }), generate, undefined,
+        (content) => parseAssistantJson(content, { allowPlainText: allowsPlainTextAssistantAnswer(model) }), generate, undefined,
         (_result, value, toolContext) => {
           groundDepartmentContactResponse(guardCampusAssistantResponse(filterUnavailableDataSuggestions(
             normalizeAssistantResponse(value, availableActions, deterministicActions),
@@ -1723,7 +1723,11 @@ export async function streamCampusAssistant(input: {
     }
   }
 
-  await finishAiReviewLogError(logId, lastError instanceof Error ? lastError.message : String(lastError || "AI 请求失败"));
+  await finishAiReviewLogError(
+    logId,
+    lastError instanceof Error ? lastError.message : String(lastError || "AI 请求失败"),
+    assistantRawContent(lastError),
+  );
   console.warn("[campus-assistant] streaming AI request failed", lastError instanceof Error ? lastError.message : lastError);
   return fallbackAssistantResponse(deterministicActions, true);
 }
@@ -2216,11 +2220,24 @@ export function parseAssistantJson(content: string, options: { allowPlainText?: 
     return { answer: partialAnswer, actionIds: [], suggestions: [] };
   }
   if (options.allowPlainText && !looksLikeIncompleteJson) return { answer: normalized, actionIds: [], suggestions: [] };
-  throw new Error("拾间AI返回格式异常");
+  // 带上原始回复的开头，日志里才看得出模型到底返回了什么。
+  throw Object.assign(new Error("拾间AI返回格式异常"), { rawContent: normalized.slice(0, 1500) });
+}
+
+function assistantRawContent(error: unknown) {
+  const raw = (error as { rawContent?: unknown } | null)?.rawContent;
+  return typeof raw === "string" && raw ? raw : null;
+}
+
+function assistantFailureDetail(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const raw = assistantRawContent(error);
+  return raw ? `${message}\n原始回复：${raw}` : message;
 }
 
 function parseJsonCandidate(candidate: string): { ok: true; value: unknown } | { ok: false } {
-  const variants = [candidate, candidate.replace(/,\s*([}\]])/g, "$1")];
+  const withoutTrailingCommas = candidate.replace(/,\s*([}\]])/g, "$1");
+  const variants = [candidate, withoutTrailingCommas, escapeControlCharactersInJsonStrings(withoutTrailingCommas)];
   for (const variant of variants) {
     try {
       const value = JSON.parse(variant);
@@ -2237,6 +2254,36 @@ function parseJsonCandidate(candidate: string): { ok: true; value: unknown } | {
     }
   }
   return { ok: false };
+}
+
+/**
+ * 没有 JSON 模式的模型（Claude、本地 Qwen）常把多段回答的换行原样写进字符串里，
+ * JSON.parse 不接受；只转义字符串内部的控制字符，结构不动。
+ */
+export function escapeControlCharactersInJsonStrings(source: string) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (const char of source) {
+    if (!inString) {
+      if (char === '"') inString = true;
+      output += char;
+      continue;
+    }
+    if (escaped) {
+      escaped = false;
+      output += char;
+      continue;
+    }
+    if (char === "\\") escaped = true;
+    else if (char === '"') inString = false;
+    else if (char === "\n") { output += "\\n"; continue; }
+    else if (char === "\r") { output += "\\r"; continue; }
+    else if (char === "\t") { output += "\\t"; continue; }
+    else if (char < " ") { output += `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`; continue; }
+    output += char;
+  }
+  return output;
 }
 
 function extractBalancedJsonObject(source: string) {
@@ -2270,6 +2317,11 @@ function extractBalancedJsonObject(source: string) {
     }
   }
   return null;
+}
+
+/** 这些模型没有可靠的 JSON 模式，回复是完整的普通文字时直接当作回答。 */
+function allowsPlainTextAssistantAnswer(modelName: string) {
+  return isQwenAssistantModel(modelName) || /(?:^|[\/:._-])claude(?:[._-]|$)/i.test(String(modelName || "").trim());
 }
 
 export function isQwenAssistantModel(modelName: string) {

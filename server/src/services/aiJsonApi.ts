@@ -13,7 +13,7 @@ export type AiJsonApiMode = "chat_completions" | "responses" | "anthropic_messag
 
 /** Claude requires max_tokens; callers that leave it unset get a ceiling every current model accepts. */
 const ANTHROPIC_DEFAULT_MAX_TOKENS = 16_000;
-const ANTHROPIC_JSON_ONLY_INSTRUCTION = "只输出一个 JSON 对象本身：不要用 Markdown 代码块包裹，JSON 前后不要有任何其他文字。";
+const ANTHROPIC_JSON_ONLY_INSTRUCTION = "只输出一个 JSON 对象本身：不要用 Markdown 代码块包裹，JSON 前后不要有任何其他文字；字符串里的换行写成 \\n 转义，不要直接换行。";
 
 export type AiJsonImageDetail = "low" | "high" | "auto" | "original";
 
