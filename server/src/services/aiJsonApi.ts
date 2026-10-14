@@ -5,10 +5,15 @@ import {
   isAiProviderBusyError,
   runWithAiProviderIsolation,
 } from "./aiUpstreamScheduler";
+import { buildAiUpstreamAuthHeaders, isAnthropicMessagesUrl, isOfficialAnthropicUrl } from "./aiUpstreamAuth";
 
 export { isAiProviderBusyError } from "./aiUpstreamScheduler";
 
-export type AiJsonApiMode = "chat_completions" | "responses";
+export type AiJsonApiMode = "chat_completions" | "responses" | "anthropic_messages";
+
+/** Claude requires max_tokens; callers that leave it unset get a ceiling every current model accepts. */
+const ANTHROPIC_DEFAULT_MAX_TOKENS = 16_000;
+const ANTHROPIC_JSON_ONLY_INSTRUCTION = "只输出一个 JSON 对象本身：不要用 Markdown 代码块包裹，JSON 前后不要有任何其他文字。";
 
 export type AiJsonImageDetail = "low" | "high" | "auto" | "original";
 
@@ -136,7 +141,9 @@ export function buildAiPromptCacheKey(scope: string, parts: Array<string | numbe
 
 export function detectAiJsonApiMode(endpoint: string): AiJsonApiMode {
   const normalized = String(endpoint || "").trim().replace(/[?#].*$/, "").replace(/\/+$/, "");
-  return /\/responses$/i.test(normalized) ? "responses" : "chat_completions";
+  if (/\/responses$/i.test(normalized)) return "responses";
+  if (isAnthropicMessagesUrl(normalized)) return "anthropic_messages";
+  return "chat_completions";
 }
 
 export function normalizeAiJsonApiUrl(input: string, fallbackEndpoint: string) {
@@ -502,13 +509,21 @@ export async function sendAiUpstreamRequest(input: {
   // Reject malformed payloads before entering the Ollama queue. Otherwise an
   // invalid image/message request can wait behind a long model task and be
   // reported as AI_PROVIDER_BUSY instead of the actionable validation error.
-  validateAiRequestBody(input.body, detectAiJsonApiMode(input.endpoint));
+  const mode = detectAiJsonApiMode(input.endpoint);
+  validateAiRequestBody(input.body, mode);
+  // 各调用方按 Chat Completions 或 Responses 的形状拼请求体；发往 Claude 前在这里统一换成 Messages 格式。
+  const upstreamInput = mode === "anthropic_messages"
+    ? {
+        ...input,
+        body: toAnthropicMessagesBody(input.body, { cacheSystemPrompt: Boolean(String(input.promptCacheKey || "").trim()) }),
+      }
+    : input;
   const shouldSerializeResponse = isOllamaEndpoint(input.provider, input.endpoint);
   return runWithAiProviderIsolation({
     provider: input.provider,
     endpoint: input.endpoint,
     signal: input.signal,
-    run: () => sendAiUpstreamRequestUnisolated(input),
+    run: () => sendAiUpstreamRequestUnisolated(upstreamInput),
     // Ollama starts a model task before the HTTP body is consumed. Holding only
     // streams left native/non-streaming callers free to start a second task
     // while the first response.json() was still running.
@@ -553,10 +568,13 @@ async function sendAiUpstreamRequestWithSignal(input: {
   timeoutMs?: number;
 }): Promise<SendAiJsonRequestResult> {
   const mode = detectAiJsonApiMode(input.endpoint);
+  const anthropic = mode === "anthropic_messages";
   const supportKey = `${mode}:${input.endpoint}`;
   const promptCacheKey = String(input.promptCacheKey || "").trim();
-  let promptCacheKeyApplied = Boolean(promptCacheKey) && (promptCacheKeySupport.get(supportKey) ?? true);
-  let promptCacheRetentionApplied = promptCacheKeyApplied
+  // Claude 没有 prompt_cache_key，缓存由 sendAiUpstreamRequest 换格式时打在系统提示上的 cache_control 完成。
+  let promptCacheKeyApplied = Boolean(promptCacheKey) && (anthropic || (promptCacheKeySupport.get(supportKey) ?? true));
+  let promptCacheRetentionApplied = !anthropic
+    && promptCacheKeyApplied
     && input.enablePromptCacheRetention !== false
     && (promptCacheRetentionSupport.get(supportKey) ?? true);
   const configuredRetries = Number(input.maxTransientRetries);
@@ -568,12 +586,10 @@ async function sendAiUpstreamRequestWithSignal(input: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(String(input.apiKey || "").trim()
-        ? { Authorization: `Bearer ${String(input.apiKey).trim()}` }
-        : {}),
+      ...buildAiUpstreamAuthHeaders(input.endpoint, input.apiKey, anthropic),
     },
     signal: input.signal,
-    body: JSON.stringify(withPromptCacheOptions(
+    body: JSON.stringify(anthropic ? input.body : withPromptCacheOptions(
       input.body,
       promptCacheKeyApplied ? promptCacheKey : "",
       promptCacheRetentionApplied,
@@ -728,12 +744,19 @@ export function extractAiJsonTextResponse(json: any, mode: AiJsonApiMode) {
   if (mode === "chat_completions") {
     return extractChatCompletionsText(json);
   }
+  if (mode === "anthropic_messages") {
+    return extractAnthropicMessagesText(json);
+  }
   return extractResponsesText(json);
 }
 
 function normalizeNonEmptyAiJsonApiUrl(raw: string, defaultMode: AiJsonApiMode) {
   const normalized = String(raw || "").trim().replace(/\/+$/, "");
-  if (/\/responses$/i.test(normalized) || /\/chat\/completions$/i.test(normalized)) return normalized;
+  if (/\/(?:responses|chat\/completions|messages)$/i.test(normalized)) return normalized;
+  // 只填了 Claude 官方的主机名或 /v1 时，补成 Messages 接口。
+  if (isOfficialAnthropicUrl(normalized) && /^https?:\/\/[^/]+(?:\/v1)?$/i.test(normalized)) {
+    return `${normalized.replace(/\/v1$/i, "")}/v1/messages`;
+  }
   if (/\/v1$/i.test(normalized)) {
     return `${normalized}${defaultMode === "responses" ? "/responses" : "/chat/completions"}`;
   }
@@ -859,10 +882,20 @@ export function extractAiJsonWebSearchSources(payload: unknown): AiWebSearchSour
   for (const citation of Array.isArray(root.citations) ? root.citations : []) {
     add(citation?.url, citation?.title || citation?.name);
   }
+  // Claude：搜索结果在 web_search_tool_result 块里，正文引用挂在 text 块的 citations 上。
+  for (const block of Array.isArray(root.content) ? root.content : []) {
+    if (block?.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const result of block.content) add(result?.url, result?.title);
+    }
+    for (const citation of Array.isArray(block?.citations) ? block.citations : []) {
+      add(citation?.url, citation?.title);
+    }
+  }
   return sources.slice(0, 8);
 }
 
 export function extractAiJsonCompletionMetadata(json: any, mode: AiJsonApiMode): AiJsonCompletionMetadata {
+  if (mode === "anthropic_messages") return extractAnthropicCompletionMetadata(json);
   const choice = mode === "chat_completions" ? json?.choices?.[0] : null;
   const usage = json?.usage;
   const ollama = json?.x_cpu_ollama;
@@ -977,6 +1010,15 @@ export async function readAiJsonTextStream(
 }
 
 function extractAiJsonStreamDelta(payload: any, mode: AiJsonApiMode) {
+  if (mode === "anthropic_messages") {
+    if (payload?.type === "error") {
+      throw new Error(`Claude 流式响应中断：${String(payload?.error?.message || payload?.error?.type || "未知错误").slice(0, 300)}`);
+    }
+    // 只取正文；thinking_delta 等其他增量不进回复。
+    return payload?.type === "content_block_delta" && payload?.delta?.type === "text_delta" && typeof payload.delta.text === "string"
+      ? payload.delta.text
+      : "";
+  }
   if (mode === "responses") {
     if (
       (payload?.type === "response.output_text.delta" || payload?.type === "response.refusal.delta")
@@ -1062,7 +1104,8 @@ function toChatCompletionsMessage(message: AiJsonMessage) {
 function validateAiRequestBody(body: Record<string, unknown>, mode: AiJsonApiMode) {
   const model = String(body.model || "").trim();
   if (!model) throw new Error("AI 请求体无效：model 不能为空");
-  if (mode === "chat_completions") {
+  // 发往 Claude 的请求体此时仍是 Chat Completions 形状，换格式在校验之后。
+  if (mode !== "responses") {
     validateChatMessages(body.messages);
     return;
   }
@@ -1321,4 +1364,182 @@ function extractResponsesText(json: any) {
     }
   }
   return chunks.join("\n");
+}
+
+type AnthropicContentBlock = Record<string, unknown>;
+
+/**
+ * 把 Chat Completions 或 Responses 形状的请求体换成 Claude Messages 格式：
+ * 系统提示提到顶层 system，图片和 PDF 换成 Claude 的内容块，联网搜索换成 Claude 的服务端工具。
+ */
+export function toAnthropicMessagesBody(
+  body: Record<string, unknown>,
+  options: { cacheSystemPrompt?: boolean } = {},
+): Record<string, unknown> {
+  const source: any[] = Array.isArray(body.messages) ? body.messages : Array.isArray(body.input) ? body.input : [];
+  const systemTexts: string[] = [];
+  if (typeof body.instructions === "string" && body.instructions.trim()) systemTexts.push(body.instructions.trim());
+  const turns: Array<{ role: "user" | "assistant"; content: AnthropicContentBlock[] }> = [];
+  for (const message of source) {
+    const role = String(message?.role || "");
+    const blocks = toAnthropicContentBlocks(message?.content);
+    if (role === "system" || role === "developer") {
+      const text = blocks.map((block) => block.type === "text" ? String(block.text) : "").join("\n").trim();
+      if (text) systemTexts.push(text);
+      continue;
+    }
+    if (!blocks.length) continue;
+    const nextRole = role === "assistant" ? "assistant" : "user";
+    const last = turns[turns.length - 1];
+    if (last?.role === nextRole) last.content.push(...blocks);
+    else turns.push({ role: nextRole, content: blocks });
+  }
+  // Claude 要求第一条是用户消息；只有系统提示时也得给它一条用户消息。
+  if (turns[0]?.role !== "user") {
+    turns.unshift({ role: "user", content: [{ type: "text", text: "请按系统提示完成任务。" }] });
+  }
+
+  const responseFormat = body.response_format as { type?: unknown } | undefined;
+  const textFormat = (body.text as { format?: { type?: unknown } } | undefined)?.format;
+  // Claude 没有 JSON 模式；调用方要 JSON 时把要求写进系统提示，免得回复被代码块包住而解析失败。
+  if (responseFormat?.type === "json_object" || textFormat?.type === "json_object") {
+    systemTexts.push(ANTHROPIC_JSON_ONLY_INSTRUCTION);
+  }
+
+  const maxTokens = Number(body.max_tokens ?? body.max_output_tokens);
+  const result: Record<string, unknown> = {
+    model: body.model,
+    max_tokens: Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : ANTHROPIC_DEFAULT_MAX_TOKENS,
+    messages: turns,
+  };
+  if (systemTexts.length) {
+    result.system = [{
+      type: "text",
+      text: systemTexts.join("\n\n"),
+      ...(options.cacheSystemPrompt ? { cache_control: { type: "ephemeral" } } : {}),
+    }];
+  }
+  if (body.stream === true) result.stream = true;
+  // temperature 和推理强度不转发：较新的 Claude 模型收到非默认的 temperature 会直接返回 400，
+  // 推理强度的取值和支持范围也随模型不同，留给模型默认值。
+
+  const webSearch = extractWebSearchLocation(body);
+  if (webSearch) {
+    result.tools = [{
+      type: "web_search_20250305",
+      name: "web_search",
+      max_uses: 5,
+      ...(webSearch.location ? { user_location: webSearch.location } : {}),
+    }];
+  }
+  return result;
+}
+
+function extractWebSearchLocation(body: Record<string, unknown>) {
+  const pickLocation = (value: any) => {
+    if (!value || typeof value !== "object") return null;
+    const location: Record<string, string> = { type: "approximate" };
+    for (const key of ["city", "region", "country", "timezone"]) {
+      if (typeof value[key] === "string" && value[key].trim()) location[key] = value[key].trim();
+    }
+    return Object.keys(location).length > 1 ? location : null;
+  };
+  const options = body.web_search_options as { user_location?: unknown } | undefined;
+  if (options && typeof options === "object") return { location: pickLocation(options.user_location) };
+  const tool = Array.isArray(body.tools) ? body.tools.find((item: any) => /^web_search/i.test(String(item?.type || ""))) : null;
+  if (tool) return { location: pickLocation((tool as { user_location?: unknown }).user_location) };
+  return null;
+}
+
+function toAnthropicContentBlocks(content: unknown): AnthropicContentBlock[] {
+  if (typeof content === "string") return content.trim() ? [{ type: "text", text: content }] : [];
+  if (!Array.isArray(content)) return [];
+  const blocks: AnthropicContentBlock[] = [];
+  for (const part of content) {
+    const type = String(part?.type || "");
+    if (type === "text" || type === "input_text") {
+      if (String(part.text || "").trim()) blocks.push({ type: "text", text: String(part.text) });
+      continue;
+    }
+    if (type === "image_url" || type === "input_image") {
+      const url = String(typeof part.image_url === "string" ? part.image_url : part.image_url?.url || "").trim();
+      const dataUrl = url.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i);
+      blocks.push({
+        type: "image",
+        source: dataUrl
+          ? { type: "base64", media_type: dataUrl[1].toLowerCase(), data: dataUrl[2] }
+          : { type: "url", url },
+      });
+      continue;
+    }
+    if (type === "input_file") {
+      blocks.push(toAnthropicDocumentBlock(String(part.filename || ""), String(part.file_data || "")));
+      continue;
+    }
+    throw new Error(`AI 请求体无效：Claude 接口不支持 ${type || "未知"} 类型的内容`);
+  }
+  return blocks;
+}
+
+function toAnthropicDocumentBlock(filename: string, fileData: string): AnthropicContentBlock {
+  const match = fileData.match(/^data:([^;]+);base64,([A-Za-z0-9+/]+={0,2})$/i);
+  const mimeType = String(match?.[1] || "").toLowerCase();
+  if (match && mimeType === "application/pdf") {
+    return { type: "document", title: filename || undefined, source: { type: "base64", media_type: "application/pdf", data: match[2] } };
+  }
+  if (match && /^text\/(?:plain|markdown)$/.test(mimeType)) {
+    return {
+      type: "document",
+      title: filename || undefined,
+      source: { type: "text", media_type: "text/plain", data: Buffer.from(match[2], "base64").toString("utf8") },
+    };
+  }
+  throw new Error(`AI 请求体无效：Claude 接口只能直接读取 PDF 和纯文本文件，${filename || "附件"} 需要先转换`);
+}
+
+/** 用了联网搜索时，Claude 会先说一句“我来搜一下”；只取最后一次工具结果之后的正文。 */
+function extractAnthropicMessagesText(json: any) {
+  const content: any[] = Array.isArray(json?.content) ? json.content : [];
+  const isText = (block: any) => block?.type === "text" && typeof block.text === "string";
+  let lastToolIndex = -1;
+  content.forEach((block, index) => {
+    if (/(?:server_tool_use|_tool_result)$/.test(String(block?.type || ""))) lastToolIndex = index;
+  });
+  const answer = content.slice(lastToolIndex + 1).filter(isText);
+  // 引用会把一段回答切成多个 text 块，直接首尾相接才是原文。
+  return (answer.length ? answer : content.filter(isText)).map((block) => block.text).join("");
+}
+
+const ANTHROPIC_STOP_REASONS: Record<string, string> = {
+  end_turn: "stop",
+  stop_sequence: "stop",
+  max_tokens: "length",
+  model_context_window_exceeded: "length",
+  refusal: "content_filter",
+  tool_use: "tool_calls",
+};
+
+function extractAnthropicCompletionMetadata(json: any): AiJsonCompletionMetadata {
+  // 非流式响应在顶层；流式的 message_start 把用量放在 message 里，message_delta 把结束原因放在 delta 里。
+  const stopReason = json?.stop_reason ?? json?.message?.stop_reason ?? json?.delta?.stop_reason;
+  const usage = json?.usage ?? json?.message?.usage;
+  const inputParts = [usage?.input_tokens, usage?.cache_creation_input_tokens, usage?.cache_read_input_tokens]
+    .map(toNullableInteger)
+    .filter((value): value is number => value !== null);
+  const inputTokens = inputParts.length ? inputParts.reduce((sum, value) => sum + value, 0) : null;
+  const outputTokens = toNullableInteger(usage?.output_tokens);
+  return {
+    finishReason: typeof stopReason === "string" ? ANTHROPIC_STOP_REASONS[stopReason] ?? stopReason : null,
+    doneReason: null,
+    done: null,
+    promptEvalCount: inputTokens,
+    evalCount: outputTokens,
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens !== null || outputTokens !== null ? (inputTokens ?? 0) + (outputTokens ?? 0) : null,
+    totalDurationMs: null,
+    loadDurationMs: null,
+    promptEvalDurationMs: null,
+    evalDurationMs: null,
+  };
 }

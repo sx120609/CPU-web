@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { buildAiUpstreamAuthHeaders, isAnthropicMessagesUrl } from "./aiUpstreamAuth";
 
 export type AiModelCatalog = {
   endpoint: string;
@@ -20,7 +21,7 @@ const AI_MODEL_AVAILABILITY_FAILURE_TTL_MS = 15 * 1000;
 export function buildAiModelEndpointCandidates(apiUrl: string, provider?: string) {
   const parsed = new URL(String(apiUrl || "").trim());
   const path = parsed.pathname.replace(/\/+$/, "");
-  const basePath = path.replace(/\/(?:chat\/completions|responses|completions|models?|model|api\/(?:chat|generate|tags))$/i, "");
+  const basePath = path.replace(/\/(?:chat\/completions|responses|completions|messages|models?|model|api\/(?:chat|generate|tags))$/i, "");
   if (String(provider || "").trim().toLowerCase() === "ollama") {
     const serverBasePath = basePath.replace(/\/(?:v1|api)$/i, "");
     const openAiModelsPath = `${serverBasePath}/v1/models`.replace(/\/{2,}/g, "/");
@@ -35,6 +36,14 @@ export function buildAiModelEndpointCandidates(apiUrl: string, provider?: string
         return next.toString();
       })
       .filter((endpoint, index, list) => list.indexOf(endpoint) === index);
+  }
+  if (isAnthropicMessagesUrl(path)) {
+    // Claude 的模型目录默认一页只有 20 个，一次取满。
+    const next = new URL(parsed.toString());
+    next.pathname = `${basePath}/models`.replace(/\/{2,}/g, "/");
+    next.search = "?limit=1000";
+    next.hash = "";
+    return [next.toString()];
   }
   const candidates = ["model", "models"].map((suffix) => {
     const next = new URL(parsed.toString());
@@ -83,9 +92,10 @@ export async function fetchAiModelCatalog(input: {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 15_000);
     try {
-      const headers: Record<string, string> = { Accept: "application/json" };
-      const apiKey = String(input.apiKey || "").trim();
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        ...buildAiUpstreamAuthHeaders(endpoint, String(input.apiKey || ""), isAnthropicMessagesUrl(input.apiUrl)),
+      };
       const response = await fetch(endpoint, { method: "GET", headers, signal: controller.signal });
       const text = await response.text();
       if (!response.ok) {

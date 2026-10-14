@@ -22,7 +22,7 @@
         <el-input
           v-model="form.apiUrl"
           maxlength="240"
-          :placeholder="isOllama ? 'http://127.0.0.1:11434' : '支持 /v1/responses 或 /v1/chat/completions'"
+          :placeholder="urlPlaceholder"
           @change="probe = null"
         />
       </label>
@@ -42,7 +42,9 @@
     <p class="asd-note">
       {{ isOllama
         ? "Ollama 走 /v1/chat/completions，模型名填本机已安装的 tag，例如 qwen3:8b。"
-        : "服务端按地址自动识别 Responses 或 Chat Completions 协议。" }}
+        : isClaude
+          ? "Claude 走 Messages 接口，中转站也填到 /v1/messages；模型名如 claude-sonnet-5-5。"
+          : "服务端按地址自动识别协议：/responses、/chat/completions，或 Claude 的 /messages。" }}
       历史消息两项只对拾间 AI 生效，0 表示不限制；云端服务建议 0 / 0，本地 Ollama 建议 2 / 800。
     </p>
     <p class="asd-probe" :class="probe && (probe.ok ? 'is-good' : 'is-bad')">
@@ -79,9 +81,12 @@ const emit = defineEmits<{
 
 const DEFAULT_REMOTE_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434";
+const DEFAULT_CLAUDE_URL = "https://api.anthropic.com/v1/messages";
+const DEFAULT_URLS = [DEFAULT_REMOTE_URL, DEFAULT_OLLAMA_URL, DEFAULT_CLAUDE_URL];
 const providerOptions = [
   { value: "deepseek", label: "DeepSeek 兼容接口" },
   { value: "openai", label: "OpenAI 兼容接口" },
+  { value: "anthropic", label: "Claude 兼容接口" },
   { value: "ollama", label: "Ollama" },
 ];
 
@@ -102,6 +107,12 @@ const probe = ref<AiServiceProbe | null>(null);
 const probing = ref(false);
 const isNew = computed(() => !props.service);
 const isOllama = computed(() => form.provider.trim().toLowerCase() === "ollama");
+const isClaude = computed(() => form.provider.trim().toLowerCase() === "anthropic");
+const urlPlaceholder = computed(() => {
+  if (isOllama.value) return DEFAULT_OLLAMA_URL;
+  if (isClaude.value) return DEFAULT_CLAUDE_URL;
+  return "支持 /v1/responses、/v1/chat/completions 或 /v1/messages";
+});
 
 watch(() => props.modelValue, (open) => {
   if (!open) return;
@@ -111,17 +122,18 @@ watch(() => props.modelValue, (open) => {
   probe.value = null;
 });
 
-/** 在云端和本地之间切换厂家时，顺手换掉还是默认值的地址和上下文限制。 */
+/** 切换厂家时，顺手换掉还是默认值的地址；在云端和本地之间切换时也换掉上下文限制。 */
 function handleProviderChange() {
   const url = form.apiUrl.trim();
-  if (isOllama.value && (!url || url === DEFAULT_REMOTE_URL)) {
-    form.apiUrl = DEFAULT_OLLAMA_URL;
+  if (!url || DEFAULT_URLS.includes(url)) {
+    form.apiUrl = isOllama.value ? DEFAULT_OLLAMA_URL : isClaude.value ? DEFAULT_CLAUDE_URL : DEFAULT_REMOTE_URL;
+  }
+  if (isOllama.value && form.apiUrl === DEFAULT_OLLAMA_URL) {
     if (form.assistantContextMaxMessages === 0 && form.assistantContextMaxCharsPerMessage === 0) {
       form.assistantContextMaxMessages = 2;
       form.assistantContextMaxCharsPerMessage = 800;
     }
   } else if (!isOllama.value && url === DEFAULT_OLLAMA_URL) {
-    form.apiUrl = DEFAULT_REMOTE_URL;
     if (form.assistantContextMaxMessages === 2 && form.assistantContextMaxCharsPerMessage === 800) {
       form.assistantContextMaxMessages = 0;
       form.assistantContextMaxCharsPerMessage = 0;

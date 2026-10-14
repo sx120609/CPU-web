@@ -5,6 +5,7 @@ import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import {
   type AiJsonMessage,
+  detectAiJsonApiMode,
   extractAiJsonCompletionMetadata,
   extractAiJsonTextResponse,
   extractAiJsonWebSearchSources,
@@ -212,7 +213,7 @@ export async function requestAiJson(
       logId = started?.id ?? null;
     }
     let response: Response;
-    let responseMode = detectTextReviewApiMode(endpoint);
+    let responseMode = detectAiJsonApiMode(endpoint);
     let responseErrorText = "";
     let upstreamResult: Awaited<ReturnType<typeof sendAiJsonRequestWithProviderFallback>>;
     try {
@@ -889,10 +890,6 @@ function summarizeAiJsonMessageContent(content: AiJsonMessage["content"]) {
   return content
     .map((item) => item.type === "text" ? item.text : item.type === "file" ? `[file:${item.file.filename}]` : "[image]")
     .join("\n");
-}
-
-function detectTextReviewApiMode(endpoint: string) {
-  return /\/responses\/?$/i.test(endpoint) ? "responses" as const : "chat_completions" as const;
 }
 
 export async function requestManualTopicReview(topicId: number, userId: number) {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
+import { detectAiJsonApiMode, extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
 import { decodeQqImageDataUrl, normalizeQqImageForAi } from "./qqbot/imageValidation";
@@ -373,7 +373,7 @@ export async function reviewQqGroupMessageForAd(input: {
     const logId = started?.id ?? null;
 
     let response: Response;
-    let responseMode = detectReviewApiMode(endpoint);
+    let responseMode = detectAiJsonApiMode(endpoint);
     let responseErrorText = "";
     try {
       const result = await sendAiJsonRequestWithProviderFallback({
@@ -868,10 +868,6 @@ function describeRequestError(error: unknown) {
   if (typeof cause?.code === "string" && cause.code.trim()) parts.push(cause.code.trim());
   if (!parts.length && error) parts.push(String(error));
   return Array.from(new Set(parts)).join("；").slice(0, 500) || "网络请求失败";
-}
-
-function detectReviewApiMode(endpoint: string) {
-  return /\/responses\/?$/i.test(endpoint) ? "responses" as const : "chat_completions" as const;
 }
 
 function parseAdReviewResponse(content: unknown): QqGroupAdResponse {

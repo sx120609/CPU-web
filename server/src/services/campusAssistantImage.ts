@@ -26,7 +26,7 @@ export function normalizeCampusAssistantImageEndpoint(apiUrl: string) {
   const chatEndpoint = normalizeAiJsonApiUrl(apiUrl, DEFAULT_AI_CHAT_ENDPOINT);
   const url = new URL(chatEndpoint);
   url.pathname = url.pathname
-    .replace(/\/(?:chat\/completions|responses)\/?$/iu, "/images/generations")
+    .replace(/\/(?:chat\/completions|responses|messages)\/?$/iu, "/images/generations")
     .replace(/\/{2,}/g, "/");
   url.search = "";
   url.hash = "";
@@ -37,7 +37,7 @@ export function normalizeCampusAssistantImageChatEndpoint(apiUrl: string) {
   const endpoint = normalizeAiJsonApiUrl(apiUrl, DEFAULT_AI_CHAT_ENDPOINT);
   const url = new URL(endpoint);
   url.pathname = url.pathname
-    .replace(/\/(?:responses|images\/generations)\/?$/iu, "/chat/completions")
+    .replace(/\/(?:responses|messages|images\/generations)\/?$/iu, "/chat/completions")
     .replace(/\/{2,}/g, "/");
   url.search = "";
   url.hash = "";
@@ -48,7 +48,7 @@ export function normalizeCampusAssistantImageResponsesEndpoint(apiUrl: string) {
   const endpoint = normalizeAiJsonApiUrl(apiUrl, DEFAULT_AI_CHAT_ENDPOINT);
   const url = new URL(endpoint);
   url.pathname = url.pathname
-    .replace(/\/(?:chat\/completions|images\/generations)\/?$/iu, "/responses")
+    .replace(/\/(?:chat\/completions|messages|images\/generations)\/?$/iu, "/responses")
     .replace(/\/{2,}/g, "/");
   url.search = "";
   url.hash = "";
