@@ -1233,6 +1233,7 @@ import {
   smallSlots,
 } from "@/views/schedule/slots";
 import { createSemesterScheduleLoader, type ScheduleResponse } from "@/views/schedule/semesterLoader";
+import { SCHEDULE_REFRESH_SIGNED_OUT_MESSAGE, scheduleRefreshFailureMessage } from "@/views/schedule/refreshFailure";
 import { useScheduleBackground } from "@/views/schedule/useScheduleBackground";
 import { createScheduleViewModelHelpers } from "@/views/schedule/viewModels";
 import { officialScheduleCalendar } from "@/views/schedule/officialCalendar";
@@ -1772,7 +1773,12 @@ async function returnToPrimarySchedule() {
       return;
     }
     await loadCalendar();
-    await loadSchedule(true);
+    try {
+      await loadSchedule(true);
+    } catch (error) {
+      ElMessage.warning(scheduleRefreshFailureMessage(error));
+      return;
+    }
     ElMessage.success("已切回本科教务课表");
     return;
   }
@@ -2541,8 +2547,8 @@ async function refreshCurrentSchedule() {
 async function manualRefreshSchedule() {
   try {
     await refreshCurrentSchedule();
-  } catch {
-    ElMessage.warning("课表刷新失败，请检查网络连接后重试。");
+  } catch (error) {
+    ElMessage.warning(scheduleRefreshFailureMessage(error));
   }
 }
 
@@ -2605,6 +2611,8 @@ async function loadSchedule(force = false, background = false) {
   if (!jwxt.isLoggedIn) {
     const ready = await jwxt.ensureSession();
     if (!ready || disposed) {
+      // 点了刷新却没连上教务，不能当作刷新成功；页面上的课表照常保留。
+      if (force && !disposed) throw new Error(SCHEDULE_REFRESH_SIGNED_OUT_MESSAGE);
       return;
     }
   }
@@ -2636,7 +2644,8 @@ async function loadSchedule(force = false, background = false) {
     saveLastState();
   } catch (error) {
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) return;
-    if (!hadCache && !canFallbackToVisibleSchedule) throw error;
+    // A forced load is the refresh button: the visible timetable stays, but the failure is reported.
+    if (force || (!hadCache && !canFallbackToVisibleSchedule)) throw error;
   } finally {
     if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) {
       loading.value = false;

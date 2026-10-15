@@ -9,6 +9,11 @@ import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { buildGraduateFallbackCalendar, extendScheduleWeeksToCalendar, hydrateCalendar } from "@/views/schedule/calendar";
 import type { CalendarResult, ScheduleResult } from "@/views/schedule/types";
 import { normalizeSlotRange, smallSlots } from "@/views/schedule/slots";
+import {
+  SCHEDULE_REFRESH_INTERRUPTED_MESSAGE,
+  SCHEDULE_REFRESH_SIGNED_OUT_MESSAGE,
+  scheduleRefreshFailureMessage,
+} from "@/views/schedule/refreshFailure";
 
 type ScheduleEdits = ReturnType<typeof normalizeScheduleEditsState>;
 type SemesterEntry = {
@@ -360,8 +365,14 @@ export function installIosNativeAuthBridge(authStore?: any) {
 }
 
 /** HTML parsing and authentication stay on the server. The client caches and
- * merges parsed courses, applies saved edits and supplies native week filtering. */
-export function installIosNextScheduleBridge(router?: Router, options: { fastRefresh?: boolean } = {}) {
+ * merges parsed courses, applies saved edits and supplies native week filtering.
+ * `reportRefreshFailures`: the iOS shell keeps its grid without a word when told
+ * that the education session is gone, so a refresh the user asked for reports
+ * its failure as an error instead. */
+export function installIosNextScheduleBridge(
+  router?: Router,
+  options: { fastRefresh?: boolean; reportRefreshFailures?: boolean } = {},
+) {
   if (!isNativeScheduleShell()) return;
   const host = window as any;
   const auth = useAuthStore();
@@ -454,6 +465,9 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     error: jwxt.authorizationExpired
       ? "教务授权已失效，已保留上次课表；完成教务授权后可继续更新。"
       : "请先完成教务授权。",
+  });
+  const refreshFailed = (message: string) => ({
+    version: 1, auth: { authenticated: true, account: accountKey() }, error: message,
   });
 
   watch(() => [
@@ -799,6 +813,14 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const fetchSchedule = async (semester?: string, week?: string, force = false, background = false) => {
     const selection = ++selectionRevision;
     const initialGeneration = generation;
+    const explicitRefresh = Boolean(options.reportRefreshFailures && force && !background);
+    // A refresh the user asked for that cannot reach 教务 must not look like it happened.
+    const denied = () => {
+      if (!explicitRefresh || !auth.isLoggedIn) return unauthorized();
+      return refreshFailed(jwxt.isLoggedIn && !jwxt.authorizationExpired
+        ? SCHEDULE_REFRESH_INTERRUPTED_MESSAGE
+        : SCHEDULE_REFRESH_SIGNED_OUT_MESSAGE);
+    };
     try {
       if (!auth.ready) await auth.fetchMe({ probe: true });
       // A failed profile probe is a transport problem, not proof that the
@@ -809,7 +831,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         return {
           version: 1,
           auth: { authenticated: true, account: info.account },
-          error: "service-unavailable",
+          error: options.reportRefreshFailures ? "课表服务暂时连不上，课表没有更新，请稍后再试。" : "service-unavailable",
         };
       }
       jwxt.hydrate();
@@ -824,7 +846,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         allowAutoLogin: Boolean(!options.fastRefresh && !background),
         repairUnavailableSession: false,
       });
-      if (!ready) return unauthorized();
+      if (!ready) return denied();
       const epoch = generation;
       const runSessionRequest = <T>(task: () => Promise<T>) =>
         background ? task() : jwxt.withSessionRetry(task);
@@ -833,7 +855,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         const data = parsed(await runSessionRequest(() => jwxtApi.graduateSchedule({
           semester: semester || undefined, refresh: force ? "1" : undefined,
         }, { silent: true })));
-        if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
+        if (generation !== epoch || !jwxt.isLoggedIn) return denied();
         const calendar = buildGraduateFallbackCalendar(data);
         const expanded = extendScheduleWeeksToCalendar(data, calendar) ?? data;
         return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(), periods: periodsForCalendar(calendar),
@@ -895,13 +917,13 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
             if (!supportsScope) data = await loadInitial(week || undefined);
           }
         }
-        if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
+        if (generation !== epoch || !jwxt.isLoggedIn) return denied();
         if (semester && data.currentSemester && data.currentSemester !== semester) throw new Error("教务系统返回了其他学期的课表");
         const resolved = semester || data.currentSemester;
         const prepared = await metadata;
         if (prepared?.error) throw prepared.error;
         const [calendar, edits] = prepared?.value ?? await loadMetadata(resolved);
-        if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
+        if (generation !== epoch || !jwxt.isLoggedIn) return denied();
         data = extendScheduleWeeksToCalendar(data, calendar) ?? data;
         // Only advertised/calendar weeks establish completeness. Course ranges
         // alone cannot prove that later, unseen teaching weeks do not exist.
@@ -918,7 +940,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         : entry.schedules.values().next().value?.currentWeek || entry.complete?.currentWeek || "");
       entry.preferredWeek = selected;
       const data = entry.complete ?? await loadWeek(entry, selected, epoch, background);
-      if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
+      if (generation !== epoch || !jwxt.isLoggedIn) return denied();
       if (selection !== selectionRevision) return cancelled();
       if (!valid(entry, epoch)) return cancelled();
       const result = snapshot(entry, data, selected);
@@ -928,10 +950,11 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       // The education cookie can remain present after the upstream session has
       // expired. Treat that state as unauthorized so native schedule storage
       // keeps its visible cache instead of showing a generic load error.
-      if (initialGeneration !== generation || !jwxt.isLoggedIn || jwxt.authorizationExpired) return unauthorized();
+      if (initialGeneration !== generation || !jwxt.isLoggedIn || jwxt.authorizationExpired) return denied();
       // A superseded selection can fail while its old network work is still
       // unwinding. Keep that expected race out of the native error surface.
       if (selection !== selectionRevision) return cancelled();
+      if (explicitRefresh) return refreshFailed(scheduleRefreshFailureMessage(error));
       return { version: 1, auth: { authenticated: true }, error: error instanceof Error ? error.message : "课表暂时无法加载，请重试。" };
     }
   };

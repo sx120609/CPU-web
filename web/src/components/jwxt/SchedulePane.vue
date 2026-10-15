@@ -351,6 +351,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
 import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import { createSemesterScheduleLoader, type ScheduleResponse } from "@/views/schedule/semesterLoader";
+import { scheduleRefreshFailureMessage } from "@/views/schedule/refreshFailure";
 import { jwxtApi } from "@/api/jwxt";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useAuthStore } from "@/stores/auth";
@@ -832,7 +833,8 @@ async function loadSchedule(force = false, background = false) {
     saveLastState();
   } catch (error) {
     if (!isCurrentScheduleLoad(requestSeq, requestedSemester, requestedWeek)) return;
-    if (!parsed.value || (requestedSemester && parsed.value.currentSemester !== requestedSemester)) throw error;
+    // A forced load is the refresh button: the visible timetable stays, but the failure is reported.
+    if (force || !parsed.value || (requestedSemester && parsed.value.currentSemester !== requestedSemester)) throw error;
   } finally {
     if (!disposed && requestSeq === scheduleLoadSeq && (background || requestSeq === foregroundScheduleLoadSeq)) {
       loading.value = false;
@@ -858,7 +860,11 @@ async function onSemesterChange() {
 async function refreshSchedule() {
   await loadCalendar(semester.value);
   if (disposed) return;
-  await loadSchedule(true);
+  try {
+    await loadSchedule(true);
+  } catch (error) {
+    if (!disposed) ElMessage.warning(scheduleRefreshFailureMessage(error));
+  }
 }
 
 function selectWeek(v: string | number) {

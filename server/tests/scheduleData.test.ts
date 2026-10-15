@@ -19,6 +19,7 @@ async function fixture() {
   let failWeek = "";
   let calendarAvailable = true;
   let calendarHasNextWeek = true;
+  let source: "modern" | "legacy" = "modern";
   const calls: Array<{ semester?: string; week?: string }> = [];
   const service = createScheduleDataService({
     now: () => now,
@@ -26,7 +27,7 @@ async function fixture() {
       calls.push(query);
       if (failWeek && (query.week === failWeek || failWeek === "*")) throw new Error("教务暂时不可用");
       return {
-        title: "课表", source: "modern" as const, pageRecognized: true,
+        title: "课表", source, pageRecognized: true,
         currentSemester: semester, currentWeek: query.week === "all" ? "" : query.week || "1",
         scope: query.week === "all" ? "semester" as const : "week" as const, semesters: [], weeks: [],
         cells: [{ day: 1, bigSlot: 1, courses: [{ name, weeks: "1-20周", weekList: [], startSlot: 1, endSlot: 2 }] }],
@@ -50,6 +51,7 @@ async function fixture() {
     service, token, calls, widget,
     setName(value: string) { name = value; },
     setNow(value: string) { now = new Date(value); },
+    setSource(value: "modern" | "legacy") { source = value; },
     fail(week: string) { failWeek = week; },
     failCalendar() { calendarAvailable = false; },
     omitCalendarWeek() { calendarHasNextWeek = false; },
@@ -143,4 +145,83 @@ test("all-week rule snapshots keep their scope and do not replace weekly widget 
   assert.equal(weekly.parsed.scope, "week");
   assert.equal(weekly.parsed.currentWeek, "2");
   assert.equal(f.calls.length, 2);
+});
+
+const weekCalls = (f: Awaited<ReturnType<typeof fixture>>, week: string) => f.calls.filter((item) => item.week === week).length;
+
+test("a refresh never presents legacy data as the latest timetable", async () => {
+  const f = await fixture();
+  f.setSource("legacy");
+  const page = await f.service.readSchedule(f.token, { semester, week: "all" });
+  assert.equal(page.parsed.source, "legacy");
+  await assert.rejects(
+    f.service.readSchedule(f.token, { semester, week: "all", refresh: true }),
+    /新版教务暂时没有返回课表/,
+  );
+  f.setSource("modern");
+  const refreshed = await f.service.readSchedule(f.token, { semester, week: "all", refresh: true });
+  assert.equal(refreshed.parsed.source, "modern");
+});
+
+test("a refresh that finds a changed timetable retires the session's older week caches", async () => {
+  const f = await fixture();
+  await f.service.readSchedule(f.token, { semester, week: "all" });
+  await f.service.readSchedule(f.token, { semester, week: "2" });
+
+  // Nothing changed: the weekly copy stays in use.
+  f.setNow("2026-09-06T04:05:00Z");
+  await f.service.readSchedule(f.token, { semester, week: "all", refresh: true });
+  await f.service.readSchedule(f.token, { semester, week: "2" });
+  assert.equal(weekCalls(f, "2"), 1);
+
+  f.setNow("2026-09-06T04:10:00Z");
+  f.setName("调到周四的课");
+  const refreshed = await f.service.readSchedule(f.token, { semester, week: "all", refresh: true });
+  assert.equal(refreshed.parsed.cells[0].courses[0].name, "调到周四的课");
+  const weekly = await f.service.readSchedule(f.token, { semester, week: "2" });
+  assert.equal(weekly.parsed.cells[0].courses[0].name, "调到周四的课");
+  assert.equal(weekCalls(f, "2"), 2);
+  const widget = await f.widget();
+  assert.equal(widget.days.find((day) => day.date === "2026-09-07")?.courses[0]?.name, "调到周四的课");
+
+  // Each outdated copy is fetched again once, not on every read.
+  await f.service.readSchedule(f.token, { semester, week: "2" });
+  assert.equal(weekCalls(f, "2"), 2);
+});
+
+test("another session's cache is not retired by this session's refresh", async () => {
+  const f = await fixture();
+  const other = randomUUID();
+  await f.service.readSchedule(f.token, { semester, week: "all" });
+  await f.service.readSchedule(other, { semester, week: "2" });
+  f.setNow("2026-09-06T04:10:00Z");
+  f.setName("调到周四的课");
+  await f.service.readSchedule(f.token, { semester, week: "all", refresh: true });
+  const untouched = await f.service.readSchedule(other, { semester, week: "2" });
+  assert.equal(untouched.parsed.cells[0].courses[0].name, "周一课程");
+  assert.equal(weekCalls(f, "2"), 1);
+});
+
+test("a single-week refresh cannot vouch for the other weeks", async () => {
+  const f = await fixture();
+  await f.service.readSchedule(f.token, { semester, week: "1" });
+  await f.service.readSchedule(f.token, { semester, week: "2" });
+  f.setNow("2026-09-06T04:10:00Z");
+  await f.service.readSchedule(f.token, { semester, week: "1", refresh: true });
+  await f.service.readSchedule(f.token, { semester, week: "2" });
+  assert.equal(weekCalls(f, "2"), 2);
+});
+
+test("an outdated copy is kept, marked stale, when 教务 cannot be reached", async () => {
+  const f = await fixture();
+  await f.service.readSchedule(f.token, { semester, week: "all" });
+  await f.service.readSchedule(f.token, { semester, week: "2" });
+  f.setNow("2026-09-06T04:01:00Z");
+  f.setName("调到周四的课");
+  await f.service.readSchedule(f.token, { semester, week: "all", refresh: true });
+  f.fail("2");
+  const weekly = await f.service.readSchedule(f.token, { semester, week: "2" });
+  assert.equal(weekly.parsed.cells[0].courses[0].name, "周一课程");
+  assert.equal(weekly.stale, true);
+  assert.equal("outdated" in weekly, false);
 });

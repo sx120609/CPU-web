@@ -12,6 +12,7 @@ import {
   isAndroidNativeApp,
   isDesktopNativeApp,
   isFlutterNativeShell,
+  isIosNativeApp,
   isLikelyAndroidDevice,
   isLikelyIosDevice,
 } from "./utils/clientInfo";
@@ -467,7 +468,7 @@ watch(() => useAuthStore().user?.id, () => {
     void router.replace("/home/services");
   }
 }, { flush: "sync" });
-installIosNextScheduleBridge(router);
+installIosNextScheduleBridge(router, { reportRefreshFailures: isIosNativeApp() });
 installJwxtDataPrewarmTriggers();
 // 安卓小组件读 App 写的本地课表：退出登录、换账号时要删掉。只在支持的安卓壳里按需加载。
 if (typeof (window as any).CPUAndroid?.saveScheduleWidgetLocalDays === "function") {

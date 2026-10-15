@@ -584,3 +584,36 @@ test('a native cache hit reprioritizes the next background week without a foregr
   assert.deepEqual(requests.slice(0, 3), ['all', '6', '7']);
   assert.equal(requests.filter(value => value === '6').length, 1);
 });
+
+test('an iOS refresh that cannot reach 教务 says so instead of keeping the grid silently', async () => {
+  const ctx = setup();
+  ctx.bridge.installIosNextScheduleBridge(undefined, { reportRefreshFailures: true });
+  ctx.jwxt.isLoggedIn = false;
+  ctx.jwxt.authorizationExpired = true;
+  const refresh = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', true, false);
+  assert.equal(refresh.auth.authenticated, true);
+  assert.match(refresh.error, /教务授权已失效，课表没有更新/);
+  assert.equal(refresh.data, undefined);
+
+  // Quiet revalidation and ordinary loads keep the existing contract.
+  const background = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', true, true);
+  assert.equal(background.auth.authenticated, false);
+  const ordinary = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false, false);
+  assert.equal(ordinary.auth.authenticated, false);
+});
+
+test('an iOS refresh reports why 教务 did not answer', async () => {
+  const ctx = setup();
+  ctx.bridge.installIosNextScheduleBridge(undefined, { reportRefreshFailures: true });
+  ctx.api.schedule = async () => { throw new Error('新版教务暂时没有返回课表，课表没有更新，请稍后再刷新。'); };
+  const refresh = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', true, false);
+  assert.equal(refresh.auth.authenticated, true);
+  assert.equal(refresh.error, '新版教务暂时没有返回课表，课表没有更新，请稍后再刷新。');
+});
+
+test('Android and Harmony bridges keep reporting an expired session as unauthorized', async () => {
+  const ctx = setup();
+  ctx.jwxt.isLoggedIn = false;
+  const refresh = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', true, false);
+  assert.equal(refresh.auth.authenticated, false);
+});
