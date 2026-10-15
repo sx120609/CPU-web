@@ -47,7 +47,7 @@
             :aria-label="gamePhase === 'paused' ? '继续游戏' : '暂停游戏'"
             @click.stop="togglePause"
           >{{ gamePhase === "paused" ? "▶" : "Ⅱ" }}</button>
-          <button data-cpu-button="surface" type="button" aria-label="返回主页" @click.stop="returnToMenu">×</button>
+          <button data-cpu-button="surface" type="button" aria-label="结束本局" @click.stop="requestExit()">×</button>
         </div>
 
         <div v-if="gamePhase === 'ready'" class="ready-hint">
@@ -132,13 +132,23 @@
           </div>
         </div>
 
-        <div v-if="gamePhase === 'paused'" class="modal-shade">
+        <div v-if="gamePhase === 'paused' && exitConfirm" class="modal-shade">
+          <div class="game-modal" role="alertdialog" aria-label="结束这一局">
+            <span class="modal-icon">🏳</span>
+            <h2>结束这一局？</h2>
+            <p>当前 {{ score }} 分 · 第 {{ wave }} 波，结束后按这个成绩计入战绩和全校榜</p>
+            <button data-cpu-button="surface" type="button" class="game-button game-button--start" @click.stop="togglePause">继续守圃</button>
+            <button data-cpu-button="surface" type="button" class="plain-button" @click.stop="endGameEarly">结束并结算</button>
+          </div>
+        </div>
+
+        <div v-else-if="gamePhase === 'paused'" class="modal-shade">
           <div class="game-modal">
             <span class="modal-icon">⏸</span>
             <h2>战斗暂停</h2>
             <p>当前 {{ score }} 分 · 第 {{ wave }} 波</p>
             <button data-cpu-button="surface" type="button" class="game-button game-button--start" @click.stop="togglePause">继续守圃</button>
-            <button data-cpu-button="surface" type="button" class="plain-button" @click.stop="returnToMenu">返回主页</button>
+            <button data-cpu-button="surface" type="button" class="plain-button" @click.stop="requestExit()">结束本局</button>
           </div>
         </div>
 
@@ -246,7 +256,7 @@
             <b>杂交图鉴</b>
             <small v-for="(hybrid, pair) in ZD_HYBRIDS" :key="pair">{{ hybrid.name }}（{{ pairLabel(pair) }}）：{{ hybrid.perk }}</small>
           </p>
-          <p>操作：点击 / 触摸选药材和格子，数字键 1 到 8 选药材，9 选铲子，U 升级点中的药材，P 暂停，Esc 返回主页。</p>
+          <p>操作：点击 / 触摸选药材和格子，数字键 1 到 8 选药材，9 选铲子，U 升级点中的药材，P 暂停，Esc 返回（对局中会先问要不要结束）。</p>
         </div>
       </section>
     </section>
@@ -255,7 +265,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRouter } from "vue-router";
 import { getToken } from "@/api/request";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -322,6 +332,9 @@ const history = ref<HistoryItem[]>([]);
 const soundEnabled = ref(true);
 const artStyle = ref<ZdArtStyle>("new");
 const isNewRecord = ref(false);
+/** 对局中途点了 ×、Esc 或要离开页面：先停下来问一句，确认后按当前成绩结算。 */
+const exitConfirm = ref(false);
+const endedEarly = ref(false);
 const leaderboard = ref<ZombieDefenseRankingEntry[]>([]);
 const cloudMe = ref<ZombieDefenseRankingEntry | null>(null);
 const totalPlayers = ref(0);
@@ -360,11 +373,13 @@ let audioContext: AudioContext | null = null;
 let cloudAttemptPromise: Promise<number | null> = Promise.resolve(null);
 let cloudSettlementPromise: Promise<void> = Promise.resolve();
 let gameGeneration = 0;
+/** 对局中途要离开页面时先拦下来问一句；确认结束后再去这里。 */
+let pendingLeave: string | null = null;
 
 const isLoggedIn = computed(() => Boolean(getToken()));
 const displayBest = computed(() => Math.max(bestScore.value, cloudMe.value?.bestScore ?? 0));
 const commanderRank = computed(() => zdCommanderRank(score.value));
-const resultTitle = computed(() => wave.value >= 9 ? "铜墙铁壁" : wave.value >= 5 ? "渐入佳境" : "防线失守");
+const resultTitle = computed(() => endedEarly.value ? "提前结束" : wave.value >= 9 ? "铜墙铁壁" : wave.value >= 5 ? "渐入佳境" : "防线失守");
 const selectionHint = computed(() => {
   if (selected.value === "shovel") return "点一株药材把它移除";
   if (!selected.value) return "选药材种到空格里；点已种下的药材可以升级";
@@ -435,15 +450,20 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.documentElement.classList.remove("yaoda-flight-open");
-  if (gamePhase.value === "playing" || gamePhase.value === "paused") {
-    cloudSettlementPromise = abandonCloudAttempt(cloudAttemptPromise);
-  }
+  // 万一没经过确认就被卸载：这一局也照当前成绩结算，不白打。
+  if (screen.value === "game") finishGame({ silent: true });
   cancelAnimationFrame(animationFrame);
   window.clearTimeout(tipTimer);
   resizeObserver?.disconnect();
   window.removeEventListener("keydown", handleKeydown);
   document.removeEventListener("visibilitychange", handleVisibilityChange);
   void audioContext?.close();
+});
+
+onBeforeRouteLeave((to) => {
+  if (screen.value !== "game" || (gamePhase.value !== "playing" && gamePhase.value !== "paused")) return true;
+  requestExit(to.fullPath);
+  return false;
 });
 
 function openScreen(value: Screen) {
@@ -466,6 +486,9 @@ function startGame() {
   focusInfo.value = null;
   banner.value = null;
   isNewRecord.value = false;
+  exitConfirm.value = false;
+  endedEarly.value = false;
+  pendingLeave = null;
   newlyUnlocked.value = [];
   cloudSubmitState.value = isLoggedIn.value ? "idle" : "guest";
   cloudSubmitDetail.value = "";
@@ -498,14 +521,36 @@ function beginDefense() {
 }
 
 function returnToMenu() {
-  const shouldAbandon = screen.value === "game" && (gamePhase.value === "playing" || gamePhase.value === "paused");
-  const pendingAttempt = cloudAttemptPromise;
+  // 对局进行中不能直接回主页，要先确认结束（结束了才算分）。
+  if (screen.value === "game" && (gamePhase.value === "playing" || gamePhase.value === "paused")) {
+    requestExit();
+    return;
+  }
   gameGeneration += 1;
-  if (shouldAbandon) cloudSettlementPromise = abandonCloudAttempt(pendingAttempt);
   cancelAnimationFrame(animationFrame);
   screen.value = "menu";
   gamePhase.value = "ready";
   nextTick(drawMenuArt);
+}
+
+/** 对局中途想退出：停下来弹出确认框。还没开打或已经结束的直接回主页。 */
+function requestExit(leaveTo: string | null = null) {
+  if (gamePhase.value !== "playing" && gamePhase.value !== "paused") {
+    returnToMenu();
+    return;
+  }
+  if (gamePhase.value === "playing") togglePause();
+  pendingLeave = leaveTo;
+  exitConfirm.value = true;
+}
+
+/** 确认结束：按当前分数和波次结算，跟被僵尸突破一样计入战绩和全校榜。 */
+function endGameEarly() {
+  if (gamePhase.value !== "paused" || !exitConfirm.value) return;
+  const leaveTo = pendingLeave;
+  endedEarly.value = true;
+  finishGame();
+  if (leaveTo) void router.push(leaveTo);
 }
 
 function togglePause() {
@@ -514,6 +559,8 @@ function togglePause() {
     cancelAnimationFrame(animationFrame);
     drawScene();
   } else if (gamePhase.value === "paused") {
+    exitConfirm.value = false;
+    pendingLeave = null;
     gamePhase.value = "playing";
     lastFrameAt = performance.now();
     animationFrame = requestAnimationFrame(gameLoop);
@@ -661,7 +708,9 @@ function handleKeydown(event: KeyboardEvent) {
     togglePause();
   } else if (event.code === "Escape" && screen.value !== "menu") {
     event.preventDefault();
-    returnToMenu();
+    // 确认框开着时 Esc 等于“继续守圃”。
+    if (screen.value === "game" && gamePhase.value === "paused" && exitConfirm.value) togglePause();
+    else returnToMenu();
   }
 }
 
@@ -769,9 +818,12 @@ function syncHud() {
   }
 }
 
-function finishGame() {
-  if (gamePhase.value !== "playing") return;
+function finishGame(options: { silent?: boolean } = {}) {
+  if (gamePhase.value !== "playing" && gamePhase.value !== "paused") return;
+  cancelAnimationFrame(animationFrame);
   gamePhase.value = "over";
+  exitConfirm.value = false;
+  pendingLeave = null;
   selected.value = null;
   focusInfo.value = null;
   isNewRecord.value = score.value > bestScore.value;
@@ -785,6 +837,7 @@ function finishGame() {
   const generation = gameGeneration;
   const result = { score: game.score, waves: game.wave, durationMs: Math.max(0, Math.round(game.time * 1000)) };
   cloudSettlementPromise = finishCloudAttempt(cloudAttemptPromise, generation, result);
+  if (options.silent) return;
   playTone(180, 0.16, 0.06);
   window.setTimeout(() => playTone(130, 0.2, 0.045), 110);
 }
@@ -889,20 +942,6 @@ async function beginCloudAttempt(generation: number) {
       cloudSubmitDetail.value = cloudFailureMessage(error, "云端未能创建本局记录，本局仅保存在本机");
     }
     return null;
-  }
-}
-
-async function abandonCloudAttempt(attemptPromise: Promise<number | null>) {
-  const attemptId = await attemptPromise;
-  if (!attemptId) return;
-  try {
-    await zombieDefenseApi.abandonAttempt(attemptId, {
-      suppressAuthRedirect: true,
-      suppressAuthMessage: true,
-      suppressErrorMessage: true,
-    });
-  } catch {
-    // The next start also closes unfinished attempts.
   }
 }
 
