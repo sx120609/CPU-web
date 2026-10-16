@@ -17,6 +17,8 @@ import {
   campusAssistantKnowledgeQuery,
   loadCampusAssistantKnowledge,
   shouldProactivelySearchWeb,
+  linkifyAssistantUrls,
+  normalizeCampusAssistantAnswerText,
 } from "../src/services/campusAssistant";
 import { groundDepartmentContactResponse } from "../src/services/departmentContactsAssistant";
 import {
@@ -78,6 +80,15 @@ test("a follow-up keeps the documents the previous answer drew on", async () => 
   assert.ok(previousTitles.length > 0);
   assert.ok(followUp.some((item) => previousTitles.includes(item.title)), "previous turn's documents must stay in view");
   assert.ok(followUp.some((item) => !previousTitles.includes(item.title)), "the follow-up's own documents must be there too");
+});
+
+test("bare URLs become explicit links that stop before Chinese text", () => {
+  const answer = normalizeCampusAssistantAnswerText("1. 先打开 https://i.cpu.edu.cn，确认学校统一认证能否正常登录。");
+  assert.equal(answer, "1. 先打开 [https://i.cpu.edu.cn](https://i.cpu.edu.cn)，确认学校统一认证能否正常登录。");
+  assert.equal(normalizeCampusAssistantAnswerText(answer), answer);
+  assert.equal(linkifyAssistantUrls("见 [官网](https://www.cpu.edu.cn)、<https://a.cn/x> 和 `curl https://x.cn/a`"), "见 [官网](https://www.cpu.edu.cn)、<https://a.cn/x> 和 `curl https://x.cn/a`");
+  assert.equal(linkifyAssistantUrls("下载：https://apps.apple.com/cn/app/id6811073406（需要 iOS 15）。"), "下载：[https://apps.apple.com/cn/app/id6811073406](https://apps.apple.com/cn/app/id6811073406)（需要 iOS 15）。");
+  assert.equal(linkifyAssistantUrls("end https://cputime.cn."), "end [https://cputime.cn](https://cputime.cn).");
 });
 
 test("factual questions search the web unless the site or school documents already cover them", () => {

@@ -2219,7 +2219,28 @@ export function normalizeCampusAssistantAnswerText(value: string) {
     }
     normalized += char;
   }
-  return normalized.replace(/\n{3,}/g, "\n\n");
+  return linkifyAssistantUrls(normalized.replace(/\n{3,}/g, "\n\n"));
+}
+
+// 网址只由 ASCII 字符组成；允许成对括号（维基类链接）。
+const BARE_URL_PATTERN = /https?:\/\/[A-Za-z0-9\-._~:/?#@!$&'*+,;=%]+(?:\([A-Za-z0-9\-._~:/?#@!$&'*+,;=%]*\)[A-Za-z0-9\-._~:/?#@!$&'*+,;=%]*)*/g;
+
+/**
+ * 回答里的裸网址改写成 [网址](网址)。网页和 QQ 用的 marked、iOS 的 AttributedString(markdown:)
+ * 自动识别网址时都一直吞到空白为止，“https://i.cpu.edu.cn，确认……”会把后面的中文也算进链接。
+ * 已经写成 Markdown 链接、<网址> 或代码里的网址不动，重复处理结果不变。
+ */
+export function linkifyAssistantUrls(text: string) {
+  return String(text || "")
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/u)
+    .map((part, index) => index % 2 === 1 ? part : part.replace(BARE_URL_PATTERN, (url: string, offset: number, whole: string) => {
+      const before = whole.slice(Math.max(0, offset - 2), offset);
+      if (before.endsWith("](") || before.endsWith("<") || before.endsWith("[")) return url;
+      const core = url.replace(/[.,;:!?'*]+$/u, "");
+      if (!/^https?:\/\/[^/?#]+\.[^/?#]+/u.test(core)) return url;
+      return `[${core}](${core})${url.slice(core.length)}`;
+    }))
+    .join("");
 }
 
 export function sanitizeCampusAssistantStoredMessages(messages: unknown[]) {
