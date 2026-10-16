@@ -98,22 +98,46 @@ test('a real bridge is never replaced', () => {
   assert.equal(site.window.CPUTimeNativeScheduleFetch, real)
 })
 
-test('the site page loads the stand-in in native shells only', () => {
-  const load = (ua) => {
-    const added = []
-    const element = { setAttribute(name, value) { this.attributes[name] = value }, attributes: {} }
-    runInNewContext(bootstrap, {
-      window: {
-        location: { protocol: 'https:', hostname: 'cputime.cn', pathname: '/home', search: '', hash: '' },
-        navigator: { userAgent: ua },
-        document: { createElement: () => element, head: { appendChild: (node) => added.push(node) } },
-      },
-    })
-    return added
+function bootstrapPage(ua, { readyState = 'complete', trusted = true } = {}) {
+  const added = []
+  const listeners = {}
+  const element = {
+    attributes: {},
+    setAttribute(name, value) { this.attributes[name] = value },
+    set src(value) {
+      // Under require-trusted-types-for, a plain string throws until the app installs its default policy.
+      if (!trusted) throw new TypeError("This document requires 'TrustedScriptURL' assignment.")
+      this.url = value
+    },
   }
-  assert.deepEqual(load(BROWSER), [])
-  const [script] = load(ANDROID)
-  assert.equal(script.src, '/native-shell-return.js')
+  runInNewContext(bootstrap, {
+    window: {
+      location: { protocol: 'https:', hostname: 'cputime.cn', pathname: '/home', search: '', hash: '' },
+      navigator: { userAgent: ua },
+      document: {
+        readyState,
+        addEventListener: (type, listener) => { listeners[type] = listener },
+        createElement: () => element,
+        head: { appendChild: (node) => added.push(node) },
+      },
+    },
+  })
+  return { added, listeners }
+}
+
+test('the site page loads the stand-in in native shells only', () => {
+  assert.deepEqual(bootstrapPage(BROWSER).added, [])
+  const [script] = bootstrapPage(ANDROID).added
+  assert.equal(script.url, '/native-shell-return.js')
   assert.equal(script.async, true)
   assert.ok('data-site-app' in script.attributes)
+})
+
+test('the site page waits for the app security bootstrap and never throws without it', () => {
+  const early = bootstrapPage(ANDROID, { readyState: 'loading' })
+  assert.deepEqual(early.added, [])
+  early.listeners.DOMContentLoaded()
+  assert.equal(early.added.length, 1)
+  const blocked = bootstrapPage(ANDROID, { trusted: false })
+  assert.deepEqual(blocked.added, [])
 })

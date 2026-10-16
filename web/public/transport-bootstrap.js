@@ -15,9 +15,21 @@
   var navigator = window.navigator;
   var document = window.document;
   if (!navigator || !document || !/CPUTimeNative\//i.test(String(navigator.userAgent || ''))) return;
-  var script = document.createElement('script');
-  script.src = '/native-shell-return.js';
-  script.async = true;
-  script.setAttribute('data-site-app', '');
-  (document.head || document.documentElement).appendChild(script);
+  function load() {
+    try {
+      var script = document.createElement('script');
+      script.async = true;
+      script.setAttribute('data-site-app', '');
+      // The site's CSP requires Trusted Types: the URL passes through the
+      // app's default policy, which its security bootstrap installs before
+      // DOMContentLoaded. Without it the app did not start at all, and there
+      // is nothing left to load the stand-in with.
+      script.src = '/native-shell-return.js';
+      (document.head || document.documentElement).appendChild(script);
+    } catch (error) {
+      // Keep the page free of uncaught errors.
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
+  else load();
 })();
