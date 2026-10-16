@@ -5,6 +5,7 @@ import { invalidateForumCaches } from "./cacheInvalidation";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
+import { scheduleForumAiAnswer } from "./forumAiAnswer";
 import {
   AUTO_MANUAL_RETRY_MARKER,
   forumReviewAttempt,
@@ -315,6 +316,7 @@ export async function processTopicSubmissionReview(topicId: number, review = rev
       runNonCriticalSideEffect(`topic ${topic.id} course rating`, () => createCourseRatingIfNeeded(topic, metadata)),
     ]);
     await invalidateForumCaches({ includeCourses: topic.board.type === "coursereview" }).catch(() => undefined);
+    scheduleForumAiAnswer(topic.id);
   } catch (error) {
     await failTopicSubmissionReview(topicId, error, topic.updatedAt);
   }

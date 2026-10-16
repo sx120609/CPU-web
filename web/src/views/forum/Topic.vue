@@ -358,6 +358,8 @@
       </div>
     </article>
 
+    <TopicAiAnswerCard v-if="!topic.hidden" :topic-id="topic.id" />
+
     <!-- 回复列表 -->
     <section class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">
@@ -778,6 +780,7 @@ import AppIcon from "@/components/common/AppIcon.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
+import TopicAiAnswerCard from "@/components/forum/TopicAiAnswerCard.vue";
 import { topicApi, replyApi, likeApi, type Topic, type Reply, type ReplySubmissionResponse } from "@/api/topic";
 import { directMessageApi } from "@/api/directMessage";
 import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";

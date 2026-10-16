@@ -100,6 +100,33 @@
     </section>
 
     <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">论坛 AI 参考回答</h3>
+          <p class="section-desc">提问广场和普通板块里像提问的帖子公开后，拾间AI 检索学校事务资料、同步的学校公告和往期帖子；资料确实能回答且置信度达到门槛时，在帖子下方展示带出处的参考回答，并通知发帖人。使用拾间 AI 的服务和模型。</p>
+        </div>
+      </div>
+
+      <div class="ai-form">
+        <div class="ai-row ai-row--switch">
+          <span class="ai-label">启用参考回答</span>
+          <el-switch v-model="form.forumAiAnswerEnabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">最低置信度</span>
+          <el-input-number v-model="form.forumAiAnswerMinConfidence" :min="50" :max="100" :step="5" />
+        </div>
+      </div>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="门槛越高展示越少、越稳。管理员在帖子页能看到未展示的原因和模型自评分，可在那里重新生成；发帖人和管理员可以关闭某条回答。"
+      />
+    </section>
+
+    <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <h3 class="section-title">药苑之声 · 歌曲审核</h3>
       <p class="section-desc">投稿始终先保存，AI异步给出选曲建议，风险投稿会提示用户“大概率不会被接受”；有建议时通过主站通知用户；用户二次确认后才进入待排期，24小时未确认自动撤回。存量未播放歌曲自动排队，也可在歌曲管理中批量重审；用户也可直接撤回投稿。</p>
       <label class="ai-row"><span class="ai-label">启用歌曲审核</span><el-switch v-model="form.songReviewEnabled" inline-prompt active-text="开" inactive-text="关" /></label>
@@ -645,6 +672,8 @@ const form = reactive<SiteConfig>({
   smartPostModel: "gpt-5.6-sol",
   smartPostFallbackModels: "",
   smartPostTokensPerQuota: 4000,
+  forumAiAnswerEnabled: true,
+  forumAiAnswerMinConfidence: 75,
   aiReviewServiceId: "default-main",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -786,6 +815,8 @@ async function saveConfig() {
       smartPostEnabled: form.smartPostEnabled,
       smartPostFallbackModels: form.smartPostFallbackModels,
       smartPostTokensPerQuota: form.smartPostTokensPerQuota,
+      forumAiAnswerEnabled: form.forumAiAnswerEnabled,
+      forumAiAnswerMinConfidence: form.forumAiAnswerMinConfidence,
       aiReviewEnabled: form.aiReviewEnabled,
       aiReviewFallbackModels: form.aiReviewFallbackModels,
       qqGroupAdReviewEnabled: form.qqGroupAdReviewEnabled,

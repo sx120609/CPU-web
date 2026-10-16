@@ -62,7 +62,11 @@ const assistantHistoryImageSchema = z.object({
 }).strict();
 const assistantHistorySourceSchema = z.object({
   title: z.string().trim().min(1).max(120),
-  url: z.string().trim().url().max(500).refine((value) => /^https?:\/\//iu.test(value), "仅支持 http(s) 来源"),
+  // 网页来源是 http(s) 链接；论坛帖子和同步的公告是站内路径。
+  url: z.string().trim().max(500).refine(
+    (value) => /^\/forum\/topic\/\d{1,10}$/u.test(value) || (/^https?:\/\//iu.test(value) && z.string().url().safeParse(value).success),
+    "仅支持 http(s) 来源或站内帖子",
+  ),
 }).strict();
 const assistantHistoryMessageSchema = z.object({
   id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),

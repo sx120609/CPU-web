@@ -197,14 +197,18 @@
 
                 <div v-if="visibleLinks(message.sources).length" class="sj-sources">
                   <span class="sj-sources-label">参考来源</span>
-                  <a
-                    v-for="(source, index) in visibleLinks(message.sources)"
-                    :key="source.url"
-                    :href="source.url"
-                    :title="source.url"
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
-                  ><b>{{ index + 1 }}</b>{{ source.title }}</a>
+                  <template v-for="(source, index) in visibleLinks(message.sources)" :key="source.url">
+                    <router-link v-if="source.url.startsWith('/')" :to="source.url" :title="source.title">
+                      <b>{{ index + 1 }}</b>{{ source.title }}
+                    </router-link>
+                    <a
+                      v-else
+                      :href="source.url"
+                      :title="source.url"
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                    ><b>{{ index + 1 }}</b>{{ source.title }}</a>
+                  </template>
                 </div>
 
                 <div v-if="!message.streaming && message.content" class="sj-msg-tools">
@@ -1027,7 +1031,8 @@ function normalizeAssistantSources(value: unknown): CampusAssistantSource[] | un
     .filter((item): item is CampusAssistantSource => Boolean(
       item
       && typeof item.url === "string"
-      && /^https?:\/\/[^\s<>"']+$/iu.test(item.url)
+      // 网页来源，或拾间AI 引用的论坛帖子、同步公告（站内路径）。
+      && (/^https?:\/\/[^\s<>"']+$/iu.test(item.url) || /^\/forum\/topic\/\d{1,10}$/u.test(item.url))
       && typeof item.title === "string",
     ))
     .map((item) => ({

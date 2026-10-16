@@ -52,6 +52,7 @@ import {
 import { refreshTopicSubmissionLock } from "../../services/topicAiReview";
 import { resetForumReviewRetryDetail } from "../../services/forumSubmission";
 import { scheduleReplySubmissionReview, scheduleTopicSubmissionReview } from "../../services/forumSubmissionReview";
+import { scheduleForumAiAnswer } from "../../services/forumAiAnswer";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../../services/forumStats";
 import {
   notifyManualReplyReviewDecision,
@@ -1339,6 +1340,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
           note: req.body.manualReviewNote ?? "",
         });
       }
+      if (req.body.aiReviewStatus === "approved_manual" && !u.hidden) scheduleForumAiAnswer(u.id);
     }
     await invalidateForumCaches({ includeCourses: true });
     ok(res, {
@@ -2848,6 +2850,8 @@ const siteConfigPatchSchema = z.object({
   smartPostModel: z.string().trim().min(1).max(200).optional(),
   smartPostFallbackModels: z.string().trim().max(400).optional(),
   smartPostTokensPerQuota: z.number().int().min(256).max(100000).optional(),
+  forumAiAnswerEnabled: z.boolean().optional(),
+  forumAiAnswerMinConfidence: z.number().int().min(50).max(100).optional(),
   aiReviewServiceId: z.string().trim().max(48).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
@@ -2945,6 +2949,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.smartPostModel !== undefined ||
       req.body.smartPostFallbackModels !== undefined ||
       req.body.smartPostTokensPerQuota !== undefined ||
+      req.body.forumAiAnswerEnabled !== undefined ||
+      req.body.forumAiAnswerMinConfidence !== undefined ||
       req.body.aiReviewServiceId !== undefined ||
       req.body.aiReviewEnabled !== undefined ||
       req.body.aiReviewProvider !== undefined ||

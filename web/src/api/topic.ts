@@ -300,6 +300,40 @@ export const topicApi = {
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
   acceptAnswer: (topicId: number, replyId: number) =>
     request.post<QuestionAnswerAcceptance>(`/topics/${topicId}/accept-answer`, { replyId }, { suppressErrorMessage: true }),
+  aiAnswer: (topicId: number) =>
+    request.get<TopicAiAnswer>(`/topics/${topicId}/ai-answer`, undefined, {
+      cacheTtlMs: 0,
+      timeout: 10_000,
+      suppressErrorMessage: true,
+      suppressAuthMessage: true,
+      suppressAuthRedirect: true,
+    }),
+  dismissAiAnswer: (topicId: number) =>
+    request.post<TopicAiAnswer>(`/topics/${topicId}/ai-answer/dismiss`, undefined, { suppressErrorMessage: true }),
+  regenerateAiAnswer: (topicId: number) =>
+    request.post<TopicAiAnswer>(`/topics/${topicId}/ai-answer/regenerate`, undefined, { suppressErrorMessage: true }),
+};
+
+export type TopicAiAnswerSource = {
+  n: number;
+  kind: "school-doc" | "announce" | "forum" | "coursereview" | "site";
+  title: string;
+  where: string;
+  date: string | null;
+  /** 站内路径（/forum/topic/…、站内入口）或学校原文链接；没有公开链接时为 null。 */
+  url: string | null;
+  topicId?: number;
+};
+
+export type TopicAiAnswer = {
+  status: "none" | "pending" | "answered" | "dismissed";
+  answer?: string;
+  confidence?: number;
+  sources?: TopicAiAnswerSource[];
+  createdAt?: string;
+  canDismiss?: boolean;
+  canRegenerate?: boolean;
+  review?: { status: string; reason: string; confidence: number; model: string | null };
 };
 
 export const replyApi = {

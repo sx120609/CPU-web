@@ -99,13 +99,29 @@ function answerLinks(answer: string, pattern: RegExp) {
 }
 function withoutTrailingProse(value: string) { return value.replace(/[.,;!?]+$/u, ""); }
 
+/** 检索资料（学校文件、公告、帖子）里原样出现的电话和邮箱也可以引用；8 位座机补上 025 区号也算同一个。 */
+function groundedContactKeys(text: string) {
+  const phones = new Set<string>();
+  for (const match of text.matchAll(/(?:0\d{2,3}[-\s]?)?\d{7,8}|1[3-9]\d{9}/gu)) {
+    const key = phoneKey(match[0]);
+    phones.add(key);
+    if (key.length === 8) phones.add(`025${key}`);
+    if (key.startsWith("025") && key.length === 11) phones.add(key.slice(3));
+  }
+  const emails = new Set([...text.matchAll(/[A-Za-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gu)]
+    .map((match) => match[0].toLowerCase()));
+  const urls = new Set([...text.matchAll(/https?:\/\/[^\s)\]<>"'`，。；：！？、）》】」』“”‘’]+/gu)].map((match) => withoutTrailingProse(match[0])));
+  return { phones, emails, urls };
+}
+
 /** Check generated phone facts before exposing them, and attach only server-owned evidence. */
-export function groundDepartmentContactResponse(response: CampusAssistantResponse, payload: unknown, context?: DepartmentContactToolContext): CampusAssistantResponse {
+export function groundDepartmentContactResponse(response: CampusAssistantResponse, payload: unknown, context?: DepartmentContactToolContext, groundingText = ""): CampusAssistantResponse {
   const contacts = context?.results.flatMap((result) => result.contacts) || [];
   const byId = new Map(contacts.map((contact) => [contact.id, contact]));
   const quotable = context?.results.filter((result) => !result.clarification).flatMap((result) => result.contacts).filter(canQuotePhone) || [];
-  const allowed = new Set(quotable.flatMap((contact) => contact.phones.map((phone) => phoneKey(phone.number))));
-  const allowedEmails = new Set(contacts.filter(canQuotePhone).flatMap((contact) => contact.emails.map((email) => email.toLowerCase())));
+  const grounded = groundedContactKeys(groundingText);
+  const allowed = new Set([...quotable.flatMap((contact) => contact.phones.map((phone) => phoneKey(phone.number))), ...grounded.phones]);
+  const allowedEmails = new Set([...contacts.filter(canQuotePhone).flatMap((contact) => contact.emails.map((email) => email.toLowerCase())), ...grounded.emails]);
   for (const match of response.answer.matchAll(/[A-Za-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gu)) {
     const email = match[0].trim().toLowerCase();
     if ((context || email.endsWith("@cpu.edu.cn")) && !allowedEmails.has(email)) throw new Error("DEPARTMENT_CONTACT_UNGROUNDED_EMAIL");
@@ -114,6 +130,7 @@ export function groundDepartmentContactResponse(response: CampusAssistantRespons
   if (mentions.some((phone) => !allowed.has(phoneKey(phone)))) throw new Error("DEPARTMENT_CONTACT_UNGROUNDED_PHONE");
   if (context) {
     const urls = new Set(contacts.flatMap((contact) => contact.sources.flatMap((source) => source.url ? [source.url] : [])));
+    for (const url of grounded.urls) urls.add(url);
     for (const contact of contacts) if (contact.onlineUrl) urls.add(contact.onlineUrl);
     for (const result of context.results) for (const gap of result.gaps) if (gap.url) urls.add(gap.url);
     for (const link of answerLinks(response.answer, /https?:\/\/[^\s)\]<>"'`，。；：！？、）》】」』“”‘’]+/gu)) {

@@ -63,6 +63,7 @@ import {
   scheduleForumBackgroundTask,
 } from "../services/forumSubmission";
 import { scheduleTopicSubmissionReview } from "../services/forumSubmissionReview";
+import { dismissTopicAiAnswer, presentTopicAiAnswer, regenerateTopicAiAnswer, scheduleForumAiAnswer } from "../services/forumAiAnswer";
 import {
   acceptQuestionAnswer,
   normalizeQuestionMetadataForWrite,
@@ -501,6 +502,52 @@ topicRouter.get("/:id", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/** 拾间AI 参考回答跟着帖子本身的可见性走：看得到帖子才看得到回答。 */
+async function findTopicForAiAnswer(req: Request) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("帖子 ID 不合法");
+  const requesterId = req.user?.userId ?? null;
+  const requesterRole = req.user?.role ?? "";
+  const topic = await prisma.topic.findUnique({
+    where: { id },
+    select: { id: true, authorId: true, hidden: true, board: { select: { slug: true, type: true } } },
+  });
+  if (!topic || isAuthorBlocked(topic.authorId, req.user)) throw Errors.notFound();
+  if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound();
+  const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
+  if (topic.hidden && !canSeeHidden) throw Errors.notFound();
+  if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+  await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
+  return topic;
+}
+
+topicRouter.get("/:id/ai-answer", async (req, res, next) => {
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    const topic = await findTopicForAiAnswer(req);
+    ok(res, await presentTopicAiAnswer(topic, req.user ? { userId: req.user.userId, role: req.user.role } : null));
+  } catch (e) { next(e); }
+});
+
+topicRouter.post("/:id/ai-answer/dismiss", authRequired, async (req, res, next) => {
+  try {
+    const topic = await findTopicForAiAnswer(req);
+    const staff = req.user!.role === "admin" || req.user!.role === "mod";
+    if (topic.authorId !== req.user!.userId && !staff) throw Errors.forbidden("只有发帖人和管理员可以关闭拾间AI 的回答");
+    await dismissTopicAiAnswer(topic.id, req.user!.userId);
+    ok(res, await presentTopicAiAnswer(topic, { userId: req.user!.userId, role: req.user!.role }));
+  } catch (e) { next(e); }
+});
+
+topicRouter.post("/:id/ai-answer/regenerate", authRequired, securityRateLimit("forum-ai-answer-regenerate", 20, 60_000), async (req, res, next) => {
+  try {
+    const topic = await findTopicForAiAnswer(req);
+    if (req.user!.role !== "admin" && req.user!.role !== "mod") throw Errors.forbidden();
+    await regenerateTopicAiAnswer(topic.id);
+    ok(res, await presentTopicAiAnswer(topic, { userId: req.user!.userId, role: req.user!.role }));
+  } catch (e) { next(e); }
+});
+
 const createSchema = z.object({
   boardSlug: z.string().min(1),
   title: z.string().min(2).max(120),
@@ -647,6 +694,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       boardType: board.type,
       metadata: effectiveMetadata,
     }, topic.id);
+    scheduleForumAiAnswer(topic.id);
 
     // 课评：写入 CourseRating 派生表
     if (board.type === "coursereview" && effectiveMetadata?.courseId && effectiveMetadata?.ratings) {

@@ -1473,7 +1473,7 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /同一个人 3 分钟内可以不 @ 继续追问/);
   assert.doesNotMatch(combined, /群聊默认只有在消息中 @拾间AI 后才会回答/);
   assert.match(combined, /QQBot 的 AI 日常问答统一以图片发送/);
-  assert.match(combined, /当前 Qwen 路由支持最近有限的对话上下文/);
+  assert.match(combined, /当前 AI 线路支持最近有限的对话上下文/);
   assert.match(combined, /https:\/\/i\.cpu\.edu\.cn/);
   assert.match(combined, /统一身份认证默认密码为身份证后六位/);
   assert.match(combined, /优先.*找回密码/);

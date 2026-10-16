@@ -105,6 +105,8 @@ export type SiteConfig = {
   smartPostModel: string;
   smartPostFallbackModels: string;
   smartPostTokensPerQuota: number;
+  forumAiAnswerEnabled: boolean;
+  forumAiAnswerMinConfidence: number;
   aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -763,6 +765,8 @@ const SMART_POST_ENABLED_KEY = "ai.smartPost.enabled";
 const SMART_POST_MODEL_KEY = "ai.smartPost.model";
 const SMART_POST_FALLBACK_MODELS_KEY = "ai.smartPost.fallbackModels";
 const SMART_POST_TOKENS_PER_QUOTA_KEY = "ai.smartPost.tokensPerQuota";
+const FORUM_AI_ANSWER_ENABLED_KEY = "ai.forumAnswer.enabled";
+const FORUM_AI_ANSWER_MIN_CONFIDENCE_KEY = "ai.forumAnswer.minConfidence";
 const AI_REVIEW_SERVICE_ID_KEY = "ai.review.serviceId";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
@@ -1093,6 +1097,8 @@ const configCache: SiteConfig = {
   smartPostModel: "gpt-5.6-sol",
   smartPostFallbackModels: "",
   smartPostTokensPerQuota: 4000,
+  forumAiAnswerEnabled: true,
+  forumAiAnswerMinConfidence: 75,
   aiReviewServiceId: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -1271,6 +1277,8 @@ export async function loadFeatures(): Promise<void> {
           SMART_POST_MODEL_KEY,
           SMART_POST_FALLBACK_MODELS_KEY,
           SMART_POST_TOKENS_PER_QUOTA_KEY,
+          FORUM_AI_ANSWER_ENABLED_KEY,
+          FORUM_AI_ANSWER_MIN_CONFIDENCE_KEY,
           AI_REVIEW_SERVICE_ID_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
@@ -1416,6 +1424,14 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === SMART_POST_TOKENS_PER_QUOTA_KEY) {
       configCache.smartPostTokensPerQuota = normalizeSmallInt(r.value, 4000, 256, 100_000);
+      continue;
+    }
+    if (r.key === FORUM_AI_ANSWER_ENABLED_KEY) {
+      configCache.forumAiAnswerEnabled = r.value !== "off";
+      continue;
+    }
+    if (r.key === FORUM_AI_ANSWER_MIN_CONFIDENCE_KEY) {
+      configCache.forumAiAnswerMinConfidence = normalizeSmallInt(r.value, 75, 50, 100);
       continue;
     }
     if (r.key === AI_REVIEW_SERVICE_ID_KEY) {
@@ -2148,6 +2164,7 @@ function sanitizeAiReviewConfig() {
   configCache.smartPostModel = String(configCache.smartPostModel || "gpt-5.6-sol").trim() || "gpt-5.6-sol";
   configCache.smartPostFallbackModels = normalizeFallbackModelList(configCache.smartPostFallbackModels, configCache.smartPostModel);
   configCache.smartPostTokensPerQuota = normalizeSmallInt(configCache.smartPostTokensPerQuota, 4000, 256, 100_000);
+  configCache.forumAiAnswerMinConfidence = normalizeSmallInt(configCache.forumAiAnswerMinConfidence, 75, 50, 100);
   if (!configCache.qqGroupAdReviewProvider) configCache.qqGroupAdReviewProvider = "deepseek";
   configCache.qqGroupAdReviewApiUrl = normalizePromptTemplate(configCache.qqGroupAdReviewApiUrl, "https://api.deepseek.com/chat/completions");
   configCache.qqGroupAdReviewModel = String(configCache.qqGroupAdReviewModel || "deepseek-v4-flash").trim() || "deepseek-v4-flash";
@@ -2541,6 +2558,8 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       input.smartPostModel ?? configCache.smartPostModel,
     ),
     smartPostTokensPerQuota: normalizeSmallInt(input.smartPostTokensPerQuota, configCache.smartPostTokensPerQuota, 256, 100_000),
+    forumAiAnswerEnabled: input.forumAiAnswerEnabled ?? configCache.forumAiAnswerEnabled,
+    forumAiAnswerMinConfidence: normalizeSmallInt(input.forumAiAnswerMinConfidence, configCache.forumAiAnswerMinConfidence, 50, 100),
     aiReviewServiceId: textReviewService.id,
     aiReviewEnabled: input.aiReviewEnabled ?? configCache.aiReviewEnabled,
     aiReviewProvider: textReviewService.provider,
@@ -2660,6 +2679,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: SMART_POST_TOKENS_PER_QUOTA_KEY },
       update: { value: String(next.smartPostTokensPerQuota) },
       create: { key: SMART_POST_TOKENS_PER_QUOTA_KEY, value: String(next.smartPostTokensPerQuota) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: FORUM_AI_ANSWER_ENABLED_KEY },
+      update: { value: next.forumAiAnswerEnabled ? "on" : "off" },
+      create: { key: FORUM_AI_ANSWER_ENABLED_KEY, value: next.forumAiAnswerEnabled ? "on" : "off" },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: FORUM_AI_ANSWER_MIN_CONFIDENCE_KEY },
+      update: { value: String(next.forumAiAnswerMinConfidence) },
+      create: { key: FORUM_AI_ANSWER_MIN_CONFIDENCE_KEY, value: String(next.forumAiAnswerMinConfidence) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_SERVICE_ID_KEY },

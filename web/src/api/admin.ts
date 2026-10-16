@@ -96,6 +96,8 @@ export type SiteConfig = {
   smartPostModel: string;
   smartPostFallbackModels: string;
   smartPostTokensPerQuota: number;
+  forumAiAnswerEnabled: boolean;
+  forumAiAnswerMinConfidence: number;
   aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -1534,6 +1536,8 @@ export const adminApi = {
     smartPostModel?: string;
     smartPostFallbackModels?: string;
     smartPostTokensPerQuota?: number;
+    forumAiAnswerEnabled?: boolean;
+    forumAiAnswerMinConfidence?: number;
     aiReviewServiceId?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;

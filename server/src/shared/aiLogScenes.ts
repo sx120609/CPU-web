@@ -4,6 +4,7 @@ export const AI_LOG_SCENES = [
   { value: "campus-assistant", label: "拾间 AI 对话" },
   { value: "learning-answer", label: "学习通 AI 解题" },
   { value: "smart-post", label: "智慧发帖" },
+  { value: "forum-ai-answer", label: "论坛 AI 参考回答" },
   { value: "topic", label: "帖子审核" },
   { value: "reply", label: "回复审核" },
   { value: "topic-edit", label: "编辑相似度" },

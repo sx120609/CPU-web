@@ -395,6 +395,7 @@ model Topic {
   manualReviewedBy User?            @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
   marketItem       MarketItem?
   lostFoundItem    LostFoundItem?
+  aiAnswer         TopicAiAnswer?
 
   @@index([boardId, lastReplyAt])
   @@index([boardId, hidden, createdAt])
@@ -403,6 +404,27 @@ model Topic {
   @@index([authorId])
   @@index([authorId, aiReviewStatus])
   @@unique([authorId, submissionId])
+}
+
+// 拾间AI 根据往期帖子与学校公告给提问帖写的参考回答；置信度不够时只记 skipped，不展示。
+model TopicAiAnswer {
+  id            Int       @id @default(autoincrement())
+  topicId       Int       @unique
+  status        String    @default("pending") // pending / answered / skipped / failed / dismissed
+  answer        String    @default("") // Markdown，正文里的 [n] 对应 sources 的序号
+  confidence    Int       @default(0) // 0-100，模型自评
+  sources       String    @default("[]") // JSON：[{ n, topicId, title, kind, boardName, publishedAt }]
+  reason        String    @default("") // 跳过或失败的原因，只给管理员看
+  model         String?
+  attempts      Int       @default(0)
+  dismissedById Int?
+  dismissedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
 }
 
 model Reply {

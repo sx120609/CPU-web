@@ -25,6 +25,7 @@ import {
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { startForumSubmissionReviewPoller } from "./services/forumSubmissionReview";
+import { startForumAiAnswerPoller } from "./services/forumAiAnswer";
 import { startDirectMessageSubmissionReviewPoller } from "./services/directMessageSubmissionReview";
 import { startNicknameReviewPoller } from "./services/nicknameReview";
 import { startProfileReviewPoller } from "./services/profileReview";
@@ -56,6 +57,7 @@ export function startAppWorkers() {
   startForumImageModerationPoller();
   startForumVideoModerationPoller();
   startForumSubmissionReviewPoller();
+  startForumAiAnswerPoller();
   startDirectMessageSubmissionReviewPoller();
   startNicknameReviewPoller();
   startProfileReviewPoller();
