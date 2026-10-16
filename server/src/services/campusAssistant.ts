@@ -433,6 +433,16 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["小游戏", "游戏", "药大人能飞", "番茄鸡蛋面", "大战僵尸", "僵尸", "合成药大奶", "药大奶", "奶蛙", "药大人能吃", "能吃", "贪吃奶龙", "奶龙", "贪吃蛇", "排行榜", "全校排行", "成就"],
   },
   {
+    id: "workshop",
+    label: "创意工坊",
+    description: "玩同学做的小游戏和小工具，也可以上传自己的网页作品，审核通过后公开",
+    url: "/workshop",
+    icon: "🛠️",
+    owner: "校园小工具",
+    requireLogin: false,
+    keywords: ["创意工坊", "工坊", "同学的作品", "上传作品", "我的作品", "做游戏", "做小工具", "开发指南", "工坊模板", "作品审核", "云端存档", "工坊排行榜", "网站扩展"],
+  },
+  {
     id: "feedback",
     label: "需求反馈",
     description: "提交功能建议、使用问题和校园工具需求",
@@ -544,14 +554,14 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   },
   {
     id: "sponsor-wall",
-    label: "鸣谢墙",
-    description: "查看支持站点建设的用户与赞助说明",
-    url: "/sponsor-wall",
+    label: "支持药大拾间",
+    description: "查看赞助计划、公开筹集进度和鸣谢墙",
+    url: "/sponsor",
     icon: "💚",
     owner: "药大拾间",
     requireLogin: false,
     feature: "sponsor",
-    keywords: ["鸣谢墙", "赞助", "支持网站", "捐助", "赞助者"],
+    keywords: ["鸣谢墙", "赞助", "支持网站", "支持药大拾间", "赞助计划", "捐助", "赞助者"],
   },
   {
     id: "thanks",
@@ -740,10 +750,10 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     relatedActionIds: ["desktop-client"],
-    fact: "药大拾间客户端：统一下载页位于“/download”，会按当前设备推荐版本，汇总 Android 原生客户端（Android 7.0 及以上，APK 安装包）、鸿蒙原生客户端（在华为应用市场安装和更新：https://appgallery.huawei.com/app/detail?id=cn.lizmt.cpuweb，系统兼容性以应用市场为准）、iPhone/iPad App Store 原生客户端（https://apps.apple.com/cn/app/id6811073406，需要 iOS / iPadOS 15.0 或更高版本，其中 15–16 使用网页兼容界面，17 及以上支持原生课表与小组件）、Windows 10/11 64 位客户端和 Apple Silicon（M1 及后续 M 系列）macOS 客户端。Windows 和 macOS 桌面客户端内置校园网自动联网工具，可用于自动连接校园网；同时包含“药大拾间·学习通助手”和桌面常驻能力。旧的“CPU 网络连接助手”已停止作为独立产品宣传，相关自动联网能力已经整合到桌面客户端；Intel Mac 暂不支持。",
+    fact: "药大拾间客户端：统一下载页位于“/download”，会按当前设备推荐版本，汇总 Android 原生客户端（Android 7.0 及以上，APK 安装包）、鸿蒙原生客户端（在华为应用市场安装和更新：https://appgallery.huawei.com/app/detail?id=cn.lizmt.cpuweb，系统兼容性以应用市场为准）、iPhone/iPad App Store 原生客户端（https://apps.apple.com/cn/app/id6811073406，需要 iOS / iPadOS 15.0 或更高版本，其中 15–16 使用网页兼容界面，17 及以上支持原生课表与小组件）、Windows 10/11 64 位客户端和 Apple Silicon（M1 及后续 M 系列）macOS 客户端。Windows 和 macOS 桌面客户端内置校园网自动联网工具，可用于自动连接校园网；同时包含“药大拾间·学习通助手”和桌面常驻能力。旧的“CPU 网络连接助手”已停止作为独立产品宣传，相关自动联网能力已经整合到桌面客户端；Intel Mac 暂不支持。Android 客户端低于 V59（4.0.18）的旧版必须更新：弹出更新提示后有三天期限，期限过后旧版的在线功能停用（已保存的离线课表仍可查看），可在弹窗里直接安装，或用浏览器下载最新安装包覆盖安装。",
     source: "药大拾间客户端下载页与客户端功能说明",
     sourceRef: "https://cputime.cn/download",
-    verifiedAt: "2026-10-12",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "client-recommendation-priority",
@@ -827,15 +837,18 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "assistant-scope-and-quota",
     relatedActionIds: ["campus-assistant"],
-    fact: "拾间AI：需要登录后使用，可回答站内功能、校园服务和一般学习生活问题，但不能直接替用户查询个人成绩、执行登录、缴费或发帖。每日免费额度按站内等级发放并在北京时间每日零点重置；免费额度用完后可消耗 AI 点数继续使用。",
+    fact: "拾间AI：需要登录后使用，可回答站内功能、校园服务和一般学习生活问题，但不能直接替用户查询个人成绩、执行登录、缴费或发帖。回答学校事务时会参考研究生学生手册、推免办法与学院细则、招生简章、复试线、共识期刊目录等学校资料，以及同步的学校公告和论坛往期帖子，并附出处；资料可能过时，以学校最新通知为准。每日免费额度按站内等级发放并在北京时间每日零点重置；免费额度用完后可消耗 AI 点数继续使用。",
+    source: "药大拾间拾间AI 页面",
+    sourceRef: "CPU-web",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "service-tools-overview",
     relatedActionIds: ["services", "service-tools"],
-    fact: "校园小工具：当前包括部门联系、需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、校历与地图、场馆预约、失物招领、药苑之声和综测填表工具。综测填表工具仅支持 Windows 10/11，下载后在本机整理材料并生成 Word；工具是否需要登录以入口上显示的状态为准。",
+    fact: "校园小工具：当前包括创意工坊、部门联系、需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、校历与地图、场馆预约、失物招领、药苑之声和综测填表工具。综测填表工具仅支持 Windows 10/11，下载后在本机整理材料并生成 Word；工具是否需要登录以入口上显示的状态为准。",
     source: "药大拾间校园小工具页面",
     sourceRef: "CPU-web",
-    verifiedAt: "2026-10-12",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "department-contacts-2026-10",
@@ -864,10 +877,18 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "mini-games-2026-10",
     relatedActionIds: ["mini-games"],
-    fact: "小游戏：在“校园小工具 → 小游戏”可玩药大主题的小游戏，目前有“药大人能飞”（操控飞行胶囊穿过药学实验装置）、“番茄鸡蛋面”（切菜、炒蛋、煮面，看准火候）、“药大人大战僵尸”（在五路药圃里种药材挡住僵尸，放过一只就结束）、“合成药大奶”（把奶蛙投进罐子，两只一样的撞在一起合成更大的一只，堆过警戒线就结束）和“药大人能吃”（原名贪吃奶龙，贪吃蛇玩法，滑动控制奶龙吃零食变长，撞墙或咬到自己就结束）。点开即可玩，登录后成绩计入全校排行并可解锁成就，每个游戏各有 14 枚成就。iOS 和鸿蒙原生客户端里未登录时不显示小游戏入口。",
+    fact: "小游戏：在“校园小工具 → 小游戏”可玩药大主题的小游戏，目前有“药大人能飞”（操控飞行胶囊穿过药学实验装置）、“番茄鸡蛋面”（切菜、炒蛋、煮面，看准火候）、“药大人大战僵尸”（在五路药圃里种药材挡住僵尸，放过一只就结束）、“合成药大奶”（把奶蛙投进罐子，两只一样的撞在一起合成更大的一只，堆过警戒线就结束）和“药大人能吃”（原名贪吃奶龙，贪吃蛇玩法，滑动控制奶龙吃零食变长，撞墙或咬到自己就结束）。点开即可玩，登录后成绩计入全校排行并可解锁成就，每个游戏各有 14 枚成就；登录后合集页的“我的最高”取账号最好成绩。药大人大战僵尸可在设置里选“新版”或“经典”画面风格；中途退出会先暂停确认，确认后按当前分数和波次结算并计入排行。合集页底部可以去创意工坊找同学做的更多游戏。iOS 和鸿蒙原生客户端里未登录时不显示小游戏入口。",
     source: "药大拾间小游戏页面",
     sourceRef: "CPU-web",
-    verifiedAt: "2026-10-12",
+    verifiedAt: "2026-10-17",
+  },
+  {
+    id: "workshop-2026-10",
+    relatedActionIds: ["workshop"],
+    fact: "创意工坊：在“校园小工具 → 创意工坊”可以玩同学做的小游戏、用同学做的小工具，按游戏、工具、扩展筛选或搜索，登录后可以收藏。作品在隔离窗口里运行，读不到账号、课表和成绩。需要存档的作品，登录后进度存在账号里、换设备也在，访客只存在本机；工坊首页的“云端存档”可以查看和删除，每个作品一份，账号合计最多 2 MB。声明了排行榜的游戏，登录后玩公开版本的成绩计入该作品的排行榜，每人只留最高分。想上架自己的作品先看“开发指南”：可以下载游戏、工具、扩展模板，或把想法生成提示词交给会写代码的 AI；作品是一组网页文件打成的 ZIP（最大 20 MB，解压后不超过 60 MB、512 个文件），在“我的作品”上传并自己预览，再提交审核，通过后公开。更新时用同一个作品标识和新版本号再传，新版本要重新审核，审核期间旧版本照常可用；不需要的未公开版本作者可以删除，公开中的版本不能删除。扩展审核公开后还要由管理员启用，才会以开屏内容或页面角落小工具的形式出现在网站上。觉得作品有问题可以在详情页举报。",
+    source: "药大拾间创意工坊页面与开发指南",
+    sourceRef: "https://cputime.cn/workshop",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "desktop-client-install-safety",
@@ -954,10 +975,10 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "schedule-recovery-and-personalization-2026-08",
     relatedActionIds: ["schedule"],
-    fact: "课表使用排查：课表需要先完成教务授权；如果页面提示授权失效或只显示旧缓存，应回到“教务数据”重新授权，再返回课表读取最新学期。课表与教务系统不一致时，先核对教务系统里的单双周和上课周次，再看是否有调课或补课通知。自定义课程、编辑过的课程和背景只影响当前账号或当前设备的展示，不代表学校教务系统中的正式数据。",
+    fact: "课表使用排查：课表需要先完成教务授权；提示授权失效或只显示旧缓存时，回到“教务数据”重新授权再返回课表。点刷新会重新向教务取最新课表，没连上时提示“课表没有更新”并保留原课表。研究生系统临时出错时，课表保留最近一次有课的结果（最多 7 天）。课表与教务系统不一致时，先核对单双周和上课周次，再看调课或补课通知。自定义课程、编辑过的课程和背景只影响当前账号或设备的展示，不代表学校教务系统中的正式数据。",
     source: "药大拾间课表页面",
     sourceRef: "CPU-web",
-    verifiedAt: "2026-10-12",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "course-review-sync-2026-08",
@@ -1058,10 +1079,10 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "service-tool-login-status-2026-08",
     relatedActionIds: ["services", "service-tools"],
-    fact: "校园小工具入口：打开“校园服务”可进入服务总览，打开“校园小工具”可查看部门联系、反馈、问卷、成绩表核对、文件收集、PDF 工具、校历与地图、场馆预约、失物招领、药苑之声和综测填表工具。综测填表工具需下载到 Windows 10/11 电脑使用；其余工具以卡片显示的“需登录”或“免登录”等标记为准。如果入口加载失败，先按页面提供的“重试”操作，不要把暂时的网络错误判断成工具下线。",
+    fact: "校园小工具入口：打开“校园服务”可进入服务总览，打开“校园小工具”可查看创意工坊、部门联系、反馈、问卷、成绩表核对、文件收集、PDF 工具、校历与地图、场馆预约、失物招领、药苑之声和综测填表工具。综测填表工具需下载到 Windows 10/11 电脑使用；其余工具以卡片显示的“需登录”或“免登录”等标记为准。如果入口加载失败，先按页面提供的“重试”操作，不要把暂时的网络错误判断成工具下线。",
     source: "药大拾间校园服务与小工具页面",
     sourceRef: "CPU-web",
-    verifiedAt: "2026-10-12",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "profile-settings-and-privacy-2026-08",
@@ -1082,10 +1103,10 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "sponsor-wall-usage-2026-08",
     relatedActionIds: ["sponsor-wall", "profile"],
-    fact: "鸣谢墙使用：鸣谢墙可公开查看支持站点建设的记录、留言和累计统计；选择匿名的赞助不会展示个人昵称，选择不公开展示的记录不会出现在名单中。需要赞助时从鸣谢墙点击“我要赞助”进入个人中心，支付方式、金额范围、是否上墙和 AI 点数奖励以当前赞助页面及账户实时显示为准。",
-    source: "药大拾间鸣谢墙与赞助页面",
-    sourceRef: "CPU-web",
-    verifiedAt: "2026-08-21",
+    fact: "支持药大拾间页面（原鸣谢墙，https://cputime.cn/sponsor）列出赞助计划和公开筹集进度，下方鸣谢墙显示累计赞助和上墙记录；选择匿名的赞助显示为“匿名同学”，选择不展示的赞助不会出现在名单中。需要赞助时点“我要赞助”进入个人中心，支付方式、金额范围、是否上墙和 AI 点数奖励以当前赞助页面及账户实时显示为准。",
+    source: "药大拾间支持页面",
+    sourceRef: "https://cputime.cn/sponsor",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "forum-posting-2026-10",
@@ -1094,6 +1115,14 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     source: "药大拾间论坛页面",
     sourceRef: "CPU-web",
     verifiedAt: "2026-10-12",
+  },
+  {
+    id: "forum-ai-answer-2026-10",
+    relatedActionIds: ["forum"],
+    fact: "拾间AI 参考回答：在提问广场或普通板块发了像提问的帖子，帖子公开后拾间AI 会在后台查学校文件、学校公告和论坛往期帖子；只有资料确实能回答、把握足够时，才会在帖子下方显示“拾间AI 参考回答”，每句标注出处，并通知发帖人。查不到可靠资料就不显示，也不打扰。发帖人和管理员可以关闭这条回答。回答只供参考，可能有误，以学校最新通知和同学的回复为准；树洞、失物招领和二手帖不会自动回答。",
+    source: "药大拾间论坛页面",
+    sourceRef: "CPU-web",
+    verifiedAt: "2026-10-17",
   },
   {
     id: "direct-messages-2026-10",
