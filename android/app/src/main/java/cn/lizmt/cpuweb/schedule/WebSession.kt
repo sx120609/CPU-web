@@ -71,6 +71,10 @@ interface WebSessionHost {
     fun chooseFiles(params: WebChromeClient.FileChooserParams, callback: ValueCallback<Array<Uri>?>)
     fun requestWebPermissions(permissions: Array<String>, onResult: (Boolean) -> Unit)
     fun handleApkDownload(url: String): Boolean
+    /** Element fullscreen (`requestFullscreen`); `exit` asks the page to leave it. */
+    fun showFullscreen(view: View, exit: () -> Unit) {}
+    fun lockFullscreenLandscape() {}
+    fun hideFullscreen() {}
 }
 
 /**
@@ -666,6 +670,19 @@ class WebSession(
     }
 
     private inner class ShellChromeClient : WebChromeClient() {
+        // WebView only reports `document.fullscreenEnabled` when this is overridden.
+        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+            host.showFullscreen(view, callback::onCustomViewHidden)
+            // A workshop game made for landscape turns the screen instead of asking the player to.
+            webView.evaluateJavascript(
+                "document.querySelector('[data-workshop-orientation]')?.dataset.workshopOrientation || ''",
+            ) { result -> if (result == "\"landscape\"") host.lockFullscreenLandscape() }
+        }
+
+        override fun onHideCustomView() {
+            host.hideFullscreen()
+        }
+
         override fun onShowFileChooser(
             view: WebView,
             filePathCallback: ValueCallback<Array<Uri>?>,

@@ -47,6 +47,10 @@ class NativeWebLayer(context: Context) : FrameLayout(context) {
         if (next == bounds) return
         bounds = next
         layoutParams = LayoutParams(width, height).apply { leftMargin = left; topMargin = top }
+        // Compose reports positions from inside the parent's layout pass, where Android
+        // drops this request; after a rotation the page then kept its old size. Ask again
+        // once that pass is over.
+        post { requestLayout() }
     }
 
     fun showPage(visible: Boolean, showLoading: Boolean, showAction: Boolean) {

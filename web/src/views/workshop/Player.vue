@@ -1,5 +1,9 @@
 <template>
-  <div class="wk-player" :class="{ 'is-game': version?.type === 'game' }">
+  <div
+    class="wk-player"
+    :class="{ 'is-game': version?.type === 'game' }"
+    :data-workshop-orientation="version?.manifest.game?.orientation"
+  >
     <header class="wk-player-bar">
       <button type="button" class="wk-player-btn" aria-label="返回" @click="leave">
         <el-icon><ArrowLeft /></el-icon>

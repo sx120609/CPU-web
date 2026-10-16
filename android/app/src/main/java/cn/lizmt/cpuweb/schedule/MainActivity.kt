@@ -7,12 +7,15 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
+import android.view.View
+import android.view.ViewGroup
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.widget.Toast
@@ -20,6 +23,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.doOnPreDraw
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.FrameLayout
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
@@ -57,6 +63,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private set
 
     var imagePreview by mutableStateOf<ImagePreviewRequest?>(null)
+    private var fullscreenView: View? = null
+    private var exitFullscreen: (() -> Unit)? = null
     var welcomeSeen by mutableStateOf(true)
         private set
 
@@ -165,6 +173,10 @@ class MainActivity : ComponentActivity(), WebSessionHost {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                exitFullscreen?.let {
+                    it()
+                    return
+                }
                 if (imagePreview != null) {
                     imagePreview = null
                     return
@@ -330,6 +342,34 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         permissionCallback?.invoke(false)
         permissionCallback = onResult
         webPermissions.launch(missing.toTypedArray())
+    }
+
+    override fun showFullscreen(view: View, exit: () -> Unit) {
+        if (fullscreenView != null) {
+            exit()
+            return
+        }
+        fullscreenView = view
+        exitFullscreen = exit
+        view.setBackgroundColor(android.graphics.Color.BLACK)
+        (window.decorView as ViewGroup).addView(view, FrameLayout.LayoutParams(-1, -1))
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    override fun lockFullscreenLandscape() {
+        if (fullscreenView != null) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    override fun hideFullscreen() {
+        val view = fullscreenView ?: return
+        fullscreenView = null
+        exitFullscreen = null
+        (view.parent as? ViewGroup)?.removeView(view)
+        WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 
     // endregion
