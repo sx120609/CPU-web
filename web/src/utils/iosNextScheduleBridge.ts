@@ -29,6 +29,22 @@ type SemesterEntry = {
   background?: Promise<void>;
 };
 const CACHE_LIFETIME = 12 * 60 * 60 * 1000;
+/** Written by web/public/native-shell-return.js when a refresh brought the view back to the site app. */
+const RETURNED_REFRESH_KEY = "cpu-native-schedule-refresh";
+const RETURNED_REFRESH_LIFETIME = 2 * 60 * 1000;
+
+function takeReturnedScheduleRefresh(): { semester: string; week: string } | undefined {
+  try {
+    const raw = sessionStorage.getItem(RETURNED_REFRESH_KEY);
+    if (!raw) return undefined;
+    sessionStorage.removeItem(RETURNED_REFRESH_KEY);
+    const value = JSON.parse(raw);
+    if (!value || !(Date.now() - Number(value.at) < RETURNED_REFRESH_LIFETIME)) return undefined;
+    return { semester: String(value.semester || ""), week: String(value.week || "") };
+  } catch {
+    return undefined;
+  }
+}
 
 type LegacyRecord = Record<string, unknown>;
 
@@ -966,7 +982,44 @@ export function installIosNextScheduleBridge(
     entry.preferredWeek = week;
     prefetch(entry, generation);
   };
+  // A refresh asked for while the shared view showed another page came back
+  // here unfinished (web/public/native-shell-return.js). The first timetable
+  // request carries it to 教务. A native store with a fresh copy asks for
+  // nothing, and a request started while this page is still settling its
+  // sign-in state can come back superseded; then the refresh is finished here
+  // and handed over the way prefetched weeks are (native keeps it only if it
+  // is newer). Only one request is forced: the server keeps that copy.
+  let returnedRefresh = takeReturnedScheduleRefresh();
+  let returnedRefreshForced = false;
+  const finishReturnedRefresh = async () => {
+    for (let attempt = 0; attempt < 3 && returnedRefresh; attempt++) {
+      if (foreground.size) {
+        // Native is asking for itself; never supersede its request.
+        await Promise.allSettled([...foreground.values()]);
+        returnedRefresh = undefined;
+        return;
+      }
+      const { semester, week } = returnedRefresh;
+      const force = !returnedRefreshForced;
+      returnedRefreshForced = true;
+      const result = await fetchSchedule(semester || undefined, week || undefined, force, true);
+      if (!returnedRefresh) return;
+      if ("data" in result && result.data) {
+        returnedRefresh = undefined;
+        host.CPUTimeNative?.schedulePrefetched?.(result);
+        return;
+      }
+      if (!("cancelled" in result)) break;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    returnedRefresh = undefined;
+  };
   host.CPUTimeNativeScheduleFetch = (semester?: string, week?: string, force = false, background = false) => {
+    const carriesReturnedRefresh = Boolean(returnedRefresh && !returnedRefreshForced);
+    if (carriesReturnedRefresh) {
+      force = true;
+      returnedRefreshForced = true;
+    }
     const key = JSON.stringify([generation, semester || "", week || "", force, background]);
     const pending = foreground.get(key);
     if (pending) return pending;
@@ -974,6 +1027,13 @@ export function installIosNextScheduleBridge(
       if (foreground.get(key) === request) foreground.delete(key);
     });
     foreground.set(key, request);
+    if (carriesReturnedRefresh) {
+      void request.then((result) => {
+        if (!returnedRefresh) return;
+        if ("cancelled" in result) void finishReturnedRefresh();
+        else returnedRefresh = undefined;
+      });
+    }
     return request;
   };
   if (host.CPUTimeNative) {
@@ -981,5 +1041,10 @@ export function installIosNextScheduleBridge(
       host.CPUTimeNativeScheduleFetch(options.semester, options.week, options.force, options.background);
     if (router) host.CPUTimeNative.openWebRoute = (path: string) => router.push(path);
     host.CPUTimeNative.ready?.();
+  }
+  if (returnedRefresh) {
+    setTimeout(() => {
+      if (returnedRefresh && !returnedRefreshForced) void finishReturnedRefresh();
+    }, 2000);
   }
 }

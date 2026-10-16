@@ -99,7 +99,10 @@ export default defineNuxtConfig({
       ],
       link: [
         { rel: 'icon', type: 'image/x-icon', href: `${appBaseURL}favicon.ico` }
-      ]
+      ],
+      // Served by the main site: lets the app's native timetable recover when
+      // its shared web view was left on this page (no-op in browsers).
+      script: [{ src: '/native-shell-return.js', async: true }]
     }
   },
 

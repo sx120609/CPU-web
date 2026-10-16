@@ -26,8 +26,9 @@ const sample = () => ({
   weeks: [{ value: '1', label: '第 1 周', current: true }], currentSemester: '2025-2026-2', currentWeek: '1',
   cells: [{ day: 1, bigSlot: 1, courses: [{ name: '药理学', weeks: '1-8周(单)', weekList: [], teacher: '张老师' }] }],
 });
-function setup({ ready = true, loggedIn = true, storage = new Map() } = {}) {
-  const context = vm.createContext({ localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, Error, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)), native: true, window: { CPUTimeNative: { authChanged() {} } },
+function setup({ ready = true, loggedIn = true, storage = new Map(), session } = {}) {
+  const context = vm.createContext({ localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, Error,
+    sessionStorage: session && { getItem: k => session.get(k) ?? null, setItem: (k, v) => session.set(k, v), removeItem: k => session.delete(k) }, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)), native: true, window: { CPUTimeNative: { authChanged() {} } },
     auth: { ready, user: loggedIn ? { id: 1 } : null, academicIdentity: 'undergraduate', isLoggedIn: loggedIn },
     jwxt: { isLoggedIn: true, hydrate() {}, async ensureSession() { return this.isLoggedIn; }, withSessionRetry: fn => fn() },
     api: { async schedule() { return { parsed: sample() }; }, async calendar() { return { parsed: null }; },
@@ -616,4 +617,67 @@ test('Android and Harmony bridges keep reporting an expired session as unauthori
   ctx.jwxt.isLoggedIn = false;
   const refresh = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', true, false);
   assert.equal(refresh.auth.authenticated, false);
+});
+
+const returnedRefresh = () => new Map([['cpu-native-schedule-refresh',
+  JSON.stringify({ semester: '2025-2026-2', week: '1', at: Date.now() })]]);
+
+test('a refresh brought back from another page forces the first timetable request', async () => {
+  const session = returnedRefresh();
+  const ctx = setup({ session });
+  const requests = [];
+  ctx.api.schedule = async params => { requests.push(params); return { parsed: { ...sample(), scope: 'semester' } }; };
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
+  assert.ok(result.data);
+  assert.equal(requests[0].refresh, '1');
+  assert.equal(session.has('cpu-native-schedule-refresh'), false);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(requests.length, 1);
+});
+
+test('a returned refresh that native never asks for is fetched and handed over', async () => {
+  const ctx = setup({ session: returnedRefresh() });
+  const requests = [];
+  const pushed = [];
+  ctx.api.schedule = async params => { requests.push(params); return { parsed: { ...sample(), scope: 'semester' } }; };
+  ctx.window.CPUTimeNative.schedulePrefetched = snapshot => pushed.push(snapshot);
+  for (let n = 0; n < 40 && !pushed.length; n++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(requests[0]?.refresh, '1');
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed[0].completeSemester, true);
+  assert.equal(pushed[0].data.currentSemester, '2025-2026-2');
+});
+
+test('an old or missing returned refresh changes nothing', async () => {
+  const session = new Map([['cpu-native-schedule-refresh', JSON.stringify({ semester: '2025-2026-2', week: '1', at: Date.now() - 10 * 60 * 1000 })]]);
+  const ctx = setup({ session });
+  const requests = [];
+  ctx.api.schedule = async params => { requests.push(params); return { parsed: { ...sample(), scope: 'semester' } }; };
+  await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
+  assert.equal(requests[0].refresh, undefined);
+  assert.equal(session.has('cpu-native-schedule-refresh'), false);
+});
+
+test('a returned refresh superseded while sign-in settles is fetched again, unforced, and handed over', async () => {
+  for (const nativeAsks of [false, true]) {
+    const ctx = setup({ session: returnedRefresh() });
+    const requests = [];
+    const pushed = [];
+    let settling = true;
+    ctx.jwxt.ensureSession = async function () {
+      // The page's first session check updates the account fields once.
+      if (settling) { settling = false; ctx.changed(); }
+      return this.isLoggedIn;
+    };
+    ctx.api.schedule = async params => { requests.push(params); return { parsed: { ...sample(), scope: 'semester' } }; };
+    ctx.window.CPUTimeNative.schedulePrefetched = snapshot => pushed.push(snapshot);
+    if (nativeAsks) {
+      const first = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
+      assert.equal(first.cancelled, true);
+    }
+    for (let n = 0; n < 60 && !pushed.length; n++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.deepEqual(requests.map(item => item.refresh), ['1', undefined]);
+    assert.equal(pushed.length, 1);
+    assert.ok(pushed[0].data);
+  }
 });
