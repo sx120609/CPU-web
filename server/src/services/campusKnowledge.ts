@@ -21,6 +21,8 @@ export type CampusKnowledgeItem = {
   excerpt: string;
   replies?: Array<{ text: string; likes: number; accepted?: boolean }>;
   topicId?: number;
+  /** 检索覆盖率（0-1），用来判断资料是否已足够、是否还要联网。 */
+  coverage?: number;
   /** 回答里引用这条时附上的链接；学生手册这类没有公开网址的为 null。 */
   source: { title: string; url: string } | null;
 };
@@ -45,6 +47,7 @@ function fromSchoolDoc(hit: SchoolDocHit): Omit<CampusKnowledgeItem, "ref"> {
     date: hit.date,
     status: hit.status,
     excerpt: hit.excerpt,
+    coverage: hit.coverage,
     source: hit.sourceUrl && /^https?:\/\//iu.test(hit.sourceUrl)
       ? { title: sourceTitle("学校文件", hit.title), url: hit.sourceUrl }
       : null,
@@ -63,6 +66,7 @@ function fromForumHit(hit: ForumKnowledgeHit): Omit<CampusKnowledgeItem, "ref"> 
       ? { replies: hit.replies.map((reply) => ({ text: reply.excerpt, likes: reply.likeCount, ...(reply.accepted ? { accepted: true } : {}) })) }
       : {}),
     topicId: hit.topicId,
+    coverage: hit.coverage,
     source: { title: sourceTitle(label, hit.title), url: hit.url },
   };
 }

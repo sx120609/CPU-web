@@ -16,6 +16,7 @@ import {
   buildAssistantMessages,
   campusAssistantKnowledgeQuery,
   loadCampusAssistantKnowledge,
+  shouldProactivelySearchWeb,
 } from "../src/services/campusAssistant";
 import { groundDepartmentContactResponse } from "../src/services/departmentContactsAssistant";
 import {
@@ -77,6 +78,19 @@ test("a follow-up keeps the documents the previous answer drew on", async () => 
   assert.ok(previousTitles.length > 0);
   assert.ok(followUp.some((item) => previousTitles.includes(item.title)), "previous turn's documents must stay in view");
   assert.ok(followUp.some((item) => !previousTitles.includes(item.title)), "the follow-up's own documents must be there too");
+});
+
+test("factual questions search the web unless the site or school documents already cover them", () => {
+  const action = { id: "dorm-electric", label: "宿舍电费查询", description: "", url: "/services?open=electric", icon: "", owner: "", requireLogin: true };
+  assert.equal(shouldProactivelySearchWeb("学校有几个门", []), true);
+  assert.equal(shouldProactivelySearchWeb("江宁校区图书馆几点开门", []), true);
+  assert.equal(shouldProactivelySearchWeb("学校有几个门", [], [item("R1", { coverage: 0.8 })]), false);
+  assert.equal(shouldProactivelySearchWeb("学校有几个门", [], [item("R1", { coverage: 0.5 })]), true);
+  assert.equal(shouldProactivelySearchWeb("宿舍电费在哪里查？", [action]), false);
+  assert.equal(shouldProactivelySearchWeb("我的成绩是多少？", []), false);
+  assert.equal(shouldProactivelySearchWeb("拾间AI是什么", []), false);
+  assert.equal(shouldProactivelySearchWeb("你好", []), false);
+  assert.equal(shouldProactivelySearchWeb("请联网搜索中国药科大学最新通知", [action]), true);
 });
 
 test("terms absent from the whole corpus do not bury the matching entry", () => {
