@@ -8,7 +8,16 @@ const RARE_TERM_DOCUMENTS = 2;
 const PARTICLE_CHARS = new Set("的了吗呢啊呀吧嘛哦哈么噢喔哇");
 // 虚词当作分隔：“在共识期刊目录里是什么级别”只切“共识期刊目录”“什么级别”，
 // 不产生“在共”“录里”“里是”这类跨词的二元组。只影响查询词，正文照常整段匹配。
-const SEPARATOR_CHARS = /[在是里和与把被给向往于及或也都还就才又很太更最我你他她它们吗呢啊呀吧嘛哦哈么噢喔哇的了]/u;
+const SEPARATOR_CHARS = /[在是里和与把被给向往于及或也都还就才又很太更最我你他她它们吗呢啊呀吧嘛哦哈么噢喔哇的了哪些什怎需要]/u;
+// 学生的问法和学校文件的写法对不上时（“时间节点”对“工作日程”），把问法换成一组同义词，
+// 命中其中任意一个就算命中。组在查询词里写成“甲|乙|丙”。
+const QUERY_SYNONYMS: Array<{ pattern: RegExp; terms: string[] }> = [
+  { pattern: /时间节点|时间安排|时间线|时间表|什么时候|啥时候|几月几号|几号|哪天|截止时间|截止日期/gu, terms: ["日程", "时间", "截止", "日期", "安排"] },
+  { pattern: /流程|步骤|手续|怎么办理|如何办理|怎么申请|如何申请/gu, terms: ["程序", "流程", "步骤", "办理", "手续"] },
+  { pattern: /条件|资格|门槛/gu, terms: ["条件", "资格", "要求"] },
+  { pattern: /材料|交什么|提交什么/gu, terms: ["材料", "提交", "附件"] },
+];
+const SYNONYM_MARKER_BASE = 0xe000;
 const STOP_BIGRAMS = new Set([
   "请问", "有没", "没有", "有人", "人知", "知道", "谁知", "怎么", "么办", "什么", "为什", "如何", "可以", "能不",
   "不能", "大家", "各位", "同学", "学长", "学姐", "一下", "这个", "那个", "我们", "你们", "他们", "自己", "现在",
@@ -46,7 +55,10 @@ export function knowledgePlainText(value: string) {
  * 英文和数字按整词。顺序保留，越靠前越重要（标题在前）。
  */
 export function extractKnowledgeQueryTerms(value: string, limit = MAX_QUERY_TERMS) {
-  const text = normalizeKnowledgeText(value);
+  let text = normalizeKnowledgeText(value).replace(/[\uE000-\uE0FF]/gu, " ");
+  QUERY_SYNONYMS.forEach((synonym, index) => {
+    text = text.replace(synonym.pattern, ` ${String.fromCharCode(SYNONYM_MARKER_BASE + index)} `);
+  });
   const terms: string[] = [];
   const seen = new Set<string>();
   const push = (term: string) => {
@@ -54,8 +66,13 @@ export function extractKnowledgeQueryTerms(value: string, limit = MAX_QUERY_TERM
     seen.add(term);
     terms.push(term);
   };
-  for (const match of text.matchAll(/[㐀-鿿]+|[a-z0-9]+(?:[.+#][a-z0-9]+)*/gu)) {
+  for (const match of text.matchAll(/[\uE000-\uE0FF]|[\u3400-\u9fff]+|[a-z0-9]+(?:[.+#][a-z0-9]+)*/gu)) {
     const run = match[0];
+    const synonym = QUERY_SYNONYMS[run.charCodeAt(0) - SYNONYM_MARKER_BASE];
+    if (run.length === 1 && synonym) {
+      push(synonym.terms.join("|"));
+      continue;
+    }
     if (/^[a-z0-9]/u.test(run)) {
       if (/^\d+$/u.test(run) ? run.length >= 3 : run.length >= 2) push(run);
       continue;
@@ -96,6 +113,9 @@ export function rankKnowledgeEntries<T extends KnowledgeIndexEntry>(
   },
 ): RankedKnowledgeEntry<T>[] {
   const count = Math.min(terms.length, MAX_QUERY_TERMS);
+  // 同义词组“甲|乙”命中任意一个即可。
+  const alternatives = terms.slice(0, count).map((term) => term.split("|"));
+  const contains = (text: string, index: number) => alternatives[index].some((term) => text.includes(term));
   if (!count) return [];
   const documentFrequency = new Array<number>(count).fill(0);
   const hits: Array<{ entry: T; textMask: number; titleMask: number }> = [];
@@ -106,10 +126,10 @@ export function rankKnowledgeEntries<T extends KnowledgeIndexEntry>(
     let textMask = 0;
     let titleMask = 0;
     for (let index = 0; index < count; index += 1) {
-      if (!entry.bodyKey.includes(terms[index])) continue;
+      if (!contains(entry.bodyKey, index)) continue;
       textMask |= 1 << index;
       documentFrequency[index] += 1;
-      if (entry.titleKey.includes(terms[index])) titleMask |= 1 << index;
+      if (contains(entry.titleKey, index)) titleMask |= 1 << index;
     }
     if (textMask) hits.push({ entry, textMask, titleMask });
   }
@@ -164,7 +184,7 @@ export function focusedExcerpt(text: string, terms: string[], maxChars: number) 
   for (let start = 0; start < plain.length; start += step) {
     const window = lower.slice(start, start + maxChars);
     let score = 0;
-    for (const term of terms) if (window.includes(term)) score += 1;
+    for (const term of terms) if (term.split("|").some((part) => window.includes(part))) score += 1;
     if (score > bestScore) {
       bestScore = score;
       bestStart = start;

@@ -15,6 +15,7 @@ import {
   attachCampusKnowledgeSources,
   buildAssistantMessages,
   campusAssistantKnowledgeQuery,
+  loadCampusAssistantKnowledge,
 } from "../src/services/campusAssistant";
 import { groundDepartmentContactResponse } from "../src/services/departmentContactsAssistant";
 import {
@@ -53,6 +54,29 @@ test("query terms skip function words instead of producing cross-word bigrams", 
   assert.ok(terms.includes("级别"));
   for (const junk of ["在共", "录里", "里是", "什么"]) assert.ok(!terms.includes(junk), junk);
   assert.deepEqual(extractKnowledgeQueryTerms("你好"), []);
+});
+
+test("question wording maps to the words school documents use", () => {
+  const terms = extractKnowledgeQueryTerms("推免申请需要注意哪些时间节点？");
+  assert.deepEqual(terms, ["推免", "免申", "申请", "注意", "日程|时间|截止|日期|安排"]);
+  const entries = [entry("推免工作通知", "一、工作日程：9 月 1 日推免工作开始，9 月 15 日结束，学生按时提交申请，注意材料"), entry("宿舍", "空调报修")];
+  const ranked = rankKnowledgeEntries(entries, terms, { minCoverage: 0.4, limit: 3 });
+  assert.equal(ranked[0]?.entry.title, "推免工作通知");
+  assert.ok(focusedExcerpt("x".repeat(300) + "工作日程" + "y".repeat(300), ["日程|时间"], 40).includes("日程"));
+});
+
+test("a follow-up keeps the documents the previous answer drew on", async () => {
+  const history = [
+    { role: "user" as const, content: "本科生可以做什么" },
+    { role: "assistant" as const, content: "推免工作 9 月 1 日开始，9 月 15 日结束。" },
+  ];
+  const context = { features: { forum: false, coursereview: false } as any, forumAccessEnabled: false, loggedIn: true };
+  const previousOnly = await loadCampusAssistantKnowledge("本科生可以做什么", [], context);
+  const followUp = await loadCampusAssistantKnowledge("推免申请需要注意哪些时间节点？", history, context);
+  const previousTitles = previousOnly.filter((item) => item.kind === "school-doc").map((item) => item.title);
+  assert.ok(previousTitles.length > 0);
+  assert.ok(followUp.some((item) => previousTitles.includes(item.title)), "previous turn's documents must stay in view");
+  assert.ok(followUp.some((item) => !previousTitles.includes(item.title)), "the follow-up's own documents must be there too");
 });
 
 test("terms absent from the whole corpus do not bury the matching entry", () => {

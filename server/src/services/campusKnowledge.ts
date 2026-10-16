@@ -100,8 +100,13 @@ export async function retrieveCampusKnowledgeForQueries(queries: string[], optio
   const results = await Promise.all(unique.map((query) => retrieveCampusKnowledge(query, options)));
   const seen = new Set<string>();
   const byKind = new Map<CampusKnowledgeKind, Array<Omit<CampusKnowledgeItem, "ref">>>();
-  for (const items of results) {
-    for (const { ref: _ref, ...item } of items) {
+  // 各查询轮流取：否则第一个查询就占满名额，追问时上一轮引用的资料会被挤掉。
+  const stripped = results.map((items) => items.map(({ ref: _ref, ...item }) => item));
+  const rounds = Math.max(0, ...stripped.map((items) => items.length));
+  for (let round = 0; round < rounds; round += 1) {
+    for (const items of stripped) {
+      const item = items[round];
+      if (!item) continue;
       const key = itemKey(item);
       if (seen.has(key)) continue;
       seen.add(key);
