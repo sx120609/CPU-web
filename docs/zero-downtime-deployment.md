@@ -31,6 +31,7 @@
 | `DEPLOY_VERIFY_URL` | `https://cputime.cn`，用于验证公网切换 |
 | `DEPLOY_INTERNAL_ORIGIN` | `https://cputime.cn`，VoiceHub 调用主站的稳定入口，不能指向会退役的实例端口 |
 | `DEPLOY_DRAIN_SECONDS` | 每阶段默认等 120 秒；超时保留实例，而非强制关闭连接 |
+| `DEPLOY_KEEP_RELEASES` | 部署回到 `active` 后保留最新的 3 个 release 目录（按目录名中的创建时间），可设为 1–1000 |
 | `DEPLOY_CI_FETCH_TIMEOUT_SECONDS` | HTTP下载不可用时才回退Git，单次默认最多600秒；只对长期停滞或超过总限时的进程终止，不永久占用部署锁 |
 | `DEPLOY_CI_GIT_LOW_SPEED_LIMIT` / `DEPLOY_CI_GIT_LOW_SPEED_SECONDS` | Git HTTP 连续 30 秒低于 10 KiB/s 时中止本次拉取，并进入受限重试 |
 | `DEPLOY_ARTIFACT_URL` | 制品分支拉取失败后的首选 Release 地址；默认使用生产机实测更快且支持断点续传的 `gh.noki.eu.org` 镜像 |
@@ -48,7 +49,7 @@ Nginx 不能配置非零 `worker_shutdown_timeout` 强制终止旧连接；检�
 
 外部访问及内部调用应使用稳定的 Nginx 入口。旧的 `23333` 是首次接管前的进程端口，不再作为之后的稳定直连地址。若另有服务硬编码了该端口，应先改为稳定入口。新实例只监听 `127.0.0.1`，无需开放备用端口到公网。
 
-更新期间需要同时容纳两个后端（若 VoiceHub 更新则也需要两个 VoiceHub）及隔离依赖。端口占用、依赖准备失败或健康检查失败均不停止旧实例。旧目录不自动清理；确认没有运行实例、恢复记录或资源仍引用旧目录后再安排清理。
+更新期间需要同时容纳两个后端（若 VoiceHub 更新则也需要两个 VoiceHub）及隔离依赖。端口占用、依赖准备失败或健康检查失败均不停止旧实例。部署回到 `active` 阶段后自动删除 `.deploy/blue-green/releases` 下的旧目录，保留 state.json 引用的目录（含 VoiceHub 进程名对应的目录）、任一进程的工作目录或命令行指向的目录、PM2 列表中任一进程（含已停止的）引用的目录，以及最新的 `DEPLOY_KEEP_RELEASES` 个目录。其余阶段一律不清理。删除前先把旧目录中的创意工坊包收进共享目录；删除只解除指向共享上传、运行数据和 `.env` 的链接，不进入链接目标。清理失败只记录警告，不影响部署结果。
 
 ## 失败、长连接与恢复
 

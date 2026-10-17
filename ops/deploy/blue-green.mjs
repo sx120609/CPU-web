@@ -2,11 +2,11 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:net'
-import { access, cp, glob, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
+import { access, cp, glob, lstat, mkdir, readFile, readdir, readlink, realpath, rename, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
-import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
+import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment, selectPrunableReleases } from './blue-green-core.mjs'
 import { readGateway, assertSameGateway, waitForUpstreamIdle, awaitGatewayMigration } from './agent-gateway.mjs'
 import { prepareQqBotHandoff, verifyQqBotHandoff } from './qqbot-handoff.mjs'
 
@@ -203,6 +203,36 @@ export async function collectWorkshopPackages(releases, shared) {
   return collected
 }
 
+// Every PM2 entry (stopped ones can be resurrected) and the cwd and command line
+// of every live process. A process that cannot be inspected aborts pruning
+// instead of risking the release it runs from.
+async function processReferences() {
+  const references = [await run('pm2', ['jlist'])]
+  for (const pid of await readdir('/proc')) {
+    if (!/^\d+$/.test(pid)) continue
+    try {
+      references.push(await readlink(`/proc/${pid}/cwd`))
+      references.push((await readFile(`/proc/${pid}/cmdline`, 'utf8')).replaceAll('\0', ' '))
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error
+    }
+  }
+  return references
+}
+
+export async function pruneReleases(releases, state, { keep, references }) {
+  const names = await readdir(releases).catch(error => { if (error.code === 'ENOENT') return []; throw error })
+  const removed = []
+  for (const name of selectPrunableReleases({ state, releases: names, references, keep })) {
+    const directory = path.join(releases, name)
+    if (!(await lstat(directory)).isDirectory()) continue
+    // rm unlinks the release's links to shared uploads, runtime data and .env without following them.
+    await rm(directory, { recursive: true, force: true })
+    removed.push(name)
+  }
+  return removed
+}
+
 export async function verifyWeb(base, html, { entry = false } = {}) {
   const paths = [...html.matchAll(/(?:src|href)=["']([^"']*\/assets\/[^"']+\.(?:js|css))["']/g)].map(match => match[1])
   if (!paths.length) throw new Error('The web artifact has no entry JS/CSS')
@@ -263,6 +293,7 @@ export async function deploy() {
   await verifyArtifactManifest({ manifest, expectedCommit: commit, directory: artifact })
   const basePort = integer(process.env.PORT, 23333, 1024, 65000)
   const drainSeconds = integer(process.env.DEPLOY_DRAIN_SECONDS, 120, 0, 86400)
+  const keepReleases = integer(process.env.DEPLOY_KEEP_RELEASES, 3, 1, 1000)
   const nginx = process.env.NGINX_BIN || '/www/server/nginx/sbin/nginx'
   const siteConfig = path.resolve(process.env.NGINX_SITE_CONFIG || '/www/server/panel/vhost/nginx/cpu.lizmt.cn.conf')
   const changed = new Set((process.env.DEPLOY_CHANGED_FILES || '').split('\n').filter(Boolean))
@@ -277,6 +308,17 @@ export async function deploy() {
   const recoverWorkshopPackages = async () => {
     const collected = await collectWorkshopPackages(path.join(stateDir, 'releases'), path.join(root, 'server', 'workshop-packages'))
     if (collected) log(`Recovered ${collected} workshop package(s) from earlier releases into the shared directory`)
+  }
+  // Runs only after the persisted state is active again; a failure never fails the deployment.
+  const pruneOldReleases = async () => {
+    try {
+      await recoverWorkshopPackages()
+      const current = JSON.parse(await readFile(stateFile, 'utf8'))
+      const removed = await pruneReleases(path.join(stateDir, 'releases'), current, { keep: keepReleases, references: await processReferences() })
+      if (removed.length) log(`Removed ${removed.length} old release(s): ${removed.join(', ')}`)
+    } catch (error) {
+      log(`Warning: old releases were not pruned: ${error.message}`)
+    }
   }
   const waitForUpstream = port => waitForUpstreamIdle(port, drainSeconds, {
     connections: async target => Boolean(await run('ss', ['-Hnt', 'state', 'established', `( sport = :${target} or dport = :${target} )`])),
@@ -352,6 +394,7 @@ export async function deploy() {
   if (finishedDraining && state.active.commit === commit) {
     await recoverWorkshopPackages()
     log(`Pending deployment completed: ${commit}`)
+    await pruneOldReleases()
     return
   }
   let previous = state?.active
@@ -447,6 +490,7 @@ export async function deploy() {
     }
     await save({ ...state, webCommit: commit })
     log('Web entry switched atomically. No backend process was restarted.')
+    await pruneOldReleases()
     return
   }
 
@@ -499,7 +543,7 @@ export async function deploy() {
       DEPLOY_VOICE_BLUE_PORT: String(voicePorts[0]), DEPLOY_VOICE_GREEN_PORT: String(voicePorts[1]),
       DEPLOY_NGINX_CONFIGS: JSON.stringify(nginxConfigs), DEPLOY_VERIFY_URL: verifyUrl,
       DEPLOY_INTERNAL_ORIGIN: process.env.DEPLOY_INTERNAL_ORIGIN || 'https://cputime.cn',
-      DEPLOY_DRAIN_SECONDS: String(drainSeconds),
+      DEPLOY_DRAIN_SECONDS: String(drainSeconds), DEPLOY_KEEP_RELEASES: String(keepReleases),
       CPU_WEB_RELEASE_SHA: commit, CPU_WEB_RELEASE_ID: id, CPU_WEB_BACKGROUND_MARKER: marker,
       CPU_WEB_PREVIOUS_PORT: '', CPU_WEB_TRAFFIC_MARKER: trafficMarker,
       CPU_WEB_QQBOT_DRAIN_FILE: qqbotDrainFile,
@@ -549,7 +593,8 @@ export async function deploy() {
     if (!complete) throw new Error('Traffic switched successfully, but old connections have not drained. Both instances are retained; rerun update to finish.')
     // The previous instance kept accepting uploads until it retired; pick up what it stored meanwhile.
     await recoverWorkshopPackages()
-    log(`Deployment complete: ${commit}; previous release retained on disk for recovery`)
+    log(`Deployment complete: ${commit}`)
+    await pruneOldReleases()
   } catch (error) {
     if (!switching) {
       if (mainStarted) await removeProcess(name)

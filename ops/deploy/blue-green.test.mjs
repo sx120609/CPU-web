@@ -6,8 +6,8 @@ import { createServer, request } from 'node:http'
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
-import { hasSchemaChanges, linkSharedDirectory, collectWorkshopPackages, SHARED_SERVER_DIRECTORIES, configSnapshots, restoreConfigs, findProxyConfig, resolveProxyConfigs, publishWebAssets, verifyWeb } from './blue-green.mjs'
+import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment, selectPrunableReleases } from './blue-green-core.mjs'
+import { hasSchemaChanges, linkSharedDirectory, collectWorkshopPackages, SHARED_SERVER_DIRECTORIES, configSnapshots, restoreConfigs, findProxyConfig, resolveProxyConfigs, publishWebAssets, pruneReleases, verifyWeb } from './blue-green.mjs'
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)))
 const close = server => new Promise(resolve => server.close(resolve))
@@ -289,4 +289,46 @@ test('VoiceHub app/drizzle schema and migrations trigger the production migratio
   }
   assert.equal(hasSchemaChanges(['voicehub/app/components/Songs/SongList.vue', 'web/src/views/Home.vue']), false)
   assert.equal(hasSchemaChanges(new Set(['docs/voicehub-song-review.md', 'voicehub/app/drizzle/schema.ts'])), true)
+})
+
+const releaseName = (commit, created) => `${commit.repeat(12)}-${created}-0123abcd`
+const day = 1_790_000_000_000
+
+test('old releases are pruned except those in the state, used by a process, or among the newest', () => {
+  const [veryOld, voice, oldSite, running, web, active, newest] = ['1', '2', '3', '4', '5', '6', '7'].map((commit, index) => releaseName(commit, day + index * 1000))
+  const releases = [newest, veryOld, voice, oldSite, running, web, active, 'agent-notes', 'c9768ea1-manual']
+  // The site moved on to `active` while VoiceHub still runs from an older release.
+  const state = { phase: 'active', active: { id: active, name: `cpu-web-${active}`, release: `/srv/.deploy/blue-green/releases/${active}`, voiceName: `cpu-voicehub-${voice}`, voicePort: 23533 } }
+  const references = [`/srv/.deploy/blue-green/releases/${running}/server`, 'node /usr/bin/pm2 jlist']
+  assert.deepEqual(selectPrunableReleases({ state, releases, references, keep: 3 }), [veryOld, oldSite])
+  assert.deepEqual(selectPrunableReleases({ state, releases, references, keep: 1 }), [veryOld, oldSite, web])
+  // Order comes from the creation timestamp in the name, not the listing order.
+  assert.deepEqual(selectPrunableReleases({ state: { phase: 'active', active: {} }, releases, keep: 6 }), [veryOld])
+})
+
+test('releases are never pruned while a deployment is unfinished', () => {
+  const releases = Array.from({ length: 8 }, (_, index) => releaseName(String(index), day + index))
+  const previous = { id: releases[7] }, candidate = { id: releases[6] }
+  for (const phase of ['preparing', 'switching', 'draining', 'rollback-draining', 'recovery-required']) {
+    assert.deepEqual(selectPrunableReleases({ state: { phase, previous, candidate }, releases, keep: 1 }), [], phase)
+  }
+  assert.deepEqual(selectPrunableReleases({ state: null, releases, keep: 1 }), [])
+  assert.equal(selectPrunableReleases({ state: { phase: 'active', active: candidate }, releases, keep: 1 }).length, 6)
+})
+
+test('pruning removes release directories without following their links to shared data', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cpu-prune-releases-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const releases = path.join(root, 'releases'), shared = path.join(root, 'uploads')
+  await mkdir(shared)
+  await writeFile(path.join(shared, 'avatar.png'), 'shared')
+  const [old, kept] = [releaseName('a', day), releaseName('b', day + 1)]
+  for (const name of [old, kept, 'unrelated']) await mkdir(path.join(releases, name, 'server'), { recursive: true })
+  await symlink(shared, path.join(releases, old, 'server', 'uploads'), 'junction')
+  const state = { phase: 'active', active: { id: kept } }
+  assert.deepEqual(await pruneReleases(releases, state, { keep: 1, references: [] }), [old])
+  assert.deepEqual((await readdir(releases)).sort(), [kept, 'unrelated'].sort())
+  assert.equal(await readFile(path.join(shared, 'avatar.png'), 'utf8'), 'shared')
+  assert.deepEqual(await pruneReleases(releases, { ...state, phase: 'draining' }, { keep: 1, references: [] }), [])
+  assert.deepEqual(await pruneReleases(path.join(root, 'missing'), state, { keep: 1, references: [] }), [])
 })

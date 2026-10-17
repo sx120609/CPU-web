@@ -71,6 +71,27 @@ export async function cutover({ previous, candidate, prepare, ready, switchRoute
   return true
 }
 
+// Release directories are named `<commit:12>-<Date.now()>-<uuid:8>`; the
+// timestamp is the creation time. Anything else in the directory is left alone.
+export const RELEASE_NAME = /^[0-9a-f]{12}-(\d{13})-[0-9a-f]{8}$/
+
+/**
+ * Release directories that may be deleted. A release is kept when the state
+ * names it anywhere (active, previous, candidate, PM2 names such as
+ * cpu-voicehub-<id>), when a process reference (cwd, command line, PM2 entry)
+ * contains it, or when it is among the `keep` newest. Outside the `active`
+ * phase an interrupted deployment may still need any release, so nothing is
+ * selected.
+ */
+export function selectPrunableReleases({ state, releases, references = [], keep = 3 }) {
+  if (state?.phase !== 'active') return []
+  const known = releases.filter(name => RELEASE_NAME.test(name))
+  const referenced = [JSON.stringify(state), ...references].join('\n')
+  const created = name => Number(name.match(RELEASE_NAME)[1])
+  const newest = new Set([...known].sort((a, b) => created(b) - created(a)).slice(0, keep))
+  return known.filter(name => !newest.has(name) && !referenced.includes(name))
+}
+
 export async function replaceConfig(file, expected, replacement) {
   if (await readFile(file, 'utf8') !== expected) throw new Error('Nginx configuration changed during deployment; refusing to overwrite it')
   const mode = (await stat(file)).mode & 0o777
