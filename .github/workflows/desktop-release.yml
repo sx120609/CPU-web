@@ -39,6 +39,7 @@ jobs:
       - name: Build bundled Wisdom Tree worker
         run: |
           python -m pip install -r ../server/python/zhihuishu/requirements-lock.txt pyinstaller==6.16.0
+          python -m unittest discover -s ../server/python/zhihuishu -p test_worker.py
           python scripts/build-zhihuishu-worker.py
 
       - name: Install dependencies
@@ -99,6 +100,7 @@ jobs:
       - name: Build bundled Wisdom Tree worker
         run: |
           python -m pip install -r ../server/python/zhihuishu/requirements-lock.txt pyinstaller==6.16.0
+          python -m unittest discover -s ../server/python/zhihuishu -p test_worker.py
           python scripts/build-zhihuishu-worker.py
 
       - name: Install dependencies
@@ -234,10 +236,9 @@ jobs:
 
           ### 本次更新
 
-          - 网课助手中的“知到智慧树”现在打开内置扫码工作台，与其他网课助手并列。
-          - Windows/macOS 安装包自带执行组件，无需另装 Python 或连接本机试用服务。
-          - 支持播放速度设置、实时状态窗口、本地活动记录导出和深浅色/跟随系统主题。
-          - 视频弹题作答与提交使用独立管理员开关，默认关闭；课后练习及章节测验不自动提交。
+          - 修复 Windows 智慧树课程名、章节名及运行状态乱码：执行组件内部固定 UTF-8，不再依赖系统代码页。
+          - 增加中文、章节状态和 emoji 双向传输回归测试，并在 Windows/macOS 打包后再次验证。
+          - 原有速度、记录、主题及弹题开关保持不变；更新后重新扫码即可重新读取课程名称。
 
           ### 下载
 

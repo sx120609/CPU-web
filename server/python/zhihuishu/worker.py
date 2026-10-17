@@ -9,11 +9,17 @@ import types
 import threading
 from pathlib import Path
 
+# Frozen interpreters ignore PYTHONIOENCODING. Configure both directions before
+# any I/O so Windows ANSI code pages cannot corrupt course names or commands.
+for stream in (sys.stdin, sys.stdout, sys.stderr):
+    if stream is not None and hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="strict")
 CHANNEL = sys.stdout
 
 
 def emit(event_type, **payload):
-    CHANNEL.write(json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n")
+    # ASCII JSON escapes preserve all Unicode and make framing locale-independent.
+    CHANNEL.write(json.dumps({"type": event_type, **payload}, ensure_ascii=True) + "\n")
     CHANNEL.flush()
 
 
@@ -248,4 +254,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--check-stdio"]:
+        # Offline packaging diagnostic through the same input/output protocol.
+        probe = json.loads(sys.stdin.readline())
+        if not isinstance(probe.get("text"), str) or len(probe["text"]) > 500:
+            raise ValueError("Invalid stdio probe")
+        emit("stdio-check", text=probe["text"])
+    else:
+        main()

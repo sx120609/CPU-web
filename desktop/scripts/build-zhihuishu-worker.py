@@ -21,3 +21,4 @@ executable = desktop / "zhihuishu-runtime/cpu-zhs-worker" / ("cpu-zhs-worker.exe
 result = subprocess.run([str(executable)], input="", text=True, capture_output=True, timeout=45, check=True)
 assert '{"type": "ready"}' in result.stdout, "Packaged worker did not start"
 print("Packaged worker startup verified")
+subprocess.run(["node", str(desktop / "scripts/verify-zhihuishu-stdio.cjs"), str(executable)], check=True)

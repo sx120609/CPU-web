@@ -33,7 +33,7 @@ class Fucker:
         self._qrlogin(kwargs["qr_callback"])
         print("PRIVATE_COOKIE")
     def getZhidaoList(self):
-        return [{"secret":key, "courseName":key} for key in ["one", "captcha", "hidden-error", "popup", "direct-answer", "direct-submit", "speed", "ai", "pause", "request"]]
+        return [{"secret":key, "courseName":key} for key in ["one", "captcha", "hidden-error", "popup", "direct-answer", "direct-submit", "speed", "ai", "pause", "request", "药学🎓"]]
     def getHikeList(self): return [{"courseId":"skip", "courseName":"校内测试课"}]
     def getZhidaoContext(self, course):
         return SimpleNamespace(videos={"video":SimpleNamespace(name="测试视频")})
@@ -74,17 +74,33 @@ class Fucker:
 '''
 
 class WorkerTests(unittest.TestCase):
-    def run_commands(self, commands):
+    def run_commands(self, commands, stream_encoding=None):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             shutil.copyfile(Path(__file__).with_name("worker.py"), root / "worker.py")
             (root / "vendor").mkdir()
-            (root / "vendor" / "fucker.py").write_text(FAKE)
-            result = subprocess.run([sys.executable, "-I", "-u", str(root / "worker.py")], input="".join(json.dumps(c) + "\n" for c in commands), text=True, capture_output=True, timeout=8)
+            (root / "vendor" / "fucker.py").write_text(FAKE, encoding="utf-8")
+            argv = [sys.executable, "-I", "-u", str(root / "worker.py")]
+            if stream_encoding:
+                bootstrap = "import runpy,sys; sys.stdin.reconfigure(encoding=sys.argv[2]); sys.stdout.reconfigure(encoding=sys.argv[2]); runpy.run_path(sys.argv[1], run_name='__main__')"
+                argv = [sys.executable, "-I", "-u", "-c", bootstrap, str(root / "worker.py"), stream_encoding]
+            result = subprocess.run(argv, input="".join(json.dumps(c, ensure_ascii=False) + "\n" for c in commands), encoding="utf-8", capture_output=True, timeout=8)
             self.assertEqual(result.returncode, 0)
             self.assertNotIn("PRIVATE_", result.stdout + result.stderr)
             self.assertEqual(list(root.glob("*.json")), [])
             return [json.loads(line) for line in result.stdout.splitlines()]
+
+    def test_chinese_protocol_survives_legacy_stdio(self):
+        for encoding in ["gb18030", "cp1252"]:
+            with self.subTest(encoding=encoding):
+                events = self.run_commands([{"action": "login"}, {"action": "run", "courses": [{"key": "shared:药学🎓"}, {"key": "hike:skip"}]}], encoding)
+                courses = next(e["courses"] for e in events if e["type"] == "courses")
+                self.assertIn("药学🎓", [c["name"] for c in courses])
+                self.assertIn("校内测试课", [c["name"] for c in courses])
+                self.assertTrue(any(e.get("title") == "测试视频" for e in events))
+                self.assertTrue(any("第一章练习" in e.get("message", "") for e in events))
+                self.assertTrue(any("未作答、未提交" in e.get("message", "") for e in events))
+                self.assertEqual(events[-1]["type"], "done")
 
     def test_login_and_run(self):
         events = self.run_commands([{"action":"login"}, {"action":"run", "courses":[{"key":"shared:one", "id":"forged", "kind":"hike"}]}])
