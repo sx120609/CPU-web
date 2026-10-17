@@ -197,6 +197,7 @@ export const router = createRouter({
         { path: "services/tools/yaoda-can-fly/yaoda-nai", name: "service-yaoda-nai", component: () => import("@/views/services/games/MergeYaodaNai.vue"), meta: { nativeChrome: "page", title: "合成药大奶", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
         { path: "services/tools/yaoda-can-fly/greedy-nailong", name: "service-greedy-nailong", component: () => import("@/views/services/games/GreedyNailong.vue"), meta: { nativeChrome: "page", title: "药大人能吃", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
         { path: "services/tools/voicehub", name: "service-voicehub", component: () => import("@/views/services/VoiceHubLaunch.vue"), meta: { nativeChrome: "page", title: "药苑之声", public: true, fullWidthContent: true } },
+        { path: "services/tools/zhihuishu", name: "service-zhihuishu", component: () => import("@/views/services/ZhihuishuAssistant.vue"), meta: { title: "智慧树助手" } },
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
         { path: "services/tools/qqbot-reminders", redirect: "/messages/qqbot-reminders" },
         { path: "services/tools/filestore", name: "service-filestore", component: () => import("@/views/services/filestore/Workspace.vue"), meta: { title: "文件收集" } },

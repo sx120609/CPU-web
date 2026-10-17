@@ -12,6 +12,7 @@
     </header>
 
     <div class="tools-body">
+      <router-link class="zhs-web-entry" to="/services/tools/zhihuishu" @click="emit('close')">智慧树在线版 · 扫码连接与任务进度 →</router-link>
       <p class="promo-lead">这些小工具要访问本机网络与后台进程，浏览器里做不到，得用桌面端。</p>
 
       <ul class="promo-list">
@@ -210,6 +211,7 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.zhs-web-entry { padding: 12px; border-radius: 8px; background: var(--cpu-primary-soft); color: var(--cpu-primary); text-decoration: none; font-size: 13px; }
 .desktop-tools {
   display: flex;
   flex-direction: column;

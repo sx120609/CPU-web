@@ -3,11 +3,14 @@ name: Desktop release
 on:
   workflow_dispatch:
   push:
+    branches: [main]
+    paths: ["desktop/package.json", ".github/workflows/desktop-release.yml"]
     tags:
       - "desktop-v*"
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   windows:
@@ -28,11 +31,24 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
+      - name: Use Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build bundled Wisdom Tree worker
+        run: |
+          python -m pip install -r ../server/python/zhihuishu/requirements-lock.txt pyinstaller==6.16.0
+          python scripts/build-zhihuishu-worker.py
+
       - name: Install dependencies
         run: npm ci
 
       - name: Unit and policy tests
         run: npm test
+
+      - name: Wisdom Tree desktop IPC smoke test
+        run: npm run test:zhihuishu
 
       - name: Build Windows installer
         run: npm run dist:win
@@ -75,11 +91,24 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
+      - name: Use Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build bundled Wisdom Tree worker
+        run: |
+          python -m pip install -r ../server/python/zhihuishu/requirements-lock.txt pyinstaller==6.16.0
+          python scripts/build-zhihuishu-worker.py
+
       - name: Install dependencies
         run: npm ci
 
       - name: Unit and policy tests
         run: npm test
+
+      - name: Wisdom Tree desktop IPC smoke test
+        run: npm run test:zhihuishu
 
       - name: Apple Silicon runtime smoke test
         run: npm run test:smoke
@@ -119,11 +148,48 @@ jobs:
 
   publish:
     name: Publish unified GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: [windows, macos]
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+
+      - name: Resolve release version
+        shell: bash
+        run: |
+          version="$(node -p "require('./desktop/package.json').version")"
+          if [[ "$GITHUB_REF" == refs/tags/* ]] && [[ "$GITHUB_REF_NAME" != "desktop-v$version" ]]; then
+            echo "Tag and desktop version disagree" >&2
+            exit 1
+          fi
+          echo "DESKTOP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "DESKTOP_TAG=desktop-v$version" >> "$GITHUB_ENV"
+
+      - name: Require exact-commit Linux production artifact
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&per_page=100")"
+            run_id="$(jq -r '[.workflow_runs[] | select(.name == "Linux deployment artifact" and .head_sha == env.GITHUB_SHA)] | sort_by(.id) | last | .id // empty' <<< "$runs")"
+            if [[ -n "$run_id" ]]; then
+              conclusion="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .conclusion // "pending"' <<< "$runs")"
+              if [[ "$conclusion" == success ]]; then
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" --jq '.artifacts[] | select(.expired == false) | .name' | grep -F "$GITHUB_SHA"
+                exit 0
+              fi
+              if [[ "$conclusion" != pending ]]; then echo "Linux build failed: $conclusion"; exit 1; fi
+            fi
+            sleep 20
+          done
+          echo "Linux production artifact not ready" >&2
+          exit 1
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
@@ -140,7 +206,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#desktop-v}"
+          version="$DESKTOP_VERSION"
           windows_installer="$(find artifacts/windows -maxdepth 1 -name '*.exe' -print -quit)"
           mac_dmg="$(find artifacts/macos -maxdepth 1 -name '*.dmg' -print -quit)"
           mac_zip="$(find artifacts/macos -maxdepth 1 -name '*.zip' -print -quit)"
@@ -162,15 +228,16 @@ jobs:
       - name: Write release notes
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#desktop-v}"
+          version="$DESKTOP_VERSION"
           cat > release-notes.md <<'EOF'
           ## 药大拾间桌面端 __VERSION__
 
           ### 本次更新
 
-          - Windows 安装时若安全软件（360、火绒等）正在检查新文件，安装器会自动等待并重试，不再直接报“文件暂时无法写入”。
-          - 安装改为整套替换：中途失败会把所有文件恢复到旧版本，不会留下新旧混杂、无法启动的目录。
-          - 安装前检查磁盘剩余空间；失败时点名正在拦截的安全软件并给出操作步骤，同时提供“以管理员身份重试”。
+          - 网课助手中的“知到智慧树”现在打开内置扫码工作台，与其他网课助手并列。
+          - Windows/macOS 安装包自带执行组件，无需另装 Python 或连接本机试用服务。
+          - 支持播放速度设置、实时状态窗口、本地活动记录导出和深浅色/跟随系统主题。
+          - 视频弹题作答与提交使用独立管理员开关，默认关闭；课后练习及章节测验不自动提交。
 
           ### 下载
 
@@ -192,8 +259,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$DESKTOP_TAG" \
             release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "药大拾间桌面端 ${GITHUB_REF_NAME#desktop-v}" \
+            --target "$GITHUB_SHA" \
+            --title "药大拾间桌面端 $DESKTOP_VERSION" \
             --notes-file release-notes.md

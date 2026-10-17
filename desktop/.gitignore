@@ -26,3 +26,6 @@ pnpm-debug.log*
 
 # 由 scripts/prepare-license.cjs 从 license.source.txt 生成
 build/license.txt
+
+zhihuishu-runtime/
+build/zhihuishu-pyinstaller/

@@ -58,6 +58,8 @@ import { flushPersistentSession } from "./session-persistence";
 import { sanitizeAiBody } from "./ai-request";
 import { LearningPageActions } from "./page-actions";
 
+import { isAuthorizedZhihuishuRequest, zhihuishuPage, zhihuishuRequest, shutdownZhihuishu } from "./zhihuishu";
+
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
@@ -72,6 +74,7 @@ const supportsAutomaticInstallerUpdates = process.platform === "win32";
 const flushBrowserSession = async (): Promise<void> => {
   try {
     await flushPersistentSession(session.defaultSession);
+    await flushPersistentSession(session.fromPartition("persist:cpu-zhihuishu-workbench"));
   } catch (error) {
     // 落盘失败不应把用户困在应用里，但必须留下证据，便于定位系统级存储异常。
     console.error("保存网站登录状态失败：", error);
@@ -1169,7 +1172,8 @@ const openLearningPage = async (requestedPlatform: unknown = "chaoxing"): Promis
     if (!auth.loggedIn) throw new Error("限时免登录已结束，请先完成登录");
   }
   await openMainWindow();
-  await tabs?.openLearningTab(url, { platformId });
+  if (platformId === "zhihuishu") await tabs?.openZhihuishuTab(zhihuishuPage());
+  else await tabs?.openLearningTab(url, { platformId });
 };
 
 // 授权页开在应用内窗口，与主站共用会话：用户在主站已登录的话这里直接过。
@@ -1533,6 +1537,22 @@ if (installMode || uninstallMode) {
       return { onboarded: true };
     });
 
+    ipcMain.handle("zhihuishu:request", async (event, action: unknown, input: unknown) => {
+      if (!isAuthorizedZhihuishuRequest(event, contentsKind.get(event.sender.id))) {
+        return { ok: false, error: "此页面无权访问本机工作台" };
+      }
+      if (action === "home") { tabs?.openToolsTab(); return { ok: true }; }
+      // Retain the existing platform availability/login gate for task mutations.
+      if (["login", "start", "refresh"].includes(String(action))) {
+        const availability = await getLearningPlatformAvailability(true);
+        const policy = await getLearningAssistantPolicy();
+        if (!availability.zhihuishu || (policy.requiresLogin && !(await getOAuthStatus({ refreshUser: false })).loggedIn)) {
+          shutdownZhihuishu();
+          return { ok: false, error: "智慧树助手暂不可用，请检查平台开关或客户端登录状态" };
+        }
+      }
+      return zhihuishuRequest(action, input);
+    });
     ipcMain.handle("tabs:state", () => tabs?.getState() ?? { tabs: [], activeId: "" });
     ipcMain.handle("tabs:activate", (_event, id: unknown) => { if (typeof id === "string") tabs?.activate(id); });
     ipcMain.handle("tabs:close", (_event, id: unknown) => { if (typeof id === "string") tabs?.close(id); });
@@ -2004,6 +2024,7 @@ if (installMode || uninstallMode) {
       }
     });
     ipcMain.handle("oauth:logout", async () => {
+      shutdownZhihuishu();
       await logoutOAuth();
       tabs?.closeAllLearningTabs();
       grants.clear();
@@ -2053,6 +2074,7 @@ if (installMode || uninstallMode) {
   app.on("before-quit", (event) => {
     quitting = true;
     campusNet?.stop();
+    shutdownZhihuishu();
     if (exitPreparationStarted) return;
 
     // Chromium 会延迟写 Cookie 与 localStorage。这里先拦住退出并完成落盘。

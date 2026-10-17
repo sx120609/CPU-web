@@ -21,7 +21,7 @@ const isWebUrl = (value: string): boolean => {
   }
 };
 
-export type TabKind = "site" | "tools" | "learning";
+export type TabKind = "site" | "tools" | "learning" | "workbench";
 
 export type TabState = {
   id: string;
@@ -67,7 +67,8 @@ export type TabHooks = {
 
 const PRELOAD = {
   site: "site-preload.js",
-  learning: "learning-preload.js"
+  learning: "learning-preload.js",
+  workbench: "zhihuishu-preload.js"
 } as const;
 
 export class TabManager {
@@ -139,10 +140,11 @@ export class TabManager {
 
   /* --------------------------------------------------------------- 创建 */
 
-  private createView(kind: "site" | "learning"): WebContentsView {
+  private createView(kind: "site" | "learning" | "workbench"): WebContentsView {
     const view = new WebContentsView({
       webPreferences: {
         preload: path.join(__dirname, PRELOAD[kind]),
+        ...(kind === "workbench" ? { partition: "persist:cpu-zhihuishu-workbench" } : {}),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -150,7 +152,7 @@ export class TabManager {
         webviewTag: false,
         // 学习通里的视频、音频和答题队列需要在窗口最小化、切到其他桌面后继续运行。
         // 只为学习标签关闭 Chromium 后台节流，主站和工具页仍保持默认节能行为。
-        backgroundThrottling: kind !== "learning",
+        backgroundThrottling: kind !== "learning" && kind !== "workbench",
         additionalArguments: [`--cpu-desktop-version=${this.hooks.appVersion}`]
       }
     });
@@ -195,6 +197,14 @@ export class TabManager {
 
     // 一律开新标签而不是新窗口，也不丢给系统浏览器 —— 学习通的文档预览、
     // 主站里的外部链接都留在应用里。"不是通用浏览器"的边界靠没有地址栏来守。
+    if (tab.kind === "workbench") {
+      contents.on("will-navigate", event => event.preventDefault());
+      contents.setWindowOpenHandler(({ url }) => {
+        if (url === "https://www.zhihuishu.com/") void this.openLearningTab(url, { platformId: "zhihuishu" });
+        return { action: "deny" };
+      });
+      return;
+    }
     contents.setWindowOpenHandler(({ url }) => {
       // 智慧树会先 window.open("about:blank")，拿到子窗口后再写入真正的课程地址。
       // 过去先 deny 再异步新建标签，页面拿不到 WindowProxy，随后会执行自己的首页兜底，
@@ -355,6 +365,16 @@ export class TabManager {
     }
   }
 
+  async openZhihuishuTab(file: string): Promise<void> {
+    const existing = this.tabs.find(tab => tab.kind === "workbench");
+    if (existing) { this.activate(existing.id); return; }
+    const tab: Tab = { id: `workbench-${++this.counter}`, kind: "workbench", title: "智慧树工作台", url: "", loading: true, closable: true, view: this.createView("workbench") };
+    this.tabs.push(tab);
+    this.wire(tab);
+    this.activate(tab.id);
+    await tab.view!.webContents.loadFile(file);
+  }
+
   /* --------------------------------------------------------------- 操作 */
 
   activate(id: string): void {
@@ -414,7 +434,7 @@ export class TabManager {
   }
 
   closeAllLearningTabs(): void {
-    for (const tab of [...this.tabs]) if (tab.kind === "learning") this.close(tab.id);
+    for (const tab of [...this.tabs]) if (tab.kind === "learning" || tab.kind === "workbench") this.close(tab.id);
   }
 
   destroy(): void {

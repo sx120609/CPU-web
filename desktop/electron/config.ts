@@ -24,7 +24,7 @@ export const learningUrl = "https://i.chaoxing.com/";
 
 export const learningPlatforms = [
   { id: "chaoxing", name: "超星学习通", short: "学习通", description: "视频、章节任务、作业与考试", url: learningUrl },
-  { id: "zhihuishu", name: "知到智慧树", short: "智慧树", description: "共享课、视频与作业", url: "https://www.zhihuishu.com/" },
+  { id: "zhihuishu", name: "知到智慧树", short: "智慧树", description: "扫码工作台 · 速度、实时状态与本地记录", url: "https://www.zhihuishu.com/" },
   { id: "icve", name: "智慧职教 / MOOC", short: "智慧职教", description: "职教课程、视频与测验", url: "https://www.icve.com.cn/" },
   { id: "zjy", name: "职教云", short: "职教云", description: "职教云课程与作业", url: "https://zjy2.icve.com.cn/" },
   { id: "icourse", name: "中国大学 MOOC", short: "大学 MOOC", description: "课程视频、测验与作业", url: "https://www.icourse163.org/" },

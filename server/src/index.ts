@@ -1,3 +1,4 @@
+import { shutdownZhihuishuRunner } from "./services/zhihuishuRunner";
 import { createServer } from "node:http";
 import { createApp, startAppWorkers } from "./app";
 import { getAndroidUpdateRequirement } from "./services/androidUpdateRequirement";
@@ -60,6 +61,7 @@ async function start() {
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {
+    shutdownZhihuishuRunner();
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[lifecycle] 收到 ${signal}，等待现有请求完成后退出`);

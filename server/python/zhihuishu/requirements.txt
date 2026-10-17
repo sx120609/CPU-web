@@ -1,0 +1,6 @@
+# Runtime for the pinned upstream revision; install in an isolated Python 3.12 venv.
+Pillow>=10.4,<12
+pycryptodome>=3.20,<4
+requests>=2.32.3,<3
+tiktoken>=0.7,<1
+openai>=1.40,<3

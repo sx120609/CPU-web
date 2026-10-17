@@ -23,6 +23,10 @@ const has = (target) => entries.includes(target);
 
 const required = [
   "/package.json",
+  "/dist/electron/zhihuishu.js",
+  "/dist/electron/zhihuishu-preload.js",
+  "/dist/zhihuishu-runner.cjs",
+  "/dist/zhihuishu/index.html",
   "/dist/electron/main.js",
   "/dist/electron/policy.js",
   "/dist/electron/config.js",
@@ -58,6 +62,10 @@ const required = [
   "/assets/vendor/manifest.json"
 ];
 
+const runtime = path.join(path.dirname(asarPath), "zhihuishu-runtime", "cpu-zhs-worker", process.platform === "win32" ? "cpu-zhs-worker.exe" : "cpu-zhs-worker");
+if (!fs.existsSync(runtime)) throw new Error("打包缺少智慧树执行组件");
+const startup = require("node:child_process").spawnSync(runtime, [], { input: "", encoding: "utf8", timeout: 45000, windowsHide: true });
+if (startup.status !== 0 || !startup.stdout.includes('"type": "ready"')) throw new Error("打包智慧树组件无法启动");
 let missing = 0;
 for (const entry of required) {
   const ok = has(entry);

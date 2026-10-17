@@ -8,6 +8,18 @@
 
 主站加载不出来时（校园网未认证、断网、站点故障）会落到本地启动台 —— 这一页必须存在，因为校园网登录恰恰要在主站不可达的时候用。
 
+## 智慧树扫码工作台
+
+从“网课助手 → 知到智慧树”打开内置工作台。Windows x64 与 Apple Silicon macOS 安装包自带 Python 执行组件，用户无需另装 Python，也不依赖网站开启 `ZHS_WEB_ENABLED`。工作台的“打开智慧树”仍能进入官方页面。
+
+支持扫码连接、课程选择、0.5–2 倍速、实时状态、活动记录和深浅色/跟随系统主题。视频弹题作答与提交在管理员页分别控制，两个开关默认关闭，退出客户端后恢复关闭；该设置只影响当前本机用户。课后习题与章节练习不自动提交，无法检查的独立练习会明确记为“未检查”。
+
+会话留在本机执行进程内存中；断开、退出客户端或退出 CPU-web 登录都会终止任务。关闭工作台标签后任务可继续（最长两小时），重新打开可补收最近 500 条会话活动；已收到的最近 5,000 条记录保存在独立的客户端用户数据分区，可搜索和导出。关闭标签期间尚未同步的记录不会承诺永久保存。
+
+工作台使用独立 sandbox preload，通过白名单 IPC 调用共享 runner；不开放 HTTP 端口，不向第三方课程页面暴露执行能力。原有平台可用性及客户端登录要求仍适用于连接、刷新和开始任务。
+
+开发构建：先用 Python 3.12 安装 `server/python/zhihuishu/requirements-lock.txt` 和 `pyinstaller==6.16.0`，在 desktop 目录运行 `python scripts/build-zhihuishu-worker.py`，再执行 `npm ci`、`npm test`、`npm run test:zhihuishu`。打包检查会启动安装包内的执行组件验证依赖完整性。CI 随桌面版本更新构建 Windows/macOS，并等待同一提交的 Linux 构建产物后发布 GitHub Release。
+
 ## 这不是通用浏览器
 
 这是本客户端最重要的设计约束，实现集中在 [electron/policy.ts](electron/policy.ts)，由 [scripts/policy-test.cjs](scripts/policy-test.cjs) 的断言守着。

@@ -1,13 +1,13 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.3.22",
+  "version": "0.3.23",
   "description": "药大拾间桌面客户端",
   "main": "dist/electron/main.js",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "clean": "rimraf dist release",
-    "build": "rimraf dist && tsc -p tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.json && node scripts/build-zhihuishu.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "assets:installer": "electron scripts/build-installer-assets.cjs",
     "vendor:deps": "node scripts/vendor-deps.mjs",
@@ -18,7 +18,9 @@
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
     "dist:win": "npm run build && node scripts/prepare-nsis.cjs && electron-builder --win --publish never",
-    "dist:mac:arm64": "bash scripts/prepare-macos-icon.sh && npm run build && electron-builder --mac --arm64 --publish never"
+    "dist:mac:arm64": "bash scripts/prepare-macos-icon.sh && npm run build && electron-builder --mac --arm64 --publish never",
+    "build:worker": "python scripts/build-zhihuishu-worker.py",
+    "test:zhihuishu": "electron zhihuishu-smoke.cjs"
   },
   "build": {
     "appId": "cn.lizmt.cpuweb.desktop",
@@ -78,14 +80,25 @@
       "backgroundColor": "#f4f8f7",
       "sign": false
     },
-    "afterPack": "scripts/after-pack.cjs"
+    "afterPack": "scripts/after-pack.cjs",
+    "extraResources": [
+      {
+        "from": "zhihuishu-runtime",
+        "to": "zhihuishu-runtime"
+      }
+    ]
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "electron": "^43.2.0",
     "electron-builder": "^26.0.0",
     "rimraf": "^6.0.1",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "esbuild": "^0.25.12",
+    "vite": "^6.4.1",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "vue": "^3.5.22",
+    "zod": "^3.24.1"
   },
   "engines": {
     "node": ">=20"
