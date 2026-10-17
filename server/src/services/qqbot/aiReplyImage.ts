@@ -83,8 +83,22 @@ const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s|[
 const QQBOT_NO_LINE_START_CHARS = new Set(Array.from("，。！？；：、）》」』】〕〉》”’)]}>,.!?;:%…％‰"));
 const QQBOT_NO_LINE_END_CHARS = new Set(Array.from("（〔［｛《「『【〖〈“‘([{<"));
 const QQBOT_URL_SEPARATOR_CHARS = new Set(Array.from("./-_:"));
-const QQBOT_AI_TEXT_FONT_FAMILY = "Microsoft YaHei, Noto Sans CJK SC, Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, sans-serif";
+// 文字字体必须排在表情字体前面：Linux 上的 Noto Color Emoji 为键帽表情收录了 0-9，
+// 但单独的数字没有图形，字体表里它若先被选中，数字就画成空白（公式里的“100”“300”曾因此消失）。
+// HarmonyOS Sans SC 随服务端打包，保证任何机器上都有一款可用的文字字体。
+const QQBOT_AI_TEXT_FONTS = "Microsoft YaHei, Noto Sans CJK SC, HarmonyOS Sans SC";
+const QQBOT_AI_EMOJI_FONTS = "Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji";
+const QQBOT_AI_TEXT_FONT_FAMILY = `${QQBOT_AI_TEXT_FONTS}, ${QQBOT_AI_EMOJI_FONTS}, sans-serif`;
+export const QQBOT_AI_MATH_FONT_FAMILY = `Cambria Math, STIX Two Math, Times New Roman, Noto Serif CJK SC, DejaVu Serif, ${QQBOT_AI_TEXT_FONTS}, ${QQBOT_AI_EMOJI_FONTS}, sans-serif`;
+export const QQBOT_AI_CODE_FONT_FAMILY = `Consolas, DejaVu Sans Mono, Noto Sans Mono CJK SC, ${QQBOT_AI_TEXT_FONTS}, ${QQBOT_AI_EMOJI_FONTS}, monospace`;
 const QQBOT_AI_EMOJI_ADVANCE_RATIO = 1.08;
+const QQBOT_AI_BUNDLED_FONT_FILES = ["HarmonyOS_Sans_SC_Regular.ttf", "HarmonyOS_Sans_SC_Bold.ttf"].flatMap((file) => [
+  join(__dirname, "../../assets/fonts", file),
+  join(__dirname, "../../../assets/fonts", file),
+]);
+// 打包字体只在没有微软雅黑的机器（Linux 服务器）上加载：有雅黑时再加载它，
+// resvg 会改选它的字形，列表序号的粗体也会丢。
+const QQBOT_AI_HAS_YAHEI = existsSync("C:/Windows/Fonts/msyh.ttc");
 const QQBOT_AI_FONT_FILES = [
   "C:/Windows/Fonts/msyh.ttc",
   "C:/Windows/Fonts/msyhbd.ttc",
@@ -94,6 +108,7 @@ const QQBOT_AI_FONT_FILES = [
   "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
   "/usr/share/fonts/noto/NotoColorEmoji.ttf",
   "/System/Library/Fonts/Apple Color Emoji.ttc",
+  ...(QQBOT_AI_HAS_YAHEI ? [] : QQBOT_AI_BUNDLED_FONT_FILES),
 ].filter(existsSync);
 const QQBOT_TWEMOJI_SVG_DIRECTORY = join(dirname(require.resolve("@discordapp/twemoji")), "svg");
 const qqBotTwemojiSvgCache = new Map<string, { viewBox: string; body: string } | null>();
@@ -252,7 +267,8 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
     font: {
       loadSystemFonts: true,
       fontFiles: QQBOT_AI_FONT_FILES,
-      defaultFontFamily: "Microsoft YaHei",
+      // Linux 服务器没有微软雅黑，退回随包打包的 HarmonyOS Sans。
+      defaultFontFamily: QQBOT_AI_HAS_YAHEI ? "Microsoft YaHei" : "HarmonyOS Sans SC",
     },
   }).render().asPng();
 }
@@ -1325,8 +1341,8 @@ function renderRun(run: InlineRun) {
   const attrs = [
     run.bold ? `font-weight="700"` : "",
     run.italic ? `font-style="italic"` : "",
-    run.code ? `font-family="Consolas, Microsoft YaHei, Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, monospace"` : "",
-    run.math ? `font-family="Cambria Math, STIX Two Math, Times New Roman, Microsoft YaHei, Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, sans-serif"` : "",
+    run.code ? `font-family="${QQBOT_AI_CODE_FONT_FAMILY}"` : "",
+    run.math ? `font-family="${QQBOT_AI_MATH_FONT_FAMILY}"` : "",
     run.color ? `fill="${run.color}"` : "",
     run.strike ? `text-decoration="line-through"` : "",
   ].filter(Boolean).join(" ");
