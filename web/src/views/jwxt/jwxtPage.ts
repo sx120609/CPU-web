@@ -58,7 +58,7 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
   let pageInitSeq = 0;
   let disposed = false;
 
-  const probePath = ref("/zgykdx/framework/xsMain.jsp");
+  const probePath = ref("/jsxsd/framework/xsMain.jsp");
   const probeHtml = ref("");
   const probing = ref(false);
   const snapping = ref(false);
@@ -109,10 +109,10 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
   ));
   const schoolSystemLink = computed(() => (
     !auth.academicIdentityResolved
-      ? "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp"
+      ? "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
       : isGraduateIdentity.value
         ? "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk"
-        : "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp"
+        : "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
   ));
   const schoolSystemLabel = computed(() => (
     !auth.academicIdentityResolved

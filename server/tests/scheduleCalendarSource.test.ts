@@ -28,7 +28,7 @@ function source(overrides: { calendar?: string; range?: string; last?: string } 
       paths.push(path);
       const url = new URL(path, "https://jwxt.cpu.edu.cn");
       if (url.pathname === "/jsxsd/xskb/xskb_list.do") {
-        return `<select id="xnxq01id"><option value="${semester}" selected>${semester}</option></select><table id="kbtable"></table>`;
+        return `<select id="xnxq01id"><option value="${semester}" selected>${semester}</option></select><table class="qz-weeklyTable"><tr><td name="timeTd"></td></tr></table>`;
       }
       assert.equal(url.searchParams.get("xnxq01id"), semester);
       if (url.pathname === "/jsxsd/jxzl/jxzl_query") return overrides.calendar ?? unpublishedCalendar;

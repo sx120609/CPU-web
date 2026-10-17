@@ -770,8 +770,8 @@ jwxtRouter.get("/probe", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const p = String(req.query.path ?? "");
     if (!p.startsWith("/")) throw Errors.badRequest("path 必须以 / 开头");
-    const { jwxtFetchHtml } = await import("../services/jwxtClient");
-    const html = await jwxtFetchHtml(t, p);
+    const { jwxtFetchModernHtml } = await import("../services/jwxtClient");
+    const html = await jwxtFetchModernHtml(t, p);
     ok(res, { html });
   } catch (e) { next(e); }
 });

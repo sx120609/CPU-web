@@ -25,7 +25,6 @@ export interface ScheduleCell {
 
 export interface ScheduleResult {
   scope?: "semester" | "week" | "unknown";
-  source?: "modern" | "legacy";
   semesters: { value: string; label: string; current: boolean }[];
   weeks: { value: string; label: string; current: boolean }[];
   currentSemester: string;
@@ -41,7 +40,6 @@ export interface CalendarWeek {
 }
 
 export interface CalendarResult {
-  source?: "modern" | "legacy";
   semesters?: { value: string; label: string; current: boolean }[];
   currentSemester?: string;
   currentWeek: number;

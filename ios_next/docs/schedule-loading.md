@@ -9,7 +9,7 @@
 ## 核查依据
 
 - `server/src/services/jwxtFacade.ts` 的原查询通过 `xskb_list.do?viweType=0` 取页面，数字周次放入 `zc`；原来不区分“明确请求全部周”与“不传周次”。
-- `server/tests/jwxtParser.test.ts` 的新版页面样例存在 `<option value="">(全部)</option>`；通用选项解析器原来跳过空值，导致丢失范围信息。
+- `server/tests/jwxtParser.test.ts` 的教务页面样例存在 `<option value="">(全部)</option>`；通用选项解析器原来跳过空值，导致丢失范围信息。
 - `jwxtParser` 已解析课程周次、单双周、小节、跨行表格和重复课程，不必将整套 HTML 解析器再移植至 Swift。
 - 合入远端更新后，页面与小组件经 `scheduleData` 按会话／学期／周次共享 5 分钟缓存，强刷写回共享结果；整学期 `all` 使用独立缓存键，不覆盖小组件的数字周次缓存。逐周强刷仍会放大学校请求量。
 - 原生 `blocks(for:result:)` 已按 `weekList` 做本地周次筛选。

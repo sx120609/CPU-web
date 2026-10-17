@@ -1,13 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isLegacyJwxtLoginPage } from "../src/services/legacyJwxtSso";
-import {
-  exportSessionSnapshot,
-  importSessionSnapshot,
-  jwxtFetchHtml,
-  jwxtPostForm,
-  logout,
-} from "../src/services/jwxtClient";
+import { importSessionSnapshot, logout } from "../src/services/jwxtClient";
 import {
   getCalendar,
   getExams,
@@ -17,122 +10,13 @@ import {
   getPyfa,
 } from "../src/services/jwxtFacade";
 
-const legacyLoginHtml = `
-  <html>
-    <head><title>中国药科大学综合教务管理系统</title></head>
-    <body>
-      <div>请先登录系统</div>
-      <form id="Form1" action="/zgykdx/xk/LoginToXk">
-        <input name="USERNAME" type="text">
-        <input name="PASSWORD" type="password">
-      </form>
-    </body>
-  </html>
-`;
-
-test("legacy JWXT recognizes a same-host login page instead of parsing it as empty data", () => {
-  assert.equal(isLegacyJwxtLoginPage(legacyLoginHtml), true);
-  assert.equal(isLegacyJwxtLoginPage("<html><body><table><tr><td>药理学</td></tr></table></body></html>"), false);
-});
-
-test("legacy JWXT silently renews an expired same-host session through unified auth", async () => {
-  const token = "legacy-sso-test-token";
-  const now = Date.now();
-  await importSessionSnapshot(token, {
-    version: 1,
-    jar: {
-      "jsxsd.cpu.edu.cn": { JSESSIONID: "legacy-expired" },
-      "id.cpu.edu.cn": { SESSION: "unified-session" },
-    },
-    username: "2020240444",
-    createdAt: now,
-    lastSeenAt: now,
-  });
-
-  const originalFetch = globalThis.fetch;
-  let ssoEntries = 0;
-  let gradeRequests = 0;
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
-    const headers = new Headers(init?.headers);
-    const cookie = headers.get("cookie") || "";
-
-    if (url.hostname === "jsxsd.cpu.edu.cn" && url.pathname === "/zgykdx/kscj/cjcx_list") {
-      gradeRequests += 1;
-      assert.equal(init?.method, "POST");
-      assert.match(String(init?.body || ""), /kksj=2025-2026-2/);
-      if (!/JSESSIONID=legacy-restored/.test(cookie)) return new Response(legacyLoginHtml, { status: 200 });
-      return new Response("<html><body><div>legacy grade list</div></body></html>", { status: 200 });
-    }
-
-    if (url.hostname === "jsxsd.cpu.edu.cn" && url.pathname === "/zgykdx/framework/xsMain.jsp") {
-      if (!/JSESSIONID=legacy-restored/.test(cookie)) return new Response(legacyLoginHtml, { status: 200 });
-      return new Response("<html><body><div>authenticated legacy main</div></body></html>", { status: 200 });
-    }
-
-    if (url.hostname === "jsxsd.cpu.edu.cn" && url.pathname === "/zgykdx/tyrz.jsp" && !url.searchParams.has("ticket")) {
-      ssoEntries += 1;
-      const service = encodeURIComponent("http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp");
-      return new Response(null, {
-        status: 302,
-        headers: { location: `http://id.cpu.edu.cn/sso/login?service=${service}` },
-      });
-    }
-
-    if (url.hostname === "id.cpu.edu.cn" && url.pathname === "/sso/login") {
-      assert.match(cookie, /SESSION=unified-session/);
-      return new Response(null, {
-        status: 302,
-        headers: { location: "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp?ticket=ST-legacy-test" },
-      });
-    }
-
-    if (url.hostname === "jsxsd.cpu.edu.cn" && url.pathname === "/zgykdx/tyrz.jsp" && url.searchParams.has("ticket")) {
-      return new Response(null, {
-        status: 302,
-        headers: {
-          location: "/zgykdx/framework/xsMain.jsp",
-          "set-cookie": "JSESSIONID=legacy-restored; Path=/zgykdx; HttpOnly",
-        },
-      });
-    }
-
-    if (url.hostname === "jsxsd.cpu.edu.cn" && url.pathname === "/zgykdx/kscj/cjcx_query") {
-      assert.match(cookie, /JSESSIONID=legacy-restored/);
-      return new Response("<html><body><div>legacy query</div></body></html>", { status: 200 });
-    }
-
-    throw new Error(`unexpected request: ${url.toString()}`);
-  }) as typeof fetch;
-
-  try {
-    const html = await jwxtPostForm(token, "/zgykdx/kscj/cjcx_list", {
-      kksj: "2025-2026-2",
-      kcxz: "",
-      kcmc: "",
-    });
-    assert.match(html, /legacy grade list/);
-    assert.equal(gradeRequests, 2);
-    assert.equal(ssoEntries, 1);
-
-    const query = await jwxtFetchHtml(token, "/zgykdx/kscj/cjcx_query");
-    assert.match(query, /legacy query/);
-    const snapshot = await exportSessionSnapshot(token);
-    assert.equal(snapshot?.jar["jsxsd.cpu.edu.cn"]?.JSESSIONID, "legacy-restored");
-  } finally {
-    globalThis.fetch = originalFetch;
-    await logout(token);
-  }
-});
-
-test("undergraduate academic data prefers modern JWXT", async () => {
+test("undergraduate academic data is read only from jwxt.cpu.edu.cn", async () => {
   const token = "modern-routing-test-token";
   const now = Date.now();
   await importSessionSnapshot(token, {
     version: 1,
     jar: {
       "jwxt.cpu.edu.cn": { JSESSIONID: "modern-valid" },
-      "jsxsd.cpu.edu.cn": { JSESSIONID: "legacy-valid" },
       "id.cpu.edu.cn": { SESSION: "unified-session" },
     },
     username: "2020240444",
@@ -268,7 +152,7 @@ test("undergraduate academic data prefers modern JWXT", async () => {
     assert.equal("xs0101id" in (grades.list[0] as unknown as Record<string, unknown>), false);
     assert.equal(exams.list[0]?.courseName, "药理学");
     assert.equal(requestedPaths.includes("jwxt.cpu.edu.cn/jsxsd/kscj/cjcx_list"), true);
-    assert.equal(requestedPaths.includes("jsxsd.cpu.edu.cn/zgykdx/kscj/cjcx_list"), false);
+    assert.equal(requestedPaths.some((path) => path.startsWith("jsxsd.cpu.edu.cn/")), false);
   } finally {
     globalThis.fetch = originalFetch;
     await logout(token);

@@ -7,11 +7,9 @@ import {
   logout as clientLogout,
   getSession,
   sessionStats as clientSessionStats,
-  jwxtFetchHtml,
   jwxtFetchModernHtml,
   jwxtDownloadModernPdf,
   jwxtFetchEcertTranscriptPdf,
-  jwxtPostForm,
   fetchIServiceApps,
   fetchIServiceIcon,
   fetchPortalNoticePage,
@@ -21,11 +19,9 @@ import {
 } from "./jwxtClient";
 import { getGraduateSchedule as getGraduateScheduleLive } from "./graduateScheduleService";
 import {
-  parseCalendar,
   parseExams,
   parseGradeBreakdown,
   parseGrades,
-  parseMidtermGrades,
   parseProgress,
   parsePyfa,
   parseSchedule,
@@ -37,8 +33,6 @@ import { Errors } from "../utils/response";
 import { loadModernScheduleCalendar } from "./scheduleCalendarSource";
 import { loadJwxtRecords, type JwxtRecordsArgs } from "./jwxtRecords";
 
-export type JwxtDataSource = "modern" | "legacy";
-
 const MODERN_GRADES_CACHE_TTL_MS = 30 * 60_000;
 const MODERN_GRADES_CACHE_MAX_ENTRIES = 128;
 const MODERN_GRADE_DETAIL_CONCURRENCY = 8;
@@ -49,17 +43,8 @@ function isUnauthorizedUpstreamError(error: unknown) {
   return Number(candidate?.status || 0) === 401 || Number(candidate?.code || 0) === 4001;
 }
 
-export async function modernFirst<T extends object>(modern: () => Promise<T>, legacy: () => Promise<T>) {
-  try {
-    return { ...await modern(), source: "modern" as const };
-  } catch (modernError) {
-    if (isUnauthorizedUpstreamError(modernError)) throw modernError;
-    try {
-      return { ...await legacy(), source: "legacy" as const };
-    } catch {
-      throw modernError;
-    }
-  }
+async function fromModern<T extends object>(load: () => Promise<T>) {
+  return { ...await load(), source: "modern" as const };
 }
 
 function modernGradesCachePrefix(token: string) {
@@ -241,56 +226,20 @@ export function scheduleQuery(args: { semester?: string; week?: string } = {}) {
 }
 
 export async function getSchedule(token: string, args: { semester?: string; week?: string } = {}) {
-  const qs = scheduleQuery(args);
-  const path = `/jsxsd/xskb/xskb_list.do?${qs.toString()}`;
-  return modernFirst(
-    async () => parseRecognizedSchedule(await jwxtFetchModernHtml(token, path)),
-    async () => parseRecognizedSchedule(await jwxtFetchHtml(token, `/zgykdx/xskb/xskb_list.do?${qs.toString()}`)),
-  );
+  const path = `/jsxsd/xskb/xskb_list.do?${scheduleQuery(args).toString()}`;
+  return fromModern(async () => parseRecognizedSchedule(await jwxtFetchModernHtml(token, path)));
 }
 
 export async function getGrades(token: string, args: { semester?: string } = {}) {
-  return modernFirst(() => getCachedModernGrades(token, args.semester ?? ""), async () => {
-    let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
-    try {
-      semesters = parseGrades(
-        await jwxtFetchHtml(token, "/zgykdx/kscj/cjcx_query?Ves632DSdyV=NEW_XSD_CJGL"),
-      ).semesters;
-    } catch (error) {
-      if (isUnauthorizedUpstreamError(error)) throw error;
-    }
-    const parsed = parseGrades(await jwxtPostForm(token, "/zgykdx/kscj/cjcx_list", {
-      kksj: args.semester ?? "",
-      kcxz: "",
-      kcmc: "",
-    }));
-    return parsed.semesters.length ? parsed : { ...parsed, semesters };
-  });
+  return fromModern(() => getCachedModernGrades(token, args.semester ?? ""));
 }
 
 export async function getMidtermGrades(token: string, args: { semester?: string } = {}) {
-  return modernFirst(() => getCachedModernGrades(token, args.semester ?? ""), async () => {
-    let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
-    try {
-      semesters = parseGrades(
-        await jwxtFetchHtml(token, "/zgykdx/kscj/qzcjcx_query?Ves632DSdyV=NEW_XSD_CJGL")
-      ).semesters;
-    } catch (error) {
-      if (isUnauthorizedUpstreamError(error)) throw error;
-    }
-
-    const parsed = parseMidtermGrades(await jwxtPostForm(token, "/zgykdx/kscj/qzcjcx_list", {
-      kksj: args.semester ?? "",
-      kcxz: "",
-      kcmc: "",
-      xsfs: "all",
-    }));
-    return parsed.semesters.length ? parsed : { ...parsed, semesters };
-  });
+  return fromModern(() => getCachedModernGrades(token, args.semester ?? ""));
 }
 
 export async function getExams(token: string, args: { semester?: string; type?: string } = {}) {
-  return modernFirst(async () => {
+  return fromModern(async () => {
     const queryHtml = await jwxtFetchModernHtml(token, "/jsxsd/xsks/xsksap_query");
     const semesters = parseExams(queryHtml).semesters;
     const semester = args.semester || semesters.find((item) => item.current)?.value || semesters[0]?.value || "";
@@ -300,66 +249,28 @@ export async function getExams(token: string, args: { semester?: string; type?: 
       xqlb: args.type ?? "",
     }));
     return { ...parsed, semesters: parsed.semesters.length ? parsed.semesters : semesters, currentSemester: semester };
-  }, async () => {
-    let semester = args.semester ?? "";
-    const type = args.type ?? "";
-    let semesters: ReturnType<typeof parseExams>["semesters"] = [];
-
-    if (!semester) {
-      try {
-        const queryHtml = await jwxtFetchHtml(token, "/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM");
-        semesters = parseExams(queryHtml).semesters;
-        semester = semesters.find((item) => item.current)?.value || semesters[0]?.value || "";
-      } catch (error) {
-        if (isUnauthorizedUpstreamError(error)) throw error;
-      }
-    }
-
-    if (!semester) return { semesters, list: [], needSemester: true };
-    const parsed = parseExams(await jwxtPostForm(token, "/zgykdx/xsks/xsksap_list", {
-      xnxqid: semester,
-      xqlb: type,
-    }));
-    return {
-      ...parsed,
-      semesters: parsed.semesters.length ? parsed.semesters : semesters,
-      currentSemester: semester,
-    };
   });
 }
 
 export async function getCalendar(token: string, args: { semester?: string } = {}) {
   const semester = String(args.semester ?? "").trim();
-  return modernFirst(async () => {
-    return loadModernScheduleCalendar(semester, (path) => jwxtFetchModernHtml(token, path));
-  }, async () => {
-    const path = "/zgykdx/jxzl/jxzl_query?Ves632DSdyV=NEW_XSD_WDZM";
-    const html = semester
-      ? await jwxtPostForm(token, path, { xnxq01id: semester })
-      : await jwxtFetchHtml(token, path);
-    return parseCalendar(html);
-  });
+  return fromModern(() => loadModernScheduleCalendar(semester, (path) => jwxtFetchModernHtml(token, path)));
 }
 
 export async function getProgress(token: string) {
-  return modernFirst(
-    async () => parseProgress(await jwxtFetchModernHtml(token, "/jsxsd/xxwcqk/xxwcqkOnkclb.do?isdb=0")),
-    async () => parseProgress(await jwxtFetchHtml(token, "/zgykdx/xywcqk/cxxywcqk?Ves632DSdyV=NEW-XSD-XYWCQK")),
-  );
+  return fromModern(async () => parseProgress(
+    await jwxtFetchModernHtml(token, "/jsxsd/xxwcqk/xxwcqkOnkclb.do?isdb=0"),
+  ));
 }
 
 export async function getPyfa(token: string) {
-  return modernFirst(
-    async () => parsePyfa(await fetchModernPagedList(token, "/jsxsd/pyfa/pyfa_query", {
-      islist: "1",
-      kkxq: "",
-      kcxx: "",
-    })),
-    async () => parsePyfa(await jwxtFetchHtml(token, "/zgykdx/pyfa/pyfa_query?Ves632DSdyV=NEW_XSD_PYGL")),
-  );
+  return fromModern(async () => parsePyfa(await fetchModernPagedList(token, "/jsxsd/pyfa/pyfa_query", {
+    islist: "1",
+    kkxq: "",
+    kcxx: "",
+  })));
 }
 
-/** 课表、成绩、考试之外的教务数据，只来自新版教务。 */
 export async function getRecords(token: string, args: JwxtRecordsArgs) {
   const result = await loadJwxtRecords({
     get: (path) => jwxtFetchModernHtml(token, path),

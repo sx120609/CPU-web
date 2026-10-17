@@ -606,10 +606,10 @@ test('an iOS refresh that cannot reach 教务 says so instead of keeping the gri
 test('an iOS refresh reports why 教务 did not answer', async () => {
   const ctx = setup();
   ctx.bridge.installIosNextScheduleBridge(undefined, { reportRefreshFailures: true });
-  ctx.api.schedule = async () => { throw new Error('新版教务暂时没有返回课表，课表没有更新，请稍后再刷新。'); };
+  ctx.api.schedule = async () => { throw new Error('教务暂时没有返回课表，课表没有更新，请稍后再刷新。'); };
   const refresh = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', true, false);
   assert.equal(refresh.auth.authenticated, true);
-  assert.equal(refresh.error, '新版教务暂时没有返回课表，课表没有更新，请稍后再刷新。');
+  assert.equal(refresh.error, '教务暂时没有返回课表，课表没有更新，请稍后再刷新。');
 });
 
 test('Android and Harmony bridges keep reporting an expired session as unauthorized', async () => {

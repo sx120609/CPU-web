@@ -3,7 +3,6 @@
   <div class="record-shell" v-loading="loading">
     <div class="data-note">
       <span>以下信息整理自教务系统，最终请以学校和学院通知为准。</span>
-      <AcademicDataSourceBadge source="modern" />
     </div>
 
     <div v-if="$slots.controls || $slots.summary || refreshable" class="ctrl-bar">
@@ -26,7 +25,6 @@
 
 <script setup lang="ts">
 import { Refresh } from "@element-plus/icons-vue";
-import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 
 withDefaults(defineProps<{ loading?: boolean; error?: string; refreshable?: boolean }>(), {
   loading: false,

@@ -7,7 +7,6 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    AcademicDataSourceBadge: typeof import('./src/components/jwxt/AcademicDataSourceBadge.vue')['default']
     AcademicIdentityPicker: typeof import('./src/components/auth/AcademicIdentityPicker.vue')['default']
     AndroidUpdateDialog: typeof import('./src/components/install/AndroidUpdateDialog.vue')['default']
     AppIcon: typeof import('./src/components/common/AppIcon.vue')['default']

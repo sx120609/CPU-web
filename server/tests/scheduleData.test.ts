@@ -19,7 +19,6 @@ async function fixture() {
   let failWeek = "";
   let calendarAvailable = true;
   let calendarHasNextWeek = true;
-  let source: "modern" | "legacy" = "modern";
   const calls: Array<{ semester?: string; week?: string }> = [];
   const service = createScheduleDataService({
     now: () => now,
@@ -27,7 +26,7 @@ async function fixture() {
       calls.push(query);
       if (failWeek && (query.week === failWeek || failWeek === "*")) throw new Error("教务暂时不可用");
       return {
-        title: "课表", source, pageRecognized: true,
+        title: "课表", source: "modern" as const, pageRecognized: true,
         currentSemester: semester, currentWeek: query.week === "all" ? "" : query.week || "1",
         scope: query.week === "all" ? "semester" as const : "week" as const, semesters: [], weeks: [],
         cells: [{ day: 1, bigSlot: 1, courses: [{ name, weeks: "1-20周", weekList: [], startSlot: 1, endSlot: 2 }] }],
@@ -51,7 +50,6 @@ async function fixture() {
     service, token, calls, widget,
     setName(value: string) { name = value; },
     setNow(value: string) { now = new Date(value); },
-    setSource(value: "modern" | "legacy") { source = value; },
     fail(week: string) { failWeek = week; },
     failCalendar() { calendarAvailable = false; },
     omitCalendarWeek() { calendarHasNextWeek = false; },
@@ -148,20 +146,6 @@ test("all-week rule snapshots keep their scope and do not replace weekly widget 
 });
 
 const weekCalls = (f: Awaited<ReturnType<typeof fixture>>, week: string) => f.calls.filter((item) => item.week === week).length;
-
-test("a refresh never presents legacy data as the latest timetable", async () => {
-  const f = await fixture();
-  f.setSource("legacy");
-  const page = await f.service.readSchedule(f.token, { semester, week: "all" });
-  assert.equal(page.parsed.source, "legacy");
-  await assert.rejects(
-    f.service.readSchedule(f.token, { semester, week: "all", refresh: true }),
-    /新版教务暂时没有返回课表/,
-  );
-  f.setSource("modern");
-  const refreshed = await f.service.readSchedule(f.token, { semester, week: "all", refresh: true });
-  assert.equal(refreshed.parsed.source, "modern");
-});
 
 test("a refresh that finds a changed timetable retires the session's older week caches", async () => {
   const f = await fixture();

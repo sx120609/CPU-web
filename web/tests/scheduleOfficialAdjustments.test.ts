@@ -30,7 +30,7 @@ function fixture() {
   // Based on the observed API shape: Friday excludes week 5, and Saturday
   // has its own week-6 occurrence. Different rooms expose accidental copies.
   const schedule: ScheduleResult = {
-    source: "modern", scope: "semester", currentSemester: "2026-2027-1", currentWeek: "6",
+    scope: "semester", currentSemester: "2026-2027-1", currentWeek: "6",
     semesters: [], weeks: [], cells: [
       { day: 5, bigSlot: 1, courses: [{ name: "药事管理", weeks: "2-4,6-7周", weekList: [2, 3, 4, 6, 7], location: "常规教室" }] },
       { day: 6, bigSlot: 1, courses: [{ name: "药事管理", weeks: "6周", weekList: [6], location: "补课教室" }] },

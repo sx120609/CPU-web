@@ -41,46 +41,6 @@ test("normalizeCalendarWeekDays fills a partial Sunday-first opening week", () =
   );
 });
 
-test("parseSchedule keeps supporting the legacy kbtable layout", () => {
-  const result = parseSchedule(`
-    <html>
-      <head><title>学期理论课表</title></head>
-      <body>
-        <select id="xnxq01id">
-          <option value="2025-2026-1">2025-2026-1</option>
-          <option value="2025-2026-2" selected>2025-2026-2</option>
-        </select>
-        <select id="zc"><option value="1" selected>第1周</option></select>
-        <table id="kbtable">
-          <tr><th></th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th></tr>
-          <tr>
-            <th>第一大节</th>
-            <td><div class="kbcontent">分析化学<br><font title="老师">张三</font><br><font title="周次(节次)">1-3(周)</font><br><font title="教室">A101</font><br><font title="节次备注">(01-02节)</font><br></div></td>
-          </tr>
-        </table>
-      </body>
-    </html>
-  `);
-
-  assert.equal(result.currentSemester, "2025-2026-2");
-  assert.equal(result.pageRecognized, true);
-  assert.equal(result.currentWeek, "1");
-  assert.deepEqual(result.cells, [{
-    day: 1,
-    bigSlot: 1,
-    courses: [{
-      name: "分析化学",
-      teacher: "张三",
-      weeks: "1-3(周)",
-      weekList: [1, 2, 3],
-      location: "A101",
-      slotNote: "01-02节",
-      startSlot: 1,
-      endSlot: 2,
-    }],
-  }]);
-});
-
 test("parseSchedule deduplicates repeated semester selector options", () => {
   const result = parseSchedule(`
     <select id="xnxq01id">
@@ -88,7 +48,7 @@ test("parseSchedule deduplicates repeated semester selector options", () => {
       <option value="2024-2025-2">2024-2025-2</option>
       <option value="2025-2026-2">2025-2026-2</option>
     </select>
-    <table id="kbtable"><tr><th>时间</th></tr></table>
+    <table class="qz-weeklyTable"><tr><td name="timeTd"></td></tr></table>
   `);
 
   assert.deepEqual(result.semesters.map((item) => item.value), ["2025-2026-2", "2024-2025-2"]);
@@ -472,7 +432,7 @@ test("parsePyfa maps the modern paged JSON response", () => {
 });
 
 test("schedule scope distinguishes selected all-weeks rules from weekly and unknown responses", () => {
-  const table = '<table id="kbtable"><tr><th>时间</th></tr></table>';
+  const table = '<table class="qz-weeklyTable"><tr><td name="timeTd"></td></tr></table>';
   const options = '<option value="">(全部)</option><option value="3" selected>第3周</option>';
   assert.equal(parseSchedule(`<select id="zc">${options}</select>${table}`).scope, "week");
   const all = options.replace('value=""', 'value="" selected').replace('value="3" selected', 'value="3"');

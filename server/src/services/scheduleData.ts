@@ -12,7 +12,6 @@ const CALENDAR_TTL_MS = 24 * 60 * 60_000;
 // 改课标记要比它之前写下的任何一份课表缓存（5 分钟有效，再加 20 分钟过期可用）都活得久。
 const SCHEDULE_CHANGE_TTL_MS = 30 * 60_000;
 const SCHEDULE_FINGERPRINT_TTL_MS = 7 * 24 * 60 * 60_000;
-const LEGACY_REFRESH_MESSAGE = "新版教务暂时没有返回课表，课表没有更新，请稍后再刷新。";
 
 export type ScheduleQuery = { semester?: string; week?: string; refresh?: boolean };
 type Calendar = Awaited<ReturnType<typeof transport.getCalendar>>;
@@ -135,8 +134,6 @@ export function createScheduleDataService(dependencies: Partial<Dependencies> = 
         if (Number(week) > 0 && Number(parsed.currentWeek) !== Number(week)) {
           throw Errors.badGateway("教务返回的课表周次与请求不一致");
         }
-        // 旧版教务不跟着新版改课。用户点了刷新就要新版的数据，拿不到时说清楚，而不是把旧数据当成刷新结果。
-        if (reason === "refresh" && parsed.source === "legacy") throw Errors.badGateway(LEGACY_REFRESH_MESSAGE);
         const syncedAt = deps.now();
         await noteUpstreamSchedule(token, parsed, { semester, week, reason }, syncedAt).catch(() => undefined);
         return { parsed, syncedAt: syncedAt.toISOString() };

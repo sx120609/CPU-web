@@ -263,7 +263,6 @@ function normalizeScheduleResponse(response: unknown): ScheduleResult {
   const currentWeek = legacyText(data.currentWeek, data.week, weeks.find((item) => item.current)?.value, weeks[0]?.value);
   return {
     ...data,
-    source: data.source === "modern" || data.source === "legacy" ? data.source : undefined,
     scope: data.scope === "semester" || data.scope === "week" || data.scope === "unknown" ? data.scope : undefined,
     semesters,
     weeks,

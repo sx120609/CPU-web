@@ -1,5 +1,5 @@
 /**
- * 强智 jsxsd（中国药科大学 /zgykdx/）页面解析器
+ * 强智 jsxsd（中国药科大学 jwxt.cpu.edu.cn/jsxsd/）页面解析器
  */
 import * as cheerio from "cheerio";
 
@@ -96,7 +96,6 @@ export interface ScheduleResult {
 export function parseSchedule(html: string): ScheduleResult {
   const $ = cheerio.load(html);
   const title = $("title").text().trim();
-  const hasLegacyScheduleTable = $("table#kbtable").length > 0;
   const hasModernScheduleTable = $("table.qz-weeklyTable").filter((_, table) => (
     $(table).find('td[name="kbDataTd"], td[name="timeTd"]').length > 0
   )).length > 0;
@@ -110,13 +109,11 @@ export function parseSchedule(html: string): ScheduleResult {
   const isAllWeeks = effective.length > 0 && (effective.attr("value") ?? "") === ""
     && /全部|所有|整学期/.test(effective.text());
   const scope = isAllWeeks ? "semester" : effective.length && /^\d+$/.test(effective.attr("value") ?? "") ? "week" : "unknown";
-  const cells = hasLegacyScheduleTable
-    ? parseLegacyScheduleCells($)
-    : parseModernScheduleCells($);
+  const cells = parseModernScheduleCells($);
 
   return {
     title,
-    pageRecognized: hasLegacyScheduleTable || hasModernScheduleTable,
+    pageRecognized: hasModernScheduleTable,
     scope,
     semesters,
     currentSemester,
@@ -126,73 +123,10 @@ export function parseSchedule(html: string): ScheduleResult {
   };
 }
 
-/** 旧版 /zgykdx/ 课表：table#kbtable + div.kbcontent。 */
-function parseLegacyScheduleCells($: cheerio.CheerioAPI): ScheduleCell[] {
-  const $tbl = $("table#kbtable");
-  const cells: ScheduleCell[] = [];
-  let bigSlot = 0;
-  $tbl.find("> tbody > tr, > tr").each((_, tr) => {
-    const $tr = $(tr);
-    const $th = $tr.find("> th");
-    // 跳过表头行
-    if ($th.length >= 7 && $tr.find("> td").length === 0) return;
-    // 大节行：左侧 th 含"第X大节"
-    const slotLabel = $th.first().text().trim();
-    if (!/大节/.test(slotLabel)) return;
-    bigSlot++;
-    $tr.find("> td").each((dayIdx, td) => {
-      const $td = $(td);
-      const day = dayIdx + 1;
-      // 取 hover 版本（含老师）的 div.kbcontent
-      const $contents = $td.find("div.kbcontent");
-      const courses: ScheduleCourse[] = [];
-      $contents.each((_, c) => {
-        const html = $(c).html() ?? "";
-        if (!html.trim()) return;
-        // 多门课用 "----------------------" 分隔（实际看到的是 <br/>---------------------<br>）
-        const parts = html.split(/<br\s*\/?\s*>\s*-{5,}\s*<br\s*\/?\s*>/i);
-        for (const seg of parts) {
-          const c2 = cheerio.load(`<div>${seg}</div>`);
-          // 课程名 = 首个文本节点（在第一个 <font> 之前）
-          const root = c2("div").first();
-          const firstFont = root.find("font").first();
-          let courseName = "";
-          if (firstFont.length) {
-            // 用首个 font 之前的文本
-            const before = root.html()?.split(/<font/i)[0] ?? "";
-            courseName = cheerio.load(`<div>${before}</div>`)("div").text().trim();
-          } else {
-            courseName = root.text().trim();
-          }
-          if (!courseName) continue;
-          const teacher = root.find('font[title="老师"]').text().trim() || undefined;
-          const weeksText = root.find('font[title="周次(节次)"]').text().trim();
-          const location = root.find('font[title="教室"]').text().trim() || undefined;
-          const slotNote = root.find('font[title="节次备注"]').text().trim() || undefined;
-          const sourceKey = readScheduleCourseSourceKey($(c));
-          courses.push({
-            name: courseName,
-            teacher,
-            weeks: weeksText,
-            weekList: parseWeeks(weeksText),
-            location,
-            slotNote,
-            ...parseSlotRange(slotNote),
-            ...(sourceKey ? { sourceKey } : {}),
-          });
-        }
-      });
-      if (courses.length) cells.push({ day, bigSlot, courses });
-    });
-  });
-
-  return cells;
-}
-
 /**
- * 新版 /jsxsd/ 课表：table.qz-weeklyTable + li.courselists-item。
+ * /jsxsd/ 课表：table.qz-weeklyTable + li.courselists-item。
  *
- * 新版用 rowspan 合并跨大节课程，导致后续行的物理 td 下标不再等于星期；
+ * 课表用 rowspan 合并跨大节课程，导致后续行的物理 td 下标不再等于星期；
  * occupiedUntil 负责把物理单元格还原到 1-7 的逻辑星期列。
  */
 function parseModernScheduleCells($: cheerio.CheerioAPI): ScheduleCell[] {
@@ -436,7 +370,7 @@ function slotRangeForTablePosition(course: ScheduleCourse, bigSlot: number) {
     const start = Number(parsedStart);
     const end = Number(parsedEnd);
     // The explicit section range comes from the course detail and is more
-    // reliable than the physical table row. Legacy/modern JWXT pages can put
+    // reliable than the physical table row. JWXT pages can put
     // a course in a repeated row whose big-slot label does not overlap that
     // range (for example a 03-04 course rendered under row 1). Only fall back
     // when the parsed range itself is unusable.
@@ -1043,7 +977,7 @@ export interface CalendarWeek {
 }
 
 export interface CalendarResult {
-  source?: "modern" | "legacy";
+  source?: "modern";
   calendarSource?: "teaching-calendar" | "schedule-dates";
   semesters: SemesterOption[];
   currentSemester: string;

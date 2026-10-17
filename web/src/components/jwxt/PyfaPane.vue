@@ -2,7 +2,6 @@
   <div class="pyfa-pane" v-loading="loading">
     <div class="data-note">
       <span>以下信息整理自教务系统，最终请以学校和学院通知为准。</span>
-      <AcademicDataSourceBadge :source="parsed?.source" />
     </div>
 
     <div class="ctrl-bar" v-if="parsed">
@@ -82,7 +81,6 @@
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
-import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import { ref, computed, watch } from "vue";
 
 interface PyfaCourse {

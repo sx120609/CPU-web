@@ -2,11 +2,10 @@
  * 教务系统（jsxsd）代登录客户端
  *
  * 流程：
- *  1) 用户只登录一次 id.cpu.edu.cn 统一认证，建立旧版 jsxsd 会话
- *  2) 服务端保留统一认证 Cookie；访问新版课表时自动请求 jwxt 的 sso.jsp
+ *  1) 用户只登录一次 id.cpu.edu.cn 统一认证（登录入口沿用学校登记在 jsxsd 域名上的服务地址）
+ *  2) 服务端保留统一认证 Cookie；访问教务时自动请求 jwxt 的 sso.jsp
  *  3) id.cpu.edu.cn 使用既有统一认证会话向 jwxt 签发一次性 service ticket
- *  4) 同一个 CookieJar 最终持有 id、jsxsd 与 jwxt 三个域的会话
- *  5) 新版优先提供课表；成绩、考试、日历和培养数据使用字段更完整的旧版
+ *  4) 课表、成绩、考试、日历和培养数据全部读取 jwxt.cpu.edu.cn/jsxsd
  *
  * 安全约定：
  *  - 用户名密码绝不写入磁盘 / 数据库 / 日志
@@ -17,7 +16,6 @@ import * as cheerio from "cheerio";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import iconv from "iconv-lite";
 import {
   countEphemeralKeys,
   deleteEphemeralValue,
@@ -35,7 +33,6 @@ import { config, isDev } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
 import { extractModernJwxtSsoRedirect, isModernJwxtLoginPage } from "./modernJwxtSso";
-import { isLegacyJwxtLoginPage } from "./legacyJwxtSso";
 import {
   parsePortalNoticeResponse,
   PORTAL_NOTICE_LIST_URL,
@@ -55,8 +52,6 @@ const ENTRY_URL = "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp";
 const JWXT_HOST = "jsxsd.cpu.edu.cn";
 const CPU_ID_SSO_HOST = "id.cpu.edu.cn";
 const MODERN_JWXT_HOST = "jwxt.cpu.edu.cn";
-const LEGACY_JWXT_ORIGIN = `http://${JWXT_HOST}`;
-const LEGACY_MAIN_ENTRY_URL = `${LEGACY_JWXT_ORIGIN}/zgykdx/framework/xsMain.jsp`;
 const MODERN_JWXT_ORIGIN = `https://${MODERN_JWXT_HOST}`;
 const MODERN_SSO_ENTRY_URL = `${MODERN_JWXT_ORIGIN}/jsxsd/sso.jsp`;
 const MODERN_SCHEDULE_ENTRY_URL = `${MODERN_JWXT_ORIGIN}/jsxsd/xskb/xskb_list.do?viweType=0`;
@@ -489,7 +484,7 @@ async function getActiveSession(token: string | undefined | null): Promise<Activ
   }
 }
 
-/** 第一步：只准备学校统一认证表单。新版 jwxt 会在登录后自动继承该会话。 */
+/** 第一步：只准备学校统一认证表单。jwxt 会在登录后自动继承该会话。 */
 export async function beginLogin(): Promise<{
   pendingId: string;
   needCaptcha: boolean;
@@ -611,7 +606,7 @@ async function exchangeLoginCredentials(
     return { ok: true, jar, username: args.username, callbackUrl: r.callbackUrl };
   }
 
-  // 旧流程期望最终 URL 落到 jsxsd 域名，说明 ticket 已交换成 JSESSIONID。
+  // 最终 URL 落到登录入口所在的 jsxsd 域名，说明统一认证已签发并兑换 ticket。
   const finalHost = new URL(r.finalUrl).hostname.toLowerCase();
   if (!stopBeforeCallback && finalHost === JWXT_HOST) {
     return { ok: true, jar, username: args.username };
@@ -879,155 +874,6 @@ export async function getSession(token: string | undefined | null): Promise<Acti
   return getActiveSession(token);
 }
 
-function assertTrustedLegacySsoHop(rawUrl: string) {
-  const url = new URL(rawUrl);
-  const host = url.hostname.toLowerCase();
-  const trustedPath = host === CPU_ID_SSO_HOST
-    ? url.pathname.startsWith("/sso/")
-    : host === JWXT_HOST && url.pathname.startsWith("/zgykdx/");
-  if (
-    !["http:", "https:"].includes(url.protocol)
-    || !trustedPath
-    || url.username
-    || url.password
-    || url.hash
-  ) throw Errors.badRequest("旧版教务统一认证跳转地址不受信任");
-  return url;
-}
-
-function buildLegacyJwxtTarget(path: string) {
-  const target = assertTrustedLegacySsoHop(new URL(path, LEGACY_JWXT_ORIGIN).toString());
-  if (target.hostname.toLowerCase() !== JWXT_HOST) {
-    throw Errors.badRequest("旧版教务请求地址不受信任");
-  }
-  return target;
-}
-
-async function followLegacySsoRedirects(
-  jar: CookieJar,
-  url: string,
-  init: RequestInit = {},
-  maxHops = 15,
-) {
-  let current = assertTrustedLegacySsoHop(url).toString();
-  let opts = init;
-  const hops: string[] = [];
-  for (let index = 0; index < maxHops; index++) {
-    hops.push(current);
-    const res = await fetchWithJar(jar, current, opts);
-    if (res.status < 300 || res.status >= 400) return { res, finalUrl: current, hops };
-    const location = res.headers.get("location");
-    if (!location) return { res, finalUrl: current, hops };
-    const referer = current;
-    current = assertTrustedLegacySsoHop(new URL(location, current).toString()).toString();
-    if (res.status !== 307 && res.status !== 308) {
-      const headers = new Headers(init.headers);
-      headers.set("Referer", referer);
-      opts = { headers };
-    }
-  }
-  throw new Error("Too many legacy JWXT SSO redirects");
-}
-
-async function decodeLegacyHtmlResponse(res: Response) {
-  const buffer = Buffer.from(await res.arrayBuffer());
-  const contentType = res.headers.get("content-type") || "";
-  const head = buffer.subarray(0, 2048).toString("latin1");
-  const charset = (
-    /charset\s*=\s*["']?([\w-]+)/i.exec(contentType)?.[1]
-    || /charset\s*=\s*["']?([\w-]+)/i.exec(head)?.[1]
-    || "utf-8"
-  ).toLowerCase();
-  if (charset !== "utf-8" && charset !== "utf8" && iconv.encodingExists(charset)) {
-    return iconv.decode(buffer, charset);
-  }
-  return buffer.toString("utf8");
-}
-
-async function fetchLegacyPage(session: ActiveSession, target: URL, init: RequestInit = {}) {
-  const result = await followLegacySsoRedirects(session.jar, target.toString(), init);
-  return {
-    result,
-    finalHost: new URL(result.finalUrl).hostname.toLowerCase(),
-    html: await decodeLegacyHtmlResponse(result.res),
-  };
-}
-
-function legacyPageNeedsLogin(page: Awaited<ReturnType<typeof fetchLegacyPage>>) {
-  return page.result.res.status === 401
-    || page.finalHost !== JWXT_HOST
-    || isLegacyJwxtLoginPage(page.html);
-}
-
-function legacyPageNeedsRetry(page: Awaited<ReturnType<typeof fetchLegacyPage>>) {
-  return legacyPageNeedsLogin(page)
-    || page.result.hops.some((hop) => new URL(hop).hostname.toLowerCase() === CPU_ID_SSO_HOST);
-}
-
-async function establishLegacyJwxtSession(jar: CookieJar) {
-  const entry = await followLegacySsoRedirects(jar, ENTRY_URL);
-  throwForLoginUpstreamStatus(entry.res);
-  await entry.res.arrayBuffer();
-  if (new URL(entry.finalUrl).hostname.toLowerCase() === CPU_ID_SSO_HOST) return false;
-
-  const probe = await followLegacySsoRedirects(jar, LEGACY_MAIN_ENTRY_URL);
-  throwForLoginUpstreamStatus(probe.res);
-  const probeHtml = await decodeLegacyHtmlResponse(probe.res);
-  return probe.res.ok
-    && new URL(probe.finalUrl).hostname.toLowerCase() === JWXT_HOST
-    && !isLegacyJwxtLoginPage(probeHtml);
-}
-
-async function renewLegacyJwxtSession(token: string) {
-  const lockId = crypto.createHash("sha256").update(token).digest("hex");
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const locked = await runWithDistributedLock(`jwxt-legacy-session:${lockId}`, 30_000, async () => {
-      const current = await getSession(token);
-      if (!current) return false;
-      const latest = await fetchLegacyPage(current, new URL(LEGACY_MAIN_ENTRY_URL));
-      if (latest.result.res.ok && !legacyPageNeedsLogin(latest)) {
-        await persistActiveSession(token, current);
-        return true;
-      }
-      current.jar.clearHost(JWXT_HOST);
-      const established = await establishLegacyJwxtSession(current.jar);
-      await persistActiveSession(token, current);
-      return established;
-    });
-    if (locked.acquired) return Boolean(locked.result);
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-  }
-  throw Errors.conflict("旧版教务会话正在恢复，请稍后重试");
-}
-
-async function requestLegacyJwxtHtml(token: string, path: string, init: RequestInit = {}) {
-  let sess = await getSession(token);
-  if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
-  const target = buildLegacyJwxtTarget(path);
-  let page = await fetchLegacyPage(sess, target, init);
-  if (legacyPageNeedsRetry(page)) {
-    const established = await renewLegacyJwxtSession(token);
-    if (established) {
-      sess = await getSession(token);
-      if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
-      page = await fetchLegacyPage(sess, target, init);
-    }
-  }
-  if (legacyPageNeedsRetry(page)) {
-    throw Errors.unauthorized("统一认证会话已失效，请重新登录");
-  }
-  if (!page.result.res.ok) {
-    throw new HttpError(page.result.res.status, 5400 + Math.min(199, Math.max(0, page.result.res.status - 400)), `旧版教务请求失败 (${page.result.res.status})`);
-  }
-  await persistActiveSession(token, sess);
-  return page.html;
-}
-
-/** 用一个 session 访问旧版 jsxsd 路径；过期时复用统一认证 Cookie 自动换票。 */
-export async function jwxtFetchHtml(token: string, path: string): Promise<string> {
-  return requestLegacyJwxtHtml(token, path);
-}
-
 function assertTrustedModernSsoHop(rawUrl: string) {
   const url = new URL(rawUrl);
   const host = url.hostname.toLowerCase();
@@ -1040,7 +886,7 @@ function assertTrustedModernSsoHop(rawUrl: string) {
     || url.username
     || url.password
     || url.hash
-  ) throw Errors.badRequest("新版教务统一认证跳转地址不受信任");
+  ) throw Errors.badRequest("教务统一认证跳转地址不受信任");
   return url;
 }
 
@@ -1066,7 +912,7 @@ async function followModernSsoRedirects(
 }
 
 /**
- * 复现旧教务“进入选课系统”的真实流程：jwxt/sso.jsp 通过脚本跳到
+ * jwxt/sso.jsp 通过脚本跳到
  * id.cpu.edu.cn，后者复用已登录的统一认证会话并向 jwxt 回传一次性 ticket。
  */
 async function establishModernJwxtSession(jar: CookieJar) {
@@ -1083,7 +929,7 @@ async function establishModernJwxtSession(jar: CookieJar) {
     await handoff.res.arrayBuffer();
   }
 
-  // 停在 id 登录页说明统一认证自身已过期；不能退回新版独立账号密码登录。
+  // 停在 id 登录页说明统一认证自身已过期；不能退回 jwxt 独立账号密码登录。
   if (finalUrl.hostname.toLowerCase() === CPU_ID_SSO_HOST) return false;
 
   // ticket 回调通常返回脚本页面；直接请求真实课表来确认 jwxt 会话是否建立。
@@ -1113,7 +959,7 @@ function resolveModernJwxtTarget(path: string) {
     || target.password
     || target.hash
     || !target.pathname.startsWith("/jsxsd/")
-  ) throw Errors.badRequest("新版教务请求地址不受信任");
+  ) throw Errors.badRequest("教务请求地址不受信任");
   return target;
 }
 
@@ -1152,10 +998,10 @@ async function renewModernJwxtSession(token: string, target: URL) {
     if (locked.acquired) return Boolean(locked.result);
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
   }
-  throw Errors.conflict("新版教务会话正在恢复，请稍后重试");
+  throw Errors.conflict("教务会话正在恢复，请稍后重试");
 }
 
-/** 使用同一个统一认证会话自动换票后访问新版 /jsxsd/ 教务页面。 */
+/** 使用同一个统一认证会话自动换票后访问 /jsxsd/ 教务页面。 */
 export async function jwxtFetchModernHtml(
   token: string,
   path: string,
@@ -1179,7 +1025,7 @@ export async function jwxtFetchModernHtml(
     throw Errors.unauthorized("统一认证会话已失效，请重新登录");
   }
   if (!page.result.res.ok) {
-    throw new HttpError(page.result.res.status, 5400 + Math.min(199, Math.max(0, page.result.res.status - 400)), `新版教务请求失败 (${page.result.res.status})`);
+    throw new HttpError(page.result.res.status, 5400 + Math.min(199, Math.max(0, page.result.res.status - 400)), `教务请求失败 (${page.result.res.status})`);
   }
   if (options.persistSession !== false) await persistActiveSession(token, sess);
   return page.html;
@@ -1194,7 +1040,7 @@ export interface JwxtModernFile {
 // Agent 通道单条消息上限 2MB，base64 之后仍要放得下。
 const MODERN_FILE_MAX_BYTES = 1_450_000;
 
-/** 以表单提交方式从新版教务导出一份 PDF（例如成绩单）；返回的不是 PDF 时按登录失效或导出未开放处理。 */
+/** 以表单提交方式从教务导出一份 PDF（例如成绩单）；返回的不是 PDF 时按登录失效或导出未开放处理。 */
 export async function jwxtDownloadModernPdf(
   token: string,
   path: string,
@@ -1358,7 +1204,7 @@ export async function fetchAnyCpuText(
   const finalHost = new URL(finalUrl).host;
   if (finalHost === "id.cpu.edu.cn" && !allowSso) {
     // 这里只能说明当前可选子系统（例如研究生入口）未完成 SSO，不能据此
-    // 删除仍然有效的本科教务会话。基础教务会话是否失效由 jwxtFetchHtml 判定。
+    // 删除仍然有效的本科教务会话。基础教务会话是否失效由 jwxtFetchModernHtml 判定。
     throw Errors.unauthorized("目标校园服务尚未完成统一认证");
   }
   if (!finalHost.endsWith("cpu.edu.cn")) {
@@ -1543,19 +1389,6 @@ export async function fetchPortalNoticePage(
   }
 }
 
-/** POST form 到 jsxsd 路径，返回 HTML */
-export async function jwxtPostForm(token: string, path: string, fields: Record<string, string>): Promise<string> {
-  const target = buildLegacyJwxtTarget(path);
-  return requestLegacyJwxtHtml(token, target.toString(), {
-    method: "POST",
-    body: new URLSearchParams(fields).toString(),
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Referer: target.toString(),
-    },
-  });
-}
-
 /** 调试：把响应 HTML 落盘 */
 async function saveDebug(name: string, content: string) {
   try {
@@ -1569,26 +1402,20 @@ async function saveDebug(name: string, content: string) {
 export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[]; errors: string[] }> {
   const sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效");
-  const base = "http://jsxsd.cpu.edu.cn";
+  const base = MODERN_JWXT_ORIGIN;
   // GET 类型的探针
   const getProbes = [
-    { name: "main-frame", url: `${base}/zgykdx/framework/xsMain.jsp` },
-    { name: "schedule", url: `${base}/zgykdx/xskb/xskb_list.do` },
-    { name: "grades-query", url: `${base}/zgykdx/kscj/cjcx_query?Ves632DSdyV=NEW_XSD_CJGL` },
-    { name: "midterm-grades-query", url: `${base}/zgykdx/kscj/qzcjcx_query?Ves632DSdyV=NEW_XSD_CJGL` },
-    { name: "exam-query", url: `${base}/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM` },
-    { name: "pyfa", url: `${base}/zgykdx/pyfa/pyfa_query?Ves632DSdyV=NEW_XSD_PYGL` },
-    { name: "xywcqk", url: `${base}/zgykdx/xywcqk/cxxywcqk?Ves632DSdyV=NEW-XSD-XYWCQK` },
+    { name: "main-frame", url: `${base}/jsxsd/framework/xsMain.jsp` },
+    { name: "schedule", url: `${base}/jsxsd/xskb/xskb_list.do?viweType=0` },
+    { name: "grades-query", url: `${base}/jsxsd/kscj/cjcx_frm` },
+    { name: "grades-list", url: `${base}/jsxsd/kscj/cjcx_list?pageNum=1&pageSize=50&kksj=&kcxz=&kcsx=&kcmc=&xsfs=all&sfxsbcxq=1` },
+    { name: "exam-query", url: `${base}/jsxsd/xsks/xsksap_query` },
+    { name: "pyfa", url: `${base}/jsxsd/pyfa/pyfa_query?pageNum=1&pageSize=50&islist=1&kkxq=&kcxx=` },
+    { name: "xxwcqk", url: `${base}/jsxsd/xxwcqk/xxwcqkOnkclb.do?isdb=0` },
     // i.cpu.edu.cn —— 实测的真实 API（sudy/sopplus）
     { name: "i-apps", url: "http://i.cpu.edu.cn/sopplus/mobile/getPortalIndexAppList.rst?_p=YXM9MiZ0PTUmZD0xMzMmcD0xJmY9NDQmbT1OJg__&pageSize=50" },
     { name: "i-userinfo", url: "http://i.cpu.edu.cn/ywtbapi/public/v1/getHumPhoto" },
     { name: "i-calendar-cats", url: "http://i.cpu.edu.cn/calendar/mgr/api/category/list.rst?queryType=2" },
-  ];
-  // POST 类型的探针（成绩/考试需要提交查询表单才有列表）
-  const postProbes = [
-    { name: "grades-list", url: `${base}/zgykdx/kscj/cjcx_list`, body: { kksj: "", kcxz: "", kcmc: "" } },
-    { name: "midterm-grades-list", url: `${base}/zgykdx/kscj/qzcjcx_list`, body: { kksj: "", kcxz: "", kcmc: "", xsfs: "all" } },
-    { name: "exam-list", url: `${base}/zgykdx/xsks/xsksap_list`, body: { xnxqid: "", xqlb: "" } },
   ];
   const saved: string[] = []; const errors: string[] = [];
   await fs.mkdir(DEBUG_DIR, { recursive: true });
@@ -1600,24 +1427,6 @@ export async function jwxtDebugSnapshot(token: string): Promise<{ saved: string[
       html = sanitizeDebugHtml(html);
       const file = path.join(DEBUG_DIR, `${stamp}-${p.name}.html`);
       await fs.writeFile(file, `<!-- finalUrl=${finalUrl} status=${res.status} -->\n${html}`, "utf8");
-      saved.push(file);
-    } catch (e: any) { errors.push(`${p.name}: ${e.message ?? e}`); }
-  }
-  for (const p of postProbes) {
-    try {
-      const body = new URLSearchParams();
-      for (const [k, v] of Object.entries(p.body)) {
-        if (v !== undefined) body.set(k, String(v));
-      }
-      const { res, finalUrl } = await followRedirects(sess.jar, p.url, {
-        method: "POST",
-        body,
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: p.url },
-      });
-      let html = await res.text();
-      html = sanitizeDebugHtml(html);
-      const file = path.join(DEBUG_DIR, `${stamp}-${p.name}.html`);
-      await fs.writeFile(file, `<!-- finalUrl=${finalUrl} status=${res.status} method=POST -->\n${html}`, "utf8");
       saved.push(file);
     } catch (e: any) { errors.push(`${p.name}: ${e.message ?? e}`); }
   }

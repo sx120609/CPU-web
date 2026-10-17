@@ -194,12 +194,9 @@ export interface ScheduleWidgetTokenResult {
   endpoint: string;
 }
 
-export type JwxtDataSource = "modern" | "legacy";
-
 type JwxtDataResponse = {
   html?: string;
   parsed: any;
-  source: JwxtDataSource;
 };
 
 export const jwxtApi = {

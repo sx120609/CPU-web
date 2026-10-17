@@ -10,7 +10,7 @@ function trustedCpuUrl(value: string, expectedHost: string, pathCheck: (pathname
     || url.password
     || url.hash
     || !pathCheck(url.pathname)
-  ) throw new Error("新版教务统一认证跳转地址不受信任");
+  ) throw new Error("教务统一认证跳转地址不受信任");
   return url;
 }
 
@@ -26,7 +26,7 @@ export function extractModernJwxtSsoRedirect(html: string, pageUrl: string) {
   ) || html.match(
     /window\.location\.replace\(\s*(["'])([^"']+)\1\s*\)/i,
   );
-  if (!match?.[2]) throw new Error("新版教务未返回统一认证跳转地址");
+  if (!match?.[2]) throw new Error("教务未返回统一认证跳转地址");
 
   const target = trustedCpuUrl(
     new URL(match[2], pageUrl).toString(),
@@ -34,13 +34,13 @@ export function extractModernJwxtSsoRedirect(html: string, pageUrl: string) {
     (pathname) => pathname === "/sso/login",
   );
   const serviceValue = target.searchParams.get("service");
-  if (!serviceValue) throw new Error("新版教务统一认证缺少 service 参数");
+  if (!serviceValue) throw new Error("教务统一认证缺少 service 参数");
   const service = trustedCpuUrl(
     serviceValue,
     MODERN_JWXT_HOST,
     (pathname) => pathname === "/jsxsd/sso.jsp",
   );
-  if (service.search) throw new Error("新版教务统一认证 service 参数不受信任");
+  if (service.search) throw new Error("教务统一认证 service 参数不受信任");
   return target.toString();
 }
 
