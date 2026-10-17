@@ -4,6 +4,7 @@
     <ExtensionHost :blocked="dataAuthOpen || strongNoticeOpen || directNoticeOpen || inAppTipOpen" />
     <SmartPostTaskIndicator />
     <AndroidUpdateDialog />
+    <IosUpdateDialog />
     <LegacyDomainMigrationDialog />
     <el-dialog
       v-model="dataAuthOpen"
@@ -168,6 +169,7 @@ import { authApi } from "@/api/auth";
 import { messageApi } from "@/api/message";
 import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import AndroidUpdateDialog from "@/components/install/AndroidUpdateDialog.vue";
+import IosUpdateDialog from "@/components/install/IosUpdateDialog.vue";
 import ExtensionHost from "@/views/workshop/ExtensionHost.vue";
 import SmartPostTaskIndicator from "@/components/forum/SmartPostTaskIndicator.vue";
 import LegacyDomainMigrationDialog from "@/components/common/LegacyDomainMigrationDialog.vue";

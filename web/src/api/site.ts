@@ -46,6 +46,14 @@ export type DesktopDownloadInfo = {
   platform?: "windows" | "macos";
 };
 
+export type IosAppUpdateStatus = {
+  updateAvailable: boolean;
+  latestVersion?: string | null;
+  currentVersion?: string | null;
+  currentBuild?: string | null;
+  storeUrl?: string;
+};
+
 export const siteApi = {
   features: () => request.get<FeatureMap>("/site/features"),
   config: () => request.get<PublicSiteConfig>("/site/config"),
@@ -53,6 +61,7 @@ export const siteApi = {
   navigation: () => request.get<TopNavigationItem[]>("/site/navigation", undefined, { suppressErrorMessage: true }),
   desktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop", undefined, { suppressErrorMessage: true }),
   macDesktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop-mac", undefined, { suppressErrorMessage: true }),
+  iosAppUpdate: () => request.get<IosAppUpdateStatus>("/app-clients/ios/update", undefined, { suppressErrorMessage: true }),
   assessmentFormDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/assessment-form", undefined, { suppressErrorMessage: true }),
 };
 

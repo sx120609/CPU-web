@@ -3,6 +3,7 @@ import { securityRateLimit } from "../middleware/securityRateLimit";
 import { androidClientHeartbeatSchema, androidClientMetricsSchema, recordAndroidClientHeartbeat, recordAndroidClientMetrics } from "../services/androidClientStats";
 import { desktopInstallReportSchema, recordDesktopInstallReport } from "../services/desktopInstallReports";
 import { harmonyClientHeartbeatSchema, recordHarmonyClientHeartbeat } from "../services/harmonyClientStats";
+import { getIosAppUpdateStatus } from "../services/iosAppUpdate";
 import { iosClientHeartbeatSchema, iosClientMetricsSchema, recordIosClientHeartbeat, recordIosClientMetrics } from "../services/iosClientStats";
 import { Errors, ok } from "../utils/response";
 
@@ -21,6 +22,18 @@ appClientRouter.post("/ios/heartbeat", securityRateLimit("ios-client-heartbeat",
   try {
     await recordIosClientHeartbeat(parsed.data, req.user?.userId ?? null);
     ok(res, { recorded: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Whether the signed-in user's iOS app is behind the App Store. Guests have no
+// install to compare (and a 401 would read as an expired session), so they
+// simply get no prompt.
+appClientRouter.get("/ios/update", async (req, res, next) => {
+  if (!req.user) return ok(res, { updateAvailable: false });
+  try {
+    ok(res, await getIosAppUpdateStatus(req.user.userId));
   } catch (error) {
     next(error);
   }
