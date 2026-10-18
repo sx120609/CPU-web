@@ -9,6 +9,15 @@ test("model codes reported by Android and HarmonyOS map to market names", () => 
   assert.equal(deviceModelName("ALN-AL00"), "HUAWEI Mate 60 Pro");
   assert.equal(deviceModelName("DNN-AN00"), "荣耀 400");
   assert.equal(deviceModelName("SM-W7024"), "三星 W24 Flip");
+  assert.equal(deviceModelName("SM-S9280"), "三星 Galaxy S24 Ultra");
+  assert.equal(deviceModelName("PLK110"), "一加 15");
+  assert.equal(deviceModelName("PJE110"), "一加 Ace 3");
+  assert.equal(deviceModelName("RMX5200"), "真我 GT8 Pro");
+  assert.equal(deviceModelName("BKQ-AN10"), "荣耀 Magic8 Pro");
+  assert.equal(deviceModelName("M511CD"), "REDMI K100 Pro");
+  // Sibling codes of one phone share its name, so they are counted together.
+  assert.equal(deviceModelName("V2502DA"), deviceModelName("V2502A"));
+  assert.equal(deviceModelName("FIN-AL60a"), "HUAWEI nova 12 活力版");
   // Some vendors report the code in lower case or with stray spaces.
   assert.equal(deviceModelName(" v2509a "), "vivo X300");
   assert.equal(deviceModelName("unknown"), null);

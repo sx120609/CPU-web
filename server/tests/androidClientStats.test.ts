@@ -58,7 +58,7 @@ test("summary groups by brand, model, client version, Android major and WebView 
   assert.equal(summary.installs, 3);
   assert.equal(summary.signedInUsers, 1);
   assert.deepEqual(summary.byBrand, [{ brand: "redmi", name: "Redmi", count: 2 }, { brand: "huawei", name: "华为", count: 1 }]);
-  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "23013RK75C", deviceModels: ["23013RK75C"], name: "23013RK75C", named: false, brand: "Redmi", count: 2 });
+  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "23013RK75C", deviceModels: ["23013RK75C"], name: "Redmi K60", named: true, brand: "Redmi", count: 2 });
   assert.deepEqual(summary.otherDeviceModels, { models: 0, count: 0 });
   assert.deepEqual(summary.byAppVersion.map((row) => row.version), ["4.0.15 (56)", "4.0.14 (55)"]);
   assert.deepEqual(summary.bySystemVersion.map((row) => row.version), ["14", "13", "12"]);
