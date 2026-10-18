@@ -45,8 +45,8 @@ android {
         applicationId resolvedApplicationId
         minSdk 24
         targetSdk 35
-        versionCode 59
-        versionName "4.0.18"
+        versionCode 60
+        versionName "4.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "boolean", "WEB_DEBUG", (project.findProperty("webDebug") == "true").toString()
@@ -67,8 +67,18 @@ android {
 
     buildTypes {
         release {
+            // Tree shaking only; see proguard-rules.pro for why names and code shape are kept.
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (releaseStoreFile) {
                 signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            // QA only: run the debug fixture on the shrunk code a release ships (-PminifyDebug=true).
+            if (project.findProperty("minifyDebug") == "true") {
+                minifyEnabled true
+                proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             }
         }
     }
@@ -76,6 +86,16 @@ android {
     buildFeatures {
         buildConfig true
         compose true
+    }
+
+    // DEX stored uncompressed: an incremental update can then carry a binary
+    // difference of the code instead of the whole recompressed file
+    // (server/src/services/androidDelta.ts). It also spares the system from
+    // extracting the code at install time.
+    packaging {
+        dex {
+            useLegacyPackaging false
+        }
     }
 
     compileOptions {

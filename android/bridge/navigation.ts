@@ -1,6 +1,12 @@
 import { liveApp } from './adapters';
 
 const ROOTS = ['/home', '/jwxt', '/schedule', '/services', '/profile'];
+
+/** The roots of the native tabs: the user's own layout when the shell reports one. */
+export function tabRoots(host: any = window): string[] {
+  const custom = host?.CPUAndroidTabRoots;
+  return Array.isArray(custom) ? custom.filter((path: unknown) => localReturnPath(path)) : ROOTS;
+}
 const BACK_BUTTONS = '.mobile-topic-back, .board-back-btn, .back-btn, .back-link, .mobile-back-link, .back-to-site, .corner-back';
 
 export function localReturnPath(value: unknown): string {
@@ -42,7 +48,7 @@ export function createAndroidNavigation(router: any, host: any = window) {
       const scroll = trail[index].scroll;
       trail = trail.slice(0, index + 1);
       if (returning) host.requestAnimationFrame(() => host.requestAnimationFrame(() => host.scrollTo(0, scroll)));
-    } else if (ROOTS.includes(to.path)) {
+    } else if (tabRoots(host).includes(to.path)) {
       trail = [{ path: next, scroll: 0 }];
     } else if (trail.length && pathname(trail[trail.length - 1].path) === to.path) {
       trail[trail.length - 1].path = next;
@@ -55,7 +61,7 @@ export function createAndroidNavigation(router: any, host: any = window) {
     if (pending) return true;
     const current = router.currentRoute.value;
     const target = [localReturnPath(preferred), trail[trail.length - 2]?.path, localReturnPath(current.query?.from),
-      parentRoute(current.path, ROOTS.includes(current.path) ? current.path : fallback)]
+      parentRoute(current.path, tabRoots(host).includes(current.path) ? current.path : fallback)]
       .find(value => value && value !== fullPath(current));
     if (!target) return false;
     pending = true;

@@ -3,6 +3,7 @@ package cn.lizmt.cpuweb.schedule
 import android.content.ComponentName
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
+import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -48,15 +49,15 @@ class NativeShellLogicTest {
 
     @Test
     fun tabsFollowTheIosMapping() {
-        assertEquals(ShellTab.Schedule, ShellTab.fromPath("/schedule?refresh=1"))
-        assertEquals(ShellTab.Home, ShellTab.fromPath("/forum/topic/3"))
-        assertEquals(ShellTab.Academic, ShellTab.fromPath("/jwxt/grades"))
-        assertEquals(ShellTab.Services, ShellTab.fromPath("/services/tools/filestore"))
-        assertEquals(ShellTab.Profile, ShellTab.fromPath("/messages?tab=private"))
-        assertNull(ShellTab.fromPath("/announcements"))
-        assertTrue(ShellTab.isAuthPath("/login?redirect=/home"))
-        assertTrue(ShellTab.isAuthPath("/api/auth/sso-begin"))
-        assertFalse(ShellTab.isAuthPath("/home"))
+        assertTrue(ShellRoutes.isSchedulePath("/schedule?refresh=1"))
+        assertEquals("home", DestinationCatalog.legacySection("/forum/topic/3"))
+        assertEquals("academic", DestinationCatalog.legacySection("/jwxt/grades"))
+        assertEquals("services", DestinationCatalog.legacySection("/services/tools/filestore"))
+        assertEquals("profile", DestinationCatalog.legacySection("/messages?tab=private"))
+        assertNull(DestinationCatalog.legacySection("/announcements"))
+        assertTrue(ShellRoutes.isAuthPath("/login?redirect=/home"))
+        assertTrue(ShellRoutes.isAuthPath("/api/auth/sso-begin"))
+        assertFalse(ShellRoutes.isAuthPath("/home"))
         assertTrue(PageChrome.usesPageNavigation("/forum/topic/12?from=/home"))
         assertFalse(PageChrome.usesPageNavigation("/forum"))
     }

@@ -7,19 +7,26 @@ const ROOT_TITLES: Record<string, string> = {
 export const PAGE_ROUTE_PREFIXES = ['/forum/topic', '/post', '/services/tools/yaoda-can-fly',
   '/services/tools/voicehub', '/voicehub'];
 
-export function readHeaderState(router: any, stores: Map<string, any>, doc: Document = document) {
+/** Titles of the tab roots: the user's own tabs when the native shell reports them. */
+export function rootTitles(host: any = window): Record<string, string> {
+  const custom = host?.CPUAndroidTabTitles;
+  return custom && typeof custom === 'object' && !Array.isArray(custom) ? custom : ROOT_TITLES;
+}
+
+export function readHeaderState(router: any, stores: Map<string, any>, doc: Document = document, host: any = window) {
   const route = router.currentRoute.value;
   const path = route.path;
+  const titles = rootTitles(host);
   const authenticated = Boolean(stores.get('auth')?.isLoggedIn);
   const messages = stores.get('message');
   const pageNavigation = PAGE_ROUTE_PREFIXES.some(prefix => path === prefix || path.startsWith(prefix + '/'))
     || route.meta?.nativeChrome === 'page';
   return {
     path, fullPath: String(route.fullPath || path),
-    title: ROOT_TITLES[path] || String(route.meta?.title || '药大拾间'),
+    title: (Object.prototype.hasOwnProperty.call(titles, path) && String(titles[path])) || String(route.meta?.title || '药大拾间'),
     contentReady: doc.body?.dataset?.cpuAppReady === '1' || Boolean(doc.querySelector('.layout-root')),
     pageNavigation,
-    back: !Object.prototype.hasOwnProperty.call(ROOT_TITLES, path), authenticated,
+    back: !Object.prototype.hasOwnProperty.call(titles, path), authenticated,
     unread: authenticated ? Math.max(0, Number(messages?.unreadCount) || 0) : 0,
     directUnread: authenticated ? Math.max(0, Number(messages?.directUnreadCount) || 0) : 0,
   };

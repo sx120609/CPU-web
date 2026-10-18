@@ -69,48 +69,26 @@ object AppConfig {
         if (uri.port > 0) uri.port else if (uri.scheme.equals("http", true)) 80 else 443
 }
 
-/** Bottom tabs, mirroring iOS `ShellTab` and the HarmonyOS native tab bar. */
-enum class ShellTab(val label: String, val path: String) {
-    Home("首页", "/home"),
-    Academic("教务", "/jwxt"),
-    Schedule("课表", "/schedule"),
-    Services("服务", "/services"),
-    Profile("我的", "/profile");
+/**
+ * Site paths the shell treats specially. Which page belongs to which tab is
+ * the user's choice now (`Customization.tabs`); see `ShellCoordinator.ownerOf`.
+ */
+object ShellRoutes {
+    fun isSchedulePath(path: String): Boolean {
+        val pathname = path.substringBefore('?')
+        return pathname == "/schedule" || pathname.startsWith("/schedule/")
+    }
 
-    companion object {
-        fun fromPath(path: String): ShellTab? {
-            val pathname = path.substringBefore('?').substringBefore('#')
-            if (isSchedulePath(pathname)) return Schedule
-            return when {
-                pathname == "/home" || pathname == "/" -> Home
-                pathname.startsWith("/forum") || pathname.startsWith("/market") ||
-                    pathname.startsWith("/search") || pathname.startsWith("/post") -> Home
-                pathname == "/jwxt" || pathname.startsWith("/jwxt/") -> Academic
-                pathname == "/services" || pathname.startsWith("/services/") -> Services
-                pathname == "/profile" || pathname.startsWith("/profile/") ||
-                    pathname == "/vip" || pathname.startsWith("/vip/") ||
-                    pathname.startsWith("/messages") || pathname.startsWith("/admin") ||
-                    pathname.startsWith("/u/") || pathname == "/login" || pathname == "/register" -> Profile
-                else -> null
-            }
-        }
+    fun isLoginPath(path: String): Boolean {
+        val pathname = path.substringBefore('?').substringBefore('#')
+        return pathname == "/login" || pathname.startsWith("/login/") ||
+            pathname == "/register" || pathname.startsWith("/register/")
+    }
 
-        fun isSchedulePath(path: String): Boolean {
-            val pathname = path.substringBefore('?')
-            return pathname == "/schedule" || pathname.startsWith("/schedule/")
-        }
-
-        fun isLoginPath(path: String): Boolean {
-            val pathname = path.substringBefore('?').substringBefore('#')
-            return pathname == "/login" || pathname.startsWith("/login/") ||
-                pathname == "/register" || pathname.startsWith("/register/")
-        }
-
-        /** Only these paths may load while the native login gate is up. */
-        fun isAuthPath(path: String): Boolean {
-            val pathname = path.substringBefore('?').substringBefore('#')
-            return isLoginPath(pathname) || pathname == "/api" || pathname.startsWith("/api/")
-        }
+    /** Only these paths may load while the native login gate is up. */
+    fun isAuthPath(path: String): Boolean {
+        val pathname = path.substringBefore('?').substringBefore('#')
+        return isLoginPath(pathname) || pathname == "/api" || pathname.startsWith("/api/")
     }
 }
 

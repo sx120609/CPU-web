@@ -34,6 +34,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import android.view.WindowManager
+import cn.lizmt.cpuweb.schedule.custom.CustomizationStore
+import cn.lizmt.cpuweb.schedule.custom.DestinationKind
 import kotlinx.coroutines.launch
 
 /**
@@ -55,6 +58,15 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private set
     lateinit var sharing: ScheduleSharing
     lateinit var couple: ScheduleCouple
+        private set
+    lateinit var customization: CustomizationStore
+        private set
+    lateinit var updates: AppUpdater
+        private set
+    lateinit var dashboardFeeds: DashboardFeeds
+        private set
+    /** The settings page shown over the shell, or null. "" is the settings home. */
+    var settingsRoute by mutableStateOf<String?>(null)
         private set
     private lateinit var clientStats: ClientStats
     private var reportsClientStats = false
@@ -115,6 +127,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
             preferences.edit().putBoolean(KEY_WELCOME_SEEN, true).apply()
         }
         appearance = AppearanceSettings(this)
+        customization = CustomizationStore(this)
+        updates = AppUpdater.get(this)
         style = ScheduleStyleSettings(this)
         widgets = WidgetSettings(this)
         legacyBridge = CpuAndroidBridge(this)
@@ -133,7 +147,13 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         else ScheduleSharing(lifecycleScope, java.io.File(noBackupFilesDir, "shared-schedules.json"), { web.shares(it) })
         couple = if (debugFixture) ScheduleCouple(lifecycleScope, null, { DebugScheduleFixture.couple(it) })
         else ScheduleCouple(lifecycleScope, getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE), { web.couple(it) })
-        shell = ShellCoordinator(lifecycleScope, web, schedule)
+        shell = ShellCoordinator(lifecycleScope, web, schedule) { customization.value }
+        dashboardFeeds = DashboardFeeds(web, lifecycleScope)
+        shell.onReselected = { destination -> if (customization.value.doubleTapRefresh) reselect(destination) }
+        shell.onOpenSettings = { route -> openSettings(route) }
+        shell.onOpenExternal = { url -> openExternal(Uri.parse(url)) }
+        shell.onConfirmExit = { toast("再按一次退出拾间") }
+        applyCustomization()
         clientStats = ClientStats(this, lifecycleScope) {
             ClientFeatureState(appearance.mode, style.visualStyle.id, style.background != null)
         }
@@ -163,8 +183,25 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     }
                 }
         }
+        // The user's layout reaches the page, the launcher and the window as it changes.
+        lifecycleScope.launch {
+            snapshotFlow { customization.value }.collectLatest {
+                applyCustomization()
+                shell.layoutChanged()
+                // Launcher shortcuts follow once the user pauses (typing a title changes the value each key).
+                delay(800)
+                LauncherShortcuts.sync(this@MainActivity, it)
+            }
+        }
+        lifecycleScope.launch {
+            snapshotFlow { customization.value.keepScreenOn && shell.selected.kind == DestinationKind.Schedule }.collectLatest { keepOn ->
+                if (keepOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
         if (debugFixture) {
             welcomeSeen = true
+            DebugCustomization.configure(this, intent)
             shell.connectDebugFixture()
             DebugScheduleFixture.configure(this, intent)
         } else {
@@ -182,7 +219,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     return
                 }
                 lifecycleScope.launch {
-                    if (!shell.handleBack()) {
+                    if (shell.handleBack() == BackOutcome.Exit) {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
                         isEnabled = true
@@ -198,10 +235,10 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         root.addView(nativeWebLayer, FrameLayout.LayoutParams(0, 0))
         setContentView(root)
         nativeWebLayer.setAction(ComposeView(this).apply {
-            setContent { CpuTheme(appearance.mode) { NativePostAction(this@MainActivity) } }
+            setContent { CpuTheme(appearance.mode, customization.value) { NativePostAction(this@MainActivity) } }
         })
         chrome.setContent {
-            CpuTheme(appearance.mode) {
+            CpuTheme(appearance.mode, customization.value) {
                 AppRoot(this)
             }
         }
@@ -214,6 +251,35 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         handleLaunchIntent(intent)
     }
 
+    fun openSettings(route: String = "") {
+        settingsRoute = route
+    }
+
+    fun closeSettings() {
+        settingsRoute = null
+    }
+
+    /** The page, the window and the shell follow the user's latest choices. */
+    private fun applyCustomization() {
+        val custom = customization.value
+        web.applyPreferences(WebTheming.documentScript(AppConfig.origin, WebTheming.css(custom, this), custom), custom.webTextZoom)
+        if (custom.secureScreen) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    /** The active tab tapped again: back to its start, or a refresh when already there. */
+    private fun reselect(destination: cn.lizmt.cpuweb.schedule.custom.Destination) {
+        when (destination.kind) {
+            DestinationKind.Web -> if (shell.isTabRoot(web.currentPath)) web.refresh() else web.navigate(shell.rootPath(destination), replace = true)
+            DestinationKind.Schedule -> schedule.returnToCurrentWeek()
+            DestinationKind.Dashboard -> {
+                dashboardFeeds.refresh(force = true)
+                shell.requestScheduleLoad(force = false)
+            }
+            else -> Unit
+        }
+    }
+
     fun finishWelcome() {
         welcomeSeen = true
         getSharedPreferences(SHELL_PREFS, MODE_PRIVATE).edit().putBoolean(KEY_WELCOME_SEEN, true).apply()
@@ -224,13 +290,34 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         handleLaunchIntent(intent)
     }
 
-    /** Widgets open the native timetable at the current week (or the week they showed). */
+    /** Widgets open the native timetable at the current week (or the week they showed); launcher shortcuts open their page. */
     private fun handleLaunchIntent(intent: Intent?) {
+        intent?.getStringExtra(LauncherShortcuts.EXTRA_DESTINATION)?.let { id ->
+            intent.removeExtra(LauncherShortcuts.EXTRA_DESTINATION)
+            customization.value.destination(id)?.let { destination ->
+                // A cold start opens the page once the shell knows whether the user is signed in.
+                lifecycleScope.launch {
+                    while (!shell.isAuthResolved) kotlinx.coroutines.delay(100)
+                    shell.open(destination)
+                }
+            }
+            return
+        }
         if (intent?.getBooleanExtra(EXTRA_OPEN_SCHEDULE, false) != true) return
         val semester = intent.getStringExtra(EXTRA_SEMESTER)?.takeIf { Regex("^\\d{4}-\\d{4}-[12]$").matches(it) }
         val week = intent.getStringExtra(EXTRA_WEEK)?.takeIf { it.toIntOrNull() in 1..64 }
         intent.removeExtra(EXTRA_OPEN_SCHEDULE)
         shell.openSchedule(semester, week)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        updates.onForeground(this)
+    }
+
+    override fun onStop() {
+        updates.onBackground(this)
+        super.onStop()
     }
 
     override fun onResume() {
@@ -252,7 +339,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
 
     /** JWXT authorization lives on the Web 教务 page; it returns to the native timetable when done. */
     fun openAcademicAuthorization() {
-        shell.openWeb("/jwxt?reauthorize=1&redirect=/schedule", ShellTab.Academic)
+        shell.openWeb("/jwxt?reauthorize=1&redirect=/schedule")
     }
 
     fun pickScheduleBackground() {

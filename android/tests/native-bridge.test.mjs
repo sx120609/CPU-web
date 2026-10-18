@@ -374,3 +374,27 @@ test('the couple timetable goes through the signed-in session', async () => {
   assert.equal((await couple({ action: 'status' })).status, 401);
   assert.equal(requests.length, 8);
 });
+
+test('the native shell can declare its own tab roots and titles for the page bridge', () => {
+  const { stores } = legacyStores();
+  stores.router.currentRoute.value = { path: '/forum', fullPath: '/forum', query: {}, meta: { title: '论坛' } };
+  const p = page({ stores });
+  p.window.CPUAndroidTabRoots = ['/home', '/forum'];
+  p.window.CPUAndroidTabTitles = { '/home': '药大拾间', '/forum': '我的论坛' };
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  const header = posts(p, 'header').at(-1).state;
+  assert.equal(header.back, false);
+  assert.equal(header.title, '我的论坛');
+});
+
+test('without a declaration the five original tabs stay the roots', () => {
+  const { stores } = legacyStores();
+  stores.router.currentRoute.value = { path: '/forum', fullPath: '/forum', query: {}, meta: { title: '论坛' } };
+  const p = page({ stores });
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  const header = posts(p, 'header').at(-1).state;
+  assert.equal(header.back, true);
+  assert.equal(header.title, '论坛');
+});
