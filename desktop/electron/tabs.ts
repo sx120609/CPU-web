@@ -8,7 +8,7 @@ import { branding, type LearningPlatformId } from "./config";
 // 外壳页面画的浮层会被内容视图压住。所以"工具"不做浮层，而是做成一个常驻标签 ——
 // 切到它时把所有内容视图藏起来，露出外壳自己的页面。顺带它也就不像个外挂插件了。
 
-export const CHROME_HEIGHT = 46;
+export const CHROME_HEIGHT = 40;
 
 // 学习通标签里的地址判断。允许 http 是因为超星登录链路中间有一跳是明文的；
 // 这只影响要不要留在标签里显示，注入与特权桥另有更严的判断。
@@ -199,10 +199,7 @@ export class TabManager {
     // 主站里的外部链接都留在应用里。"不是通用浏览器"的边界靠没有地址栏来守。
     if (tab.kind === "workbench") {
       contents.on("will-navigate", event => event.preventDefault());
-      contents.setWindowOpenHandler(({ url }) => {
-        if (url === "https://www.zhihuishu.com/") void this.openLearningTab(url, { platformId: "zhihuishu" });
-        return { action: "deny" };
-      });
+      contents.setWindowOpenHandler(() => ({ action: "deny" }));
       return;
     }
     contents.setWindowOpenHandler(({ url }) => {

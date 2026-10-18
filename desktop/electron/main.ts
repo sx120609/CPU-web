@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, session, shell, Tray, webContents } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, powerMonitor, session, shell, Tray, webContents } from "electron";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -1101,6 +1101,19 @@ const createTabManager = (window: BrowserWindow): TabManager => new TabManager(w
   onChange: (tabsState, activeId) => broadcast("tabs:changed", { tabs: tabsState, activeId })
 });
 
+// 主窗口不用系统标题栏：外壳的标签栏就是标题栏。Windows 的最小化/最大化/关闭
+// 由系统画在标签栏右端（底色透明，叠在外壳自己的标签栏上），macOS 的红绿灯
+// 挪进标签栏左端。两端颜色与 src/shell/style.css 的 --page、--text-2 保持一致。
+const shellPalette = () => nativeTheme.shouldUseDarkColors
+  ? { page: "#0e1012", symbol: "#b0b7c1" }
+  : { page: "#f2f3f5", symbol: "#4e5661" };
+
+const titleBarOverlay = (): Electron.TitleBarOverlayOptions => ({
+  color: "#00000000",
+  symbolColor: shellPalette().symbol,
+  height: CHROME_HEIGHT
+});
+
 const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -1108,15 +1121,20 @@ const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> =
     mainWindow.focus();
     return;
   }
+  const isMac = process.platform === "darwin";
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 820,
     minWidth: 860,
     minHeight: 600,
     title: branding.windowTitle,
-    backgroundColor: "#f8fafc",
+    backgroundColor: shellPalette().page,
     show: options.show !== false,
     autoHideMenuBar: true,
+    titleBarStyle: "hidden",
+    ...(isMac
+      ? { trafficLightPosition: { x: 14, y: Math.round((CHROME_HEIGHT - 16) / 2) } }
+      : { titleBarOverlay: titleBarOverlay() }),
     webPreferences: {
       preload: path.join(__dirname, "shell-preload.js"),
       contextIsolation: true,
@@ -1138,6 +1156,20 @@ const openMainWindow = async (options: { show?: boolean } = {}): Promise<void> =
     mainWindow = undefined;
   });
   enableClipboardMenu(window);
+  // 跟随系统切换深浅色时，窗口按钮的图标色与窗口底色一起换
+  const applyTheme = (): void => {
+    if (window.isDestroyed()) return;
+    window.setBackgroundColor(shellPalette().page);
+    if (!isMac) window.setTitleBarOverlay(titleBarOverlay());
+  };
+  nativeTheme.on("updated", applyTheme);
+  window.once("closed", () => nativeTheme.off("updated", applyTheme));
+  // macOS 全屏时系统收起红绿灯，标签栏左侧的留白也要撤掉
+  const sendFullscreen = (fullscreen: boolean) => () => {
+    if (!window.isDestroyed()) window.webContents.send("window:fullscreen", fullscreen);
+  };
+  window.on("enter-full-screen", sendFullscreen(true));
+  window.on("leave-full-screen", sendFullscreen(false));
   await window.loadFile(resolveAsset("src", "shell", "index.html"));
 
   // 首启引导还没走完时先不建标签：内容视图永远盖在外壳页面之上，
@@ -1519,6 +1551,7 @@ if (installMode || uninstallMode) {
       siteLoaded,
       siteError,
       chromeHeight: CHROME_HEIGHT,
+      platform: process.platform,
       onboarded: preferences.onboarded
     }));
     ipcMain.handle("app:complete-onboarding", async (_event, patch: unknown) => {

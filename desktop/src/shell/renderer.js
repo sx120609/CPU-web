@@ -16,6 +16,9 @@ let pendingReload = false;
 let runtimePlatform = "";
 let learningCredentialState = [];
 
+// 标签栏要给系统窗口按钮让位，平台必须在第一次绘制前就定下来
+if (shell?.platform) document.documentElement.dataset.platform = shell.platform;
+
 const AUTOMATION = [
   ["autoVideo", "自动播放视频与音频", "视频任务点自动播放并等待完成"],
   ["autoJump", "自动切换到下一章", "一章做完后自动往下走；关掉就停在原地等你"],
@@ -33,9 +36,45 @@ const NUMBER_KEYS = [
   "answerIntervalMin", "answerIntervalMax"
 ];
 
+// 平台标记：一个字加一种板块色，标签页图标、平台入口与账号列表共用
+const PLATFORM_MARKS = {
+  chaoxing: ["超", "orange"],
+  zhihuishu: ["智", "blue"],
+  icve: ["职", "violet"],
+  zjy: ["云", "amber"],
+  icourse: ["慕", "green"],
+  yuketang: ["雨", "brand"],
+  weban: ["微", "rose"]
+};
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+const icon = (name, className = "icon") => {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", className);
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
+};
+
+const platformMark = (platformId, fallbackName = "", className = "row-mark") => {
+  const [char, hue] = PLATFORM_MARKS[platformId] || [fallbackName.slice(0, 1) || "课", "brand"];
+  const mark = document.createElement("span");
+  mark.className = className;
+  mark.dataset.hue = hue;
+  mark.textContent = char;
+  return mark;
+};
+
+let toastTimer = 0;
 const say = (message, error = false) => {
+  window.clearTimeout(toastTimer);
   statusLine.textContent = message;
   statusLine.dataset.error = String(error);
+  statusLine.hidden = !message;
+  if (message) toastTimer = window.setTimeout(() => { statusLine.hidden = true; }, error ? 6000 : 3200);
 };
 
 const errorText = (error, fallback) => (error instanceof Error && error.message ? error.message : fallback);
@@ -46,72 +85,92 @@ const formatTime = (at) => new Date(at).toLocaleTimeString("zh-CN", { hour12: fa
 
 /* ------------------------------------------------------------- 标签栏 */
 
+const tabIcon = (tab) => {
+  const holder = document.createElement("span");
+  holder.className = "tab-icon";
+  if (tab.loading) {
+    const spin = document.createElement("span");
+    spin.className = "tab-spin";
+    holder.append(spin);
+    return holder;
+  }
+  if (tab.kind === "site") {
+    const logo = document.createElement("img");
+    logo.src = "./logo.png";
+    logo.alt = "";
+    holder.append(logo);
+    return holder;
+  }
+  if (tab.kind === "tools") {
+    holder.append(icon("tools"));
+    return holder;
+  }
+  const platformId = tab.kind === "workbench" ? "zhihuishu" : tab.platformId;
+  return platformMark(platformId, tab.title, "tab-icon");
+};
+
 const renderTabs = () => {
   tabsBar.textContent = "";
   tabsBar.setAttribute("role", "tablist");
-  let primaryGroup = null;
   for (const tab of tabState.tabs) {
-    const button = document.createElement("button");
-    button.className = "tab";
-    button.type = "button";
-    button.setAttribute("role", "tab");
-    button.setAttribute("aria-selected", String(tab.id === tabState.activeId));
-    button.dataset.active = String(tab.id === tabState.activeId);
-    button.dataset.kind = tab.kind;
-    button.title = tab.title;
+    const active = tab.id === tabState.activeId;
+    const item = document.createElement("div");
+    item.className = "tab";
+    item.tabIndex = 0;
+    item.setAttribute("role", "tab");
+    item.setAttribute("aria-selected", String(active));
+    item.dataset.active = String(active);
+    item.dataset.kind = tab.kind;
+    item.title = tab.title;
 
-    if (tab.loading) {
-      const spin = document.createElement("span");
-      spin.className = "tab-spin";
-      button.append(spin);
-    }
+    item.append(tabIcon(tab));
     const title = document.createElement("span");
     title.className = "tab-title";
-    // 激活态使用粗体。用同一标题的不可见粗体副本提前占好宽度，避免点击后
-    // 标签自身变宽，把旁边的标签与主播弹性盒一起推来推去。
-    title.dataset.label = tab.title;
     title.textContent = tab.title;
-    button.append(title);
+    item.append(title);
 
-    button.addEventListener("click", () => void shell.tabs.activate(tab.id));
+    const activate = () => void shell.tabs.activate(tab.id);
+    item.addEventListener("click", activate);
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activate();
+      }
+    });
 
     if (tab.kind === "learning") {
-      const mute = document.createElement("span");
+      const mute = document.createElement("button");
+      mute.type = "button";
       mute.className = "tab-mute";
-      mute.textContent = tab.muted ? "🔇" : "🔊";
+      mute.dataset.muted = String(Boolean(tab.muted));
       mute.title = tab.muted ? "恢复此标签声音" : "静音此标签";
-      mute.setAttribute("role", "button");
       mute.setAttribute("aria-label", mute.title);
+      mute.append(icon(tab.muted ? "volume-off" : "volume"));
       mute.addEventListener("click", (event) => {
         event.stopPropagation();
         void shell.tabs.setMuted(tab.id, !tab.muted);
       });
-      button.append(mute);
+      item.append(mute);
     }
 
     if (tab.closable) {
-      const close = document.createElement("span");
+      const close = document.createElement("button");
+      close.type = "button";
       close.className = "tab-close";
-      close.textContent = "×";
       close.title = "关闭标签";
+      close.setAttribute("aria-label", "关闭标签");
+      close.append(icon("close"));
       close.addEventListener("click", (event) => {
         event.stopPropagation();
         void shell.tabs.close(tab.id);
       });
-      button.append(close);
+      item.append(close);
+      // 中键关闭，与浏览器习惯一致
+      item.addEventListener("auxclick", (event) => {
+        if (event.button === 1) void shell.tabs.close(tab.id);
+      });
     }
-    if (tab.kind === "site" || tab.kind === "tools") {
-      if (!primaryGroup) {
-        primaryGroup = document.createElement("div");
-        primaryGroup.className = "tab-group tab-group-primary";
-        primaryGroup.setAttribute("role", "group");
-        primaryGroup.setAttribute("aria-label", "药大拾间页面");
-        tabsBar.append(primaryGroup);
-      }
-      primaryGroup.append(button);
-    } else {
-      tabsBar.append(button);
-    }
+    tabsBar.append(item);
   }
 
   // 工具标签没有内容视图，激活它就等于显示本页
@@ -127,10 +186,46 @@ const renderTabs = () => {
   el("chip-back").disabled = !active?.canGoBack;
 };
 
+/* ------------------------------------------------------------ 工具页分区 */
+
+const PANES = ["overview", "assistant", "campus", "account", "general", "about"];
+const PANE_KEY = "cpu-desktop:tools-pane";
+
+const readStoredPane = () => {
+  try {
+    const stored = localStorage.getItem(PANE_KEY);
+    return PANES.includes(stored) ? stored : "overview";
+  } catch {
+    return "overview";
+  }
+};
+
+let currentPane = readStoredPane();
+
+const showPane = (name) => {
+  if (!PANES.includes(name)) return;
+  currentPane = name;
+  for (const pane of document.querySelectorAll("[data-pane]")) pane.hidden = pane.dataset.pane !== name;
+  for (const link of document.querySelectorAll(".side-item[data-pane-link]")) {
+    link.dataset.active = String(link.dataset.paneLink === name);
+  }
+  el("content").scrollTop = 0;
+  try {
+    localStorage.setItem(PANE_KEY, name);
+  } catch { /* 存不了就算了，下次从概览开始 */ }
+};
+
 /* --------------------------------------------------------------- 账号 */
 
 let currentAuthStatus = null;
 let authRefreshInFlight = null;
+
+const setAvatar = (id, name) => {
+  const avatar = el(id);
+  const text = typeof name === "string" ? name.trim() : "";
+  avatar.textContent = text ? Array.from(text)[0] : "?";
+  avatar.dataset.empty = String(!text);
+};
 
 const renderAuthSyncing = () => {
   el("auth-pill").textContent = "同步中";
@@ -143,6 +238,7 @@ const renderAuthSyncing = () => {
   el("auth-hint").hidden = false;
   el("auth-hint").textContent = "正在同步「首页 · 药大拾间」的登录状态…";
   el("quota-text").textContent = "同步中";
+  el("ov-quota").textContent = "正在同步登录状态…";
 };
 
 const renderAuth = (session) => {
@@ -151,7 +247,7 @@ const renderAuth = (session) => {
   const guestUnlimited = quotaRules?.learningAssistant?.accessMode === "guest-unlimited";
   const user = session?.user || {};
   el("auth-pill").textContent = loggedIn ? "已登录" : guestUnlimited ? "限时开放" : session?.expired ? "已过期" : "未登录";
-  el("auth-pill").dataset.state = loggedIn || guestUnlimited ? "ok" : "";
+  el("auth-pill").dataset.state = loggedIn || guestUnlimited ? "ok" : session?.expired ? "warn" : "";
   el("auth-fields").hidden = !loggedIn;
   el("auth-login").hidden = loggedIn || guestUnlimited;
   el("auth-logout").hidden = !loggedIn;
@@ -159,19 +255,33 @@ const renderAuth = (session) => {
   if (!loggedIn) {
     el("auth-howto").hidden = true;
     el("auth-sponsor").hidden = true;
+    el("auth-name").textContent = "未登录";
+    setAvatar("auth-avatar", "");
+    setAvatar("side-avatar", "");
+    el("side-name").textContent = "未登录";
     if (guestUnlimited) {
+      el("auth-level").textContent = "新生限时开放，无需登录";
+      el("side-sub").textContent = "限时免登录开放中";
       el("auth-hint").textContent = "新生限时开放中：安装客户端即可使用学习通助手，AI 刷题暂不限次数，无需药大拾间账号。";
       el("quota-text").textContent = "限时无限";
+      el("ov-quota").textContent = "新生限时开放，暂不限次数";
       return;
     }
+    el("auth-level").textContent = "在首页登录后自动同步";
+    el("side-sub").textContent = "在首页登录后自动同步";
     // 到期本来会自动续（主站还登着就静默换新的），走到这里说明主站也退了
     el("auth-hint").textContent = session?.expired
       ? "登录状态已失效。在「首页 · 药大拾间」里登录一次即可，这里会自动同步。"
       : "在「首页 · 药大拾间」登录后，这里会自动同步，无需再登录一次。";
     el("quota-text").textContent = "未登录";
+    el("ov-quota").textContent = "登录后按每日免费额度与 AI 点数使用";
     return;
   }
-  el("auth-name").textContent = user.user || user.nickname || user.name || user.username || user.sub || "已登录用户";
+  const name = user.user || user.nickname || user.name || user.username || user.sub || "已登录用户";
+  el("auth-name").textContent = name;
+  el("side-name").textContent = name;
+  setAvatar("auth-avatar", name);
+  setAvatar("side-avatar", name);
 
   // 数值为 0 是有效信息，不能显示成"—"，所以一律判类型而不是判真值
   const num = (value) => (typeof value === "number" ? value : null);
@@ -179,9 +289,9 @@ const renderAuth = (session) => {
     el(id).textContent = value === null ? "—" : `${value}${suffix}`;
   };
 
-  el("auth-level").textContent = user.levelName
-    ? `Lv.${user.level ?? "?"} ${user.levelName}`
-    : "—";
+  const levelText = user.levelName ? `Lv.${user.level ?? "?"} ${user.levelName}` : "";
+  el("auth-level").textContent = levelText || "已登录";
+  el("side-sub").textContent = levelText || "已登录";
 
   const reputation = num(user.reputation);
   el("auth-reputation").textContent = reputation === null
@@ -197,9 +307,10 @@ const renderAuth = (session) => {
     ? "—"
     : dailyRemaining === null
       ? `已用 ${user.usedToday || 0} / ${quota}`
-      : `剩 ${dailyRemaining} / ${quota} 次`;
+      : `${dailyRemaining} / ${quota}`;
 
-  show("auth-points", num(user.assistantPoints), " 点");
+  const points = num(user.assistantPoints);
+  show("auth-points", points);
 
   const balance = num(user.aiBalance);
   el("auth-balance").textContent = balance === null ? "—" : `${balance} 次`;
@@ -208,9 +319,15 @@ const renderAuth = (session) => {
     ? "限时无限"
     : balance === null ? "—" : `剩 ${balance}`;
 
+  const quotaSummary = [
+    quota === null ? "" : dailyRemaining === null ? `今日已用 ${user.usedToday || 0} / ${quota} 次` : `今日免费剩 ${dailyRemaining} / ${quota} 次`,
+    points === null ? "" : `点数 ${points}`
+  ].filter(Boolean).join(" · ");
+  el("ov-quota").textContent = guestUnlimited ? "新生限时开放，暂不限次数" : quotaSummary || "—";
+
   if (guestUnlimited) {
-    el("auth-usage").textContent = "限时不限次数";
-    el("auth-balance").textContent = "限时不限次数";
+    el("auth-usage").textContent = "不限";
+    el("auth-balance").textContent = "不限";
     el("auth-howto").hidden = true;
     el("auth-sponsor").hidden = true;
   } else {
@@ -392,15 +509,19 @@ const CAMPUS_PILL = { online: "ok", offline: "warn", paused: "bad", authenticati
 
 const renderCampusState = (state) => {
   if (!state) return;
+  const disabled = state.status === "disabled";
   el("campus-pill").textContent = state.message || "—";
   el("campus-pill").dataset.state = CAMPUS_PILL[state.status] || "";
   el("campus-dot").dataset.state = CAMPUS_DOT[state.status] ?? "";
-  el("campus-text").textContent = state.status === "disabled" ? "校园网" : state.message || "校园网";
+  el("ov-campus-dot").dataset.state = CAMPUS_DOT[state.status] ?? "";
+  el("campus-text").textContent = disabled ? "校园网" : state.message || "校园网";
+  el("ov-campus").textContent = disabled ? "未启用后台自动连接" : state.message || "—";
   if (!el("campus-student").value) el("campus-student").value = state.studentId || "";
   el("campus-hint").textContent = state.hasCredential
     ? `已保存学号 ${state.studentId}。密码经系统安全存储加密，不会回传到界面。`
     : "密码用系统安全存储加密，只在发起认证时于后台解密。";
   el("campus-login").disabled = !state.hasCredential;
+  el("campus-clear").disabled = !state.hasCredential;
 };
 
 const renderCampusSettings = (settings) => {
@@ -432,57 +553,93 @@ const renderCampusLogs = (entries) => {
 
 /* --------------------------------------------- 网课平台与登录凭据 */
 
-const platformMark = (name) => name.replace(/[\s/·]/g, "").slice(0, 2);
+const openPlatform = async (platform, trigger) => {
+  trigger.disabled = true;
+  try {
+    await shell.tabs.openLearning(platform.id);
+    pendingReload = false;
+    renderScriptConfig();
+    say(`已打开${platform.name}。`);
+  } catch (error) {
+    say(errorText(error, `无法打开${platform.name}。`), true);
+  } finally {
+    trigger.disabled = platform.enabled === false;
+  }
+};
 
-const renderLearningPlatforms = (state) => {
-  if (!Array.isArray(state)) return;
-  learningCredentialState = state;
-  const list = el("platform-list");
+const renderPlatformGrid = (state) => {
+  const grid = el("platform-grid");
+  grid.textContent = "";
+  for (const platform of state) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "platform-tile";
+    tile.disabled = platform.enabled === false;
+    const copy = document.createElement("span");
+    copy.className = "platform-copy";
+    const name = document.createElement("span");
+    name.className = "platform-name";
+    name.textContent = platform.name;
+    const description = document.createElement("span");
+    description.className = "platform-description";
+    description.textContent = platform.enabled === false ? "管理员已暂时停用" : platform.description;
+    copy.append(name, description);
+    tile.append(platformMark(platform.id, platform.short || platform.name), copy);
+    tile.addEventListener("click", () => void openPlatform(platform, tile));
+    grid.append(tile);
+  }
+};
+
+const renderPlatformCredentials = (state) => {
+  const list = el("platform-credentials");
   list.textContent = "";
   for (const platform of state) {
-    const card = document.createElement("article");
-    card.className = "platform-option";
-    card.dataset.disabled = platform.enabled === false ? "true" : "false";
+    const row = document.createElement("div");
+    row.className = "row";
 
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "platform-open";
-    open.innerHTML = `<span class="platform-mark"></span><span class="platform-copy"><span class="platform-name"></span><span class="platform-description"></span></span><span class="platform-arrow">›</span>`;
-    open.querySelector(".platform-mark").textContent = platformMark(platform.short || platform.name);
-    open.querySelector(".platform-name").textContent = platform.name;
-    open.querySelector(".platform-description").textContent = platform.enabled === false
-      ? "管理员已暂时停用"
-      : platform.description;
-    open.disabled = platform.enabled === false;
-    open.addEventListener("click", async () => {
-      open.disabled = true;
-      const dialog = el("platform-dialog");
-      // 先撤掉原生 dialog 的 backdrop，再创建并激活内容标签。否则内容视图先切换时，
-      // Shell 里仍处于 modal 状态的遮罩会短暂覆盖整窗，看起来像页面一直没有获得焦点。
-      if (dialog.open) dialog.close();
-      try {
-        await shell.tabs.openLearning(platform.id);
-        pendingReload = false;
-        renderScriptConfig();
-        say(`已打开${platform.name}。`);
-      } catch (error) {
-        say(errorText(error, `无法打开${platform.name}。`), true);
-      } finally {
-        open.disabled = false;
-      }
-    });
+    const text = document.createElement("span");
+    text.className = "row-text";
+    const name = document.createElement("strong");
+    name.textContent = platform.name;
+    const saved = document.createElement("small");
+    saved.textContent = platform.enabled === false
+      ? "该平台恢复开放后可继续使用已保存凭据"
+      : platform.remember
+        ? (platform.hasCredential ? `已保存账号 ${platform.account}` : "登录时会自动保存账号密码")
+        : "不保存密码";
+    text.append(name, saved);
+    row.append(platformMark(platform.id, platform.short || platform.name), text);
 
-    const credential = document.createElement("div");
-    credential.className = "platform-credential";
-    const remember = document.createElement("label");
-    remember.className = "platform-remember";
+    if (platform.hasCredential) {
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "btn btn-quiet btn-danger";
+      clear.textContent = "清除";
+      clear.addEventListener("click", async () => {
+        try {
+          renderLearningPlatforms(await shell.learningCredentials.clear(platform.id));
+          say(`已清除${platform.name}凭据。`);
+        } catch (error) {
+          say(errorText(error, "删除失败。"), true);
+        }
+      });
+      row.append(clear);
+    }
+
+    const toggle = document.createElement("label");
+    toggle.className = "switch";
+    toggle.title = "记住此平台账号密码";
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = Boolean(platform.remember);
     checkbox.disabled = platform.enabled === false;
-    const rememberText = document.createElement("span");
-    rememberText.textContent = "记住此平台账号密码";
-    remember.append(checkbox, rememberText);
+    checkbox.setAttribute("aria-label", `记住${platform.name}账号密码`);
+    const track = document.createElement("span");
+    track.className = "switch-track";
+    const thumb = document.createElement("span");
+    thumb.className = "switch-thumb";
+    track.append(thumb);
+    toggle.append(checkbox, track);
     checkbox.addEventListener("change", async () => {
       const previous = !checkbox.checked;
       checkbox.disabled = true;
@@ -495,48 +652,16 @@ const renderLearningPlatforms = (state) => {
         say(errorText(error, "设置保存失败。"), true);
       }
     });
-    const saved = document.createElement("p");
-    saved.className = "platform-saved";
-    saved.textContent = platform.enabled === false
-      ? "该平台恢复开放后可继续使用已保存凭据"
-      : platform.remember
-      ? (platform.hasCredential ? `已保存账号 ${platform.account}` : "登录时会自动保存账号密码")
-      : "未启用密码保存";
-    credential.append(remember, saved);
-    if (platform.hasCredential) {
-      const clear = document.createElement("button");
-      clear.type = "button";
-      clear.className = "platform-clear";
-      clear.textContent = "清除已保存凭据";
-      clear.addEventListener("click", async () => {
-        try {
-          renderLearningPlatforms(await shell.learningCredentials.clear(platform.id));
-          say(`已清除${platform.name}凭据。`);
-        } catch (error) {
-          say(errorText(error, "删除失败。"), true);
-        }
-      });
-      credential.append(clear);
-    }
-    card.append(open, credential);
-    list.append(card);
+    row.append(toggle);
+    list.append(row);
   }
 };
 
-const openPlatformDialog = async () => {
-  try {
-    renderLearningPlatforms(await shell.learningCredentials.getState());
-    el("platform-dialog").showModal();
-  } catch (error) {
-    say(errorText(error, "无法读取网课平台。"), true);
-  }
-};
-
-const bindLearningPlatforms = () => {
-  el("platform-dialog-close").addEventListener("click", () => el("platform-dialog").close());
-  el("platform-dialog").addEventListener("click", (event) => {
-    if (event.target === el("platform-dialog")) el("platform-dialog").close();
-  });
+const renderLearningPlatforms = (state) => {
+  if (!Array.isArray(state)) return;
+  learningCredentialState = state;
+  renderPlatformGrid(state);
+  renderPlatformCredentials(state);
 };
 
 /* --------------------------------------------------------------- 刷题 */
@@ -546,7 +671,14 @@ const renderScriptSwitches = () => {
   host.textContent = "";
   for (const [key, label, hint] of AUTOMATION) {
     const wrap = document.createElement("label");
-    wrap.className = "switch";
+    wrap.className = "row switch";
+    const text = document.createElement("span");
+    text.className = "row-text";
+    const strong = document.createElement("strong");
+    strong.textContent = label;
+    const small = document.createElement("small");
+    small.textContent = hint;
+    text.append(strong, small);
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = Boolean(scriptConfig[key]);
@@ -556,14 +688,7 @@ const renderScriptSwitches = () => {
     const thumb = document.createElement("span");
     thumb.className = "switch-thumb";
     track.append(thumb);
-    const text = document.createElement("span");
-    text.className = "switch-text";
-    const strong = document.createElement("strong");
-    strong.textContent = label;
-    const small = document.createElement("small");
-    small.textContent = hint;
-    text.append(strong, small);
-    wrap.append(input, track, text);
+    wrap.append(text, input, track);
     host.append(wrap);
   }
 };
@@ -600,7 +725,10 @@ async function pushScriptConfig(key, value) {
 const renderScriptActivity = (activity) => {
   if (!activity) return;
   el("script-pill").hidden = !activity.running;
-  if (activity.status) el("script-status").textContent = activity.status;
+  if (activity.status) {
+    el("script-status").textContent = activity.status;
+    el("ov-script").textContent = activity.status;
+  }
   const entries = activity.entries || [];
   el("script-logs").textContent = entries.length
     ? entries.slice(-60).map((entry) => `${formatTime(entry.at)}  ${entry.text}`).join("\n")
@@ -611,8 +739,8 @@ const renderScriptActivity = (activity) => {
 
 const bindChrome = () => {
   el("brand-home").addEventListener("click", () => void shell.tabs.openHome());
-  el("chip-campus").addEventListener("click", () => openTools());
-  el("chip-quota").addEventListener("click", () => openTools());
+  el("chip-campus").addEventListener("click", () => openTools("campus"));
+  el("chip-quota").addEventListener("click", () => openTools("account"));
   el("chip-reload").addEventListener("click", () => void shell.tabs.reload(tabState.activeId));
   el("chip-back").addEventListener("click", () => void shell.tabs.goBack(tabState.activeId));
   document.querySelectorAll("[data-external]").forEach((link) => {
@@ -620,6 +748,12 @@ const bindChrome = () => {
       event.preventDefault();
       void shell.openExternal(link.href);
     });
+  });
+  document.querySelectorAll("[data-pane-link]").forEach((link) => {
+    link.addEventListener("click", () => showPane(link.dataset.paneLink));
+  });
+  shell.window?.onFullscreenChange?.((fullscreen) => {
+    document.documentElement.dataset.fullscreen = String(Boolean(fullscreen));
   });
 };
 
@@ -653,8 +787,9 @@ const renderScriptUpdateStates = (states) => {
   renderScriptUpdateState(states.weban, "weban");
 };
 
-// 点状态芯片就切到工具标签
-const openTools = () => {
+// 点状态按钮就切到工具标签里对应的分区
+const openTools = (pane) => {
+  if (pane) showPane(pane);
   const tools = tabState.tabs.find((tab) => tab.kind === "tools");
   if (tools) void shell.tabs.activate(tools.id);
 };
@@ -743,7 +878,10 @@ const bindCampus = () => {
 };
 
 const bindScript = () => {
-  el("script-open").addEventListener("click", () => void openPlatformDialog());
+  el("script-open").addEventListener("click", () => {
+    showPane("overview");
+    el("platform-grid").scrollIntoView({ block: "center" });
+  });
   for (const key of NUMBER_KEYS) {
     el(`cfg-${key}`)?.addEventListener("change", (event) => void pushScriptConfig(key, Number(event.target.value)));
   }
@@ -874,7 +1012,7 @@ const bindOffline = () => {
       button.disabled = false;
     }
   });
-  el("offline-tools").addEventListener("click", () => openTools());
+  el("offline-tools").addEventListener("click", () => openTools("campus"));
 };
 
 /* ------------------------------------------------------------- 首启引导 */
@@ -907,6 +1045,12 @@ const startOnboarding = () => {
       renderOnboarding();
     });
   }
+  for (const button of document.querySelectorAll("[data-prev]")) {
+    button.addEventListener("click", () => {
+      obStep = Math.max(obStep - 1, 0);
+      renderOnboarding();
+    });
+  }
 
   el("ob-done").addEventListener("click", async () => {
     const button = el("ob-done");
@@ -917,12 +1061,12 @@ const startOnboarding = () => {
         campusNetEnabled: el("ob-campus").checked
       });
       // 主进程这时才创建标签，退场动画放完再撤掉引导层
-      el("onboard").style.transition = "opacity .34s ease";
+      el("onboard").style.transition = "opacity .3s ease";
       el("onboard").style.opacity = "0";
       window.setTimeout(() => {
         el("onboard").hidden = true;
         delete document.body.dataset.onboarding;
-      }, 340);
+      }, 300);
       await afterOnboarding();
     } catch (error) {
       button.disabled = false;
@@ -967,10 +1111,10 @@ const afterOnboarding = async () => {
 /* --------------------------------------------------------------- 启动 */
 
 const boot = async () => {
+  showPane(currentPane);
   bindChrome();
   bindAuth();
   bindCampus();
-  bindLearningPlatforms();
   bindScript();
   bindManualUpdate();
   bindOffline();
@@ -998,7 +1142,8 @@ const boot = async () => {
   let info;
   try {
     info = await shell.getBootInfo();
-    runtimePlatform = info?.platform || "";
+    runtimePlatform = info?.platform || shell.platform || "";
+    if (runtimePlatform) document.documentElement.dataset.platform = runtimePlatform;
     if (info?.version) el("about-version").textContent = `v${info.version}`;
     el("about-product").textContent = info?.platform === "darwin"
       ? "药大拾间 macOS 客户端"
@@ -1016,6 +1161,10 @@ const boot = async () => {
   await afterOnboarding();
 };
 
+const syncUpdateBadge = () => {
+  el("side-update-badge").hidden = el("update-card").hidden;
+};
+
 function showUpdate(info) {
   if (!info?.hasUpdate) return;
   // 自动更新接管后这条只在"没能自动下载"时才有意义，所以给手动下载的入口
@@ -1025,6 +1174,7 @@ function showUpdate(info) {
   el("update-note").textContent = "网课平台改版后旧版助手可能失效，建议更新。";
   el("update-go").hidden = false;
   el("update-go").onclick = () => void shell.update.open(info.url);
+  syncUpdateBadge();
 }
 
 // 自动更新：下载全程静默，界面只在这里如实反映它到哪一步了
@@ -1048,6 +1198,7 @@ function renderUpdateState(state) {
     el("update-restart").hidden = true;
     track.hidden = false;
     el("update-fill").style.width = `${state.percent}%`;
+    syncUpdateBadge();
     return;
   }
 
@@ -1068,6 +1219,7 @@ function renderUpdateState(state) {
         say(errorText(error, "更新启动失败。"), true);
       }
     };
+    syncUpdateBadge();
     return;
   }
 

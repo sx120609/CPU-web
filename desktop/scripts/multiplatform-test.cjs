@@ -115,14 +115,10 @@ assert.match(tabs, /show: false[\s\S]*skipTaskbar: true/, "中转窗口不得显
 assert.match(tabs, /this\.openLearningTab\(candidate/, "捕获到真实课程地址后必须打开客户端标签");
 assert.match(shellRenderer, /shell\.tabs\.setMuted\(tab\.id, !tab\.muted\)/, "标签栏静音按钮应调用宿主音频控制");
 
-assert.match(shellHtml, /id="platform-dialog"/);
+assert.match(shellHtml, /id="platform-grid"/, "工具页概览应直接列出网课平台入口");
+assert.match(shellHtml, /id="platform-credentials"/, "各平台的记住密码开关应在网课助手分区");
+assert.doesNotMatch(shellHtml, /<dialog/, "平台入口不得用原生模态框：内容标签切走后遮罩会留在外壳上，整窗持续模糊");
 assert.match(shellRenderer, /shell\.tabs\.openLearning\(platform\.id\)/);
-const platformOpenHandler = shellRenderer.match(/open\.addEventListener\("click", async \(\) => \{[\s\S]*?\n\s*\}\);/)?.[0] ?? "";
-assert.ok(platformOpenHandler, "应找到网课平台打开事件");
-assert.ok(
-  platformOpenHandler.indexOf("dialog.close()") < platformOpenHandler.indexOf("shell.tabs.openLearning(platform.id)"),
-  "打开平台前必须先关闭原生弹窗遮罩，避免进入页面后整窗持续模糊",
-);
 assert.match(sitePreload, /openLearning: \(platformId\?: string\)/);
 assert.match(shellRenderer, /shell\.learningCredentials\.setRemember/);
 assert.match(credentialStore, /safeStorage\.encryptString/);

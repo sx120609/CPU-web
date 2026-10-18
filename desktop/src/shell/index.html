@@ -7,349 +7,472 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <!-- 线性图标。同文档内 <use> 引用，不受 img-src 限制 -->
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7" /><path d="M5.5 9v11h4.5v-6h4v6h4.5V9" /></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="m14.5 18-6-6 6-6" /></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.5 18 6-6-6-6" /></symbol>
+      <symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66" /><path d="M20 4v5h-5" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M17 7 7 17M7 7l10 10" /></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6.5 9H3.5v6h3l4.5 4z" /><path d="M15.5 9a4.5 4.5 0 0 1 0 6" /><path d="M18.5 6a8.5 8.5 0 0 1 0 12" /></symbol>
+      <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M11 5 6.5 9H3.5v6h3l4.5 4z" /><path d="m21 9.5-5 5M16 9.5l5 5" /></symbol>
+      <symbol id="i-tools" viewBox="0 0 24 24"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1" /><circle cx="15" cy="6.5" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="17" cy="17.5" r="2" /></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" /></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 5h5.5A3.5 3.5 0 0 1 12 8.5V20a2.5 2.5 0 0 0-2.5-2.5H3z" /><path d="M21 5h-5.5A3.5 3.5 0 0 0 12 8.5V20a2.5 2.5 0 0 1 2.5-2.5H21z" /></symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0" /><path d="M5.5 12.5a9.5 9.5 0 0 1 13 0" /><path d="M8.7 16a5 5 0 0 1 6.6 0" /><path d="M12 19.5h.01" /></symbol>
+      <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="m3 3 18 18" /><path d="M8.7 16a5 5 0 0 1 6.6 0" /><path d="M5.5 12.5a9.5 9.5 0 0 1 4-2.3" /><path d="M14.6 10.3a9.5 9.5 0 0 1 3.9 2.2" /><path d="M2.5 9a14 14 0 0 1 3.6-2.4" /><path d="M10.4 5.1A14 14 0 0 1 21.5 9" /><path d="M12 19.5h.01" /></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.8" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" /></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5V12" /><path d="M6.7 6.7a7.5 7.5 0 1 0 10.6 0" /></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5" /><path d="M12 7.6h.01" /></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.9 10l6.6 2-6.6 2L12 20.5 10.1 14l-6.6-2 6.6-2z" /></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11" /><path d="m7 10.5 5 5 5-5" /><path d="M5 20h14" /></symbol>
+      <symbol id="i-tray" viewBox="0 0 24 24"><path d="M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5" /><path d="M6 5h12l2.5 8.5V19h-17v-5.5z" /></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M8 16 16 8" /><path d="M9 8h7v7" /></symbol>
+    </svg>
+
     <!-- 首启引导。主进程在引导走完前不创建任何内容视图，所以这一页不会被压住 -->
     <section class="onboard" id="onboard" hidden>
-      <div class="ob-bg"><span class="ob-orb ob-orb-a"></span><span class="ob-orb ob-orb-b"></span><span class="ob-grain"></span></div>
-
       <div class="ob-stage" id="ob-stage">
-        <!-- 第一屏 -->
         <div class="ob-step" data-step="0">
           <img class="ob-logo" src="./logo.png" alt="" />
-          <h1 class="ob-title">药大拾间<span>桌面端</span></h1>
-          <p class="ob-lead">把校园服务装进一个窗口，再加两件网页做不到的事。</p>
-          <button class="ob-primary" data-next>开始<span class="ob-arrow">→</span></button>
+          <p class="ob-kicker">药大拾间桌面端</p>
+          <h1 class="ob-title">校园服务，装进一个窗口。</h1>
+          <p class="ob-lead">网站的全部功能照常可用，另外再做两件网页做不到的事：自动连校园网，以及在客户端里上网课。</p>
+          <div class="ob-actions">
+            <button class="btn btn-primary btn-lg" type="button" data-next>开始</button>
+          </div>
         </div>
 
-        <!-- 第二屏 -->
         <div class="ob-step" data-step="1">
-          <h2 class="ob-heading">它能替你做什么</h2>
-          <ul class="ob-features">
-            <li><span class="ob-dot"></span><div><strong>校园网自动连接</strong><small>掉线自动重认证；判断出你不在校园网时不会瞎试</small></div></li>
-            <li><span class="ob-dot"></span><div><strong>多平台网课标签</strong><small>六个平台统一从客户端打开，助手自动识别视频、作业与考试</small></div></li>
-            <li><span class="ob-dot"></span><div><strong>常驻后台</strong><small>关掉窗口收进托盘，可开机自启</small></div></li>
+          <p class="ob-kicker">它能替你做什么</p>
+          <h2 class="ob-title">三件事，开着就在做。</h2>
+          <ul class="group ob-features">
+            <li class="row">
+              <span class="row-mark" data-hue="brand"><svg class="icon"><use href="#i-wifi" /></svg></span>
+              <span class="row-text"><strong>校园网自动连接</strong><small>掉线自动重新认证；判断出你不在校园网时不会瞎试</small></span>
+            </li>
+            <li class="row">
+              <span class="row-mark" data-hue="blue"><svg class="icon"><use href="#i-book" /></svg></span>
+              <span class="row-text"><strong>多平台网课标签</strong><small>七个平台统一从客户端打开，助手自动识别视频、作业与考试</small></span>
+            </li>
+            <li class="row">
+              <span class="row-mark" data-hue="amber"><svg class="icon"><use href="#i-tray" /></svg></span>
+              <span class="row-text"><strong>常驻后台</strong><small>关掉窗口收进托盘，可开机自启</small></span>
+            </li>
           </ul>
-          <button class="ob-primary" data-next>下一步<span class="ob-arrow">→</span></button>
+          <div class="ob-actions">
+            <button class="btn btn-quiet btn-lg" type="button" data-prev>上一步</button>
+            <button class="btn btn-primary btn-lg" type="button" data-next>下一步</button>
+          </div>
         </div>
 
-        <!-- 第三屏 -->
         <div class="ob-step" data-step="2">
-          <h2 class="ob-heading">两个开关，之后也能改</h2>
-          <label class="ob-switch">
-            <input type="checkbox" id="ob-launch" />
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-text"><strong>开机自动启动</strong><small>登录系统后自动运行并收进托盘</small></span>
-          </label>
-          <label class="ob-switch">
-            <input type="checkbox" id="ob-campus" />
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-text"><strong>后台自动连接校园网</strong><small>稍后在工具页填学号密码才会真正生效</small></span>
-          </label>
+          <p class="ob-kicker">最后两个开关</p>
+          <h2 class="ob-title">之后随时能在“工具”里改。</h2>
+          <div class="group">
+            <label class="row switch">
+              <span class="row-text"><strong>开机自动启动</strong><small>登录系统后自动运行并收进托盘</small></span>
+              <input type="checkbox" id="ob-launch" />
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+            <label class="row switch">
+              <span class="row-text"><strong>后台自动连接校园网</strong><small>稍后在工具页填学号密码才会真正生效</small></span>
+              <input type="checkbox" id="ob-campus" />
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
           <p class="ob-fine">答案来自独立答题 AI，只发送当前题目内容，不携带站内知识库或用户资料；访问与额度策略由服务器实时下发。</p>
-          <button class="ob-primary" id="ob-done">进入药大拾间<span class="ob-arrow">→</span></button>
+          <div class="ob-actions">
+            <button class="btn btn-quiet btn-lg" type="button" data-prev>上一步</button>
+            <button class="btn btn-primary btn-lg" id="ob-done" type="button">进入药大拾间</button>
+          </div>
         </div>
       </div>
 
       <div class="ob-pager" id="ob-pager"></div>
     </section>
 
-    <!-- 标签栏。高度必须与 electron/tabs.ts 的 CHROME_HEIGHT 一致 -->
+    <!-- 标签栏兼窗口标题栏。高度必须与 electron/tabs.ts 的 CHROME_HEIGHT 一致 -->
     <header class="chrome">
-      <button class="brand-home" id="brand-home" type="button" title="返回药大拾间首页" aria-label="返回药大拾间首页">
-        <img class="brand" src="./logo.png" alt="" />
-      </button>
       <nav class="tabs" id="tabs" aria-label="应用标签页"></nav>
-      <div class="chips">
-        <button class="chip" id="chip-campus" type="button" title="校园网状态">
+      <div class="chrome-tools">
+        <button class="chrome-button" id="chip-back" type="button" title="返回" aria-label="返回"><svg class="icon"><use href="#i-back" /></svg></button>
+        <button class="chrome-button" id="chip-reload" type="button" title="重新加载" aria-label="重新加载"><svg class="icon"><use href="#i-reload" /></svg></button>
+        <button class="chrome-button" id="brand-home" type="button" title="返回药大拾间首页" aria-label="返回药大拾间首页"><svg class="icon"><use href="#i-home" /></svg></button>
+        <span class="chrome-divider" aria-hidden="true"></span>
+        <button class="chrome-status" id="chip-campus" type="button" title="校园网状态">
           <span class="dot" id="campus-dot"></span><span id="campus-text">校园网</span>
         </button>
-        <button class="chip" id="chip-quota" type="button" title="答题 AI 今日剩余额度">
-          <span class="chip-icon">AI</span><span id="quota-text">—</span>
+        <button class="chrome-status" id="chip-quota" type="button" title="答题 AI 剩余次数">
+          <svg class="icon"><use href="#i-spark" /></svg><span id="quota-text">—</span>
         </button>
-        <button class="chip icon-only" id="chip-back" type="button" title="返回">‹</button>
-        <button class="chip icon-only" id="chip-reload" type="button" title="重新加载">⟳</button>
       </div>
     </header>
 
-    <dialog class="platform-dialog" id="platform-dialog" aria-labelledby="platform-dialog-title">
-      <div class="platform-dialog-card">
-        <header class="platform-dialog-head">
-          <div>
-            <h2 id="platform-dialog-title">打开网课平台</h2>
-            <p>选择平台后会在客户端新标签中打开，助手按平台自动接管。</p>
-          </div>
-          <button class="icon-button" id="platform-dialog-close" type="button" aria-label="关闭">×</button>
-        </header>
-        <div class="platform-list" id="platform-list"></div>
-        <p class="platform-security">账号密码按平台分别使用系统安全存储加密；仅在对应平台出现账号密码登录框时自动填充。二维码、短信验证码不会保存。</p>
-      </div>
-    </dialog>
-
     <!-- 工具页。它不是浮层：切到工具标签时主进程会把内容视图藏起来，露出这一页 -->
     <main class="workspace" id="workspace" hidden>
-      <div class="sheet">
-        <section class="card" id="update-card" hidden>
-          <div class="card-row">
-            <div>
+      <aside class="sidebar">
+        <button class="side-account" type="button" data-pane-link="account">
+          <span class="avatar" id="side-avatar">?</span>
+          <span class="side-account-text"><strong id="side-name">未登录</strong><small id="side-sub">在首页登录后自动同步</small></span>
+        </button>
+        <nav class="side-nav" aria-label="工具页分区">
+          <button class="side-item" type="button" data-pane-link="overview"><svg class="icon"><use href="#i-grid" /></svg>概览</button>
+          <button class="side-item" type="button" data-pane-link="assistant"><svg class="icon"><use href="#i-book" /></svg>网课助手</button>
+          <button class="side-item" type="button" data-pane-link="campus"><svg class="icon"><use href="#i-wifi" /></svg>校园网</button>
+          <button class="side-item" type="button" data-pane-link="account"><svg class="icon"><use href="#i-user" /></svg>账号与额度</button>
+          <button class="side-item" type="button" data-pane-link="general"><svg class="icon"><use href="#i-power" /></svg>启动与后台</button>
+          <button class="side-item" type="button" data-pane-link="about"><svg class="icon"><use href="#i-info" /></svg>关于<span class="side-badge" id="side-update-badge" hidden>更新</span></button>
+        </nav>
+      </aside>
+
+      <div class="content" id="content">
+        <div class="sheet">
+          <section class="banner" id="update-card" hidden>
+            <span class="banner-icon"><svg class="icon"><use href="#i-download" /></svg></span>
+            <div class="banner-text">
               <strong id="update-title">有新版本</strong>
-              <small id="update-note">超星改版后旧版脚本可能失效，建议更新。</small>
+              <small id="update-note">网课平台改版后旧版助手可能失效，建议更新。</small>
+              <div class="update-track" id="update-track" hidden><i class="update-fill" id="update-fill"></i></div>
             </div>
-            <button class="primary" id="update-go" type="button" hidden>去下载</button>
-            <button class="primary" id="update-restart" type="button" hidden>立即重启更新</button>
-          </div>
-          <div class="update-track" id="update-track" hidden><i class="update-fill" id="update-fill"></i></div>
-        </section>
+            <button class="btn btn-primary" id="update-go" type="button" hidden>去下载</button>
+            <button class="btn btn-primary" id="update-restart" type="button" hidden>立即重启更新</button>
+          </section>
 
-        <section class="card">
-          <div class="card-head">
-            <h2>账号</h2>
-            <span class="pill" id="auth-pill">检查中</span>
-          </div>
-          <dl class="fields" id="auth-fields" hidden>
-            <div><dt>用户</dt><dd id="auth-name">—</dd></div>
-            <div><dt>等级</dt><dd id="auth-level">—</dd></div>
-            <div><dt>信誉值</dt><dd id="auth-reputation">—</dd></div>
-            <div><dt>今日免费额度</dt><dd id="auth-usage">—</dd></div>
-            <div><dt>AI 点数</dt><dd id="auth-points">—</dd></div>
-            <div><dt>合计可用</dt><dd id="auth-balance">—</dd></div>
-            <div><dt>授权有效期至</dt><dd id="auth-expires">—</dd></div>
-          </dl>
+          <!-- ============================================================ 概览 -->
+          <section class="pane" data-pane="overview">
+            <header class="pane-head">
+              <h1>概览</h1>
+              <p>客户端在后台替你做的事，以及常用入口。</p>
+            </header>
 
-          <!-- 怎么涨额度。数字全部来自服务端下发的实时规则，不写死 -->
-          <details class="howto" id="auth-howto" hidden>
-            <summary>怎么提升免费额度？</summary>
-            <div class="howto-body">
-              <p class="muted small" id="howto-intro"></p>
-              <ul class="howto-list" id="howto-list"></ul>
-              <p class="muted small" id="howto-tiers"></p>
-              <p class="muted small" id="howto-points"></p>
+            <div class="group">
+              <button class="row row-link" type="button" data-pane-link="campus">
+                <span class="row-mark" data-hue="brand"><svg class="icon"><use href="#i-wifi" /></svg></span>
+                <span class="row-text"><strong>校园网</strong><small id="ov-campus">未启用后台自动连接</small></span>
+                <span class="row-dot dot" id="ov-campus-dot"></span>
+                <svg class="icon row-chevron"><use href="#i-chevron" /></svg>
+              </button>
+              <button class="row row-link" type="button" data-pane-link="account">
+                <span class="row-mark" data-hue="amber"><svg class="icon"><use href="#i-spark" /></svg></span>
+                <span class="row-text"><strong>答题额度</strong><small id="ov-quota">正在读取…</small></span>
+                <svg class="icon row-chevron"><use href="#i-chevron" /></svg>
+              </button>
+              <button class="row row-link" type="button" data-pane-link="assistant">
+                <span class="row-mark" data-hue="blue"><svg class="icon"><use href="#i-book" /></svg></span>
+                <span class="row-text"><strong>网课助手</strong><small id="ov-script">选择网课平台后，助手会在对应标签页自动接管。</small></span>
+                <svg class="icon row-chevron"><use href="#i-chevron" /></svg>
+              </button>
             </div>
-          </details>
 
-          <div class="sponsor-entry" id="auth-sponsor" hidden>
-            <span class="sponsor-mark" aria-hidden="true">AI</span>
-            <div class="sponsor-copy">
-              <strong>赞助获取 AI 点数</strong>
-              <small id="auth-sponsor-rate">赞助到账后，点数会自动加入当前账号</small>
+            <h2 class="caption">打开网课平台</h2>
+            <div class="platform-grid" id="platform-grid"></div>
+            <p class="footnote">平台会在客户端新标签中打开，助手按平台自动接管。账号密码保存在“网课助手”里设置。</p>
+          </section>
+
+          <!-- ======================================================== 网课助手 -->
+          <section class="pane" data-pane="assistant" hidden>
+            <header class="pane-head">
+              <h1>网课助手</h1>
+              <p>自动化、答题方式与各平台账号。</p>
+            </header>
+
+            <div class="group">
+              <div class="row">
+                <span class="row-text"><strong>运行状态</strong><small id="script-status">选择网课平台后，助手会在对应标签页自动接管。</small></span>
+                <span class="pill" id="script-pill" data-state="ok" hidden>运行中</span>
+                <button class="btn" id="script-open" type="button">打开网课平台</button>
+              </div>
             </div>
-            <button class="primary sponsor-button" id="auth-sponsor-go" type="button">前往赞助</button>
-          </div>
 
-          <p class="muted" id="auth-hint">正在读取学习通助手访问策略…</p>
-          <div class="actions">
-            <button class="primary" id="auth-login" type="button" hidden>去首页登录</button>
-            <button class="ghost" id="auth-logout" type="button" hidden>退出登录</button>
-          </div>
-        </section>
+            <h2 class="caption">自动化</h2>
+            <div class="group" id="script-switches"></div>
+            <p class="notice" id="reload-hint" hidden>以上改动要重新打开对应的网课标签才生效。</p>
 
-        <section class="card">
-          <div class="card-head">
-            <h2>校园网</h2>
-            <span class="pill" id="campus-pill">未启用</span>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="campus-enabled" />
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-text"><strong>后台自动连接</strong><small>掉线时自动重新认证；不在校园网时不会尝试</small></span>
-          </label>
-          <div id="campus-body" hidden>
-            <div class="grid">
-              <label class="field">
-                <span>接入方式</span>
-                <select id="campus-mode">
-                  <option value="auto">自动判断</option>
-                  <option value="campus">校园网</option>
-                  <option value="pppoe">宽带（运营商）</option>
+            <h2 class="caption">答题</h2>
+            <div class="group">
+              <label class="row switch">
+                <span class="row-text"><strong>用独立 AI 作答</strong><small id="ai-policy-copy">只发送当前题干、选项与题目图片，不携带站内知识库或用户资料；访问与额度策略由服务器实时下发</small></span>
+                <input type="checkbox" id="cfg-aiEnabled" />
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </label>
+              <label class="row">
+                <span class="row-text"><strong>答题模式</strong><small>模型由站点后台统一设定，客户端不参与选择</small></span>
+                <select class="control" id="cfg-answerDepth">
+                  <option value="low">快速判断</option>
+                  <option value="high">深入分析</option>
+                  <option value="max">挑战难题</option>
                 </select>
               </label>
-              <label class="field" id="campus-carrier-field">
-                <span>运营商</span>
-                <select id="campus-carrier">
-                  <option value="">请选择</option>
-                  <option value="telecom">中国电信</option>
-                  <option value="unicom">中国联通</option>
-                  <option value="cmcc">中国移动</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>重连基础间隔（秒）</span>
-                <input type="number" id="campus-interval" min="5" max="600" step="5" />
-              </label>
+              <div class="row">
+                <span class="row-text"><strong>每题间隔</strong><small>随机等待，切章与提交前等待由客户端采用稳妥默认值</small></span>
+                <span class="range">
+                  <input class="control control-number" type="number" id="cfg-answerIntervalMin" min="1" max="300" aria-label="每题间隔最小（秒）" />
+                  <span>–</span>
+                  <input class="control control-number" type="number" id="cfg-answerIntervalMax" min="1" max="300" aria-label="每题间隔最大（秒）" />
+                  <span>秒</span>
+                </span>
+              </div>
             </div>
-            <p class="muted small campus-schedule-note">稳定在线时每 30 秒轻量检测；掉线后按基础间隔恢复，换网、唤醒或解锁会立即重检。</p>
-            <div class="grid">
-              <label class="field">
-                <span>学号</span>
-                <input type="text" id="campus-student" autocomplete="off" spellcheck="false" placeholder="仅字母与数字" />
-              </label>
-              <label class="field">
-                <span>校园网密码</span>
-                <input type="password" id="campus-password" autocomplete="off" placeholder="保存后不再回显" />
-              </label>
+
+            <h2 class="caption">平台账号密码</h2>
+            <div class="group" id="platform-credentials"></div>
+            <p class="footnote">账号密码按平台分别使用系统安全存储加密；仅在对应平台出现账号密码登录框时自动填充。二维码、短信验证码不会保存。</p>
+
+            <h2 class="caption">助手版本</h2>
+            <div class="group">
+              <div class="row">
+                <span class="row-text"><strong>学习通专用助手</strong><small id="script-version">正在读取脚本版本…</small></span>
+                <button class="btn" id="script-check-update" type="button">检查更新</button>
+              </div>
+              <div class="row">
+                <span class="row-text"><strong>多平台助手（OCS）</strong><small id="multiplatform-script-version">正在读取脚本版本…</small></span>
+                <button class="btn" id="multiplatform-script-check-update" type="button">检查更新</button>
+              </div>
+              <div class="row">
+                <span class="row-text"><strong>安全微伴助手</strong><small id="weban-script-version">正在读取脚本版本…</small></span>
+                <button class="btn" id="weban-script-check-update" type="button">检查更新</button>
+              </div>
             </div>
-            <p class="muted small" id="campus-hint"></p>
-            <div class="actions">
-              <button class="primary" id="campus-save" type="button">保存凭据</button>
-              <button class="ghost" id="campus-login" type="button">立即连接</button>
-              <button class="ghost" id="campus-clear" type="button">清除凭据</button>
-            </div>
+
             <details class="logs">
-              <summary>连接日志</summary>
-              <pre id="campus-logs"></pre>
+              <summary>运行日志</summary>
+              <pre id="script-logs"></pre>
             </details>
-          </div>
-        </section>
+          </section>
 
-        <section class="card">
-          <div class="card-head">
-            <h2>刷题</h2>
-            <span class="pill" id="script-pill" hidden>运行中</span>
-          </div>
-          <p class="muted" id="script-status">选择网课平台后，助手会在对应标签页自动接管。</p>
-          <div class="script-release-list">
-            <div class="script-release">
-              <div>
-                <strong>学习通专用助手</strong>
-                <p class="muted small" id="script-version">正在读取脚本版本…</p>
+          <!-- ========================================================== 校园网 -->
+          <section class="pane" data-pane="campus" hidden>
+            <header class="pane-head">
+              <h1>校园网</h1>
+              <p>掉线时自动重新认证；不在校园网时不会尝试。</p>
+            </header>
+
+            <div class="group">
+              <label class="row switch">
+                <span class="row-text"><strong>后台自动连接</strong><small>开机自启后也会在后台保持连接</small></span>
+                <input type="checkbox" id="campus-enabled" />
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </label>
+              <div class="row">
+                <span class="row-text"><strong>当前状态</strong></span>
+                <span class="pill" id="campus-pill">未启用</span>
               </div>
-              <button class="ghost" id="script-check-update" type="button">检查更新</button>
             </div>
-            <div class="script-release">
-              <div>
-                <strong>多平台助手（OCS）</strong>
-                <p class="muted small" id="multiplatform-script-version">正在读取脚本版本…</p>
+
+            <div id="campus-body" hidden>
+              <h2 class="caption">接入</h2>
+              <div class="group">
+                <label class="row">
+                  <span class="row-text"><strong>接入方式</strong></span>
+                  <select class="control" id="campus-mode">
+                    <option value="auto">自动判断</option>
+                    <option value="campus">校园网</option>
+                    <option value="pppoe">宽带（运营商）</option>
+                  </select>
+                </label>
+                <label class="row" id="campus-carrier-field">
+                  <span class="row-text"><strong>运营商</strong><small>宽带接入时拼进账号</small></span>
+                  <select class="control" id="campus-carrier">
+                    <option value="">请选择</option>
+                    <option value="telecom">中国电信</option>
+                    <option value="unicom">中国联通</option>
+                    <option value="cmcc">中国移动</option>
+                  </select>
+                </label>
+                <label class="row">
+                  <span class="row-text"><strong>重连基础间隔</strong></span>
+                  <span class="range">
+                    <input class="control control-number" type="number" id="campus-interval" min="5" max="600" step="5" />
+                    <span>秒</span>
+                  </span>
+                </label>
               </div>
-              <button class="ghost" id="multiplatform-script-check-update" type="button">检查更新</button>
-            </div>
-            <div class="script-release">
-              <div>
-                <strong>安全微伴助手</strong>
-                <p class="muted small" id="weban-script-version">正在读取脚本版本…</p>
+              <p class="footnote">稳定在线时每 30 秒轻量检测；掉线后按基础间隔恢复，换网、唤醒或解锁会立即重检。</p>
+
+              <h2 class="caption">账号</h2>
+              <div class="group">
+                <label class="row">
+                  <span class="row-text"><strong>学号</strong></span>
+                  <input class="control control-text" type="text" id="campus-student" autocomplete="off" spellcheck="false" placeholder="仅字母与数字" />
+                </label>
+                <label class="row">
+                  <span class="row-text"><strong>校园网密码</strong></span>
+                  <input class="control control-text" type="password" id="campus-password" autocomplete="off" placeholder="保存后不再回显" />
+                </label>
+                <div class="row row-actions">
+                  <button class="btn btn-quiet btn-danger" id="campus-clear" type="button">清除凭据</button>
+                  <button class="btn" id="campus-login" type="button">立即连接</button>
+                  <button class="btn btn-primary" id="campus-save" type="button">保存凭据</button>
+                </div>
               </div>
-              <button class="ghost" id="weban-script-check-update" type="button">检查更新</button>
-            </div>
-          </div>
-          <div class="actions">
-            <button class="primary" id="script-open" type="button">打开网课平台</button>
-          </div>
+              <p class="footnote" id="campus-hint"></p>
 
-          <div class="subsection">
-            <h3>自动化</h3>
-            <div id="script-switches"></div>
-          </div>
-
-          <div class="subsection">
-            <h3>答题节奏</h3>
-            <p class="muted small">只保留每道题之间的等待时间；切章与提交前等待由客户端采用稳妥默认值。</p>
-            <div class="grid">
-              <label class="field"><span>每题间隔最小（秒）</span><input type="number" id="cfg-answerIntervalMin" min="1" max="300" /></label>
-              <label class="field"><span>每题间隔最大（秒）</span><input type="number" id="cfg-answerIntervalMax" min="1" max="300" /></label>
+              <details class="logs">
+                <summary>连接日志</summary>
+                <pre id="campus-logs"></pre>
+              </details>
             </div>
-            <p class="notice-inline" id="reload-hint" hidden>以上改动要重新打开对应的网课标签才生效。</p>
-          </div>
+          </section>
 
-          <div class="subsection">
-            <h3>AI 解答</h3>
-            <label class="switch">
-              <input type="checkbox" id="cfg-aiEnabled" />
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-              <span class="switch-text"><strong>用独立 AI 作答</strong><small id="ai-policy-copy">只发送当前题干、选项与题目图片，不携带站内知识库或用户资料；访问与额度策略由服务器实时下发</small></span>
-            </label>
-            <label class="field">
-              <span>答题模式</span>
-              <select id="cfg-answerDepth">
-                <option value="low">快速判断</option>
-                <option value="high">深入分析</option>
-                <option value="max">挑战难题</option>
-              </select>
-            </label>
-            <p class="muted small">模型由站点后台统一设定，客户端不参与选择。</p>
-          </div>
+          <!-- ====================================================== 账号与额度 -->
+          <section class="pane" data-pane="account" hidden>
+            <header class="pane-head">
+              <h1>账号与额度</h1>
+              <p>与“首页 · 药大拾间”共用同一套登录状态。</p>
+            </header>
 
-          <details class="logs">
-            <summary>运行日志</summary>
-            <pre id="script-logs"></pre>
-          </details>
-        </section>
+            <div class="group">
+              <div class="row row-profile">
+                <span class="avatar avatar-lg" id="auth-avatar">?</span>
+                <span class="row-text"><strong id="auth-name">未登录</strong><small id="auth-level">—</small></span>
+                <span class="pill" id="auth-pill">检查中</span>
+              </div>
+            </div>
 
-        <section class="card">
-          <h2>启动与后台</h2>
-          <label class="switch">
-            <input type="checkbox" id="pref-launchOnLogin" />
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-text"><strong>开机自动启动</strong><small>登录系统后自动运行</small></span>
-          </label>
-          <label class="switch">
-            <input type="checkbox" id="pref-startMinimized" />
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-text"><strong>启动时收进托盘</strong><small>开机自启时不弹出窗口</small></span>
-          </label>
-          <label class="switch">
-            <input type="checkbox" id="pref-closeToTray" />
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-text"><strong>关闭窗口时收进托盘</strong><small>后台继续保持校园网连接与刷题</small></span>
-          </label>
-        </section>
+            <p class="footnote" id="auth-hint">正在读取学习通助手访问策略…</p>
+            <div class="actions">
+              <button class="btn btn-primary" id="auth-login" type="button" hidden>去首页登录</button>
+            </div>
 
-        <section class="card about-card">
-          <div class="card-head">
-            <div>
-              <h2>关于</h2>
-              <p class="about-product" id="about-product">药大拾间桌面客户端</p>
-            </div>
-            <span class="pill about-version" id="about-version">v—</span>
-          </div>
-          <p class="muted about-intro">把校园服务、校园网连接和多平台网课辅助收进一个窗口，由药大拾间持续维护。</p>
-          <div class="actions about-update-actions">
-            <button class="ghost" id="about-check-update" type="button">检查客户端更新</button>
-            <span class="muted" id="about-update-status">也可以随时手动检查新版本</span>
-          </div>
-          <div class="about-credits">
-            <div>
-              <strong>学习通助手与客户端初版</strong>
-              <span>由 <b>Mom0ka27</b> 贡献开发</span>
-            </div>
-            <div>
-              <strong>校园网连接模块</strong>
-              <span>基于真红（SoraNoNeko）的 <a href="https://github.com/SoraNoNeko/cpu_net" data-external>cpu_net</a> 项目修改，并整合进桌面客户端</span>
-            </div>
-            <div>
-              <strong>学习通辅助脚本</strong>
-              <span>基于 shushoujiu 的满分助手修改并获授权，第三方组件保留各自署名与许可</span>
-            </div>
-            <div>
-              <strong>多平台网课适配</strong>
-              <span>基于 OCS v4.15.3 的正式平台能力整合，使用 MIT 许可；答题统一接入药大拾间 AI</span>
-            </div>
-          </div>
-          <p class="about-note">本客户端并非学校官方产品，仅供学习研究与校园公益使用，严禁未经授权的商业用途。代码与第三方组件仍按各自许可证执行；账号密码仅按功能需要在本机系统安全存储中加密保存。</p>
-          <div class="about-links">
-            <a href="https://github.com/sx120609/CPU-web" data-external>查看源代码</a>
-            <a href="https://github.com/sx120609/CPU-web/blob/main/desktop/THIRD_PARTY_NOTICES.md" data-external>第三方组件声明</a>
-          </div>
-        </section>
+            <div id="auth-fields" hidden>
+              <div class="stats">
+                <div class="stat"><small>今日免费额度</small><strong id="auth-usage">—</strong></div>
+                <div class="stat"><small>AI 点数</small><strong id="auth-points">—</strong></div>
+                <div class="stat"><small>合计可用</small><strong id="auth-balance">—</strong></div>
+              </div>
 
-        <p class="status-line" id="status-line" role="status"></p>
-        <footer class="app-footer">
-          <span class="app-footer-item">© 2026 药大拾间客户端 · 校园互助与服务平台</span>
-          <a class="app-footer-item" href="https://github.com/sx120609/CPU-web" data-external>GitHub</a>
-          <span class="app-footer-item">非学校官方站点</span>
-          <span class="app-footer-item">严禁商业用途</span>
-          <a class="app-footer-item" id="site-filing" href="https://beian.miit.gov.cn/" data-external hidden></a>
-        </footer>
+              <div class="group">
+                <div class="row">
+                  <span class="row-text"><strong>信誉值</strong></span>
+                  <span class="row-value" id="auth-reputation">—</span>
+                </div>
+                <div class="row">
+                  <span class="row-text"><strong>授权有效期至</strong></span>
+                  <span class="row-value" id="auth-expires">—</span>
+                </div>
+              </div>
+
+              <div class="group sponsor" id="auth-sponsor" hidden>
+                <div class="row">
+                  <span class="row-mark" data-hue="amber"><svg class="icon"><use href="#i-spark" /></svg></span>
+                  <span class="row-text"><strong>赞助获取 AI 点数</strong><small id="auth-sponsor-rate">赞助到账后，点数会自动加入当前账号</small></span>
+                  <button class="btn btn-primary" id="auth-sponsor-go" type="button">前往赞助</button>
+                </div>
+              </div>
+
+              <!-- 怎么涨额度。数字全部来自服务端下发的实时规则，不写死 -->
+              <details class="group howto" id="auth-howto" hidden>
+                <summary class="row row-link">
+                  <span class="row-text"><strong>怎么提升免费额度？</strong></span>
+                  <svg class="icon row-chevron"><use href="#i-chevron" /></svg>
+                </summary>
+                <div class="howto-body">
+                  <p id="howto-intro"></p>
+                  <ul class="howto-list" id="howto-list"></ul>
+                  <p id="howto-tiers"></p>
+                  <p id="howto-points"></p>
+                </div>
+              </details>
+
+              <div class="actions">
+                <button class="btn btn-quiet btn-danger" id="auth-logout" type="button" hidden>退出登录</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ====================================================== 启动与后台 -->
+          <section class="pane" data-pane="general" hidden>
+            <header class="pane-head">
+              <h1>启动与后台</h1>
+              <p>客户端常驻托盘时，校园网连接与网课任务会继续运行。</p>
+            </header>
+            <div class="group">
+              <label class="row switch">
+                <span class="row-text"><strong>开机自动启动</strong><small>登录系统后自动运行</small></span>
+                <input type="checkbox" id="pref-launchOnLogin" />
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </label>
+              <label class="row switch">
+                <span class="row-text"><strong>启动时收进托盘</strong><small>开机自启时不弹出窗口</small></span>
+                <input type="checkbox" id="pref-startMinimized" />
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </label>
+              <label class="row switch">
+                <span class="row-text"><strong>关闭窗口时收进托盘</strong><small>后台继续保持校园网连接与刷题</small></span>
+                <input type="checkbox" id="pref-closeToTray" />
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </label>
+            </div>
+          </section>
+
+          <!-- ============================================================ 关于 -->
+          <section class="pane" data-pane="about" hidden>
+            <div class="about-head">
+              <img class="about-logo" src="./logo.png" alt="" />
+              <div class="about-title">
+                <h1>药大拾间</h1>
+                <p class="about-product" id="about-product">药大拾间桌面客户端</p>
+              </div>
+              <span class="pill about-version" id="about-version">v—</span>
+            </div>
+            <p class="about-intro">把校园服务、校园网连接和多平台网课辅助收进一个窗口，由药大拾间持续维护。</p>
+
+            <div class="group">
+              <div class="row">
+                <span class="row-text"><strong>客户端更新</strong><small id="about-update-status">也可以随时手动检查新版本</small></span>
+                <button class="btn" id="about-check-update" type="button">检查客户端更新</button>
+              </div>
+            </div>
+
+            <h2 class="caption">贡献与来源</h2>
+            <div class="group about-credits">
+              <div class="row">
+                <span class="row-text"><strong>学习通助手与客户端初版</strong><small>由 <b>Mom0ka27</b> 贡献开发</small></span>
+              </div>
+              <div class="row">
+                <span class="row-text"><strong>校园网连接模块</strong><small>基于真红（SoraNoNeko）的 <a href="https://github.com/SoraNoNeko/cpu_net" data-external>cpu_net</a> 项目修改，并整合进桌面客户端</small></span>
+              </div>
+              <div class="row">
+                <span class="row-text"><strong>学习通辅助脚本</strong><small>基于 shushoujiu 的满分助手修改并获授权，第三方组件保留各自署名与许可</small></span>
+              </div>
+              <div class="row">
+                <span class="row-text"><strong>多平台网课适配</strong><small>基于 OCS v4.15.3 的正式平台能力整合，使用 MIT 许可；答题统一接入药大拾间 AI</small></span>
+              </div>
+            </div>
+            <p class="footnote">本客户端并非学校官方产品，仅供学习研究与校园公益使用，严禁未经授权的商业用途。代码与第三方组件仍按各自许可证执行；账号密码仅按功能需要在本机系统安全存储中加密保存。</p>
+
+            <div class="about-links">
+              <a href="https://github.com/sx120609/CPU-web" data-external>查看源代码<svg class="icon"><use href="#i-external" /></svg></a>
+              <a href="https://github.com/sx120609/CPU-web/blob/main/desktop/THIRD_PARTY_NOTICES.md" data-external>第三方组件声明<svg class="icon"><use href="#i-external" /></svg></a>
+            </div>
+
+            <footer class="app-footer">
+              <span class="app-footer-item">© 2026 药大拾间客户端 · 校园互助与服务平台</span>
+              <a class="app-footer-item" href="https://github.com/sx120609/CPU-web" data-external>GitHub</a>
+              <span class="app-footer-item">非学校官方站点</span>
+              <span class="app-footer-item">严禁商业用途</span>
+              <a class="app-footer-item" id="site-filing" href="https://beian.miit.gov.cn/" data-external hidden></a>
+            </footer>
+          </section>
+        </div>
       </div>
     </main>
 
     <!-- 主站连不上时顶到内容区 -->
     <section class="offline" id="offline" hidden>
       <div class="offline-inner">
+        <span class="offline-icon"><svg class="icon"><use href="#i-wifi-off" /></svg></span>
         <h2>暂时连不上药大拾间</h2>
         <p id="offline-reason">常见原因是校园网尚未认证，或者当前没有网络。</p>
         <div class="actions">
-          <button class="primary" id="offline-retry" type="button">重新连接</button>
-          <button class="ghost" id="offline-tools" type="button">去连校园网</button>
+          <button class="btn" id="offline-tools" type="button">去连校园网</button>
+          <button class="btn btn-primary" id="offline-retry" type="button">重新连接</button>
         </div>
       </div>
     </section>
+
+    <p class="toast" id="status-line" role="status" hidden></p>
 
     <script src="./renderer.js"></script>
   </body>

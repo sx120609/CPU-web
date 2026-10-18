@@ -11,6 +11,8 @@ const html = fs.readFileSync(path.join(root, "src", "shell", "index.html"), "utf
 const renderer = fs.readFileSync(path.join(root, "src", "shell", "renderer.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "src", "shell", "style.css"), "utf8");
 const main = fs.readFileSync(path.join(root, "electron", "main.ts"), "utf8");
+const tabs = fs.readFileSync(path.join(root, "electron", "tabs.ts"), "utf8");
+const preload = fs.readFileSync(path.join(root, "electron", "shell-preload.ts"), "utf8");
 
 assert.doesNotMatch(renderer, /\u5f00\u901a\u8bba\u575b/, "论坛默认开放后不应再显示开通论坛信誉奖励");
 
@@ -25,8 +27,8 @@ assert.match(html, /SoraNoNeko\/cpu_net/, "关于区域应保留校园网连接�
 assert.match(html, /shushoujiu/, "关于区域应保留学习通辅助脚本原作者署名");
 assert.match(renderer, /about-version[\s\S]*info\.version/, "关于区域应展示当前客户端版本");
 assert.match(renderer, /about-product[\s\S]*info\?\.platform === "darwin"/, "关于区域应按平台展示客户端名称");
-assert.match(css, /\.about-card \.card-head > div\s*\{[\s\S]*?display:\s*grid;[\s\S]*?gap:\s*3px/, "关于标题与客户端名称必须纵向分行");
-assert.match(css, /\.about-product\s*\{[\s\S]*?margin:\s*0;/, "关于副标题不得再用负边距挤进标题");
+assert.match(css, /\.about-title\s*\{[\s\S]*?display:\s*grid;/, "关于标题与客户端名称必须纵向分行");
+assert.match(css, /\.about-product\s*\{[^}]*margin:\s*0;/, "关于副标题不得再用负边距挤进标题");
 assert.doesNotMatch(css, /\.about-product\s*\{[\s\S]*?margin-top:\s*-\d+px/, "关于副标题不得通过负边距与标题重叠");
 assert.match(main, /process\.platform !== "darwin"[\s\S]*?Menu\.setApplicationMenu\(null\);[\s\S]*?return;/, "Windows 必须彻底移除会被 Alt 唤出的传统菜单栏");
 assert.match(main, /replace\(\/ Electron\\\/\[\\d\.\]\+\/,\s*''\)/, "桌面 UA 必须摘掉 Electron 标记，避免部分平台 WAF 误判");
@@ -35,14 +37,27 @@ assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首
 assert.match(html, /id="auth-sponsor-go"[^>]*>前往赞助</, "账号卡片应提供赞助获取 AI 点数入口");
 assert.match(renderer, /assistantPointsPerYuan[\s\S]*auth-sponsor-rate/, "赞助入口应展示服务端下发的实时兑换比例");
 assert.match(renderer, /shell\.tabs\.openSponsor\(\)/, "赞助入口应在客户端主站标签中打开赞助页面");
-assert.match(html, /id="brand-home"[^>]*aria-label="返回药大拾间首页"/, "左侧品牌入口必须是可访问的首页按钮");
-assert.match(renderer, /brand-home[\s\S]*shell\.tabs\.openHome\(\)/, "点击品牌入口必须调用首页导航");
-assert.match(renderer, /tab-group tab-group-primary/, "首页与工具必须渲染为一组连结标签");
-assert.match(renderer, /title\.dataset\.label = tab\.title/, "标签标题必须提供粗体占位文本");
-assert.match(css, /\.tab-group-primary\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?border:/, "首页与工具必须共享稳定的连结外框");
-assert.match(css, /\.tab-group-primary \.tab\[data-kind="site"\]\s*\{\s*width:\s*132px;/, "首页标签必须保持固定宽度");
-assert.match(css, /\.tab-group-primary \.tab\[data-kind="tools"\]\s*\{\s*width:\s*56px;/, "工具标签必须保持固定宽度");
-assert.match(css, /\.tab-title::after\s*\{[\s\S]*?content:\s*attr\(data-label\);[\s\S]*?font-weight:\s*600;/, "非激活标签必须为激活粗体预留宽度");
+assert.match(html, /id="brand-home"[^>]*aria-label="返回药大拾间首页"/, "标签栏必须有可访问的首页按钮");
+assert.match(renderer, /brand-home[\s\S]*shell\.tabs\.openHome\(\)/, "点击首页按钮必须调用首页导航");
+assert.match(css, /\.tab\[data-kind="site"\]\s*\{\s*flex:\s*none;\s*width:\s*\d+px;/, "首页标签必须保持固定宽度，标题随路由变化不挤动其他标签");
+assert.match(css, /\.tab\[data-kind="tools"\]\s*\{\s*flex:\s*none;/, "工具标签不得随标签栏伸缩");
+assert.doesNotMatch(css, /\.tab\[data-active="true"\]\s*\{[^}]*font-weight/, "激活标签不得改字重，否则标签会变宽把旁边的标签推开");
+
+// 主窗口隐藏系统标题栏，标签栏兼任标题栏：高度两端一致、能拖动窗口、给系统窗口按钮让位
+const chromeHeight = Number(tabs.match(/export const CHROME_HEIGHT = (\d+);/)?.[1]);
+assert.ok(chromeHeight > 0, "应能读到 CHROME_HEIGHT");
+assert.match(css, new RegExp(`--chrome-height:\\s*${chromeHeight}px;`), "外壳 --chrome-height 必须与 tabs.ts 的 CHROME_HEIGHT 一致");
+assert.match(main, /titleBarStyle:\s*"hidden"/, "主窗口应隐藏系统标题栏，由外壳标签栏代替");
+assert.match(main, /isMac[\s\S]*?trafficLightPosition[\s\S]*?titleBarOverlay: titleBarOverlay\(\)/, "macOS 把红绿灯放进标签栏，Windows 用系统窗口按钮覆盖层");
+assert.match(main, /setTitleBarOverlay\(titleBarOverlay\(\)\)[\s\S]*?nativeTheme\.on\("updated", applyTheme\)/,"系统切换深浅色时窗口按钮颜色要跟着换");
+assert.match(main, /shell:boot[\s\S]*?platform: process\.platform/, "启动信息必须带平台，关于页据此区分 Windows 与 macOS");
+assert.match(preload, /platform: process\.platform/, "外壳桥应同步给出平台，首帧就能给窗口按钮让位");
+assert.match(renderer, /document\.documentElement\.dataset\.platform = shell\.platform/, "渲染侧应在首帧前写入平台");
+assert.match(css, /\.chrome\s*\{[\s\S]*?-webkit-app-region:\s*drag;/, "标签栏空白处必须能拖动窗口");
+assert.match(css, /\.tab\s*\{[\s\S]*?-webkit-app-region:\s*no-drag;/, "标签本身不能参与拖动，否则点不动");
+assert.match(css, /\.chrome-tools\s*\{[\s\S]*?-webkit-app-region:\s*no-drag;/, "标签栏右侧按钮不能参与拖动");
+assert.match(css, /:root\[data-platform="darwin"\]\s*\{\s*--chrome-inset-left:/, "macOS 标签栏左侧要给红绿灯让位");
+assert.match(css, /:root\[data-platform="win32"\][\s\S]*?env\(titlebar-area-width/, "Windows 标签栏右侧按系统窗口控件区让位");
 assert.match(main, /tabs:open-home[\s\S]*navigateSite\(new URL\("\/", oauthConfig\.origin\)\.href\)/, "首页按钮必须导航到主站根地址，而非只切换标签");
 assert.match(html, /id="script-version"/, "学习通助手区域应展示独立脚本版本与更新状态");
 assert.match(renderer, /shell\.script\.getUpdateStates\(\)/, "助手区域应同时读取三套独立云端更新状态");

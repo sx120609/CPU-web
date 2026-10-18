@@ -9,9 +9,11 @@
   <body>
     <!-- 整窗就是一张我们自己画的页面：无边框、无系统按钮。
          关闭键是下面这个 ×，拖动靠 -webkit-app-region。 -->
-    <div class="bg"><span class="orb orb-a"></span><span class="orb orb-b"></span><span class="mark">拾</span><span class="grain"></span></div>
+    <div class="bg"></div>
 
-    <button class="close" id="close" type="button" title="关闭">×</button>
+    <button class="close" id="close" type="button" title="关闭" aria-label="关闭">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 7 7 17M7 7l10 10" /></svg>
+    </button>
 
     <main class="stage">
       <header class="brand">
@@ -24,7 +26,7 @@
       <ul class="feats" id="feats">
         <li><span class="d"></span>药大拾间的全部校园服务，开箱即用</li>
         <li><span class="d"></span>校园网掉线自动重连，常驻后台</li>
-        <li><span class="d"></span>学习通开在应用内，学习通助手自动接管</li>
+        <li><span class="d"></span>网课平台开在应用内，助手自动接管</li>
       </ul>
 
       <!-- 三个状态共用这块底部区域，切换时位置不跳 -->
@@ -44,7 +46,7 @@
         </div>
 
         <div class="done" id="done" hidden>
-          <div class="tick">✓</div>
+          <div class="tick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></div>
           <div class="done-text"><strong id="done-title">安装完成</strong><small id="done-sub">正在启动药大拾间…</small></div>
         </div>
 

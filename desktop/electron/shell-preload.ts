@@ -10,6 +10,8 @@ const on = (channel: string, callback: (payload: any) => void) => {
 };
 
 contextBridge.exposeInMainWorld("cpuShell", {
+  // 标签栏要在第一次绘制前就知道给哪一侧的系统窗口按钮让位，所以同步给出
+  platform: process.platform,
   getBootInfo: () => ipcRenderer.invoke("shell:boot"),
   completeOnboarding: (patch: Record<string, unknown>) => ipcRenderer.invoke("app:complete-onboarding", patch),
 
@@ -93,6 +95,10 @@ contextBridge.exposeInMainWorld("cpuShell", {
     checkNow: () => ipcRenderer.invoke("update:check-now"),
     installNow: () => ipcRenderer.invoke("update:install-now"),
     onState: (callback: (state: any) => void) => on("update:state", callback)
+  },
+
+  window: {
+    onFullscreenChange: (callback: (fullscreen: boolean) => void) => on("window:fullscreen", callback)
   },
 
   openExternal: (url: string) => ipcRenderer.invoke("site:open-external", url),
