@@ -1198,6 +1198,11 @@ export function listCampusAssistantKnowledge(actionIds: Iterable<string>) {
   return listCampusAssistantKnowledgeEntries(actionIds).map((item) => item.fact);
 }
 
+/** 电话、邮箱核对的依据：knowledge 里写明的（如网络运维电话）和本次检索到的校园资料。 */
+export function campusAssistantGroundingText(knowledge: CampusKnowledgeItem[] | undefined) {
+  return [...CAMPUS_ASSISTANT_KNOWLEDGE.map((item) => item.fact), campusKnowledgeGroundingText(knowledge)].join("\n");
+}
+
 export function searchCampusAssistantActions(query: string, context: CampusAssistantContext, limit = 6) {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return [] as CampusAssistantAction[];
@@ -1298,7 +1303,7 @@ export async function askCampusAssistant(input: {
     }
     const knowledge = await loadCampusAssistantKnowledge(message, input.history, input.context);
     webSearchRequested = webSearchRequested || shouldProactivelySearchWeb(message, deterministicActions, knowledge);
-    const grounding = campusKnowledgeGroundingText(knowledge);
+    const grounding = campusAssistantGroundingText(knowledge);
     let directoryContext: DepartmentContactToolContext | undefined;
     const generate = (toolContext?: DepartmentContactToolContext) => requestAiJson((model, activeProvider) => buildAssistantMessages(
       message,
@@ -1464,7 +1469,7 @@ async function repairCampusAssistantResponse(input: {
   images?: CampusAssistantImageInput[];
   signal?: AbortSignal;
 }): Promise<CampusAssistantResponse | null> {
-  const grounding = campusKnowledgeGroundingText(input.knowledge);
+  const grounding = campusAssistantGroundingText(input.knowledge);
   const repairInstructions = input.reason === "format"
     ? [
         "请重新完整回答上一条用户问题。上一版输出没有形成合法 JSON。只输出一个合法 JSON 对象，不要输出 Markdown、解释、思维过程或 JSON 之外的文字。",
@@ -1639,7 +1644,7 @@ export async function streamCampusAssistant(input: {
     if (response.answer) await onAnswerDelta(response.answer);
     return response;
   }
-  const grounding = campusKnowledgeGroundingText(knowledge);
+  const grounding = campusAssistantGroundingText(knowledge);
   let lastError: unknown = null;
   const started = await startAiReviewLog({
     kind: "campus-assistant",

@@ -139,6 +139,14 @@ export function extractCampusAssistantGeneratedImageSource(payload: unknown): Ge
   return null;
 }
 
+/** 生图沿用拾间AI的线路顺序；Ollama 和 Anthropic 协议的服务没有 image2 接口，跳过它们。 */
+export function selectCampusAssistantImageProviders(providers: AiProviderCandidate[]) {
+  return providers.filter((provider) => (
+    String(provider.apiUrl || "").trim()
+    && !["ollama", "anthropic"].includes(String(provider.provider || "").trim().toLowerCase())
+  ));
+}
+
 export async function generateCampusAssistantImage(input: {
   prompt: string;
   providers: AiProviderCandidate[];
@@ -147,10 +155,7 @@ export async function generateCampusAssistantImage(input: {
 }): Promise<CampusAssistantGeneratedImage> {
   const prompt = String(input.prompt || "").trim().slice(0, 2_000);
   if (!prompt) throw new Error("生图描述为空");
-  const providers = input.providers.filter((provider) => (
-    String(provider.apiUrl || "").trim()
-    && String(provider.provider || "").trim().toLowerCase() !== "ollama"
-  ));
+  const providers = selectCampusAssistantImageProviders(input.providers);
   if (!providers.length) throw new Error("没有可用的生图上游");
 
   const providerErrors: string[] = [];

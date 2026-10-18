@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { prisma } from "../src/prisma";
 import { loadFeatures } from "../src/services/siteSettings";
-import { askCampusAssistant, streamCampusAssistant, type CampusAssistantResponse } from "../src/services/campusAssistant";
+import { askCampusAssistant, campusAssistantGroundingText, streamCampusAssistant, type CampusAssistantResponse } from "../src/services/campusAssistant";
 import { buildDepartmentContactModelInstruction, executeDepartmentContactToolQueries,
   groundDepartmentContactResponse, readDepartmentContactToolQueries, resolveDepartmentContactModelRound,
   canStreamWithoutDepartmentTool, safeDepartmentFreeStreamPrefix } from "../src/services/departmentContactsAssistant";
@@ -44,6 +44,50 @@ test("model tool protocol is bounded, read-only and not a full directory prompt"
   assert.equal(rounds, 1);
   assert.ok(completed.context);
   await assert.rejects(resolveDepartmentContactModelRound(initial, JSON.parse, async () => initial), /ROUND_LIMIT/);
+});
+
+test("site knowledge phones are grounded and an unverifiable phone gets one repair round", async () => {
+  const grounding = campusAssistantGroundingText([]);
+  const network = response("校园网故障可拨打网络运维电话 025-86185450。");
+  assert.equal(groundDepartmentContactResponse(network, {}, undefined, grounding).answer, network.answer);
+  assert.throws(() => groundDepartmentContactResponse(response("电话025-12345678"), {}, undefined, grounding), /UNGROUNDED_PHONE/);
+
+  const validate = (result: { content: string }, value: unknown, context?: Parameters<typeof groundDepartmentContactResponse>[2]) => {
+    groundDepartmentContactResponse(response((value as { answer: string }).answer), value, context, grounding);
+  };
+  const invented = { content: JSON.stringify(payload("可以拨打 025-12345678 咨询。")) };
+  const contexts: unknown[] = [];
+  const repaired = await resolveDepartmentContactModelRound(invented, JSON.parse, async (context) => {
+    contexts.push(context);
+    assert.match(buildDepartmentContactModelInstruction(context), /已被拦截/);
+    assert.ok(!buildDepartmentContactModelInstruction(context).includes("department_contact_tool_results="));
+    return { content: JSON.stringify(payload("可以拨打网络运维电话 025-86185450。")) };
+  }, undefined, validate);
+  assert.deepEqual(contexts, [{ queries: [], results: [], contactRepair: true }]);
+  assert.match((repaired.parsed as { answer: string }).answer, /86185450/);
+  assert.ok(!buildDepartmentContactModelInstruction().includes("已被拦截"));
+
+  let rounds = 0;
+  await assert.rejects(resolveDepartmentContactModelRound(invented, JSON.parse, async () => {
+    rounds++;
+    return invented;
+  }, undefined, validate), /UNGROUNDED_PHONE/);
+  assert.equal(rounds, 1);
+
+  // The repair round may still look the number up, but only once.
+  const lookedUp = await resolveDepartmentContactModelRound(invented, JSON.parse, async (context) => {
+    if (!context.queries.length) return { content: JSON.stringify(payload("", [{ q: "江宁补办校园卡" }])) };
+    return { content: JSON.stringify(payload("校园卡部：025-86185446", [], ["CPU-0035"])) };
+  }, undefined, validate);
+  assert.equal(lookedUp.context?.queries.length, 1);
+
+  const tool = executeDepartmentContactToolQueries([{ q: "江宁补办校园卡" }]);
+  const toolRepair = await resolveDepartmentContactModelRound(invented, JSON.parse, async (context) => {
+    assert.equal(context.contactRepair, true);
+    assert.match(buildDepartmentContactModelInstruction(context), /phones、emails/);
+    return { content: JSON.stringify(payload("校园卡部：025-86185446", [], ["CPU-0035"])) };
+  }, tool, validate);
+  assert.equal(toolRepair.context?.contactRepair, true);
 });
 
 test("phone and reference validation uses returned facts; conflicts cannot supply a phone", () => {
