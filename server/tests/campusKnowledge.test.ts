@@ -26,6 +26,7 @@ import {
   isForumAiAnswerCandidate,
   looksLikeForumQuestion,
   resolveForumAiAnswer,
+  siteKnowledgeItems,
 } from "../src/services/forumAiAnswer";
 
 const schoolDocsFile = path.resolve(__dirname, "../assets/knowledge/school-docs.json");
@@ -207,6 +208,18 @@ test("only question-like posts on answerable boards get an AI answer", () => {
   assert.ok(!isForumAiAnswerCandidate({ ...base, hidden: true, title: "补考什么时候", content: "", board: { type: "question", slug: "question" } }));
   assert.ok(!isForumAiAnswerCandidate({ ...base, author: { role: "bot" }, title: "关于补考安排的通知？", content: "", board: { type: "normal", slug: "life" } }));
   assert.ok(looksLikeForumQuestion("求问", "第二批预推免还能报名吗"));
+});
+
+test("course time questions get the jwxt course search as site knowledge", () => {
+  const items = siteKnowledgeItems(
+    "公选课",
+    "想知道公选课《中药和天然药现代研发范例解读》和《基于中药和天然药物的新药发现》每周什么时间在哪个教室上课呢？想去旁听",
+    1,
+  );
+  const jwxt = items.find((entry) => entry.title === "教务数据");
+  assert.ok(jwxt, "教务数据 should be offered");
+  assert.match(jwxt.excerpt, /课表检索可按课程、教师、教室或班级查询/u);
+  assert.equal(jwxt.ref, `R${items.indexOf(jwxt) + 1}`);
 });
 
 test("forum answers need a question, enough confidence and real citations", () => {
