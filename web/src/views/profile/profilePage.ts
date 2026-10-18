@@ -174,7 +174,11 @@ export function useProfilePage() {
     const review = user.value?.nicknameReview;
     if (!review || review.status === "none") return "";
     if (["checking", "manual_pending"].includes(review.status)) return `昵称“${review.pendingNickname || ""}”正在后台审核，当前昵称暂不改变。`;
-    if (review.status === "rejected") return `昵称“${review.pendingNickname || ""}”未通过审核：${review.reason || "请换一个昵称后重试"}`;
+    if (review.status === "rejected") {
+      // 随资料一起被拒时服务端会清掉待审昵称，原因已由资料审核提示显示，不再重复一条空昵称的提示。
+      if (!review.pendingNickname) return user.value?.profileReview?.reason ? "" : `昵称未通过审核：${review.reason || "请换一个昵称后重试"}`;
+      return `昵称“${review.pendingNickname}”未通过审核：${review.reason || "请换一个昵称后重试"}`;
+    }
     if (review.status === "review_failed") return review.reason || "昵称审核暂未完成，请重新提交。";
     return "";
   });
