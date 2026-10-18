@@ -133,3 +133,115 @@
     }
   }
 }
+
+// 拾间AI 参考回答：排在回复最前面，用回复的格子，只多一个圆形标志和出处列表。
+.replies {
+  .reply-ai-avatar {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 50%;
+
+    svg { width: 24px; height: 24px; fill: currentColor; }
+  }
+
+  .reply-ai-chip {
+    padding: 1px 8px;
+    border-radius: var(--cpu-radius-pill);
+    background: var(--cpu-primary-soft);
+    color: var(--cpu-primary);
+  }
+
+  .reply-ai-sources {
+    display: grid;
+    gap: 4px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--cpu-fs-s);
+    line-height: 1.5;
+
+    li { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+
+    a,
+    li > span:not(.reply-ai-n) {
+      flex: 0 1 auto;
+      min-width: 3em;
+      overflow: hidden;
+      color: var(--cpu-text-secondary);
+      text-decoration: none;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    a:hover { color: var(--cpu-primary); }
+    // 窄屏上先让出处说明省略，标题尽量完整。
+    small {
+      flex: 0 4 auto;
+      min-width: 0;
+      overflow: hidden;
+      color: var(--cpu-text-muted);
+      font-size: var(--cpu-fs-xs);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .reply-ai-n {
+    display: inline-grid;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--cpu-primary-soft);
+    color: var(--cpu-primary);
+    font-size: var(--cpu-fs-xs);
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .reply-ai-note-text {
+    align-self: center;
+    margin-right: auto;
+    color: var(--cpu-text-muted);
+    font-size: var(--cpu-fs-xs);
+  }
+
+  .reply-ai-score { white-space: nowrap; }
+
+  .reply-ai-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--cpu-border-soft);
+    color: var(--cpu-text-secondary);
+    font-size: var(--cpu-fs-s);
+  }
+
+  .reply-ai-line-text { flex: 1; min-width: 0; line-height: 1.5; }
+
+  .reply-ai-mark {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--cpu-primary-soft);
+    color: var(--cpu-primary);
+
+    svg { width: 14px; height: 14px; fill: currentColor; }
+    &.is-busy svg { animation: reply-ai-pulse 1.4s ease-in-out infinite; }
+  }
+}
+
+@keyframes reply-ai-pulse {
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replies .reply-ai-mark.is-busy svg { animation: none; }
+}

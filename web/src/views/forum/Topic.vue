@@ -358,8 +358,6 @@
       </div>
     </article>
 
-    <TopicAiAnswerCard v-if="!topic.hidden" :topic-id="topic.id" />
-
     <!-- 回复列表 -->
     <section class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">
@@ -367,11 +365,49 @@
         <span class="reply-title-mobile">评论 {{ topic.replyCount }}</span>
         <span v-if="ownHiddenReplyCount" class="reply-review-count">· {{ ownHiddenReplyCount }} 条仅自己可见</span>
       </h3>
+      <!-- 拾间AI 参考回答排在回复最前面，沿用回复的样式；生成中和管理员才看得到的跳过原因只占一行。 -->
+      <div v-if="aiAnswer?.status === 'answered'" id="ai-answer" ref="aiAnswerEl" class="reply reply-ai" aria-label="拾间AI 参考回答">
+        <aside class="reply-author-panel">
+          <span class="avatar reply-ai-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><path :d="AI_SPARK_PATHS[0]" /><path :d="AI_SPARK_PATHS[1]" /></svg></span>
+          <div class="reply-author-line"><span class="author">拾间AI</span></div>
+        </aside>
+        <div class="reply-body">
+          <div class="reply-meta">
+            <span class="floor">参考回答</span>
+            <span class="reply-ai-chip">AI 整理</span>
+            <span v-if="aiAnswer.createdAt">{{ fmtRelative(aiAnswer.createdAt) }}</span>
+          </div>
+          <MarkdownView :content="aiAnswer.answer || ''" class="reply-content topic-markdown reply-markdown" compact-quotes />
+          <ol v-if="aiAnswer.sources?.length" class="reply-ai-sources" aria-label="出处">
+            <li v-for="source in aiAnswer.sources" :key="source.n">
+              <span class="reply-ai-n">{{ source.n }}</span>
+              <router-link v-if="source.url?.startsWith('/')" :to="source.url">{{ source.title }}</router-link>
+              <a v-else-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer nofollow">{{ source.title }}</a>
+              <span v-else>{{ source.title }}</span>
+              <small>{{ topicAiSourceMeta(source) }}</small>
+            </li>
+          </ol>
+          <div class="reply-actions">
+            <span class="reply-ai-note-text">依据学校资料和往期帖子整理，可能有误<span v-if="aiAnswer.review" class="reply-ai-score"> · 自评 {{ aiAnswer.review.confidence }} 分</span></span>
+            <el-button v-if="aiAnswer.canRegenerate" text size="small" :loading="aiAnswerBusy === 'regenerate'" :disabled="Boolean(aiAnswerBusy)" @click="regenerateAiAnswer">重新生成</el-button>
+            <el-button v-if="aiAnswer.canDismiss" text size="small" :loading="aiAnswerBusy === 'dismiss'" :disabled="Boolean(aiAnswerBusy)" @click="dismissAiAnswer">关闭</el-button>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="aiAnswer?.status === 'pending'" class="reply-ai-line" aria-live="polite">
+        <span class="reply-ai-mark is-busy" aria-hidden="true"><svg viewBox="0 0 24 24"><path :d="AI_SPARK_PATHS[0]" /><path :d="AI_SPARK_PATHS[1]" /></svg></span>
+        <span class="reply-ai-line-text">拾间AI 正在查找相关的学校资料和往期帖子…</span>
+      </div>
+      <div v-else-if="aiAnswer?.review" class="reply-ai-line">
+        <span class="reply-ai-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path :d="AI_SPARK_PATHS[0]" /><path :d="AI_SPARK_PATHS[1]" /></svg></span>
+        <span class="reply-ai-line-text">拾间AI 没有回答（仅管理员可见）：{{ topicAiStaffStatus(aiAnswer.review.status) }}<template v-if="aiAnswer.review.reason">，{{ aiAnswer.review.reason }}</template></span>
+        <el-button v-if="aiAnswer.canRegenerate" text size="small" :loading="aiAnswerBusy === 'regenerate'" :disabled="Boolean(aiAnswerBusy)" @click="regenerateAiAnswer">重新生成</el-button>
+      </div>
       <div v-if="repliesLoading" class="replies-loading" aria-busy="true">
         <el-skeleton animated :rows="3" />
         <el-skeleton animated :rows="3" />
       </div>
-      <el-empty v-else-if="!replies.length" description="还没有回复，来聊两句吧" />
+      <el-empty v-else-if="!replies.length && aiAnswer?.status !== 'answered'" description="还没有回复，来聊两句吧" />
       <template v-else>
         <div
           v-for="entry in displayReplies"
@@ -780,7 +816,7 @@ import AppIcon from "@/components/common/AppIcon.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
-import TopicAiAnswerCard from "@/components/forum/TopicAiAnswerCard.vue";
+import { topicAiSourceMeta, topicAiStaffStatus, useTopicAiAnswer } from "@/components/forum/useTopicAiAnswer";
 import { topicApi, replyApi, likeApi, type Topic, type Reply, type ReplySubmissionResponse } from "@/api/topic";
 import { directMessageApi } from "@/api/directMessage";
 import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";
@@ -884,6 +920,17 @@ let shareCardRenderPromise: Promise<string> | null = null;
 let topicReviewPollSeq = 0;
 let topicReviewPollTimer: ReturnType<typeof setTimeout> | null = null;
 const repliesEl = ref<HTMLElement | null>(null);
+const aiAnswerEl = ref<HTMLElement | null>(null);
+const AI_SPARK_PATHS = [
+  "M12 2.5c.6 4.6 2.9 6.9 7.5 7.5-4.6.6-6.9 2.9-7.5 7.5-.6-4.6-2.9-6.9-7.5-7.5 4.6-.6 6.9-2.9 7.5-7.5Z",
+  "M18.5 15.5c.25 1.9 1.1 2.75 3 3-1.9.25-2.75 1.1-3 3-.25-1.9-1.1-2.75-3-3 1.9-.25 2.75-1.1 3-3Z",
+] as const;
+const {
+  view: aiAnswer,
+  busy: aiAnswerBusy,
+  dismiss: dismissAiAnswer,
+  regenerate: regenerateAiAnswer,
+} = useTopicAiAnswer(() => (topic.value && !topic.value.hidden ? topic.value.id : 0), aiAnswerEl);
 const mainFloorRef = ref<HTMLElement | null>(null);
 const mainPostUsesStickyAuthor = ref(false);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);

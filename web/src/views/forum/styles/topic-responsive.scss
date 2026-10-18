@@ -365,6 +365,8 @@
     }
 
     .reply-author-panel .avatar { width: 38px !important; height: 38px !important; }
+    .reply-ai-avatar svg { width: 19px; height: 19px; }
+    .reply-ai-line { padding: 10px 16px; }
     .reply.nested .reply-author-panel .avatar { width: 32px !important; height: 32px !important; }
     .reply-author-panel .reply-author-line {
       position: absolute;
