@@ -31,7 +31,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.15" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.16" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
@@ -83,6 +83,12 @@ async function main() {
   assert.match(source, /原图与当前题目区域截图均未能取得/, "只有两条视觉取图路径都失败时才阻止本题提交");
   assert.doesNotMatch(source, /visual(?:Model|Reasoning|ContextModel)/, "视觉兜底不得另设模型，应沿用当前答题档位");
   assert.match(source, /答案写入核验/, "选择题写入后必须回读页面实际选择状态");
+  // 作业与考试页的选项是 .answerBg，选中标记在它里面的 .num_option 上；把 .answer_p 当成一行时永远读不到选中，
+  // 每题都会被判成"实际选项不一致"而撤销（2.2.15 及之前的作业因此一题都写不进去）
+  assert.match(source, /const row = label\.closest\("\.answerBg"\) \|\| label\.closest\("li"\) \|\| label;/, "选项行应先认作业/考试页的 .answerBg");
+  assert.match(source, /this\.closest\("\.answerBg, \.textDIV, \.eidtDiv"\) \|\| this\.closest\("li"\)/, "清除已选答案时也应先认 .answerBg");
+  assert.doesNotMatch(source, /msg\("作业答案已填写，请检查后手动提交"\)/, "作业结束提示必须按实际写入的题数说话");
+  assert.match(source, /道题未能填写，请补全后再手动提交/, "部分题没写进去时必须提示手动补全");
   assert.match(source, /getLearningAnswerOptionIndices/, "选择题应使用独立的选项索引解析器");
   assert.match(source, /source:\s*"optionLetters"/, "AI 返回的选项字母应优先作为页面写入索引");
   assert.match(source, /selectionSource:\s*optionSelection\.source/, "选项写入日志应记录字母或文本映射来源");
@@ -124,7 +130,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.15", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.16", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cputime.cn",
       cacheDirectory,
@@ -137,7 +143,7 @@ async function main() {
     assert.equal(new URL(requests[1]).searchParams.get("sha256"), manifest.sha256, "正文请求应使用发布哈希隔离缓存");
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.15");
+    assert.equal(cached?.manifest.version, "2.2.16");
     assert.equal(cached?.source, source);
 
     requests.length = 0;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.15
+// @version      2.2.16
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -1990,7 +1990,9 @@
     const preferredSelector = questionData && questionData.workType === "zj" ? "ul:first-of-type li .after" : ".answer_p, ul:first-of-type li .after";
     const rows = [];
     Array.from(html.querySelectorAll(preferredSelector)).forEach((label) => {
-      const row = label.closest("li") || label;
+      // 作业与考试页每个选项是 .answerBg（里面并排 .num_option 和 .answer_p），选中标记加在 .num_option 上；
+      // 章节测验仍是 ul > li。先认 .answerBg，否则回读状态时只看 .answer_p，永远读不到选中。
+      const row = label.closest(".answerBg") || label.closest("li") || label;
       if (!rows.includes(row)) rows.push(row);
     });
     return rows;
@@ -2094,7 +2096,7 @@
   }, clearCurrent = (item, iframeWindow) => {
     const selectedRows = new Set();
     $$1(item).find(".check_answer, .check_answer_dx").each(function() {
-      const row = this.closest("li") || this.closest(".answerBg, .textDIV, .eidtDiv") || this;
+      const row = this.closest(".answerBg, .textDIV, .eidtDiv") || this.closest("li") || this;
       selectedRows.add(row);
     }), selectedRows.forEach((row) => {
       const rowElement = $$1(row), checkedControl = row.querySelector && row.querySelector("input[type='radio']:checked, input[type='checkbox']:checked");
@@ -2346,6 +2348,7 @@
           ques.push(data);
         }
         this.askStore.reset(), this.askStore.setActivity("作业", `已识别 ${ques.length} 道题，准备获取答案`, 0);
+        let filledCount = 0;
         for (let i = 0; i < ques.length; i++) {
           this.askStore.setActivity("作业", `正在处理第 ${i + 1}/${ques.length} 题`, Math.round(i / Math.max(1, ques.length) * 100));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
@@ -2354,9 +2357,13 @@
           this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: String(item.explanation || "") }));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           let tmp = fillAnswer(data, ques[i], Timu[i], _unsafeWindow);
+          tmp && filledCount++;
           tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = learningAnswerDisplay(data[0], tmp)) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
         }
-        this.askStore.msg("作业答案已填写，请检查后手动提交");
+        // 只报实际写进页面的题数，没写进去的题要让人知道去手动补
+        if (filledCount === ques.length) this.askStore.msg(`作业 ${filledCount} 道题的答案已填写，请检查后手动提交`);
+        else if (filledCount > 0) this.askStore.msg(`已填写 ${filledCount}/${ques.length} 道题，另有 ${ques.length - filledCount} 道题未能填写，请补全后再手动提交`);
+        else this.askStore.msg(`${ques.length} 道题都没能写入页面，请手动作答；可在运行日志查看原因`);
         resolve();
       });
     }
