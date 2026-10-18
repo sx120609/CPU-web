@@ -16,6 +16,8 @@
       @download="openDownloadGuide"
     />
 
+    <AndroidNextCard />
+
     <p v-if="detectedPlatform === 'ios'" class="download-note">
       Android 和电脑安装包需在对应设备安装，可将本页链接发送到对应设备后下载。
     </p>
@@ -57,6 +59,7 @@ import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDi
 import { useMobileLayout } from "@/utils/mobileLayout";
 import DownloadDesktop from "./download/DownloadDesktop.vue";
 import DownloadMobile from "./download/DownloadMobile.vue";
+import AndroidNextCard from "./download/AndroidNextCard.vue";
 import type { DownloadPlatform, PlatformCard } from "./download/types";
 import "./download/download.css";
 

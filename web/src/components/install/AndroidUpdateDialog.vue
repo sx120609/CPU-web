@@ -108,6 +108,9 @@ interface AndroidBridge {
   getApkUpdateState?: () => string;
   continueApkInstall?: () => boolean;
   retryApkUpdate?: () => boolean;
+  supportsNativeUpdater?: () => boolean;
+  openNativeUpdater?: () => void;
+  getUpdateChannel?: () => string;
 }
 
 const router = useRouter();
@@ -234,7 +237,7 @@ async function checkRelease(manual: boolean): Promise<boolean> {
   if (!manual && performance.now() - lastReleaseCheck < 60_000) return true;
   try {
     if (!releaseCheck) {
-      releaseCheck = fetchAndroidRelease().then(value => {
+      releaseCheck = fetchAndroidRelease(undefined, updateChannel()).then(value => {
         if (!disposed) {
           latestRelease.value = value;
           if (value.serverTime) serverClock = { now: Date.parse(value.serverTime), receivedAt: performance.now() };
@@ -312,6 +315,8 @@ async function showRequestedPrompt(detail: AndroidUpdatePromptDetail) {
 
 function autoPromptIfNeeded() {
   autoPromptTimer = 0;
+  // Clients with the native updater check, download and install on their own.
+  if (hasNativeUpdater() && requirementState.value === "none" && !updateRequired.value) return;
   // Required campaigns also cover 2.x clients pinned to the legacy hostname.
   if (requirementState.value !== "none" || updateRequired.value) {
     if (updateRequired.value || autoPromptedVersion !== latestRelease.value.versionCode) {
@@ -344,6 +349,7 @@ function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
     void router.push("/download");
     return;
   }
+  if (kind === "app" && !auto && !updateRequired.value && openNativeUpdater()) return;
   readUpdateStatus();
   if (kind === "app" && !updateAvailable.value && !hasPendingUpdate.value && !updateRequired.value) {
     if (!auto) ElMessage.success(`当前已是最新版 ${currentVersionLabel.value}`);
@@ -364,6 +370,10 @@ function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
 }
 
 async function downloadAndroidUpdate() {
+  if (promptKind.value !== "install" && openNativeUpdater()) {
+    if (!updateRequired.value) open.value = false;
+    return;
+  }
   if (pendingUpdateUnsupported.value) {
     openBrowserDownload();
     return;
@@ -436,6 +446,23 @@ async function copyBrowserDownload() {
 
 function getAndroidBridge(): AndroidBridge | null {
   return ((window as any).CPUAndroid ?? null) as AndroidBridge | null;
+}
+
+/** Android V60+ updates itself (incremental patches, the NEXT test channel, silent install). */
+function hasNativeUpdater() {
+  try { return getAndroidBridge()?.supportsNativeUpdater?.() === true; } catch { return false; }
+}
+
+function openNativeUpdater() {
+  if (!hasNativeUpdater()) return false;
+  try {
+    getAndroidBridge()?.openNativeUpdater?.();
+    return true;
+  } catch { return false; }
+}
+
+function updateChannel(): "stable" | "beta" {
+  try { return getAndroidBridge()?.getUpdateChannel?.() === "beta" ? "beta" : "stable"; } catch { return "stable"; }
 }
 
 function openExternalDownload(url: string) {

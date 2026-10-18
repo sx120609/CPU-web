@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express from "express";
-import { createAndroidDownloadHandler, LEGACY_ANDROID_DOWNLOAD_PATH } from "../src/routes/androidDownload";
+import { createAndroidDownloadHandler, createAndroidPatchHandler, createAndroidReleaseHandler, LEGACY_ANDROID_DOWNLOAD_PATH } from "../src/routes/androidDownload";
 import { publishedAndroidRelease } from "../src/services/androidRelease";
 
 const enterpriseFile = {
@@ -55,4 +55,54 @@ test("missing or unavailable enterprise storage never falls back to a bundled AP
     assert.equal(body.code, 503);
     assert.equal(headers.get("Cache-Control"), "no-store");
   }
+});
+
+test("NEXT downloads and incremental patches come from the enterprise drive too", async (t) => {
+  const sha = "c".repeat(64);
+  const stable = publishedAndroidRelease;
+  const next = {
+    ...stable, versionCode: stable.versionCode + 1, versionName: "9.9.9", fileName: `CPU-Web-Android-V${stable.versionCode + 1}.apk`,
+    notes: ["工作台"],
+    patches: [{ fromVersionCode: stable.versionCode, fromSha256: sha, fileName: `CPU-Web-Android-V${stable.versionCode}-V${stable.versionCode + 1}.cpupatch`, size: 1234, sha256: sha }],
+  };
+  const releaseFor = (channel: "stable" | "beta") => channel === "beta" ? { release: next, channel } : { release: stable, channel };
+  const files = new Map([
+    [stable.fileName, { ...enterpriseFile }],
+    [next.fileName, { ...enterpriseFile, url: "https://data.aliyunfile.com/share/next.apk?signature=t", name: next.fileName }],
+    [next.patches[0].fileName, { ...enterpriseFile, url: "https://data.aliyunfile.com/share/next.cpupatch?signature=t", name: next.patches[0].fileName, size: 1234 }],
+  ]);
+  const dependencies = { hasShare: () => true, resolveDownload: async (name: string) => files.get(name)!, releaseFor };
+  const app = express();
+  app.get("/api/site/downloads/android-app", createAndroidDownloadHandler(dependencies));
+  app.get("/api/site/downloads/android-patch", createAndroidPatchHandler(dependencies));
+  app.get("/api/site/downloads/android", createAndroidReleaseHandler(async () => ({
+    minimumVersionCode: 1, startsAt: new Date(0).toISOString(), deadlineAt: new Date(1).toISOString(), message: "更新",
+  }), releaseFor, next, stable));
+  const server = createServer(app);
+  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  const download = await fetch(`${base}/api/site/downloads/android-app?channel=beta`, { redirect: "manual" });
+  assert.equal(download.headers.get("location"), files.get(next.fileName)!.url);
+  const stableDownload = await fetch(`${base}/api/site/downloads/android-app`, { redirect: "manual" });
+  assert.equal(stableDownload.headers.get("location"), enterpriseFile.url);
+  const patch = await fetch(`${base}/api/site/downloads/android-patch?channel=beta&from=${stable.versionCode}`, { redirect: "manual" });
+  assert.equal(patch.status, 302);
+  assert.equal(patch.headers.get("location"), files.get(next.patches[0].fileName)!.url);
+  const missing = await fetch(`${base}/api/site/downloads/android-patch?channel=beta&from=1`, { redirect: "manual" });
+  assert.equal(missing.status, 404);
+
+  const beta = (await (await fetch(`${base}/api/site/downloads/android?channel=beta&from=${stable.versionCode}`)).json()).data;
+  assert.equal(beta.channel, "beta");
+  assert.equal(beta.versionCode, next.versionCode);
+  assert.deepEqual(beta.notes, ["工作台"]);
+  assert.equal(beta.downloadUrl, "/api/site/downloads/android-app?channel=beta");
+  assert.equal(beta.patch.url, `/api/site/downloads/android-patch?channel=beta&from=${stable.versionCode}`);
+  assert.equal(beta.patches, undefined);
+  const plain = (await (await fetch(`${base}/api/site/downloads/android`)).json()).data;
+  assert.equal(plain.channel, "stable");
+  assert.equal(plain.versionCode, stable.versionCode);
+  assert.equal(plain.patch, null);
+  assert.equal(plain.beta.versionName, "9.9.9");
 });
