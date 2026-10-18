@@ -58,7 +58,7 @@ test("summary groups by brand, model, client version, Android major and WebView 
   assert.equal(summary.installs, 3);
   assert.equal(summary.signedInUsers, 1);
   assert.deepEqual(summary.byBrand, [{ brand: "redmi", name: "Redmi", count: 2 }, { brand: "huawei", name: "华为", count: 1 }]);
-  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "23013RK75C", brand: "Redmi", count: 2 });
+  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "23013RK75C", deviceModels: ["23013RK75C"], name: "23013RK75C", named: false, brand: "Redmi", count: 2 });
   assert.deepEqual(summary.otherDeviceModels, { models: 0, count: 0 });
   assert.deepEqual(summary.byAppVersion.map((row) => row.version), ["4.0.15 (56)", "4.0.14 (55)"]);
   assert.deepEqual(summary.bySystemVersion.map((row) => row.version), ["14", "13", "12"]);
@@ -87,6 +87,26 @@ test("only the first thirty models are listed; the rest is one total", () => {
   const summary = summarizeAndroidClientInstalls(rows);
   assert.equal(summary.byDeviceModel.length, 30);
   assert.deepEqual(summary.otherDeviceModels, { models: 4, count: 4 });
+  assert.equal(summary.unnamedDeviceModels.models, 34);
+  assert.equal(summary.unnamedDeviceModels.top.length, 34);
+});
+
+test("codes of one phone are ranked under its market name", () => {
+  const row = (deviceBrand: string, deviceModel: string) => ({ deviceBrand, deviceModel, systemVersion: "15", appVersion: "4.0.15", appBuild: "56", userId: null });
+  const summary = summarizeAndroidClientInstalls([
+    row("HUAWEI", "PLR-AL30"), row("HUAWEI", "PLR-AL00"), row("HUAWEI", "PLR-AL30"),
+    row("vivo", "V2509A"), row("vivo", "V2509A"),
+    row("Xiaomi", "24129PN74C"),
+    row("vivo", "V9999A"),
+  ]);
+  assert.deepEqual(summary.byDeviceModel.map((item) => [item.name, item.deviceModels, item.count]), [
+    ["HUAWEI Mate 70 Pro", ["PLR-AL30", "PLR-AL00"], 3],
+    ["vivo X300", ["V2509A"], 2],
+    ["V9999A", ["V9999A"], 1],
+    ["Xiaomi 15", ["24129PN74C"], 1],
+  ]);
+  assert.equal(summary.byDeviceModel[0].brand, "华为");
+  assert.deepEqual(summary.unnamedDeviceModels, { models: 1, count: 1, top: [{ deviceModel: "V9999A", brand: "vivo", count: 1 }] });
 });
 
 test("a chained exception is identified by its root cause", () => {

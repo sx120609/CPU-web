@@ -84,19 +84,23 @@
 
         <section class="card">
           <h3>设备型号</h3>
-          <p class="hint">厂商的型号代码，按设备数排序，最多列出 30 个。</p>
+          <p class="hint">同一机型的不同型号代码合并计数，按设备数排序，最多列出 30 个；灰字是厂商型号代码，认不出的代码按原样显示。</p>
           <div v-if="!stats.byDeviceModel.length" class="empty">暂无数据</div>
           <div class="model-grid">
             <div v-for="row in stats.byDeviceModel" :key="row.deviceModel" class="bar-row">
-              <div class="bar-label">
-                <span>{{ row.deviceModel }}</span>
-                <small v-if="row.brand">{{ row.brand }}</small>
+              <div class="bar-label" :title="row.deviceModels.join(' / ')">
+                <span>{{ row.name }}</span>
+                <small>{{ row.named ? row.deviceModels.join(" / ") : row.brand }}</small>
               </div>
               <div class="bar-track"><div class="bar-fill" :style="{ width: percent(row.count) }" /></div>
               <span class="bar-count">{{ row.count }} · {{ percent(row.count) }}</span>
             </div>
           </div>
           <p v-if="stats.otherDeviceModels.models" class="hint tail">另有 {{ stats.otherDeviceModels.models }} 个型号共 {{ stats.otherDeviceModels.count }} 台未列出。</p>
+          <p v-if="stats.unnamedDeviceModels.models" class="hint tail">
+            未识别 {{ stats.unnamedDeviceModels.models }} 个型号共 {{ stats.unnamedDeviceModels.count }} 台，较多的是
+            {{ stats.unnamedDeviceModels.top.slice(0, 12).map((row) => `${row.deviceModel}（${row.brand} ${row.count}）`).join("、") }}。
+          </p>
         </section>
 
         <div class="feature-grid">
@@ -133,7 +137,7 @@
           <div class="table-scroll">
             <el-table :data="stats.recent" size="small" empty-text="暂无数据">
               <el-table-column label="设备" min-width="170">
-                <template #default="{ row }">{{ row.brandName }}<span class="muted"> {{ row.deviceModel }}</span></template>
+                <template #default="{ row }">{{ row.deviceName === row.deviceModel ? row.brandName : row.deviceName }}<span class="muted device-code">{{ row.deviceModel }}</span></template>
               </el-table-column>
               <el-table-column label="类型" width="80"><template #default="{ row }">{{ row.typeName }}</template></el-table-column>
               <el-table-column label="系统" width="150"><template #default="{ row }">{{ row.systemVersion }}</template></el-table-column>
@@ -308,12 +312,13 @@ onMounted(load);
 .card .hint.tail { margin: 8px 0 0; }
 .sub-title { margin-top: 20px; }
 .model-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 28px; }
-.model-grid .bar-row { grid-template-columns: minmax(0, 110px) minmax(0, 1fr) auto; }
+.model-grid .bar-row { grid-template-columns: minmax(0, 170px) minmax(0, 1fr) auto; }
 .chart-box { height: 220px; }
 .bar-row { display: grid; grid-template-columns: minmax(0, 130px) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
 .bar-label { min-width: 0; }
 .bar-label span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cpu-text); }
 .bar-label small, .muted { color: var(--cpu-text-secondary); font-size: 11px; }
+.device-code { margin-left: 6px; }
 .bar-track, :deep(.bar-track) { height: 8px; border-radius: 4px; background: var(--cpu-surface-subtle); overflow: hidden; }
 .bar-fill, :deep(.bar-fill) { height: 100%; border-radius: 4px; background: var(--cpu-primary); }
 .bar-count { color: var(--cpu-text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }

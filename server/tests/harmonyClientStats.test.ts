@@ -42,7 +42,8 @@ test("installs are summarized by type, model, version and feature use", () => {
   assert.equal(summary.installs, 3);
   assert.equal(summary.signedInUsers, 2);
   assert.deepEqual(summary.byDeviceType, [{ type: "phone", name: "手机", count: 2 }, { type: "tablet", name: "平板", count: 1 }]);
-  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "ALN-AL00", brand: "华为", count: 2 });
+  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "ALN-AL00", deviceModels: ["ALN-AL00"], name: "HUAWEI Mate 60 Pro", named: true, brand: "华为", count: 2 });
+  assert.deepEqual(summary.unnamedDeviceModels.top, [{ deviceModel: "MRO-W00", brand: "华为", count: 1 }]);
   assert.deepEqual(summary.byAppVersion, [{ version: "3.0.7 (27)", count: 2 }, { version: "3.0.6 (26)", count: 1 }]);
   assert.deepEqual(summary.bySystemVersion, [{ version: "6.0", count: 2 }, { version: "5.1", count: 1 }]);
   assert.deepEqual(summary.byApiVersion, [{ version: "20", count: 2 }, { version: "18", count: 1 }]);

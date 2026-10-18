@@ -13,7 +13,9 @@ test("heartbeat schema accepts native payloads and rejects malformed fields", ()
 test("device identifiers map to marketing names and fall back to the raw identifier", () => {
   assert.equal(iosDeviceName("iPhone16,2"), "iPhone 15 Pro Max");
   assert.equal(iosDeviceName("arm64"), "模拟器");
-  assert.equal(iosDeviceName("iPad14,1"), "iPad14,1");
+  assert.equal(iosDeviceName("iPad14,1"), "iPad mini（第 6 代）");
+  assert.equal(iosDeviceName("iPhone19,7"), "iPhone 18 Pro Max");
+  assert.equal(iosDeviceName("iPhone99,7"), "iPhone99,7");
 });
 
 test("summary groups by model, client version and iOS major.minor", () => {
@@ -24,9 +26,18 @@ test("summary groups by model, client version and iOS major.minor", () => {
   ]);
   assert.equal(summary.installs, 3);
   assert.equal(summary.signedInUsers, 1);
-  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "iPhone17,1", name: "iPhone 16 Pro", count: 2 });
+  assert.deepEqual(summary.byDeviceModel[0], { deviceModel: "iPhone17,1", deviceModels: ["iPhone17,1"], name: "iPhone 16 Pro", named: true, count: 2 });
   assert.deepEqual(summary.byAppVersion.map((row) => row.version), ["1.4.0 (58)", "1.3.2 (51)"]);
   assert.deepEqual(summary.bySystemVersion, [{ version: "26.0", count: 2 }, { version: "18.6", count: 1 }]);
+});
+
+test("identifiers of one model are counted together", () => {
+  const row = (deviceModel: string) => ({ deviceModel, systemVersion: "26.0", appVersion: "1.4.0", appBuild: "58", userId: null });
+  const summary = summarizeIosClientInstalls([row("iPhone19,3"), row("iPhone19,7"), row("iPhone19,7"), row("iPad16,3"), row("iPad16,4")]);
+  assert.deepEqual(summary.byDeviceModel.map((item) => [item.name, item.deviceModels, item.count]), [
+    ["iPhone 18 Pro Max", ["iPhone19,7", "iPhone19,3"], 3],
+    ["iPad Pro 11 英寸（M4）", ["iPad16,3", "iPad16,4"], 2],
+  ]);
 });
 
 test("unknown ranges default to thirty days", () => {

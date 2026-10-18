@@ -356,7 +356,8 @@ export type IosClientStats = {
   totals: { allTime: number; active1d: number; active7d: number; active30d: number };
   installs: number;
   signedInUsers: number;
-  byDeviceModel: { deviceModel: string; name: string; count: number }[];
+  /** One row per model; `deviceModels` lists its identifiers, most common first. */
+  byDeviceModel: { deviceModel: string; deviceModels: string[]; name: string; named: boolean; count: number }[];
   byAppVersion: { version: string; count: number }[];
   bySystemVersion: { version: string; count: number }[];
   features: {
@@ -430,6 +431,7 @@ export type AndroidClientDiagnosticDetail = {
   deviceBrand: string;
   brandName: string;
   deviceModel: string;
+  deviceName: string;
   systemVersion: string;
   summary: string;
   occurredAt: string;
@@ -443,8 +445,10 @@ export type HarmonyClientStats = {
   installs: number;
   signedInUsers: number;
   byDeviceType: { type: string; name: string; count: number }[];
-  byDeviceModel: { deviceModel: string; brand: string; count: number }[];
+  /** One row per market name; `deviceModels` lists its codes, most common first. */
+  byDeviceModel: { deviceModel: string; deviceModels: string[]; name: string; named: boolean; brand: string; count: number }[];
   otherDeviceModels: { models: number; count: number };
+  unnamedDeviceModels: { models: number; count: number; top: { deviceModel: string; brand: string; count: number }[] };
   byAppVersion: { version: string; count: number }[];
   bySystemVersion: { version: string; count: number }[];
   byApiVersion: { version: string; count: number }[];
@@ -459,6 +463,7 @@ export type HarmonyClientStats = {
   recent: {
     deviceBrand: string;
     deviceModel: string;
+    deviceName: string;
     deviceType: string;
     brandName: string;
     typeName: string;
@@ -477,8 +482,10 @@ export type AndroidClientStats = {
   installs: number;
   signedInUsers: number;
   byBrand: { brand: string; name: string; count: number }[];
-  byDeviceModel: { deviceModel: string; brand: string; count: number }[];
+  /** One row per market name; `deviceModels` lists its codes, most common first. */
+  byDeviceModel: { deviceModel: string; deviceModels: string[]; name: string; named: boolean; brand: string; count: number }[];
   otherDeviceModels: { models: number; count: number };
+  unnamedDeviceModels: { models: number; count: number; top: { deviceModel: string; brand: string; count: number }[] };
   byAppVersion: { version: string; count: number }[];
   bySystemVersion: { version: string; count: number }[];
   byWebView: { version: string; count: number }[];
@@ -507,6 +514,7 @@ export type AndroidClientStats = {
     deviceBrand: string;
     brandName: string;
     deviceModel: string;
+    deviceName: string;
     systemVersion: string;
     appVersion: string;
     appBuild: string;

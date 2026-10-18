@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { getChinaDayRange } from "./adminStats";
-import { cleanDeviceLabel } from "./androidClientStats";
+import { androidDeviceName, cleanDeviceLabel, summarizeDeviceModels } from "./androidClientStats";
 import { runWithDistributedLock } from "./cache";
 import { RANGE_DAYS, TREND_DAYS, bump, compareVersions, dateKeys, flagCounts, sortedCounts, type IosClientStatsRange } from "./iosClientStats";
 
@@ -108,8 +108,6 @@ export type HarmonyClientInstallRow = {
   customDisplay?: boolean | null;
 };
 
-const MODEL_LIMIT = 30;
-
 export function summarizeHarmonyClientInstalls(rows: HarmonyClientInstallRow[]) {
   const models = new Map<string, number>();
   const modelBrands = new Map<string, string>();
@@ -134,7 +132,6 @@ export function summarizeHarmonyClientInstalls(rows: HarmonyClientInstallRow[]) 
     bump(palettes, row.schedulePalette ?? "unknown");
     if (row.userId) users.add(row.userId);
   }
-  const modelRows = sortedCounts(models);
   const byVersionDesc = (map: Map<string, number>) => sortedCounts(map)
     .sort((a, b) => Number(a.key === "unknown") - Number(b.key === "unknown") || compareVersions(a.key, b.key))
     .map(({ key, count }) => ({ version: key, count }));
@@ -142,11 +139,7 @@ export function summarizeHarmonyClientInstalls(rows: HarmonyClientInstallRow[]) 
     installs: rows.length,
     signedInUsers: users.size,
     byDeviceType: sortedCounts(types).map(({ key, count }) => ({ type: key, name: harmonyDeviceTypeName(key), count })),
-    byDeviceModel: modelRows.slice(0, MODEL_LIMIT).map(({ key, count }) => ({ deviceModel: key, brand: harmonyBrandName(modelBrands.get(key) ?? ""), count })),
-    otherDeviceModels: {
-      models: Math.max(0, modelRows.length - MODEL_LIMIT),
-      count: modelRows.slice(MODEL_LIMIT).reduce((sum, row) => sum + row.count, 0),
-    },
+    ...summarizeDeviceModels(models, modelBrands, harmonyBrandName),
     byAppVersion: sortedCounts(versions).sort((a, b) => compareVersions(a.key, b.key)).map(({ key, count }) => ({ version: key, count })),
     bySystemVersion: byVersionDesc(systems),
     byApiVersion: byVersionDesc(apis),
@@ -217,7 +210,9 @@ export async function getHarmonyClientStats(range: IosClientStatsRange, now = ne
       newInstalls: trend.map((date) => newByDate.get(date) ?? 0),
       versions: versionSeries,
     },
-    recent: recent.map((row) => ({ ...row, brandName: harmonyBrandName(row.deviceBrand), typeName: harmonyDeviceTypeName(row.deviceType) })),
+    recent: recent.map((row) => ({
+      ...row, brandName: harmonyBrandName(row.deviceBrand), deviceName: androidDeviceName(row.deviceModel), typeName: harmonyDeviceTypeName(row.deviceType),
+    })),
   };
 }
 

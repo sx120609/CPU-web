@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { getChinaDayRange } from "./adminStats";
 import { runWithDistributedLock } from "./cache";
+import { deviceModelName, groupDeviceModels } from "./deviceModelNames";
 import { RANGE_DAYS, TREND_DAYS, bump, compareVersions, dateKeys, flagCounts, sortedCounts, type IosClientStatsRange } from "./iosClientStats";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -269,6 +270,31 @@ export type AndroidClientInstallRow = {
 };
 
 const MODEL_LIMIT = 30;
+const UNNAMED_LIMIT = 100;
+
+/** Market name of the model, or the reported code when it is not known. */
+export function androidDeviceName(model: string) {
+  return deviceModelName(model) ?? model;
+}
+
+export function summarizeDeviceModels(models: Map<string, number>, modelBrands: Map<string, string>, brandName: (brand: string) => string) {
+  const groups = groupDeviceModels(models, deviceModelName);
+  const unnamed = groups.filter((group) => !group.named);
+  return {
+    byDeviceModel: groups.slice(0, MODEL_LIMIT).map((group) => ({ ...group, brand: brandName(modelBrands.get(group.deviceModel) ?? "") })),
+    // Android has thousands of model codes; the tail is one number, not a list.
+    otherDeviceModels: {
+      models: groups.slice(MODEL_LIMIT).reduce((sum, group) => sum + group.deviceModels.length, 0),
+      count: groups.slice(MODEL_LIMIT).reduce((sum, group) => sum + group.count, 0),
+    },
+    // Codes still shown raw, most common first, so the name table can be extended.
+    unnamedDeviceModels: {
+      models: unnamed.length,
+      count: unnamed.reduce((sum, group) => sum + group.count, 0),
+      top: unnamed.slice(0, UNNAMED_LIMIT).map((group) => ({ deviceModel: group.deviceModel, brand: brandName(modelBrands.get(group.deviceModel) ?? ""), count: group.count })),
+    },
+  };
+}
 
 function parseWidgets(value: string | null | undefined): { kind: string }[] | null {
   if (value == null) return null;
@@ -320,7 +346,6 @@ export function summarizeAndroidClientInstalls(rows: AndroidClientInstallRow[]) 
       }
     }
   }
-  const modelRows = sortedCounts(models);
   const byVersionDesc = (map: Map<string, number>) => sortedCounts(map)
     .sort((a, b) => Number(a.key === "unknown") - Number(b.key === "unknown") || compareVersions(a.key, b.key))
     .map(({ key, count }) => ({ version: key, count }));
@@ -328,12 +353,7 @@ export function summarizeAndroidClientInstalls(rows: AndroidClientInstallRow[]) 
     installs: rows.length,
     signedInUsers: users.size,
     byBrand: sortedCounts(brands).map(({ key, count }) => ({ brand: key, name: androidBrandName(brandLabels.get(key) ?? key), count })),
-    byDeviceModel: modelRows.slice(0, MODEL_LIMIT).map(({ key, count }) => ({ deviceModel: key, brand: androidBrandName(modelBrands.get(key) ?? ""), count })),
-    // Android has thousands of model codes; the tail is one number, not a list.
-    otherDeviceModels: {
-      models: Math.max(0, modelRows.length - MODEL_LIMIT),
-      count: modelRows.slice(MODEL_LIMIT).reduce((sum, row) => sum + row.count, 0),
-    },
+    ...summarizeDeviceModels(models, modelBrands, androidBrandName),
     byAppVersion: sortedCounts(versions).sort((a, b) => compareVersions(a.key, b.key)).map(({ key, count }) => ({ version: key, count })),
     bySystemVersion: byVersionDesc(systems),
     byWebView: byVersionDesc(webViews),
@@ -540,14 +560,14 @@ export async function getAndroidClientStats(range: IosClientStatsRange, now = ne
         };
       }),
     },
-    recent: recent.map((row) => ({ ...row, brandName: androidBrandName(row.deviceBrand) })),
+    recent: recent.map((row) => ({ ...row, brandName: androidBrandName(row.deviceBrand), deviceName: androidDeviceName(row.deviceModel) })),
   };
 }
 
 export async function getAndroidClientDiagnostic(id: string) {
   const row = await prisma.androidClientDiagnostic.findUnique({ where: { id } });
   if (!row) return null;
-  return { ...row, brandName: androidBrandName(row.deviceBrand), topFrames: extractJavaFrames(row.stackTrace) };
+  return { ...row, brandName: androidBrandName(row.deviceBrand), deviceName: androidDeviceName(row.deviceModel), topFrames: extractJavaFrames(row.stackTrace) };
 }
 
 // ---------- Retention ----------

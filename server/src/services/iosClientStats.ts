@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { getChinaDayRange } from "./adminStats";
 import { runWithDistributedLock } from "./cache";
+import { groupDeviceModels } from "./deviceModelNames";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -43,12 +44,89 @@ const DEVICE_NAMES: Record<string, string> = {
   "iPhone18,2": "iPhone 17 Pro Max",
   "iPhone18,3": "iPhone 17",
   "iPhone18,4": "iPhone Air",
+  "iPhone18,5": "iPhone 17e",
+  "iPhone19,2": "iPhone 18 Pro",
+  "iPhone19,3": "iPhone 18 Pro Max",
+  "iPhone19,7": "iPhone 18 Pro Max",
+  "iPad7,5": "iPad（第 6 代）",
+  "iPad7,6": "iPad（第 6 代）",
+  "iPad7,11": "iPad（第 7 代）",
+  "iPad7,12": "iPad（第 7 代）",
+  "iPad11,6": "iPad（第 8 代）",
+  "iPad11,7": "iPad（第 8 代）",
+  "iPad12,1": "iPad（第 9 代）",
+  "iPad12,2": "iPad（第 9 代）",
+  "iPad13,18": "iPad（第 10 代）",
+  "iPad13,19": "iPad（第 10 代）",
+  "iPad15,7": "iPad（A16）",
+  "iPad15,8": "iPad（A16）",
+  "iPad11,3": "iPad Air（第 3 代）",
+  "iPad11,4": "iPad Air（第 3 代）",
+  "iPad13,1": "iPad Air（第 4 代）",
+  "iPad13,2": "iPad Air（第 4 代）",
+  "iPad13,16": "iPad Air（第 5 代）",
+  "iPad13,17": "iPad Air（第 5 代）",
+  "iPad14,8": "iPad Air 11 英寸（M2）",
+  "iPad14,9": "iPad Air 11 英寸（M2）",
+  "iPad14,10": "iPad Air 13 英寸（M2）",
+  "iPad14,11": "iPad Air 13 英寸（M2）",
+  "iPad15,3": "iPad Air 11 英寸（M3）",
+  "iPad15,4": "iPad Air 11 英寸（M3）",
+  "iPad15,5": "iPad Air 13 英寸（M3）",
+  "iPad15,6": "iPad Air 13 英寸（M3）",
+  "iPad16,8": "iPad Air 11 英寸（M4）",
+  "iPad16,9": "iPad Air 11 英寸（M4）",
+  "iPad16,10": "iPad Air 13 英寸（M4）",
+  "iPad16,11": "iPad Air 13 英寸（M4）",
+  "iPad8,1": "iPad Pro 11 英寸（第 1 代）",
+  "iPad8,2": "iPad Pro 11 英寸（第 1 代）",
+  "iPad8,3": "iPad Pro 11 英寸（第 1 代）",
+  "iPad8,4": "iPad Pro 11 英寸（第 1 代）",
+  "iPad8,5": "iPad Pro 12.9 英寸（第 3 代）",
+  "iPad8,6": "iPad Pro 12.9 英寸（第 3 代）",
+  "iPad8,7": "iPad Pro 12.9 英寸（第 3 代）",
+  "iPad8,8": "iPad Pro 12.9 英寸（第 3 代）",
+  "iPad8,9": "iPad Pro 11 英寸（第 2 代）",
+  "iPad8,10": "iPad Pro 11 英寸（第 2 代）",
+  "iPad8,11": "iPad Pro 12.9 英寸（第 4 代）",
+  "iPad8,12": "iPad Pro 12.9 英寸（第 4 代）",
+  "iPad13,4": "iPad Pro 11 英寸（第 3 代）",
+  "iPad13,5": "iPad Pro 11 英寸（第 3 代）",
+  "iPad13,6": "iPad Pro 11 英寸（第 3 代）",
+  "iPad13,7": "iPad Pro 11 英寸（第 3 代）",
+  "iPad13,8": "iPad Pro 12.9 英寸（第 5 代）",
+  "iPad13,9": "iPad Pro 12.9 英寸（第 5 代）",
+  "iPad13,10": "iPad Pro 12.9 英寸（第 5 代）",
+  "iPad13,11": "iPad Pro 12.9 英寸（第 5 代）",
+  "iPad14,3": "iPad Pro 11 英寸（第 4 代）",
+  "iPad14,4": "iPad Pro 11 英寸（第 4 代）",
+  "iPad14,5": "iPad Pro 12.9 英寸（第 6 代）",
+  "iPad14,6": "iPad Pro 12.9 英寸（第 6 代）",
+  "iPad16,3": "iPad Pro 11 英寸（M4）",
+  "iPad16,4": "iPad Pro 11 英寸（M4）",
+  "iPad16,5": "iPad Pro 13 英寸（M4）",
+  "iPad16,6": "iPad Pro 13 英寸（M4）",
+  "iPad17,1": "iPad Pro 11 英寸（M5）",
+  "iPad17,2": "iPad Pro 11 英寸（M5）",
+  "iPad18,1": "iPad Pro 13 英寸（M5）",
+  "iPad18,2": "iPad Pro 13 英寸（M5）",
+  "iPad11,1": "iPad mini（第 5 代）",
+  "iPad11,2": "iPad mini（第 5 代）",
+  "iPad14,1": "iPad mini（第 6 代）",
+  "iPad14,2": "iPad mini（第 6 代）",
+  "iPad16,1": "iPad mini（A17 Pro）",
+  "iPad16,2": "iPad mini（A17 Pro）",
 };
 
 export function iosDeviceName(model: string) {
   if (DEVICE_NAMES[model]) return DEVICE_NAMES[model];
   if (model === "arm64" || model === "x86_64" || model.startsWith("Simulator")) return "模拟器";
   return model;
+}
+
+function knownIosDeviceName(model: string) {
+  const name = iosDeviceName(model);
+  return name === model ? null : name;
 }
 
 const WIDGET_NAMES: Record<string, string> = {
@@ -380,7 +458,8 @@ export function summarizeIosClientInstalls(rows: IosClientInstallRow[]) {
   return {
     installs: rows.length,
     signedInUsers: users.size,
-    byDeviceModel: sortedCounts(models).map(({ key, count }) => ({ deviceModel: key, name: iosDeviceName(key), count })),
+    // iPhone and iPad models carry one identifier per region or radio, counted together.
+    byDeviceModel: groupDeviceModels(models, knownIosDeviceName),
     byAppVersion: sortedCounts(versions).sort((a, b) => compareVersions(a.key, b.key)).map(({ key, count }) => ({ version: key, count })),
     bySystemVersion: sortedCounts(systems).sort((a, b) => compareVersions(a.key, b.key)).map(({ key, count }) => ({ version: key, count })),
     features: {

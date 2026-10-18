@@ -47,13 +47,13 @@
         </div>
 
         <div class="dist-grid">
-          <section class="card">
+          <section class="card model-list">
             <h3>设备型号</h3>
             <div v-if="!stats.byDeviceModel.length" class="empty">暂无数据</div>
             <div v-for="row in stats.byDeviceModel" :key="row.deviceModel" class="bar-row">
-              <div class="bar-label">
+              <div class="bar-label" :title="row.deviceModels.join(' / ')">
                 <span>{{ row.name }}</span>
-                <small v-if="row.name !== row.deviceModel">{{ row.deviceModel }}</small>
+                <small v-if="row.named">{{ row.deviceModels.join(" / ") }}</small>
               </div>
               <div class="bar-track"><div class="bar-fill" :style="{ width: percent(row.count) }" /></div>
               <span class="bar-count">{{ row.count }} · {{ percent(row.count) }}</span>
@@ -169,7 +169,7 @@
           <div class="table-scroll">
             <el-table :data="stats.recent" size="small" empty-text="暂无数据">
               <el-table-column label="设备" min-width="160">
-                <template #default="{ row }">{{ row.deviceName }}<span v-if="row.deviceName !== row.deviceModel" class="muted"> {{ row.deviceModel }}</span></template>
+                <template #default="{ row }">{{ row.deviceName }}<span v-if="row.deviceName !== row.deviceModel" class="muted device-code">{{ row.deviceModel }}</span></template>
               </el-table-column>
               <el-table-column label="系统" width="100"><template #default="{ row }">iOS {{ row.systemVersion }}</template></el-table-column>
               <el-table-column label="客户端" width="120"><template #default="{ row }">{{ row.appVersion }} ({{ row.appBuild }})</template></el-table-column>
@@ -405,6 +405,8 @@ onMounted(load);
 .bar-label { min-width: 0; }
 .bar-label span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cpu-text); }
 .bar-label small, .muted { color: var(--cpu-text-secondary); font-size: 11px; }
+.device-code { margin-left: 6px; }
+.model-list .bar-row { grid-template-columns: minmax(0, 180px) minmax(0, 1fr) auto; }
 .bar-track, :deep(.bar-track) { height: 8px; border-radius: 4px; background: var(--cpu-surface-subtle); overflow: hidden; }
 .bar-fill, :deep(.bar-fill) { height: 100%; border-radius: 4px; background: var(--cpu-primary); }
 .bar-count { color: var(--cpu-text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
