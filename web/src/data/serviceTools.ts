@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "zhihuishu" | "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -21,13 +21,6 @@ export interface ServiceTool {
 }
 
 export const serviceTools: ServiceTool[] = [
-  {
-    slug: "zhihuishu", name: "智慧树助手", summary: "扫码连接智慧树，选择课程并查看运行进度",
-    description: "共享课与校内课在线工作台，支持任务启动、停止和进度查看。",
-    icon: "document", status: "ready", category: "学习工具", routeName: "service-zhihuishu",
-    componentKey: "zhihuishu", accent: "#16775b", iconComponent: Document,
-    badge: "需登录 · Beta", badgeType: "info",
-  },
   {
     slug: "workshop",
     name: "创意工坊",
