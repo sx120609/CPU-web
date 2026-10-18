@@ -273,6 +273,7 @@ NSIS 在这里只负责解压和启动，不负责安装流程。
 - **不参与单实例锁。** 覆盖安装时正式版往往正开着，安装态若去抢锁会直接退出，表现为"双击没反应"。
 - **覆盖正在运行的旧版靠改名而不是删除。** Windows 允许重命名正在运行的可执行文件，不允许删除。覆盖失败就把旧文件挪成 `.old-xxx`，下次正常启动时由 `sweepReplacedFiles()` 清掉。
 - **卸载是自己删自己。** 进程活着时删不掉自身目录，所以交给一个脱离的 `cmd` 等两秒再 `rmdir`。
+- **任务栏图标靠固定的 AppUserModelId。** 正式版启动时、建窗口和读写开机自启之前先 `app.setAppUserModelId("cn.lizmt.cpuweb.desktop")`，开始菜单与桌面快捷方式带同一个 ID。不设的话 Electron 会在读写开机自启时自己生成 `electron.app.药大拾间桌面端`，任务栏对这个 ID 显示空白文档图标。开机自启的注册表值名仍用旧的 `electron.app.药大拾间桌面端`，已开启自启的用户关掉开关时才删得掉原来那一项。安装器与卸载器从临时目录运行，不设这个 ID。
 
 卸载项写在 `HKCU\...\Uninstall\cpu-web-desktop`，不需要管理员权限，`UninstallString` 指向正式版 exe 加 `--uninstall`。安装落点沿用旧 NSIS 版的 `%LOCALAPPDATA%\Programs\cpu-web-desktop`，让老用户就地升级而不是并存两份。
 

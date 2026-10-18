@@ -10,6 +10,9 @@ const script = fs.readFileSync(path.join(root, "build", "portable-preheat.nsi"),
 const prepare = fs.readFileSync(path.join(root, "scripts", "prepare-nsis.cjs"), "utf8");
 const selfInstall = fs.readFileSync(path.join(root, "electron", "self-install.ts"), "utf8");
 const installerRenderer = fs.readFileSync(path.join(root, "src", "installer", "renderer.js"), "utf8");
+const config = fs.readFileSync(path.join(root, "electron", "config.ts"), "utf8");
+const main = fs.readFileSync(path.join(root, "electron", "main.ts"), "utf8");
+const preferences = fs.readFileSync(path.join(root, "electron", "preferences.ts"), "utf8");
 
 assert.deepEqual(packageJson.build.win.target, ["portable"], "Windows 仍应使用 portable 自解压包");
 assert.equal(packageJson.build.portable.splashImage, undefined, "预热阶段不应再加载低 DPI 位图");
@@ -44,5 +47,17 @@ assert.match(
   /const writeShortcuts = async[\s\S]*await removeKnownShortcuts\(\)[\s\S]*branding\.windowTitle/,
   "创建规范快捷方式前必须清理旧版重复入口"
 );
+
+// 任务栏图标：正式版在建窗口和读写开机自启之前就定下 AppUserModelId，快捷方式带同一个 ID。
+// 让 Electron 自己在半路生成 electron.app.<产品名> 时，任务栏显示的是空白文档图标。
+const appUserModelId = config.match(/appUserModelId: "([^"]+)"/)?.[1];
+assert.equal(appUserModelId, packageJson.build.appId, "AppUserModelId 必须与 build.appId 一致");
+const setAumid = main.indexOf("app.setAppUserModelId(branding.appUserModelId)");
+assert.ok(setAumid > 0, "正式版必须显式设置 AppUserModelId");
+assert.ok(setAumid < main.indexOf("app.requestSingleInstanceLock()"), "AppUserModelId 必须在单实例锁、建窗口与开机自启之前设置");
+assert.match(main, /!installMode && !uninstallMode\) \{\s*app\.setAppUserModelId/, "安装器与卸载器从临时目录运行，不得占用正式版的 AppUserModelId");
+assert.match(selfInstall, /appUserModelId: branding\.appUserModelId/, "开始菜单与桌面快捷方式必须带同一个 AppUserModelId");
+assert.match(preferences, /name: branding\.loginItemName/, "开机自启沿用旧的注册表值名，已开启的用户才关得掉");
+assert.match(config, /loginItemName: "electron\.app\.药大拾间桌面端"/, "开机自启值名必须是旧版 Electron 默认 ID");
 
 console.log("Windows 安装检查通过：portable 高 DPI 预热、旧进程退出确认与快捷方式迁移均已覆盖。");

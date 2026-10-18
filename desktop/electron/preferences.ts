@@ -12,6 +12,7 @@ import {
   MIN_INTERVAL_SEC
 } from "./campus-net/constants";
 import type { CampusNetSettings } from "./campus-net/service";
+import { branding } from "./config";
 
 // 非敏感的应用设置。凭据一律不放这里 —— 那些走 safeStorage（OAuth 会话在
 // oauth-store.ts，校园网学号密码在 campus-net/credential-store.ts，
@@ -166,6 +167,6 @@ export const applyLaunchOnLogin = (enabled: boolean, startMinimized: boolean): v
     // args 只在 Windows 登录项中生效；macOS 由 Launch Services 记录隐藏启动意图。
     ...(process.platform === "darwin"
       ? { openAsHidden: startMinimized }
-      : { args: startMinimized ? ["--startup", "--minimized"] : ["--startup"] })
+      : { args: startMinimized ? ["--startup", "--minimized"] : ["--startup"], name: branding.loginItemName })
   });
 };

@@ -4,7 +4,14 @@ export const branding = {
   learningTitle: "网课助手",
   storagePrefix: "cpu-desktop-userscript",
   // 与 web/src/utils/clientInfo.ts 的识别约定对齐（CPUWebScheduleApp / CPUWebHarmonyApp）
-  userAgentTag: "CPUWebDesktopApp"
+  userAgentTag: "CPUWebDesktopApp",
+  // Windows 任务栏按它把窗口归到开始菜单快捷方式上取图标；与 package.json 的 build.appId 一致。
+  // 不显式设置时，Electron 会在第一次用到它（读写开机自启、发通知）时自动生成
+  // electron.app.<产品名>，那时窗口可能已经建好，任务栏只能显示空白文档图标。
+  appUserModelId: "cn.lizmt.cpuweb.desktop",
+  // 旧版没设 AppUserModelId，开机自启的注册表值名沿用的是 Electron 的默认 ID。
+  // 继续用这个名字读写，已开启自启的用户关掉开关时才删得掉原来那一项。
+  loginItemName: "electron.app.药大拾间桌面端"
 } as const;
 
 export const oauthConfig = {

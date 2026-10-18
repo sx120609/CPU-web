@@ -1409,6 +1409,12 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
 const installMode = process.platform === "win32" && isInstallLaunch();
 const uninstallMode = process.platform === "win32" && process.argv.includes("--uninstall");
 
+// 正式版要在建任何窗口、读写开机自启之前定下 AppUserModelId，开始菜单快捷方式带着同一个 ID。
+// 安装器与卸载器从临时目录运行，不用这个 ID，免得任务栏把它记到一个随后就被删掉的程序上。
+if (process.platform === "win32" && !installMode && !uninstallMode) {
+  app.setAppUserModelId(branding.appUserModelId);
+}
+
 if (installMode || uninstallMode) {
   app.whenReady().then(async () => {
     if (uninstallMode) {

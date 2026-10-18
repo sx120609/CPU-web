@@ -607,9 +607,12 @@ select.control { min-width: 168px; padding-right: 6px; }
 
 .switch { cursor: pointer; }
 .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+/* 单独放在行尾的开关（平台账号那一列）本身不是行，要自己撑开 */
+label.switch:not(.row) { position: relative; display: flex; flex: none; }
 
 .switch-track {
   position: relative;
+  display: block;
   flex: none;
   width: 38px;
   height: 22px;

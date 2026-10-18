@@ -166,7 +166,9 @@ const writeShortcuts = async (exePath: string, dirs: string[]): Promise<void> =>
     cwd: path.dirname(exePath),
     icon: exePath,
     iconIndex: 0,
-    description: branding.productName
+    description: branding.productName,
+    // 与正式版进程设置的 AppUserModelId 一致，任务栏和通知才认得出这是同一个应用
+    appUserModelId: branding.appUserModelId
   };
   for (const dir of dirs) {
     try {
