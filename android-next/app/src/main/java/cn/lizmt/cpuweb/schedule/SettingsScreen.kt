@@ -286,8 +286,8 @@ private fun RootPage(activity: MainActivity, open: (SettingsPage) -> Unit) {
             }
         }
     }
-    Panel("拾间AI", footer = "打开后，向拾间AI提问会附带未来 7 天的课程、你记下的日程和待办、未读消息数，不包含成绩和消息内容。") {
-        ToggleRow("带上我的课表和日程", checked = activity.assistant.personal) { activity.assistant.setPersonalMode(it) }
+    Panel("拾间AI 可以看到", footer = ASSISTANT_ACCESS_FOOTER) {
+        AssistantAccessRows(activity.assistant)
     }
     Panel {
         ListRow("更新", value = updateSummary(updates), chevron = true) { open(SettingsPage.Update) }

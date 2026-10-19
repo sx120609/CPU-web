@@ -40,14 +40,18 @@ import cn.lizmt.cpuweb.schedule.agenda.AgendaKind
 import cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence
 import cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat
 import cn.lizmt.cpuweb.schedule.agenda.AgendaStore
+import cn.lizmt.cpuweb.schedule.custom.AssistantControls
 import cn.lizmt.cpuweb.schedule.custom.CustomizationStore
+import cn.lizmt.cpuweb.schedule.custom.DashboardCards
 import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog
 import cn.lizmt.cpuweb.schedule.custom.DestinationKind
+import cn.lizmt.cpuweb.schedule.custom.LAYOUT_PRESETS
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlin.math.roundToInt
 
 /**
  * The native shell: a Compose tab bar and timetable over one shared WebView,
@@ -321,17 +325,48 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         }
     }
 
-    fun askAssistant(text: String) = assistant.send(text, personalContext())
+    fun askAssistant(text: String) = assistant.send(text, ::personalContext, ::readAgentData)
+
+    /** Grades or exams through the page's own sign-in, for a question that needs them. */
+    private suspend fun readAgentData(source: String, semester: String): AgentData {
+        if (!assistant.academic) return AgentData(error = "还没有允许拾间AI查看成绩与考试")
+        val raw = web.agentData(source, semester) ?: return AgentData(error = "页面没有响应，请稍后重试")
+        val reply = runCatching { JSONObject(raw) }.getOrNull() ?: return AgentData(error = "读取失败，请稍后重试")
+        val data = reply.optString("data")
+        if (data.isNotEmpty()) return AgentData(data = data)
+        return AgentData(error = reply.optString("error").ifBlank { reply.optString("__error") }.ifBlank { "读取失败，请稍后重试" })
+    }
 
     /**
-     * What a question to 拾间AI carries: the time and, in personal mode, the
+     * What a question to 拾间AI carries: the time, how the app is set up, what
+     * the user lets it see (the campus feeds' titles; grades and exams only
+     * as [toolResults] read for this question) and, in personal mode, the
      * next seven days of classes, the user's own items and the unread count.
      */
-    fun personalContext(): JSONObject {
+    suspend fun personalContext(toolResults: JSONArray = JSONArray()): JSONObject {
         val now = LocalDateTime.now()
+        val custom = customization.value
         val json = JSONObject()
             .put("now", "%04d-%02d-%02dT%02d:%02d".format(now.year, now.monthValue, now.dayOfMonth, now.hour, now.minute))
             .put("shared", assistant.personal)
+            .put("allow", JSONObject().put("academic", assistant.academic && web.authState.authenticated).put("campus", assistant.campus))
+            .put("app", JSONObject()
+                .put("tabs", JSONArray(custom.tabs.filter { ASSISTANT_DESTINATION.matches(it) }.take(6)))
+                .put("launch", custom.launchTab.take(40))
+                .put("accent", custom.accent.take(20))
+                .put("appearance", appearance.mode.takeIf { it == "light" || it == "dark" } ?: "system")
+                .put("scheduleStyle", style.visualStyle.id)
+                .put("courseRemind", AgendaReminders.courseMinutes(this).coerceIn(-1, 60)))
+            .put("toolResults", toolResults)
+        if (assistant.campus) {
+            // The feeds load with 今天; wait briefly when they have not loaded yet.
+            if (dashboardFeeds.announcements.isEmpty() && dashboardFeeds.hot.isEmpty()) {
+                dashboardFeeds.refresh()
+                kotlinx.coroutines.withTimeoutOrNull(5_000) { while (dashboardFeeds.loading) delay(100) }
+            }
+            fun titles(items: List<FeedItem>) = JSONArray(items.take(8).map { it.title.take(80) })
+            json.put("campus", JSONObject().put("announcements", titles(dashboardFeeds.announcements)).put("hot", titles(dashboardFeeds.hot)))
+        }
         if (!assistant.personal) return json
         val today = now.toLocalDate()
         val days = DashboardSchedule.days(schedule.widgetLocalRecord() ?: ScheduleWidgetLocalDays.read(this))
@@ -398,7 +433,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     location = item.optString("location"), note = item.optString("note"),
                     remind = item.optInt("remind", -1), repeat = AgendaRepeat.of(item.optString("repeat")), origin = "assistant",
                 )) ?: return null
-                "已添加到${AgendaItem.parseDate(saved.date)?.let { dayLabel(it, today, withWeekday = false) } ?: "待办"}" to { agenda.remove(saved.id); Unit }
+                "已添加到${AgendaItem.parseDate(saved.date)?.let { dayLabel(it, today, withWeekday = false) } ?: "日程"}" to { agenda.remove(saved.id); Unit }
             }
             "agenda.update" -> {
                 val previous = agenda.items.firstOrNull { it.id == action.optString("id") } ?: return null
@@ -452,6 +487,76 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     "settings" -> openSettings("")
                     else -> customization.value.destination(DestinationCatalog.DASHBOARD)?.let(shell::open)
                 }
+                "已打开" to null
+            }
+            "layout.preset" -> {
+                val preset = LAYOUT_PRESETS.firstOrNull { it.id == action.optString("id") } ?: return null
+                val previous = customization.value
+                customization.update(preset.apply)
+                "已换成「${preset.title}」布局" to { customization.update { AssistantControls.withPresetFields(it, previous) } }
+            }
+            "tabs.set" -> {
+                val ids = action.optJSONArray("tabs")?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
+                val previous = customization.value
+                val next = AssistantControls.withTabs(previous, ids, action.optString("launch").ifEmpty { null }) ?: return null
+                customization.update { next }
+                "已调整导航栏" to {
+                    customization.update { it.copy(tabs = previous.tabs, launchTab = previous.launchTab) }
+                }
+            }
+            "setting.set" -> {
+                val key = action.optString("key")
+                val previous = AssistantControls.setting(customization.value, key) ?: return null
+                val on = action.optBoolean("value")
+                customization.update { AssistantControls.withSetting(it, key, on) ?: it }
+                "已${if (on) "打开" else "关闭"}${AssistantControls.settings[key]}" to {
+                    customization.update { AssistantControls.withSetting(it, key, previous) ?: it }
+                }
+            }
+            "text.size" -> {
+                val previous = customization.value.fontScale
+                customization.update { it.copy(fontScale = action.optDouble("scale", 1.0).toFloat()) }
+                "文字大小已调到 ${(customization.value.fontScale * 100).roundToInt()}%" to {
+                    customization.update { it.copy(fontScale = previous) }
+                }
+            }
+            "today.add" -> {
+                val section = action.optString("section")
+                val title = DashboardCards.types[section] ?: return null
+                if (section !in DashboardCards.repeatable && customization.value.dashboard.cards.any { it.type == section }) {
+                    return "今天页面里已经有「$title」了" to null
+                }
+                val (next, card) = AssistantControls.withTodayCard(
+                    customization.value, section, action.optString("title"), action.optString("date"), action.optString("text"),
+                ) { java.util.UUID.randomUUID().toString().filter(Char::isLetterOrDigit).take(6).lowercase() } ?: return null
+                customization.update { next }
+                "已添加到今天页面" to { customization.update { AssistantControls.withoutTodayCard(it, card.id) } }
+            }
+            "today.remove" -> {
+                val section = action.optString("section")
+                val removed = AssistantControls.todayCardsOf(customization.value, section)
+                if (removed.isEmpty()) return "今天页面里本来就没有这一项" to null
+                customization.update { AssistantControls.withoutTodayCards(it, section) }
+                "已从今天页面移除" to { customization.update { AssistantControls.withRestoredTodayCards(it, removed) } }
+            }
+            "schedule.view" -> {
+                val previous = schedule.viewMode
+                val view = ScheduleStore.normalizedViewMode(action.optString("view"))
+                shell.openSchedule(null, null)
+                schedule.selectViewMode(view)
+                action.optString("date").takeIf { AgendaItem.parseDate(it) != null }?.let { schedule.selectDate(it) }
+                "已切换到${when (view) { "day" -> "日"; "month" -> "月"; else -> "周" }}视图" to { schedule.selectViewMode(previous) }
+            }
+            "schedule.style" -> {
+                val id = action.optString("style")
+                val next = ScheduleVisualStyle.entries.firstOrNull { it.id == id } ?: return null
+                val previous = style.visualStyle
+                style.selectVisualStyle(next)
+                "课表已换成「${next.title}」" to { style.selectVisualStyle(previous) }
+            }
+            "web.open" -> {
+                val path = action.optString("path").takeIf { SITE_PATH.matches(it) } ?: return null
+                shell.openWeb(path)
                 "已打开" to null
             }
             else -> null
@@ -717,5 +822,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private const val COUPLE_PREFS = "native_schedule_couple"
         private const val KEY_WELCOME_SEEN = "welcome_seen_v4"
         private const val REQUEST_WRITE_STORAGE = 2002
+        /** The destination ids 拾间AI's endpoint accepts. */
+        private val ASSISTANT_DESTINATION = Regex("^(?:[a-z]{2,20}|custom:[a-z0-9]{1,12})$")
+        private val SITE_PATH = Regex("^/(?!/)[^\\s\\\\]{0,300}$")
     }
 }

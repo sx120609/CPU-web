@@ -32,7 +32,8 @@ class AgendaTest {
 
     @Test
     fun theCodecKeepsItemsShowableAndDropsTheRest() {
-        assertNull(AgendaCodec.normalize(AgendaItem("abcdef123456", AgendaKind.Event, "没有日期")))
+        // Any item may go without a day; it then carries no time either.
+        assertEquals("", AgendaCodec.normalize(AgendaItem("abcdef123456", AgendaKind.Event, "没有日期", start = "09:00"))!!.start)
         assertNull(AgendaCodec.normalize(AgendaItem("abcdef123456", AgendaKind.Todo, "   ")))
         val todo = AgendaCodec.normalize(AgendaItem("bcdefg234567", AgendaKind.Todo, "买  牛奶", start = "09:00", remind = 0, repeat = AgendaRepeat.Daily))!!
         assertEquals("买 牛奶", todo.title)
@@ -86,17 +87,43 @@ class AgendaTest {
         val overdue = store.save(AgendaItem("", AgendaKind.Todo, "还书", "2026-10-17"), now = 2)!!
         val event = store.save(AgendaItem("", AgendaKind.Event, "体检", "2026-10-19"), now = 3)!!
         assertEquals(12, undated.id.length)
-        assertEquals(listOf(overdue.id, undated.id), store.openTodos(LocalDate.of(2026, 10, 19)).map { it.id })
+        // A past timed item happened; a past untimed one left unticked is still to do.
+        store.save(AgendaItem("", AgendaKind.Event, "上周的组会", "2026-10-16", "14:00"), now = 4)
+        assertEquals(listOf(overdue.id, undated.id), store.open(LocalDate.of(2026, 10, 19)).map { it.id })
         store.setDone(overdue.id, "2026-10-17", true)
-        assertEquals(listOf(undated.id), store.openTodos(LocalDate.of(2026, 10, 19)).map { it.id })
+        assertEquals(listOf(undated.id), store.open(LocalDate.of(2026, 10, 19)).map { it.id })
         assertEquals(listOf(event.id), store.on(LocalDate.of(2026, 10, 19)).map { it.item.id })
         val removed = store.remove(event.id)!!
         store.restore(removed)
-        assertEquals(3, store.items.size)
+        assertEquals(4, store.items.size)
         assertTrue(changes >= 6)
         // A fresh store reads back what was written.
         val reread = AgendaStore.forTest(java.io.File(folder.root, "agenda.json"))
         assertEquals(store.items, reread.items)
+    }
+
+    @Test
+    fun timetableGridsPlaceItemsByTheirClockTime() {
+        // Two morning periods with a break, then lunch, then an afternoon period; rows of 50 with gaps of 4.
+        val periods = listOf(
+            SchedulePeriod(1, "08:00", "08:45"),
+            SchedulePeriod(2, "08:55", "09:40"),
+            SchedulePeriod(3, "13:30", "14:15"),
+        )
+        fun y(time: String) = agendaOffset(AgendaItem.parseTime(time)!!.let { it.hour * 60 + it.minute }, periods, 50f, 4f)
+        assertEquals(0f, y("07:00"), 0.01f)
+        assertEquals(0f, y("08:00"), 0.01f)
+        // 22 of the period's 45 minutes.
+        assertEquals(50f * 22 / 45, y("08:22"), 0.01f)
+        assertEquals(50f, y("08:45"), 0.01f)
+        // Halfway through the ten-minute break: halfway across the gap.
+        assertEquals(52f, y("08:50"), 0.01f)
+        assertEquals(54f, y("08:55"), 0.01f)
+        // Lunch from 09:40 to 13:30 is the one gap before period 3.
+        assertEquals(108f - 4f, y("09:40"), 0.01f)
+        assertEquals(108f, y("13:30"), 0.01f)
+        assertEquals(158f, y("14:15"), 0.01f)
+        assertEquals(158f, y("22:00"), 0.01f)
     }
 
     @Test

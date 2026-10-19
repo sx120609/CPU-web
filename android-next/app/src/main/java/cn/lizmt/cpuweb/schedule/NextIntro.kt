@@ -50,7 +50,7 @@ fun NextIntroSheet(activity: MainActivity) {
             }
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Feature("今天", "课和你自己的安排排在一条时间线上，下一件事放在最上面。")
-                Feature("日程与待办", "随时记下要做的事，写「周五 14:00 组会」就能认出时间；到点在通知栏提醒。")
+                Feature("日程", "随时记下要做的事，写「周五 14:00 组会」就能认出时间；可以设提醒，做完了打个勾。")
                 Feature("拾间AI 个人模式", "让它结合你的课表回答、帮你找空闲时间、替你记事——每一步都先问过你。")
             }
             Panel("选一个开始的布局") {

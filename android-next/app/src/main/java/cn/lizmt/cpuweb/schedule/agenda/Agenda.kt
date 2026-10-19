@@ -8,6 +8,11 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeParseException
 
+/**
+ * Stored since 1.1.0, when events and to-dos were separate. Since 1.1.1 every
+ * item behaves the same (any item may have a time, a date or neither, and any
+ * item can be ticked off); the field is only read back from older data.
+ */
 enum class AgendaKind(val id: String, val title: String) {
     Event("event", "日程"),
     Todo("todo", "待办");
@@ -40,19 +45,19 @@ object AgendaRemind {
 }
 
 /**
- * Something the user plans outside the timetable: an event at a time (or all
- * day), or a to-do with an optional due date. Repeating items keep one record;
- * a repeating to-do remembers which days were done.
+ * Something the user plans outside the timetable: at a time, on a day, or not
+ * yet dated; any of them can be ticked off. Repeating items keep one record and
+ * remember which days were done.
  */
 data class AgendaItem(
     val id: String,
     val kind: AgendaKind,
     val title: String,
-    /** `yyyy-MM-dd`; required for events, optional for to-dos. */
+    /** `yyyy-MM-dd`, or empty for an item without a day yet. */
     val date: String = "",
-    /** `HH:mm`; empty for all-day events and untimed to-dos. */
+    /** `HH:mm`; empty for an item that takes the whole day. */
     val start: String = "",
-    /** `HH:mm` after [start]; events only. */
+    /** `HH:mm` after [start], optional. */
     val end: String = "",
     val location: String = "",
     val note: String = "",
@@ -213,10 +218,9 @@ object AgendaCodec {
         val title = clip(item.title.trim().replace(Regex("\\s+"), " "), 60)
         if (title.isEmpty()) return null
         val date = item.date.takeIf { AgendaItem.parseDate(it) != null }.orEmpty()
-        if (item.kind == AgendaKind.Event && date.isEmpty()) return null
         val start = item.start.takeIf { AgendaItem.parseTime(it) != null && date.isNotEmpty() }.orEmpty()
         val end = item.end.takeIf {
-            item.kind == AgendaKind.Event && start.isNotEmpty() && AgendaItem.parseTime(it)?.isAfter(AgendaItem.parseTime(start)) == true
+            start.isNotEmpty() && AgendaItem.parseTime(it)?.isAfter(AgendaItem.parseTime(start)) == true
         }.orEmpty()
         val repeat = if (date.isEmpty()) AgendaRepeat.None else item.repeat
         val until = item.until.takeIf { repeat != AgendaRepeat.None && (AgendaItem.parseDate(it)?.let { u -> !u.isBefore(AgendaItem.parseDate(date)) } == true) }.orEmpty()

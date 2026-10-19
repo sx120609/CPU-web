@@ -122,6 +122,11 @@ private class ScheduleBodyContext(
 @Composable
 fun NativeScheduleScreen(activity: MainActivity) {
     val store = activity.schedule
+    // The user's own events and to-dos show in their own timetable, not in a shared one.
+    var editingAgenda by remember { mutableStateOf<cn.lizmt.cpuweb.schedule.agenda.AgendaItem?>(null) }
+    val agendaLayer = remember(activity) {
+        ScheduleAgendaLayer(activity.agenda, onOpen = { editingAgenda = it }, onToggle = { activity.toggleAgenda(it) })
+    }
     var shared by rememberSaveable { mutableStateOf(DebugScheduleFixture.openSharedCode) }
     // A widget or link opening the timetable lands on the user's own grid.
     val openRequests = store.openRequests
@@ -133,8 +138,11 @@ fun NativeScheduleScreen(activity: MainActivity) {
         }
     }
     Box(Modifier.fillMaxSize()) {
-        ScheduleSurface(activity, store, onOpenShared = { shared = it })
+        CompositionLocalProvider(LocalScheduleAgenda provides agendaLayer) {
+            ScheduleSurface(activity, store, onOpenShared = { shared = it })
+        }
         shared?.let { code -> SharedScheduleScreen(activity, code) { shared = null } }
+        editingAgenda?.let { item -> AgendaEditorSheet(activity, item) { editingAgenda = null } }
     }
 }
 
@@ -771,6 +779,7 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                     val adjustment = store.adjustment(day, week)
                     val canAdd = store.canEdit
                     if (adjustment != null && blocks.isNotEmpty()) AdjustmentNotice(store, adjustment, day, week)
+                    AgendaDayStrip(date)
                     if (context.couple != null && blocks.isNotEmpty()) {
                         // Two timetables in one day: the time axis in the middle, one person on each side.
                         CoupleDayView(
@@ -894,6 +903,7 @@ private fun DayHeaderCell(
     val colors = LocalScheduleColors.current
     val date = if (week.isEmpty()) fallbackDate.drop(5) else store.dayDate(day, week)
     val adjustment = if (week.isEmpty()) null else store.adjustment(day, week)
+    val fullDate = if (week.isEmpty()) fallbackDate else store.calendarWeek(week)?.days?.getOrNull(day - 1).orEmpty()
     val glass = LocalScheduleGlass.current
     Column(
         modifier.height(36.dp).clip(RoundedCornerShape(10.dp))
@@ -912,6 +922,7 @@ private fun DayHeaderCell(
                     modifier = Modifier.padding(start = 1.dp),
                 )
             }
+            AgendaHeaderDot(fullDate, Modifier.padding(start = 2.dp))
         }
         Text(if (date.isEmpty()) "—" else date.replace('-', '.'), fontSize = 9.sp, lineHeight = 12.sp, letterSpacing = 0.sp, color = colors.secondary)
     }
@@ -1087,6 +1098,7 @@ private fun WeekGrid(
                             context.onCourse(block.notes[0], day.week)
                         }
                     }
+                    AgendaColumnChips(day.date, day.blocks, periods, columnWidth, stride.value - 4f, 4f)
                     if (nowY != null && day.today) ScheduleNowLine(Modifier.offset(y = nowY.dp - 3.5.dp).fillMaxWidth())
                 }
             }

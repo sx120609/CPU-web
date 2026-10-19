@@ -143,8 +143,7 @@ fun DayEntryRow(entry: DayEntry, day: LocalDate, now: LocalDateTime, onToggle: (
     ) {
         Column(Modifier.width(48.dp)) {
             if (entry.start.isEmpty()) {
-                Text(if ((entry as? DayEntry.Plan)?.occurrence?.item?.kind == AgendaKind.Todo) "待办" else "全天",
-                    style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                Text("全天", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
             } else {
                 Text(entry.start, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
                     color = if (running) scheme.primary else scheme.onSurface)
@@ -154,11 +153,7 @@ fun DayEntryRow(entry: DayEntry, day: LocalDate, now: LocalDateTime, onToggle: (
         when (entry) {
             is DayEntry.Course -> Box(Modifier.padding(horizontal = 10.dp).width(3.dp).height(34.dp).clip(CircleShape)
                 .background(if (running) scheme.primary else scheme.outlineVariant))
-            is DayEntry.Plan -> if (entry.occurrence.item.kind == AgendaKind.Todo) {
-                TodoCheck(done, Modifier.padding(end = 0.dp)) { onToggle(entry.occurrence) }
-            } else {
-                Box(Modifier.padding(horizontal = 10.dp).width(3.dp).height(34.dp).clip(CircleShape).background(scheme.primary.copy(alpha = if (running) 1f else 0.55f)))
-            }
+            is DayEntry.Plan -> TodoCheck(done) { onToggle(entry.occurrence) }
         }
         Column(Modifier.weight(1f)) {
             val title = when (entry) {
@@ -204,9 +199,8 @@ fun AddRow(label: String, onClick: () -> Unit) {
 
 // region Editor
 
-/** A blank item for [day]: an event when a day is given, else an undated to-do. */
-fun newAgendaDraft(day: LocalDate?, kind: AgendaKind = if (day != null) AgendaKind.Event else AgendaKind.Todo): AgendaItem =
-    AgendaItem(id = "", kind = kind, title = "", date = day?.toString().orEmpty())
+/** A blank item on [day], or without a day. */
+fun newAgendaDraft(day: LocalDate?): AgendaItem = AgendaItem(id = "", kind = AgendaKind.Event, title = "", date = day?.toString().orEmpty())
 
 /**
  * Adds or edits an item. For a new one the first line reads what the user
@@ -248,12 +242,7 @@ fun AgendaEditorSheet(activity: MainActivity, draft: AgendaItem, onDismiss: () -
         containerColor = scheme.background) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp).imePadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isNew) "新建" else "编辑", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                Segmented(listOf(AgendaKind.Event to "日程", AgendaKind.Todo to "待办"), shown.kind, Modifier.width(150.dp)) { kind ->
-                    edit { it.copy(kind = kind, date = if (kind == AgendaKind.Event && it.date.isEmpty()) today.toString() else it.date) }
-                }
-            }
+            Text(if (isNew) "新建日程" else "编辑日程", style = MaterialTheme.typography.titleLarge)
             Panel {
                 BasicTextField(
                     value = text,
@@ -282,25 +271,17 @@ fun AgendaEditorSheet(activity: MainActivity, draft: AgendaItem, onDismiss: () -
             Panel {
                 ListRow("日期", value = date?.let { dayLabel(it, today) } ?: "不设日期", chevron = true, onClick = { pickingDate = true })
                 Hairline()
-                if (shown.kind == AgendaKind.Event) {
-                    ToggleRow("全天", checked = shown.start.isEmpty(), enabled = date != null) { allDay ->
-                        edit { it.copy(start = if (allDay) "" else it.start.ifEmpty { "09:00" }, end = if (allDay) "" else it.end) }
-                    }
-                } else {
-                    ToggleRow("设定时间", checked = shown.start.isNotEmpty(), enabled = date != null) { timed ->
-                        edit { it.copy(start = if (timed) it.start.ifEmpty { "18:00" } else "") }
-                    }
+                ToggleRow("设定时间", checked = shown.start.isNotEmpty(), enabled = date != null) { timed ->
+                    edit { it.copy(start = if (timed) it.start.ifEmpty { "09:00" } else "", end = if (timed) it.end else "") }
                 }
                 if (shown.start.isNotEmpty()) {
                     Hairline()
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if (shown.kind == AgendaKind.Todo) "截止" else "时间", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text("时间", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                         ChoicePill(shown.start, selected = true) { pickingTime = "start" }
-                        if (shown.kind == AgendaKind.Event) {
-                            Text("至", color = scheme.onSurfaceVariant)
-                            ChoicePill(shown.end.ifEmpty { "结束" }, selected = shown.end.isNotEmpty()) { pickingTime = "end" }
-                        }
+                        Text("至", color = scheme.onSurfaceVariant)
+                        ChoicePill(shown.end.ifEmpty { "结束" }, selected = shown.end.isNotEmpty()) { pickingTime = "end" }
                     }
                 }
             }
@@ -351,7 +332,7 @@ fun AgendaEditorSheet(activity: MainActivity, draft: AgendaItem, onDismiss: () -
             },
             dismissButton = {
                 Row {
-                    if (shown.kind == AgendaKind.Todo) TextButton(onClick = {
+                    TextButton(onClick = {
                         edit { it.copy(date = "", start = "", remind = AgendaRemind.NONE, repeat = AgendaRepeat.None) }
                         pickingDate = false
                     }) { Text("不设日期") }
@@ -386,7 +367,7 @@ fun AgendaEditorSheet(activity: MainActivity, draft: AgendaItem, onDismiss: () -
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("删除「${draft.title}」？") },
-            text = { if (draft.repeat != AgendaRepeat.None) Text("这是重复的${draft.kind.title}，所有日子的都会删除。") },
+            text = { if (draft.repeat != AgendaRepeat.None) Text("这是重复的日程，所有日子的都会删除。") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -497,8 +478,8 @@ fun AgendaScreen(activity: MainActivity) {
             }
         }
         item("todos") {
-            val todos = agenda.items.filter { it.kind == AgendaKind.Todo && !it.dated && !it.done }
-            Panel("没有日期的待办") {
+            val todos = agenda.items.filter { !it.dated && !it.done }
+            Panel("没有日期") {
                 todos.forEachIndexed { index, item ->
                     if (index > 0) Hairline(start = 56.dp)
                     Row(Modifier.fillMaxWidth().clickable { editing = item }.padding(start = 4.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -507,11 +488,11 @@ fun AgendaScreen(activity: MainActivity) {
                     }
                 }
                 if (todos.isNotEmpty()) Hairline()
-                AddRow("添加待办") { editing = newAgendaDraft(null) }
+                AddRow("添加") { editing = newAgendaDraft(null) }
             }
         }
         item("hint") {
-            Text("日程和待办只存在这台手机上；需要提醒时会在通知栏提示。",
+            Text("日程只存在这台手机上；设了提醒的会在通知栏提示。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp))
         }

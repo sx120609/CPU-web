@@ -63,13 +63,16 @@ object DebugCustomization {
             AgendaItem("", AgendaKind.Todo, "还图书馆的书", today.minusDays(1).toString()),
             AgendaItem("", AgendaKind.Todo, "买实验服"),
             AgendaItem("", AgendaKind.Event, "体检", today.plusDays(1).toString(), location = "校医院"),
+            // Over a class of the sample timetable: drawn beside it in the week grid.
+            AgendaItem("", AgendaKind.Event, "英语答疑", today.plusDays(1).toString(), "10:00", "10:40", location = "文科楼"),
             AgendaItem("", AgendaKind.Event, "羽毛球", wednesday.toString(), "19:00", "20:30", location = "体育馆", repeat = AgendaRepeat.Weekly),
         ).forEach { store.save(it) }
     }
 
-    /** A short conversation with one pending and one applied proposal. */
+    /** A short conversation: an item to add, an answer from the exam timetable, and app changes. */
     private fun seedAssistant(activity: MainActivity) {
         val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
+        val finals = java.time.LocalDate.now().plusDays(52).toString()
         activity.assistant.debugSeed(listOf(
             AssistantMessage("d1", fromUser = true, text = "明天下午有空吗？帮我约个时间和小组讨论"),
             AssistantMessage(
@@ -78,12 +81,20 @@ object DebugCustomization {
                 proposals = listOf(AssistantProposal("p1", org.json.JSONObject().put("type", "agenda.create").put("item", org.json.JSONObject()
                     .put("kind", "event").put("title", "小组讨论").put("date", tomorrow).put("start", "16:10").put("end", "17:10")
                     .put("location", "图书馆研讨室").put("remind", 15)))),
-                suggestions = listOf("再帮我把实验报告记成待办", "这周还有哪天下午空？"),
+                suggestions = listOf("再帮我记一下周五交实验报告", "这周还有哪天下午空？"),
             ),
-            AssistantMessage("d3", fromUser = true, text = "每节课前 10 分钟提醒我"),
+            AssistantMessage("d3", fromUser = true, text = "我这学期的考试都在什么时候？"),
             AssistantMessage(
-                "d4", fromUser = false, text = "好的，上课提醒帮你准备好了，确认后每节课开始前 10 分钟会在通知栏提醒。",
-                proposals = listOf(AssistantProposal("p2", org.json.JSONObject().put("type", "course.remind").put("minutes", 10), ProposalState.Applied, "已设置上课提醒")),
+                "d4", fromUser = false,
+                text = "已经排出来的有两门：\n· 药理学：1 月 8 日 9:00–11:00，教学楼 A201，座位 36\n· 分析化学：1 月 10 日 14:00–16:00，教学楼 B305\n其余课程还没有安排，出来以后再问我就好。",
+            ),
+            AssistantMessage("d5", fromUser = true, text = "课表换成素笺，再在今天页面加个期末倒计时"),
+            AssistantMessage(
+                "d6", fromUser = false, text = "帮你准备好了两项，确认后就会生效。",
+                proposals = listOf(
+                    AssistantProposal("p2", org.json.JSONObject().put("type", "schedule.style").put("style", "paper"), ProposalState.Applied, "课表已换成「素笺」"),
+                    AssistantProposal("p3", org.json.JSONObject().put("type", "today.add").put("section", "countdown").put("title", "期末考试").put("date", finals)),
+                ),
             ),
         ))
     }

@@ -15,7 +15,7 @@ import {
   searchCampusAssistantActions,
   streamCampusAssistant,
 } from "../services/campusAssistant";
-import { personalContextSchema, streamPersonalAssistant } from "../services/personalAssistant";
+import { isDataRequestOnly, personalContextSchema, streamPersonalAssistant } from "../services/personalAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
@@ -454,7 +454,8 @@ searchRouter.post(
           if (!delta || res.writableEnded) return;
           writeAssistantEvent(res, "delta", { delta });
         });
-        if (response.fallback && quotaReservation) {
+        // A fetch-only reply is followed at once by the real answer, which is the one charged.
+        if ((response.fallback || isDataRequestOnly(response)) && quotaReservation) {
           await refundCampusAssistantQuota(userId, quotaReservation);
           quotaReservation = null;
         }

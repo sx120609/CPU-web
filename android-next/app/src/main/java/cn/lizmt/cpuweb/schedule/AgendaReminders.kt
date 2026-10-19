@@ -141,17 +141,17 @@ object AgendaReminders {
         if (date != null && date != LocalDate.now()) parts += relativeDay(date)
         if (item.timed) parts += if (item.end.isNotEmpty()) "${item.start}–${item.end}" else item.start
         if (item.location.isNotBlank()) parts += item.location
-        if (parts.isEmpty()) parts += if (item.kind == AgendaKind.Todo) "待办" else "今天"
+        if (parts.isEmpty()) parts += "今天"
         val builder = NotificationCompat.Builder(context, CHANNEL_AGENDA)
             .setSmallIcon(R.drawable.ic_notification_agenda)
             .setContentTitle(item.title)
             .setContentText(parts.joinToString(" · "))
-            .setCategory(if (item.kind == AgendaKind.Event) NotificationCompat.CATEGORY_EVENT else NotificationCompat.CATEGORY_REMINDER)
+            .setCategory(if (item.timed) NotificationCompat.CATEGORY_EVENT else NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(openIntent(context, item.id))
         if (item.note.isNotBlank()) builder.setStyle(NotificationCompat.BigTextStyle().bigText(parts.joinToString(" · ") + "\n" + item.note))
-        if (item.kind == AgendaKind.Todo) builder.addAction(0, "完成", actionIntent(context, ACTION_DONE, item.id, day))
+        builder.addAction(0, "完成", actionIntent(context, ACTION_DONE, item.id, day))
         builder.addAction(0, "10 分钟后提醒", actionIntent(context, ACTION_SNOOZE, item.id, day))
         runCatching { manager.notify(notificationId, builder.build()) }
     }
@@ -201,8 +201,8 @@ object AgendaReminders {
     private fun ensureChannels(context: Context, manager: NotificationManager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (manager.getNotificationChannel(CHANNEL_AGENDA) == null) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL_AGENDA, "日程与待办", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "你在拾间里添加的日程和待办到时间时提醒"
+            manager.createNotificationChannel(NotificationChannel(CHANNEL_AGENDA, "日程", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "你在拾间里添加的日程到时间时提醒"
             })
         }
         if (manager.getNotificationChannel(CHANNEL_COURSE) == null) {

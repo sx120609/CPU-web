@@ -42,7 +42,7 @@ class AgendaStore private constructor(private val file: File, private val onChan
         commit(items + item)
     }
 
-    /** Ticks a to-do, or one day of a repeating one. */
+    /** Ticks an item off, or one day of a repeating one. */
     fun setDone(id: String, day: String, done: Boolean) {
         val item = items.firstOrNull { it.id == id } ?: return
         val next = if (item.repeat == AgendaRepeat.None) item.copy(done = done)
@@ -58,17 +58,20 @@ class AgendaStore private constructor(private val file: File, private val onChan
     /** Everything on [day]: all-day and untimed first, then by time. */
     fun on(day: LocalDate): List<AgendaOccurrence> = items.filter { it.occursOn(day) }
         .map { AgendaOccurrence(it, day) }
-        .sortedWith(compareBy({ it.item.timed }, { it.item.start }, { it.item.kind != AgendaKind.Event }, { it.item.createdAt }))
+        .sortedWith(compareBy({ it.item.timed }, { it.item.start }, { it.item.createdAt }))
 
-    /** To-dos still open: overdue dated ones first, then undated ones in the order they were added. */
-    fun openTodos(today: LocalDate): List<AgendaItem> {
-        val todos = items.filter { it.kind == AgendaKind.Todo && it.repeat == AgendaRepeat.None && !it.done }
-        val overdue = todos.filter { it.dated && AgendaItem.parseDate(it.date)?.isBefore(today) == true }.sortedBy { it.date + it.start }
-        return overdue + todos.filter { !it.dated }.sortedBy { it.createdAt }
+    /**
+     * What is still to do: past days' untimed items left unticked (a timed one
+     * simply happened), then items without a day in the order they were added.
+     */
+    fun open(today: LocalDate): List<AgendaItem> {
+        val candidates = items.filter { it.repeat == AgendaRepeat.None && !it.done }
+        val overdue = candidates.filter { overdue(it, today) }.sortedBy { it.date }
+        return overdue + candidates.filter { !it.dated }.sortedBy { it.createdAt }
     }
 
     fun overdue(item: AgendaItem, today: LocalDate): Boolean =
-        item.kind == AgendaKind.Todo && !item.done && item.repeat == AgendaRepeat.None &&
+        !item.done && item.repeat == AgendaRepeat.None && !item.timed &&
             AgendaItem.parseDate(item.date)?.isBefore(today) == true
 
     private fun commit(next: List<AgendaItem>) {

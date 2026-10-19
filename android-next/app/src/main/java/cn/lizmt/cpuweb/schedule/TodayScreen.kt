@@ -157,7 +157,7 @@ fun nextUp(now: LocalDateTime, courses: Map<String, DashDay>, agenda: AgendaStor
     for (offset in 0L..1L) {
         val day = now.toLocalDate().plusDays(offset)
         for (entry in dayEntries(day, courses, agenda)) {
-            if (entry is DayEntry.Plan && (entry.occurrence.item.kind != AgendaKind.Event || entry.occurrence.done)) continue
+            if (entry is DayEntry.Plan && entry.occurrence.done) continue
             val startTime = AgendaItem.parseTime(entry.start) ?: continue
             val start = LocalDateTime.of(day, startTime)
             val end = AgendaItem.parseTime(entry.end)?.let { LocalDateTime.of(day, it) }
@@ -221,7 +221,7 @@ fun TodayScreen(activity: MainActivity) {
                 IconButton(onClick = { activity.shell.open(custom.destination(DestinationCatalog.AGENDA) ?: return@IconButton) }) {
                     Icon(Icons.Outlined.Event, contentDescription = "日程")
                 }
-                IconButton(onClick = { editing = newAgendaDraft(today) }) { Icon(Icons.Rounded.Add, contentDescription = "新建日程或待办") }
+                IconButton(onClick = { editing = newAgendaDraft(today) }) { Icon(Icons.Rounded.Add, contentDescription = "新建日程") }
             }
         }
         item(key = "ask") { AskBar { activity.openAssistant() } }
@@ -342,15 +342,15 @@ private fun DayPanel(activity: MainActivity, today: LocalDate, now: LocalDateTim
             }
         }
         Hairline()
-        AddRow("添加日程或待办", onAdd)
+        AddRow("添加日程", onAdd)
     }
 }
 
 @Composable
 private fun TodoPanel(activity: MainActivity, today: LocalDate, onEdit: (AgendaItem) -> Unit, onAdd: () -> Unit) {
-    val todos = activity.agenda.openTodos(today)
+    val todos = activity.agenda.open(today)
     if (todos.isEmpty()) return
-    Panel("待办") {
+    Panel("未完成") {
         todos.take(8).forEachIndexed { index, item ->
             if (index > 0) Hairline(start = 56.dp)
             Row(Modifier.fillMaxWidth().clickable { onEdit(item) }.padding(start = 4.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -369,7 +369,7 @@ private fun TodoPanel(activity: MainActivity, today: LocalDate, onEdit: (AgendaI
             ListRow("还有 ${todos.size - 8} 项", chevron = true) { activity.openAgenda(today) }
         }
         Hairline()
-        AddRow("添加待办", onAdd)
+        AddRow("添加没有日期的日程", onAdd)
     }
 }
 

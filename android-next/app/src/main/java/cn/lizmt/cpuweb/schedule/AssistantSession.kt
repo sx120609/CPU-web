@@ -35,10 +35,15 @@ data class AssistantMessage(
     val streaming: Boolean = false,
 )
 
+/** Grades or exams the app read for 拾间AI: compact JSON, or why it could not be read. */
+data class AgentData(val data: String? = null, val error: String? = null)
+
 /**
  * The conversation with 拾间AI in personal mode. Questions go to the site's
  * agent endpoint with the WebView's session; the answer streams in, and its
- * proposed actions wait for the user. The conversation stays on this phone.
+ * proposed actions wait for the user. When it needs grades or exams (and the
+ * user allows it), the app reads them and asks once more with them attached.
+ * The conversation stays on this phone.
  */
 class AssistantSession(context: Context, private val scope: CoroutineScope) {
     private val file = File(context.filesDir, "assistant-conversation.json")
@@ -54,6 +59,15 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
     /** True once the user has read what personal mode sends. */
     var consented by mutableStateOf(prefs.getBoolean(KEY_CONSENT, false))
         private set
+    /** Whether 拾间AI may have grades and exams read when a question needs them. */
+    var academic by mutableStateOf(prefs.getBoolean(KEY_ACADEMIC, false))
+        private set
+    /** Whether questions carry the latest announcement and hot-post titles (public, so on by default). */
+    var campus by mutableStateOf(prefs.getBoolean(KEY_CAMPUS, true))
+        private set
+    /** What the app is doing for the answer being written, such as reading grades. */
+    var status by mutableStateOf<String?>(null)
+        private set
     var quota by mutableStateOf<String?>(null)
         private set
     private var job: Job? = null
@@ -63,6 +77,16 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         personal = on
         if (on) consented = true
         prefs.edit().putBoolean(KEY_PERSONAL, on).putBoolean(KEY_CONSENT, consented).apply()
+    }
+
+    fun setAcademicAccess(on: Boolean) {
+        academic = on
+        prefs.edit().putBoolean(KEY_ACADEMIC, on).apply()
+    }
+
+    fun setCampusAccess(on: Boolean) {
+        campus = on
+        prefs.edit().putBoolean(KEY_CAMPUS, on).apply()
     }
 
     fun clear() {
@@ -75,6 +99,7 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         job?.cancel()
         runCatching { connection?.disconnect() }
         job = null
+        status = null
         if (sending) {
             sending = false
             messages = messages.map { if (it.streaming) it.copy(streaming = false, text = it.text.ifEmpty { "已停止" }) else it }
@@ -82,8 +107,12 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /** Sends [text] with [personalContext] (built by the caller for this moment). */
-    fun send(text: String, personalContext: JSONObject) {
+    /**
+     * Sends [text]. [personalContext] builds what the question carries at that
+     * moment, with the data read so far; [readData] reads grades or exams when
+     * 拾间AI asks for them (at most twice per question).
+     */
+    fun send(text: String, personalContext: suspend (toolResults: JSONArray) -> JSONObject, readData: suspend (source: String, semester: String) -> AgentData) {
         val question = text.trim().take(500)
         if (question.isEmpty() || sending) return
         val history = messages.filter { !it.failed && it.text.isNotBlank() }.takeLast(20).map {
@@ -92,16 +121,50 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         val reply = AssistantMessage(id = newId(), fromUser = false, text = "", streaming = true)
         messages = messages + AssistantMessage(id = newId(), fromUser = true, text = question) + reply
         sending = true
-        val body = JSONObject().put("message", question).put("history", JSONArray(history)).put("personal", personalContext)
         job = scope.launch {
-            val outcome = withContext(Dispatchers.IO) { runCatching { stream(body) { delta -> scope.launch { appendDelta(reply.id, delta) } } } }
-            outcome.onSuccess { done -> finish(reply.id, done) }.onFailure { error ->
-                update(reply.id) { it.copy(streaming = false, failed = true, text = it.text.ifEmpty { error.message ?: "拾间AI暂时不可用，请稍后再试" }) }
+            val toolResults = JSONArray()
+            while (true) {
+                val body = JSONObject().put("message", question).put("history", JSONArray(history)).put("personal", personalContext(toolResults))
+                val outcome = withContext(Dispatchers.IO) { runCatching { stream(body) { delta -> scope.launch { appendDelta(reply.id, delta) } } } }
+                val done = outcome.getOrElse { error ->
+                    update(reply.id) { it.copy(streaming = false, failed = true, text = it.text.ifEmpty { error.message ?: "拾间AI暂时不可用，请稍后再试" }) }
+                    null
+                } ?: break
+                val request = dataRequest(done)
+                if (request == null || toolResults.length() >= MAX_DATA_ROUNDS) {
+                    finish(reply.id, done)
+                    break
+                }
+                // "Let me check" gives way to what the app is doing, then to the real answer.
+                val (source, semester) = request
+                val what = if (source == "grades") "成绩" else "考试安排"
+                update(reply.id) { it.copy(text = "") }
+                status = "正在查看你的$what…"
+                val read = readData(source, semester)
+                status = null
+                val data = read.data?.takeIf { it.length <= MAX_DATA_LENGTH }
+                if (data == null) {
+                    update(reply.id) {
+                        it.copy(streaming = false, text = "没能读到你的$what：${read.error ?: "读取失败，请稍后重试"}",
+                            links = listOf(AssistantLink("打开教务", "/jwxt")))
+                    }
+                    break
+                }
+                toolResults.put(JSONObject().put("source", source).put("semester", semester).put("data", data))
             }
+            status = null
             sending = false
             save()
             refreshQuota()
         }
+    }
+
+    /** The grades or exams a reply asks the app to read, when that is all it asks. */
+    private fun dataRequest(done: JSONObject): Pair<String, String>? {
+        val actions = done.optJSONArray("clientActions") ?: return null
+        val action = actions.optJSONObject(0)?.takeIf { actions.length() == 1 && it.optString("type") == "data.request" } ?: return null
+        val source = action.optString("source").takeIf { it == "grades" || it == "exams" } ?: return null
+        return source to action.optString("semester").takeIf { Regex("^\\d{4}-\\d{4}-[12]$").matches(it) }.orEmpty()
     }
 
     fun setProposal(messageId: String, proposalId: String, state: ProposalState, note: String = "") {
@@ -136,7 +199,10 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
             }
         }.orEmpty()
         val proposals = done.optJSONArray("clientActions")?.let { array ->
-            (0 until array.length()).mapNotNull { index -> array.optJSONObject(index)?.let { AssistantProposal(newId(), it) } }
+            (0 until array.length()).mapNotNull { index ->
+                // A request for data past the last round is not something to confirm.
+                array.optJSONObject(index)?.takeIf { it.optString("type") != "data.request" }?.let { AssistantProposal(newId(), it) }
+            }
         }.orEmpty()
         val suggestions = done.optJSONArray("suggestions")?.let { array ->
             (0 until array.length()).mapNotNull { array.optString(it).takeIf { s -> s.isNotBlank() } }
@@ -272,6 +338,11 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
     companion object {
         private const val KEY_PERSONAL = "personal"
         private const val KEY_CONSENT = "consent"
+        private const val KEY_ACADEMIC = "academic"
+        private const val KEY_CAMPUS = "campus"
         private const val MAX_STORED = 60
+        private const val MAX_DATA_ROUNDS = 2
+        /** The server takes at most this much of one result. */
+        private const val MAX_DATA_LENGTH = 12_000
     }
 }

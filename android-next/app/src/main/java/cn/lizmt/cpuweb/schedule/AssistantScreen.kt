@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -32,14 +34,18 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,27 +62,52 @@ import androidx.compose.ui.unit.dp
 import cn.lizmt.cpuweb.schedule.agenda.AgendaItem
 import cn.lizmt.cpuweb.schedule.agenda.AgendaRemind
 import cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat
+import cn.lizmt.cpuweb.schedule.custom.AssistantControls
+import cn.lizmt.cpuweb.schedule.custom.DashboardCards
+import cn.lizmt.cpuweb.schedule.custom.LAYOUT_PRESETS
 import org.json.JSONObject
 import java.time.LocalDate
+import kotlin.math.roundToInt
 
-private val STARTERS = listOf(
-    "今天还有什么课？",
-    "这周哪天下午比较空？",
-    "明天下午三点提醒我去实验室",
-    "我还有哪些待办没做？",
-)
+/** Questions to start from, for what the user lets 拾间AI see. */
+private fun starters(session: AssistantSession): List<String> = buildList {
+    if (session.personal) {
+        add("今天还有什么课？")
+        add("这周哪天下午比较空？")
+    }
+    add("明天下午三点提醒我去实验室")
+    if (session.academic) add("我的考试都在什么时候？")
+    if (session.campus) add("最近有什么通知？")
+    add("把课表换成素笺风格")
+}
+
+const val ASSISTANT_ACCESS_FOOTER = "拾间不保存这些数据，随时可以关掉。改日程、布局和设置之前，拾间AI 都会先给你确认。"
+
+/** What 拾间AI may see, one switch each; shared by its own sheet and settings. */
+@Composable
+fun AssistantAccessRows(session: AssistantSession) {
+    ToggleRow("课表和日程", checked = session.personal, detail = "未来 7 天的课、你记下的日程、未读消息数") { session.setPersonalMode(it) }
+    Hairline()
+    ToggleRow("公告与热榜", checked = session.campus, detail = "站内最新公告和论坛热榜的标题") { session.setCampusAccess(it) }
+    Hairline()
+    ToggleRow("成绩与考试", checked = session.academic, detail = "问到时才从教务读取，只用来回答那个问题") { session.setAcademicAccess(it) }
+}
+
+private fun accessSummary(session: AssistantSession): String = listOfNotNull(
+    "课表和日程".takeIf { session.personal }, "公告".takeIf { session.campus }, "成绩考试".takeIf { session.academic },
+).joinToString(" · ").ifEmpty { "只看你问的问题" }
 
 /**
  * 拾间AI in personal mode: a quiet conversation, proposals the user confirms
- * one by one, and a switch for whether questions carry the timetable and agenda.
+ * one by one, and a sheet for what questions may carry.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AssistantScreen(activity: MainActivity, asTab: Boolean) {
     val session = activity.assistant
     val scheme = MaterialTheme.colorScheme
     var input by remember { mutableStateOf("") }
-    var askConsent by remember { mutableStateOf(false) }
+    var showAccess by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
     LaunchedEffect(Unit) { session.refreshQuota() }
@@ -97,15 +128,17 @@ fun AssistantScreen(activity: MainActivity, asTab: Boolean) {
             } else {
                 Spacer(Modifier.width(12.dp))
             }
-            Column(Modifier.weight(1f)) {
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { showAccess = true }.padding(horizontal = 4.dp, vertical = 2.dp),
+            ) {
                 Text("拾间AI", style = MaterialTheme.typography.titleLarge)
-                Text(if (session.personal) "已带上你的课表和日程" else "不带个人数据", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("可以看到：${accessSummary(session)}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                }
             }
-            Switch(
-                checked = session.personal,
-                onCheckedChange = { on -> if (on && !session.consented) askConsent = true else session.setPersonalMode(on) },
-                modifier = Modifier.padding(end = 4.dp),
-            )
+            IconButton(onClick = { showAccess = true }) { Icon(Icons.Rounded.Tune, contentDescription = "拾间AI 可以看到什么", tint = scheme.onSurfaceVariant) }
             if (session.messages.isNotEmpty()) {
                 IconButton(onClick = { confirmClear = true }) { Icon(Icons.Rounded.DeleteOutline, contentDescription = "清空对话", tint = scheme.onSurfaceVariant) }
             }
@@ -122,13 +155,14 @@ fun AssistantScreen(activity: MainActivity, asTab: Boolean) {
                         Text("想问什么都可以", style = MaterialTheme.typography.headlineSmall)
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (session.personal) "我能看到你接下来几天的课和你记下的日程，可以帮你查、帮你安排，也能替你记事和设提醒——每一步都会先问过你。"
-                            else "打开右上角的开关，我就能结合你的课表和日程回答；不打开也可以让我帮你记事。",
+                            if (session.personal) "我能看到你接下来几天的课和你记下的日程，可以帮你查、帮你安排、替你记事和设提醒，" +
+                                "也能帮你调拾间的布局、设置和课表样式——每一步都会先问过你。"
+                            else "点上面的「可以看到」，让我结合你的课表、日程和成绩回答；不打开也可以让我帮你记事、调设置。",
                             style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(20.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            STARTERS.forEach { starter -> ChoicePill(starter, selected = false) { send(starter) } }
+                            starters(session).forEach { starter -> ChoicePill(starter, selected = false) { send(starter) } }
                         }
                     }
                 }
@@ -173,17 +207,24 @@ fun AssistantScreen(activity: MainActivity, asTab: Boolean) {
         }
     }
 
-    if (askConsent) {
-        AlertDialog(
-            onDismissRequest = { askConsent = false },
-            title = { Text("带上你的课表和日程？") },
-            text = {
-                Text("打开后，每次提问会把未来 7 天的课程、你在拾间里记下的日程和待办、未读消息数一起发给拾间AI，用来回答和帮你安排。" +
-                    "不会发送成绩、考试和消息内容；拾间不保存这些数据，随时可以关掉。")
-            },
-            confirmButton = { TextButton(onClick = { askConsent = false; session.setPersonalMode(true) }) { Text("打开") } },
-            dismissButton = { TextButton(onClick = { askConsent = false }) { Text("先不用") } },
-        )
+    if (showAccess) {
+        ModalBottomSheet(onDismissRequest = { showAccess = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = scheme.background) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("拾间AI 可以看到", style = MaterialTheme.typography.headlineSmall)
+                Panel(footer = ASSISTANT_ACCESS_FOOTER) { AssistantAccessRows(session) }
+                Panel("它还能替你做") {
+                    ListRow("日程", detail = "记下、修改、完成、删除，设提醒")
+                    Hairline()
+                    ListRow("课表", detail = "切换日、周、月视图，换风格，设上课提醒")
+                    Hairline()
+                    ListRow("布局和设置", detail = "布局方案、导航栏、今天页面的内容、主题色、深浅色、文字大小和常用开关")
+                    Hairline()
+                    ListRow("打开页面", detail = "站内任意页面，比如论坛、教务、搜索")
+                }
+            }
+        }
     }
     if (confirmClear) {
         AlertDialog(
@@ -216,7 +257,7 @@ private fun AnswerBlock(activity: MainActivity, message: AssistantMessage, last:
         when {
             text.isNotEmpty() -> Text(text + if (message.streaming) " ▍" else "", style = MaterialTheme.typography.bodyLarge,
                 color = if (message.failed) scheme.error else scheme.onSurface)
-            message.streaming -> Text("正在想…", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+            message.streaming -> Text(activity.assistant.status ?: "正在想…", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
         }
         message.proposals.forEach { proposal -> ProposalCard(activity, message.id, proposal) }
         if (message.links.isNotEmpty()) {
@@ -260,7 +301,7 @@ private fun ProposalCard(activity: MainActivity, messageId: String, proposal: As
                 Text(detail, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 4, overflow = TextOverflow.Ellipsis)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             when (proposal.state) {
                 ProposalState.Pending -> {
                     Spacer(Modifier.weight(1f))
@@ -287,7 +328,11 @@ private fun confirmLabel(action: JSONObject): String = when (action.optString("t
     "agenda.update" -> "修改"
     "agenda.complete" -> "完成"
     "agenda.delete" -> "删除"
-    "open" -> "打开"
+    "open", "web.open" -> "打开"
+    "today.add" -> "添加"
+    "today.remove" -> "移除"
+    "schedule.view" -> "切换"
+    "layout.preset", "tabs.set", "setting.set", "text.size", "schedule.style" -> "应用"
     else -> "确定"
 }
 
@@ -309,10 +354,10 @@ fun describeProposal(activity: MainActivity, action: JSONObject): Pair<String, S
     return when (action.optString("type")) {
         "agenda.create" -> {
             val item = action.optJSONObject("item") ?: JSONObject()
-            (if (item.optString("kind") == "todo") "添加待办" else "添加日程") to itemLine(item)
+            "添加日程" to itemLine(item)
         }
         "agenda.update" -> "修改「${existing(action.optString("id"))?.title ?: "日程"}」" to itemLine(action.optJSONObject("changes") ?: JSONObject()).ifEmpty { "更新这一项" }
-        "agenda.complete" -> "完成待办" to (existing(action.optString("id"))?.title ?: "这一项")
+        "agenda.complete" -> "标为完成" to (existing(action.optString("id"))?.title ?: "这一项")
         "agenda.delete" -> "删除" to (existing(action.optString("id"))?.title ?: "这一项")
         "course.remind" -> "上课提醒" to action.optInt("minutes", -1).let { if (it < 0) "关闭上课提醒" else "每节课开始前 $it 分钟提醒" }
         "theme.accent" -> "主题色" to when (val value = action.optString("value")) {
@@ -330,6 +375,40 @@ fun describeProposal(activity: MainActivity, action: JSONObject): Pair<String, S
             "agenda" -> "日程" + (AgendaItem.parseDate(action.optString("date"))?.let { " · ${dayLabel(it, today)}" } ?: "")
             "settings" -> "拾间设置"
             else -> "今天"
+        }
+        "layout.preset" -> "布局方案" to (LAYOUT_PRESETS.firstOrNull { it.id == action.optString("id") }?.let { "换成「${it.title}」：${it.detail}" } ?: "换一个布局")
+        "tabs.set" -> {
+            val custom = activity.customization.value
+            val ids = action.optJSONArray("tabs")?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
+            val names = ids.mapNotNull { custom.destination(it)?.title }.distinct()
+            val launch = custom.destination(action.optString("launch"))?.title
+            "导航栏" to (names.joinToString(" · ") + (launch?.let { "\n打开拾间时先显示「$it」" } ?: ""))
+        }
+        "setting.set" -> "设置" to "${if (action.optBoolean("value")) "打开" else "关闭"}「${AssistantControls.settings[action.optString("key")] ?: "这个开关"}」"
+        "text.size" -> "文字大小" to "调到 ${(action.optDouble("scale", 1.0) * 100).roundToInt()}%"
+        "today.add" -> {
+            val section = action.optString("section")
+            val name = action.optString("title").ifBlank { DashboardCards.types[section] ?: "这一项" }
+            "今天页面" to when (section) {
+                "countdown" -> "添加倒计时「$name」" + (AgendaItem.parseDate(action.optString("date"))?.let { "，到 ${dayLabel(it, today)}" } ?: "")
+                "note" -> "添加便签「$name」" + action.optString("text").takeIf { it.isNotBlank() }?.let { "\n${it.take(80)}" }.orEmpty()
+                else -> "添加「$name」"
+            }
+        }
+        "today.remove" -> "今天页面" to "移除「${DashboardCards.types[action.optString("section")] ?: "这一项"}」"
+        "schedule.view" -> "课表" to listOfNotNull(
+            "切换到${when (action.optString("view")) { "day" -> "日"; "month" -> "月"; else -> "周" }}视图",
+            AgendaItem.parseDate(action.optString("date"))?.let { "看 ${dayLabel(it, today)}" },
+        ).joinToString("，")
+        "schedule.style" -> "课表风格" to (ScheduleVisualStyle.entries.firstOrNull { it.id == action.optString("style") }
+            ?.let { "换成「${it.title}」：${it.subtitle}" } ?: "换一种风格")
+        "web.open" -> {
+            val path = action.optString("path")
+            val page = activity.customization.value.catalog.firstOrNull {
+                it.kind == cn.lizmt.cpuweb.schedule.custom.DestinationKind.Web && it.route == path.substringBefore('?')
+            }?.title
+            val shown = runCatching { java.net.URLDecoder.decode(path, "UTF-8") }.getOrDefault(path)
+            "打开页面" to (page?.let { if ('?' in path) "$it\n$shown" else it } ?: shown)
         }
         else -> "操作" to "这个操作当前版本还不支持"
     }

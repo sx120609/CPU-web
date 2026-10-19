@@ -76,7 +76,7 @@ object DashboardCards {
     val types = linkedMapOf(
         "next" to "下一项",
         "today" to "今天的安排",
-        "todo" to "待办",
+        "todo" to "未完成",
         "upcoming" to "明天",
         "messages" to "未读消息",
         "shortcuts" to "常用入口",
