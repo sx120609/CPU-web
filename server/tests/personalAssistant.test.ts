@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPersonalSystemPrompt, isDataRequestOnly, personalContextSchema, sanitizeClientActions } from "../src/services/personalAssistant";
+import { buildPersonalSystemPrompt, isDataRequestOnly, normalizeReadPath, personalContextSchema, sanitizeClientActions } from "../src/services/personalAssistant";
 
 const context = personalContextSchema.parse({
   now: "2026-10-19T06:44",
@@ -14,7 +14,8 @@ test("the personal context fills defaults and refuses malformed dates and times"
   assert.equal(context.agenda[0].repeat, "none");
   assert.equal(context.agenda[0].remind, -1);
   assert.equal(context.courses[0].location, "药学楼 302");
-  assert.deepEqual(context.allow, { academic: false, campus: false });
+  assert.deepEqual(context.allow, { academic: false, campus: false, forum: false, messages: false });
+  assert.deepEqual(context.site, { me: null, boards: [] });
   assert.deepEqual(context.campus, { announcements: [], hot: [] });
   assert.equal(context.app.appearance, "system");
   assert.deepEqual(context.toolResults, []);
@@ -90,7 +91,51 @@ test("the prompt keeps its rules first and the changing personal data last", () 
   assert.ok(lines.at(-3)?.includes("第 4 周"));
   assert.ok(lines.at(-2)?.startsWith("personal={"));
   assert.ok(lines.at(-1)?.startsWith("catalog=["));
-  assert.ok(prompt.includes("绝不能说“已经添加"));
+  assert.ok(prompt.includes("绝不能说“已经发了"));
+  assert.ok(prompt.includes("绝不能只打开发帖页"));
   assert.ok(prompt.includes("data.request"));
   assert.ok(prompt.includes("kind 一律写 event"));
+});
+
+test("site reads stay on the listed paths and keys, and private ones need their permission", () => {
+  const open = { forum: true, messages: false };
+  assert.equal(normalizeReadPath("/topics?q=选课&sort=hot&size=10", open), "/topics?q=%E9%80%89%E8%AF%BE&sort=hot&size=10");
+  assert.equal(normalizeReadPath("/topics/123/replies", open), "/topics/123/replies");
+  assert.equal(normalizeReadPath("/topics?admin=1", open), null);
+  assert.equal(normalizeReadPath("/admin/users", open), null);
+  assert.equal(normalizeReadPath("//evil.example/topics", open), null);
+  assert.equal(normalizeReadPath("/messages", open), null);
+  assert.equal(normalizeReadPath("/messages?category=reply", { forum: true, messages: true }), "/messages?category=reply");
+  assert.equal(normalizeReadPath("/topics", { forum: false, messages: true }), null);
+});
+
+test("reads come alone, up to three, and never twice; publishing passes the content rules", () => {
+  const allowed = personalContextSchema.parse({ ...context, allow: { forum: true } });
+  const reads = sanitizeClientActions([
+    { type: "read", path: "/topics?q=选课" },
+    { type: "forum.post", board: "life", title: "求助", content: "有人知道吗" },
+    { type: "read", path: "/home/hot-ranking" },
+    { type: "read", path: "/topics?q=选课" },
+    { type: "read", path: "/boards" },
+    { type: "read", path: "/lost-found/meta" },
+  ], allowed);
+  assert.deepEqual(reads.map((action) => action.type === "read" ? action.path : action.type), ["/topics?q=%E9%80%89%E8%AF%BE", "/home/hot-ranking", "/boards"]);
+  const after = personalContextSchema.parse({ ...allowed, toolResults: [{ source: "site", path: "/home/hot-ranking", data: "[]" }] });
+  assert.deepEqual(sanitizeClientActions([{ type: "read", path: "/home/hot-ranking" }], after), []);
+  const writes = sanitizeClientActions([
+    { type: "forum.post", board: "life", title: "周末有人一起去图书馆自习吗", content: "周六上午九点，三楼靠窗那片，想找两个同学互相监督。" },
+    { type: "forum.post", board: "Life!", title: "坏板块", content: "x" },
+    { type: "forum.reply", topicId: 42, content: "我也遇到过，去教务处补登就行。" },
+    { type: "dm.send", userId: 7, name: "小明", content: "你好，看到你捡到一张校园卡，是我的。" },
+    { type: "lostfound.post", kind: "found", itemName: "校园卡", campus: "江宁", location: "图书馆三楼", happenedAt: "2026-10-19", contact: "QQ 123456" },
+    { type: "forum.like", target: "topic", id: 42 },
+    { type: "messages.readAll" },
+  ], allowed);
+  assert.deepEqual(writes.map((action) => action.type), ["forum.post", "forum.reply", "dm.send", "forum.like", "messages.readAll"]);
+});
+
+test("a round of reads alone goes uncharged", () => {
+  const base = { answer: "我去看看", actions: [], suggestions: [], fallback: false };
+  assert.equal(isDataRequestOnly({ ...base, clientActions: [{ type: "read" as const, path: "/boards" }, { type: "data.request" as const, source: "grades" as const, semester: "" }] }), true);
+  assert.equal(isDataRequestOnly({ ...base, clientActions: [{ type: "read" as const, path: "/boards" }, { type: "messages.readAll" as const }] }), false);
 });

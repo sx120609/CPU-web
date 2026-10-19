@@ -76,6 +76,8 @@ class NextSync(
     private val assistant: AssistantSession,
     private val log: AssistantActivityLog,
     private val transport: (path: String, method: String, body: JSONObject?) -> SiteReply = { path, method, body -> SiteHttp.request(path, method, body) },
+    /** The reminders this phone has coming, for the server to send (see [ReminderPlan]). */
+    private val reminderPlan: () -> JSONObject = { JSONObject().put("items", JSONArray()) },
 ) {
     private val prefs = context.getSharedPreferences("next_sync", Context.MODE_PRIVATE)
     // Out of device backups: a restored phone uploads everything again, which the server merges.
@@ -96,6 +98,16 @@ class NextSync(
     /** The data on this phone was synced with another account; nothing moves until the user decides. */
     var otherAccount by mutableStateOf(false)
         private set
+    /** Whether the server also sends this phone's reminders (through the site's notifications, WeChat and QQ). */
+    var relay by mutableStateOf(prefs.getBoolean(KEY_RELAY, false))
+        private set
+    /** This install's reminder record: one per phone, so two phones do not overwrite each other's plans. */
+    private val deviceId: String = prefs.getString(KEY_DEVICE, null) ?: ("p" + java.util.UUID.randomUUID().toString().replace("-", "").take(16)).also {
+        prefs.edit().putString(KEY_DEVICE, it).apply()
+    }
+    private var planBody: JSONObject? = null
+    private var planVersion = prefs.getLong(KEY_PLAN_VERSION, 0L)
+    private var planRemovedAt = prefs.getLong(KEY_PLAN_REMOVED, 0L)
 
     val active: Boolean get() = enabled && account() != null && !otherAccount
 
@@ -103,6 +115,29 @@ class NextSync(
         enabled = on
         prefs.edit().putBoolean(KEY_ENABLED, on).apply()
         if (on) request() else error = null
+    }
+
+    fun switchRelay(on: Boolean) {
+        relay = on
+        prefs.edit().putBoolean(KEY_RELAY, on).apply()
+        request()
+    }
+
+    /** The plan as it is now: a new version when its content changed, a removal once relaying stops. */
+    private fun refreshPlan() {
+        val now = System.currentTimeMillis()
+        if (relay) {
+            val body = runCatching { reminderPlan() }.getOrNull() ?: return
+            val hash = body.toString().hashCode().toString(36)
+            planBody = body
+            if (hash != prefs.getString(KEY_PLAN_HASH, null) || planVersion <= planRemovedAt) {
+                planVersion = maxOf(now, planVersion + 1)
+                prefs.edit().putString(KEY_PLAN_HASH, hash).putLong(KEY_PLAN_VERSION, planVersion).apply()
+            }
+        } else if (planVersion > planRemovedAt) {
+            planRemovedAt = maxOf(now, planVersion + 1)
+            prefs.edit().putLong(KEY_PLAN_REMOVED, planRemovedAt).remove(KEY_PLAN_HASH).apply()
+        }
     }
 
     /** Syncs after [delayMs] (later requests replace earlier ones), unless the last run started within [minIntervalMs]. */
@@ -166,6 +201,7 @@ class NextSync(
         running = true
         error = null
         try {
+            refreshPlan()
             pull()
             push()
             lastSyncedAt = System.currentTimeMillis()
@@ -253,6 +289,11 @@ class NextSync(
             if (entry != null) record(ACTIVITY, id, entry.updatedAt, ActivityCodec.toJson(entry))
             else log.deletedAt(id)?.let { record(ACTIVITY, id, it, null) }
         }
+        if (ledger.dirty(REMINDERS, versions(REMINDERS)).isNotEmpty()) {
+            val body = planBody
+            if (relay && body != null) record(REMINDERS, deviceId, planVersion, body)
+            else if (!relay) record(REMINDERS, deviceId, planRemovedAt, null)
+        }
         return result
     }
 
@@ -261,6 +302,11 @@ class NextSync(
         AGENDA -> agenda.items.associate { it.id to it.updatedAt } + agenda.deletedIds().associateWith { agenda.deletedAt(it) ?: 0L }
         CONVERSATION -> assistant.conversations.associate { it.id to it.updatedAt } + assistant.deletedIds().associateWith { assistant.deletedAt(it) ?: 0L }
         ACTIVITY -> log.entries.associate { it.id to it.updatedAt } + log.deletedIds().associateWith { log.deletedAt(it) ?: 0L }
+        REMINDERS -> when {
+            relay && planVersion > 0 -> mapOf(deviceId to planVersion)
+            !relay && planRemovedAt > 0 -> mapOf(deviceId to planRemovedAt)
+            else -> emptyMap()
+        }
         else -> emptyMap()
     }
 
@@ -271,6 +317,11 @@ class NextSync(
         val at = json.optLong("updatedAt")
         val deleted = json.optBoolean("deleted")
         val data = json.optJSONObject("data")
+        if (collection == REMINDERS) {
+            // Other phones' plans are theirs; only this phone's own record is noted as confirmed.
+            if (id == deviceId && versions(REMINDERS)[id] == at) ledger.confirm(collection, id, at)
+            return
+        }
         if (!deleted && data == null) return
         when (collection) {
             AGENDA -> {
@@ -314,6 +365,12 @@ class NextSync(
         const val AGENDA = "agenda"
         const val CONVERSATION = "conversation"
         const val ACTIVITY = "activity"
+        const val REMINDERS = "reminders"
+        private const val KEY_RELAY = "relay"
+        private const val KEY_DEVICE = "device"
+        private const val KEY_PLAN_HASH = "plan_hash"
+        private const val KEY_PLAN_VERSION = "plan_version"
+        private const val KEY_PLAN_REMOVED = "plan_removed"
         private const val KEY_ENABLED = "enabled"
         private const val KEY_LAST = "last_synced"
         private const val MAX_BATCH = 50

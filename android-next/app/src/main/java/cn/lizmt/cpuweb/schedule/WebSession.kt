@@ -491,11 +491,18 @@ class WebSession(
         JSONObject().put("payload", payload), 45_000,
     )
 
-    /** Grades or exams for 拾间AI (`CPUAndroidAgentData`): the reply is `{ data }` or `{ error, status }`. */
-    suspend fun agentData(source: String, semester: String): String? = call(
+    /** Data for 拾间AI (`CPUAndroidAgentData`: grades, exams, a site path, who the user is): `{ data }` or `{ error, status }`. */
+    suspend fun agentData(payload: JSONObject): String? = call(
         "var run=window.CPUAndroidAgentData;if(typeof run!=='function')return {error:'页面尚未就绪，请稍后重试',status:0};" +
             "return await run(args.payload);",
-        JSONObject().put("payload", JSONObject().put("source", source).put("semester", semester)), 45_000,
+        JSONObject().put("payload", payload), 45_000,
+    )
+
+    /** A site action 拾间AI proposed and the user confirmed (`CPUAndroidAgentAct`): `{ ok, ... }` or `{ error, status }`. */
+    suspend fun agentAct(payload: JSONObject): String? = call(
+        "var run=window.CPUAndroidAgentAct;if(typeof run!=='function')return {error:'页面尚未就绪，请稍后重试',status:0};" +
+            "return await run(args.payload);",
+        JSONObject().put("payload", payload), 60_000,
     )
 
     suspend fun refreshAuthCapability(): NativeAuthState? {

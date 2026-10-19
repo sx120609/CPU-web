@@ -74,11 +74,27 @@ const activitySchema = z.object({
   auto: z.boolean().default(false),
 });
 
+/**
+ * The reminders a phone has coming (classes and its own items), so the server
+ * can send each one at its time through the site's notifications, which also
+ * reach the user's bound WeChat and QQ. One record per phone.
+ */
+export const reminderPlanSchema = z.object({
+  items: z.array(z.object({
+    key: z.string().min(1).max(80),
+    at: z.number().int().min(0),
+    title: z.string().trim().min(1).max(60),
+    text: z.string().trim().max(120).default(""),
+    link: z.string().regex(/^\/(?!\/)[^\s\\]{0,200}$/u).default("/"),
+  })).max(400).default([]),
+});
+
 /** Each collection: its record format, how many live records a user may keep, and the largest record. */
 export const NEXT_SYNC_COLLECTIONS = {
   agenda: { schema: agendaSchema, max: 600, maxBytes: 4_000, overflow: "reject" },
   conversation: { schema: conversationSchema, max: 100, maxBytes: 120_000, overflow: "prune" },
   activity: { schema: activitySchema, max: 300, maxBytes: 5_000, overflow: "prune" },
+  reminders: { schema: reminderPlanSchema, max: 5, maxBytes: 90_000, overflow: "prune" },
 } as const;
 
 export type NextSyncCollection = keyof typeof NEXT_SYNC_COLLECTIONS;

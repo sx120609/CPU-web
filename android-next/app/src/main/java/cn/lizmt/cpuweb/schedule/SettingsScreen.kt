@@ -291,6 +291,8 @@ private fun RootPage(activity: MainActivity, open: (SettingsPage) -> Unit) {
             titleColor = if (reminderHealth.problems > 0) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
             chevron = true,
         ) { open(SettingsPage.Reminders) }
+        Hairline()
+        ReminderRelayRows(activity)
     }
     Panel("拾间AI 可以看到", footer = ASSISTANT_ACCESS_FOOTER) {
         AssistantAccessRows(activity.assistant)

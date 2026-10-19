@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
@@ -80,7 +81,12 @@ internal fun ReminderCheckPage(activity: MainActivity) {
                     Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             }))
         Hairline()
-        ListRow("自启动和后台运行", detail = "打开系统的应用信息页", chevron = true) { launch(details) }
+        val brand = remember { VendorSettings.current() }
+        ListRow(if (brand != null) "${brand.name}：允许自启动和后台运行" else "自启动和后台运行",
+            detail = brand?.steps ?: "打开系统的应用信息页", chevron = true) { VendorSettings.open(context, brand) }
+    }
+    Panel("手机拦不住的提醒", footer = "微信和 QQ 一般不会被手机厂商拦下。打开后，日程和上课提醒到点时，拾间的服务器也会发一条到你绑定的微信和 QQ。") {
+        ReminderRelayRows(activity)
     }
     if (AgendaReminders.courseMinutes(context) >= 0) {
         Panel("上课提醒") {
@@ -97,6 +103,54 @@ internal fun ReminderCheckPage(activity: MainActivity) {
             activity.ensureNotificationPermission()
             AgendaReminders.test(context, delayMinutes = 1)
             activity.toast("1 分钟后会收到一条测试提醒")
+        }
+    }
+}
+
+/** What the server can reach: the user's bound WeChat (when the site can send template messages) and QQ. */
+data class RelayChannels(val wechat: Boolean, val qq: Boolean)
+
+suspend fun relayChannels(): RelayChannels? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    runCatching {
+        val wechat = SiteHttp.request("/api/wechat/me", "GET").data
+        val qq = SiteHttp.request("/api/qqbot/me", "GET").data
+        val wechatBinding = wechat?.optJSONObject("binding")
+        val qqBinding = qq?.optJSONObject("binding")
+        RelayChannels(
+            wechat = wechat?.optBoolean("persistentNotificationAvailable") == true && wechatBinding?.optBoolean("enabled") == true && wechatBinding.optBoolean("subscribed"),
+            qq = qq?.optBoolean("enabled") == true && qqBinding?.optBoolean("enabled") == true,
+        )
+    }.getOrNull()
+}
+
+/**
+ * The server-side reminder switch and where it will arrive, with a way to bind
+ * WeChat or QQ on the site's 消息 → 设置 page.
+ */
+@Composable
+internal fun ReminderRelayRows(activity: MainActivity) {
+    val sync = activity.sync
+    val signedIn = activity.web.authState.authenticated
+    val resumed = rememberResumeCount()
+    var channels by remember { mutableStateOf<RelayChannels?>(null) }
+    androidx.compose.runtime.LaunchedEffect(signedIn, resumed) { if (signedIn) channels = relayChannels() }
+    val reach = channels
+    val detail = when {
+        !signedIn -> "登录后可以用"
+        !sync.enabled -> "需要先打开“跨设备同步”"
+        reach == null -> "正在查看绑定情况…"
+        reach.wechat && reach.qq -> "会发到你绑定的微信和 QQ，也会出现在站内消息里"
+        reach.wechat -> "会发到你绑定的微信，也会出现在站内消息里"
+        reach.qq -> "会发到你绑定的 QQ，也会出现在站内消息里"
+        else -> "还没有绑定微信或 QQ：现在只会出现在站内消息里"
+    }
+    ToggleRow("微信和 QQ 也提醒", checked = sync.relay && sync.enabled && signedIn, detail = detail, enabled = signedIn && sync.enabled) { sync.switchRelay(it) }
+    if (signedIn && reach != null && !(reach.wechat && reach.qq)) {
+        Hairline()
+        ListRow(if (!reach.wechat && !reach.qq) "绑定微信或 QQ" else if (!reach.wechat) "也绑定微信" else "也绑定 QQ", chevron = true,
+            titleColor = MaterialTheme.colorScheme.primary) {
+            activity.closeSettings()
+            activity.shell.openWeb("/messages?tab=settings")
         }
     }
 }

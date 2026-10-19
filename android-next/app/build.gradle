@@ -52,8 +52,8 @@ android {
         // 药大拾间 NEXT counts from 1001 so the site and server, which compare
         // CPUWebScheduleApp/<versionCode> with the stable app's thresholds,
         // never take it for an outdated stable client. Users see versionName.
-        versionCode 1003
-        versionName "1.2.0"
+        versionCode 1004
+        versionName "1.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "boolean", "WEB_DEBUG", (project.findProperty("webDebug") == "true").toString()

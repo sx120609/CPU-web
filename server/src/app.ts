@@ -37,6 +37,7 @@ import { createAdmissionControl } from "./middleware/admissionControl";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
 import { voiceHubProxyMiddleware } from "./services/voiceHubProxy";
 import { startWechatNotificationPoller } from "./services/wechatService";
+import { startNextReminderRelay } from "./services/nextReminders";
 import { prisma } from "./prisma";
 import { isRedisConfigured, readRedisString } from "./services/redis";
 import { createDeploymentRelay } from "./utils/deploymentRelay";
@@ -63,6 +64,7 @@ export function startAppWorkers() {
   startProfileReviewPoller();
   startQqNotificationPoller();
   startWechatNotificationPoller();
+  startNextReminderRelay();
   startSponsorOrderExpiryPoller();
   startLiveActivityPushScheduler();
   startIosClientStatsPrunePoller();

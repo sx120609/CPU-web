@@ -32,6 +32,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -87,10 +88,13 @@ private fun starters(session: AssistantSession): List<String> = buildList {
         add("今天还有什么课？")
         add("这周哪天下午比较空？")
     }
+    if (session.forum) {
+        add("论坛最近大家在聊什么？")
+        add("帮我发个帖问问有没有人周末一起自习")
+    }
     add("明天下午三点提醒我去实验室")
     if (session.academic) add("我的考试都在什么时候？")
-    if (session.campus) add("最近有什么通知？")
-    add("把课表换成素笺风格")
+    if (session.privateMessages) add("我有哪些没看的消息？")
 }
 
 const val ASSISTANT_ACCESS_FOOTER = "拾间不保存这些数据，随时可以关掉。"
@@ -102,6 +106,10 @@ fun AssistantAccessRows(session: AssistantSession) {
     Hairline()
     ToggleRow("公告与热榜", checked = session.campus, detail = "站内最新公告和论坛热榜的标题") { session.setCampusAccess(it) }
     Hairline()
+    ToggleRow("论坛和站内内容", checked = session.forum, detail = "帖子、回复、失物招领、课程点评，用你的账号读取") { session.setForumAccess(it) }
+    Hairline()
+    ToggleRow("我的消息和私信", checked = session.privateMessages, detail = "通知和私信内容，问到时才读取") { session.setMessageAccess(it) }
+    Hairline()
     ToggleRow("成绩与考试", checked = session.academic, detail = "问到时才从教务读取，只用来回答那个问题") { session.setAcademicAccess(it) }
 }
 
@@ -112,7 +120,8 @@ fun AssistantApprovalRows(session: AssistantSession) {
 }
 
 private fun accessSummary(session: AssistantSession): String = listOfNotNull(
-    "课表和日程".takeIf { session.personal }, "公告".takeIf { session.campus }, "成绩考试".takeIf { session.academic },
+    "课表日程".takeIf { session.personal }, "论坛".takeIf { session.forum }, "消息".takeIf { session.privateMessages },
+    "公告".takeIf { session.campus }, "成绩考试".takeIf { session.academic },
 ).joinToString(" · ").ifEmpty { "只看你问的问题" }
 
 /** A time in a list: the clock today, 昨天, or the date. */
@@ -327,7 +336,13 @@ fun AssistantScreen(activity: MainActivity, asTab: Boolean) {
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } },
         )
     }
-    editing?.let { (messageId, proposal) ->
+    editing?.takeIf { it.second.action.optString("type") in ApprovalMode.PUBLISHING }?.let { (messageId, proposal) ->
+        SiteDraftSheet(activity, proposal, onDismiss = { editing = null }) { action ->
+            editing = null
+            activity.applyEditedAssistantProposal(messageId, proposal, action)
+        }
+    }
+    editing?.takeIf { it.second.action.optString("type") == "agenda.create" }?.let { (messageId, proposal) ->
         val item = proposal.action.optJSONObject("item") ?: JSONObject()
         val draft = remember(proposal.id) {
             AgendaItem(
@@ -388,8 +403,26 @@ private fun AnswerBlock(activity: MainActivity, message: AssistantMessage, last:
                 if (last && !activity.assistant.sending) DropdownMenuItem(text = { Text("重新回答") }, onClick = { menu = false; activity.regenerateAssistant() })
             }
         }
-        message.proposals.forEach { proposal -> ProposalCard(activity, message.id, proposal, onEdit) }
-        val pending = message.proposals.count { it.state == ProposalState.Pending }
+        val (views, actions) = message.proposals.partition { it.action.optString("type") in ApprovalMode.VIEW_ONLY }
+        actions.forEach { proposal -> ProposalCard(activity, message.id, proposal, onEdit) }
+        if (views.isNotEmpty()) {
+            // Pages wait as buttons: nothing opens while the answer is being read.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                views.forEach { proposal ->
+                    val (_, detail) = describeProposal(activity, proposal.action)
+                    Row(
+                        Modifier.clip(RoundedCornerShape(10.dp)).background(scheme.surfaceContainer)
+                            .clickable { activity.openAssistantNavigation(message.id, proposal) }.heightIn(min = 36.dp).padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(navigationLabel(proposal.action, detail), style = MaterialTheme.typography.labelLarge, color = scheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.width(2.dp))
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+        val pending = actions.count { it.state == ProposalState.Pending }
         if (pending >= 2) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { activity.applyAllAssistantProposals(message) }) { Text("全部确认（$pending 项）", fontWeight = FontWeight.SemiBold) }
@@ -423,11 +456,19 @@ private fun ProposalCard(activity: MainActivity, messageId: String, proposal: As
     val scheme = MaterialTheme.colorScheme
     val (kind, detail) = describeProposal(activity, proposal.action)
     val item = proposal.action.optJSONObject("item")
+    val type = proposal.action.optString("type")
     Panel {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)) {
             Text(kind, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
             Spacer(Modifier.height(2.dp))
-            if (item != null) {
+            if (type in ApprovalMode.PUBLISHING) {
+                // What goes out, in full: the user reads it before it is sent.
+                val title = draftTitle(proposal.action)
+                if (title.isNotEmpty()) Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(draftBody(proposal.action), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurface,
+                    maxLines = if (proposal.state == ProposalState.Pending) 14 else 3, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = if (title.isNotEmpty()) 4.dp else 0.dp))
+            } else if (item != null) {
                 // A new item: its title first, then when, where and the reminder.
                 Text(item.optString("title"), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val rest = detail.split(" · ").filter { it != item.optString("title") }.joinToString(" · ")
@@ -443,7 +484,7 @@ private fun ProposalCard(activity: MainActivity, messageId: String, proposal: As
                     TextButton(onClick = { activity.assistant.setProposal(messageId, proposal.id, ProposalState.Dismissed) }) {
                         Text("不用了", color = scheme.onSurfaceVariant)
                     }
-                    if (proposal.action.optString("type") == "agenda.create") {
+                    if (type == "agenda.create" || type in ApprovalMode.PUBLISHING) {
                         TextButton(onClick = { onEdit(proposal) }) { Text("改一改") }
                     }
                     TextButton(onClick = { activity.applyAssistantProposal(messageId, proposal) }) { Text(confirmLabel(proposal.action), fontWeight = FontWeight.SemiBold) }
@@ -452,8 +493,10 @@ private fun ProposalCard(activity: MainActivity, messageId: String, proposal: As
                     Icon(Icons.Rounded.Check, contentDescription = null, tint = scheme.primary, modifier = Modifier.padding(start = 8.dp).size(18.dp))
                     Text((if (proposal.auto) "自动执行 · " else "") + proposal.note.ifEmpty { "已完成" }, style = MaterialTheme.typography.labelLarge, color = scheme.primary,
                         modifier = Modifier.padding(start = 6.dp).weight(1f))
+                    if (proposal.link.isNotEmpty()) TextButton(onClick = { activity.openAssistantLink(AssistantLink("查看", proposal.link)) }) { Text("查看") }
                     if (activity.canUndoAssistant(proposal.id)) TextButton(onClick = { activity.undoAssistant(messageId, proposal.id) }) { Text("撤销") }
                 }
+                ProposalState.Running -> Text(proposal.note.ifEmpty { "正在处理…" }, style = MaterialTheme.typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
                 ProposalState.Dismissed -> Text(proposal.note.ifEmpty { "没有执行" }, style = MaterialTheme.typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
                 ProposalState.Failed -> Text(proposal.note.ifEmpty { "没能完成" }, style = MaterialTheme.typography.labelLarge, color = scheme.error, modifier = Modifier.padding(8.dp))
             }
@@ -614,6 +657,89 @@ private fun ActivityLogPage(activity: MainActivity, onClose: () -> Unit, onOpenC
     }
 }
 
+/** A page button: "打开论坛", "打开课表 · 周视图". */
+private fun navigationLabel(action: JSONObject, detail: String): String = when (action.optString("type")) {
+    "schedule.view" -> detail.substringBefore("，").replace("切换到", "课表 · ")
+    else -> "打开" + detail.lineSequence().first()
+}
+
+private fun draftTitle(action: JSONObject): String = when (action.optString("type")) {
+    "forum.post" -> action.optString("title")
+    "lostfound.post" -> (if (action.optString("kind") == "found") "捡到 " else "丢失 ") + action.optString("itemName")
+    else -> ""
+}
+
+private fun draftBody(action: JSONObject): String = when (action.optString("type")) {
+    "lostfound.post" -> listOf(
+        action.optString("description"),
+        listOf(action.optString("campus"), action.optString("location"), action.optString("happenedAt").replace('T', ' ')).filter { it.isNotBlank() }.joinToString(" · "),
+        action.optString("storageLocation").takeIf { it.isNotBlank() }?.let { "存放：$it" }.orEmpty(),
+        "联系：${action.optString("contact")}",
+    ).filter { it.isNotBlank() }.joinToString("\n")
+    else -> action.optString("content")
+}
+
+/**
+ * The text of a proposed post, reply, private message or lost-and-found entry,
+ * for the user to change before it goes out; sending from here sends at once.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SiteDraftSheet(activity: MainActivity, proposal: AssistantProposal, onDismiss: () -> Unit, onSend: (JSONObject) -> Unit) {
+    val action = proposal.action
+    val type = action.optString("type")
+    var title by remember(proposal.id) { mutableStateOf(action.optString(if (type == "lostfound.post") "itemName" else "title")) }
+    var body by remember(proposal.id) { mutableStateOf(action.optString(if (type == "lostfound.post") "description" else "content")) }
+    var board by remember(proposal.id) { mutableStateOf(action.optString("board")) }
+    var anonymous by remember(proposal.id) { mutableStateOf(action.optBoolean("anonymous")) }
+    var location by remember(proposal.id) { mutableStateOf(action.optString("location")) }
+    var contact by remember(proposal.id) { mutableStateOf(action.optString("contact")) }
+    val boards = activity.postBoards
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(when (type) { "forum.post" -> "改一下帖子"; "forum.reply" -> "改一下回复"; "dm.send" -> "改一下私信"; else -> "改一下失物招领" },
+                style = MaterialTheme.typography.titleLarge)
+            if (type == "forum.post" && boards.isNotEmpty()) {
+                Panel("板块") {
+                    PillChoices(boards, board, modifier = Modifier.padding(12.dp)) { board = it }
+                }
+            }
+            if (type == "forum.post" || type == "lostfound.post") {
+                OutlinedTextField(value = title, onValueChange = { title = it.take(80) }, label = { Text(if (type == "forum.post") "标题" else "物品") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+            OutlinedTextField(value = body, onValueChange = { body = it.take(if (type == "forum.post") 5_000 else 2_000) },
+                label = { Text(when (type) { "forum.post" -> "正文"; "forum.reply" -> "回复"; "dm.send" -> "私信"; else -> "物品特征" }) },
+                minLines = 5, modifier = Modifier.fillMaxWidth())
+            if (type == "lostfound.post") {
+                OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("地点") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = contact, onValueChange = { contact = it.take(120) }, label = { Text("联系方式") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+            if (type == "forum.post" || type == "forum.reply") {
+                Panel { ToggleRow("匿名", checked = anonymous) { anonymous = it } }
+            }
+            val ready = body.isNotBlank() && (type != "forum.post" || title.trim().length >= 2) && (type != "lostfound.post" || (title.trim().length >= 2 && contact.trim().length >= 2))
+            androidx.compose.material3.Button(
+                onClick = {
+                    val edited = JSONObject(action.toString())
+                    when (type) {
+                        "forum.post" -> edited.put("title", title.trim()).put("content", body.trim()).put("board", board).put("anonymous", anonymous)
+                        "forum.reply" -> edited.put("content", body.trim()).put("anonymous", anonymous)
+                        "dm.send" -> edited.put("content", body.trim())
+                        "lostfound.post" -> edited.put("itemName", title.trim()).put("description", body.trim()).put("location", location.trim()).put("contact", contact.trim())
+                    }
+                    onSend(edited)
+                },
+                enabled = ready,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(LocalCpuLook.current.radius(12.dp)),
+            ) { Text(if (type == "dm.send") "发送" else "发布") }
+        }
+    }
+}
+
 private fun confirmLabel(action: JSONObject): String = when (action.optString("type")) {
     "agenda.create" -> "添加"
     "agenda.update" -> "修改"
@@ -624,6 +750,11 @@ private fun confirmLabel(action: JSONObject): String = when (action.optString("t
     "today.remove" -> "移除"
     "schedule.view" -> "切换"
     "layout.preset", "tabs.set", "setting.set", "text.size", "schedule.style" -> "应用"
+    "forum.post", "lostfound.post" -> "发布"
+    "forum.reply" -> "回复"
+    "forum.like" -> "点赞"
+    "dm.send" -> "发送"
+    "messages.readAll" -> "标为已读"
     else -> "确定"
 }
 
@@ -701,6 +832,17 @@ fun describeProposal(activity: MainActivity, action: JSONObject): Pair<String, S
             val shown = runCatching { java.net.URLDecoder.decode(path, "UTF-8") }.getOrDefault(path)
             "打开页面" to (page?.let { if ('?' in path) "$it\n$shown" else it } ?: shown)
         }
+        "forum.post" -> {
+            val slug = action.optString("board")
+            val board = activity.postBoards.firstOrNull { it.first == slug }?.second ?: slug
+            "发帖 · $board" + (if (action.optBoolean("anonymous")) " · 匿名" else "") to action.optString("title")
+        }
+        "forum.reply" -> "回复" + action.optString("topicTitle").takeIf { it.isNotBlank() }?.let { "「$it」" }.orEmpty() +
+            (if (action.optBoolean("anonymous")) " · 匿名" else "") to action.optString("content")
+        "forum.like" -> "点赞" to action.optString("label").ifBlank { if (action.optString("target") == "reply") "这条回复" else "这个帖子" }
+        "dm.send" -> "私信" + action.optString("name").takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty() to action.optString("content")
+        "messages.readAll" -> "通知" to "把所有通知标为已读"
+        "lostfound.post" -> "失物招领 · " + (if (action.optString("kind") == "found") "捡到东西" else "丢了东西") to action.optString("itemName")
         else -> "操作" to "这个操作当前版本还不支持"
     }
 }

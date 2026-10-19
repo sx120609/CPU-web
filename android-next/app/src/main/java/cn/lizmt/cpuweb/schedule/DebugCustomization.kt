@@ -96,6 +96,15 @@ object DebugCustomization {
                     AssistantProposal("p3", org.json.JSONObject().put("type", "today.add").put("section", "countdown").put("title", "期末考试").put("date", finals)),
                 ),
             ),
+            AssistantMessage("d7", fromUser = true, text = "帮我发个帖问问周末有没有人一起去图书馆自习"),
+            AssistantMessage(
+                "d8", fromUser = false, text = "写好了，发在「校园生活」，你看看没问题就发。",
+                proposals = listOf(
+                    AssistantProposal("p4", org.json.JSONObject().put("type", "forum.post").put("board", "life").put("title", "周末有人一起去图书馆自习吗")
+                        .put("content", "这周六周日上午九点到下午五点，打算在图书馆三楼靠窗那片复习药理学，想找两三个同学互相监督。\n不聊天、各学各的，中午可以一起去食堂。有意向的回帖或者私信我～")),
+                    AssistantProposal("p5", org.json.JSONObject().put("type", "web.open").put("path", "/forum")),
+                ),
+            ),
         ))
     }
 

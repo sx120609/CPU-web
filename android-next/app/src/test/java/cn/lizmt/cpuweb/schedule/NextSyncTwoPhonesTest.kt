@@ -28,6 +28,9 @@ private class FakeSyncServer {
     var pushes = 0
         private set
 
+    /** The live records of [collection]: id to data. */
+    fun live(collection: String): Map<String, JSONObject> = rows.values.filter { it.collection == collection && it.data != null }.associate { it.id to it.data!! }
+
     fun handle(path: String, method: String, body: JSONObject?): SiteReply = when (method) {
         "GET" -> {
             val cursor = java.net.URLDecoder.decode(path.substringAfter("cursor=", ""), "UTF-8").toLongOrNull() ?: 0L
@@ -131,5 +134,33 @@ class NextSyncTwoPhonesTest {
         b.sync.syncNow()
         assertTrue(b.sync.otherAccount)
         assertFalse(b.sync.active)
+    }
+
+    @Test
+    fun aPhonesReminderPlanGoesUpWhenRelayingAndComesDownAfter() = runBlocking {
+        val context: android.content.Context = RuntimeEnvironment.getApplication()
+        val server = FakeSyncServer()
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val agenda = AgendaStore.forTest(folder.newFile("relay-agenda.json"))
+        val assistant = AssistantSession(context, scope)
+        val log = AssistantActivityLog(context)
+        var plan = JSONObject().put("items", JSONArray().put(JSONObject().put("key", "course:a").put("at", 1L).put("title", "上课提醒 · 药理学")))
+        val sync = NextSync(context, scope, { "2024000001" }, agenda, assistant, log, server::handle, reminderPlan = { plan })
+        sync.syncNow()
+        assertTrue(server.live("reminders").isEmpty())
+
+        sync.switchRelay(true)
+        sync.syncNow()
+        assertEquals(1, server.live("reminders").size)
+        val pushes = server.pushes
+        sync.syncNow()
+        assertEquals("an unchanged plan is not sent again", pushes, server.pushes)
+        plan = JSONObject().put("items", JSONArray())
+        sync.syncNow()
+        assertEquals(0, server.live("reminders").values.single().getJSONArray("items").length())
+
+        sync.switchRelay(false)
+        sync.syncNow()
+        assertTrue(server.live("reminders").isEmpty())
     }
 }

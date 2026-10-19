@@ -84,6 +84,21 @@ test("NEXT sync merges edits from two devices, remembers deletions and pages thr
     const oldest = await db.nextSyncRecord.findUnique({ where: { userId_collection_id: { userId: user.id, collection: "conversation", id: "conv-000000" } } });
     assert.ok(oldest?.deletedAt);
 
+    // A phone's reminder plan becomes one site notification at its time, even when two phones carry it.
+    const relay = await import("../src/services/nextReminders");
+    const dueAt = Date.now() - 5_000;
+    const reminderPlan = { items: [{ key: "course:today:08:00", at: dueAt, title: "上课提醒 · 药理学", text: "08:00 · 药学楼 302", link: "/schedule" }] };
+    await sync.applyNextSyncChanges(user.id, [
+      { collection: "reminders", id: "phone-aaaaaa", updatedAt: Date.now(), deleted: false, data: reminderPlan },
+      { collection: "reminders", id: "phone-bbbbbb", updatedAt: Date.now(), deleted: false, data: reminderPlan },
+    ]);
+    assert.equal((await relay.relayNextReminders(Date.now())).sent, 1);
+    assert.equal((await relay.relayNextReminders(Date.now() + 1_000)).sent, 0);
+    const notices = await db.notification.findMany({ where: { userId: user.id, source: relay.NEXT_REMINDER_SOURCE } });
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0].title, "上课提醒 · 药理学");
+    await db.notification.deleteMany({ where: { userId: user.id } });
+
     assert.equal((await sync.clearNextSync(user.id)).deleted > 0, true);
     assert.equal(await db.nextSyncRecord.count({ where: { userId: other.id } }), 1);
   } finally {

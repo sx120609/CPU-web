@@ -17,15 +17,21 @@ import java.net.HttpURLConnection
 /** A link to a site page the answer recommends. */
 data class AssistantLink(val label: String, val url: String)
 
-enum class ProposalState { Pending, Applied, Dismissed, Failed }
+/** [Running]: a site action on its way (posting, sending); stored as pending, which reads back as not done. */
+enum class ProposalState { Pending, Running, Applied, Dismissed, Failed }
 
-/** An action 拾间AI proposed; nothing happens until the user confirms it, or the confirmation setting lets it run ([auto]). */
+/**
+ * An action 拾间AI proposed; nothing happens until the user confirms it, or
+ * the confirmation setting lets it run ([auto]). [link] is where the result can
+ * be seen, such as the new post.
+ */
 data class AssistantProposal(
     val id: String,
     val action: JSONObject,
     val state: ProposalState = ProposalState.Pending,
     val note: String = "",
     val auto: Boolean = false,
+    val link: String = "",
 )
 
 data class AssistantMessage(
@@ -44,22 +50,29 @@ data class AssistantConversation(val id: String, val title: String, val updatedA
 /** Grades or exams the app read for 拾间AI: compact JSON, or why it could not be read. */
 data class AgentData(val data: String? = null, val error: String? = null)
 
-/** Which proposals run without a tap. Deleting always asks. */
+/**
+ * Which proposals run without a tap. Whatever other people will see (posts,
+ * replies, private messages, lost and found) and deleting always ask; pages
+ * open only when the user taps them.
+ */
 enum class ApprovalMode(val id: String, val title: String, val detail: String) {
     Always("always", "每一项都先问我", "所有操作都等你点确认"),
-    Changes("changes", "只确认会改动内容的", "打开页面、切换课表视图直接执行；日程、设置和布局先问你"),
-    Trusted("trusted", "直接执行，删除除外", "执行后都可以撤销；删除日程仍然先问你");
+    Own("own", "改我自己的直接做", "日程、设置、布局、点赞、已读直接执行，可以撤销；发帖、回复、私信和删除先给你看");
 
     fun runsWithoutAsking(type: String): Boolean = when (this) {
         Always -> false
-        Changes -> type in VIEW_ONLY
-        Trusted -> type != "agenda.delete" && type != "data.request"
+        Own -> type !in VIEW_ONLY && type !in PUBLISHING && type != "agenda.delete" && type != "data.request" && type != "read"
     }
 
     companion object {
-        /** Actions that only show something and change nothing. */
+        /** Actions that only show something: buttons the user taps, never run on their own. */
         val VIEW_ONLY = setOf("open", "web.open", "schedule.view")
-        fun of(id: String?) = entries.firstOrNull { it.id == id } ?: Changes
+        /** Actions that put something in front of other people. */
+        val PUBLISHING = setOf("forum.post", "forum.reply", "dm.send", "lostfound.post")
+        /** Actions sent to the site, which take a moment. */
+        val SITE = PUBLISHING + setOf("forum.like", "messages.readAll")
+        /** 1.2's three levels: both looser ones become [Own]. */
+        fun of(id: String?) = entries.firstOrNull { it.id == id } ?: if (id == "always") Always else Own
     }
 }
 
@@ -75,7 +88,9 @@ object AssistantCodec {
         .put("id", message.id).put("fromUser", message.fromUser).put("text", message.text).put("failed", message.failed)
         .put("links", JSONArray(message.links.map { JSONObject().put("label", it.label.take(40)).put("url", it.url.take(300)) }))
         .put("proposals", JSONArray(message.proposals.map {
-            JSONObject().put("id", it.id).put("action", it.action).put("state", it.state.name).put("note", it.note.take(200)).put("auto", it.auto)
+            // A running action is stored as pending: if the app stops meanwhile, it reads back as not done.
+            JSONObject().put("id", it.id).put("action", it.action).put("state", (if (it.state == ProposalState.Running) ProposalState.Pending else it.state).name)
+                .put("note", it.note.take(200)).put("auto", it.auto).put("link", it.link.take(300))
         }))
 
     fun messageFromJson(item: JSONObject): AssistantMessage? {
@@ -94,7 +109,8 @@ object AssistantCodec {
                     // A proposal left pending when the app closed is stale: show it as dismissed.
                     val state = runCatching { ProposalState.valueOf(proposal.optString("state")) }.getOrDefault(ProposalState.Dismissed)
                     AssistantProposal(proposal.optString("id").ifEmpty { newId() }, action,
-                        if (state == ProposalState.Pending) ProposalState.Dismissed else state, proposal.optString("note"), proposal.optBoolean("auto"))
+                        if (state == ProposalState.Pending || state == ProposalState.Running) ProposalState.Dismissed else state,
+                        proposal.optString("note"), proposal.optBoolean("auto"), proposal.optString("link").takeIf { it.startsWith("/") }.orEmpty())
                 }
             }.orEmpty(),
             failed = item.optBoolean("failed"),
@@ -165,6 +181,12 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
     /** Whether questions carry the latest announcement and hot-post titles (public, so on by default). */
     var campus by mutableStateOf(prefs.getBoolean(KEY_CAMPUS, true))
         private set
+    /** Whether 拾间AI may read the forum and other public site content (on by default). */
+    var forum by mutableStateOf(prefs.getBoolean(KEY_FORUM, true))
+        private set
+    /** Whether 拾间AI may read the user's notifications and private messages. */
+    var privateMessages by mutableStateOf(prefs.getBoolean(KEY_MESSAGES, false))
+        private set
     var approval by mutableStateOf(ApprovalMode.of(prefs.getString(KEY_APPROVAL, null)))
         private set
     /** What the app is doing for the answer being written, such as reading grades. */
@@ -197,6 +219,16 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
     fun setCampusAccess(on: Boolean) {
         campus = on
         prefs.edit().putBoolean(KEY_CAMPUS, on).apply()
+    }
+
+    fun setForumAccess(on: Boolean) {
+        forum = on
+        prefs.edit().putBoolean(KEY_FORUM, on).apply()
+    }
+
+    fun setMessageAccess(on: Boolean) {
+        privateMessages = on
+        prefs.edit().putBoolean(KEY_MESSAGES, on).apply()
     }
 
     fun setApprovalMode(mode: ApprovalMode) {
@@ -290,7 +322,7 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
      * with the data read so far; [readData] reads grades or exams when 拾间AI
      * asks for them (at most twice per question).
      */
-    fun send(text: String, personalContext: suspend (toolResults: JSONArray) -> JSONObject, readData: suspend (source: String, semester: String) -> AgentData) {
+    fun send(text: String, personalContext: suspend (toolResults: JSONArray) -> JSONObject, readData: suspend (request: JSONObject) -> AgentData) {
         val question = text.trim().take(500)
         if (question.isEmpty() || sending) return
         val conversationId = currentId?.takeIf { id -> conversations.any { it.id == id } } ?: AssistantCodec.newId("c").also { id ->
@@ -308,6 +340,7 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         sendingIn = conversationId
         job = scope.launch {
             val toolResults = JSONArray()
+            var rounds = 0
             while (true) {
                 val body = JSONObject().put("message", question).put("history", JSONArray(history)).put("personal", personalContext(toolResults))
                 val outcome = withContext(Dispatchers.IO) { runCatching { stream(body) { delta -> scope.launch { appendDelta(conversationId, reply.id, delta) } } } }
@@ -315,27 +348,40 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
                     updateMessage(conversationId, reply.id) { it.copy(streaming = false, failed = true, text = it.text.ifEmpty { error.message ?: "拾间AI暂时不可用，请稍后再试" }) }
                     null
                 } ?: break
-                val request = dataRequest(done)
-                if (request == null || toolResults.length() >= MAX_DATA_ROUNDS) {
+                val requests = readRequests(done)
+                if (requests.isEmpty() || rounds >= MAX_DATA_ROUNDS || toolResults.length() + requests.size > MAX_TOOL_RESULTS) {
                     finish(conversationId, reply.id, done)
                     break
                 }
+                rounds += 1
                 // "Let me check" gives way to what the app is doing, then to the real answer.
-                val (source, semester) = request
-                val what = if (source == "grades") "成绩" else "考试安排"
                 updateMessage(conversationId, reply.id) { it.copy(text = "") }
-                status = "正在查看你的$what…"
-                val read = readData(source, semester)
+                val failures = mutableListOf<Pair<JSONObject, String>>()
+                for (request in requests) {
+                    status = readingLabel(request)
+                    val read = readData(request)
+                    val data = read.data?.takeIf { it.length <= MAX_DATA_LENGTH }
+                    val source = if (request.optString("type") == "read") "site" else request.optString("source")
+                    val entry = JSONObject().put("source", source).put("path", request.optString("path").take(300)).put("semester", request.optString("semester"))
+                    if (data != null) {
+                        toolResults.put(entry.put("data", data))
+                    } else {
+                        val error = read.error ?: "读取失败，请稍后重试"
+                        failures += request to error
+                        toolResults.put(entry.put("data", JSONObject().put("error", error).toString()))
+                    }
+                }
                 status = null
-                val data = read.data?.takeIf { it.length <= MAX_DATA_LENGTH }
-                if (data == null) {
+                if (failures.size == requests.size) {
+                    // Nothing was read: say why at once instead of asking again.
+                    val (request, error) = failures.first()
+                    val academic = request.optString("type") == "data.request"
                     updateMessage(conversationId, reply.id) {
-                        it.copy(streaming = false, text = "没能读到你的$what：${read.error ?: "读取失败，请稍后重试"}",
-                            links = listOf(AssistantLink("打开教务", "/jwxt")))
+                        it.copy(streaming = false, text = "没能读到${readingWhat(request)}：$error",
+                            links = if (academic) listOf(AssistantLink("打开教务", "/jwxt")) else emptyList())
                     }
                     break
                 }
-                toolResults.put(JSONObject().put("source", source).put("semester", semester).put("data", data))
             }
             status = null
             sending = false
@@ -347,7 +393,7 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
     }
 
     /** Asks the last question again, in place of its answer. */
-    fun regenerate(personalContext: suspend (JSONArray) -> JSONObject, readData: suspend (String, String) -> AgentData) {
+    fun regenerate(personalContext: suspend (JSONArray) -> JSONObject, readData: suspend (JSONObject) -> AgentData) {
         val question = takeBackLastQuestion() ?: return
         send(question, personalContext, readData)
     }
@@ -363,12 +409,21 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         return list[index].text
     }
 
-    fun setProposal(messageId: String, proposalId: String, state: ProposalState, note: String = "", auto: Boolean = false) {
+    fun setProposal(messageId: String, proposalId: String, state: ProposalState, note: String = "", auto: Boolean = false, link: String = "") {
+        changeProposal(messageId, proposalId) { it.copy(state = state, note = note, auto = auto, link = link) }
+    }
+
+    /** The user's edit of a proposal before it runs (a post's text, a reply). */
+    fun updateProposalAction(messageId: String, proposalId: String, action: JSONObject) {
+        changeProposal(messageId, proposalId) { it.copy(action = action) }
+    }
+
+    private fun changeProposal(messageId: String, proposalId: String, transform: (AssistantProposal) -> AssistantProposal) {
         val conversation = conversations.firstOrNull { c -> c.messages.any { it.id == messageId } } ?: return
         change(conversation.id) { c ->
             c.copy(messages = c.messages.map { message ->
                 if (message.id != messageId) message
-                else message.copy(proposals = message.proposals.map { if (it.id == proposalId) it.copy(state = state, note = note, auto = auto) else it })
+                else message.copy(proposals = message.proposals.map { if (it.id == proposalId) transform(it) else it })
             })
         }
     }
@@ -412,12 +467,41 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
 
     private fun appendDelta(conversationId: String, messageId: String, delta: String) = updateMessage(conversationId, messageId) { it.copy(text = it.text + delta) }
 
-    /** The grades or exams a reply asks the app to read, when that is all it asks. */
-    private fun dataRequest(done: JSONObject): Pair<String, String>? {
-        val actions = done.optJSONArray("clientActions") ?: return null
-        val action = actions.optJSONObject(0)?.takeIf { actions.length() == 1 && it.optString("type") == "data.request" } ?: return null
-        val source = action.optString("source").takeIf { it == "grades" || it == "exams" } ?: return null
-        return source to action.optString("semester").takeIf { Regex("^\\d{4}-\\d{4}-[12]$").matches(it) }.orEmpty()
+    /** What a reply asks the app to read (site paths, grades, exams), when reading is all it asks. */
+    private fun readRequests(done: JSONObject): List<JSONObject> {
+        val actions = done.optJSONArray("clientActions") ?: return emptyList()
+        val list = (0 until actions.length()).mapNotNull { actions.optJSONObject(it) }
+        if (list.isEmpty() || list.any { it.optString("type") != "data.request" && it.optString("type") != "read" }) return emptyList()
+        return list.filter { request ->
+            when (request.optString("type")) {
+                "read" -> request.optString("path").startsWith("/")
+                else -> request.optString("source") == "grades" || request.optString("source") == "exams"
+            }
+        }.take(3)
+    }
+
+    private fun readingWhat(request: JSONObject): String {
+        if (request.optString("type") == "data.request") return if (request.optString("source") == "grades") "你的成绩" else "你的考试安排"
+        val path = request.optString("path")
+        return when {
+            path.startsWith("/topics/") || path.startsWith("/search") || path.startsWith("/topics") -> "论坛内容"
+            path.startsWith("/messages") || path.startsWith("/direct-messages") -> "你的消息"
+            path.startsWith("/lost-found") -> "失物招领"
+            path.startsWith("/courses") -> "课程点评"
+            path.startsWith("/home") -> "热榜"
+            path.startsWith("/user") -> "用户主页"
+            else -> "站内内容"
+        }
+    }
+
+    private fun readingLabel(request: JSONObject): String {
+        val path = request.optString("path")
+        return when {
+            request.optString("type") == "data.request" -> "正在查看${readingWhat(request)}…"
+            Regex("^/topics/\\d+").containsMatchIn(path) -> "正在看帖子…"
+            path.startsWith("/topics") || path.startsWith("/search") -> "正在论坛里找…"
+            else -> "正在查看${readingWhat(request)}…"
+        }
     }
 
     private fun finish(conversationId: String, messageId: String, done: JSONObject) {
@@ -430,8 +514,8 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         }.orEmpty()
         val proposals = done.optJSONArray("clientActions")?.let { array ->
             (0 until array.length()).mapNotNull { index ->
-                // A request for data past the last round is not something to confirm.
-                array.optJSONObject(index)?.takeIf { it.optString("type") != "data.request" }?.let { AssistantProposal(AssistantCodec.newId(), it) }
+                // A request to read past the last round is not something to confirm.
+                array.optJSONObject(index)?.takeIf { it.optString("type") != "data.request" && it.optString("type") != "read" }?.let { AssistantProposal(AssistantCodec.newId(), it) }
             }
         }.orEmpty()
         val suggestions = done.optJSONArray("suggestions")?.let { array ->
@@ -545,9 +629,13 @@ class AssistantSession(context: Context, private val scope: CoroutineScope) {
         private const val KEY_ACADEMIC = "academic"
         private const val KEY_CAMPUS = "campus"
         private const val KEY_APPROVAL = "approval"
+        private const val KEY_FORUM = "forum"
+        private const val KEY_MESSAGES = "messages"
         private const val KEY_CURRENT = "current"
         private const val MAX_CONVERSATIONS = 100
-        private const val MAX_DATA_ROUNDS = 2
+        private const val MAX_DATA_ROUNDS = 4
+        /** The server takes at most this many results with one question. */
+        private const val MAX_TOOL_RESULTS = 8
         /** The server takes at most this much of one result. */
         private const val MAX_DATA_LENGTH = 12_000
         private const val TOMBSTONE_LIFETIME_MS = 180L * 24 * 60 * 60 * 1000

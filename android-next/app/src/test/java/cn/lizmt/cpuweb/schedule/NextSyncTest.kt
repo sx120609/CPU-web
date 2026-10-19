@@ -95,13 +95,54 @@ class NextSyncTest {
 
     @Test
     fun theConfirmationSettingDecidesWhatRunsAtOnce() {
-        assertFalse(ApprovalMode.Always.runsWithoutAsking("open"))
-        assertTrue(ApprovalMode.Changes.runsWithoutAsking("web.open"))
-        assertTrue(ApprovalMode.Changes.runsWithoutAsking("schedule.view"))
-        assertFalse(ApprovalMode.Changes.runsWithoutAsking("agenda.create"))
-        assertTrue(ApprovalMode.Trusted.runsWithoutAsking("agenda.create"))
-        assertFalse(ApprovalMode.Trusted.runsWithoutAsking("agenda.delete"))
-        assertEquals(ApprovalMode.Changes, ApprovalMode.of(null))
+        assertFalse(ApprovalMode.Always.runsWithoutAsking("agenda.create"))
+        assertTrue(ApprovalMode.Own.runsWithoutAsking("agenda.create"))
+        assertTrue(ApprovalMode.Own.runsWithoutAsking("forum.like"))
+        // Pages wait for a tap; what others will see and deleting always ask.
+        assertFalse(ApprovalMode.Own.runsWithoutAsking("web.open"))
+        assertFalse(ApprovalMode.Own.runsWithoutAsking("forum.post"))
+        assertFalse(ApprovalMode.Own.runsWithoutAsking("dm.send"))
+        assertFalse(ApprovalMode.Own.runsWithoutAsking("agenda.delete"))
+        assertEquals(ApprovalMode.Own, ApprovalMode.of(null))
+        assertEquals(ApprovalMode.Own, ApprovalMode.of("trusted"))
+        assertEquals(ApprovalMode.Always, ApprovalMode.of("always"))
+    }
+
+    @Test
+    fun anActionOnItsWayIsStoredAsNotDone() {
+        val action = JSONObject().put("type", "forum.post").put("title", "求助").put("content", "有人知道吗")
+        val message = AssistantMessage("m1", fromUser = false, text = "写好了",
+            proposals = listOf(AssistantProposal("p1", action, ProposalState.Running, "正在发布…"), AssistantProposal("p2", action, ProposalState.Applied, "已发布", link = "/forum/topic/9")))
+        val json = AssistantCodec.messageToJson(message)
+        assertEquals("Pending", json.getJSONArray("proposals").getJSONObject(0).getString("state"))
+        val back = AssistantCodec.messageFromJson(JSONObject(json.toString()))!!
+        assertEquals(ProposalState.Dismissed, back.proposals[0].state)
+        assertEquals("/forum/topic/9", back.proposals[1].link)
+    }
+
+    @Test
+    fun theReminderPlanFollowsThePhonesOwnRules() {
+        val now = java.time.LocalDateTime.of(2026, 10, 19, 7, 0)
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val items = listOf(
+            AgendaItem("aaaaaa000001", AgendaKind.Event, "组会", "2026-10-19", "14:00", "15:00", location = "药学楼", remind = 15),
+            AgendaItem("aaaaaa000002", AgendaKind.Event, "背单词", "2026-10-01", "07:30", remind = 0, repeat = cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat.Daily,
+                doneDates = setOf("2026-10-20")),
+            AgendaItem("aaaaaa000003", AgendaKind.Event, "不提醒", "2026-10-19", "09:00"),
+        )
+        val days = mapOf("2026-10-19" to DashDay("2026-10-19", "周一", 8, listOf(DashCourse("药理学", "药学楼 302", "王老师", "08:00", "09:40"))))
+        val plan = ReminderPlan.build(items, days, courseMinutes = 10, now = now, zone = zone)
+        val first = plan.take(3).map { it.key }
+        assertEquals(listOf("agenda:aaaaaa000002:2026-10-19", "course:2026-10-19:08:00:" + "药理学".hashCode().toUInt().toString(36), "agenda:aaaaaa000001:2026-10-19"), first)
+        assertEquals(now.withHour(13).withMinute(45).atZone(zone).toInstant().toEpochMilli(), plan[2].at)
+        assertEquals("上课提醒 · 药理学", plan[1].title)
+        assertEquals("08:00–09:40 · 药学楼 302", plan[1].text)
+        // The daily item skips the day already ticked off and stops at thirty days.
+        assertFalse(plan.any { it.key == "agenda:aaaaaa000002:2026-10-20" })
+        assertTrue(plan.any { it.key == "agenda:aaaaaa000002:2026-10-21" })
+        assertFalse(plan.any { it.key.startsWith("agenda:aaaaaa000003") })
+        assertTrue(plan.all { it.at < now.plusDays(31).atZone(zone).toInstant().toEpochMilli() })
+        assertEquals(plan.size, ReminderPlan.toJson(plan).getJSONArray("items").length())
     }
 
     @Test

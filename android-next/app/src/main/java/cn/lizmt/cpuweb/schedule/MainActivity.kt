@@ -184,7 +184,11 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         agenda = AgendaStore.get(this)
         assistant = AssistantSession(this, lifecycleScope)
         activityLog = AssistantActivityLog(this)
-        sync = NextSync(this, lifecycleScope, { web.authState.takeIf { it.authenticated }?.account }, agenda, assistant, activityLog)
+        sync = NextSync(this, lifecycleScope, { web.authState.takeIf { it.authenticated }?.account }, agenda, assistant, activityLog,
+            reminderPlan = {
+                val days = DashboardSchedule.days(schedule.widgetLocalRecord() ?: ScheduleWidgetLocalDays.read(this))
+                ReminderPlan.toJson(ReminderPlan.build(agenda.items, days, AgendaReminders.courseMinutes(this), LocalDateTime.now()))
+            })
         // Changes made here go up a few seconds later, so a burst of edits is one upload.
         agenda.onLocalChange = { sync.request(delayMs = 3_000) }
         assistant.onLocalChange = { sync.request(delayMs = 3_000) }
@@ -353,15 +357,46 @@ class MainActivity : ComponentActivity(), WebSessionHost {
 
     fun askAssistant(text: String) = assistant.send(text, ::personalContext, ::readAgentData)
 
-    /** Grades or exams through the page's own sign-in, for a question that needs them. */
-    private suspend fun readAgentData(source: String, semester: String): AgentData {
-        if (!assistant.academic) return AgentData(error = "还没有允许拾间AI查看成绩与考试")
-        val raw = web.agentData(source, semester) ?: return AgentData(error = "页面没有响应，请稍后重试")
+    /** What 拾间AI asked to read (grades, exams, a site path), through the page's own sign-in and within what the user allows. */
+    private suspend fun readAgentData(request: JSONObject): AgentData {
+        val payload = if (request.optString("type") == "read") {
+            val path = request.optString("path")
+            val private = path.startsWith("/messages") || path.startsWith("/direct-messages")
+            if (private && !assistant.privateMessages) return AgentData(error = "还没有允许拾间AI查看你的消息和私信")
+            if (!private && !assistant.forum) return AgentData(error = "还没有允许拾间AI查看论坛和站内内容")
+            JSONObject().put("source", "site").put("path", path)
+        } else {
+            if (!assistant.academic) return AgentData(error = "还没有允许拾间AI查看成绩与考试")
+            JSONObject().put("source", request.optString("source")).put("semester", request.optString("semester"))
+        }
+        val raw = web.agentData(payload) ?: return AgentData(error = "页面没有响应，请稍后重试")
         val reply = runCatching { JSONObject(raw) }.getOrNull() ?: return AgentData(error = "读取失败，请稍后重试")
         val data = reply.optString("data")
         if (data.isNotEmpty()) return AgentData(data = data)
         return AgentData(error = reply.optString("error").ifBlank { reply.optString("__error") }.ifBlank { "读取失败，请稍后重试" })
     }
+
+    /** Who the user is and the boards they can post in, read once in a while for 拾间AI. */
+    private var siteContext: JSONObject? = null
+    private var siteContextAt = 0L
+
+    private suspend fun siteContext(): JSONObject? {
+        if (!web.authState.authenticated) return null
+        if (siteContext == null || System.currentTimeMillis() - siteContextAt > 30 * 60_000L) {
+            val raw = web.agentData(JSONObject().put("source", "context"))
+            runCatching { JSONObject(JSONObject(raw ?: "{}").optString("data")) }.getOrNull()?.let {
+                siteContext = it
+                siteContextAt = System.currentTimeMillis()
+            }
+        }
+        return siteContext
+    }
+
+    /** The boards 拾间AI may post in, for the editor of a proposed post. */
+    val postBoards: List<Pair<String, String>>
+        get() = siteContext?.optJSONArray("boards")?.let { array ->
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map { it.optString("slug") to it.optString("name") }
+        }.orEmpty()
 
     /**
      * What a question to 拾间AI carries: the time, how the app is set up, what
@@ -375,7 +410,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         val json = JSONObject()
             .put("now", "%04d-%02d-%02dT%02d:%02d".format(now.year, now.monthValue, now.dayOfMonth, now.hour, now.minute))
             .put("shared", assistant.personal)
-            .put("allow", JSONObject().put("academic", assistant.academic && web.authState.authenticated).put("campus", assistant.campus))
+            .put("allow", JSONObject().put("academic", assistant.academic && web.authState.authenticated).put("campus", assistant.campus)
+                .put("forum", assistant.forum && web.authState.authenticated).put("messages", assistant.privateMessages && web.authState.authenticated))
             .put("app", JSONObject()
                 .put("tabs", JSONArray(custom.tabs.filter { ASSISTANT_DESTINATION.matches(it) }.take(6)))
                 .put("launch", custom.launchTab.take(40))
@@ -392,6 +428,9 @@ class MainActivity : ComponentActivity(), WebSessionHost {
             }
             fun titles(items: List<FeedItem>) = JSONArray(items.take(8).map { it.title.take(80) })
             json.put("campus", JSONObject().put("announcements", titles(dashboardFeeds.announcements)).put("hot", titles(dashboardFeeds.hot)))
+        }
+        siteContext()?.let { site ->
+            json.put("site", JSONObject().put("me", site.optJSONObject("me") ?: JSONObject.NULL).put("boards", site.optJSONArray("boards") ?: JSONArray()))
         }
         if (!assistant.personal) return json
         val today = now.toLocalDate()
@@ -430,6 +469,10 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     /** Runs one proposal (confirmed, or [auto] under the confirmation setting) and records it in the action log. */
     fun applyAssistantProposal(messageId: String, proposal: AssistantProposal, auto: Boolean = false) {
         val conversationId = assistant.conversationOf(messageId) ?: return
+        if (proposal.action.optString("type") in ApprovalMode.SITE) {
+            runSiteAction(conversationId, messageId, proposal, auto)
+            return
+        }
         val result = runCatching { executeAssistantAction(proposal.action) }.getOrNull()
         if (result == null) {
             val note = "没能完成：这一项可能已经被改过或删掉了"
@@ -442,8 +485,75 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         activityLog.record(conversationId, messageId, proposal, result.first, failed = false, auto = auto)
     }
 
+    /**
+     * A post, reply, like, private message, lost-and-found entry or "mark all
+     * read", sent through the signed-in page. Posts and replies can be taken
+     * back (deleted), likes undone; a sent message cannot.
+     */
+    private fun runSiteAction(conversationId: String, messageId: String, proposal: AssistantProposal, auto: Boolean) {
+        val action = proposal.action
+        val type = action.optString("type")
+        assistant.setProposal(messageId, proposal.id, ProposalState.Running, when (type) {
+            "forum.post", "lostfound.post" -> "正在发布…"
+            "forum.reply" -> "正在回复…"
+            "dm.send" -> "正在发送…"
+            else -> "正在处理…"
+        }, auto)
+        lifecycleScope.launch {
+            val raw = web.agentAct(action)
+            val reply = runCatching { JSONObject(raw ?: "") }.getOrNull()
+            if (reply == null || !reply.optBoolean("ok")) {
+                val note = reply?.optString("error")?.ifBlank { null } ?: if (raw == null) "页面没有响应，请稍后重试" else "没能完成，请稍后重试"
+                assistant.setProposal(messageId, proposal.id, ProposalState.Failed, note, auto)
+                activityLog.record(conversationId, messageId, proposal, note, failed = true, auto = auto)
+                return@launch
+            }
+            val pending = reply.optString("status") == "pending" || reply.optString("status") == "manual_review"
+            val id = reply.optLong("id", 0L)
+            val note = when (type) {
+                "forum.post" -> if (pending) "已提交，审核通过后显示" else "已发布"
+                "forum.reply" -> if (pending) "已提交回复，审核通过后显示" else "已回复"
+                "forum.like" -> if (reply.optBoolean("liked")) "已点赞" else "已取消点赞"
+                "dm.send" -> "已发送"
+                "messages.readAll" -> "已全部标为已读"
+                "lostfound.post" -> if (pending) "已提交，审核通过后显示" else "已发布到失物招领"
+                else -> "已完成"
+            }
+            val undo: (() -> Unit)? = when {
+                type == "forum.post" && id > 0 -> { { undoSiteAction(JSONObject().put("type", "topic.delete").put("id", id), "帖子已删除") } }
+                type == "forum.reply" && id > 0 -> { { undoSiteAction(JSONObject().put("type", "reply.delete").put("id", id), "回复已删除") } }
+                type == "forum.like" -> { { undoSiteAction(action, "已撤销点赞") } }
+                else -> null
+            }
+            undo?.let { undoActions[proposal.id] = it }
+            assistant.setProposal(messageId, proposal.id, ProposalState.Applied, note, auto, reply.optString("link").takeIf { it.startsWith("/") }.orEmpty())
+            activityLog.record(conversationId, messageId, proposal, note, failed = false, auto = auto)
+        }
+    }
+
+    private fun undoSiteAction(action: JSONObject, done: String) {
+        lifecycleScope.launch {
+            val reply = runCatching { JSONObject(web.agentAct(action) ?: "") }.getOrNull()
+            toast(if (reply?.optBoolean("ok") == true) done else reply?.optString("error")?.ifBlank { null } ?: "撤销失败，请到网页上处理")
+        }
+    }
+
+    /** The user's edit of a proposed post, reply or message, sent at once. */
+    fun applyEditedAssistantProposal(messageId: String, proposal: AssistantProposal, action: JSONObject) {
+        assistant.updateProposalAction(messageId, proposal.id, action)
+        applyAssistantProposal(messageId, proposal.copy(action = action))
+    }
+
+    /** A page or view 拾间AI offered: opened only when tapped, recorded in the log, and still there to tap again. */
+    fun openAssistantNavigation(messageId: String, proposal: AssistantProposal) {
+        val conversationId = assistant.conversationOf(messageId) ?: return
+        val result = runCatching { executeAssistantAction(proposal.action) }.getOrNull()
+        activityLog.record(conversationId, messageId, proposal, result?.first ?: "没能打开", failed = result == null, auto = false)
+    }
+
     fun applyAllAssistantProposals(message: AssistantMessage) {
-        message.proposals.filter { it.state == ProposalState.Pending }.forEach { applyAssistantProposal(message.id, it) }
+        message.proposals.filter { it.state == ProposalState.Pending && it.action.optString("type") !in ApprovalMode.VIEW_ONLY }
+            .forEach { applyAssistantProposal(message.id, it) }
     }
 
     /** A proposed item the user changed in the editor before adding it. */
@@ -456,17 +566,13 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     }
 
     /**
-     * Runs what the confirmation setting allows of a finished answer. Pages and
-     * views open last, and only when nothing is left to confirm, so the
-     * conversation stays on screen while something still waits for the user.
+     * Runs what the confirmation setting allows of a finished answer. Pages never
+     * open on their own (the user is still reading); they wait as buttons.
      */
     private fun autoApplyAssistant(message: AssistantMessage) {
         val mode = assistant.approval
-        val pending = message.proposals.filter { it.state == ProposalState.Pending }
-        val allowed = pending.filter { mode.runsWithoutAsking(it.action.optString("type")) }
-        val (views, changes) = allowed.partition { it.action.optString("type") in ApprovalMode.VIEW_ONLY }
-        changes.forEach { applyAssistantProposal(message.id, it, auto = true) }
-        if (pending.size == allowed.size) views.forEach { applyAssistantProposal(message.id, it, auto = true) }
+        message.proposals.filter { it.state == ProposalState.Pending && mode.runsWithoutAsking(it.action.optString("type")) }
+            .forEach { applyAssistantProposal(message.id, it, auto = true) }
     }
 
     fun canUndoAssistant(proposalId: String): Boolean = proposalId in undoActions
