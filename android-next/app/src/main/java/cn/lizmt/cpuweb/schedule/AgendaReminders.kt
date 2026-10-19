@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import cn.lizmt.cpuweb.schedule.agenda.AgendaItem
 import cn.lizmt.cpuweb.schedule.agenda.AgendaKind
 import cn.lizmt.cpuweb.schedule.agenda.AgendaStore
@@ -35,6 +36,7 @@ object AgendaReminders {
     internal const val ACTION_DONE = "cn.lizmt.cpuweb.next.AGENDA_DONE"
     internal const val ACTION_SNOOZE = "cn.lizmt.cpuweb.next.AGENDA_SNOOZE"
     internal const val ACTION_COURSE = "cn.lizmt.cpuweb.next.COURSE_REMIND"
+    internal const val ACTION_TEST = "cn.lizmt.cpuweb.next.TEST_REMIND"
     internal const val EXTRA_ID = "id"
     internal const val EXTRA_DAY = "day"
     const val EXTRA_OPEN_AGENDA = "cn.lizmt.cpuweb.next.OPEN_AGENDA"
@@ -77,6 +79,44 @@ object AgendaReminders {
         if (minutes < 0) return
         val next = nextCourse(context, minutes, LocalDateTime.now()) ?: return
         setAlarm(context, alarms, courseIntent(context, next.second), next.first)
+    }
+
+    /** When the next class reminder fires and for which class; null when it is off or no class is known for three weeks. */
+    fun nextCourseReminder(context: Context): Pair<LocalDateTime, DashCourse>? {
+        val minutes = courseMinutes(context)
+        return if (minutes < 0) null else nextCourse(context, minutes, LocalDateTime.now())
+    }
+
+    /** What may stop a reminder from showing on this phone. */
+    data class Health(val notifications: Boolean, val quiet: Boolean, val exact: Boolean, val batteryFree: Boolean) {
+        val problems: Int get() = listOf(!notifications, quiet, !exact, !batteryFree).count { it }
+    }
+
+    fun health(context: Context): Health {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager != null) ensureChannels(context, manager)
+        val quiet = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager != null &&
+            listOf(CHANNEL_AGENDA, CHANNEL_COURSE).any { (manager.getNotificationChannel(it)?.importance ?: NotificationManager.IMPORTANCE_HIGH) < NotificationManager.IMPORTANCE_HIGH }
+        val alarms = context.getSystemService(AlarmManager::class.java)
+        val power = context.getSystemService(android.os.PowerManager::class.java)
+        return Health(
+            notifications = NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            quiet = quiet,
+            exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms?.canScheduleExactAlarms() == true,
+            batteryFree = power?.isIgnoringBatteryOptimizations(context.packageName) ?: true,
+        )
+    }
+
+    /** A test reminder now, or through an alarm [delayMinutes] from now to check it arrives with the app in the background. */
+    fun test(context: Context, delayMinutes: Long = 0) {
+        if (delayMinutes <= 0) {
+            notifyCourse(context, "测试提醒", "拾间的提醒能正常弹出")
+            return
+        }
+        val alarms = context.getSystemService(AlarmManager::class.java) ?: return
+        val intent = Intent(context, AgendaReminderReceiver::class.java).setAction(ACTION_TEST).setData(Uri.parse("cpuagenda://test"))
+        setAlarm(context, alarms, PendingIntent.getBroadcast(context, 3, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE),
+            LocalDateTime.now().plusMinutes(delayMinutes))
     }
 
     private fun nextCourse(context: Context, minutes: Int, now: LocalDateTime): Pair<LocalDateTime, DashCourse>? {
@@ -198,7 +238,7 @@ object AgendaReminders {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun ensureChannels(context: Context, manager: NotificationManager) {
+    internal fun ensureChannels(context: Context, manager: NotificationManager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (manager.getNotificationChannel(CHANNEL_AGENDA) == null) {
             manager.createNotificationChannel(NotificationChannel(CHANNEL_AGENDA, "日程", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -254,6 +294,7 @@ class AgendaReminderReceiver : BroadcastReceiver() {
                 AgendaReminders.notifyCourse(context, intent.getStringExtra("title").orEmpty(), intent.getStringExtra("text").orEmpty())
                 AgendaReminders.syncCourse(context)
             }
+            AgendaReminders.ACTION_TEST -> AgendaReminders.notifyCourse(context, "测试提醒", "拾间不在前台时也能按时提醒")
         }
     }
 }

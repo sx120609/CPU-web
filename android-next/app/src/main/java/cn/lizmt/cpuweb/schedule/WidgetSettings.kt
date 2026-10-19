@@ -100,12 +100,13 @@ class WidgetSettings(private val activity: MainActivity) {
         ScheduleWidgetLocalDays.read(context) != null || ScheduleWidgetPrefs.endpoint(context).isNotEmpty()
 
     /** Write the current term from the native store; unchanged records are not rewritten. */
-    fun syncLocalDays(store: ScheduleStore, web: WebSession) {
-        if (!web.authState.authenticated) return
-        val record = store.widgetLocalRecord() ?: return
+    /** Writes the local timetable; [onWritten] runs once it is on disk (or straight away when there is nothing to write). */
+    fun syncLocalDays(store: ScheduleStore, web: WebSession, onWritten: () -> Unit = {}) {
+        val record = store.widgetLocalRecord()?.takeIf { web.authState.authenticated } ?: return onWritten()
         val owner = fingerprint(web.authState.account)
         activity.lifecycleScope.launch {
             val saved = withContext(Dispatchers.IO) { ScheduleWidgetLocalDays.save(context, record.toString()) }
+            onWritten()
             if (owner.isNotEmpty() && owner != accountFingerprint) {
                 ScheduleWidgetPrefs.saveAccountFingerprint(context, owner)
                 accountFingerprint = owner

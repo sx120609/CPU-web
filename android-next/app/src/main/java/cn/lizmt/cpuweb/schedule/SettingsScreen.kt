@@ -98,6 +98,7 @@ internal enum class SettingsPage(val route: String, val title: String) {
     Web("web", "网页改造"),
     Layout("layout", "布局方案"),
     More("more", "更多设置"),
+    Reminders("reminders", "提醒检查"),
     Update("update", "更新");
 
     companion object {
@@ -160,6 +161,7 @@ fun SettingsScreen(activity: MainActivity, initialRoute: String, asTab: Boolean,
                     SettingsPage.Web -> WebPage(activity)
                     SettingsPage.Layout -> LayoutPage(activity)
                     SettingsPage.More -> MorePage(activity, open)
+                    SettingsPage.Reminders -> ReminderCheckPage(activity)
                     SettingsPage.Update -> UpdatePage(activity)
                 }
             }
@@ -250,7 +252,8 @@ private fun RootPage(activity: MainActivity, open: (SettingsPage) -> Unit) {
     val updates = activity.updates
     val context = LocalContext.current
     var courseMinutes by remember { mutableIntStateOf(AgendaReminders.courseMinutes(context)) }
-    val canNotify = AgendaReminders.canNotify(context)
+    val resumed = rememberResumeCount()
+    val reminderHealth = remember(resumed, courseMinutes) { AgendaReminders.health(context) }
     (updates.state as? UpdateState.Ready)?.let { ready ->
         Panel {
             ListRow("新版 ${ready.release.versionName} 已准备好",
@@ -269,7 +272,7 @@ private fun RootPage(activity: MainActivity, open: (SettingsPage) -> Unit) {
         Hairline()
         ToggleRow("纯黑深色", checked = custom.pureBlack) { value -> activity.customization.update { it.copy(pureBlack = value) } }
     }
-    Panel("提醒", footer = if (canNotify) "日程和待办的提醒在添加时设定。" else "通知权限没有打开，日程和上课提醒不会弹出。") {
+    Panel("提醒", footer = "日程的提醒在添加时设定。") {
         LabeledControl("上课提醒", detail = "按你的课表，在每节课开始前提醒") {
             PillChoices(AgendaReminders.COURSE_CHOICES, courseMinutes) { minutes ->
                 courseMinutes = minutes
@@ -277,14 +280,17 @@ private fun RootPage(activity: MainActivity, open: (SettingsPage) -> Unit) {
                 if (minutes >= 0) activity.ensureNotificationPermission()
             }
         }
-        if (!canNotify) {
-            Hairline()
-            ListRow("打开通知权限", titleColor = MaterialTheme.colorScheme.primary) {
-                runCatching {
-                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-                }.onFailure { activity.ensureNotificationPermission() }
-            }
+        if (courseMinutes >= 0) {
+            Text(remember(resumed, courseMinutes) { nextCourseReminderText(context) }, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
         }
+        Hairline()
+        ListRow(
+            "提醒没响？",
+            detail = if (reminderHealth.problems > 0) "有 ${reminderHealth.problems} 项设置可能拦下提醒" else "检查通知、闹钟和后台限制，发一条测试提醒",
+            titleColor = if (reminderHealth.problems > 0) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
+            chevron = true,
+        ) { open(SettingsPage.Reminders) }
     }
     Panel("拾间AI 可以看到", footer = ASSISTANT_ACCESS_FOOTER) {
         AssistantAccessRows(activity.assistant)

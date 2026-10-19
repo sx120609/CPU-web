@@ -203,9 +203,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     if (!debugFixture) sharing.adopt(schedule.accountScope)
                     couple.adopt(schedule.accountScope)
                     delay(400)
-                    widgets.syncLocalDays(schedule, web)
-                    // The next class may have moved with the timetable.
-                    AgendaReminders.syncCourse(this@MainActivity)
+                    // The next class may have moved with the timetable; the reminder reads the file just written.
+                    widgets.syncLocalDays(schedule, web) { AgendaReminders.syncCourse(this@MainActivity) }
                     // The partner sees the term that is running now, edits included. Wait until
                     // the timetable has settled so one launch uploads once.
                     if (debugFixture || web.authState.authenticated) {
@@ -466,7 +465,13 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                 val minutes = action.optInt("minutes", -1)
                 AgendaReminders.setCourseMinutes(this, minutes)
                 if (minutes >= 0) ensureNotificationPermission()
-                (if (minutes < 0) "已关闭上课提醒" else "已设置上课提醒") to { AgendaReminders.setCourseMinutes(this, previous) }
+                val note = when {
+                    minutes < 0 -> "已关闭上课提醒"
+                    else -> AgendaReminders.nextCourseReminder(this)?.let { (at, course) ->
+                        "已设置，下一次：${dayLabel(at.toLocalDate(), LocalDate.now(), withWeekday = false)} ${"%02d:%02d".format(at.hour, at.minute)}（${course.name}）"
+                    } ?: "已设置；还没读到接下来的课，打开一次课表后会排上"
+                }
+                note to { AgendaReminders.setCourseMinutes(this, previous) }
             }
             "theme.accent" -> {
                 val previous = customization.value.accent
