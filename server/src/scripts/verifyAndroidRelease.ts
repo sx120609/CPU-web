@@ -41,9 +41,9 @@ export async function readEnterprisePackage(url: string, allowedSiteOrigin?: str
   throw new Error("企业盘下载重定向次数过多");
 }
 
-async function verifyPackage(apkPath: string, release: AndroidRelease) {
+async function verifyPackage(apkPath: string, release: AndroidRelease, product: AndroidProduct) {
   const bytes = await readFile(apkPath);
-  verifyAndroidReleaseBytes(bytes, release);
+  verifyAndroidReleaseBytes(bytes, release, product);
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) throw new Error("签名校验需要 ANDROID_HOME");
   const versions = (await readdir(path.join(sdk, "build-tools"))).sort((a, b) => b.localeCompare(a, "en", { numeric: true }));
@@ -98,12 +98,12 @@ async function verifyPatches(release: AndroidRelease, product: AndroidProduct) {
 }
 
 /** NEXT builds are not kept in the repository: check the signature of the downloaded bytes. */
-async function verifyDownloadedPackage(bytes: Uint8Array, release: AndroidRelease) {
+async function verifyDownloadedPackage(bytes: Uint8Array, release: AndroidRelease, product: AndroidProduct) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cpu-android-"));
   try {
     const file = path.join(directory, release.fileName);
     await writeFile(file, bytes);
-    await verifyPackage(file, release);
+    await verifyPackage(file, release, product);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -135,11 +135,11 @@ async function main() {
   const apkArg = arg("apk");
   const repositoryApk = path.join(root, "web/public/downloads", release.fileName);
   if (!publicOnly) {
-    if (apkArg || existsSync(repositoryApk) || product === "stable") await verifyPackage(path.resolve(apkArg || repositoryApk), release);
+    if (apkArg || existsSync(repositoryApk) || product === "stable") await verifyPackage(path.resolve(apkArg || repositoryApk), release, product);
     await verifyBuildRun(release, product === "next" ? "Android NEXT release artifact" : "Android release artifact");
   }
   const enterprise = await enterpriseApk(release, product);
-  if (!publicOnly && !apkArg && !existsSync(repositoryApk) && product === "next") await verifyDownloadedPackage(enterprise.bytes, release);
+  if (!publicOnly && !apkArg && !existsSync(repositoryApk) && product === "next") await verifyDownloadedPackage(enterprise.bytes, release, product);
   const patches = publicOnly ? [] : await verifyPatches(release, product);
   const site = arg("site");
   const publicHosts = site ? await verifyPublic(site, product, release) : [];
@@ -149,7 +149,7 @@ async function main() {
   if (!candidate && !explicitProduct && !publicOnly && publishedAndroidNextRelease) {
     await verifyBuildRun(publishedAndroidNextRelease, "Android NEXT release artifact");
     const nextApk = await enterpriseApk(publishedAndroidNextRelease, "next");
-    await verifyDownloadedPackage(nextApk.bytes, publishedAndroidNextRelease);
+    await verifyDownloadedPackage(nextApk.bytes, publishedAndroidNextRelease, "next");
     next = { release: publishedAndroidNextRelease, patches: await verifyPatches(publishedAndroidNextRelease, "next"), enterpriseHosts: nextApk.hosts };
   }
 

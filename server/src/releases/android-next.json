@@ -1,1 +1,19 @@
-null
+{
+  "schemaVersion": 1,
+  "versionCode": 1001,
+  "versionName": "1.0.0",
+  "packageName": "cn.lizmt.cpuweb.next",
+  "fileName": "CPU-Web-Android-NEXT-V1001.apk",
+  "size": 8260096,
+  "sha256": "2e58c9a847f0ca8136566ceda6336ce9bea89712f6d6c67dbf0ce8556069a10d",
+  "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
+  "sourceCommit": "6bcc195844ff00cc36588ff9a0e02808e319b76e",
+  "buildRun": 39205037302,
+  "notes": [
+    "第一个测试版。药大拾间 NEXT 是独立的应用，和正式版可以同时安装，分开登录，互不影响。",
+    "导航栏随你组装：2 到 6 个标签，任意页面都能放上去，可以改名、换图标、选启动页，整套布局还能用分享码发给同学。",
+    "工作台：下一节课、今日课程、未读消息、校园公告和论坛热榜，还能加倒计时和便签，卡片可以增删、排序。",
+    "主题引擎：任意主题色、纯黑深色、圆角、密度和字号，网页跟着一起换装；Android 12 及以上可以跟随壁纸取色。",
+    "增量更新：以后的新版只下载变化的部分；Android 12 及以上离开拾间后自动装好。"
+  ]
+}
