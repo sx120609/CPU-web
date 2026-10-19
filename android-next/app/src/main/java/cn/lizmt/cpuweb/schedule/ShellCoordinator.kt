@@ -178,8 +178,8 @@ class ShellCoordinator(
 
     private fun usesScheduleData(): Boolean {
         val custom = layout()
-        return selected.kind == DestinationKind.Schedule || selected.kind == DestinationKind.Dashboard ||
-            DestinationCatalog.SCHEDULE in custom.tabs || DestinationCatalog.DASHBOARD in custom.tabs
+        return selected.kind == DestinationKind.Schedule || selected.kind == DestinationKind.Dashboard || selected.kind == DestinationKind.Agenda ||
+            DestinationCatalog.SCHEDULE in custom.tabs || DestinationCatalog.DASHBOARD in custom.tabs || DestinationCatalog.AGENDA in custom.tabs
     }
 
     // region Selection
@@ -202,7 +202,7 @@ class ShellCoordinator(
             DestinationKind.Settings -> onOpenSettings?.invoke(destination.route)
             DestinationKind.External -> onOpenExternal?.invoke(destination.route)
             DestinationKind.Web -> openWeb(destination.route)
-            DestinationKind.Schedule, DestinationKind.Dashboard -> {
+            DestinationKind.Schedule, DestinationKind.Dashboard, DestinationKind.Agenda, DestinationKind.Assistant -> {
                 if (requiresLogin) return
                 if (destination.id !in layout().tabs && selectedIsTab) returnTabId = selectedId
                 show(destination)

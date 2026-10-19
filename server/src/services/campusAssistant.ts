@@ -71,7 +71,7 @@ type CampusAssistantRoute = CampusAssistantAction & {
   requireForumAccess?: boolean;
 };
 
-type CampusAssistantContext = {
+export type CampusAssistantContext = {
   features: Record<FeatureKey, boolean>;
   forumAccessEnabled: boolean;
   loggedIn: boolean;
@@ -2159,7 +2159,7 @@ export function isCampusAssistantConversationRestricted(messages: CampusAssistan
   );
 }
 
-function containsRestrictedPublicTopic(value: string) {
+export function containsRestrictedPublicTopic(value: string) {
   const normalized = normalizeSearchText(value);
   if (!normalized) return false;
   if (RESTRICTED_PUBLIC_TOPIC_TERMS.some((term) => containsRestrictedTerm(normalized, normalizeSearchText(term)))) {
@@ -2290,6 +2290,11 @@ export function sanitizeCampusAssistantStoredMessages(messages: unknown[]) {
           content: normalizedContent,
         };
   });
+}
+
+/** The fixed refusal for restricted topics, as a fresh copy callers may change. */
+export function restrictedPublicTopicReply(): CampusAssistantResponse {
+  return cloneRestrictedPublicTopicReply();
 }
 
 function cloneRestrictedPublicTopicReply(): CampusAssistantResponse {
@@ -2436,7 +2441,7 @@ function extractBalancedJsonObject(source: string) {
 }
 
 /** 这些模型没有可靠的 JSON 模式，回复是完整的普通文字时直接当作回答。 */
-function allowsPlainTextAssistantAnswer(modelName: string) {
+export function allowsPlainTextAssistantAnswer(modelName: string) {
   return isQwenAssistantModel(modelName) || /(?:^|[\/:._-])claude(?:[._-]|$)/i.test(String(modelName || "").trim());
 }
 

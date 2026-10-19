@@ -15,6 +15,7 @@ import {
   searchCampusAssistantActions,
   streamCampusAssistant,
 } from "../services/campusAssistant";
+import { personalContextSchema, streamPersonalAssistant } from "../services/personalAssistant";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
@@ -365,6 +366,89 @@ searchRouter.post(
             createdById: userId,
             pointCost: quotaReservation?.source === "points" ? 1 : 0,
           },
+          signal: controller.signal,
+        }, (delta) => {
+          if (!delta || res.writableEnded) return;
+          writeAssistantEvent(res, "delta", { delta });
+        });
+        if (response.fallback && quotaReservation) {
+          await refundCampusAssistantQuota(userId, quotaReservation);
+          quotaReservation = null;
+        }
+        if (!res.writableEnded) writeAssistantEvent(res, "done", response);
+        streamCompleted = true;
+        res.end();
+      } finally {
+        clearInterval(heartbeat);
+      }
+    } catch (error) {
+      if (quotaReservation) {
+        await refundCampusAssistantQuota(req.user!.userId, quotaReservation).catch(() => {});
+      }
+      if (clientDisconnected) return;
+      if (!streamStarted) return next(error);
+      if (!res.writableEnded) writeAssistantEvent(res, "error", { message: "拾间AI暂时不可用，请稍后再试" });
+      streamCompleted = true;
+      if (!res.writableEnded) res.end();
+    }
+  },
+);
+
+const personalAssistantSchema = assistantSchema.extend({
+  history: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().trim().min(1).max(4000),
+  })).max(40).default([]),
+  personal: personalContextSchema,
+});
+
+/**
+ * 拾间AI 个人模式（药大拾间 NEXT）：问题带上用户本机的课表与日程，回答可附带
+ * 要用户确认的 App 操作。事件与 /assistant/stream 相同，done 里多一个 clientActions。
+ */
+searchRouter.post(
+  "/assistant/agent/stream",
+  securityRateLimit("campus-assistant", 20, 60_000),
+  validate(personalAssistantSchema),
+  async (req, res, next) => {
+    let streamStarted = false;
+    let streamCompleted = false;
+    let clientDisconnected = false;
+    let quotaReservation: CampusAssistantQuotaReservation | null = null;
+    const controller = new AbortController();
+    const abortForClientDisconnect = () => {
+      if (streamCompleted || clientDisconnected) return;
+      clientDisconnected = true;
+      controller.abort(new Error("客户端已断开连接，AI 请求已取消"));
+    };
+    req.on("aborted", abortForClientDisconnect);
+    res.on("close", abortForClientDisconnect);
+
+    try {
+      const userId = req.user!.userId;
+      const forumAccessEnabled = await resolveForumAccess(userId, req.user!.role);
+      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+      streamStarted = true;
+      writeAssistantEvent(res, "status", { status: "connected", elapsedMs: 0 });
+
+      const startedAt = Date.now();
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) writeAssistantEvent(res, "heartbeat", { status: "generating", elapsedMs: Date.now() - startedAt });
+      }, 5_000);
+      heartbeat.unref?.();
+      try {
+        const response = await streamPersonalAssistant({
+          message: req.body.message,
+          history: req.body.history,
+          personal: req.body.personal,
+          context: { features: getFeatures(), forumAccessEnabled, loggedIn: true },
+          usage: { createdById: userId, pointCost: quotaReservation?.source === "points" ? 1 : 0 },
           signal: controller.signal,
         }, (delta) => {
           if (!delta || res.writableEnded) return;

@@ -27,12 +27,27 @@ class CustomizationTest {
     private fun normalize(value: Customization) = CustomizationStore.normalize(value)
 
     @Test
-    fun theDefaultLayoutIsTheFamiliarOne() {
+    fun theDefaultLayoutOpensOnToday() {
         val value = Customization()
-        assertEquals(listOf("home", "academic", "schedule", "services", "profile"), value.tabs)
-        assertEquals("schedule", value.launchTab)
+        assertEquals(listOf("dashboard", "schedule", "home", "services", "profile"), value.tabs)
+        assertEquals("dashboard", value.launchTab)
         assertEquals(value, normalize(value))
-        assertEquals(listOf("/home", "/jwxt", "/services", "/profile"), value.webTabRoots)
+        assertEquals(listOf("/home", "/services", "/profile"), value.webTabRoots)
+        assertEquals(DestinationKind.Agenda, value.destination("agenda")!!.kind)
+        assertEquals(DestinationKind.Assistant, value.destination("assistant")!!.kind)
+    }
+
+    @Test
+    fun retiredLooksAndCardsReadAsTheirSuccessors() {
+        val glass = CustomizationCodec.fromJson(JSONObject().put("tabBarStyle", "glass"))
+        assertEquals(TabBarStyle.Floating, glass.tabBarStyle)
+        val minimal = CustomizationCodec.fromJson(JSONObject().put("tabBarStyle", "minimal"))
+        assertEquals(TabBarStyle.Floating, minimal.tabBarStyle)
+        assertEquals(cn.lizmt.cpuweb.schedule.custom.TabLabelMode.Never, minimal.tabLabels)
+        // The greeting card of 1.0 is gone; its neighbours stay.
+        val cards = org.json.JSONArray().put(JSONObject().put("id", "greeting").put("type", "greeting")).put(JSONObject().put("id", "next").put("type", "next"))
+        val old = CustomizationCodec.fromJson(JSONObject().put("dashboard", JSONObject().put("title", "工作台").put("greetingName", "小明").put("cards", cards)))
+        assertEquals(listOf("next"), old.dashboard.cards.map { it.id })
     }
 
     @Test
@@ -108,19 +123,18 @@ class CustomizationTest {
     @Test
     fun shareCodesCarryTheLayoutButNotPrivateText() {
         val mine = normalize(Customization(
-            tabs = listOf("dashboard", "schedule", "forum"), launchTab = "dashboard", accent = "#1E6FD9", tabBarStyle = TabBarStyle.Glass,
-            dashboard = Customization().dashboard.copy(greetingName = "小明", cards = listOf(DashboardCard("note-1", "note", title = "待办", text = "银行卡密码"))),
+            tabs = listOf("dashboard", "schedule", "forum"), launchTab = "dashboard", accent = "#1E6FD9", tabBarStyle = TabBarStyle.Docked,
+            dashboard = Customization().dashboard.copy(cards = listOf(DashboardCard("note-1", "note", title = "待办", text = "银行卡密码"))),
         ))
         val code = CustomizationCodec.shareCode(mine)
         assertTrue(code.startsWith("NEXT1-"))
         assertFalse(String(java.util.Base64.getUrlDecoder().decode(code.removePrefix("NEXT1-"))).contains("银行卡"))
-        val friend = normalize(Customization(dashboard = Customization().dashboard.copy(greetingName = "小红",
+        val friend = normalize(Customization(dashboard = Customization().dashboard.copy(
             cards = listOf(DashboardCard("note-1", "note", text = "我的便签")))))
         val imported = CustomizationCodec.fromShareCode("看看我的布局：\n$code\n", keepPrivateFrom = friend)!!
         assertEquals(mine.tabs, imported.tabs)
         assertEquals("#1E6FD9", imported.accent)
-        assertEquals(TabBarStyle.Glass, imported.tabBarStyle)
-        assertEquals("小红", imported.dashboard.greetingName)
+        assertEquals(TabBarStyle.Docked, imported.tabBarStyle)
         assertEquals("我的便签", imported.dashboard.cards.single().text)
         assertNull(CustomizationCodec.fromShareCode("NEXT1-not-base64!!", friend))
         assertNull(CustomizationCodec.fromShareCode("hello", friend))

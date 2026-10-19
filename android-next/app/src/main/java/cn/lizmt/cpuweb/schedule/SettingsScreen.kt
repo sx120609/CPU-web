@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -13,7 +14,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,36 +42,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.SpaceDashboard
-import androidx.compose.material.icons.rounded.SystemUpdate
-import androidx.compose.material.icons.rounded.TouchApp
-import androidx.compose.material.icons.rounded.ViewDay
-import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,16 +67,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.lizmt.cpuweb.schedule.custom.ACCENT_PRESETS
@@ -99,30 +82,32 @@ import cn.lizmt.cpuweb.schedule.custom.Customization
 import cn.lizmt.cpuweb.schedule.custom.CustomizationCodec
 import cn.lizmt.cpuweb.schedule.custom.CustomizationStore
 import cn.lizmt.cpuweb.schedule.custom.LAYOUT_PRESETS
+import cn.lizmt.cpuweb.schedule.custom.TabBarStyle
+import cn.lizmt.cpuweb.schedule.custom.TabLabelMode
 import cn.lizmt.cpuweb.schedule.custom.UiDensity
 import cn.lizmt.cpuweb.schedule.custom.WebTweaks
 
 /** Every settings page, by route. */
 internal enum class SettingsPage(val route: String, val title: String) {
     Root("", "拾间设置"),
-    Layout("layout", "布局方案"),
     Tabs("tabs", "导航栏"),
-    Dashboard("dashboard", "工作台"),
-    Theme("theme", "外观与主题"),
-    Chrome("quick", "顶栏与快捷入口"),
-    Web("web", "网页改造"),
-    Behavior("behavior", "交互与行为"),
+    Dashboard("dashboard", "今天"),
+    Theme("theme", "主题色"),
+    Quick("quick", "快捷入口"),
     Shortcuts("shortcuts", "桌面快捷方式"),
+    Web("web", "网页改造"),
+    Layout("layout", "布局方案"),
+    More("more", "更多设置"),
     Update("update", "更新");
 
     companion object {
-        fun of(route: String) = entries.firstOrNull { it.route == route } ?: Root
+        fun of(route: String) = entries.firstOrNull { it.route == route } ?: if (route == "behavior") More else Root
     }
 }
 
 /**
- * The customization center: a stack of native pages over the shell (or as a
- * tab of its own). Every change applies at once and is saved immediately.
+ * The settings: a stack of native pages over the shell (or as a tab of its
+ * own). Every change applies at once and is saved immediately.
  */
 @Composable
 fun SettingsScreen(activity: MainActivity, initialRoute: String, asTab: Boolean, onClose: () -> Unit) {
@@ -138,7 +123,7 @@ fun SettingsScreen(activity: MainActivity, initialRoute: String, asTab: Boolean,
         Modifier.fillMaxSize().consumesTouches().background(MaterialTheme.colorScheme.background)
             .then(if (asTab) Modifier else Modifier.statusBarsPadding()),
     ) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (canPop || !asTab) {
                 IconButton(onClick = { if (canPop) stack = stack.dropLast(1) else onClose() }) {
                     Icon(if (canPop) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Close, contentDescription = if (canPop) "返回" else "关闭")
@@ -146,16 +131,15 @@ fun SettingsScreen(activity: MainActivity, initialRoute: String, asTab: Boolean,
             } else {
                 Spacer(Modifier.width(12.dp))
             }
-            Text(page.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            if (page == SettingsPage.Root) NextBadge(Modifier.padding(end = 14.dp))
+            Text(page.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         }
         AnimatedContent(
             targetState = page,
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal || initialState == SettingsPage.Root
-                val duration = look.duration(220)
-                (slideInHorizontally(tween(duration)) { if (forward) it / 5 else -it / 5 } + fadeIn(tween(duration))) togetherWith
-                    (slideOutHorizontally(tween(duration)) { if (forward) -it / 5 else it / 5 } + fadeOut(tween(duration)))
+                val duration = look.duration(200)
+                (slideInHorizontally(tween(duration)) { if (forward) it / 6 else -it / 6 } + fadeIn(tween(duration))) togetherWith
+                    (slideOutHorizontally(tween(duration)) { if (forward) -it / 6 else it / 6 } + fadeOut(tween(duration)))
             },
             label = "settingsPage",
             modifier = Modifier.weight(1f),
@@ -163,19 +147,19 @@ fun SettingsScreen(activity: MainActivity, initialRoute: String, asTab: Boolean,
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
                     .then(if (asTab) Modifier else Modifier.windowInsetsPadding(WindowInsets.navigationBars))
-                    .padding(bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                    .padding(top = 4.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 when (current) {
                     SettingsPage.Root -> RootPage(activity, open)
-                    SettingsPage.Layout -> LayoutPage(activity)
                     SettingsPage.Tabs -> TabsPage(activity)
                     SettingsPage.Dashboard -> DashboardEditorPage(activity)
                     SettingsPage.Theme -> ThemePage(activity)
-                    SettingsPage.Chrome -> ChromePage(activity)
-                    SettingsPage.Web -> WebPage(activity)
-                    SettingsPage.Behavior -> BehaviorPage(activity)
+                    SettingsPage.Quick -> QuickPage(activity)
                     SettingsPage.Shortcuts -> ShortcutsPage(activity)
+                    SettingsPage.Web -> WebPage(activity)
+                    SettingsPage.Layout -> LayoutPage(activity)
+                    SettingsPage.More -> MorePage(activity, open)
                     SettingsPage.Update -> UpdatePage(activity)
                 }
             }
@@ -183,84 +167,16 @@ fun SettingsScreen(activity: MainActivity, initialRoute: String, asTab: Boolean,
     }
 }
 
-// region Shared components
+// region Shared pieces
 
+/** A label above a control (segmented choices, pills) inside a panel. */
 @Composable
-internal fun SettingsGroup(title: String? = null, footer: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    val look = LocalCpuLook.current
-    Column {
-        if (title != null) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 6.dp, bottom = 6.dp))
-        }
-        Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(look.radius(16.dp))).background(MaterialTheme.colorScheme.surfaceContainer),
-            content = content,
-        )
-        if (footer != null) {
-            Text(footer, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp))
-        }
-    }
-}
-
-@Composable
-internal fun SettingsRow(
-    title: String,
-    detail: String? = null,
-    icon: ImageVector? = null,
-    trailing: @Composable (() -> Unit)? = null,
-    onClick: (() -> Unit)? = null,
-) {
-    Row(
-        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .heightIn(min = 52.dp).padding(horizontal = 14.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!detail.isNullOrEmpty()) {
-                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
-            }
-        }
-        if (trailing != null) {
-            Spacer(Modifier.width(8.dp))
-            trailing()
-        } else if (onClick != null) {
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-internal fun SwitchRow(title: String, detail: String? = null, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    SettingsRow(
-        title = title, detail = detail,
-        trailing = { Switch(checked = checked, onCheckedChange = if (enabled) onChange else null, enabled = enabled) },
-        onClick = if (enabled) ({ onChange(!checked) }) else null,
-    )
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, detail: String? = null, onSelect: (T) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-        Text(title, style = MaterialTheme.typography.bodyMedium)
+internal fun LabeledControl(label: String, detail: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
         if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            options.forEach { (value, label) ->
-                FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(label) },
-                    leadingIcon = if (value == selected) ({ Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }) else null)
-            }
-        }
+        Spacer(Modifier.height(10.dp))
+        content()
     }
 }
 
@@ -275,18 +191,13 @@ internal fun SliderRow(
     onChange: (Float) -> Unit,
 ) {
     var draft by remember(value) { mutableFloatStateOf(value) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text(label(draft), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(label(draft), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Slider(value = draft, onValueChange = { draft = it }, valueRange = range, steps = steps, onValueChangeFinished = { onChange(draft) })
     }
-}
-
-@Composable
-internal fun Divider() {
-    Box(Modifier.fillMaxWidth().padding(start = 14.dp).height(0.5.dp).background(MaterialTheme.colorScheme.outlineVariant))
 }
 
 @Composable
@@ -309,6 +220,26 @@ internal fun readClipboard(context: Context): String =
     context.getSystemService(ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }
         ?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
 
+private fun accentColor(accent: String): Color? = when (accent) {
+    "brand" -> CpuBrand
+    "dynamic" -> null
+    else -> parseHex(accent)
+}
+
+private fun accentName(accent: String): String =
+    ACCENT_PRESETS.firstOrNull { it.first == accent }?.second ?: "自定义 $accent"
+
+@Composable
+private fun Swatch(accent: String, size: Int = 18) {
+    val color = accentColor(accent)
+    Box(
+        Modifier.size(size.dp).clip(CircleShape).background(
+            color?.let { Brush.linearGradient(listOf(it, it)) }
+                ?: Brush.sweepGradient(listOf(Color(0xFFE5533D), Color(0xFFC99A00), Color(0xFF2E7D32), Color(0xFF1E6FD9), Color(0xFF7A4CC2), Color(0xFFE5533D))),
+        ),
+    )
+}
+
 // endregion
 
 // region Root
@@ -317,81 +248,139 @@ internal fun readClipboard(context: Context): String =
 private fun RootPage(activity: MainActivity, open: (SettingsPage) -> Unit) {
     val custom = activity.customization.value
     val updates = activity.updates
-    val look = LocalCpuLook.current
-    var confirmReset by remember { mutableStateOf(false) }
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(look.radius(20.dp)))
-            .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.secondaryContainer)))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Image(painterResource(R.drawable.app_logo), contentDescription = null, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(look.radius(14.dp))))
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("药大拾间", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                NextBadge()
-            }
-            Text("NEXT ${updates.installedVersionName} · 独立测试版，可与正式版并存",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("导航、工作台、主题和网页，全部按你的方式来", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    val context = LocalContext.current
+    var courseMinutes by remember { mutableIntStateOf(AgendaReminders.courseMinutes(context)) }
+    val canNotify = AgendaReminders.canNotify(context)
     (updates.state as? UpdateState.Ready)?.let { ready ->
-        SettingsGroup {
-            SettingsRow("新版 ${ready.release.versionName} 已就绪", if (updates.canInstallSilently) "离开拾间后会自动完成安装，也可以现在安装" else "点按安装",
-                Icons.Rounded.SystemUpdate) { open(SettingsPage.Update) }
+        Panel {
+            ListRow("新版 ${ready.release.versionName} 已准备好",
+                detail = if (updates.canInstallSilently) "离开拾间一会儿后会自动装好" else "点按安装", chevron = true) { open(SettingsPage.Update) }
         }
     }
-    SettingsGroup("组装你的拾间") {
-        SettingsRow(SettingsPage.Layout.title, "一键换布局，或把你的布局分享给朋友", Icons.Rounded.SpaceDashboard) { open(SettingsPage.Layout) }
-        Divider()
-        SettingsRow(SettingsPage.Tabs.title, custom.tabDestinations.joinToString(" · ") { it.title }, Icons.Rounded.ViewDay) { open(SettingsPage.Tabs) }
-        Divider()
-        SettingsRow(SettingsPage.Dashboard.title, "${custom.dashboard.cards.size} 张卡片" + if (custom.tabs.contains("dashboard")) "" else "，尚未放进导航栏",
-            Icons.Rounded.Dashboard) { open(SettingsPage.Dashboard) }
-        Divider()
-        SettingsRow(SettingsPage.Chrome.title, "顶栏按钮、投稿按钮、快捷入口的顺序", Icons.Rounded.GridView) { open(SettingsPage.Chrome) }
+    Panel {
+        ListRow("导航栏", value = custom.tabDestinations.joinToString(" · ") { it.title }, chevron = true) { open(SettingsPage.Tabs) }
+        Hairline()
+        ListRow("今天", value = "${custom.dashboard.cards.size} 个部分", chevron = true) { open(SettingsPage.Dashboard) }
+        Hairline()
+        ListRow("主题色", value = accentName(custom.accent), trailing = { Swatch(custom.accent) }, chevron = true) { open(SettingsPage.Theme) }
     }
-    SettingsGroup("让它更像你") {
-        SettingsRow(SettingsPage.Theme.title, accentName(custom.accent) + if (custom.pureBlack) " · 纯黑" else "", Icons.Rounded.Palette) { open(SettingsPage.Theme) }
-        Divider()
-        SettingsRow(SettingsPage.Web.title, webSummary(custom), Icons.Rounded.Code) { open(SettingsPage.Web) }
-        Divider()
-        SettingsRow(SettingsPage.Behavior.title, custom.backAtRoot.title, Icons.Rounded.TouchApp) { open(SettingsPage.Behavior) }
-        Divider()
-        SettingsRow(SettingsPage.Shortcuts.title, "长按图标弹出的入口，或把页面固定到桌面", Icons.Rounded.Widgets) { open(SettingsPage.Shortcuts) }
+    Panel("外观") {
+        Box(Modifier.padding(12.dp)) { AppearancePicker(activity.appearance) }
+        Hairline()
+        ToggleRow("纯黑深色", checked = custom.pureBlack) { value -> activity.customization.update { it.copy(pureBlack = value) } }
     }
-    SettingsGroup("版本") {
-        SettingsRow(SettingsPage.Update.title, updateSummary(updates), Icons.Rounded.SystemUpdate) { open(SettingsPage.Update) }
+    Panel("提醒", footer = if (canNotify) "日程和待办的提醒在添加时设定。" else "通知权限没有打开，日程和上课提醒不会弹出。") {
+        LabeledControl("上课提醒", detail = "按你的课表，在每节课开始前提醒") {
+            PillChoices(AgendaReminders.COURSE_CHOICES, courseMinutes) { minutes ->
+                courseMinutes = minutes
+                AgendaReminders.setCourseMinutes(context, minutes)
+                if (minutes >= 0) activity.ensureNotificationPermission()
+            }
+        }
+        if (!canNotify) {
+            Hairline()
+            ListRow("打开通知权限", titleColor = MaterialTheme.colorScheme.primary) {
+                runCatching {
+                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                }.onFailure { activity.ensureNotificationPermission() }
+            }
+        }
     }
-    SettingsGroup(footer = "恢复后导航、工作台、主题与网页改造回到出厂状态；课表风格、背景和小组件不受影响。") {
-        SettingsRow("恢复全部默认", icon = Icons.Rounded.RestartAlt) { confirmReset = true }
+    Panel("拾间AI", footer = "打开后，向拾间AI提问会附带未来 7 天的课程、你记下的日程和待办、未读消息数，不包含成绩和消息内容。") {
+        ToggleRow("带上我的课表和日程", checked = activity.assistant.personal) { activity.assistant.setPersonalMode(it) }
     }
-    if (confirmReset) {
-        ConfirmDialog("恢复全部默认？", "你的布局、卡片和便签都会被清除。可以先在“布局方案”里复制分享码备份。", "恢复",
-            onDismiss = { confirmReset = false }) { activity.customization.reset() }
+    Panel {
+        ListRow("更新", value = updateSummary(updates), chevron = true) { open(SettingsPage.Update) }
+        Hairline()
+        ListRow("更多设置", chevron = true) { open(SettingsPage.More) }
     }
-}
-
-private fun accentName(accent: String): String =
-    ACCENT_PRESETS.firstOrNull { it.first == accent }?.second ?: "自定义 $accent"
-
-private fun webSummary(custom: Customization): String {
-    val parts = mutableListOf<String>()
-    if (custom.webTheme && custom.accent != "brand") parts += "网页跟随主题色"
-    if (custom.webTextZoom != 100) parts += "文字 ${custom.webTextZoom}%"
-    if (custom.webTweaks.isNotEmpty()) parts += "${custom.webTweaks.size} 项改造"
-    if (custom.customCssEnabled && custom.customCss.isNotBlank()) parts += "自定义样式"
-    return parts.joinToString(" · ").ifEmpty { "让网页也换上你的风格" }
+    Text("药大拾间 NEXT ${updates.installedVersionName} · 独立测试版，可与正式版同时安装",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
 }
 
 private fun updateSummary(updates: AppUpdater): String = when (val state = updates.state) {
     is UpdateState.Ready -> "新版 ${state.release.versionName} 已就绪"
     is UpdateState.Available -> "发现新版 ${state.release.versionName}"
-    is UpdateState.Downloading -> "正在下载 ${state.release.versionName}"
-    else -> "NEXT ${updates.installedVersionName}"
+    is UpdateState.Downloading -> "正在下载"
+    else -> updates.installedVersionName
+}
+
+// endregion
+
+// region More
+
+@Composable
+private fun MorePage(activity: MainActivity, open: (SettingsPage) -> Unit) {
+    val store = activity.customization
+    val custom = store.value
+    var confirmReset by remember { mutableStateOf(false) }
+    Panel("布局") {
+        ListRow("布局方案与分享", chevron = true) { open(SettingsPage.Layout) }
+        Hairline()
+        ListRow("快捷入口", value = "${custom.quickEntries.size} 个", chevron = true) { open(SettingsPage.Quick) }
+        Hairline()
+        ListRow("桌面快捷方式", value = "${custom.launcherShortcuts.size} 个", chevron = true) { open(SettingsPage.Shortcuts) }
+    }
+    Panel("导航栏与顶栏") {
+        LabeledControl("导航栏样式") {
+            Segmented(TabBarStyle.entries.map { it to it.title }, custom.tabBarStyle) { value -> store.update { it.copy(tabBarStyle = value) } }
+        }
+        Hairline()
+        LabeledControl("导航栏文字") {
+            Segmented(TabLabelMode.entries.map { it to it.title }, custom.tabLabels) { value -> store.update { it.copy(tabLabels = value) } }
+        }
+        Hairline()
+        ToggleRow("顶栏显示拾间图标", checked = custom.topBar.logo) { value -> store.update { it.copy(topBar = it.topBar.copy(logo = value)) } }
+        Hairline()
+        ToggleRow("顶栏刷新按钮", checked = custom.topBar.refresh) { value -> store.update { it.copy(topBar = it.topBar.copy(refresh = value)) } }
+        Hairline()
+        ToggleRow("顶栏消息按钮", checked = custom.topBar.messages) { value -> store.update { it.copy(topBar = it.topBar.copy(messages = value)) } }
+        Hairline()
+        ToggleRow("顶栏快捷入口按钮", checked = custom.topBar.quickEntry) { value -> store.update { it.copy(topBar = it.topBar.copy(quickEntry = value)) } }
+        Hairline()
+        ToggleRow("首页投稿按钮", checked = custom.postButton) { value -> store.update { it.copy(postButton = value) } }
+    }
+    Panel("界面") {
+        SliderRow("圆角", custom.corners, 0f..1.6f, 15, label = { "${(it * 100).toInt()}%" }) { value -> store.update { it.copy(corners = value) } }
+        Hairline()
+        LabeledControl("疏密") {
+            Segmented(UiDensity.entries.map { it to it.title }, custom.density) { value -> store.update { it.copy(density = value) } }
+        }
+        Hairline()
+        SliderRow("文字大小", custom.fontScale, 0.85f..1.3f, 8, label = { "${(it * 100).toInt()}%" }) { value -> store.update { it.copy(fontScale = value) } }
+    }
+    Panel("网页") {
+        ToggleRow("网页跟着换主题色", checked = custom.webTheme) { value -> store.update { it.copy(webTheme = value) } }
+        Hairline()
+        SliderRow("网页文字大小", custom.webTextZoom.toFloat(), 80f..150f, 13, label = { "${it.toInt()}%" }) { value ->
+            store.update { it.copy(webTextZoom = (value / 5).toInt() * 5) }
+        }
+        Hairline()
+        ListRow("网页改造", value = (custom.webTweaks.size + if (custom.customCssEnabled && custom.customCss.isNotBlank()) 1 else 0)
+            .let { if (it == 0) "未开启" else "$it 项" }, chevron = true) { open(SettingsPage.Web) }
+    }
+    Panel("在启动页按返回") {
+        CheckList(BackBehavior.entries.map { Triple(it, it.title, it.detail) }, custom.backAtRoot) { value -> store.update { it.copy(backAtRoot = value) } }
+    }
+    Panel("交互") {
+        ToggleRow("再点一次当前标签", detail = "网页回到顶层或刷新，课表回到本周", checked = custom.doubleTapRefresh) { value -> store.update { it.copy(doubleTapRefresh = value) } }
+        Hairline()
+        ToggleRow("触感反馈", checked = custom.haptics) { value -> store.update { it.copy(haptics = value) } }
+        Hairline()
+        ToggleRow("减弱动态效果", checked = custom.reduceMotion) { value -> store.update { it.copy(reduceMotion = value) } }
+        Hairline()
+        ToggleRow("看课表时保持亮屏", checked = custom.keepScreenOn) { value -> store.update { it.copy(keepScreenOn = value) } }
+        Hairline()
+        ToggleRow("隐私模式", detail = "禁止截屏，多任务界面不显示内容", checked = custom.secureScreen) { value -> store.update { it.copy(secureScreen = value) } }
+    }
+    Panel {
+        ListRow("恢复全部默认", titleColor = MaterialTheme.colorScheme.error) { confirmReset = true }
+    }
+    if (confirmReset) {
+        ConfirmDialog("恢复全部默认？", "导航、今天、主题和网页改造回到出厂状态。日程、待办、课表风格和小组件不受影响。", "恢复",
+            onDismiss = { confirmReset = false }) { activity.customization.reset() }
+    }
 }
 
 // endregion
@@ -405,35 +394,29 @@ private fun LayoutPage(activity: MainActivity) {
     val context = LocalContext.current
     var importText by remember { mutableStateOf("") }
     var importError by remember { mutableStateOf<String?>(null) }
-    SettingsGroup("布局方案", footer = "方案只换导航和工作台的排布；主题、便签和你添加的页面会保留。") {
-        LAYOUT_PRESETS.forEachIndexed { index, preset ->
-            if (index > 0) Divider()
-            val applied = CustomizationStore.normalize(preset.apply(custom)) == custom
-            SettingsRow(preset.title, preset.detail, trailing = {
-                if (applied) Icon(Icons.Rounded.Check, contentDescription = "正在使用", tint = MaterialTheme.colorScheme.primary)
-                else OutlinedButton(onClick = { store.update(preset.apply) }) { Text("使用") }
-            })
+    val applied = LAYOUT_PRESETS.firstOrNull { CustomizationStore.normalize(it.apply(custom)) == custom }?.id
+    Panel("布局方案", footer = "方案只换导航栏；今天的内容、主题和你添加的页面会保留。") {
+        CheckList(LAYOUT_PRESETS.map { Triple(it.id as String?, it.title, it.detail) }, applied) { id ->
+            LAYOUT_PRESETS.firstOrNull { it.id == id }?.let { preset ->
+                store.update(preset.apply)
+                activity.toast("已换成「${preset.title}」")
+            }
         }
     }
-    SettingsGroup("分享与备份", footer = "分享码包含导航、工作台、主题、网页改造和自定义样式，不含便签内容与称呼。") {
-        SettingsRow("复制我的分享码", "发给朋友，对方粘贴即可得到同样的拾间", Icons.Rounded.Share) {
+    Panel("分享与备份", footer = "分享码包含导航、今天的布局、主题和网页改造，不含便签内容。") {
+        ListRow("复制我的分享码") {
             copyToClipboard(context, "药大拾间布局", CustomizationCodec.shareCode(custom))
             activity.toast("分享码已复制")
         }
-        Divider()
-        SettingsRow("发送给朋友", icon = Icons.Rounded.Share) {
-            val text = "我的药大拾间布局，打开拾间 → 设置 → 布局方案 → 粘贴分享码：\n" + CustomizationCodec.shareCode(custom)
+        Hairline()
+        ListRow("发送给朋友") {
+            val text = "我的药大拾间 NEXT 布局，打开拾间 → 设置 → 更多设置 → 布局方案与分享 → 粘贴：\n" + CustomizationCodec.shareCode(custom)
             runCatching {
                 context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "分享布局"))
             }
         }
-        Divider()
-        SettingsRow("再看一遍新功能介绍", icon = Icons.Rounded.SpaceDashboard) {
-            store.replayIntro()
-            activity.closeSettings()
-        }
-        Divider()
-        Column(Modifier.padding(14.dp)) {
+        Hairline()
+        Column(Modifier.padding(16.dp)) {
             OutlinedTextField(
                 value = importText, onValueChange = { importText = it; importError = null },
                 label = { Text("粘贴分享码") }, singleLine = false, maxLines = 4, modifier = Modifier.fillMaxWidth(),
@@ -453,8 +436,13 @@ private fun LayoutPage(activity: MainActivity) {
             }
         }
     }
+    Panel {
+        ListRow("再看一遍新功能介绍") {
+            store.replayIntro()
+            activity.closeSettings()
+        }
+    }
 }
-
 
 // endregion
 
@@ -465,102 +453,67 @@ private fun LayoutPage(activity: MainActivity) {
 private fun ThemePage(activity: MainActivity) {
     val store = activity.customization
     val custom = store.value
-    var hexDraft by remember(custom.accent) { mutableStateOf(if (custom.accent.startsWith("#")) custom.accent else "") }
+    var customizing by remember { mutableStateOf(false) }
     ThemePreview(activity)
-    SettingsGroup("深浅色") {
-        Column(Modifier.padding(14.dp)) { AppearancePicker(activity.appearance) }
-        Divider()
-        SwitchRow("纯黑深色", "深色模式下用纯黑背景，OLED 屏幕更省电", custom.pureBlack) { value -> store.update { it.copy(pureBlack = value) } }
-    }
-    SettingsGroup("主题色", footer = "所有颜色都会自动调到在浅色和深色下都清楚可读。") {
-        FlowRow(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Panel("主题色", footer = "颜色都会自动调到在浅色和深色下都清楚可读。") {
+        FlowRow(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ACCENT_PRESETS.forEach { (value, name) ->
                 val dynamicUnavailable = value == "dynamic" && Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                val swatch = when (value) {
-                    "brand" -> CpuBrand
-                    "dynamic" -> null
-                    else -> parseHex(value)
-                }
                 val selected = custom.accent == value
                 Column(
-                    Modifier.width(56.dp).clip(RoundedCornerShape(12.dp))
+                    Modifier.width(60.dp).clip(RoundedCornerShape(12.dp))
                         .clickable(enabled = !dynamicUnavailable) { store.update { it.copy(accent = value) } }
+                        .padding(vertical = 6.dp)
                         .semantics { role = Role.RadioButton; contentDescription = name },
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
-                        Modifier.size(40.dp).clip(CircleShape)
-                            .background(swatch?.let { Brush.linearGradient(listOf(it, it)) }
-                                ?: Brush.sweepGradient(listOf(Color(0xFFE5533D), Color(0xFFC99A00), Color(0xFF2E7D32), Color(0xFF1E6FD9), Color(0xFF7A4CC2), Color(0xFFE5533D))))
-                            .border(if (selected) 3.dp else 0.dp, MaterialTheme.colorScheme.onBackground, CircleShape),
+                        Modifier.size(36.dp).clip(CircleShape)
+                            .border(if (selected) 2.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape).padding(if (selected) 4.dp else 0.dp),
                         contentAlignment = Alignment.Center,
-                    ) {
-                        if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                    }
+                    ) { Swatch(value, size = if (selected) 28 else 36) }
                     Spacer(Modifier.height(4.dp))
                     Text(name, style = MaterialTheme.typography.labelSmall, maxLines = 1,
                         color = if (dynamicUnavailable) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
-        Divider()
-        HueRow(custom.accent) { hex -> store.update { it.copy(accent = hex) } }
-        Divider()
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = hexDraft, onValueChange = { hexDraft = it.take(7) }, label = { Text("色值，如 #C2337A") }, singleLine = true,
-                modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = {
-                val hex = (if (hexDraft.startsWith("#")) hexDraft else "#$hexDraft").uppercase()
-                if (parseHex(hex) != null) store.update { it.copy(accent = hex) } else activity.toast("请输入 6 位十六进制色值")
-            }) { Text("应用") }
+        Hairline()
+        ListRow("自定义颜色", value = custom.accent.takeIf { it.startsWith("#") && ACCENT_PRESETS.none { p -> p.first == it } }, chevron = true) {
+            customizing = true
         }
     }
-    SettingsGroup("形状与密度") {
-        SliderRow("圆角", custom.corners, 0f..1.6f, 15, label = { cornerLabel(it) }) { value -> store.update { it.copy(corners = value) } }
-        Divider()
-        ChoiceRow("界面密度", UiDensity.entries.map { it to it.title }, custom.density, detail = "顶栏、导航栏和列表的疏密") { value ->
-            store.update { it.copy(density = value) }
-        }
-        Divider()
-        SliderRow("原生界面文字", custom.fontScale, 0.85f..1.3f, 8, label = { "${(it * 100).toInt()}%" }) { value ->
-            store.update { it.copy(fontScale = value) }
-        }
-    }
-    SettingsGroup("网页", footer = "开启后，网页的按钮、链接、圆角和纯黑背景也跟着你的设置变。") {
-        SwitchRow("网页跟随主题", checked = custom.webTheme) { value -> store.update { it.copy(webTheme = value) } }
-        Divider()
-        SliderRow("网页文字大小", custom.webTextZoom.toFloat(), 80f..150f, 13, label = { "${it.toInt()}%" }) { value ->
-            store.update { it.copy(webTextZoom = (value / 5).toInt() * 5) }
-        }
-    }
+    if (customizing) CustomAccentDialog(custom.accent, onDismiss = { customizing = false }) { hex -> store.update { it.copy(accent = hex) } }
 }
 
-private fun cornerLabel(value: Float) = when {
-    value < 0.3f -> "方正"
-    value < 0.8f -> "利落"
-    value < 1.2f -> "适中"
-    else -> "圆润"
-} + " ${(value * 100).toInt()}%"
-
-/** A hue strip: slide to any colour, saved at a fixed saturation and lightness that read well. */
+/** Any colour: a hue strip at a saturation and lightness that read well, or a hex value. */
 @Composable
-private fun HueRow(accent: String, onPick: (String) -> Unit) {
-    val current = parseHex(accent)?.let { hueOf(it) } ?: 170f
-    SliderRow("任意颜色", current, 0f..359f, 0, label = { "色相 ${it.toInt()}°" }) { hue -> onPick(hslColor(hue).toHex()) }
-    Box(
-        Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(8.dp).clip(CircleShape)
-            .background(Brush.horizontalGradient((0..6).map { hslColor(it * 60f) })),
+private fun CustomAccentDialog(accent: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    var hue by remember { mutableFloatStateOf(parseHex(accent)?.let { hueOf(it) } ?: 170f) }
+    var hex by remember { mutableStateOf(accent.takeIf { it.startsWith("#") } ?: hslColor(hue).toHex()) }
+    val color = parseHex(hex)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("自定义颜色") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp)).background(color ?: MaterialTheme.colorScheme.surfaceContainerHigh))
+                Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(Brush.horizontalGradient((0..6).map { hslColor(it * 60f) })))
+                Slider(value = hue, onValueChange = { hue = it; hex = hslColor(it).toHex() }, valueRange = 0f..359f)
+                OutlinedTextField(
+                    value = hex, onValueChange = { hex = it.take(7).uppercase() }, label = { Text("色值，如 #C2337A") }, singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace), isError = color == null,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { if (color != null) { onPick(hex); onDismiss() } }, enabled = color != null) { Text("使用") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
-    Spacer(Modifier.height(10.dp))
 }
 
-private fun hslColor(hue: Float): Color {
-    val hsl = floatArrayOf(hue, 0.62f, 0.44f)
-    return Color(androidx.core.graphics.ColorUtils.HSLToColor(hsl))
-}
+private fun hslColor(hue: Float): Color = Color(androidx.core.graphics.ColorUtils.HSLToColor(floatArrayOf(hue, 0.62f, 0.44f)))
 
 private fun hueOf(color: Color): Float {
     val hsl = FloatArray(3)
@@ -575,26 +528,25 @@ private fun hueOf(color: Color): Float {
 private fun ThemePreview(activity: MainActivity) {
     val custom = activity.customization.value
     val look = LocalCpuLook.current
+    val scheme = MaterialTheme.colorScheme
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(look.radius(20.dp))).background(MaterialTheme.colorScheme.background)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(look.radius(20.dp))),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(look.radius(20.dp))).background(scheme.background)
+            .border(0.5.dp, scheme.outlineVariant, RoundedCornerShape(look.radius(20.dp))),
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("预览", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(look.radius(14.dp))).background(MaterialTheme.colorScheme.surfaceContainer).padding(12.dp),
-            ) {
-                Text("下一节 · 药理学", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("10:10–11:50 · 教3-201", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {}) { Text("查看课表") }
-                    OutlinedButton(onClick = {}) { Text("稍后") }
+        Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 4.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(look.radius(14.dp))).background(scheme.surfaceContainer).padding(14.dp)) {
+                Text("下一节 · 25 分钟后", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                Text("药理学", style = MaterialTheme.typography.titleLarge)
+                Text("10:10–11:50 · 药学楼 302", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TodoCheck(true) {}
+                    Text("交实验报告", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text("提醒", style = MaterialTheme.typography.labelMedium, color = scheme.primary)
                 }
             }
         }
-        NativeTabBar(custom, custom.launchTab, unread = 3, backdrop = MaterialTheme.colorScheme.background,
-            onSelect = {}, onCustomize = {}, applyInsets = false)
+        NativeTabBar(custom, custom.launchTab, unread = 3, backdrop = scheme.background, onSelect = {}, onCustomize = {}, applyInsets = false)
     }
 }
 
@@ -607,18 +559,18 @@ private fun WebPage(activity: MainActivity) {
     val store = activity.customization
     val custom = store.value
     var css by remember(custom.customCss) { mutableStateOf(custom.customCss) }
-    SettingsGroup("页面改造", footer = "只改变你手机上的显示，不影响别人，也不会改动你的数据。") {
+    Panel("页面改造", footer = "只改变你手机上的显示，不影响别人，也不会改动你的数据。") {
         WebTweaks.all.forEachIndexed { index, tweak ->
-            if (index > 0) Divider()
-            SwitchRow(tweak.title, tweak.detail, tweak.id in custom.webTweaks) { on ->
+            if (index > 0) Hairline()
+            ToggleRow(tweak.title, checked = tweak.id in custom.webTweaks) { on ->
                 store.update { it.copy(webTweaks = if (on) it.webTweaks + tweak.id else it.webTweaks - tweak.id) }
             }
         }
     }
-    SettingsGroup("自定义样式", footer = "高级：写 CSS 改造任何网页元素，例如 .home-entry{display:none}。只粘贴你看得懂的代码。") {
-        SwitchRow("启用自定义样式", checked = custom.customCssEnabled) { on -> store.update { it.copy(customCssEnabled = on) } }
-        Divider()
-        Column(Modifier.padding(14.dp)) {
+    Panel("自定义样式", footer = "写 CSS 改造网页元素，例如 .home-entry{display:none}。只粘贴你看得懂的代码。") {
+        ToggleRow("启用自定义样式", checked = custom.customCssEnabled) { on -> store.update { it.copy(customCssEnabled = on) } }
+        Hairline()
+        Column(Modifier.padding(16.dp)) {
             OutlinedTextField(
                 value = css, onValueChange = { css = it.take(20_000) }, modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp),
                 textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
@@ -631,38 +583,6 @@ private fun WebPage(activity: MainActivity) {
                 OutlinedButton(onClick = { css = ""; store.update { it.copy(customCss = "") } }) { Text("清空") }
             }
         }
-    }
-}
-
-// endregion
-
-// region Behavior
-
-@Composable
-private fun BehaviorPage(activity: MainActivity) {
-    val store = activity.customization
-    val custom = store.value
-    SettingsGroup("返回键") {
-        BackBehavior.entries.forEachIndexed { index, behavior ->
-            if (index > 0) Divider()
-            SettingsRow(behavior.title, behavior.detail,
-                trailing = { RadioButton(selected = custom.backAtRoot == behavior, onClick = { store.update { it.copy(backAtRoot = behavior) } }) },
-                onClick = { store.update { it.copy(backAtRoot = behavior) } })
-        }
-    }
-    SettingsGroup("手势与反馈") {
-        SwitchRow("再点一次当前标签", "网页回到顶层或刷新，课表回到本周，工作台刷新", custom.doubleTapRefresh) { value ->
-            store.update { it.copy(doubleTapRefresh = value) }
-        }
-        Divider()
-        SwitchRow("触感反馈", "切换标签、长按时轻微振动", custom.haptics) { value -> store.update { it.copy(haptics = value) } }
-        Divider()
-        SwitchRow("减弱动态效果", "原生界面的过渡动画一律跳过", custom.reduceMotion) { value -> store.update { it.copy(reduceMotion = value) } }
-    }
-    SettingsGroup("屏幕") {
-        SwitchRow("看课表时保持亮屏", "停留在课表时屏幕不会自动熄灭", custom.keepScreenOn) { value -> store.update { it.copy(keepScreenOn = value) } }
-        Divider()
-        SwitchRow("隐私模式", "禁止截屏，多任务界面不显示拾间的内容", custom.secureScreen) { value -> store.update { it.copy(secureScreen = value) } }
     }
 }
 

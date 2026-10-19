@@ -4,7 +4,7 @@ package cn.lizmt.cpuweb.schedule.custom
  * Everything the user can place in the tab bar, the quick-entry panel, the
  * dashboard's shortcut card or the launcher: native surfaces and site pages.
  */
-enum class DestinationKind { Web, Schedule, Dashboard, Settings, External }
+enum class DestinationKind { Web, Schedule, Dashboard, Agenda, Assistant, Settings, External }
 
 data class Destination(
     val id: String,
@@ -17,7 +17,7 @@ data class Destination(
     val tabEligible: Boolean = true,
     val requiresAuth: Boolean = false,
 ) {
-    val isNative: Boolean get() = kind == DestinationKind.Schedule || kind == DestinationKind.Dashboard || kind == DestinationKind.Settings
+    val isNative: Boolean get() = kind != DestinationKind.Web && kind != DestinationKind.External
 }
 
 /** A page the user added: a site path (or, for shortcuts only, an https link). */
@@ -33,6 +33,8 @@ data class CustomPage(val id: String, val title: String, val route: String, val 
 
 object DestinationCatalog {
     const val DASHBOARD = "dashboard"
+    const val AGENDA = "agenda"
+    const val ASSISTANT = "assistant"
     const val HOME = "home"
     const val SCHEDULE = "schedule"
     const val ACADEMIC = "academic"
@@ -46,7 +48,9 @@ object DestinationCatalog {
     const val CUSTOM_PREFIX = "custom:"
 
     val builtIns: List<Destination> = listOf(
-        Destination(DASHBOARD, "工作台", "dashboard", DestinationKind.Dashboard),
+        Destination(DASHBOARD, "今天", "today", DestinationKind.Dashboard),
+        Destination(AGENDA, "日程", "event", DestinationKind.Agenda),
+        Destination(ASSISTANT, "拾间AI", "assistant", DestinationKind.Assistant),
         Destination(HOME, "首页", "home", DestinationKind.Web, "/home"),
         Destination(SCHEDULE, "课表", "calendar", DestinationKind.Schedule),
         Destination(ACADEMIC, "教务", "school", DestinationKind.Web, "/jwxt"),
@@ -55,7 +59,7 @@ object DestinationCatalog {
         Destination("forum", "论坛", "forum", DestinationKind.Web, "/forum"),
         Destination("messages", "消息", "mail", DestinationKind.Web, "/messages", requiresAuth = true),
         Destination("market", "二手", "bag", DestinationKind.Web, "/market"),
-        Destination("ai", "拾间AI", "sparkle", DestinationKind.Web, "/search"),
+        Destination("ai", "站内搜索", "search", DestinationKind.Web, "/search"),
         Destination("announcements", "公告", "campaign", DestinationKind.Web, "/announcements"),
         Destination("lostfound", "失物招领", "search", DestinationKind.Web, "/lost-found"),
         Destination("coursereview", "课程点评", "star", DestinationKind.Web, "/coursereview"),
@@ -111,7 +115,7 @@ object DestinationCatalog {
 
 /** Icon keys the user can pick from; the UI maps each key to a vector. */
 val SELECTABLE_ICONS = listOf(
-    "dashboard", "home", "calendar", "school", "apps", "person", "forum", "mail", "bag", "sparkle",
+    "today", "event", "assistant", "dashboard", "home", "calendar", "school", "apps", "person", "forum", "mail", "bag", "sparkle",
     "campaign", "search", "star", "extension", "build", "edit", "music", "download", "tune", "bookmark",
     "heart", "bolt", "book", "coffee", "flag", "globe", "image", "lightbulb", "pets", "rocket",
     "sports", "trophy", "work", "link",

@@ -1,19 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 药大拾间 NEXT: the brand teal running into violet, the colours of the NEXT badge. -->
+<!-- 药大拾间 NEXT: the stable mark on an ink ground. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:pathData="M0,0H108V108H0Z">
-        <aapt:attr name="android:fillColor">
-                <gradient
-                    android:type="linear"
-                    android:startX="0" android:startY="0"
-                    android:endX="108" android:endY="108"
-                    android:startColor="#FF0F8F7F"
-                    android:endColor="#FF4B3AA8" />
-            </aapt:attr>
-    </path>
+    <path android:fillColor="#FF16181B" android:pathData="M0,0H108V108H0Z" />
 </vector>

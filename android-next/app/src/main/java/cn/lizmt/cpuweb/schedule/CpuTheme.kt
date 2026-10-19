@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -19,9 +20,12 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import cn.lizmt.cpuweb.schedule.custom.Customization
 
 val CpuBrand = Color(0xFF0F8F7F)
@@ -125,7 +129,7 @@ fun CpuTheme(mode: String, custom: Customization = Customization(), content: @Co
         haptics = custom.haptics,
     )
     val baseDensity = LocalDensity.current
-    MaterialTheme(colorScheme = scheme, shapes = scaledShapes(custom.corners)) {
+    MaterialTheme(colorScheme = scheme, shapes = scaledShapes(custom.corners), typography = CpuTypography) {
         CompositionLocalProvider(
             LocalScheduleColors provides when {
                 !dark -> LightSchedule
@@ -143,31 +147,78 @@ fun CpuTheme(mode: String, custom: Customization = Customization(), content: @Co
     }
 }
 
+/**
+ * Compact type on the site's scale (12/13/14/16/18/24) without the Latin letter
+ * spacing Material adds, which only loosens Chinese text.
+ */
+val CpuTypography: Typography = Typography().let { base ->
+    fun TextStyle.tuned(size: Int, line: Int, weight: FontWeight? = fontWeight) =
+        copy(fontSize = size.sp, lineHeight = line.sp, letterSpacing = 0.sp, fontWeight = weight)
+    base.copy(
+        displaySmall = base.displaySmall.tuned(32, 40, FontWeight.Bold),
+        headlineLarge = base.headlineLarge.tuned(28, 34, FontWeight.Bold),
+        headlineMedium = base.headlineMedium.tuned(24, 30, FontWeight.Bold),
+        headlineSmall = base.headlineSmall.tuned(24, 30, FontWeight.SemiBold),
+        titleLarge = base.titleLarge.tuned(18, 24, FontWeight.SemiBold),
+        titleMedium = base.titleMedium.tuned(16, 22, FontWeight.SemiBold),
+        titleSmall = base.titleSmall.tuned(14, 20, FontWeight.Medium),
+        bodyLarge = base.bodyLarge.tuned(16, 22),
+        bodyMedium = base.bodyMedium.tuned(14, 20),
+        bodySmall = base.bodySmall.tuned(12, 16),
+        labelLarge = base.labelLarge.tuned(14, 18, FontWeight.Medium),
+        labelMedium = base.labelMedium.tuned(13, 16, FontWeight.Medium),
+        labelSmall = base.labelSmall.tuned(12, 14, FontWeight.Medium),
+    )
+}
+
+// Neutral grounds: grouped white (or graphite) panels on a quiet page; the
+// accent is kept for what is active or tappable, not for surfaces.
+private val LightPage = Color(0xFFF3F4F3)
+private val LightPanel = Color(0xFFFFFFFF)
+private val LightFill = Color(0xFFECEDEC)
+private val LightHairline = Color(0xFFE3E4E3)
+private val LightSecondary = Color(0xFF6A6E6D)
+private val DarkPage = Color(0xFF0E0F10)
+private val DarkPanel = Color(0xFF18191B)
+private val DarkFill = Color(0xFF232427)
+private val DarkHairline = Color(0xFF2C2D30)
+private val DarkSecondary = Color(0xFF9A9DA1)
+
 private fun brandScheme(dark: Boolean): ColorScheme = if (dark) {
     darkColorScheme(
         primary = Color(0xFF6FD3C1),
         onPrimary = Color(0xFF00382F),
-        primaryContainer = Color(0xFF1E4A43),
+        primaryContainer = Color(0xFF1B3D38),
         onPrimaryContainer = Color(0xFFB5EFE3),
-        secondaryContainer = Color(0xFF2A3A37),
-        background = Color(0xFF111416),
-        surface = Color(0xFF15191B),
-        surfaceContainer = Color(0xFF1C2124),
-        surfaceContainerHigh = Color(0xFF232A2D),
-        surfaceContainerLow = Color(0xFF181D1F),
+        secondaryContainer = Color(0xFF26302E),
+        background = DarkPage,
+        onBackground = Color(0xFFECEDEE),
+        surface = DarkPanel,
+        onSurface = Color(0xFFECEDEE),
+        onSurfaceVariant = DarkSecondary,
+        surfaceContainer = DarkPanel,
+        surfaceContainerHigh = DarkFill,
+        surfaceContainerHighest = Color(0xFF2B2C2F),
+        surfaceContainerLow = Color(0xFF141517),
+        outlineVariant = DarkHairline,
     )
 } else {
     lightColorScheme(
         primary = CpuBrand,
         onPrimary = Color.White,
-        primaryContainer = Color(0xFFD5F2EC),
+        primaryContainer = Color(0xFFDDF3EE),
         onPrimaryContainer = Color(0xFF00201B),
-        secondaryContainer = Color(0xFFE2EBE9),
-        background = Color(0xFFF7F8F6),
-        surface = Color(0xFFFFFFFF),
-        surfaceContainer = Color(0xFFF1F3F2),
-        surfaceContainerHigh = Color(0xFFEAEDEC),
-        surfaceContainerLow = Color(0xFFF6F8F7),
+        secondaryContainer = Color(0xFFE6ECEB),
+        background = LightPage,
+        onBackground = Color(0xFF16181B),
+        surface = LightPanel,
+        onSurface = Color(0xFF16181B),
+        onSurfaceVariant = LightSecondary,
+        surfaceContainer = LightPanel,
+        surfaceContainerHigh = LightFill,
+        surfaceContainerHighest = Color(0xFFE4E5E4),
+        surfaceContainerLow = Color(0xFFF7F8F7),
+        outlineVariant = LightHairline,
     )
 }
 
@@ -177,36 +228,24 @@ private fun brandScheme(dark: Boolean): ColorScheme = if (dark) {
  */
 fun accentScheme(accent: Color, dark: Boolean): ColorScheme {
     return if (dark) {
-        val background = Color(0xFF111416)
-        val primary = readable(mix(accent, Color.White, 0.38f), background, lighten = true)
-        darkColorScheme(
+        val primary = readable(mix(accent, Color.White, 0.38f), DarkPage, lighten = true)
+        brandScheme(true).copy(
             primary = primary,
             onPrimary = mix(accent, Color.Black, 0.78f),
-            primaryContainer = mix(accent, Color(0xFF15191B), 0.62f),
+            primaryContainer = mix(accent, DarkPanel, 0.66f),
             onPrimaryContainer = mix(accent, Color.White, 0.78f),
-            secondaryContainer = mix(accent, Color(0xFF15191B), 0.8f),
+            secondaryContainer = mix(accent, DarkPanel, 0.82f),
             onSecondaryContainer = mix(accent, Color.White, 0.82f),
-            background = background,
-            surface = Color(0xFF15191B),
-            surfaceContainer = mix(accent, Color(0xFF1C2124), 0.94f),
-            surfaceContainerHigh = mix(accent, Color(0xFF232A2D), 0.93f),
-            surfaceContainerLow = Color(0xFF181D1F),
         )
     } else {
-        val background = Color(0xFFF7F8F7)
         val primary = readable(accent, Color.White, lighten = false)
-        lightColorScheme(
+        brandScheme(false).copy(
             primary = primary,
             onPrimary = Color.White,
-            primaryContainer = mix(accent, Color.White, 0.84f),
+            primaryContainer = mix(accent, Color.White, 0.86f),
             onPrimaryContainer = mix(accent, Color.Black, 0.72f),
             secondaryContainer = mix(accent, Color.White, 0.9f),
             onSecondaryContainer = mix(accent, Color.Black, 0.7f),
-            background = background,
-            surface = Color.White,
-            surfaceContainer = mix(accent, Color(0xFFF1F3F2), 0.95f),
-            surfaceContainerHigh = mix(accent, Color(0xFFEAEDEC), 0.94f),
-            surfaceContainerLow = Color(0xFFF6F8F7),
         )
     }
 }

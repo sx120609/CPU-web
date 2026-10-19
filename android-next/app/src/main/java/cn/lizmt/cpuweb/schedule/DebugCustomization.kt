@@ -1,6 +1,9 @@
 package cn.lizmt.cpuweb.schedule
 
 import android.content.Intent
+import cn.lizmt.cpuweb.schedule.agenda.AgendaItem
+import cn.lizmt.cpuweb.schedule.agenda.AgendaKind
+import cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat
 import cn.lizmt.cpuweb.schedule.custom.BackBehavior
 import cn.lizmt.cpuweb.schedule.custom.LAYOUT_PRESETS
 import cn.lizmt.cpuweb.schedule.custom.TabBarStyle
@@ -37,7 +40,8 @@ object DebugCustomization {
         intent.getStringExtra("debugTweaks")?.let { tweaks ->
             store.update { it.copy(webTweaks = tweaks.split(',').map(String::trim).filter { id -> id in WebTweaks.ids }.toSet()) }
         }
-        intent.getStringExtra("debugGreeting")?.let { name -> store.update { it.copy(dashboard = it.dashboard.copy(greetingName = name)) } }
+        if (intent.getBooleanExtra("debugAgenda", false)) seedAgenda(activity)
+        if (intent.getBooleanExtra("debugAssistant", false)) seedAssistant(activity)
         intent.getStringExtra("debugUpdate")?.let { kind -> activity.updates.debugShow(sampleState(kind)) }
         intent.getStringExtra("debugSettings")?.let { route -> activity.openSettings(route) }
         // Open the asked-for page, or the launch tab of a layout set above.
@@ -45,6 +49,43 @@ object DebugCustomization {
             ?: activity.customization.value.launchDestination.takeIf { intent.hasExtra("debugLayout") || intent.hasExtra("debugLaunch") }
         open?.let { destination -> activity.window.decorView.post { activity.shell.open(destination) } }
         if (!intent.getBooleanExtra("debugJustUpdated", false)) activity.updates.dismissJustUpdated()
+    }
+
+    /** A week of sample events and to-dos around today, replacing whatever the store held. */
+    private fun seedAgenda(activity: MainActivity) {
+        val store = activity.agenda
+        store.items.forEach { store.remove(it.id) }
+        val today = java.time.LocalDate.now()
+        val wednesday = today.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.WEDNESDAY))
+        listOf(
+            AgendaItem("", AgendaKind.Event, "有机化学实验", today.toString(), "15:00", "16:30", location = "实验楼 B204", remind = 15),
+            AgendaItem("", AgendaKind.Todo, "交药理学实验报告", today.toString(), "18:00", remind = 0),
+            AgendaItem("", AgendaKind.Todo, "还图书馆的书", today.minusDays(1).toString()),
+            AgendaItem("", AgendaKind.Todo, "买实验服"),
+            AgendaItem("", AgendaKind.Event, "体检", today.plusDays(1).toString(), location = "校医院"),
+            AgendaItem("", AgendaKind.Event, "羽毛球", wednesday.toString(), "19:00", "20:30", location = "体育馆", repeat = AgendaRepeat.Weekly),
+        ).forEach { store.save(it) }
+    }
+
+    /** A short conversation with one pending and one applied proposal. */
+    private fun seedAssistant(activity: MainActivity) {
+        val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
+        activity.assistant.debugSeed(listOf(
+            AssistantMessage("d1", fromUser = true, text = "明天下午有空吗？帮我约个时间和小组讨论"),
+            AssistantMessage(
+                "d2", fromUser = false,
+                text = "明天下午你 14:00–15:40 有分析化学，16:00 以后就空了。我把小组讨论放在 16:10–17:10，确认后就会添加到日程。",
+                proposals = listOf(AssistantProposal("p1", org.json.JSONObject().put("type", "agenda.create").put("item", org.json.JSONObject()
+                    .put("kind", "event").put("title", "小组讨论").put("date", tomorrow).put("start", "16:10").put("end", "17:10")
+                    .put("location", "图书馆研讨室").put("remind", 15)))),
+                suggestions = listOf("再帮我把实验报告记成待办", "这周还有哪天下午空？"),
+            ),
+            AssistantMessage("d3", fromUser = true, text = "每节课前 10 分钟提醒我"),
+            AssistantMessage(
+                "d4", fromUser = false, text = "好的，上课提醒帮你准备好了，确认后每节课开始前 10 分钟会在通知栏提醒。",
+                proposals = listOf(AssistantProposal("p2", org.json.JSONObject().put("type", "course.remind").put("minutes", 10), ProposalState.Applied, "已设置上课提醒")),
+            ),
+        ))
     }
 
     private fun sampleState(kind: String): UpdateState {

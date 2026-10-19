@@ -3,8 +3,6 @@ package cn.lizmt.cpuweb.schedule
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,7 +15,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -32,7 +29,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -51,15 +47,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.BrightnessAuto
-import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.LightMode
-import androidx.compose.material.icons.rounded.Notifications
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -88,7 +79,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -188,7 +178,9 @@ private fun ShellScaffold(activity: MainActivity) {
     val selected = shell.selected
     val webCovering = web.webOverlayVisible || web.androidUpdateVisible
     val showSchedule = selected.kind == DestinationKind.Schedule && !webCovering
-    val showDashboard = selected.kind == DestinationKind.Dashboard && !webCovering
+    val showToday = selected.kind == DestinationKind.Dashboard && !webCovering
+    val showAgenda = selected.kind == DestinationKind.Agenda && !webCovering
+    val showAssistant = selected.kind == DestinationKind.Assistant && !webCovering
     val showSettings = selected.kind == DestinationKind.Settings
     val onWeb = selected.kind == DestinationKind.Web
     val pageNavigation = onWeb && (PageChrome.usesPageNavigation(web.currentPath) || web.header.pageNavigation)
@@ -205,7 +197,6 @@ private fun ShellScaffold(activity: MainActivity) {
             NativeTopBar(
                 custom = custom,
                 title = if (atRoot) rootTitle else web.header.title,
-                brandTitle = atRoot && rootTitle == "药大拾间",
                 back = !atRoot,
                 authenticated = web.authState.authenticated || web.header.authenticated,
                 unread = web.unreadCount,
@@ -222,7 +213,7 @@ private fun ShellScaffold(activity: MainActivity) {
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             NativeWebViewport(activity,
-                covered = showSchedule || showDashboard || showSettings || gated || activity.imagePreview != null ||
+                covered = showSchedule || showToday || showAgenda || showAssistant || showSettings || gated || activity.imagePreview != null ||
                     activity.settingsRoute != null || (onWeb && web.failureMessage != null) ||
                     (!shell.isAuthResolved && activity.schedule.result == null),
                 showPost = custom.postButton && onWeb && DestinationCatalog.pathOnly(path).let { it == "/home" || it == "/" } && !imeVisible,
@@ -233,7 +224,9 @@ private fun ShellScaffold(activity: MainActivity) {
                 }
             }
             NativeLayer(visible = showSchedule) { NativeScheduleScreen(activity) }
-            NativeLayer(visible = showDashboard) { DashboardScreen(activity) }
+            NativeLayer(visible = showToday) { TodayScreen(activity) }
+            NativeLayer(visible = showAgenda) { AgendaScreen(activity) }
+            NativeLayer(visible = showAssistant) { AssistantScreen(activity, asTab = shell.selectedIsTab) }
             if (showSettings) SettingsScreen(activity, initialRoute = "", asTab = true, onClose = {})
         }
         val showBar = !gated && !imeVisible && !pageNavigation
@@ -274,8 +267,8 @@ private fun NativeLayer(visible: Boolean, content: @Composable () -> Unit) {
     val look = LocalCpuLook.current
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(look.duration(220))) + slideInVertically(tween(look.duration(220))) { it / 60 },
-        exit = fadeOut(tween(look.duration(160))),
+        enter = fadeIn(tween(look.duration(200))) + slideInVertically(tween(look.duration(200))) { it / 80 },
+        exit = fadeOut(tween(look.duration(140))),
     ) {
         content()
     }
@@ -308,7 +301,8 @@ fun NativePostAction(activity: MainActivity) {
         icon = { Icon(Icons.Rounded.Edit, contentDescription = null) },
         text = { Text("投稿") },
         containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(LocalCpuLook.current.radius(16.dp)),
         elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(
             defaultElevation = 0.dp,
             pressedElevation = 0.dp,
@@ -328,11 +322,11 @@ fun Modifier.consumesTouches(): Modifier = pointerInput(Unit) {
     }
 }
 
+/** The bar over site pages: the page title, then messages and the quick-entry panel. */
 @Composable
 private fun NativeTopBar(
     custom: Customization,
     title: String,
-    brandTitle: Boolean,
     back: Boolean,
     authenticated: Boolean,
     unread: Int,
@@ -347,59 +341,51 @@ private fun NativeTopBar(
     val options = custom.topBar
     Surface(color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
         Row(
-            Modifier.fillMaxWidth().height(look.space(56.dp).coerceAtLeast(48.dp)).padding(horizontal = 6.dp),
+            Modifier.fillMaxWidth().height(look.space(52.dp).coerceAtLeast(46.dp)).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (back) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-                }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
             } else if (options.logo) {
-                Row(
-                    Modifier.clip(RoundedCornerShape(look.radius(12.dp))).clickable(onClick = onHome).padding(6.dp)
+                Box(
+                    Modifier.padding(start = 6.dp, end = 4.dp).clip(RoundedCornerShape(look.radius(8.dp))).clickable(onClick = onHome)
                         .semantics { contentDescription = "药大拾间，回到启动页" },
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Image(
-                        painterResource(R.drawable.app_logo),
-                        contentDescription = null,
-                        modifier = Modifier.size(30.dp).clip(RoundedCornerShape(look.radius(8.dp))),
-                    )
+                    Image(painterResource(R.drawable.app_logo), contentDescription = null, modifier = Modifier.size(28.dp))
                 }
             } else {
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(12.dp))
             }
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (brandTitle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.titleLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 4.dp, end = 4.dp),
             )
-            if (options.refresh) IconButton(onClick = onRefresh) { Icon(Icons.Rounded.Refresh, contentDescription = "刷新页面") }
+            if (options.refresh) IconButton(onClick = onRefresh) { Icon(Icons.Outlined.Refresh, contentDescription = "刷新页面") }
             if (options.messages) {
                 if (authenticated) {
                     IconButton(onClick = onMessages) {
                         BadgedBox(badge = {
                             if (unread > 0) Badge { Text(if (unread > 99) "99+" else unread.toString()) }
                         }) {
-                            Icon(Icons.Rounded.Notifications, contentDescription = if (unread > 0) "消息，${unread}条未读" else "消息")
+                            Icon(Icons.Outlined.Notifications, contentDescription = if (unread > 0) "消息，${unread}条未读" else "消息")
                         }
                     }
                 } else {
                     TextButton(onClick = onLogin) { Text("登录") }
                 }
             }
-            if (options.quickEntry) IconButton(onClick = onMore) { Icon(Icons.Rounded.GridView, contentDescription = "快捷入口") }
+            if (options.quickEntry) IconButton(onClick = onMore) { Icon(Icons.Outlined.GridView, contentDescription = "快捷入口") }
         }
     }
 }
 
 /**
- * The user's tab bar in one of four looks. Every style reserves its own height,
- * so the timetable and pages never sit behind it. Long press opens the editor.
+ * The user's tab bar, floating or docked. The chosen tab shows its filled
+ * icon in the accent; the others stay outlined and grey. Every style reserves
+ * its own height, so pages never sit behind it. Long press opens the editor.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -416,11 +402,10 @@ internal fun NativeTabBar(
     val tabs = custom.tabDestinations
     val look = LocalCpuLook.current
     val haptics = LocalHapticFeedback.current
-    val dark = LocalScheduleColors.current.dark
     val scheme = MaterialTheme.colorScheme
     val active = scheme.primary
-    val idle = if (dark) Color(0xFFADADB3) else Color(0xFF63636B)
-    val style = custom.tabBarStyle
+    val idle = scheme.onSurfaceVariant
+    val docked = custom.tabBarStyle == TabBarStyle.Docked
     val badgeId = when {
         "messages" in custom.tabs -> "messages"
         DestinationCatalog.PROFILE in custom.tabs -> DestinationCatalog.PROFILE
@@ -434,113 +419,58 @@ internal fun NativeTabBar(
         if (look.haptics) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         onCustomize()
     }
-    val selectedIndex = tabs.indexOfFirst { it.id == selectedId }
-    val barHeight = look.space(if (style == TabBarStyle.Docked) 62.dp else 54.dp).coerceAtLeast(46.dp)
-
-    val outer = Modifier.fillMaxWidth().background(if (style == TabBarStyle.Docked) scheme.surface else backdrop)
-        .then(if (applyInsets) Modifier.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)) else Modifier)
+    val barHeight = look.space(if (custom.tabLabels == TabLabelMode.Never) 52.dp else 58.dp).coerceAtLeast(48.dp)
+    val insets = if (applyInsets) Modifier.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)) else Modifier
+    val shape = RoundedCornerShape(look.radius(22.dp))
     Box(
-        when (style) {
-            TabBarStyle.Docked -> outer
-            TabBarStyle.Minimal -> outer.padding(horizontal = 12.dp, vertical = 2.dp)
-            else -> outer.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
+        if (docked) {
+            Modifier.fillMaxWidth().background(scheme.surface).then(insets)
+        } else {
+            Modifier.fillMaxWidth().background(backdrop).then(insets).padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 8.dp)
         },
         contentAlignment = Alignment.Center,
     ) {
-        if (style == TabBarStyle.Docked) {
-            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(0.5.dp).background(scheme.outlineVariant))
-        }
-        val shape = RoundedCornerShape(look.radius(27.dp))
-        val container = when (style) {
-            TabBarStyle.Floating -> Modifier.widthIn(max = 540.dp).fillMaxWidth().height(barHeight)
-                .shadow(5.dp, shape, ambientColor = Color(0x10000000), spotColor = Color(0x14000000))
-                .clip(shape).background(if (dark) Color(0xFF242428) else Color(0xFFFCFCFD))
-                .border(0.5.dp, if (dark) Color(0xFF414146) else Color(0xFFE7E7EB), shape).padding(4.dp)
-            TabBarStyle.Glass -> Modifier.widthIn(max = 540.dp).fillMaxWidth().height(barHeight).clip(shape)
-                .background(Brush.verticalGradient(listOf(
-                    mix(scheme.surface, active, if (dark) 0.16f else 0.08f).copy(alpha = 0.82f),
-                    mix(scheme.surface, active, if (dark) 0.26f else 0.14f).copy(alpha = 0.9f),
-                )))
-                .border(0.75.dp, active.copy(alpha = if (dark) 0.35f else 0.22f), shape).padding(4.dp)
-            TabBarStyle.Docked -> Modifier.widthIn(max = 640.dp).fillMaxWidth().height(barHeight).padding(horizontal = 4.dp, vertical = 6.dp)
-            TabBarStyle.Minimal -> Modifier.widthIn(max = 540.dp).fillMaxWidth().height(barHeight)
-        }
-        BoxWithConstraints(container) {
-            val itemWidth = maxWidth / tabs.size.coerceAtLeast(1)
-            val position by animateDpAsState(
-                targetValue = itemWidth * selectedIndex.coerceAtLeast(0),
-                animationSpec = if (look.reduceMotion) tween(0) else spring(dampingRatio = 0.92f, stiffness = 550f),
-                label = "tabSelection",
-            )
-            if (selectedIndex >= 0 && (style == TabBarStyle.Floating || style == TabBarStyle.Glass)) {
-                val pill = when {
-                    style == TabBarStyle.Glass -> active.copy(alpha = if (dark) 0.28f else 0.16f)
-                    dark -> Color(0xFF3B3B40)
-                    else -> Color(0xFFEEEEF1)
+        if (docked) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(0.5.dp).background(scheme.outlineVariant))
+        Row(
+            (if (docked) Modifier.widthIn(max = 640.dp).fillMaxWidth().height(barHeight)
+            else Modifier.widthIn(max = 520.dp).fillMaxWidth().height(barHeight)
+                .shadow(6.dp, shape, ambientColor = Color(0x14000000), spotColor = Color(0x1A000000))
+                .clip(shape).background(scheme.surface).border(0.5.dp, scheme.outlineVariant, shape))
+                .padding(horizontal = 4.dp).selectableGroup(),
+        ) {
+            tabs.forEach { tab ->
+                val chosen = tab.id == selectedId
+                val tint by animateColorAsState(if (chosen) active else idle, tween(look.duration(150)), label = "tabTint")
+                val showLabel = when (custom.tabLabels) {
+                    TabLabelMode.Always -> true
+                    TabLabelMode.Selected -> chosen
+                    TabLabelMode.Never -> false
                 }
-                Box(Modifier.offset(x = position).width(itemWidth).fillMaxHeight()
-                    .clip(RoundedCornerShape(look.radius(23.dp))).background(pill))
-            }
-            Row(Modifier.fillMaxSize().selectableGroup()) {
-                tabs.forEach { tab ->
-                    val chosen = tab.id == selectedId
-                    val tint by animateColorAsState(if (chosen) active else idle, tween(look.duration(160)), label = "tabTint")
-                    val showLabel = when (custom.tabLabels) {
-                        TabLabelMode.Always -> true
-                        TabLabelMode.Selected -> chosen
-                        TabLabelMode.Never -> false
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(look.radius(16.dp)))
+                        .combinedClickable(onClick = { select(tab.id) }, onLongClick = customize)
+                        .semantics {
+                            role = Role.Tab
+                            this.selected = chosen
+                            contentDescription = tab.title
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    val icon = @Composable {
+                        Icon(destinationPainter(tab, custom.icons.containsKey(tab.id), selected = chosen), contentDescription = null, tint = tint,
+                            modifier = Modifier.size(23.dp))
                     }
-                    Column(
-                        Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(look.radius(23.dp)))
-                            .combinedClickable(onClick = { select(tab.id) }, onLongClick = customize)
-                            .semantics {
-                                role = Role.Tab
-                                this.selected = chosen
-                                contentDescription = tab.title
-                            },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        TabIcon(tab, custom.icons.containsKey(tab.id), chosen, style, tint, active,
-                            badge = if (tab.id == badgeId) unread else 0)
-                        if (showLabel) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(tab.title, fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp,
-                                color = tint, maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Medium)
-                        }
-                        if (style == TabBarStyle.Minimal && chosen && !showLabel) {
-                            Spacer(Modifier.height(3.dp))
-                            Box(Modifier.size(4.dp).clip(CircleShape).background(active))
-                        }
+                    val badge = if (tab.id == badgeId) unread else 0
+                    if (badge > 0) BadgedBox(badge = { Badge { Text(if (badge > 99) "99+" else badge.toString()) } }) { icon() } else icon()
+                    if (showLabel) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(tab.title, fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp, color = tint, maxLines = 1,
+                            overflow = TextOverflow.Clip, fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Medium)
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun TabIcon(tab: Destination, customIcon: Boolean, chosen: Boolean, style: TabBarStyle, tint: Color, active: Color, badge: Int) {
-    val look = LocalCpuLook.current
-    val icon = @Composable {
-        Icon(destinationPainter(tab, customIcon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
-    }
-    val framed = @Composable {
-        if (style == TabBarStyle.Docked) {
-            Box(
-                Modifier.clip(RoundedCornerShape(look.radius(16.dp)))
-                    .background(if (chosen) active.copy(alpha = 0.14f) else Color.Transparent)
-                    .padding(horizontal = 16.dp, vertical = 3.dp),
-                contentAlignment = Alignment.Center,
-            ) { icon() }
-        } else {
-            icon()
-        }
-    }
-    if (badge > 0) {
-        BadgedBox(badge = { Badge { Text(if (badge > 99) "99+" else badge.toString()) } }) { framed() }
-    } else {
-        framed()
     }
 }
 
@@ -551,13 +481,13 @@ private fun ServiceUnavailable(message: String, onRetry: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(Icons.Rounded.WifiOff, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
+        Icon(Icons.Rounded.WifiOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
         Spacer(Modifier.height(14.dp))
-        Text("服务暂时不可用", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
+        Text("服务暂时不可用", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(6.dp))
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onRetry) { Text("重试") }
+        Spacer(Modifier.height(18.dp))
+        Button(onClick = onRetry, shape = RoundedCornerShape(LocalCpuLook.current.radius(12.dp))) { Text("重试") }
     }
 }
 
@@ -573,26 +503,22 @@ private fun WelcomeScreen(onContinue: () -> Unit) {
         Spacer(Modifier.weight(1f))
         Image(
             painterResource(R.drawable.app_logo), contentDescription = null,
-            modifier = Modifier.size(112.dp).scale(if (appeared) 1f else 0.9f).clip(RoundedCornerShape(28.dp)),
+            modifier = Modifier.size(96.dp).scale(if (appeared) 1f else 0.94f),
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(22.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("药大拾间", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(10.dp))
+            Text("药大拾间", style = MaterialTheme.typography.headlineLarge)
+            Spacer(Modifier.width(8.dp))
             NextBadge()
         }
-        Spacer(Modifier.height(9.dp))
-        Text("可以自己组装的校园信息助手", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "登录后即可同步课表、成绩和校园服务", style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
-        )
+        Spacer(Modifier.height(8.dp))
+        Text("课表、日程和校园服务，加上一位懂你的拾间AI", style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Spacer(Modifier.weight(1f))
-        Button(onClick = onContinue, modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) {
-            Text("开始使用", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 12.dp))
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = RoundedCornerShape(14.dp)) {
+            Text("开始使用", style = MaterialTheme.typography.titleMedium)
         }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -603,20 +529,9 @@ private fun LaunchWaiting() {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Image(
-            painterResource(R.drawable.app_logo), contentDescription = null,
-            modifier = Modifier.size(84.dp).clip(RoundedCornerShape(20.dp)),
-        )
-        Spacer(Modifier.height(18.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("药大拾间", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(8.dp))
-            NextBadge()
-        }
-        Spacer(Modifier.height(5.dp))
-        Text("校园服务正在准备", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(16.dp))
-        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+        Image(painterResource(R.drawable.app_logo), contentDescription = null, modifier = Modifier.size(72.dp))
+        Spacer(Modifier.height(20.dp))
+        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -625,113 +540,54 @@ private fun LaunchWaiting() {
 private fun QuickEntrySheet(activity: MainActivity, onDismiss: () -> Unit, onOpen: (Destination) -> Unit, onEdit: () -> Unit) {
     val web = activity.web
     val custom = activity.customization.value
-    val look = LocalCpuLook.current
     val entries = custom.quickEntries.mapNotNull(custom::destination)
         .filter { it.id != DestinationCatalog.ADMIN || web.authState.canAccessAdmin }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp).padding(bottom = 24.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("快捷入口", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = onEdit) { Text("编辑") }
-            }
-            Spacer(Modifier.height(8.dp))
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                userScrollEnabled = false,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
-            ) {
-                items(entries, key = { it.id }) { entry ->
-                    Column(
-                        Modifier.clip(RoundedCornerShape(look.radius(12.dp)))
-                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(look.radius(12.dp)))
-                            .clickable { onOpen(entry) }
-                            .heightIn(min = 64.dp).padding(vertical = 10.dp, horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Icon(iconVector(entry.icon), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.height(4.dp))
-                        Text(entry.title, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Panel(action = "编辑", onAction = onEdit, title = "快捷入口") {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    userScrollEnabled = false,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).padding(vertical = 8.dp),
+                ) {
+                    items(entries, key = { it.id }) { entry ->
+                        Column(
+                            Modifier.clip(RoundedCornerShape(12.dp)).clickable { onOpen(entry) }.padding(vertical = 10.dp, horizontal = 2.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                                Icon(destinationPainter(entry, custom.icons.containsKey(entry.id)), contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(entry.title, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(18.dp))
-            Text("外观", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            AppearancePicker(activity.appearance)
-            Spacer(Modifier.height(16.dp))
-            QuickRow(Icons.Rounded.Tune, "拾间设置", "导航、主题、工作台和更新，都按你的来") {
-                onDismiss()
-                activity.openSettings("")
+            Panel("外观") {
+                Box(Modifier.padding(12.dp)) { AppearancePicker(activity.appearance) }
             }
-            if (web.authState.authenticated) {
-                Spacer(Modifier.height(10.dp))
-                QuickRow(Icons.Rounded.Person, "个人中心", "管理账号与资料") {
+            Panel {
+                ListRow("拾间设置", chevron = true) {
                     onDismiss()
-                    activity.shell.openWeb("/profile")
+                    activity.openSettings("")
+                }
+                if (web.authState.authenticated) {
+                    Hairline()
+                    ListRow("个人中心", chevron = true) {
+                        onDismiss()
+                        activity.shell.openWeb("/profile")
+                    }
                 }
             }
         }
     }
-}
-
-@Composable
-private fun QuickRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, detail: String, onClick: () -> Unit) {
-    val look = LocalCpuLook.current
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(look.radius(14.dp))).background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable(onClick = onClick).padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-        Spacer(Modifier.size(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-/** The mark of 药大拾间 NEXT, the separate test app. */
-@Composable
-fun NextBadge(modifier: Modifier = Modifier) {
-    Text(
-        "NEXT",
-        modifier = modifier.clip(RoundedCornerShape(6.dp))
-            .background(Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primary, mix(MaterialTheme.colorScheme.primary, Color(0xFF7A4CC2), 0.4f))))
-            .padding(horizontal = 6.dp, vertical = 1.dp),
-        color = MaterialTheme.colorScheme.onPrimary,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Black,
-        letterSpacing = 1.sp,
-    )
 }
 
 @Composable
 fun AppearancePicker(appearance: AppearanceSettings) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(
-            Triple("跟随系统", Icons.Rounded.BrightnessAuto, "system"),
-            Triple("浅色", Icons.Rounded.LightMode, "light"),
-            Triple("深色", Icons.Rounded.DarkMode, "dark"),
-        ).forEach { (label, icon, mode) ->
-            val selected = appearance.mode == mode
-            Row(
-                Modifier.weight(1f).clip(CircleShape)
-                    .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable { appearance.select(mode) }.heightIn(min = 38.dp).padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp),
-                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.size(4.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1,
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
+    Segmented(listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), appearance.mode) { appearance.select(it) }
 }

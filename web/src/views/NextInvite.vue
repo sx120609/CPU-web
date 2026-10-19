@@ -21,12 +21,12 @@
       </template>
 
       <template v-else-if="release">
-        <p class="nx-lead">可以按你的方式重新组装的药大拾间。它和正式版是两个应用，可以同时安装，互不影响。</p>
+        <p class="nx-lead">药大拾间的下一版：你的课、你的安排，和随时帮你记事的拾间AI。它和正式版是两个应用，可以同时安装，互不影响。</p>
         <ul class="nx-features">
-          <li><strong>导航栏随你组装</strong>任意页面都能做成标签，改名、换图标、选启动页</li>
-          <li><strong>属于你的工作台</strong>下一节课倒计时、今日课程、未读、公告和热榜</li>
-          <li><strong>主题引擎</strong>任意主题色、纯黑深色，连网页一起换装</li>
-          <li><strong>增量更新</strong>以后只下载变化的部分，离开拾间后自动装好</li>
+          <li><strong>今天</strong>课程和你自己的安排排在一条时间线上，下一件事放在最上面</li>
+          <li><strong>日程与待办</strong>写「周五 14:00 组会」就能记下，到点在通知栏提醒</li>
+          <li><strong>拾间AI 个人模式</strong>结合你的课表回答、帮你找空闲时间、替你记事，每一步都先问过你</li>
+          <li><strong>按你的方式组装</strong>导航栏、主题色和网页样式都能改；以后的更新只下载变化的部分</li>
         </ul>
         <div v-if="release.notes.length" class="nx-notes">
           <p class="nx-notes-title">这一版</p>

@@ -56,7 +56,8 @@ class CustomizationStore(context: Context) {
     companion object {
         private const val PREFS = "native_customization"
         private const val KEY_VALUE = "v1"
-        private const val KEY_INTRO = "next_intro_seen_v1"
+        // v2: NEXT 1.1 (今天, 日程, 拾间AI) introduces itself once more.
+        private const val KEY_INTRO = "next_intro_seen_v2"
 
         fun normalize(value: Customization): Customization =
             CustomizationCodec.fromJson(CustomizationCodec.toJson(value))

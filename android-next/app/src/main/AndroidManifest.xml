@@ -10,9 +10,15 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Android 12+: the app installs its own verified update without the system dialog. -->
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
-    <!-- Asked for only when the user turns on "notify me after an update". -->
+    <!-- Asked for when the user sets a reminder or turns on "notify me after an update". -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Requested at runtime only when a first-party page asks for the camera or microphone. -->
+    <!-- Agenda and class reminders: exact alarms, set again after a reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -60,6 +66,22 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Agenda reminders and their notification buttons. -->
+        <receiver
+            android:name=".AgendaReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".AgendaRescheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Install results, the delayed background install, and the first run after an update. -->
         <receiver

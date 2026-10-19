@@ -1,6 +1,8 @@
 package cn.lizmt.cpuweb.schedule.custom
 
 import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog.ACADEMIC
+import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog.AGENDA
+import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog.ASSISTANT
 import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog.DASHBOARD
 import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog.HOME
 import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog.PROFILE
@@ -10,19 +12,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 enum class TabBarStyle(val id: String, val title: String) {
-    Floating("floating", "悬浮胶囊"),
-    Docked("docked", "经典贴底"),
-    Glass("glass", "通透玻璃"),
-    Minimal("minimal", "极简图标");
+    Floating("floating", "悬浮"),
+    Docked("docked", "贴底");
 
     companion object {
+        /** Retired looks (glass, minimal) open as the floating bar. */
         fun of(id: String?) = entries.firstOrNull { it.id == id } ?: Floating
     }
 }
 
 enum class TabLabelMode(val id: String, val title: String) {
-    Always("always", "始终显示"),
-    Selected("selected", "仅选中项"),
+    Always("always", "显示"),
+    Selected("selected", "仅当前"),
     Never("never", "不显示");
 
     companion object {
@@ -51,13 +52,13 @@ enum class BackBehavior(val id: String, val title: String, val detail: String) {
 }
 
 data class TopBarOptions(
-    val logo: Boolean = true,
-    val refresh: Boolean = true,
+    val logo: Boolean = false,
+    val refresh: Boolean = false,
     val messages: Boolean = true,
     val quickEntry: Boolean = true,
 )
 
-/** One card on the native dashboard. Unused fields stay empty for card types that do not need them. */
+/** One section of 今天. Unused fields stay empty for section types that do not need them. */
 data class DashboardCard(
     val id: String,
     val type: String,
@@ -68,39 +69,37 @@ data class DashboardCard(
 )
 
 data class DashboardLayout(
-    val title: String = "工作台",
-    val greetingName: String = "",
     val cards: List<DashboardCard> = DEFAULT_DASHBOARD_CARDS,
 )
 
 object DashboardCards {
     val types = linkedMapOf(
-        "greeting" to "问候与校历",
-        "next" to "下一节课",
-        "today" to "今日课程",
-        "upcoming" to "接下来两天",
+        "next" to "下一项",
+        "today" to "今天的安排",
+        "todo" to "待办",
+        "upcoming" to "明天",
         "messages" to "未读消息",
-        "shortcuts" to "快捷入口",
+        "shortcuts" to "常用入口",
         "announcements" to "校园公告",
         "hot" to "论坛热榜",
         "countdown" to "倒计时",
         "note" to "便签",
     )
-    /** Card types that may appear more than once. */
+    /** Section types that may appear more than once. */
     val repeatable = setOf("countdown", "note", "shortcuts")
 }
 
 val DEFAULT_DASHBOARD_CARDS = listOf(
-    DashboardCard("greeting", "greeting"),
     DashboardCard("next", "next"),
     DashboardCard("today", "today"),
+    DashboardCard("todo", "todo"),
+    DashboardCard("upcoming", "upcoming"),
     DashboardCard("messages", "messages"),
     DashboardCard(
         "shortcuts", "shortcuts", title = "常用",
-        items = listOf("forum", "ai", "announcements", "market", "lostfound", "coursereview", "tools", "workshop"),
+        items = listOf("forum", "announcements", "market", "lostfound", "coursereview", "tools"),
     ),
     DashboardCard("announcements", "announcements"),
-    DashboardCard("hot", "hot"),
 )
 
 /** Optional style rules the user can switch on for the site's pages. */
@@ -144,7 +143,7 @@ val ACCENT_PRESETS = listOf(
 
 data class Customization(
     val tabs: List<String> = DEFAULT_TABS,
-    val launchTab: String = SCHEDULE,
+    val launchTab: String = DASHBOARD,
     val labels: Map<String, String> = emptyMap(),
     val icons: Map<String, String> = emptyMap(),
     val customPages: List<CustomPage> = emptyList(),
@@ -190,12 +189,11 @@ data class Customization(
     fun isChanged(): Boolean = this != Customization()
 }
 
-val DEFAULT_TABS = listOf(HOME, ACADEMIC, SCHEDULE, SERVICES, PROFILE)
+val DEFAULT_TABS = listOf(DASHBOARD, SCHEDULE, HOME, SERVICES, PROFILE)
 val DEFAULT_QUICK_ENTRIES = listOf(
-    "post", "messages", "admin", "download", "update", "forum", "announcements",
-    ACADEMIC, SCHEDULE, SERVICES, "market", "ai", "settings",
+    AGENDA, ASSISTANT, "post", "messages", "forum", "announcements", ACADEMIC, "market", "ai", "admin", "settings",
 )
-val DEFAULT_LAUNCHER_SHORTCUTS = listOf(SCHEDULE, "messages", "post")
+val DEFAULT_LAUNCHER_SHORTCUTS = listOf(AGENDA, SCHEDULE, ASSISTANT)
 const val MIN_TABS = 2
 const val MAX_TABS = 6
 
@@ -203,25 +201,24 @@ const val MAX_TABS = 6
 data class LayoutPreset(val id: String, val title: String, val detail: String, val apply: (Customization) -> Customization)
 
 val LAYOUT_PRESETS = listOf(
-    LayoutPreset("classic", "经典", "首页 · 教务 · 课表 · 服务 · 我的，打开即是课表") {
-        it.copy(tabs = DEFAULT_TABS, launchTab = SCHEDULE, tabBarStyle = TabBarStyle.Floating, tabLabels = TabLabelMode.Always)
+    LayoutPreset("today", "今天", "今天 · 课表 · 首页 · 服务 · 我的") {
+        it.copy(tabs = DEFAULT_TABS, launchTab = DASHBOARD, tabBarStyle = TabBarStyle.Floating, tabLabels = TabLabelMode.Always)
     },
-    LayoutPreset("dashboard", "工作台优先", "打开先看下一节课、未读和公告") {
-        it.copy(tabs = listOf(DASHBOARD, SCHEDULE, HOME, SERVICES, PROFILE), launchTab = DASHBOARD,
+    LayoutPreset("assistant", "个人助理", "今天 · 日程 · 拾间AI · 课表 · 我的") {
+        it.copy(tabs = listOf(DASHBOARD, AGENDA, ASSISTANT, SCHEDULE, PROFILE), launchTab = DASHBOARD,
             tabBarStyle = TabBarStyle.Floating, tabLabels = TabLabelMode.Always)
     },
-    LayoutPreset("community", "社区", "论坛和消息放在手边") {
+    LayoutPreset("classic", "正式版", "首页 · 教务 · 课表 · 服务 · 我的") {
+        it.copy(tabs = listOf(HOME, ACADEMIC, SCHEDULE, SERVICES, PROFILE), launchTab = SCHEDULE,
+            tabBarStyle = TabBarStyle.Floating, tabLabels = TabLabelMode.Always)
+    },
+    LayoutPreset("community", "社区", "首页 · 论坛 · 课表 · 消息 · 我的") {
         it.copy(tabs = listOf(HOME, "forum", SCHEDULE, "messages", PROFILE), launchTab = HOME,
             tabBarStyle = TabBarStyle.Docked, tabLabels = TabLabelMode.Always)
     },
-    LayoutPreset("study", "学习", "课表、教务和工作台三件套") {
-        it.copy(tabs = listOf(SCHEDULE, ACADEMIC, DASHBOARD, SERVICES, PROFILE), launchTab = SCHEDULE,
-            tabBarStyle = TabBarStyle.Glass, tabLabels = TabLabelMode.Selected)
-    },
-    LayoutPreset("minimal", "极简", "只留三个图标，界面最清爽") {
+    LayoutPreset("minimal", "极简", "今天 · 课表 · 我的，不显示文字") {
         it.copy(tabs = listOf(DASHBOARD, SCHEDULE, PROFILE), launchTab = DASHBOARD,
-            tabBarStyle = TabBarStyle.Minimal, tabLabels = TabLabelMode.Never,
-            topBar = it.topBar.copy(logo = false), postButton = false)
+            tabBarStyle = TabBarStyle.Floating, tabLabels = TabLabelMode.Never, postButton = false)
     },
 )
 
@@ -237,7 +234,7 @@ object CustomizationCodec {
 
     // region Encoding
 
-    /** [private] false leaves out what a shared layout must not carry: note text and the greeting name. */
+    /** [private] false leaves out what a shared layout must not carry: note text. */
     fun toJson(value: Customization, private: Boolean = true): JSONObject = JSONObject()
         .put("v", VERSION)
         .put("tabs", JSONArray(value.tabs))
@@ -271,8 +268,6 @@ object CustomizationCodec {
         .put("doubleTapRefresh", value.doubleTapRefresh)
         .put("launcherShortcuts", JSONArray(value.launcherShortcuts))
         .put("dashboard", JSONObject()
-            .put("title", value.dashboard.title)
-            .put("greetingName", if (private) value.dashboard.greetingName else "")
             .put("cards", JSONArray(value.dashboard.cards.map { card ->
                 JSONObject().put("id", card.id).put("type", card.type).put("title", card.title)
                     .put("text", if (private || card.type != "note") card.text else "")
@@ -304,10 +299,12 @@ object CustomizationCodec {
             icons = stringMap(json.optJSONObject("icons")).filterKeys(resolvable).filterValues { it in SELECTABLE_ICONS },
             customPages = customPages,
             tabBarStyle = TabBarStyle.of(json.optString("tabBarStyle")),
-            tabLabels = TabLabelMode.of(json.optString("tabLabels")),
+            // The retired icon-only look keeps its labels hidden.
+            tabLabels = if (json.optString("tabBarStyle") == "minimal" && !json.has("tabLabels")) TabLabelMode.Never
+            else TabLabelMode.of(json.optString("tabLabels")),
             topBar = TopBarOptions(
-                logo = topBar?.optBoolean("logo", true) ?: true,
-                refresh = topBar?.optBoolean("refresh", true) ?: true,
+                logo = topBar?.optBoolean("logo", false) ?: false,
+                refresh = topBar?.optBoolean("refresh", false) ?: false,
                 messages = topBar?.optBoolean("messages", true) ?: true,
                 quickEntry = topBar?.optBoolean("quickEntry", true) ?: true,
             ),
@@ -339,8 +336,6 @@ object CustomizationCodec {
             launcherShortcuts = (strings(json.optJSONArray("launcherShortcuts")) ?: defaults.launcherShortcuts)
                 .filter(resolvable).distinct().take(4),
             dashboard = DashboardLayout(
-                title = clip(dashboard?.optString("title")?.trim().orEmpty(), 10).ifEmpty { "工作台" },
-                greetingName = clip(dashboard?.optString("greetingName")?.trim().orEmpty(), 12),
                 cards = cards(dashboard?.optJSONArray("cards"), customPages) ?: DEFAULT_DASHBOARD_CARDS,
             ),
         )
@@ -458,7 +453,6 @@ object CustomizationCodec {
         val myNotes = keepPrivateFrom.dashboard.cards.filter { it.type == "note" }.associateBy { it.id }
         return imported.copy(
             dashboard = imported.dashboard.copy(
-                greetingName = keepPrivateFrom.dashboard.greetingName,
                 cards = imported.dashboard.cards.map { card ->
                     if (card.type == "note") card.copy(text = myNotes[card.id]?.text.orEmpty()) else card
                 },

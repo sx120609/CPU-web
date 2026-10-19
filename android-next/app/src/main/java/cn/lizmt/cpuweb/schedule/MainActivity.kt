@@ -35,9 +35,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import android.view.WindowManager
+import cn.lizmt.cpuweb.schedule.agenda.AgendaItem
+import cn.lizmt.cpuweb.schedule.agenda.AgendaKind
+import cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence
+import cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat
+import cn.lizmt.cpuweb.schedule.agenda.AgendaStore
 import cn.lizmt.cpuweb.schedule.custom.CustomizationStore
+import cn.lizmt.cpuweb.schedule.custom.DestinationCatalog
 import cn.lizmt.cpuweb.schedule.custom.DestinationKind
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * The native shell: a Compose tab bar and timetable over one shared WebView,
@@ -65,6 +75,14 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private set
     lateinit var dashboardFeeds: DashboardFeeds
         private set
+    lateinit var agenda: AgendaStore
+        private set
+    lateinit var assistant: AssistantSession
+        private set
+    /** The day 日程 shows when it opens next (from 今天, a reminder or 拾间AI). */
+    var agendaFocus by mutableStateOf<LocalDate?>(null)
+    /** How to take back each proposal 拾间AI made that the user confirmed in this run. */
+    private val undoActions = mutableMapOf<String, () -> Unit>()
     /** The settings page shown over the shell, or null. "" is the settings home. */
     var settingsRoute by mutableStateOf<String?>(null)
         private set
@@ -109,6 +127,10 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         }
     }
 
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) toast("没有通知权限，提醒不会弹出；可以在系统设置里打开")
+    }
+
     private val webPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         val callback = permissionCallback ?: return@registerForActivityResult
         permissionCallback = null
@@ -149,6 +171,10 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         else ScheduleCouple(lifecycleScope, getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE), { web.couple(it) })
         shell = ShellCoordinator(lifecycleScope, web, schedule) { customization.value }
         dashboardFeeds = DashboardFeeds(web, lifecycleScope)
+        agenda = AgendaStore.get(this)
+        assistant = AssistantSession(this, lifecycleScope)
+        // Alarms are lost on an update and on a force stop: set them again.
+        AgendaReminders.sync(this, agenda.items)
         shell.onReselected = { destination -> if (customization.value.doubleTapRefresh) reselect(destination) }
         shell.onOpenSettings = { route -> openSettings(route) }
         shell.onOpenExternal = { url -> openExternal(Uri.parse(url)) }
@@ -174,6 +200,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     couple.adopt(schedule.accountScope)
                     delay(400)
                     widgets.syncLocalDays(schedule, web)
+                    // The next class may have moved with the timetable.
+                    AgendaReminders.syncCourse(this@MainActivity)
                     // The partner sees the term that is running now, edits included. Wait until
                     // the timetable has settled so one launch uploads once.
                     if (debugFixture || web.authState.authenticated) {
@@ -259,6 +287,179 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         settingsRoute = null
     }
 
+    // region Agenda and 拾间AI
+
+    fun openAgenda(day: LocalDate? = null) {
+        agendaFocus = day ?: LocalDate.now()
+        customization.value.destination(DestinationCatalog.AGENDA)?.let(shell::open)
+    }
+
+    fun openAssistant() {
+        customization.value.destination(DestinationCatalog.ASSISTANT)?.let(shell::open)
+    }
+
+    /** Saves an item; one with a reminder asks for the notification permission first time. */
+    fun saveAgenda(item: AgendaItem): AgendaItem? {
+        val saved = agenda.save(item) ?: return null
+        if (saved.remind >= 0) ensureNotificationPermission()
+        return saved
+    }
+
+    fun removeAgenda(id: String) {
+        agenda.remove(id)
+        AgendaReminders.dismiss(this, id)
+    }
+
+    fun toggleAgenda(occurrence: AgendaOccurrence) {
+        agenda.setDone(occurrence.item.id, occurrence.day.toString(), !occurrence.done)
+        if (!occurrence.done) AgendaReminders.dismiss(this, occurrence.item.id)
+    }
+
+    fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !AgendaReminders.canNotify(this)) {
+            runCatching { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        }
+    }
+
+    fun askAssistant(text: String) = assistant.send(text, personalContext())
+
+    /**
+     * What a question to 拾间AI carries: the time and, in personal mode, the
+     * next seven days of classes, the user's own items and the unread count.
+     */
+    fun personalContext(): JSONObject {
+        val now = LocalDateTime.now()
+        val json = JSONObject()
+            .put("now", "%04d-%02d-%02dT%02d:%02d".format(now.year, now.monthValue, now.dayOfMonth, now.hour, now.minute))
+            .put("shared", assistant.personal)
+        if (!assistant.personal) return json
+        val today = now.toLocalDate()
+        val days = DashboardSchedule.days(schedule.widgetLocalRecord() ?: ScheduleWidgetLocalDays.read(this))
+        days[today.toString()]?.week?.let { json.put("week", it) }
+        val courses = JSONArray()
+        for (offset in 0L..6L) {
+            val day = today.plusDays(offset)
+            days[day.toString()]?.courses?.forEach { course ->
+                if (AgendaItem.parseTime(course.start) == null || AgendaItem.parseTime(course.end) == null || courses.length() >= 120) return@forEach
+                courses.put(JSONObject().put("date", day.toString()).put("start", course.start).put("end", course.end)
+                    .put("name", course.name.take(60)).put("location", course.location.take(60)))
+            }
+        }
+        json.put("courses", courses)
+        val horizon = today.plusDays(60)
+        val items = agenda.items.filter { item ->
+            val date = AgendaItem.parseDate(item.date)
+            when {
+                date == null -> !item.done
+                item.repeat != AgendaRepeat.None -> true
+                else -> !date.isBefore(today.minusDays(7)) && !date.isAfter(horizon)
+            }
+        }.takeLast(150)
+        json.put("agenda", JSONArray(items.map { item ->
+            JSONObject().put("id", item.id).put("kind", item.kind.id).put("title", item.title.take(60))
+                .put("date", item.date).put("start", item.start).put("end", item.end).put("location", item.location.take(40))
+                .put("remind", item.remind).put("repeat", item.repeat.id).put("done", item.isDoneOn(today.toString()))
+        }))
+        if (web.authState.authenticated) json.put("unread", web.unreadCount)
+        return json
+    }
+
+    fun applyAssistantProposal(messageId: String, proposal: AssistantProposal) {
+        val result = runCatching { executeAssistantAction(proposal.action) }.getOrNull()
+        if (result == null) {
+            assistant.setProposal(messageId, proposal.id, ProposalState.Failed, "没能完成：这一项可能已经被改过或删掉了")
+            return
+        }
+        result.second?.let { undoActions[proposal.id] = it }
+        assistant.setProposal(messageId, proposal.id, ProposalState.Applied, result.first)
+    }
+
+    fun canUndoAssistant(proposalId: String): Boolean = proposalId in undoActions
+
+    fun undoAssistantProposal(messageId: String, proposal: AssistantProposal) {
+        undoActions.remove(proposal.id)?.invoke() ?: return
+        assistant.setProposal(messageId, proposal.id, ProposalState.Dismissed, "")
+    }
+
+    fun openAssistantLink(link: AssistantLink) {
+        if (link.url.startsWith("/")) shell.openWeb(link.url)
+        else if (AppConfig.isHttpUrl(link.url)) openExternal(Uri.parse(link.url))
+    }
+
+    /** Runs one confirmed proposal; returns what to tell the user and how to undo it, or null when it cannot run. */
+    private fun executeAssistantAction(action: JSONObject): Pair<String, (() -> Unit)?>? {
+        val today = LocalDate.now()
+        return when (action.optString("type")) {
+            "agenda.create" -> {
+                val item = action.optJSONObject("item") ?: return null
+                val saved = saveAgenda(AgendaItem(
+                    id = "", kind = AgendaKind.of(item.optString("kind")), title = item.optString("title"),
+                    date = item.optString("date"), start = item.optString("start"), end = item.optString("end"),
+                    location = item.optString("location"), note = item.optString("note"),
+                    remind = item.optInt("remind", -1), repeat = AgendaRepeat.of(item.optString("repeat")), origin = "assistant",
+                )) ?: return null
+                "已添加到${AgendaItem.parseDate(saved.date)?.let { dayLabel(it, today, withWeekday = false) } ?: "待办"}" to { agenda.remove(saved.id); Unit }
+            }
+            "agenda.update" -> {
+                val previous = agenda.items.firstOrNull { it.id == action.optString("id") } ?: return null
+                val changes = action.optJSONObject("changes") ?: JSONObject()
+                fun text(key: String, current: String) = if (changes.has(key)) changes.optString(key) else current
+                val next = previous.copy(
+                    kind = if (changes.has("kind")) AgendaKind.of(changes.optString("kind")) else previous.kind,
+                    title = text("title", previous.title), date = text("date", previous.date), start = text("start", previous.start),
+                    end = text("end", previous.end), location = text("location", previous.location), note = text("note", previous.note),
+                    remind = if (changes.has("remind")) changes.optInt("remind", previous.remind) else previous.remind,
+                    repeat = if (changes.has("repeat")) AgendaRepeat.of(changes.optString("repeat")) else previous.repeat,
+                )
+                saveAgenda(next) ?: return null
+                "已修改" to { agenda.save(previous); Unit }
+            }
+            "agenda.complete" -> {
+                val item = agenda.items.firstOrNull { it.id == action.optString("id") } ?: return null
+                val day = action.optString("date").ifEmpty { item.date.ifEmpty { today.toString() } }
+                agenda.setDone(item.id, day, true)
+                AgendaReminders.dismiss(this, item.id)
+                "已完成" to { agenda.setDone(item.id, day, false) }
+            }
+            "agenda.delete" -> {
+                val removed = agenda.remove(action.optString("id")) ?: return null
+                AgendaReminders.dismiss(this, removed.id)
+                "已删除" to { agenda.restore(removed) }
+            }
+            "course.remind" -> {
+                val previous = AgendaReminders.courseMinutes(this)
+                val minutes = action.optInt("minutes", -1)
+                AgendaReminders.setCourseMinutes(this, minutes)
+                if (minutes >= 0) ensureNotificationPermission()
+                (if (minutes < 0) "已关闭上课提醒" else "已设置上课提醒") to { AgendaReminders.setCourseMinutes(this, previous) }
+            }
+            "theme.accent" -> {
+                val previous = customization.value.accent
+                val value = action.optString("value")
+                customization.update { it.copy(accent = value) }
+                if (customization.value.accent == previous && value != previous) return null
+                "已更换主题色" to { customization.update { it.copy(accent = previous) } }
+            }
+            "theme.mode" -> {
+                val previous = appearance.mode
+                appearance.select(action.optString("value"))
+                "已切换" to { appearance.select(previous) }
+            }
+            "open" -> {
+                when (action.optString("target")) {
+                    "schedule" -> shell.openSchedule(null, null)
+                    "agenda" -> openAgenda(AgendaItem.parseDate(action.optString("date")))
+                    "settings" -> openSettings("")
+                    else -> customization.value.destination(DestinationCatalog.DASHBOARD)?.let(shell::open)
+                }
+                "已打开" to null
+            }
+            else -> null
+        }
+    }
+
+    // endregion
+
     /** The page, the window and the shell follow the user's latest choices. */
     private fun applyCustomization() {
         val custom = customization.value
@@ -276,6 +477,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                 dashboardFeeds.refresh(force = true)
                 shell.requestScheduleLoad(force = false)
             }
+            DestinationKind.Agenda -> agendaFocus = LocalDate.now()
             else -> Unit
         }
     }
@@ -292,6 +494,15 @@ class MainActivity : ComponentActivity(), WebSessionHost {
 
     /** Widgets open the native timetable at the current week (or the week they showed); launcher shortcuts open their page. */
     private fun handleLaunchIntent(intent: Intent?) {
+        intent?.getStringExtra(AgendaReminders.EXTRA_OPEN_AGENDA)?.let { id ->
+            intent.removeExtra(AgendaReminders.EXTRA_OPEN_AGENDA)
+            val day = agenda.items.firstOrNull { it.id == id }?.date?.let(AgendaItem::parseDate)
+            lifecycleScope.launch {
+                while (!shell.isAuthResolved) kotlinx.coroutines.delay(100)
+                openAgenda(day)
+            }
+            return
+        }
         intent?.getStringExtra(LauncherShortcuts.EXTRA_DESTINATION)?.let { id ->
             intent.removeExtra(LauncherShortcuts.EXTRA_DESTINATION)
             customization.value.destination(id)?.let { destination ->
