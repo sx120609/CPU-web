@@ -44,6 +44,7 @@
     "test:zombie-defense": "node --import tsx --test tests/zombieDefense.test.ts",
     "test:yaoda-nai": "node --import tsx --test tests/yaodaNai.test.ts",
     "test:greedy-nailong": "node --import tsx --test tests/greedyNailong.test.ts",
+    "test:yaoda-mines": "node --import tsx --test tests/yaodaMines.test.ts",
     "test:workshop": "node --import tsx --test tests/workshopPackage.test.ts tests/workshopPolicy.test.ts tests/workshopBridge.test.ts tests/workshopPlacements.test.ts tests/workshopAccountDeletion.test.ts"
   },
   "prisma": {

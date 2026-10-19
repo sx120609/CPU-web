@@ -173,7 +173,7 @@ export const serviceTools: ServiceTool[] = [
   {
     slug: "mini_games",
     name: "小游戏",
-    summary: "能飞、能吃、鸡蛋面、大战僵尸、药大奶，还能冲全校排行",
+    summary: "能飞、能吃、鸡蛋面、大战僵尸、药大奶、扫雷，还能冲全校排行",
     description: "药大主题的轻量小游戏合集。点开就能玩，登录后成绩计入全校排行并解锁成就。",
     icon: "game",
     status: "ready",
