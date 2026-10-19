@@ -1,28 +1,27 @@
 {
   "schemaVersion": 1,
-  "versionCode": 1003,
-  "versionName": "1.2.0",
+  "versionCode": 1004,
+  "versionName": "1.3.0",
   "packageName": "cn.lizmt.cpuweb.next",
-  "fileName": "CPU-Web-Android-NEXT-V1003.apk",
-  "size": 9042378,
-  "sha256": "61232338ced1a90432414c505d0dc562062e7b52b23f72ea020ae980465e84c9",
+  "fileName": "CPU-Web-Android-NEXT-V1004.apk",
+  "size": 9091530,
+  "sha256": "afa15b7c729a94372dcc7f69ed65b17e209099b135c0b3a48f6fef2e7ef834d0",
   "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
-  "sourceCommit": "de96b8b9426e0bc85b99fab8bab8c7dd62cf928d",
-  "buildRun": 39242356829,
+  "sourceCommit": "6810993209a7a9cad7af28671d296162bdda8ff6",
+  "buildRun": 39249019612,
   "notes": [
-    "拾间AI 可以有多个对话：随时开新对话，在对话列表里搜索、改名、删除；修好了点输入框时页面被键盘顶走的问题。",
-    "拾间AI 能做的事更多：查成绩和考试安排，调整布局、导航栏、今天页面、课表视图和风格，打开站内任意页面；可以选哪些操作直接执行，做过的都记在“操作记录”里，可以撤销。",
-    "日程和待办合成一种，没定时间、没定日期的也能记；日程会显示在课表的周视图和日视图里。",
-    "登录后，日程、拾间AI 对话和操作记录会同步到你的其他手机，设置里可以关闭。",
-    "修好了上课提醒有时排不上的问题；设置里能看到下一次提醒，“提醒检查”可以查出拦住提醒的设置并发测试提醒。"
+    "拾间AI 能直接替你发帖、回帖、点赞、私信、发失物招领：内容它来写，发出去之前先给你看，也可以改一改再发。",
+    "拾间AI 能看论坛：帖子、回复、热榜、失物招领、课程点评都能读来回答；打开“我的消息和私信”后还能帮你看消息。",
+    "不再自动跳转页面：需要打开的页面显示成按钮，看完回答再点。",
+    "收不到提醒？在提醒设置里打开“微信和 QQ 也提醒”，到点时拾间的服务器会发一条到你绑定的微信和 QQ；“提醒检查”能直接打开你这款手机的自启动设置。"
   ],
   "patches": [
     {
-      "fromVersionCode": 1002,
-      "fromSha256": "3c4453ea71d50fc7c44dcb5687896fa7e9f7e1fe2ed947eea0daa2a6d92492ce",
-      "fileName": "CPU-Web-Android-NEXT-V1002-V1003.cpupatch",
-      "size": 1111866,
-      "sha256": "7a7867cb895b0de715faf743ba6f361ba4f22b28130875fdf7f9d66226330feb"
+      "fromVersionCode": 1003,
+      "fromSha256": "61232338ced1a90432414c505d0dc562062e7b52b23f72ea020ae980465e84c9",
+      "fileName": "CPU-Web-Android-NEXT-V1003-V1004.cpupatch",
+      "size": 841681,
+      "sha256": "bcb4f04f8713422e6c0db13e21d8797da424b05cfb7761a60499f6af9dba4497"
     }
   ]
 }
