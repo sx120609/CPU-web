@@ -3,7 +3,14 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express from "express";
-import { createAndroidDownloadHandler, createAndroidPatchHandler, createAndroidReleaseHandler, LEGACY_ANDROID_DOWNLOAD_PATH } from "../src/routes/androidDownload";
+import {
+  createAndroidDownloadHandler,
+  createAndroidNextDownloadHandler,
+  createAndroidNextPatchHandler,
+  createAndroidNextReleaseHandler,
+  createAndroidReleaseHandler,
+  LEGACY_ANDROID_DOWNLOAD_PATH,
+} from "../src/routes/androidDownload";
 import { publishedAndroidRelease } from "../src/services/androidRelease";
 
 const enterpriseFile = {
@@ -57,52 +64,54 @@ test("missing or unavailable enterprise storage never falls back to a bundled AP
   }
 });
 
-test("NEXT downloads and incremental patches come from the enterprise drive too", async (t) => {
+test("药大拾间 NEXT has its own release, APK and patch entries, all on the enterprise drive", async (t) => {
   const sha = "c".repeat(64);
-  const stable = publishedAndroidRelease;
   const next = {
-    ...stable, versionCode: stable.versionCode + 1, versionName: "9.9.9", fileName: `CPU-Web-Android-V${stable.versionCode + 1}.apk`,
-    notes: ["工作台"],
-    patches: [{ fromVersionCode: stable.versionCode, fromSha256: sha, fileName: `CPU-Web-Android-V${stable.versionCode}-V${stable.versionCode + 1}.cpupatch`, size: 1234, sha256: sha }],
+    ...publishedAndroidRelease, packageName: "cn.lizmt.cpuweb.next", versionCode: 1002, versionName: "1.0.1",
+    fileName: "CPU-Web-Android-NEXT-V1002.apk", notes: ["工作台"],
+    patches: [{ fromVersionCode: 1001, fromSha256: sha, fileName: "CPU-Web-Android-NEXT-V1001-V1002.cpupatch", size: 1234, sha256: sha }],
   };
-  const releaseFor = (channel: "stable" | "beta") => channel === "beta" ? { release: next, channel } : { release: stable, channel };
   const files = new Map([
-    [stable.fileName, { ...enterpriseFile }],
+    [publishedAndroidRelease.fileName, { ...enterpriseFile }],
     [next.fileName, { ...enterpriseFile, url: "https://data.aliyunfile.com/share/next.apk?signature=t", name: next.fileName }],
     [next.patches[0].fileName, { ...enterpriseFile, url: "https://data.aliyunfile.com/share/next.cpupatch?signature=t", name: next.patches[0].fileName, size: 1234 }],
   ]);
-  const dependencies = { hasShare: () => true, resolveDownload: async (name: string) => files.get(name)!, releaseFor };
-  const app = express();
-  app.get("/api/site/downloads/android-app", createAndroidDownloadHandler(dependencies));
-  app.get("/api/site/downloads/android-patch", createAndroidPatchHandler(dependencies));
-  app.get("/api/site/downloads/android", createAndroidReleaseHandler(async () => ({
+  const dependencies = { hasShare: () => true, resolveDownload: async (name: string) => files.get(name)! };
+  const requirement = async () => ({
     minimumVersionCode: 1, startsAt: new Date(0).toISOString(), deadlineAt: new Date(1).toISOString(), message: "更新",
-  }), releaseFor, next, stable));
+  });
+  const app = express();
+  app.get("/api/site/downloads/android", createAndroidReleaseHandler(requirement, next));
+  app.get("/api/site/downloads/android-app", createAndroidDownloadHandler(dependencies));
+  app.get("/api/site/downloads/android-next", createAndroidNextReleaseHandler(next));
+  app.get("/api/site/downloads/android-next-app", createAndroidNextDownloadHandler(dependencies, next));
+  app.get("/api/site/downloads/android-next-patch", createAndroidNextPatchHandler(dependencies, next));
+  app.get("/unpublished", createAndroidNextReleaseHandler(null));
+  app.get("/unpublished-app", createAndroidNextDownloadHandler(dependencies, null));
   const server = createServer(app);
   t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-  const download = await fetch(`${base}/api/site/downloads/android-app?channel=beta`, { redirect: "manual" });
-  assert.equal(download.headers.get("location"), files.get(next.fileName)!.url);
-  const stableDownload = await fetch(`${base}/api/site/downloads/android-app`, { redirect: "manual" });
-  assert.equal(stableDownload.headers.get("location"), enterpriseFile.url);
-  const patch = await fetch(`${base}/api/site/downloads/android-patch?channel=beta&from=${stable.versionCode}`, { redirect: "manual" });
+  const stable = (await (await fetch(`${base}/api/site/downloads/android`)).json()).data;
+  assert.equal(stable.versionCode, publishedAndroidRelease.versionCode);
+  assert.equal(stable.downloadUrl, "/api/site/downloads/android-app");
+  assert.deepEqual(stable.next, { versionCode: 1002, versionName: "1.0.1", notes: ["工作台"] });
+  assert.equal((await fetch(`${base}/api/site/downloads/android-app`, { redirect: "manual" })).headers.get("location"), enterpriseFile.url);
+
+  const release = (await (await fetch(`${base}/api/site/downloads/android-next?from=1001`)).json()).data;
+  assert.equal(release.packageName, "cn.lizmt.cpuweb.next");
+  assert.equal(release.downloadUrl, "/api/site/downloads/android-next-app");
+  assert.equal(release.patch.url, "/api/site/downloads/android-next-patch?from=1001");
+  assert.equal(release.patches, undefined);
+  assert.equal((await (await fetch(`${base}/api/site/downloads/android-next?from=7`)).json()).data.patch, null);
+  const apk = await fetch(`${base}/api/site/downloads/android-next-app`, { redirect: "manual" });
+  assert.equal(apk.headers.get("location"), files.get(next.fileName)!.url);
+  const patch = await fetch(`${base}/api/site/downloads/android-next-patch?from=1001`, { redirect: "manual" });
   assert.equal(patch.status, 302);
   assert.equal(patch.headers.get("location"), files.get(next.patches[0].fileName)!.url);
-  const missing = await fetch(`${base}/api/site/downloads/android-patch?channel=beta&from=1`, { redirect: "manual" });
-  assert.equal(missing.status, 404);
+  assert.equal((await fetch(`${base}/api/site/downloads/android-next-patch?from=1`, { redirect: "manual" })).status, 404);
 
-  const beta = (await (await fetch(`${base}/api/site/downloads/android?channel=beta&from=${stable.versionCode}`)).json()).data;
-  assert.equal(beta.channel, "beta");
-  assert.equal(beta.versionCode, next.versionCode);
-  assert.deepEqual(beta.notes, ["工作台"]);
-  assert.equal(beta.downloadUrl, "/api/site/downloads/android-app?channel=beta");
-  assert.equal(beta.patch.url, `/api/site/downloads/android-patch?channel=beta&from=${stable.versionCode}`);
-  assert.equal(beta.patches, undefined);
-  const plain = (await (await fetch(`${base}/api/site/downloads/android`)).json()).data;
-  assert.equal(plain.channel, "stable");
-  assert.equal(plain.versionCode, stable.versionCode);
-  assert.equal(plain.patch, null);
-  assert.equal(plain.beta.versionName, "9.9.9");
+  assert.equal((await fetch(`${base}/unpublished`)).status, 404);
+  assert.equal((await fetch(`${base}/unpublished-app`, { redirect: "manual" })).status, 404);
 });

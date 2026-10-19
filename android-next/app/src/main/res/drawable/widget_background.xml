@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 和 iOS 小组件一样：纯色底、22 圆角、没有描边。深色模式的底色在 values-night。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/widget_background" />
+    <corners android:radius="22dp" />
+</shape>

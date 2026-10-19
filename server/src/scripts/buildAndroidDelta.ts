@@ -2,16 +2,22 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { applyApkDelta, createApkDelta } from "../services/androidDelta";
-import { validateAndroidRelease, type AndroidPatch, type AndroidRelease } from "../services/androidRelease";
+import {
+  androidPatchFileName,
+  validateAndroidRelease,
+  type AndroidPatch,
+  type AndroidProduct,
+  type AndroidRelease,
+} from "../services/androidRelease";
 
 /**
  * Builds the incremental update from an older signed APK to the new signed
  * APK, checks that it rebuilds the new APK byte for byte, and (with
  * `--candidate=`) records it in the candidate release manifest.
  *
- *   node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/buildAndroidDelta.ts \
- *     --from=<CPU-Web-Android-V60.apk> --from-version=60 --to=<CPU-Web-Android-V61.apk> \
- *     --candidate=output/android-release-61/candidate.json --out=output/android-release-61
+ *   node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/buildAndroidDelta.ts --product=next \
+ *     --from=<CPU-Web-Android-NEXT-V1001.apk> --from-version=1001 --to=<CPU-Web-Android-NEXT-V1002.apk> \
+ *     --candidate=output/android-next-1002/candidate.json --out=output/android-next-1002
  *
  * The patch file is uploaded to the same enterprise-drive folder as the APKs.
  */
@@ -25,9 +31,10 @@ async function main() {
   if (!fromPath || !toPath || !Number.isSafeInteger(fromVersion) || fromVersion < 1) {
     throw new Error("用法：--from=<旧版 APK> --from-version=<旧版 versionCode> --to=<新版 APK> [--to-version=] [--candidate=] [--out=]");
   }
+  const product: AndroidProduct = arg("product") === "next" ? "next" : "stable";
   const candidatePath = arg("candidate");
   const candidate: AndroidRelease | null = candidatePath ? JSON.parse(await readFile(path.resolve(candidatePath), "utf8")) : null;
-  if (candidate) validateAndroidRelease(candidate);
+  if (candidate) validateAndroidRelease(candidate, product);
   const toVersion = candidate?.versionCode ?? Number(arg("to-version"));
   if (!Number.isSafeInteger(toVersion) || toVersion <= fromVersion) throw new Error("新版 versionCode 必须高于旧版");
 
@@ -49,7 +56,7 @@ async function main() {
     return;
   }
 
-  const fileName = `CPU-Web-Android-V${fromVersion}-V${toVersion}.cpupatch`;
+  const fileName = androidPatchFileName(product, fromVersion, toVersion);
   const outDirectory = path.resolve(arg("out") || path.dirname(path.resolve(toPath)));
   await mkdir(outDirectory, { recursive: true });
   await writeFile(path.join(outDirectory, fileName), patch);
@@ -58,7 +65,7 @@ async function main() {
   if (candidate && candidatePath) {
     const patches = [...(candidate.patches ?? []).filter((item) => item.fromVersionCode !== fromVersion), entry]
       .sort((a, b) => b.fromVersionCode - a.fromVersionCode);
-    const updated = validateAndroidRelease({ ...candidate, patches });
+    const updated = validateAndroidRelease({ ...candidate, patches }, product);
     await writeFile(path.resolve(candidatePath), `${JSON.stringify(updated, null, 2)}\n`);
     console.log(`[android-delta] recorded in ${candidatePath}`);
   }

@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const start = Date.parse("2026-10-13T08:00:00Z");
 const deadline = start + 72 * 3_600_000;
 
-function setup(t: any, options: { version?: number; now?: number; legacy?: boolean; pending?: string; pendingFile?: string; fails?: boolean; nativeUpdater?: boolean; latest?: number } = {}) {
+function setup(t: any, options: { version?: number; now?: number; legacy?: boolean; pending?: string; pendingFile?: string; fails?: boolean; nativeUpdater?: boolean; next?: boolean } = {}) {
   let monotonic = 0;
   let nextTimer = 1;
   const timers = new Map<number, { callback: () => void; delay: number }>();
@@ -27,7 +27,6 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
   const navigations: string[] = [];
   const external: string[] = [];
   const nativeOpened: string[] = [];
-  const channels: string[] = [];
   const version = options.version ?? 58;
   const scope = vue.effectScope();
   const fakeWindow = Object.assign(new EventTarget(), {
@@ -43,7 +42,6 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
       ...(options.nativeUpdater ? {
         supportsNativeUpdater: () => true,
         openNativeUpdater: () => nativeOpened.push("update"),
-        getUpdateChannel: () => "beta",
       } : {}),
     },
     setTimeout(callback: () => void, delay: number) { const id = nextTimer++; timers.set(id, { callback, delay }); return id; },
@@ -59,12 +57,10 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
     "@/utils/androidUpdatePrompt": { ANDROID_UPDATE_PROMPT_EVENT: "cpu:android-update-prompt" },
     "@/utils/domainMigration": require("../src/utils/domainMigration.ts"),
     "@/utils/androidReleaseCheck": {
-      async fetchAndroidRelease(_fetcher: unknown, channel = "stable") {
-        channels.push(channel);
+      async fetchAndroidRelease() {
         if (options.fails) throw new Error("network unavailable");
-        const latest = options.latest ?? 59;
         return {
-          versionCode: latest, versionName: "4.0.18", fileName: `CPU-Web-Android-V${latest}.apk`,
+          versionCode: 59, versionName: "4.0.18", fileName: "CPU-Web-Android-V59.apk",
           updateRequirement: { minimumVersionCode: 59, startsAt: new Date(start).toISOString(), deadlineAt: new Date(deadline).toISOString(), message: "安全更新" },
           serverTime: new Date(options.now ?? start).toISOString(),
         };
@@ -74,7 +70,7 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
       ANDROID_APP_LATEST_VERSION_CODE: 59, ANDROID_APP_LATEST_VERSION_NAME: "4.0.18",
       ANDROID_APP_DOWNLOAD_FILE_NAME: "CPU-Web-Android-V59.apk", ANDROID_APP_DOWNLOAD_URL: "/api/site/downloads/android-app",
       getAndroidNativeVersionCode: () => version, getAndroidNativeVersionName: () => "4.0.17",
-      isAndroidNativeApp: () => true, isAndroidLegacyMajorUpgrade: () => Boolean(options.legacy),
+      isAndroidNativeApp: () => true, isAndroidNextApp: () => Boolean(options.next), isAndroidLegacyMajorUpgrade: () => Boolean(options.legacy),
       supportsAndroidInAppApkDownload: () => !options.legacy, canInstallAndroidApk: () => true,
     },
   };
@@ -88,7 +84,7 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
   const component = scope.run(() => exports.default.setup({}, { expose() {} }));
   mounts.forEach(cb => cb());
   t.after(() => { unmounts.forEach(cb => cb()); scope.stop(); });
-  return { component, timers, navigations, external, nativeOpened, channels, advance: (ms: number) => { monotonic += ms; } };
+  return { component, timers, navigations, external, nativeOpened, advance: (ms: number) => { monotonic += ms; } };
 }
 
 test("dismissed grace prompt becomes mandatory at the deadline without a fresh network response", async t => {
@@ -162,12 +158,13 @@ test("a cached package below V59 offers the latest browser download instead of c
   assert.equal(c.open.value, true);
 });
 
-test("clients with the native updater are not prompted by the page and manual checks open the app's updater", async t => {
-  const { component: c, nativeOpened, channels } = setup(t, { version: 60, latest: 61, nativeUpdater: true });
+test("药大拾间 NEXT is never held to the stable app's deadline and checks updates in its own updater", async t => {
+  // NEXT reports a low stable-looking version in tests to prove the deadline is skipped, not merely passed.
+  const { component: c, nativeOpened } = setup(t, { version: 20, now: deadline, nativeUpdater: true, next: true });
   await c.checkRelease(false);
   await vue.nextTick();
-  assert.equal(c.open.value, false, "the native updater handles routine updates itself");
-  assert.deepEqual(channels, ["beta"], "a NEXT device compares against the test build");
+  assert.equal(c.updateRequired.value, false);
+  assert.equal(c.open.value, false, "the NEXT updater handles its own updates");
   await c.showRequestedPrompt({ source: "manual", kind: "app" });
   await vue.nextTick();
   assert.deepEqual(nativeOpened, ["update"]);

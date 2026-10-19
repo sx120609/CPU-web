@@ -95,6 +95,7 @@ import {
   getAndroidNativeVersionName,
   isAndroidLegacyMajorUpgrade,
   isAndroidNativeApp,
+  isAndroidNextApp,
   supportsAndroidInAppApkDownload,
 } from "@/utils/clientInfo";
 import { shouldAutoPromptAndroidUpdate } from "@/utils/domainMigration";
@@ -110,7 +111,6 @@ interface AndroidBridge {
   retryApkUpdate?: () => boolean;
   supportsNativeUpdater?: () => boolean;
   openNativeUpdater?: () => void;
-  getUpdateChannel?: () => string;
 }
 
 const router = useRouter();
@@ -143,10 +143,12 @@ const updateBusy = computed(() => ["downloading", "paused", "validating", "insta
 
 const currentVersionCode = computed(() => getAndroidNativeVersionCode());
 const currentVersionName = computed(() => getAndroidNativeVersionName());
+// 药大拾间 NEXT is a separate app with its own updater: the stable app's prompts and deadline skip it.
+const stableAndroidApp = isAndroidNativeApp() && !isAndroidNextApp();
 const requirementState = computed(() => androidUpdateRequirementState(
-  isAndroidNativeApp(), currentVersionCode.value, latestRelease.value.updateRequirement, policyNow.value,
+  stableAndroidApp, currentVersionCode.value, latestRelease.value.updateRequirement, policyNow.value,
 ));
-const updateRequired = computed(() => isAndroidNativeApp() && (serverRequiresUpdate.value || requirementState.value === "required"));
+const updateRequired = computed(() => stableAndroidApp && (serverRequiresUpdate.value || requirementState.value === "required"));
 const pendingUpdateUnsupported = computed(() => {
   if (!hasPendingUpdate.value || requirementState.value === "none") return false;
   const target = /^CPU-Web-Android-V(\d+)\.apk$/i.exec(nativeUpdate.value.fileName)?.[1];
@@ -237,7 +239,7 @@ async function checkRelease(manual: boolean): Promise<boolean> {
   if (!manual && performance.now() - lastReleaseCheck < 60_000) return true;
   try {
     if (!releaseCheck) {
-      releaseCheck = fetchAndroidRelease(undefined, updateChannel()).then(value => {
+      releaseCheck = fetchAndroidRelease().then(value => {
         if (!disposed) {
           latestRelease.value = value;
           if (value.serverTime) serverClock = { now: Date.parse(value.serverTime), receivedAt: performance.now() };
@@ -315,7 +317,7 @@ async function showRequestedPrompt(detail: AndroidUpdatePromptDetail) {
 
 function autoPromptIfNeeded() {
   autoPromptTimer = 0;
-  // Clients with the native updater check, download and install on their own.
+  // Clients with the native updater (药大拾间 NEXT) check, download and install on their own.
   if (hasNativeUpdater() && requirementState.value === "none" && !updateRequired.value) return;
   // Required campaigns also cover 2.x clients pinned to the legacy hostname.
   if (requirementState.value !== "none" || updateRequired.value) {
@@ -448,7 +450,7 @@ function getAndroidBridge(): AndroidBridge | null {
   return ((window as any).CPUAndroid ?? null) as AndroidBridge | null;
 }
 
-/** Android V60+ updates itself (incremental patches, the NEXT test channel, silent install). */
+/** 药大拾间 NEXT updates itself (incremental patches, silent install). */
 function hasNativeUpdater() {
   try { return getAndroidBridge()?.supportsNativeUpdater?.() === true; } catch { return false; }
 }
@@ -461,9 +463,6 @@ function openNativeUpdater() {
   } catch { return false; }
 }
 
-function updateChannel(): "stable" | "beta" {
-  try { return getAndroidBridge()?.getUpdateChannel?.() === "beta" ? "beta" : "stable"; } catch { return "stable"; }
-}
 
 function openExternalDownload(url: string) {
   const bridge = getAndroidBridge();

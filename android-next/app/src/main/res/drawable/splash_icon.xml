@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Android 12+ masks the splash icon to a centered circle two thirds of
+         its size; the rounded square is scaled to sit wholly inside it. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.62"
+        android:scaleY="0.62">
+        <path android:pathData="M32,14 L76,14 C87,14 94,21 94,32 L94,76 C94,87 87,94 76,94 L32,94 C21,94 14,87 14,76 L14,32 C14,21 21,14 32,14 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="14" android:startY="14"
+                    android:endX="94" android:endY="94"
+                    android:startColor="#FF0F8F7F"
+                    android:endColor="#FF4B3AA8" />
+            </aapt:attr>
+        </path>
+        <!-- The launcher icon's artwork at its own coordinates: the launcher shows the
+             middle 72dp of that canvas; this square is 80dp, hence the scale. -->
+        <group
+            android:pivotX="54"
+            android:pivotY="54"
+            android:scaleX="1.111"
+            android:scaleY="1.111">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M36.2,41.75 L65.55,41.75 A1.2,1.2 0 0 1 66.75,42.95 L66.75,45.05 A1.2,1.2 0 0 1 65.55,46.25 L36.2,46.25 A1.2,1.2 0 0 1 35,45.05 L35,42.95 A1.2,1.2 0 0 1 36.2,41.75 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M36.2,52.5 L65.55,52.5 A1.2,1.2 0 0 1 66.75,53.7 L66.75,55.8 A1.2,1.2 0 0 1 65.55,57 L36.2,57 A1.2,1.2 0 0 1 35,55.8 L35,53.7 A1.2,1.2 0 0 1 36.2,52.5 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M36.2,63.25 L53.3,63.25 A1.2,1.2 0 0 1 54.5,64.45 L54.5,66.8 A1.2,1.2 0 0 1 53.3,68 L36.2,68 A1.2,1.2 0 0 1 35,66.8 L35,64.45 A1.2,1.2 0 0 1 36.2,63.25 Z" />
+        <path
+            android:fillColor="#FFF59E0B"
+            android:pathData="M74.8,54.5 L78.5,58 L66.5,73.5 L58.25,65.5 L61.75,62 L66.25,66.5 Z" />
+        <!-- The NEXT spark. -->
+        <path
+            android:fillColor="#F0FFFFFF"
+            android:pathData="M72,28.4 Q72,34 77.6,34 Q72,34 72,39.6 Q72,34 66.4,34 Q72,34 72,28.4 Z" />
+        </group>
+    </group>
+</vector>

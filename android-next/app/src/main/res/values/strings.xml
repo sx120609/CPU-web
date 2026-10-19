@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_schedule_name">NEXT 课表·临近课程 2×2</string>
+    <string name="widget_schedule_name_wide">NEXT 课表·当前/接下来 4×2</string>
+    <string name="widget_schedule_name_today_wide">NEXT 课表·今日课程 4×2</string>
+    <string name="widget_schedule_name_today_large">NEXT 课表·今日课程 4×4</string>
+    <string name="widget_schedule_name_large">NEXT 课表·两日课表 4×4</string>
+    <string name="widget_schedule_description">五种桌面课表样式：临近课程、今日课程和两日课表</string>
+</resources>

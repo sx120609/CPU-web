@@ -120,7 +120,7 @@ test("a patch refuses another base and damaged data", () => {
 });
 
 test("the shared fixture the Android applier tests against is still what the generator produces", () => {
-  const directory = path.resolve(__dirname, "../../android/app/src/test/resources/delta");
+  const directory = path.resolve(__dirname, "../../android-next/app/src/test/resources/delta");
   const old = readFileSync(path.join(directory, "old.zip"));
   const next = readFileSync(path.join(directory, "new.zip"));
   const fixture = readFileSync(path.join(directory, "old-to-new.cpupatch"));

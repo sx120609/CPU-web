@@ -2,11 +2,8 @@ import type { RequestHandler } from "express";
 import { hasAndroidPdsShare, resolveAndroidDownload, type PdsDownload } from "../services/pdsShare";
 import {
   androidPatchFrom,
-  androidReleaseFor,
-  betaAndroidRelease,
-  parseAndroidChannel,
+  publishedAndroidNextRelease,
   publishedAndroidRelease,
-  type AndroidChannel,
   type AndroidRelease,
 } from "../services/androidRelease";
 import { getAndroidUpdateRequirement } from "../services/androidUpdateRequirement";
@@ -16,13 +13,11 @@ export const LEGACY_ANDROID_DOWNLOAD_PATH = /^\/downloads\/CPU-Web-(?:Android-)?
 type DownloadDependencies = {
   hasShare: () => boolean;
   resolveDownload: (fileName: string) => Promise<PdsDownload>;
-  releaseFor?: (channel: AndroidChannel) => { release: AndroidRelease; channel: AndroidChannel };
 };
 
 const defaultDependencies: DownloadDependencies = {
   hasShare: hasAndroidPdsShare,
   resolveDownload: (fileName) => resolveAndroidDownload(fileName),
-  releaseFor: (channel) => androidReleaseFor(channel),
 };
 
 /** Redirect to one verified file of the enterprise drive; this server never carries the bytes. */
@@ -46,26 +41,82 @@ async function redirectToEnterpriseFile(
   }
 }
 
-/** `?channel=beta` downloads the 药大拾间 NEXT build while one is newer than the release. */
-export function createAndroidDownloadHandler(dependencies: DownloadDependencies = defaultDependencies): RequestHandler {
-  const releaseFor = dependencies.releaseFor ?? defaultDependencies.releaseFor!;
-  return async (req, res) => {
+const notPublished = (res: Parameters<RequestHandler>[1]) =>
+  res.status(404).json({ code: 404, data: null, message: "药大拾间 NEXT 尚未发布" });
+
+export function createAndroidDownloadHandler(
+  dependencies: DownloadDependencies = defaultDependencies,
+  release: AndroidRelease = publishedAndroidRelease,
+): RequestHandler {
+  return async (_req, res) => {
     res.setHeader("Cache-Control", "no-store");
-    const { release } = releaseFor(parseAndroidChannel(req.query?.channel));
     await redirectToEnterpriseFile(res, dependencies, release.fileName, release.size);
   };
 }
 
 export const androidDownloadHandler = createAndroidDownloadHandler();
 
-/** An incremental update from `?from=<versionCode>` to the channel's release, also from the enterprise drive. */
-export function createAndroidPatchHandler(dependencies: DownloadDependencies = defaultDependencies): RequestHandler {
-  const releaseFor = dependencies.releaseFor ?? defaultDependencies.releaseFor!;
+export function createAndroidReleaseHandler(
+  readRequirement = getAndroidUpdateRequirement,
+  next: AndroidRelease | null = publishedAndroidNextRelease,
+): RequestHandler {
+  return async (_req, res, next_) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const updateRequirement = await readRequirement();
+      res.json({ code: 0, data: {
+        ...publishedAndroidRelease, downloadUrl: "/api/site/downloads/android-app",
+        // The separate 药大拾间 NEXT app, for the download page's invitation.
+        next: next ? { versionCode: next.versionCode, versionName: next.versionName, notes: next.notes ?? [] } : null,
+        updateRequirement, serverTime: new Date().toISOString(),
+      }, message: "" });
+    } catch (error) { next_(error); }
+  };
+}
+
+export const androidReleaseHandler = createAndroidReleaseHandler();
+
+// region 药大拾间 NEXT
+
+/** The NEXT release, with the incremental patch for `?from=<installed versionCode>` when one exists. */
+export function createAndroidNextReleaseHandler(next: AndroidRelease | null = publishedAndroidNextRelease): RequestHandler {
+  return (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!next) return notPublished(res);
+    const from = Number(req.query?.from);
+    const patch = Number.isSafeInteger(from) && from > 0 ? androidPatchFrom(next, from) : null;
+    const { patches: _patches, ...release } = next;
+    res.json({ code: 0, data: {
+      ...release,
+      notes: next.notes ?? [],
+      downloadUrl: "/api/site/downloads/android-next-app",
+      patch: patch ? { ...patch, url: `/api/site/downloads/android-next-patch?from=${patch.fromVersionCode}` } : null,
+      serverTime: new Date().toISOString(),
+    }, message: "" });
+  };
+}
+
+export function createAndroidNextDownloadHandler(
+  dependencies: DownloadDependencies = defaultDependencies,
+  next: AndroidRelease | null = publishedAndroidNextRelease,
+): RequestHandler {
+  return async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!next) return notPublished(res);
+    await redirectToEnterpriseFile(res, dependencies, next.fileName, next.size);
+  };
+}
+
+/** An incremental NEXT update from `?from=<versionCode>`, also from the enterprise drive. */
+export function createAndroidNextPatchHandler(
+  dependencies: DownloadDependencies = defaultDependencies,
+  next: AndroidRelease | null = publishedAndroidNextRelease,
+): RequestHandler {
   return async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
-    const { release } = releaseFor(parseAndroidChannel(req.query?.channel));
+    if (!next) return notPublished(res);
     const from = Number(req.query?.from);
-    const patch = Number.isSafeInteger(from) ? androidPatchFrom(release, from) : null;
+    const patch = Number.isSafeInteger(from) ? androidPatchFrom(next, from) : null;
     if (!patch) {
       res.status(404).json({ code: 404, data: null, message: "没有适用于该版本的增量包" });
       return;
@@ -74,40 +125,8 @@ export function createAndroidPatchHandler(dependencies: DownloadDependencies = d
   };
 }
 
-export const androidPatchHandler = createAndroidPatchHandler();
+export const androidNextReleaseHandler = createAndroidNextReleaseHandler();
+export const androidNextDownloadHandler = createAndroidNextDownloadHandler();
+export const androidNextPatchHandler = createAndroidNextPatchHandler();
 
-export function createAndroidReleaseHandler(
-  readRequirement = getAndroidUpdateRequirement,
-  releaseFor: (channel: AndroidChannel) => { release: AndroidRelease; channel: AndroidChannel } = (channel) => androidReleaseFor(channel),
-  beta: AndroidRelease = betaAndroidRelease,
-  stable: AndroidRelease = publishedAndroidRelease,
-): RequestHandler {
-  return async (req, res, next) => {
-    res.setHeader("Cache-Control", "no-store");
-    try {
-      const updateRequirement = await readRequirement();
-      const served = releaseFor(parseAndroidChannel(req.query?.channel));
-      const from = Number(req.query?.from);
-      const patch = Number.isSafeInteger(from) && from > 0 ? androidPatchFrom(served.release, from) : null;
-      const query = served.channel === "beta" ? "?channel=beta" : "";
-      const { patches: _patches, ...release } = served.release;
-      res.json({ code: 0, data: {
-        ...release,
-        notes: served.release.notes ?? [],
-        channel: served.channel,
-        downloadUrl: `/api/site/downloads/android-app${query}`,
-        patch: patch ? {
-          ...patch,
-          url: `/api/site/downloads/android-patch?channel=${served.channel}&from=${patch.fromVersionCode}`,
-        } : null,
-        // An invitation for stable devices while a NEXT build is out.
-        beta: beta.versionCode > stable.versionCode
-          ? { versionCode: beta.versionCode, versionName: beta.versionName, notes: beta.notes ?? [] }
-          : null,
-        updateRequirement, serverTime: new Date().toISOString(),
-      }, message: "" });
-    } catch (error) { next(error); }
-  };
-}
-
-export const androidReleaseHandler = createAndroidReleaseHandler();
+// endregion

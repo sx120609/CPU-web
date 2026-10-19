@@ -116,6 +116,15 @@ export function isAndroidNativeApp(ua = navigator.userAgent) {
   return source.includes("cpuwebscheduleapp") || resolveClientOverride() === "android";
 }
 
+/**
+ * 药大拾间 NEXT: the separate Android test app. It carries the Android app's
+ * tokens plus `CPUWebNextApp/`, updates itself, and is not bound by the stable
+ * app's update deadline.
+ */
+export function isAndroidNextApp(ua = navigator.userAgent) {
+  return /\bCPUWebNextApp\//i.test(ua || "");
+}
+
 export function isIosNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
   const bridge = typeof window === "undefined" ? null : (window as any).CPUIOS;

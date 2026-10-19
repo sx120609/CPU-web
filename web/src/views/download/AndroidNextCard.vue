@@ -1,53 +1,42 @@
 <template>
-  <section v-if="next" class="next-card" aria-labelledby="next-card-title">
+  <section v-if="next && !insideNext" class="next-card" aria-labelledby="next-card-title">
     <div class="next-head">
       <h2 id="next-card-title" class="next-title">药大拾间 NEXT</h2>
       <span class="next-badge">测试版 {{ next.versionName }}</span>
     </div>
     <p class="next-lead">
-      先于正式版拿到新功能：可以自己组装的导航栏和工作台、能连网页一起换色的主题，以及只下载变化部分的增量更新。
+      独立的测试版应用：可以自己组装的导航栏和工作台、能连网页一起换色的主题，以及只下载变化部分的增量更新。
     </p>
     <ul v-if="next.notes.length" class="next-notes">
       <li v-for="note in next.notes.slice(0, 5)" :key="note">{{ note }}</li>
     </ul>
-    <p class="next-hint">{{ hint }}</p>
-    <a v-if="!nativeUpdater" class="next-action" :href="BETA_DOWNLOAD_URL" rel="nofollow">下载测试版</a>
-    <button v-else type="button" class="next-action" @click="openNativeUpdater">打开测试通道设置</button>
+    <p class="next-hint">
+      和正式版是两个应用，可以同时安装，需要单独登录；不想用了直接卸载，正式版不受影响。
+    </p>
+    <a class="next-action" :href="NEXT_DOWNLOAD_URL" rel="nofollow">下载药大拾间 NEXT</a>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { canInstallAndroidApk, isAndroidNativeApp } from "@/utils/clientInfo";
+import { onMounted, ref } from "vue";
+import { canInstallAndroidApk, isAndroidNativeApp, isAndroidNextApp } from "@/utils/clientInfo";
 
 /**
- * Invitation to the Android test channel while a NEXT build is newer than the
- * release. Clients up to V59 have no channel switch, so they install the test
- * build here (from the enterprise drive, like every APK); V60 and later join in
- * the app's own settings.
+ * Invitation to 药大拾间 NEXT, the separate Android test app, once it is
+ * published. Its APK comes from the enterprise drive like every APK; inside
+ * NEXT itself the card is hidden.
  */
-const BETA_DOWNLOAD_URL = "/api/site/downloads/android-app?channel=beta";
+const NEXT_DOWNLOAD_URL = "/api/site/downloads/android-next-app";
 
 type NextBuild = { versionCode: number; versionName: string; notes: string[] };
 const next = ref<NextBuild | null>(null);
-
-const bridge = () => (window as any).CPUAndroid as { supportsNativeUpdater?: () => boolean; openNativeUpdater?: () => void } | undefined;
-const nativeUpdater = computed(() => {
-  try { return isAndroidNativeApp() && bridge()?.supportsNativeUpdater?.() === true; } catch { return false; }
-});
-const hint = computed(() => nativeUpdater.value
-  ? "在拾间里打开“设置 → 更新与测试通道”，点“加入药大拾间 NEXT”。随时可以退出。"
-  : "覆盖安装，账号和课表都会保留。之后可在“设置 → 更新与测试通道”退出；退出后保留当前版本，等正式版追上后自动回到正式通道。");
-
-function openNativeUpdater() {
-  try { bridge()?.openNativeUpdater?.(); } catch { /* older shell */ }
-}
+const insideNext = isAndroidNextApp();
 
 onMounted(async () => {
-  if (!isAndroidNativeApp() && !canInstallAndroidApk()) return;
+  if (insideNext || (!isAndroidNativeApp() && !canInstallAndroidApk())) return;
   try {
     const response = await fetch("/api/site/downloads/android", { cache: "no-store" });
-    const value = (await response.json())?.data?.beta;
+    const value = (await response.json())?.data?.next;
     if (value && Number.isSafeInteger(value.versionCode) && typeof value.versionName === "string" && /^\d+\.\d+\.\d+$/.test(value.versionName)) {
       next.value = {
         versionCode: value.versionCode,

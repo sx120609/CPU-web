@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:clipToOutline="true">
+
+    <ImageView
+        android:id="@+id/widget_content_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="今日课程列表"
+        android:scaleType="fitCenter"
+        android:src="@drawable/widget_schedule_today_large_preview" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+        android:layout_marginTop="64dp" android:orientation="horizontal">
+        <ImageView android:id="@+id/widget_celebration_touch" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_height="match_parent"
+            android:contentDescription="放礼花" android:visibility="gone" />
+    </LinearLayout>
+    <ImageView android:id="@+id/widget_fireworks" android:layout_width="match_parent"
+        android:layout_height="match_parent" android:importantForAccessibility="no"
+        android:scaleType="fitXY" android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_message"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:padding="18dp"
+        android:textColor="@color/widget_secondary_text"
+        android:textSize="13sp"
+        android:visibility="gone" />
+</FrameLayout>

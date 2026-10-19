@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:clipToOutline="true">
+
+    <ImageView
+        android:id="@+id/widget_content_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="当前和接下来的课程"
+        android:scaleType="fitCenter"
+        android:src="@drawable/widget_schedule_upcoming_wide_preview" />
+
+    <TextView
+        android:id="@+id/widget_message"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:padding="18dp"
+        android:textColor="@color/widget_secondary_text"
+        android:textSize="13sp"
+        android:visibility="gone" />
+</FrameLayout>

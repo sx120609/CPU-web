@@ -9,8 +9,7 @@
 | 修复、调整界面 | 修改代码、适当验证；说明需要网页更新还是新 APK 才生效。未上线不能说用户已经用到修复。 |
 | 打包、返回安装包 | 取得可信构建并签名，返回文件；不自动上传企业盘或部署生产。 |
 | 打包发布、发布新版 | 完成下文整条发布流程，包括企业盘、发布清单、最终 CI 和生产切换。用户已有明确授权时，不在每一步重复询问。 |
-| 发到测试通道、发 NEXT | 按下文“测试通道与增量包”完成签名、企业盘上传（APK 与增量包）、提升 `android-beta.json`、最终 CI；部署仍需授权。 |
-| 测试版转正 | 把已在测试通道验证过的同一个 APK 提升为正式版，不重新构建、不重新签名。 |
+| 发布药大拾间 NEXT | 按下文“药大拾间 NEXT”完成签名、企业盘上传（APK 与增量包）、提升 `android-next.json`、最终 CI；部署仍需授权。正式版不受影响。 |
 | 只推送 | 推送并等待精确 SHA 的 Linux CI 和制品；不部署生产。 |
 | 暂不上传、暂不发布 | 停在该边界，交付已有结果并明确尚未发布。后续明确发布指令可改变这一边界。 |
 
@@ -21,8 +20,7 @@
 - 包名：`cn.lizmt.cpuweb`。
 - 候选构建版本：`android/app/build.gradle` 的 `versionCode` / `versionName`。
 - 已发布版本：`server/src/releases/android.json`。不要从聊天、README 或文件夹里最高的文件名猜版本。
-- 测试通道（药大拾间 NEXT）版本：`server/src/releases/android-beta.json`，格式与正式清单相同；版本号不高于正式版时，测试通道收到的就是正式版。
-- 增量包：`CPU-Web-Android-V<旧>-V<新>.cpupatch`，记录在目标版本清单的 `patches` 里，文件与 APK 放在同一企业盘目录。
+- 药大拾间 NEXT 是另一个应用（`android-next/`，包名 `cn.lizmt.cpuweb.next`），清单是 `server/src/releases/android-next.json`，流程见下文“药大拾间 NEXT”。
 - Android 工作流：`.github/workflows/android-release.yml`，显示名 `Android release artifact`。
 - Linux 工作流：`.github/workflows/linux-deploy-artifact.yml`，显示名 `Linux deployment artifact`。它使用 Ubuntu 24.04 / Node.js 24 构建 Server、Web 和 VoiceHub。
 - APK 制品名：`cpu-web-android-unsigned-<完整 source SHA>`；里面是 `app-release-unsigned.apk`。
@@ -31,8 +29,7 @@
 - 签名证书 SHA-256：`c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744`。这是公开证书指纹，不是签名密钥。
 - 下载页：<https://cputime.cn/download>。
 - 公开版本接口：<https://cputime.cn/api/site/downloads/android>。
-- 稳定下载入口：<https://cputime.cn/api/site/downloads/android-app>，它跳转至清单指定的企业盘文件；加 `?channel=beta` 是测试版。
-- 增量包入口：`/api/site/downloads/android-patch?channel=<stable|beta>&from=<versionCode>`，同样只跳转到企业盘文件。
+- 稳定下载入口：<https://cputime.cn/api/site/downloads/android-app>，它跳转至清单指定的企业盘文件。
 - 发布后台：<https://cputime.cn/admin?tab=deployment>，使用已有的超级管理员会话。
 - 目前企业盘发布目录在“药大拾间 / Windows”，虽叫 Windows，也存放安卓 APK：<https://bj37249.apps.aliyunfile.com/disk/drive/enterprise/2/6a66c631e82f0fd1befc4d11ae7087bcfda71004>。需要已登录且有权限；目录 URL 不授予访问权。若目录调整，以当前站点分享配置和用户确认的发布目录为准。
 
@@ -206,52 +203,68 @@ Invoke-RestMethod https://cputime.cn/api/ready
 
 最后打开下载页，确认显示新版本，保存可审阅的发布结果。返回版本号、下载链接/本地签名 APK、校验结果和实际测试限制。没连接测试手机就说未做本轮真机验收，不能把 CI 当作真机结果。真实安装恢复场景见 [android-release.md](android-release.md#真机验收)。
 
-## 测试通道与增量包
+## 药大拾间 NEXT
 
-### 通道模型
+### 是什么
 
-`main` 上的安卓代码就是下一个版本。新版本先发到药大拾间 NEXT（测试通道），确认可用后把**同一个签名 APK** 提升为正式版：文件名、大小、SHA-256 都不变，正式版不再另行构建。V60（4.1.0）是第一个带原生更新器的版本：
+药大拾间 NEXT 是独立的测试版应用，与正式版并存：
 
-- V59 及更早的正式版只认正式通道，用户要从下载页的 NEXT 卡片装测试版（`?channel=beta`，仍从企业盘下载）；装上后若用户没选过通道，第一次检查时自动留在测试通道。
-- V60 起用户在“设置 → 更新与测试通道”加入或退出。退出后保留当前版本，直到正式版版本号超过它。
-- 正式版需要急修时，从正式清单的 `sourceCommit` 建分支修复；急修版的版本号必须高于当前测试版，测试通道也会收到它，之后尽快再发一个包含该修复的测试版。
+- 代码在 `android-next/`，包名 `cn.lizmt.cpuweb.next`，名称“药大拾间 NEXT”，自有图标。
+- 版本号从 1001 起，见 `android-next/README.md`。
+- 正式版 `android/` 的发布流程（上文第 1–7 步）与它无关；NEXT 的改动不会进入正式版，除非另行移植。
+- 两个应用用同一张发布证书签名。
 
-### 发布到测试通道
+固定信息：
 
-1. 按“1. 找到真正待发布的代码”和“2. 验证候选提交与 CI”准备候选版本；候选推送不改 `android-beta.json`。
-2. 按第 3、4 步下载 CI 制品并用原证书签名。
-3. 写候选清单（字段同第 5 步），另加 `notes`：给用户看的更新说明，最多 20 条，每条不超过 200 字。
-4. 生成增量包。底版只选装有原生更新器的版本（V60 及以上），通常是当前测试版和当前正式版；底版用企业盘上的已签名 APK（或 `output/android-release-<versionCode>/` 的存档），必须与当时发布的文件逐字节相同：
+| 项目 | 药大拾间 NEXT |
+| --- | --- |
+| 工作流 | `.github/workflows/android-next-release.yml`，显示名 `Android NEXT release artifact` |
+| APK 制品 | `cpu-web-android-next-unsigned-<完整 source SHA>`，里面是 `app-release-unsigned.apk` |
+| 正式文件名 | `CPU-Web-Android-NEXT-V<versionCode>.apk` |
+| 增量包 | `CPU-Web-Android-NEXT-V<旧>-V<新>.cpupatch`，记录在清单的 `patches` 里 |
+| 清单 | `server/src/releases/android-next.json`，首次发布前为 `null` |
+| 接口 | `/api/site/downloads/android-next?from=<versionCode>`、`/api/site/downloads/android-next-app`、`/api/site/downloads/android-next-patch?from=` |
+| 存放 | 与正式版 APK 同一个企业盘发布目录；网站只返回清单和跳转 |
+
+NEXT 的 APK 不放进 `web/public/downloads/`，该目录仍只保存正式版。
+
+### 发布步骤
+
+1. 在 `android-next/app/build.gradle` 递增 `versionCode`（1001 起）和 `versionName`，推送后等待精确 SHA 的 `Android NEXT release artifact` 和 `Linux deployment artifact` 都成功；候选推送不改 `android-next.json`。
+2. 按第 3、4 步下载制品（把制品名换成 NEXT 的）并用原证书签名，确认包名为 `cn.lizmt.cpuweb.next`。
+3. 写候选清单，字段同第 5 步，另加 `notes`：给用户看的更新说明，最多 20 条，每条不超过 200 字；`packageName`、`fileName` 用 NEXT 的值。
+4. 生成增量包。底版用企业盘上已发布的 NEXT APK（或 `output/android-next-<versionCode>/` 的存档），必须与当时发布的文件逐字节相同，通常只为上一版生成：
 
    ```powershell
-   node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/buildAndroidDelta.ts `
-       "--from=<底版 APK>" --from-version=<底版 versionCode> "--to=$apk" `
+   node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/buildAndroidDelta.ts --product=next `
+       "--from=<上一版 APK>" --from-version=<上一版 versionCode> "--to=$apk" `
        "--candidate=$outDir/candidate.json" "--out=$outDir"
    ```
 
-   脚本生成 `CPU-Web-Android-V<旧>-V<新>.cpupatch`，用它把底版还原成新 APK 并逐字节比对，再把条目写进候选清单的 `patches`。增量包不小于完整包 80% 时脚本不写清单，那一版的用户下载完整安装包。
-5. 把签名 APK 和每个增量包上传到企业盘原发布目录（上传办法同第 5 步）。
-6. 提升测试通道清单：
+   脚本用增量包把底版还原成新 APK 并逐字节比对，再写进候选清单的 `patches`。增量包不小于完整包 80% 时不写清单，那一版的用户下载完整安装包。第一版（1001）没有底版，不生成增量包。
+5. 把签名 APK 和增量包上传到企业盘原发布目录（上传办法同第 5 步）。
+6. 提升清单：
 
    ```powershell
    node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/verifyAndroidRelease.ts `
-       --channel=beta "--candidate=$outDir/candidate.json" "--apk=$apk" `
+       --product=next "--candidate=$outDir/candidate.json" "--apk=$apk" `
        "--receipt=$outDir/promotion-receipt.json" --promote
    ```
 
-   脚本校验签名、包信息、GitHub 来源和企业盘字节，并从企业盘下载每个增量包和它的底版、重新合成、比对哈希，全部通过才写 `android-beta.json`。测试版版本号必须高于当前正式版和测试版。
-7. 只提交 `server/src/releases/android-beta.json`；测试版 APK 不放进 `web/public/downloads/`。推送后等待精确 SHA 的 Linux CI：无参数的发布校验也会检查测试通道清单、测试版签名和全部增量包。
-8. 获得部署授权后部署，再运行 `verifyAndroidRelease.ts --public-only --channel=beta --site=https://cputime.cn`。
+   脚本校验签名、包信息、GitHub 来源和企业盘字节，并从企业盘下载每个增量包和它的底版、重新合成、比对哈希，全部通过才写 `android-next.json`；版本号必须高于当前 NEXT。
+7. 只提交 `server/src/releases/android-next.json`。推送后等待精确 SHA 的 Linux CI：无参数的发布校验也会检查已发布的 NEXT、它的签名和全部增量包。
+8. 获得部署授权后部署，再运行 `verifyAndroidRelease.ts --public-only --product=next --site=https://cputime.cn`。部署后下载页对安卓访客显示 NEXT 邀请卡片。
 
-### 测试版转正
+首次发布 NEXT 前必须先部署本仓库支持 NEXT 的服务端：旧服务端不认识 `CPUWebNextApp/`，也没有 NEXT 的接口。
 
-1. 以 `android-beta.json` 的内容作为候选清单；如有装着更新器的旧正式版（V60 及以上），可再为它生成增量包追加进 `patches` 并上传。
-2. 按第 5 步运行 `verifyAndroidRelease.ts --candidate=... --apk=... --promote`（默认正式通道），写入 `android.json`。
-3. 按第 6、7 步提交清单和签名 APK（并删除 `web/public/downloads/` 里上一版 APK）、等待 CI、经授权部署、公开校验。此后测试通道与正式通道相同，直到下一个测试版。
+### 真机核对
 
-### 真机核对更新器
+1. 用一台装着正式版的测试手机安装 NEXT，确认两个图标并存、各自登录、互不影响。
+2. 再装上一版 NEXT，打开“设置 → 更新”，确认显示增量包大小，下载后显示“用增量包合成”。
+3. Android 12 及以上授予“安装未知应用”后，点“立即安装”不出现系统确认，NEXT 重启后显示“已更新到…”。
+4. 下载完成后回到桌面，约两分钟内版本更新（离开后自动安装）。
 
-用一台装着上一版（V60 及以上）的测试手机：打开“设置 → 更新与测试通道”，确认显示增量包大小、下载后显示“用增量包合成”，Android 12 及以上在授予“安装未知应用”后点“立即安装”不出现系统确认、拾间重启后显示“已更新到…”；再验证“离开拾间后自动安装”：下载完成后回到桌面，约两分钟内版本更新。模拟器可用 `-PappUrl=http://localhost:<端口>/home` 的调试版配合本地假接口和 `adb reverse` 走完同样流程。
+模拟器可用 `-PappUrl=http://localhost:<端口>/home` 的调试版配合本地假接口和 `adb reverse` 走完同样流程。
 
 ## 常见判断与故障
 
@@ -260,8 +273,8 @@ Invoke-RestMethod https://cputime.cn/api/ready
 | “有新版”但 Gradle 已经是更高 code | 先找已有候选 CI，满足条件就复用，不要机械加号。 |
 | GitHub 按短 SHA 查不到运行 | `gh run list --commit` 使用完整 SHA。 |
 | Windows 安装共享测试报 FileProvider 找不到临时根路径 | 记录准确失败，检查改动是否涉及安装逻辑；以正式 Ubuntu CI 的同项测试及实际验收判断，不能删除/跳过测试掩盖。 |
-| 企业盘已有新 APK，应用却无更新提示 | 检查正式清单是否提升并部署、公开接口的 code，以及 `web/src/utils/androidUpdatePolicy.ts` 的自动提示开关。V60 起由原生更新器检查，每 6 小时最多一次，可在设置里手动检查。 |
-| 有增量包却下载了完整安装包 | 增量包只给底版版本号与已安装版本相同、且已安装 APK 的 SHA-256 等于 `fromSha256` 的设备；任一步失败都会退回完整包。核对清单的 `fromSha256` 是否取自当时发布到企业盘的文件。 |
+| 企业盘已有新 APK，应用却无更新提示 | 检查正式清单是否提升并部署、公开接口的 code，以及 `web/src/utils/androidUpdatePolicy.ts` 的自动提示开关。NEXT 由自己的更新器检查，每 6 小时最多一次，可在“设置 → 更新”手动检查。 |
+| NEXT 有增量包却下载了完整安装包 | 增量包只给已装版本号等于底版、且已安装 APK 的 SHA-256 等于 `fromSha256` 的设备；任一步失败都会退回完整包。核对清单的 `fromSha256` 是否取自当时发布到企业盘的文件。 |
 | 同版本反复安装、读取下载失败 | 不把同 code 当升级；保留已有的同版本下载保护。不要为绕过校验而放宽安装验证。 |
 | 文件上传结束，但公共校验失败 | 停止提升/部署，查目录、重名文件、大小、哈希、分享配置；不能忽略验证结果。 |
 | 原生按钮、课程编辑弹层已改，手机没变化 | Compose/Kotlin 和 APK 内的注入脚本需要新 APK；只部署网页不会更新原生代码。 |

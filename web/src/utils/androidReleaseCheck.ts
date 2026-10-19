@@ -7,13 +7,11 @@ export type AndroidReleaseInfo = {
 };
 
 /** Read the live release; a long-lived WebView must not rely on its bundled version. */
-export async function fetchAndroidRelease(fetcher: typeof fetch = fetch, channel: 'stable' | 'beta' = 'stable'): Promise<AndroidReleaseInfo> {
+export async function fetchAndroidRelease(fetcher: typeof fetch = fetch): Promise<AndroidReleaseInfo> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    // A device in the 药大拾间 NEXT test channel compares against the test build.
-    const path = channel === 'beta' ? '/api/site/downloads/android?channel=beta' : '/api/site/downloads/android';
-    const response = await fetcher(path, { cache: 'no-store', signal: controller.signal });
+    const response = await fetcher('/api/site/downloads/android', { cache: 'no-store', signal: controller.signal });
     if (!response.ok) throw new Error('更新信息暂时不可用');
     const payload = await response.json();
     const value = payload?.data;

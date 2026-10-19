@@ -1,0 +1,48 @@
+name: Android NEXT release artifact
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "android-next/**"
+      - "web/src/utils/iosNextScheduleBridge.ts"
+      - ".github/workflows/android-next-release.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          # cmdline-tools 16 no longer ships the legacy 'tools' package the action installs by default.
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify update handoff and build release APK
+        working-directory: android-next
+        run: |
+          bash gradlew :app:testDebugUnitTest --tests '*Apk*Test' --tests '*AppConfigTest' --tests '*ClientStatsTest' --tests '*NativeShellLogicTest' --tests '*ScheduleStoreTest' --tests '*ScheduleExportAndVisualsTest' --tests '*ScheduleParityTest' --tests '*ScheduleWidget*Test' --tests '*ApkDeltaTest' --tests '*CustomizationTest' --tests '*WebThemingTest' --tests '*SplashIconRenderTest' :app:lintDebug :app:assembleRelease --no-daemon
+      - name: Upload commit-bound unsigned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-web-android-next-unsigned-${{ github.sha }}
+          path: android-next/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-web-android-next-checks-${{ github.sha }}
+          path: |
+            android-next/app/build/test-results/testDebugUnitTest/
+            android-next/app/build/reports/lint-results-debug.*

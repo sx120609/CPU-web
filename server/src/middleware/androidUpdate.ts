@@ -6,12 +6,18 @@ import { getAndroidUpdateRequirement } from "../services/androidUpdateRequiremen
 // route available, including for old cached web bundles and legacy shells.
 const EXEMPT_PATHS = new Set([
   "/health", "/ready", "/site/features", "/site/config",
-  "/site/downloads/android", "/site/downloads/android-app", "/site/downloads/android-patch",
+  "/site/downloads/android", "/site/downloads/android-app",
+  "/site/downloads/android-next", "/site/downloads/android-next-app", "/site/downloads/android-next-patch",
   "/auth/logout", "/security/csp-report",
 ]);
 
+/**
+ * The stable app's version from its user agent; null for other clients.
+ * 药大拾间 NEXT (`CPUWebNextApp/`) is a separate app with its own updates, so
+ * the stable app's update deadline never applies to it.
+ */
 export function androidVersionFromUserAgent(ua: string): number | null {
-  if (!/\bCPUWebScheduleApp\b/i.test(ua)) return null;
+  if (!/\bCPUWebScheduleApp\b/i.test(ua) || /\bCPUWebNextApp\//i.test(ua)) return null;
   const match = /\bCPUWebScheduleApp\/(\d+)(?=\s|[;)]|$)/i.exec(ua);
   const version = Number(match?.[1]);
   return Number.isSafeInteger(version) && version > 0 ? version : 1;

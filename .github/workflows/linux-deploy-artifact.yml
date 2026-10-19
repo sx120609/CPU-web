@@ -107,6 +107,17 @@ jobs:
           fi
           node --test android/tests/*.test.mjs
 
+      - name: Verify 药大拾间 NEXT bridges and shared visual tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run android-next:generate
+          if ! git diff --stat --exit-code -- android-next/app/src/main/assets/NativeWebCompatibility.js android-next/app/src/main/java/cn/lizmt/cpuweb/schedule/SchedulePalettes.kt; then
+            echo "::error title=Stale NEXT generated files::Run 'npm run android-next:generate' at the repository root and commit NativeWebCompatibility.js and SchedulePalettes.kt."
+            exit 1
+          fi
+          node --test android-next/tests/*.test.mjs
+
       - name: Test deployment scripts and Agent artifact installation
         shell: bash
         run: |

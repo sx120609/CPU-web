@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { androidReleaseFor, betaAndroidRelease, parseAndroidChannel, publishedAndroidRelease, validateAndroidRelease, verifyAndroidReleaseBytes } from "../src/services/androidRelease";
+import { publishedAndroidNextRelease, publishedAndroidRelease, validateAndroidRelease, verifyAndroidReleaseBytes } from "../src/services/androidRelease";
 
 test("release metadata rejects changed identity, certificate and inconsistent filenames", () => {
   assert.throws(()=>validateAndroidRelease({...publishedAndroidRelease, packageName:"other.app"}));
@@ -30,15 +30,19 @@ test("patch and note entries are checked like the rest of the manifest", () => {
   assert.throws(() => validateAndroidRelease({ ...base, notes: [""] }));
 });
 
-test("the NEXT channel only receives a test build while it is newer than the release", () => {
-  const stable = publishedAndroidRelease;
-  const newer = { ...stable, versionCode: stable.versionCode + 1, fileName: `CPU-Web-Android-V${stable.versionCode + 1}.apk` };
-  assert.deepEqual(androidReleaseFor("beta", stable, newer), { release: newer, channel: "beta" });
-  assert.deepEqual(androidReleaseFor("stable", stable, newer), { release: stable, channel: "stable" });
-  assert.deepEqual(androidReleaseFor("beta", stable, stable), { release: stable, channel: "stable" });
-  assert.equal(parseAndroidChannel("beta"), "beta");
-  assert.equal(parseAndroidChannel(["beta"]), "stable");
-  assert.equal(parseAndroidChannel(undefined), "stable");
-  // The published NEXT manifest is valid and never older than the release.
-  assert.ok(betaAndroidRelease.versionCode >= 1);
+test("药大拾间 NEXT is its own product: package, file names and patches never pass as the stable app", () => {
+  const sha = "d".repeat(64);
+  const next = {
+    ...publishedAndroidRelease, packageName: "cn.lizmt.cpuweb.next", versionCode: 1002, versionName: "1.0.1",
+    fileName: "CPU-Web-Android-NEXT-V1002.apk", notes: ["工作台"],
+    patches: [{ fromVersionCode: 1001, fromSha256: sha, fileName: "CPU-Web-Android-NEXT-V1001-V1002.cpupatch", size: 9000, sha256: sha }],
+  };
+  assert.equal(validateAndroidRelease(next, "next").versionCode, 1002);
+  assert.throws(() => validateAndroidRelease(next));
+  assert.throws(() => validateAndroidRelease({ ...next, packageName: "cn.lizmt.cpuweb" }, "next"));
+  assert.throws(() => validateAndroidRelease({ ...next, fileName: "CPU-Web-Android-V1002.apk" }, "next"));
+  assert.throws(() => validateAndroidRelease({ ...next, patches: [{ ...next.patches[0], fileName: "CPU-Web-Android-V1001-V1002.cpupatch" }] }, "next"));
+  assert.throws(() => validateAndroidRelease(publishedAndroidRelease, "next"));
+  // Before its first release the NEXT manifest is empty.
+  assert.ok(publishedAndroidNextRelease === null || publishedAndroidNextRelease.packageName === "cn.lizmt.cpuweb.next");
 });

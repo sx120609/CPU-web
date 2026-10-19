@@ -39,14 +39,3 @@ test('reads the shared update deadline and server clock and rejects invalid enfo
   await assert.rejects(read({ ...data, serverTime: undefined }));
   await assert.rejects(read({ ...data, updateRequirement: null }));
 });
-
-test('a device in the NEXT test channel reads the test build', async () => {
-  const urls: string[] = [];
-  const fetcher = (async (url) => {
-    urls.push(String(url));
-    return new Response(JSON.stringify({ code: 0, data: release(61) }));
-  }) as typeof fetch;
-  assert.equal((await fetchAndroidRelease(fetcher, 'beta')).versionCode, 61);
-  await fetchAndroidRelease(fetcher);
-  assert.deepEqual(urls, ['/api/site/downloads/android?channel=beta', '/api/site/downloads/android']);
-});

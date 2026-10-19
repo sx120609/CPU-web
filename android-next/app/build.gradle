@@ -1,0 +1,116 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "org.jetbrains.kotlin.plugin.compose"
+}
+
+dependencies {
+    implementation platform("androidx.compose:compose-bom:2024.12.01")
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.activity:activity-compose:1.9.3"
+    implementation "androidx.lifecycle:lifecycle-runtime-compose:2.8.7"
+    implementation "androidx.webkit:webkit:1.12.1"
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.compose.material3:material3"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
+    debugImplementation "androidx.compose.ui:ui-tooling"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.robolectric:robolectric:4.16.1"
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0"
+    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+}
+
+def defaultAppUrl = "https://cputime.cn/home"
+def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
+def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.next").toString()
+def resolvedAppName = (project.findProperty("appName") ?: "药大拾间 NEXT").toString()
+def releaseStoreFile = (project.findProperty("releaseStoreFile") ?: "").toString()
+def releaseStorePassword = (project.findProperty("releaseStorePassword") ?: "").toString()
+def releaseKeyAlias = (project.findProperty("releaseKeyAlias") ?: "").toString()
+def releaseKeyPassword = (project.findProperty("releaseKeyPassword") ?: "").toString()
+
+def escapeJavaString = { value ->
+    value.replace("\\", "\\\\").replace("\"", "\\\"")
+}
+
+android {
+    namespace "cn.lizmt.cpuweb.schedule"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId resolvedApplicationId
+        minSdk 24
+        targetSdk 35
+        // 药大拾间 NEXT counts from 1001 so the site and server, which compare
+        // CPUWebScheduleApp/<versionCode> with the stable app's thresholds,
+        // never take it for an outdated stable client. Users see versionName.
+        versionCode 1001
+        versionName "1.0.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "boolean", "WEB_DEBUG", (project.findProperty("webDebug") == "true").toString()
+        buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
+        resValue "string", "app_name", resolvedAppName
+    }
+
+    signingConfigs {
+        release {
+            if (releaseStoreFile) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Tree shaking only; see proguard-rules.pro for why names and code shape are kept.
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            if (releaseStoreFile) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            // QA only: run the debug fixture on the shrunk code a release ships (-PminifyDebug=true).
+            if (project.findProperty("minifyDebug") == "true") {
+                minifyEnabled true
+                proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+        compose true
+    }
+
+    // DEX stored uncompressed: an incremental update can then carry a binary
+    // difference of the code instead of the whole recompressed file
+    // (server/src/services/androidDelta.ts). It also spares the system from
+    // extracting the code at install time.
+    packaging {
+        dex {
+            useLegacyPackaging false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlin {
+        jvmToolchain(17)
+    }
+
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
+}

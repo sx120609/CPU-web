@@ -48,6 +48,8 @@ test("failed initialization is retried without silently granting a new grace per
 test("native version detection excludes other platforms and ordinary Android browsers", () => {
   assert.equal(androidVersionFromUserAgent("Android CPUWebScheduleApp/58 CPUWebScheduleAppVersion/4.0.17 CPUTimeNative/1"), 58);
   assert.equal(androidVersionFromUserAgent("CPUWebScheduleApp/59"), 59);
+  // 药大拾间 NEXT is a separate app; the stable app's deadline never blocks it.
+  assert.equal(androidVersionFromUserAgent("CPUWebScheduleApp/1001 CPUWebScheduleAppVersion/1.0.0 CPUTimeNative/1 CPUWebNextApp/1001"), null);
   assert.equal(androidVersionFromUserAgent("CPUWebScheduleApp/unknown"), 1);
   assert.equal(androidVersionFromUserAgent("CPUWebScheduleApp/0"), 1);
   assert.equal(androidVersionFromUserAgent("CPUWebScheduleApp/59junk"), 1);

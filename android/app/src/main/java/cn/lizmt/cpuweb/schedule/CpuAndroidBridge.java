@@ -113,21 +113,6 @@ public final class CpuAndroidBridge {
         });
     }
 
-    /** 新版原生更新器（增量包、测试通道、静默安装）。网页看到它就把更新提示交给原生。 */
-    @JavascriptInterface
-    public boolean supportsNativeUpdater() { return true; }
-
-    @JavascriptInterface
-    public void openNativeUpdater() {
-        activity.runOnUiThread(() -> activity.openSettings("update"));
-    }
-
-    /** "stable" 或 "beta"（药大拾间 NEXT），网页按它读取对应通道的版本。 */
-    @JavascriptInterface
-    public String getUpdateChannel() {
-        return activity.getUpdates().getChannel().getId();
-    }
-
     @JavascriptInterface
     public boolean supportsPersistentApkUpdate() { return true; }
 

@@ -9,6 +9,9 @@ build/
 *.tsbuildinfo
 android/.gradle/
 android/**/build/
+android-next/.gradle/
+android-next/**/build/
+android-next/app/release/
 *.apk
 !web/public/downloads/
 !web/public/downloads/CPU-Web.apk

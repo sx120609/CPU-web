@@ -1,0 +1,339 @@
+package cn.lizmt.cpuweb.schedule;
+
+import android.app.PendingIntent;
+import android.appwidget.AppWidgetManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ContentValues;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
+import android.webkit.JavascriptInterface;
+import android.widget.Toast;
+
+import org.json.JSONObject;
+
+import java.io.OutputStream;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+public final class CpuAndroidBridge {
+    private final MainActivity activity;
+    private final ApkUpdateController updates;
+
+    CpuAndroidBridge(MainActivity activity) {
+        this.activity = activity;
+        this.updates = ApkUpdateController.get(activity);
+    }
+
+    @JavascriptInterface
+    public int getVersionCode() {
+        return BuildConfig.VERSION_CODE;
+    }
+
+    @JavascriptInterface
+    public String getVersionName() {
+        return BuildConfig.VERSION_NAME;
+    }
+
+    @JavascriptInterface
+    public boolean supportsNativeUpdatePrompt() {
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean supportsScheduleWidget() {
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean supportsScheduleWidgetLocalDays() {
+        return true;
+    }
+
+    /** 网页端按日期展开好的课表（docs/schedule-widget-rules.md 第 7 节），小组件只读这一份。 */
+    @JavascriptInterface
+    public boolean saveScheduleWidgetLocalDays(String json) {
+        return ScheduleWidgetLocalDays.save(activity, json);
+    }
+
+    @JavascriptInterface
+    public void clearScheduleWidgetLocalDays() {
+        ScheduleWidgetLocalDays.clear(activity);
+    }
+
+    /** 网页端切换课表主题时同步给小组件，有变化才重画。 */
+    @JavascriptInterface
+    public void setScheduleWidgetTheme(String theme) {
+        // The native widget settings show the theme too, so they are updated on the UI thread.
+        activity.runOnUiThread(() -> activity.getWidgets().selectTheme(theme == null ? "" : theme));
+    }
+
+    @JavascriptInterface
+    public boolean supportsInAppApkDownload() {
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean supportsStagedApkInstall() {
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean copyText(String text) {
+        try {
+            ClipboardManager manager = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (manager == null) return false;
+            manager.setPrimaryClip(ClipData.newPlainText("CPU Web", text == null ? "" : text));
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public void openExternalUrl(String url) {
+        activity.runOnUiThread(() -> {
+            try {
+                Uri uri = Uri.parse(url == null ? "" : url.trim());
+                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                activity.startActivity(intent);
+            } catch (Exception ignored) {
+                Toast.makeText(activity, "无法打开系统浏览器", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /** 药大拾间 NEXT 的原生更新器（增量包、静默安装）。网页看到它就不再弹正式版的更新提示。 */
+    @JavascriptInterface
+    public boolean supportsNativeUpdater() { return true; }
+
+    @JavascriptInterface
+    public void openNativeUpdater() {
+        activity.runOnUiThread(() -> activity.openSettings("update"));
+    }
+
+    @JavascriptInterface
+    public boolean supportsPersistentApkUpdate() { return true; }
+
+    @JavascriptInterface
+    public String getApkUpdateState() { return updates.stateJson(); }
+
+    @JavascriptInterface
+    public boolean continueApkInstall() { return updates.requestInstall(activity); }
+
+    @JavascriptInterface
+    public boolean retryApkUpdate() { return updates.retry(); }
+
+    @JavascriptInterface
+    public boolean downloadAndInstallApk(String url, String fileName) {
+        return updates.start(url, fileName);
+    }
+
+    /** 网页“存储与缓存”页：WebView 网络缓存和临时文件的占用，格式见 StorageCleaner。 */
+    @JavascriptInterface
+    public String getStorageUsage() {
+        return StorageCleaner.usageJson(activity);
+    }
+
+    /** 清理选中的分类（JSON 数组，如 ["network","temp"]），返回清理后的占用。 */
+    @JavascriptInterface
+    public String clearStorage(String categories) {
+        Set<String> targets = StorageCleaner.parseCategories(categories);
+        if (targets.contains(StorageCleaner.TEMP)) {
+            StorageCleaner.clearTemp(activity.getCacheDir(), activity.getExternalCacheDir());
+        }
+        if (targets.contains(StorageCleaner.NETWORK)) clearWebViewCache();
+        return StorageCleaner.usageJson(activity);
+    }
+
+    /** WebView 只能在主线程操作；磁盘缓存由 Chromium 异步删除，稍等它删完再统计。 */
+    private void clearWebViewCache() {
+        long before = StorageCleaner.networkBytes(activity.getCacheDir());
+        CountDownLatch cleared = new CountDownLatch(1);
+        activity.runOnUiThread(() -> {
+            try {
+                activity.getWeb().getWebView().clearCache(true);
+            } catch (Exception ignored) {
+                // WebView 正在重建时跳过这次清理，占用照实返回。
+            } finally {
+                cleared.countDown();
+            }
+        });
+        try {
+            if (!cleared.await(2, TimeUnit.SECONDS)) return;
+            for (int attempt = 0; attempt < 15 && StorageCleaner.networkBytes(activity.getCacheDir()) > before / 2; attempt++) {
+                Thread.sleep(100);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** The Web gallery hands previews to the native viewer when this returns true. */
+    @JavascriptInterface
+    public boolean supportsNativeImagePreview() {
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean previewImages(String payload) {
+        ImagePreviewRequest request = ImagePreviewRequest.parse(payload);
+        if (request == null) return false;
+        activity.showImagePreview(request);
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean saveImageUrl(String url, String fileName) {
+        if (url == null || !isHttpUrl(Uri.parse(url.trim()))) return false;
+        String name = ImagePreviewRequest.Companion.sanitizeImageName(fileName == null ? "" : fileName);
+        activity.runOnUiThread(() -> ImagePreviewKt.saveImage(activity, new PreviewImage(url.trim(), name, name)));
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean saveImage(String dataUrl, String fileName) {
+        try {
+            if (!activity.ensureLegacyStoragePermission()) {
+                activity.runOnUiThread(() ->
+                        Toast.makeText(activity, "请先允许存储权限后再保存图片", Toast.LENGTH_SHORT).show()
+                );
+                return false;
+            }
+            String safeName = sanitizeFileName(fileName == null ? "" : fileName);
+            String raw = dataUrl == null ? "" : dataUrl.trim();
+            int comma = raw.indexOf(',');
+            String payload = comma >= 0 ? raw.substring(comma + 1) : raw;
+            byte[] bytes = Base64.decode(payload, Base64.DEFAULT);
+            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bitmap == null) return false;
+
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, safeName);
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/CPU-web");
+                values.put(MediaStore.Images.Media.IS_PENDING, 1);
+            }
+
+            Uri uri = activity.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) return false;
+
+            try (OutputStream output = activity.getContentResolver().openOutputStream(uri)) {
+                if (output == null) return false;
+                boolean ok = bitmap.compress(Bitmap.CompressFormat.PNG, 100, output);
+                if (!ok) return false;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues done = new ContentValues();
+                done.put(MediaStore.Images.Media.IS_PENDING, 0);
+                activity.getContentResolver().update(uri, done, null, null);
+            }
+
+            activity.runOnUiThread(() ->
+                    Toast.makeText(activity, "图片已保存到相册", Toast.LENGTH_SHORT).show()
+            );
+            return true;
+        } catch (Exception ignored) {
+            activity.runOnUiThread(() ->
+                    Toast.makeText(activity, "保存图片失败", Toast.LENGTH_SHORT).show()
+            );
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public void installScheduleWidget(String payload) {
+        activity.runOnUiThread(() -> installOnUiThread(payload));
+    }
+
+    private void installOnUiThread(String payload) {
+        String endpoint = parseEndpoint(payload);
+        if (endpoint.isEmpty()) {
+            Toast.makeText(activity, "小组件配置无效，请重新添加", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        ScheduleWidgetPrefs.saveEndpoint(activity, endpoint);
+        String theme = parseTheme(payload);
+        if (!theme.isEmpty()) ScheduleWidgetPrefs.saveTheme(activity, theme);
+        ScheduleWidgetProvider.updateAll(activity);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AppWidgetManager manager = activity.getSystemService(AppWidgetManager.class);
+            ComponentName provider = new ComponentName(activity, ScheduleWidgetProvider.class);
+            if (manager != null && manager.isRequestPinAppWidgetSupported()) {
+                boolean requestSent = manager.requestPinAppWidget(provider, null, widgetPinnedCallback());
+                if (requestSent) {
+                    Toast.makeText(activity, "已请求系统添加小组件；如未弹出，请长按桌面手动添加", Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
+        }
+
+        Toast.makeText(activity, "配置已保存，请长按桌面添加课表小组件", Toast.LENGTH_LONG).show();
+    }
+
+    private PendingIntent widgetPinnedCallback() {
+        Intent intent = new Intent(activity, ScheduleWidgetProvider.class)
+                .setAction(ScheduleWidgetProvider.ACTION_WIDGET_PINNED);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            flags |= PendingIntent.FLAG_MUTABLE;
+        } else {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        return PendingIntent.getBroadcast(activity, 1001, intent, flags);
+    }
+
+    private String parseEndpoint(String payload) {
+        if (payload == null) return "";
+        String raw = payload.trim();
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+        try {
+            JSONObject json = new JSONObject(raw);
+            return json.optString("endpoint", "").trim();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private String parseTheme(String payload) {
+        if (payload == null || !payload.trim().startsWith("{")) return "";
+        try {
+            return new JSONObject(payload.trim()).optString("theme", "").trim();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private String sanitizeFileName(String fileName) {
+        String raw = fileName.trim();
+        if (raw.isEmpty()) raw = "cpu-share";
+        raw = raw.replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (!raw.toLowerCase().endsWith(".png")) {
+            raw += ".png";
+        }
+        return raw;
+    }
+
+    private boolean isHttpUrl(Uri uri) {
+        String scheme = uri.getScheme();
+        return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+    }
+
+    void resumePendingInstall() { updates.attach(activity); }
+
+    void pauseUpdateTracking() { updates.detach(activity); }
+}

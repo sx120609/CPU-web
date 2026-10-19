@@ -140,10 +140,6 @@ class WebSession(
     private var navigationGeneration = 0
     private var legacyAttached = false
     private var nativeInterfaceAttached = false
-    /** The user's page styles and tab roots, run at document start (see [WebTheming]). */
-    private var preferenceScript = ""
-    private var preferenceHandler: androidx.webkit.ScriptHandler? = null
-    private var textZoom = 100
 
     init {
         val assets = context.assets
@@ -167,7 +163,7 @@ class WebSession(
         settings.databaseEnabled = true
         settings.loadWithOverviewMode = true
         settings.useWideViewPort = true
-        settings.textZoom = textZoom
+        settings.textZoom = 100
         settings.mediaPlaybackRequiresUserGesture = false
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.setSupportMultipleWindows(true)
@@ -191,9 +187,6 @@ class WebSession(
         if (documentStartSupported) {
             WebViewCompat.addDocumentStartJavaScript(webView, bootstrapScript, origins)
         }
-        // A replacement WebView after a renderer crash starts without the old registration.
-        preferenceHandler = null
-        installPreferenceScript()
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             // Origin-scoped and main-frame checked: an embedded third-party
             // frame can never drive the shell.
@@ -223,33 +216,8 @@ class WebSession(
         legacyAttached = attached
     }
 
-    /**
-     * The user's look for the site's pages and the tab roots for the page bridge.
-     * Registered for every future document and applied to the current one at once.
-     */
-    fun applyPreferences(script: String, zoom: Int) {
-        if (zoom != textZoom) {
-            textZoom = zoom
-            webView.settings.textZoom = zoom
-        }
-        if (script == preferenceScript) return
-        preferenceScript = script
-        installPreferenceScript()
-        if (AppConfig.isTrusted(webView.url)) evaluate(script)
-    }
-
-    private fun installPreferenceScript() {
-        preferenceHandler?.remove()
-        preferenceHandler = null
-        if (documentStartSupported && preferenceScript.isNotEmpty()) {
-            preferenceHandler = WebViewCompat.addDocumentStartJavaScript(webView, preferenceScript, setOf(AppConfig.origin))
-        }
-    }
-
-    /** Load the first page; [path] is the launch tab's route when that tab is a site page. */
-    fun start(path: String = "/home") {
-        if (webView.url != null) return
-        webView.loadUrl(if (path == "/home") AppConfig.startUrl else AppConfig.routeUrl(path) ?: AppConfig.startUrl)
+    fun start() {
+        if (webView.url == null) webView.loadUrl(AppConfig.startUrl)
     }
 
     // endregion
@@ -619,8 +587,8 @@ class WebSession(
                 }
                 if (AppConfig.isTrusted(url)) {
                     val path = AppConfig.pathOf(url).orEmpty()
-                    if (blocksInternalNavigation && mainFrame && !ShellRoutes.isAuthPath(path)) return true
-                    if (mainFrame && ShellRoutes.isSchedulePath(path)) {
+                    if (blocksInternalNavigation && mainFrame && !ShellTab.isAuthPath(path)) return true
+                    if (mainFrame && ShellTab.isSchedulePath(path)) {
                         if (gesture) onNavigate?.invoke(path)
                         return true
                     }
@@ -669,10 +637,7 @@ class WebSession(
             }
             // Older WebView builds cannot inject at document start; the
             // bootstrap is idempotent, so running it here is safe everywhere.
-            if (!documentStartSupported) {
-                view.evaluateJavascript(bootstrapScript, null)
-                if (preferenceScript.isNotEmpty()) view.evaluateJavascript(preferenceScript, null)
-            }
+            if (!documentStartSupported) view.evaluateJavascript(bootstrapScript, null)
             view.evaluateJavascript(compatibilityScript, null)
         }
 
@@ -765,8 +730,8 @@ class WebSession(
                         openOutside(uri)
                     } else if (AppConfig.isTrusted(url)) {
                         val path = AppConfig.pathOf(url).orEmpty()
-                        if (!blocksInternalNavigation || ShellRoutes.isAuthPath(path)) {
-                            if (ShellRoutes.isSchedulePath(path)) onNavigate?.invoke(path) else navigate(path, replace = false)
+                        if (!blocksInternalNavigation || ShellTab.isAuthPath(path)) {
+                            if (ShellTab.isSchedulePath(path)) onNavigate?.invoke(path) else navigate(path, replace = false)
                         }
                     } else {
                         openOutside(uri)
