@@ -56,6 +56,10 @@ test("论坛提交 ID 只接受匹配类型的稳定客户端标识", () => {
   assert.equal(normalizeForumSubmissionId("reply-12345678-abcd", "topic"), null);
   assert.equal(normalizeForumSubmissionId("topic-short", "topic"), null);
   assert.equal(normalizeForumSubmissionId("", "topic"), null);
+  // NEXT 1.3.0's ids, for the post and for its status poll alike.
+  assert.equal(normalizeForumSubmissionId("next-k3j9x2ab1mfz7q0c", "topic"), "topic-next-k3j9x2ab1mfz7q0c");
+  assert.equal(normalizeForumSubmissionId("next-k3j9x2ab1mfz7q0c", "reply"), "reply-next-k3j9x2ab1mfz7q0c");
+  assert.equal(normalizeForumSubmissionId("next-x", "topic"), null);
 });
 
 test("论坛幂等写入只把 Prisma 唯一约束冲突识别为可恢复重放", () => {

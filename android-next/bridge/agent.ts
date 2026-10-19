@@ -150,8 +150,12 @@ async function settle(first: any, poll: () => Promise<any>) {
   return { item: current, status };
 }
 
-function submissionId() {
-  return 'next-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+/** The id the site expects for an idempotent post or reply, as the Web client makes it. */
+function submissionId(kind: 'topic' | 'reply') {
+  const unique = typeof crypto?.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  return `${kind}-${unique}`.toLowerCase().slice(0, 80);
 }
 
 /**
@@ -168,7 +172,7 @@ export function installAndroidAgentActions() {
       const id = Number(payload?.id);
       switch (payload?.type) {
         case 'forum.post': {
-          const sid = submissionId();
+          const sid = submissionId('topic');
           const created = await siteRequest('POST', '/topics', {
             boardSlug: String(payload.board), title: String(payload.title), content: String(payload.content), anonymous: Boolean(payload.anonymous), submissionId: sid,
           }, '发帖失败，请稍后重试');
@@ -176,7 +180,7 @@ export function installAndroidAgentActions() {
           return { ok: true, id: item?.id, status, link: item?.id ? `/forum/topic/${item.id}` : '' };
         }
         case 'forum.reply': {
-          const sid = submissionId();
+          const sid = submissionId('reply');
           const created = await siteRequest('POST', '/replies', {
             topicId: Number(payload.topicId), content: String(payload.content), anonymous: Boolean(payload.anonymous), submissionId: sid,
             ...(payload.parentReplyId ? { parentReplyId: Number(payload.parentReplyId) } : {}),

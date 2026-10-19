@@ -51,8 +51,10 @@ export async function resolveForumListViewerId(
 }
 
 export function normalizeForumSubmissionId(value: unknown, kind: "topic" | "reply") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return null;
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+  // 药大拾间 NEXT 1.3.0 sends `next-…` ids for posts and replies 拾间AI writes; they read as this kind's ids.
+  const normalized = /^next-[a-z0-9]/u.test(raw) ? `${kind}-${raw}` : raw;
   if (!FORUM_SUBMISSION_ID_PATTERN.test(normalized) || !normalized.startsWith(`${kind}-`)) return null;
   return normalized;
 }
