@@ -36,6 +36,7 @@
              and font changes. Compose re-renders for the new configuration. -->
         <activity
             android:name=".MainActivity"
+            android:label="@string/launcher_name"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|density|fontScale|navigation"

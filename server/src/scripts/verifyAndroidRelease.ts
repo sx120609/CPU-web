@@ -112,11 +112,13 @@ async function verifyDownloadedPackage(bytes: Uint8Array, release: AndroidReleas
 async function verifyPublic(site: string, product: AndroidProduct, release: AndroidRelease) {
   const origin = new URL(site).origin;
   const base = product === "next" ? "/api/site/downloads/android-next" : "/api/site/downloads/android";
-  const response = await fetch(`${origin}${base}`, { signal: AbortSignal.timeout(30000) });
+  // An invite-only NEXT answers only with an invitation code (--invite=).
+  const invite = product === "next" && arg("invite") ? `?invite=${encodeURIComponent(arg("invite")!)}` : "";
+  const response = await fetch(`${origin}${base}${invite}`, { signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new Error("公开安卓版本接口不可用");
   const metadata = (await response.json() as { data?: AndroidRelease }).data;
   if (metadata?.versionCode !== release.versionCode || metadata?.sha256 !== release.sha256) throw new Error("公开版本清单尚未切换");
-  const download = await readEnterprisePackage(`${origin}${base}-app`, origin);
+  const download = await readEnterprisePackage(`${origin}${base}-app${invite}`, origin);
   verifyAndroidReleaseBytes(download.bytes, release, product);
   return download.hosts;
 }

@@ -209,7 +209,7 @@ Invoke-RestMethod https://cputime.cn/api/ready
 
 药大拾间 NEXT 是独立的测试版应用，与正式版并存：
 
-- 代码在 `android-next/`，包名 `cn.lizmt.cpuweb.next`，名称“药大拾间 NEXT”，自有图标。
+- 代码在 `android-next/`，包名 `cn.lizmt.cpuweb.next`，名称“药大拾间 NEXT”（桌面图标名“拾间 NEXT”），自有图标。
 - 版本号从 1001 起，见 `android-next/README.md`。
 - 正式版 `android/` 的发布流程（上文第 1–7 步）与它无关；NEXT 的改动不会进入正式版，除非另行移植。
 - 两个应用用同一张发布证书签名。
@@ -223,6 +223,7 @@ Invoke-RestMethod https://cputime.cn/api/ready
 | 正式文件名 | `CPU-Web-Android-NEXT-V<versionCode>.apk` |
 | 增量包 | `CPU-Web-Android-NEXT-V<旧>-V<新>.cpupatch`，记录在清单的 `patches` 里 |
 | 清单 | `server/src/releases/android-next.json`，首次发布前为 `null` |
+| 访问规则 | `server/src/releases/android-next-access.json`：`invite` 邀请制或 `public` 公开，见下文“邀请制” |
 | 接口 | `/api/site/downloads/android-next?from=<versionCode>`、`/api/site/downloads/android-next-app`、`/api/site/downloads/android-next-patch?from=` |
 | 存放 | 与正式版 APK 同一个企业盘发布目录；网站只返回清单和跳转 |
 
@@ -252,10 +253,26 @@ NEXT 的 APK 不放进 `web/public/downloads/`，该目录仍只保存正式版�
    ```
 
    脚本校验签名、包信息、GitHub 来源和企业盘字节，并从企业盘下载每个增量包和它的底版、重新合成、比对哈希，全部通过才写 `android-next.json`；版本号必须高于当前 NEXT。
-7. 只提交 `server/src/releases/android-next.json`。推送后等待精确 SHA 的 Linux CI：无参数的发布校验也会检查已发布的 NEXT、它的签名和全部增量包。
-8. 获得部署授权后部署，再运行 `verifyAndroidRelease.ts --public-only --product=next --site=https://cputime.cn`。部署后下载页对安卓访客显示 NEXT 邀请卡片。
+7. 只提交 `server/src/releases/android-next.json`（新发邀请时连同 `android-next-access.json`）。推送后等待精确 SHA 的 Linux CI：无参数的发布校验也会检查已发布的 NEXT、它的签名和全部增量包。
+8. 获得部署授权后部署，再运行 `verifyAndroidRelease.ts --public-only --product=next --site=https://cputime.cn`，邀请制下加 `--invite=<邀请码>`。公开模式部署后下载页对安卓访客显示 NEXT 卡片；邀请制不显示。
 
 首次发布 NEXT 前必须先部署本仓库支持 NEXT 的服务端：旧服务端不认识 `CPUWebNextApp/`，也没有 NEXT 的接口。
+
+### 邀请制
+
+`android-next-access.json` 的 `mode` 为 `invite` 时，NEXT 不对外展示：
+
+- 下载页不显示 NEXT 卡片，`/api/site/downloads/android` 的 `next` 为 `null`。
+- NEXT 的三个接口只回应带有效 `?invite=<邀请码>` 的请求和已安装 NEXT（UA 含 `CPUWebNextApp/`）的请求，其余一律 404。已装用户的更新和增量包不受影响。
+- 邀请链接是 `https://cputime.cn/next?invite=<邀请码>`，页面读取清单并给出企业盘下载。
+
+生成邀请：
+
+```powershell
+node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/androidNextInvite.ts --write
+```
+
+脚本打印邀请链接，只把邀请码的 SHA-256 写进 `android-next-access.json`；邀请码不进仓库、不进日志，只交给发邀请的人。加 `--revoke-all` 先作废全部旧邀请。改动在提交、CI 通过并部署后生效。对所有人开放时把 `mode` 改为 `public`，同样提交并部署。
 
 ### 真机核对
 

@@ -12,6 +12,7 @@ import {
   LEGACY_ANDROID_DOWNLOAD_PATH,
 } from "../src/routes/androidDownload";
 import { publishedAndroidRelease } from "../src/services/androidRelease";
+import { inviteCodeHash, type AndroidNextAccess } from "../src/services/androidNextAccess";
 
 const enterpriseFile = {
   url: "https://data.aliyunfile.com/share/v37.apk?signature=temporary",
@@ -80,14 +81,15 @@ test("药大拾间 NEXT has its own release, APK and patch entries, all on the e
   const requirement = async () => ({
     minimumVersionCode: 1, startsAt: new Date(0).toISOString(), deadlineAt: new Date(1).toISOString(), message: "更新",
   });
+  const open: AndroidNextAccess = { mode: "public", inviteCodeSha256: [] };
   const app = express();
-  app.get("/api/site/downloads/android", createAndroidReleaseHandler(requirement, next));
+  app.get("/api/site/downloads/android", createAndroidReleaseHandler(requirement, next, open));
   app.get("/api/site/downloads/android-app", createAndroidDownloadHandler(dependencies));
-  app.get("/api/site/downloads/android-next", createAndroidNextReleaseHandler(next));
-  app.get("/api/site/downloads/android-next-app", createAndroidNextDownloadHandler(dependencies, next));
-  app.get("/api/site/downloads/android-next-patch", createAndroidNextPatchHandler(dependencies, next));
-  app.get("/unpublished", createAndroidNextReleaseHandler(null));
-  app.get("/unpublished-app", createAndroidNextDownloadHandler(dependencies, null));
+  app.get("/api/site/downloads/android-next", createAndroidNextReleaseHandler(next, open));
+  app.get("/api/site/downloads/android-next-app", createAndroidNextDownloadHandler(dependencies, next, open));
+  app.get("/api/site/downloads/android-next-patch", createAndroidNextPatchHandler(dependencies, next, open));
+  app.get("/unpublished", createAndroidNextReleaseHandler(null, open));
+  app.get("/unpublished-app", createAndroidNextDownloadHandler(dependencies, null, open));
   const server = createServer(app);
   t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -114,4 +116,44 @@ test("药大拾间 NEXT has its own release, APK and patch entries, all on the e
 
   assert.equal((await fetch(`${base}/unpublished`)).status, 404);
   assert.equal((await fetch(`${base}/unpublished-app`, { redirect: "manual" })).status, 404);
+});
+
+test("an invite-only NEXT is hidden from the download page and from anyone without the app or an invitation", async (t) => {
+  const next = {
+    ...publishedAndroidRelease, packageName: "cn.lizmt.cpuweb.next", versionCode: 1001, versionName: "1.0.0",
+    fileName: "CPU-Web-Android-NEXT-V1001.apk",
+  };
+  const access: AndroidNextAccess = { mode: "invite", inviteCodeSha256: [inviteCodeHash("ABCDEFGH2345")] };
+  const file = { ...enterpriseFile, url: "https://data.aliyunfile.com/share/next.apk?signature=t", name: next.fileName };
+  const dependencies = { hasShare: () => true, resolveDownload: async () => file };
+  const requirement = async () => ({
+    minimumVersionCode: 1, startsAt: new Date(0).toISOString(), deadlineAt: new Date(1).toISOString(), message: "更新",
+  });
+  const app = express();
+  app.get("/api/site/downloads/android", createAndroidReleaseHandler(requirement, next, access));
+  app.get("/api/site/downloads/android-next", createAndroidNextReleaseHandler(next, access));
+  app.get("/api/site/downloads/android-next-app", createAndroidNextDownloadHandler(dependencies, next, access));
+  const server = createServer(app);
+  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  assert.equal((await (await fetch(`${base}/api/site/downloads/android`)).json()).data.next, null);
+  assert.equal((await fetch(`${base}/api/site/downloads/android-next`)).status, 404);
+  assert.equal((await fetch(`${base}/api/site/downloads/android-next?invite=WRONGCODE234`)).status, 404);
+  assert.equal((await fetch(`${base}/api/site/downloads/android-next-app`, { redirect: "manual" })).status, 404);
+
+  // An invitation link, in any letter case, reads the release and downloads it.
+  const invited = (await (await fetch(`${base}/api/site/downloads/android-next?invite=abcdefgh2345`)).json()).data;
+  assert.equal(invited.versionName, "1.0.0");
+  assert.equal(invited.downloadUrl, "/api/site/downloads/android-next-app?invite=abcdefgh2345");
+  const download = await fetch(`${base}${invited.downloadUrl}`, { redirect: "manual" });
+  assert.equal(download.status, 302);
+  assert.equal(download.headers.get("location"), file.url);
+
+  // The installed NEXT app keeps updating without an invitation.
+  const app_ = { headers: { "user-agent": "Mozilla/5.0 CPUWebScheduleApp/1001 CPUTimeNative/1 CPUWebNextApp/1001" } };
+  const fromApp = (await (await fetch(`${base}/api/site/downloads/android-next?from=1000`, app_)).json()).data;
+  assert.equal(fromApp.downloadUrl, "/api/site/downloads/android-next-app");
+  assert.equal((await fetch(`${base}/api/site/downloads/android-next-app`, { ...app_, redirect: "manual" })).status, 302);
 });

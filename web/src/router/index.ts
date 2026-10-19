@@ -153,6 +153,8 @@ export const router = createRouter({
     { path: "/login", name: "login", component: () => import("@/views/Login.vue"), meta: { public: true, title: "登录" } },
     { path: "/register", name: "register", component: () => import("@/views/Register.vue"), meta: { public: true, title: "注册" } },
     { path: "/thanks", name: "thanks", component: () => import("@/views/thanks/Index.vue"), meta: { public: true, title: "致谢" } },
+    // 药大拾间 NEXT invitation (invite-only builds); the code in the link unlocks the download.
+    { path: "/next", name: "next-invite", component: () => import("@/views/NextInvite.vue"), meta: { public: true, title: "药大拾间 NEXT" } },
     {
       path: "/",
       component: MainLayout,

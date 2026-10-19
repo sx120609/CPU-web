@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { publishedAndroidNextRelease, publishedAndroidRelease, validateAndroidRelease, verifyAndroidReleaseBytes } from "../src/services/androidRelease";
+import { androidNextAccess, canSeeAndroidNext, inviteCodeHash, validateAndroidNextAccess } from "../src/services/androidNextAccess";
 
 test("release metadata rejects changed identity, certificate and inconsistent filenames", () => {
   assert.throws(()=>validateAndroidRelease({...publishedAndroidRelease, packageName:"other.app"}));
@@ -45,4 +46,18 @@ test("药大拾间 NEXT is its own product: package, file names and patches neve
   assert.throws(() => validateAndroidRelease(publishedAndroidRelease, "next"));
   // Before its first release the NEXT manifest is empty.
   assert.ok(publishedAndroidNextRelease === null || publishedAndroidNextRelease.packageName === "cn.lizmt.cpuweb.next");
+});
+
+test("NEXT access rules keep invitation codes out of the repository and reject malformed policies", () => {
+  const policy = validateAndroidNextAccess({ mode: "invite", inviteCodeSha256: [inviteCodeHash("Q7XKD2MPR9TA")] });
+  assert.ok(canSeeAndroidNext(policy, { invite: "q7xkd2mpr9ta" }));
+  assert.ok(!canSeeAndroidNext(policy, { invite: "Q7XKD2MPR9TB" }));
+  assert.ok(!canSeeAndroidNext(policy, { invite: ["Q7XKD2MPR9TA"] }));
+  assert.ok(canSeeAndroidNext(policy, { userAgent: "x CPUWebNextApp/1001" }));
+  assert.ok(!canSeeAndroidNext(policy, { userAgent: "x CPUWebScheduleApp/59" }));
+  assert.ok(canSeeAndroidNext({ mode: "public", inviteCodeSha256: [] }, {}));
+  assert.throws(() => validateAndroidNextAccess({ mode: "everyone" as "public", inviteCodeSha256: [] }));
+  assert.throws(() => validateAndroidNextAccess({ mode: "invite", inviteCodeSha256: ["Q7XKD2MPR9TA"] }));
+  // The committed policy only holds hashes.
+  assert.ok(androidNextAccess.inviteCodeSha256.every((hash) => /^[a-f0-9]{64}$/.test(hash)));
 });

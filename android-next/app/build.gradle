@@ -28,6 +28,8 @@ def defaultAppUrl = "https://cputime.cn/home"
 def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
 def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.next").toString()
 def resolvedAppName = (project.findProperty("appName") ?: "药大拾间 NEXT").toString()
+// Launchers cut "药大拾间 NEXT" short; the home-screen icon carries the shorter name.
+def resolvedLauncherName = (project.findProperty("launcherName") ?: "拾间 NEXT").toString()
 def releaseStoreFile = (project.findProperty("releaseStoreFile") ?: "").toString()
 def releaseStorePassword = (project.findProperty("releaseStorePassword") ?: "").toString()
 def releaseKeyAlias = (project.findProperty("releaseKeyAlias") ?: "").toString()
@@ -55,6 +57,7 @@ android {
         buildConfigField "boolean", "WEB_DEBUG", (project.findProperty("webDebug") == "true").toString()
         buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
         resValue "string", "app_name", resolvedAppName
+        resValue "string", "launcher_name", resolvedLauncherName
     }
 
     signingConfigs {
