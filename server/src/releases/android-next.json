@@ -1,27 +1,28 @@
 {
   "schemaVersion": 1,
-  "versionCode": 1002,
-  "versionName": "1.1.0",
+  "versionCode": 1003,
+  "versionName": "1.2.0",
   "packageName": "cn.lizmt.cpuweb.next",
-  "fileName": "CPU-Web-Android-NEXT-V1002.apk",
-  "size": 8813002,
-  "sha256": "3c4453ea71d50fc7c44dcb5687896fa7e9f7e1fe2ed947eea0daa2a6d92492ce",
+  "fileName": "CPU-Web-Android-NEXT-V1003.apk",
+  "size": 9042378,
+  "sha256": "61232338ced1a90432414c505d0dc562062e7b52b23f72ea020ae980465e84c9",
   "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
-  "sourceCommit": "a949f3fce10958b1e4cb5bd37fd8e38913ca26ae",
-  "buildRun": 39217700920,
+  "sourceCommit": "de96b8b9426e0bc85b99fab8bab8c7dd62cf928d",
+  "buildRun": 39242356829,
   "notes": [
-    "今天：课程和你自己的安排排在一条时间线上，下一件事放在最上面。",
-    "日程与待办：随时记下要做的事，写「周五 14:00 组会」就能认出时间；到点在通知栏提醒，还可以开启上课提醒。",
-    "拾间AI 个人模式：打开后能结合你的课表和日程回答、帮你找空闲时间、替你记事，每一步都先问过你。",
-    "全新的图标、导航栏和设置，更简洁，也更好找。"
+    "拾间AI 可以有多个对话：随时开新对话，在对话列表里搜索、改名、删除；修好了点输入框时页面被键盘顶走的问题。",
+    "拾间AI 能做的事更多：查成绩和考试安排，调整布局、导航栏、今天页面、课表视图和风格，打开站内任意页面；可以选哪些操作直接执行，做过的都记在“操作记录”里，可以撤销。",
+    "日程和待办合成一种，没定时间、没定日期的也能记；日程会显示在课表的周视图和日视图里。",
+    "登录后，日程、拾间AI 对话和操作记录会同步到你的其他手机，设置里可以关闭。",
+    "修好了上课提醒有时排不上的问题；设置里能看到下一次提醒，“提醒检查”可以查出拦住提醒的设置并发测试提醒。"
   ],
   "patches": [
     {
-      "fromVersionCode": 1001,
-      "fromSha256": "2e58c9a847f0ca8136566ceda6336ce9bea89712f6d6c67dbf0ce8556069a10d",
-      "fileName": "CPU-Web-Android-NEXT-V1001-V1002.cpupatch",
-      "size": 1501811,
-      "sha256": "c9833ea0285a2fa55c7d44a10d94956e82b82a9eb550313963962cfc3328bc2f"
+      "fromVersionCode": 1002,
+      "fromSha256": "3c4453ea71d50fc7c44dcb5687896fa7e9f7e1fe2ed947eea0daa2a6d92492ce",
+      "fileName": "CPU-Web-Android-NEXT-V1002-V1003.cpupatch",
+      "size": 1111866,
+      "sha256": "7a7867cb895b0de715faf743ba6f361ba4f22b28130875fdf7f9d66226330feb"
     }
   ]
 }
