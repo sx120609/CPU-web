@@ -131,6 +131,7 @@ try {
 
 1. 打开已有登录会话中的发布目录，确认没有同名文件。上传签名 APK，不覆盖旧版、不创建同名副本、不修改目录分享权限。
 2. 浏览器工具支持文件上传时，先读取它的上传说明，使用文件选择器传绝对路径；完成后确认上传任务成功，而不是仅看“已选择文件”。没有该能力或会话失效时明确说明具体缺项，不通过提取 Cookie 绕过登录。
+   网盘按上传时文件的类型保存 APK，之后覆盖上传也不会改变。类型必须是 `application/vnd.android.package-archive`，否则浏览器下载后没有 `.apk` 后缀、系统不当它是安装包。浏览器工具交给页面的文件类型是 `application/octet-stream` 时，先在页面里用 `new File([file], file.name, { type: "application/vnd.android.package-archive" })` 重新包装，再交给网盘的上传框。上传后用分享的文件列表核对 `download_url` 返回的 `Content-Type`。
 3. 创建 `$outDir/candidate.json`，字段与 `server/src/releases/android.json` 一致：`schemaVersion`、`versionCode`、`versionName`、`packageName`、`fileName`、`size`、`sha256`、`certificateSha256`、`sourceCommit`、`buildRun`。后两项是 **APK 来源提交/Android run**，不是稍后发布清单提交的 SHA 或 Linux run。
 
 ```powershell

@@ -11,6 +11,7 @@ import {
   pickInstaller,
   pickMacInstaller,
   PdsEntry,
+  resolveAndroidDownload,
   walkShareTree,
 } from "../src/services/pdsShare";
 
@@ -143,4 +144,23 @@ test("校园地图原图选择最大图片而不是压缩预览", () => {
   ];
 
   assert.equal(pickCampusMapOriginal(files)?.fileId, "original");
+});
+
+test("安卓安装包跳转到列表里带文件名的下载地址，没有时才退回预览地址", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  const redirect = (id: string) => `https://bj37249.api.aliyunfile.com/v2/redirect?id=${id}`;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const path = new URL(String(input)).pathname;
+    const body = path === "/v2/share_link/get_share_token"
+      ? { share_token: "token", expires_in: 7200 }
+      : { items: [
+        { file_id: "next", name: "CPU-Web-Android-NEXT-V1001.apk", type: "file", size: 80, url: redirect("view-next"), download_url: redirect("attachment-next") },
+        { file_id: "old", name: "CPU-Web-Android-V40.apk", type: "file", size: 70, url: redirect("view-old") },
+      ] };
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  assert.equal((await resolveAndroidDownload("CPU-Web-Android-NEXT-V1001.apk")).url, redirect("attachment-next"));
+  assert.equal((await resolveAndroidDownload("CPU-Web-Android-V40.apk")).url, redirect("view-old"));
 });

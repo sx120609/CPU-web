@@ -27,6 +27,12 @@ export type PdsFile = {
    * 禁止 APK 调用 get_download_url 时也可直接使用；文件字节仍由阿里云返回。
    */
   viewUrl?: string;
+  /**
+   * 文件列表直接给出的下载地址，带 `Content-Disposition: attachment; filename*=…`。
+   * 分享链接禁止 APK 调用 get_download_url，安卓安装包靠它让浏览器存成真实文件名，
+   * 否则只能按地址末段存成一串哈希。
+   */
+  downloadUrl?: string;
 };
 
 export type PdsDownload = {
@@ -128,6 +134,7 @@ export type PdsEntry = {
   size?: number;
   updated_at?: string;
   url?: string;
+  download_url?: string;
 };
 
 /** 从标准桌面安装包文件名中提取版本号，供更新接口自动下发。 */
@@ -206,6 +213,7 @@ export const walkShareTree = async (
         size: Number(item.size) || 0,
         updatedAt: item.updated_at ?? "",
         viewUrl: item.url ?? "",
+        downloadUrl: item.download_url ?? "",
       });
     }
   }
@@ -426,11 +434,13 @@ const resolveTargetDownload = async (target: DownloadTarget, fileName?: string):
     if (target === "campus-map-view" && !installer.viewUrl) {
       throw new Error("PDS share missing inline file URL");
     }
-    const directViewTarget = target === "campus-map-view"
-      || (target === "android" && Boolean(installer.viewUrl));
-    const download = directViewTarget
+    // 地图预览要内联显示；安卓安装包不能走 get_download_url，用列表里带文件名的下载地址。
+    const listedUrl = target === "campus-map-view"
+      ? installer.viewUrl
+      : target === "android" ? installer.downloadUrl || installer.viewUrl : "";
+    const download = listedUrl
       ? {
-          url: installer.viewUrl!,
+          url: listedUrl,
           name: installer.name,
         size: installer.size,
         expiresAt: Date.now() + 3600_000,
