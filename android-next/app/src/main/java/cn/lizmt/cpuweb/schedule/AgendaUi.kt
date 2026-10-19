@@ -209,7 +209,7 @@ fun newAgendaDraft(day: LocalDate?): AgendaItem = AgendaItem(id = "", kind = Age
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AgendaEditorSheet(activity: MainActivity, draft: AgendaItem, onDismiss: () -> Unit) {
+fun AgendaEditorSheet(activity: MainActivity, draft: AgendaItem, onSaved: (AgendaItem) -> Unit = {}, onDismiss: () -> Unit) {
     val isNew = draft.id.isEmpty()
     var text by remember(draft) { mutableStateOf(draft.title) }
     var manual by remember(draft) { mutableStateOf(draft) }
@@ -304,7 +304,13 @@ fun AgendaEditorSheet(activity: MainActivity, draft: AgendaItem, onDismiss: () -
                 onClick = {
                     val item = (if (touched) manual.copy(title = manual.title.ifBlank { text }) else (parsed ?: manual).copy(title = parsed?.title ?: text))
                         .copy(id = draft.id, createdAt = draft.createdAt, done = draft.done, doneDates = draft.doneDates, origin = draft.origin)
-                    if (activity.saveAgenda(item) != null) onDismiss() else activity.toast("先写个标题；日程还需要日期")
+                    val saved = activity.saveAgenda(item)
+                    if (saved != null) {
+                        onSaved(saved)
+                        onDismiss()
+                    } else {
+                        activity.toast("先写个标题")
+                    }
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(LocalCpuLook.current.radius(12.dp)),
@@ -492,7 +498,7 @@ fun AgendaScreen(activity: MainActivity) {
             }
         }
         item("hint") {
-            Text("日程只存在这台手机上；设了提醒的会在通知栏提示。",
+            Text(if (activity.sync.active) "日程会同步到你登录拾间NEXT 的其他手机；设了提醒的会在通知栏提示。" else "日程存在这台手机上；设了提醒的会在通知栏提示。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp))
         }

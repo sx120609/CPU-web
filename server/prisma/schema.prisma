@@ -154,6 +154,7 @@ model User {
   lostFoundItems               LostFoundItem[]               @relation("LostFoundPublisher")
   lostFoundClaims              LostFoundClaim[]              @relation("LostFoundClaimant")
   campusAssistantConversations CampusAssistantConversation[]
+  nextSyncRecords              NextSyncRecord[]
   oauthAuthorizationCodes      OAuthAuthorizationCode[]
   oauthAccessTokens            OAuthAccessToken[]
   workshopWorks                WorkshopWork[]
@@ -275,6 +276,24 @@ model CampusAssistantConversation {
   @@id([userId, id])
   @@index([userId, clientUpdatedAt])
   @@index([userId, deletedAt])
+}
+
+/// 药大拾间 NEXT 的跨设备同步：日程、拾间AI 对话和操作记录各自一条一行，按客户端修改时间取新的；删除留下墓碑。
+model NextSyncRecord {
+  userId          Int
+  collection      String
+  id              String
+  data            String    @default("")
+  clientUpdatedAt DateTime
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, collection, id])
+  @@index([userId, updatedAt])
+  @@index([userId, collection, deletedAt, clientUpdatedAt])
 }
 
 model CampusAssistantDailyUsage {

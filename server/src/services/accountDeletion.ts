@@ -143,7 +143,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
     ["userCourse", "userId"], ["userScheduleEdit", "userId"], ["scheduleWidgetToken", "userId"], ["toolPermission", "userId"],
     ["qqBotBinding", "userId"], ["qqBotBindToken", "userId"], ["wechatBinding", "userId"], ["wechatBindToken", "userId"], ["wechatOauthState", "userId"],
     ["forumImageAsset", "createdById"], ["forumVideoAsset", "createdById"], ["aiReviewLog", "createdById"],
-    ["campusAssistantConversation", "userId"], ["campusAssistantDailyUsage", "userId"], ["campusAssistantPointLedger", "userId"],
+    ["campusAssistantConversation", "userId"], ["campusAssistantDailyUsage", "userId"], ["campusAssistantPointLedger", "userId"], ["nextSyncRecord", "userId"],
     ["courseBotQuota", "userId"], ["courseBotUsageLog", "userId"], ["adminDailyLogin", "userId"], ["marketFavorite", "userId"], ["marketPayoutProfile", "userId"],
     ["oAuthAuthorizationCode", "userId"], ["oAuthAccessToken", "userId"], ["userVerificationApplication", "userId"], ["yaodaFlightAttempt", "userId"], ["yaodaFlightAchievement", "userId"],
     ["tomatoNoodleAttempt", "userId"], ["tomatoNoodleAchievement", "userId"],

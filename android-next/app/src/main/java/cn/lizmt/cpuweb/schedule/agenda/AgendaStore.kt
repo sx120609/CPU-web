@@ -15,6 +15,10 @@ import java.time.LocalDate
 class AgendaStore private constructor(private val file: File, private val onChanged: (List<AgendaItem>) -> Unit) {
     var items by mutableStateOf(AgendaCodec.decode(read()))
         private set
+    /** Removed items and when, kept for a while so other devices drop them too. */
+    private var deleted: Map<String, Long> = AgendaCodec.decodeDeleted(read())
+    /** Told the id of every item changed here (not by sync), so it can be uploaded. */
+    var onLocalChange: ((String) -> Unit)? = null
 
     /** Saves a new or edited item; returns it as stored, or null when it cannot be shown. */
     fun save(item: AgendaItem, now: Long = System.currentTimeMillis()): AgendaItem? {
@@ -26,20 +30,56 @@ class AgendaStore private constructor(private val file: File, private val onChan
                 updatedAt = now,
             ),
         ) ?: return null
+        deleted = deleted - prepared.id
         commit(if (existing == null) items + prepared else items.map { if (it.id == prepared.id) prepared else it })
+        onLocalChange?.invoke(prepared.id)
         return prepared
     }
 
-    fun remove(id: String): AgendaItem? {
+    fun remove(id: String, now: Long = System.currentTimeMillis()): AgendaItem? {
         val removed = items.firstOrNull { it.id == id } ?: return null
+        deleted = deleted + (id to now)
         commit(items.filterNot { it.id == id })
+        onLocalChange?.invoke(id)
         return removed
     }
 
-    /** Puts back an item removed a moment ago (undo). */
-    fun restore(item: AgendaItem) {
+    /** Puts back an item removed a moment ago (undo); it counts as edited now, so it wins over the removal elsewhere. */
+    fun restore(item: AgendaItem, now: Long = System.currentTimeMillis()) {
         if (items.any { it.id == item.id }) return
-        commit(items + item)
+        deleted = deleted - item.id
+        commit(items + item.copy(updatedAt = now))
+        onLocalChange?.invoke(item.id)
+    }
+
+    /** When [id] was removed here, or null. */
+    fun deletedAt(id: String): Long? = deleted[id]
+
+    fun deletedIds(): Set<String> = deleted.keys
+
+    /**
+     * Takes another device's version of an item ([item] null: its removal)
+     * when it is newer than what this phone has. Returns whether the list changed.
+     */
+    fun applyRemote(id: String, item: AgendaItem?, updatedAt: Long): Boolean {
+        val local = items.firstOrNull { it.id == id }
+        val localAt = local?.updatedAt ?: deleted[id] ?: 0L
+        if (updatedAt <= localAt) return false
+        if (item == null) {
+            deleted = deleted + (id to updatedAt)
+            if (local != null) commit(items.filterNot { it.id == id }) else persist()
+            return local != null
+        }
+        val incoming = AgendaCodec.normalize(item.copy(id = id, updatedAt = updatedAt)) ?: return false
+        deleted = deleted - id
+        commit(if (local == null) items + incoming else items.map { if (it.id == id) incoming else it })
+        return true
+    }
+
+    /** Forgets everything (another account takes over this phone). */
+    fun clearAll() {
+        deleted = emptyMap()
+        commit(emptyList())
     }
 
     /** Ticks an item off, or one day of a repeating one. */
@@ -48,11 +88,14 @@ class AgendaStore private constructor(private val file: File, private val onChan
         val next = if (item.repeat == AgendaRepeat.None) item.copy(done = done)
         else item.copy(doneDates = if (done) item.doneDates + day else item.doneDates - day)
         commit(items.map { if (it.id == id) next.copy(updatedAt = System.currentTimeMillis()) else it })
+        onLocalChange?.invoke(id)
     }
 
     /** Re-reads the file after another component wrote it. */
     fun reload() {
-        items = AgendaCodec.decode(read())
+        val raw = read()
+        items = AgendaCodec.decode(raw)
+        deleted = AgendaCodec.decodeDeleted(raw)
     }
 
     /** Everything on [day]: all-day and untimed first, then by time. */
@@ -76,8 +119,14 @@ class AgendaStore private constructor(private val file: File, private val onChan
 
     private fun commit(next: List<AgendaItem>) {
         items = next.takeLast(AgendaCodec.MAX_ITEMS)
-        write(AgendaCodec.encode(items))
+        persist()
         onChanged(items)
+    }
+
+    private fun persist() {
+        val horizon = System.currentTimeMillis() - TOMBSTONE_LIFETIME_MS
+        deleted = deleted.filterValues { it > horizon }
+        write(AgendaCodec.encode(items, deleted))
     }
 
     private fun read(): String? = runCatching { if (file.exists()) file.readText() else null }.getOrNull()
@@ -95,6 +144,8 @@ class AgendaStore private constructor(private val file: File, private val onChan
 
     companion object {
         private const val FILE = "agenda.json"
+        /** As long as the server remembers removals. */
+        private const val TOMBSTONE_LIFETIME_MS = 180L * 24 * 60 * 60 * 1000
         @Volatile private var instance: AgendaStore? = null
 
         fun get(context: Context): AgendaStore = instance ?: synchronized(this) {

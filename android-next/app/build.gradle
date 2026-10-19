@@ -53,7 +53,7 @@ android {
         // CPUWebScheduleApp/<versionCode> with the stable app's thresholds,
         // never take it for an outdated stable client. Users see versionName.
         versionCode 1003
-        versionName "1.1.1"
+        versionName "1.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "boolean", "WEB_DEBUG", (project.findProperty("webDebug") == "true").toString()

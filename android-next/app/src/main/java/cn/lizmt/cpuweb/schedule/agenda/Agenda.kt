@@ -169,8 +169,15 @@ object AgendaCodec {
         .put("updatedAt", item.updatedAt)
         .put("origin", item.origin)
 
-    fun encode(items: List<AgendaItem>): String =
-        JSONObject().put("v", VERSION).put("items", JSONArray(items.map(::toJson))).toString()
+    /** [deleted]: when each removed item was removed, so other devices drop it too. */
+    fun encode(items: List<AgendaItem>, deleted: Map<String, Long> = emptyMap()): String =
+        JSONObject().put("v", VERSION).put("items", JSONArray(items.map(::toJson)))
+            .put("deleted", JSONObject().apply { deleted.forEach { (id, at) -> put(id, at) } }).toString()
+
+    fun decodeDeleted(raw: String?): Map<String, Long> {
+        val json = runCatching { JSONObject(raw ?: return emptyMap()).optJSONObject("deleted") }.getOrNull() ?: return emptyMap()
+        return json.keys().asSequence().filter { ID.matches(it) }.associateWith { json.optLong(it, 0) }.filterValues { it > 0 }
+    }
 
     fun decode(raw: String?): List<AgendaItem> {
         val array = runCatching { JSONObject(raw ?: return emptyList()).optJSONArray("items") }.getOrNull() ?: return emptyList()

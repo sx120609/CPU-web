@@ -44,6 +44,7 @@ import { scheduleShareRouter } from "./scheduleShares";
 import { liveActivityRouter } from "./liveActivities";
 import { appClientRouter } from "./appClients";
 import { coupleRouter } from "./couple";
+import { nextSyncRouter } from "./nextSync";
 
 export const router = Router();
 export const apiAdmissionPaths: string[] = [];
@@ -96,6 +97,7 @@ mount("/likes", authRequired, likeRouter);
 mount("/messages", authRequired, messageRouter);
 mount("/direct-messages", authRequired, directMessageRouter);
 mount("/couple", authRequired, coupleRouter);
+mount("/next-sync", authRequired, nextSyncRouter);
 mount("/forum-reports", authRequired, forumReportRouter);
 mount("/account-verification", authRequired, accountVerificationRouter);
 mount("/uploads", authOptional, uploadRouter);

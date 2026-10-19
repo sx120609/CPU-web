@@ -34,7 +34,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import android.view.WindowManager
+import cn.lizmt.cpuweb.schedule.agenda.AgendaCodec
 import cn.lizmt.cpuweb.schedule.agenda.AgendaItem
 import cn.lizmt.cpuweb.schedule.agenda.AgendaKind
 import cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence
@@ -82,6 +84,10 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     lateinit var agenda: AgendaStore
         private set
     lateinit var assistant: AssistantSession
+        private set
+    lateinit var activityLog: AssistantActivityLog
+        private set
+    lateinit var sync: NextSync
         private set
     /** The day 日程 shows when it opens next (from 今天, a reminder or 拾间AI). */
     var agendaFocus by mutableStateOf<LocalDate?>(null)
@@ -177,6 +183,13 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         dashboardFeeds = DashboardFeeds(web, lifecycleScope)
         agenda = AgendaStore.get(this)
         assistant = AssistantSession(this, lifecycleScope)
+        activityLog = AssistantActivityLog(this)
+        sync = NextSync(this, lifecycleScope, { web.authState.takeIf { it.authenticated }?.account }, agenda, assistant, activityLog)
+        // Changes made here go up a few seconds later, so a burst of edits is one upload.
+        agenda.onLocalChange = { sync.request(delayMs = 3_000) }
+        assistant.onLocalChange = { sync.request(delayMs = 3_000) }
+        activityLog.onLocalChange = { sync.request(delayMs = 3_000) }
+        assistant.onAnswered = { _, message -> autoApplyAssistant(message) }
         // Alarms are lost on an update and on a force stop: set them again.
         AgendaReminders.sync(this, agenda.items)
         shell.onReselected = { destination -> if (customization.value.doubleTapRefresh) reselect(destination) }
@@ -213,6 +226,20 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                         if (schedule.selectedSemester == schedule.currentSemesterValue()) couple.sync(schedule.completeSnapshot())
                     }
                 }
+        }
+        // Sync starts once the site session is known, and again for another account.
+        lifecycleScope.launch {
+            snapshotFlow { web.authState.authenticated to web.authState.account }.collectLatest { (signedIn, _) ->
+                if (signedIn) sync.request()
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(5 * 60_000L)
+                    sync.request()
+                }
+            }
         }
         // The user's layout reaches the page, the launcher and the window as it changes.
         lifecycleScope.launch {
@@ -398,21 +425,56 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         return json
     }
 
-    fun applyAssistantProposal(messageId: String, proposal: AssistantProposal) {
+    fun regenerateAssistant() = assistant.regenerate(::personalContext, ::readAgentData)
+
+    /** Runs one proposal (confirmed, or [auto] under the confirmation setting) and records it in the action log. */
+    fun applyAssistantProposal(messageId: String, proposal: AssistantProposal, auto: Boolean = false) {
+        val conversationId = assistant.conversationOf(messageId) ?: return
         val result = runCatching { executeAssistantAction(proposal.action) }.getOrNull()
         if (result == null) {
-            assistant.setProposal(messageId, proposal.id, ProposalState.Failed, "没能完成：这一项可能已经被改过或删掉了")
+            val note = "没能完成：这一项可能已经被改过或删掉了"
+            assistant.setProposal(messageId, proposal.id, ProposalState.Failed, note, auto)
+            activityLog.record(conversationId, messageId, proposal, note, failed = true, auto = auto)
             return
         }
         result.second?.let { undoActions[proposal.id] = it }
-        assistant.setProposal(messageId, proposal.id, ProposalState.Applied, result.first)
+        assistant.setProposal(messageId, proposal.id, ProposalState.Applied, result.first, auto)
+        activityLog.record(conversationId, messageId, proposal, result.first, failed = false, auto = auto)
+    }
+
+    fun applyAllAssistantProposals(message: AssistantMessage) {
+        message.proposals.filter { it.state == ProposalState.Pending }.forEach { applyAssistantProposal(message.id, it) }
+    }
+
+    /** A proposed item the user changed in the editor before adding it. */
+    fun applyEditedAgendaProposal(messageId: String, proposal: AssistantProposal, saved: AgendaItem) {
+        val conversationId = assistant.conversationOf(messageId) ?: return
+        val note = "已按你改的添加到${AgendaItem.parseDate(saved.date)?.let { dayLabel(it, LocalDate.now(), withWeekday = false) } ?: "日程"}"
+        undoActions[proposal.id] = { removeAgenda(saved.id) }
+        assistant.setProposal(messageId, proposal.id, ProposalState.Applied, note)
+        activityLog.record(conversationId, messageId, proposal.copy(action = JSONObject(proposal.action.toString()).put("item", AgendaCodec.toJson(saved))), note, failed = false, auto = false)
+    }
+
+    /**
+     * Runs what the confirmation setting allows of a finished answer. Pages and
+     * views open last, and only when nothing is left to confirm, so the
+     * conversation stays on screen while something still waits for the user.
+     */
+    private fun autoApplyAssistant(message: AssistantMessage) {
+        val mode = assistant.approval
+        val pending = message.proposals.filter { it.state == ProposalState.Pending }
+        val allowed = pending.filter { mode.runsWithoutAsking(it.action.optString("type")) }
+        val (views, changes) = allowed.partition { it.action.optString("type") in ApprovalMode.VIEW_ONLY }
+        changes.forEach { applyAssistantProposal(message.id, it, auto = true) }
+        if (pending.size == allowed.size) views.forEach { applyAssistantProposal(message.id, it, auto = true) }
     }
 
     fun canUndoAssistant(proposalId: String): Boolean = proposalId in undoActions
 
-    fun undoAssistantProposal(messageId: String, proposal: AssistantProposal) {
-        undoActions.remove(proposal.id)?.invoke() ?: return
-        assistant.setProposal(messageId, proposal.id, ProposalState.Dismissed, "")
+    fun undoAssistant(messageId: String, proposalId: String) {
+        undoActions.remove(proposalId)?.invoke() ?: return
+        assistant.setProposal(messageId, proposalId, ProposalState.Dismissed, "已撤销")
+        activityLog.markUndone(proposalId)
     }
 
     fun openAssistantLink(link: AssistantLink) {
@@ -647,6 +709,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         legacyBridge.resumePendingInstall()
         widgets.refreshForNightMode()
         if (reportsClientStats) clientStats.report()
+        sync.request(minIntervalMs = 30_000)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

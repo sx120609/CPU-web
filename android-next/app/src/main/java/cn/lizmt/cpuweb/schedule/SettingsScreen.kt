@@ -295,6 +295,10 @@ private fun RootPage(activity: MainActivity, open: (SettingsPage) -> Unit) {
     Panel("拾间AI 可以看到", footer = ASSISTANT_ACCESS_FOOTER) {
         AssistantAccessRows(activity.assistant)
     }
+    Panel("拾间AI 的操作怎么确认") {
+        AssistantApprovalRows(activity.assistant)
+    }
+    SyncPanel(activity)
     Panel {
         ListRow("更新", value = updateSummary(updates), chevron = true) { open(SettingsPage.Update) }
         Hairline()
