@@ -25,6 +25,7 @@ import {
   sendQqMessageByWebSocket,
 } from "./qqbot/connection";
 import { shouldNotifyQqBotAdReport } from "./qqbot/adReportPolicy";
+import { isQqBotExternalGroup, qqBotExternalGroupIds } from "./qqbot/externalGroups";
 import {
   extractConversationBoardSwitchTarget,
   extractConversationTitleCommandValue,
@@ -674,6 +675,10 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if (!config.enabled) {
     await logQqBotMessage({ direction: "inbound", eventType: "webhook", status: "ignored", result: "QQBot 未启用", rawPayload: event });
+    return { ignored: true };
+  }
+  // 外部群的事件由共用 QQ 号的其他服务处理；不写日志，避免对方群的闲聊撑大日志表。
+  if (isQqBotExternalGroup(event.group_id)) {
     return { ignored: true };
   }
   if (event.post_type === "request") {
@@ -3331,7 +3336,9 @@ export async function dispatchRecentQqNotifications() {
     || (normalizeQqBotConnectionMode(config.connectionMode) === "outbound" && !config.napcatBaseUrl)) return { sent: 0 };
   const personalCategories = parseQqBotNotifyCategories(config.notifyCategories);
   const since = new Date(Date.now() - 10 * 60 * 1000);
-  const rawGroups = await prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } });
+  const externalGroupIds = qqBotExternalGroupIds();
+  const rawGroups = (await prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } }))
+    .filter((group) => !externalGroupIds.has(group.groupId));
   const groups = rawGroups.map((group) => formatQqBotGroup(group));
   const groupCategorySet = new Set<string>();
   groups.forEach((group) => {
