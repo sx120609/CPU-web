@@ -178,8 +178,8 @@ private fun CoupleDayTile(
     val edge = Color(tone.border)
     val ink = Color(tone.text)
     val shape = RoundedCornerShape(12.dp)
-    val start = periods.firstOrNull { it.number == block.startSlot }?.startTime.orEmpty()
-    val end = periods.firstOrNull { it.number == block.endSlot }?.endTime.orEmpty()
+    val start = block.course.customTime?.first ?: periods.firstOrNull { it.number == block.startSlot }?.startTime.orEmpty()
+    val end = block.course.customTime?.second ?: periods.firstOrNull { it.number == block.endSlot }?.endTime.orEmpty()
     val location = ScheduleStyleTime.location(course.location)
     Box(
         modifier.clip(shape).background(fill).border(0.5.dp, edge.copy(alpha = 0.55f), shape)

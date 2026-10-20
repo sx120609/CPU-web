@@ -124,7 +124,7 @@ export class NativeScheduleCoupleModel {
     const store = this.partner;
     const today = shareDateKey(Date.now());
     const courses: CoupleTimedCourse[] = this.blocksOn(today).map((block: NativeCourseBlock): CoupleTimedCourse => {
-      return { name: block.course.name, start: store?.slotStart(block.startSlot) ?? '', end: store?.slotEnd(block.endSlot) ?? '' };
+      return { name: block.course.name, start: store?.blockStart(block) ?? '', end: store?.blockEnd(block) ?? '' };
     });
     return coupleNowText(this.status.partner.nickname, !!store?.result, !!store?.dateSlot(today), courses, minutes, short);
   }

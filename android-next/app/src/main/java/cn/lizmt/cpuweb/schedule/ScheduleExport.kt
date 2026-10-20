@@ -20,7 +20,7 @@ object ScheduleExport {
             lines += ""
             lines += "${WEEKDAY_LABELS[day - 1]} ${store.dayDate(day)}".trim()
             blocks.forEach { block ->
-                lines += "${store.periodTime(block.startSlot).startTime}–${store.periodTime(block.endSlot).endTime} ${block.course.name}"
+                lines += "${store.startTime(block)}–${store.endTime(block)} ${block.course.name}"
                 ScheduleStyleTime.location(block.course.location)?.let { lines += it }
             }
         }
@@ -36,8 +36,8 @@ object ScheduleExport {
         for (day in 1..7) {
             store.blocksForDay(day).forEachIndexed { index, block ->
                 val date = week.days[day - 1]
-                val start = store.periodTime(block.startSlot).startTime
-                val end = store.periodTime(block.endSlot).endTime
+                val start = store.startTime(block)
+                val end = store.endTime(block)
                 lines += listOf(
                     "BEGIN:VEVENT",
                     "UID:$date-$day-${block.startSlot}-$index@android.cputime.cn",

@@ -72,9 +72,9 @@ internal class DayStatus(
 ) {
     enum class Phase { Current, Upcoming, Completed }
 
-    fun start(block: PlacedBlock): String = period(block.startSlot).startTime
-    fun end(block: PlacedBlock): String = period(block.endSlot).endTime
-    fun endOf(slot: Int): String = period(slot).endTime
+    // A course on its own time starts and ends when it says, not with its periods.
+    fun start(block: PlacedBlock): String = block.course.customTime?.first ?: period(block.startSlot).startTime
+    fun end(block: PlacedBlock): String = block.course.customTime?.second ?: period(block.endSlot).endTime
 
     fun phase(block: PlacedBlock): Phase {
         val start = ScheduleStyleTime.clockMinutes(start(block)) ?: return Phase.Upcoming
@@ -190,7 +190,7 @@ private fun DayTimelineView(blocks: List<PlacedBlock>, status: DayStatus, onCour
     }
     fun range(courses: List<PlacedBlock>): Pair<Int, Int>? {
         val start = ScheduleStyleTime.clockMinutes(status.start(courses.first())) ?: return null
-        val end = ScheduleStyleTime.clockMinutes(status.endOf(courses.maxOf { it.endSlot })) ?: return null
+        val end = ScheduleStyleTime.clockMinutes(status.end(courses.maxBy { it.endSlot })) ?: return null
         return start to end
     }
     val ranges = groups.map(::range)
@@ -306,7 +306,7 @@ private fun DayTimelineView(blocks: List<PlacedBlock>, status: DayStatus, onCour
                             TimelinePhase.Past -> scope.meta
                             TimelinePhase.None -> scope.primary
                         })
-                    Text(status.endOf(endSlot), fontSize = 12.sp, lineHeight = 15.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Medium, color = scope.meta, maxLines = 1)
+                    Text(status.end(courses.maxBy { it.endSlot }), fontSize = 12.sp, lineHeight = 15.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Medium, color = scope.meta, maxLines = 1)
                     Spacer(Modifier.height(4.dp))
                     val countdown = when (phase) {
                         is TimelinePhase.Current -> "还剩 ${max(1, phase.remaining)} 分"

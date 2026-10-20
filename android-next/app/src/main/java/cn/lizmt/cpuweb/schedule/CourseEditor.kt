@@ -29,10 +29,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -55,13 +60,22 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** One "when it meets" group being edited: a weekday, any set of periods and the weeks it runs. */
-class ArrangementDraft(day: Int, slots: Set<Int>, weeks: List<Int>) {
+/**
+ * One "when it meets" group being edited: a weekday, any set of periods and
+ * the weeks it runs. A course that does not follow the periods (a lecture, a
+ * lab) gives a start and an end instead and is drawn on the periods they overlap.
+ */
+class ArrangementDraft(day: Int, slots: Set<Int>, weeks: List<Int>, time: Pair<String, String>? = null) {
     var day by mutableIntStateOf(day)
     var slots by mutableStateOf(slots)
     var weeks by mutableStateOf(weeks)
+    var timeMode by mutableStateOf(time != null)
+    var startTime by mutableStateOf(time?.first.orEmpty())
+    var endTime by mutableStateOf(time?.second.orEmpty())
 
-    fun toArrangement() = CourseArrangement(day, slots, weeks)
+    /** The start and end in time mode when both are filled in and in order. */
+    val time: Pair<String, String>?
+        get() = if (timeMode) CourseCustomTime.range(startTime, endTime) else null
 
     fun toggleSlot(slot: Int) {
         slots = if (slot in slots) slots - slot else slots + slot
@@ -137,7 +151,7 @@ class CourseEditorModel(
             else -> options
         }
         val start = block?.startSlot ?: 1
-        arrangements += ArrangementDraft(block?.day ?: store.selectedDay, (start..(block?.endSlot ?: 2)).toSet(), weeks)
+        arrangements += ArrangementDraft(block?.day ?: store.selectedDay, (start..(block?.endSlot ?: 2)).toSet(), weeks, block?.course?.customTime)
         preferred = block != null && SchedulePriority.value(block.course.name, store.displayPriorities) > 0
         visible = true
         submit("open")
@@ -171,7 +185,36 @@ class CourseEditorModel(
         preferred = false
     }
 
-    fun slotSummary(draft: ArrangementDraft): String = CourseArrangement.summary(draft.slots, period)
+    private fun periods() = (1..SLOT_COUNT).map(period)
+
+    /** The periods the group is drawn on: its own in period mode, the ones its time overlaps in time mode. */
+    fun drawnSlots(draft: ArrangementDraft): Set<Int> {
+        if (!draft.timeMode) return draft.slots
+        val time = draft.time ?: return emptySet()
+        return CourseCustomTime.slotRange(time.first, time.second, periods())?.toSet().orEmpty()
+    }
+
+    fun slotSummary(draft: ArrangementDraft): String {
+        if (!draft.timeMode) return CourseArrangement.summary(draft.slots, period)
+        if (CourseCustomTime.minutes(draft.startTime) == null || CourseCustomTime.minutes(draft.endTime) == null) return "选择开始和结束时间"
+        val time = draft.time ?: return "结束时间要晚于开始时间"
+        val drawn = CourseCustomTime.slotRange(time.first, time.second, periods())
+        val place = drawn?.let { if (it.first == it.last) " · 课表上排在第 ${it.first} 节" else " · 课表上排在第 ${it.first}–${it.last} 节" }.orEmpty()
+        return "${time.first}–${time.second}$place"
+    }
+
+    /** Switching keeps what is picked: periods become their bell times, a time becomes the periods it is drawn on. */
+    fun setTimeMode(draft: ArrangementDraft, timeMode: Boolean) {
+        if (draft.timeMode == timeMode) return
+        draft.timeMode = timeMode
+        if (timeMode) {
+            if (CourseCustomTime.range(draft.startTime, draft.endTime) != null || draft.slots.isEmpty()) return
+            draft.startTime = period(draft.slots.min()).startTime
+            draft.endTime = period(draft.slots.max()).endTime
+        } else {
+            CourseCustomTime.slotRange(draft.startTime, draft.endTime, periods())?.let { draft.slots = it.toSet() }
+        }
+    }
 
     /**
      * Courses already on the timetable that this group would overlap, other
@@ -180,7 +223,7 @@ class CourseEditorModel(
      */
     fun conflictNames(draft: ArrangementDraft): List<String> {
         val editing = original
-        return draft.toArrangement().conflicts(cells) { cell, course ->
+        return CourseArrangement(draft.day, drawnSlots(draft), draft.weeks, draft.time).conflicts(cells, period) { cell, course ->
             if (editing == null) return@conflicts false
             if (editing.course.customId != null && course.customId == editing.course.customId) return@conflicts true
             val start = course.startSlot ?: (cell.bigSlot * 2 - 1)
@@ -205,7 +248,12 @@ class CourseEditorModel(
             }
             arrangements.forEachIndexed { index, draft ->
                 val title = if (arrangements.size > 1) "上课时间 ${index + 1}：" else ""
-                if (draft.slots.isEmpty()) {
+                if (draft.timeMode && draft.time == null) {
+                    val blank = draft.startTime.isEmpty() || draft.endTime.isEmpty()
+                    error = title + if (blank) "请选择开始和结束时间" else "结束时间要晚于开始时间"
+                    return
+                }
+                if (drawnSlots(draft).isEmpty()) {
                     error = title + "请选择至少一节"
                     return
                 }
@@ -231,7 +279,10 @@ class CourseEditorModel(
                 put("note", note)
                 put("arrangements", JSONArray().apply {
                     arrangements.forEach { draft ->
-                        put(JSONObject().put("day", draft.day).put("slots", JSONArray(draft.slots.sorted())).put("weekList", JSONArray(draft.weeks)))
+                        val item = JSONObject().put("day", draft.day).put("slots", JSONArray(drawnSlots(draft).sorted())).put("weekList", JSONArray(draft.weeks))
+                        // The Web bundle saves a timed group as one block across these periods.
+                        draft.time?.let { item.put("startTime", it.first).put("endTime", it.second) }
+                        put(item)
                     }
                 })
                 if (action == "save") put("preferred", preferred)
@@ -392,8 +443,8 @@ fun CourseEditorSheet(model: CourseEditorModel, onDismiss: () -> Unit) {
     }
 }
 
-/** One "when it meets" group: weekday, any set of periods and the weeks. */
-@OptIn(ExperimentalLayoutApi::class)
+/** One "when it meets" group: weekday, any set of periods (or its own time) and the weeks. */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun ArrangementCard(model: CourseEditorModel, draft: ArrangementDraft, index: Int) {
     var dayMenu by remember { mutableStateOf(false) }
@@ -417,13 +468,31 @@ private fun ArrangementCard(model: CourseEditorModel, draft: ArrangementDraft, i
             options = WEEKDAY_LABELS, onExpanded = { dayMenu = it },
             onSelect = { draft.day = it + 1 }, modifier = Modifier.fillMaxWidth(), enabled = !model.busy,
         )
-        Text("节次", style = MaterialTheme.typography.titleSmall)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
-            maxItemsInEachRow = 6, modifier = Modifier.fillMaxWidth(),
-        ) {
-            (1..SLOT_COUNT).forEach { slot ->
-                EditorChip(slot.toString(), slot in draft.slots, "第${slot}节", !model.busy, Modifier.weight(1f)) { draft.toggleSlot(slot) }
+        // Lectures, labs and the like do not follow the periods: they take a start and an end instead.
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            listOf("按节次" to false, "按时间" to true).forEachIndexed { position, (label, timeMode) ->
+                SegmentedButton(
+                    selected = draft.timeMode == timeMode,
+                    onClick = { model.setTimeMode(draft, timeMode) },
+                    shape = SegmentedButtonDefaults.itemShape(position, 2),
+                    enabled = !model.busy,
+                ) { Text(label, fontSize = 13.sp) }
+            }
+        }
+        if (draft.timeMode) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                TimeField("开始", draft.startTime, !model.busy, Modifier.weight(1f)) { draft.startTime = it }
+                TimeField("结束", draft.endTime, !model.busy, Modifier.weight(1f)) { draft.endTime = it }
+            }
+        } else {
+            Text("节次", style = MaterialTheme.typography.titleSmall)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+                maxItemsInEachRow = 6, modifier = Modifier.fillMaxWidth(),
+            ) {
+                (1..SLOT_COUNT).forEach { slot ->
+                    EditorChip(slot.toString(), slot in draft.slots, "第${slot}节", !model.busy, Modifier.weight(1f)) { draft.toggleSlot(slot) }
+                }
             }
         }
         Text(model.slotSummary(draft), fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -467,6 +536,39 @@ private fun EditorChip(label: String, selected: Boolean, description: String, en
         contentAlignment = Alignment.Center,
     ) {
         Text(label, fontSize = 13.sp, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** A start or end time; a tap opens the clock to pick it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeField(label: String, value: String, enabled: Boolean, modifier: Modifier, onPick: (String) -> Unit) {
+    var picking by remember { mutableStateOf(false) }
+    Column(
+        modifier.clip(RoundedCornerShape(8.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled) { picking = true }.padding(horizontal = 10.dp, vertical = 8.dp)
+            .semantics { contentDescription = "${label}时间，${value.ifEmpty { "未选择" }}" },
+    ) {
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value.ifEmpty { "选择" }, fontSize = 14.sp, maxLines = 1,
+            color = if (value.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+    }
+    if (picking) {
+        val initial = CourseCustomTime.minutes(value) ?: (8 * 60)
+        val state = rememberTimePickerState(initialHour = initial / 60, initialMinute = initial % 60, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text("${label}时间") },
+            text = { TimePicker(state = state) },
+            confirmButton = {
+                TextButton(onClick = {
+                    picking = false
+                    onPick(CourseCustomTime.format(state.hour * 60 + state.minute))
+                }) { Text("确定") }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text("取消") } },
+        )
     }
 }
 

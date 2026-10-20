@@ -342,7 +342,7 @@ const timelineGroups = computed(() => {
       phase,
       statusText,
       start: blockStart(status.value, group.items[0]),
-      end: props.clocks.find((slot) => slot.no === group.endSlot)?.end ?? "—",
+      end: blockEnd(status.value, group.last),
       slotText: group.startSlot === group.endSlot ? `第 ${group.startSlot} 节` : `${group.startSlot}–${group.endSlot} 节`,
       items: group.items.map((block) => ({
         block,

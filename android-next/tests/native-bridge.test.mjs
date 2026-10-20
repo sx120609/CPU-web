@@ -398,3 +398,28 @@ test('without a declaration the five original tabs stay the roots', () => {
   assert.equal(header.back, true);
   assert.equal(header.title, '论坛');
 });
+
+test('a course on its own time is saved as one block across the periods the native editor drew it on', async () => {
+  const { stores } = legacyStores();
+  let edits = { hidden: [], custom: [] };
+  const writes = [];
+  const p = page({ stores, fetch: async (url, options) => {
+    if (options.method === 'PUT') { writes.push(options); edits = JSON.parse(options.body).edits; }
+    return { ok: true, json: async () => ({ code: 0, data: { edits } }) };
+  } });
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  const editor = p.window.CPUAndroidEditor;
+  const form = { name: '学术讲座', teacher: '', location: '报告厅', note: '',
+    arrangements: [{ day: 2, slots: [5, 6, 7], weekList: [3], startTime: '14:00', endTime: '16:00' }, { day: 4, slots: [1, 2, 5], weekList: [3] }] };
+  let opened = await editor({ action: 'open', semester: 'fall' });
+  const saved = await editor({ action: 'save', session: opened.session, cells: [], form });
+  assert.equal(saved.error, undefined);
+  assert.deepEqual(edits.custom.map(item => [item.day, item.course.startSlot, item.course.endSlot, item.course.customStartTime ?? '', item.course.customEndTime ?? '']),
+    [[2, 5, 7, '14:00', '16:00'], [4, 1, 2, '', ''], [4, 5, 5, '', '']]);
+  opened = await editor({ action: 'open', semester: 'fall' });
+  const backwards = await editor({ action: 'save', session: opened.session, cells: [],
+    form: { ...form, arrangements: [{ day: 2, slots: [5], weekList: [3], startTime: '16:00', endTime: '14:00' }] } });
+  assert.match(backwards.error, /开始和结束时间/);
+  assert.equal(writes.length, 1);
+});

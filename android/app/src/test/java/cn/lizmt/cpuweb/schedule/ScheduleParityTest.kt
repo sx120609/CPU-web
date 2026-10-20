@@ -182,6 +182,72 @@ class ScheduleParityTest {
         assertFalse(model.visible)
     }
 
+    @Test
+    fun aTimeIsDrawnOnThePeriodsItOverlapsOrTheNearestOne() {
+        assertEquals(8..8, CourseCustomTime.slotRange("16:30", "18:00", BUNDLED_PERIODS))
+        assertEquals(5..7, CourseCustomTime.slotRange("14:00", "16:00", BUNDLED_PERIODS))
+        // In the lunch break, 25 minutes after period 4 and 30 before period 5.
+        assertEquals(4..4, CourseCustomTime.slotRange("12:00", "13:00", BUNDLED_PERIODS))
+        assertEquals(9..9, CourseCustomTime.slotRange("17:30", "18:20", BUNDLED_PERIODS))
+        assertNull(CourseCustomTime.slotRange("18:00", "17:00", BUNDLED_PERIODS))
+        assertEquals("08:05" to "09:40", CourseCustomTime.range("8:05", "9:40"))
+        assertNull(CourseCustomTime.range("8:60", "9:40"))
+        assertNull(ScheduleCourse(name = "讲座", customStartTime = "18:00").customTime)
+    }
+
+    @Test
+    fun theEditorSendsACourseOnItsOwnTime() = runTest {
+        val sent = mutableListOf<JSONObject>()
+        val store = ScheduleStore(this)
+        store.accept(snapshot(cells(2 to course("第八节", 8, 8))), false)
+        val model = CourseEditorModel({ payload ->
+            sent += payload
+            if (payload.getString("action") == "open") """{"session":"s1","hidden":[]}""" else """{"saved":true}"""
+        }, this) { _, _ -> }
+        model.open(store, null)
+        advanceUntilIdle()
+        model.name = "学术讲座"
+        val draft = model.arrangements[0]
+        draft.day = 2
+        // Switching keeps the picked periods as their bell times (the snapshot moves period 1 to 08:05).
+        model.setTimeMode(draft, true)
+        assertEquals("08:05" to "09:40", draft.startTime to draft.endTime)
+        draft.startTime = "17:00"
+        draft.endTime = "17:40"
+        assertEquals("17:00–17:40 · 课表上排在第 8 节", model.slotSummary(draft))
+        assertEquals(listOf("第八节"), model.conflictNames(draft))
+        // Period 8 ends at 17:05: a course from 17:10 does not meet it.
+        draft.startTime = "17:10"
+        assertEquals(emptyList<String>(), model.conflictNames(draft))
+        draft.endTime = "17:00"
+        model.submit("save")
+        assertEquals("结束时间要晚于开始时间", model.error)
+        draft.endTime = "18:40"
+        model.submit("save")
+        advanceUntilIdle()
+        val group = sent.last().getJSONObject("form").getJSONArray("arrangements").getJSONObject(0)
+        assertEquals("[9]", group.getJSONArray("slots").toString())
+        assertEquals("17:10", group.getString("startTime"))
+        assertEquals("18:40", group.getString("endTime"))
+        assertFalse(model.visible)
+    }
+
+    @Test
+    fun aCourseOnItsOwnTimeShowsAndExportsThatTime() = runTest {
+        val store = ScheduleStore(this)
+        val talk = course("讲座", 8, 8).put("customStartTime", "16:30").put("customEndTime", "18:00")
+        store.accept(snapshot(cells(1 to talk)), false)
+        val block = store.blocksForDay(1).single()
+        assertEquals("16:30" to "18:00", block.course.customTime)
+        assertEquals("16:30–18:00", store.slotAndTime(block))
+        // The editor reopens it in time mode.
+        val model = CourseEditorModel({ """{"session":"s1","hidden":[]}""" }, this) { _, _ -> }
+        model.open(store, block)
+        advanceUntilIdle()
+        assertTrue(model.arrangements[0].timeMode)
+        assertEquals("16:30" to "18:00", model.arrangements[0].time)
+    }
+
     // endregion
 
     // region Views

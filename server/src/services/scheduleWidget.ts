@@ -2,6 +2,7 @@ import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { courseMatchesWeek, normalizedCourseWeekList } from "../shared/scheduleWeeks";
 import { adjustmentForDate, type ScheduleAdjustmentLike } from "../shared/scheduleAdjustments";
 import { classroomOnly } from "../shared/classroom";
+import { courseCustomTime } from "../shared/scheduleCustomTime";
 export { parseWeekText as parseScheduleWidgetWeeks } from "../shared/scheduleWeeks";
 
 export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 11;
@@ -275,14 +276,16 @@ function coursesForWeek(
       for (const course of cell.courses ?? []) {
         if (!courseMatchesWeek(course, sourceWeek)) continue;
         const range = normalizeSlotRange(cell.bigSlot, course);
+        // 不按节次上的课用它自己的时间。
+        const ownTime = courseCustomTime(course);
         courses.push({
           day: targetDay,
           dayLabel: dayLabel(targetDay),
           date: targetDate,
           startSlot: range.start,
           endSlot: range.end,
-          startTime: SMALL_SLOTS[range.start - 1]?.start ?? "",
-          endTime: SMALL_SLOTS[range.end - 1]?.end ?? "",
+          startTime: ownTime?.start ?? SMALL_SLOTS[range.start - 1]?.start ?? "",
+          endTime: ownTime?.end ?? SMALL_SLOTS[range.end - 1]?.end ?? "",
           name: String(course.name || ""),
           teacher: course.teacher || "",
           location: classroomOnly(course.location),

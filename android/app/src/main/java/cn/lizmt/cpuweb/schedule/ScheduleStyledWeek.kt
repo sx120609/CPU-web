@@ -553,7 +553,7 @@ internal fun StyledDayColumn(
                     StyledCourseTile(
                         block.course, Modifier.fillMaxSize(), tileHeight, compact = narrow,
                         // Three or more side by side leave two characters a line: no inverted "now" tile there.
-                        start = periods.firstOrNull { it.number == block.startSlot }?.startTime, current = !ghost && lanes < 3 && isCurrent(block),
+                        start = block.course.customTime?.first ?: periods.firstOrNull { it.number == block.startSlot }?.startTime, current = !ghost && lanes < 3 && isCurrent(block),
                         trailingInset = if (label != null) 80.dp else 0.dp, dayRow = dayRow, showLocation = showLocation, tag = tag,
                         couple = tint, bottomInset = noteSpace,
                     )

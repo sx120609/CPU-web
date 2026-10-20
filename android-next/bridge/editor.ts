@@ -4,9 +4,15 @@ import { courseEditKey, courseWeeksOverlap, normalizeScheduleEditsState } from '
 import { buildCustomCourseItem, saveCustomCourseEdit, deleteCourseEdit, restoreOriginalCourseEdit } from '../../web/src/views/schedule/courseEditor';
 import { buildCourseFamilyKey } from '../../web/src/views/schedule/viewModels';
 import { MAX_SMALL_SLOT } from '../../web/src/views/schedule/slots';
+import { normalizeCustomTimeRange } from '../../web/src/utils/scheduleCustomTime';
 import { MAX_SCHEDULE_PRIORITY, normalizeSchedulePriority, schedulePriorityKey } from '../../server/src/shared/schedulePriority';
 
-type Arrangement = { day: number; slots: number[]; weekList: number[] };
+/**
+ * `startTime`/`endTime` (HH:MM) are sent for a course that does not follow the
+ * periods; `slots` are then the periods it is drawn on, worked out natively
+ * from the same bell schedule the timetable shows.
+ */
+type Arrangement = { day: number; slots: number[]; weekList: number[]; startTime?: string; endTime?: string };
 
 /** The runs of consecutive periods, in order: [1, 2, 5, 6, 9] → [1, 2], [5, 6], [9, 9]. */
 function slotRuns(slots: number[]) {
@@ -109,12 +115,18 @@ export function installAndroidEditor() {
             slots.some(slot=>!Number.isInteger(slot) || slot<1 || slot>MAX_SMALL_SLOT)) throw Error(title+'请检查星期和节次范围');
           const weekList = [...new Set<number>((arrangement.weekList || []).map(Number))].sort((a,b)=>a-b);
           if (!weekList.length || weekList.some(n=>!Number.isInteger(n)||n<1||n>64)) throw Error(title+'请选择有效教学周');
-          for (const [startSlot, endSlot] of slotRuns(slots)) {
+          const timed = Boolean(arrangement.startTime || arrangement.endTime);
+          const time = timed ? normalizeCustomTimeRange(arrangement.startTime, arrangement.endTime) : null;
+          if (timed && !time) throw Error(title+'请检查开始和结束时间，结束要晚于开始');
+          // A timed arrangement is one item drawn across the periods it overlaps.
+          const runs: Array<[number, number]> = time ? [[Math.min(...slots), Math.max(...slots)]] : slotRuns(slots);
+          for (const [startSlot, endSlot] of runs) {
             // The first run is the block being edited and keeps its identity;
             // every further run is saved as a plain custom item of the same course.
             const primary = !items.length;
             const existing = primary && block?.course.customId ? current.custom.find(item=>item.id===block.course.customId) : null;
-            items.push(buildCustomCourseItem({...form,day:arrangement.day,startSlot,endSlot},
+            items.push(buildCustomCourseItem({...form,day:arrangement.day,startSlot,endSlot,
+              customStartTime:time?.start ?? '',customEndTime:time?.end ?? ''},
               {weekList,existing,editingCourseKey:primary?key:''}).item);
           }
         });

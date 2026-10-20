@@ -200,3 +200,17 @@ test('the couple timetable goes through the signed-in session',async()=>{
   assert.equal((await p.couple({action:'status'})).status,401);
   assert.equal(p.coupleRequests.length,8);
 });
+
+test('a course on its own time is saved as one block across the periods the native editor drew it on',async()=>{
+  const p=page(); let opened=await p.run({action:'open',semester:'fall'});
+  const timed={...form,name:'学术讲座',arrangements:[{day:2,slots:[5,6,7],weekList:[3],startTime:'14:00',endTime:'16:00'},{day:4,slots:[1,2,5],weekList:[3]}]};
+  const saved=await p.run({action:'save',session:opened.session,form:timed,cells:[]});
+  assert.equal(saved.error,undefined);
+  assert.deepEqual(p.edits.custom.map(item=>[item.day,item.course.startSlot,item.course.endSlot,item.course.customStartTime??'',item.course.customEndTime??'']),
+    [[2,5,7,'14:00','16:00'],[4,1,2,'',''],[4,5,5,'','']]);
+  opened=await p.run({action:'open',semester:'fall'});
+  const backwards=await p.run({action:'save',session:opened.session,cells:[],
+    form:{...timed,arrangements:[{day:2,slots:[5],weekList:[3],startTime:'16:00',endTime:'14:00'}]}});
+  assert.match(backwards.error,/开始和结束时间/);
+  assert.equal(p.writes.length,1);
+});

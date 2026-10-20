@@ -1192,7 +1192,8 @@ private fun DayTimeline(
                     Spacer(Modifier.height(4.dp))
                     Text(meta.ifEmpty { "地点待确认" }, fontSize = 11.sp, color = ink.copy(alpha = 0.82f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (span > 1) {
-                        Text("${ScheduleStyleTime.slotText(block.startSlot, block.endSlot)} · ${store.timeRange(block.startSlot, block.endSlot)}",
+                        Text(if (block.course.customTime != null) store.timeRange(block.block)
+                            else "${ScheduleStyleTime.slotText(block.startSlot, block.endSlot)} · ${store.timeRange(block.startSlot, block.endSlot)}",
                             fontSize = 11.sp, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }

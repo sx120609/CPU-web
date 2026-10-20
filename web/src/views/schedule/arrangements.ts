@@ -3,6 +3,9 @@
 // 各端共用的课表编辑数据里，一条自定义课程只描述一段连续的节次，所以一个上课时间
 // 按每段连续节次各存一条。数据格式没有新增任何东西，其他客户端照常读取
 // （iOS 见 NativeCourseArrangement.swift）。
+//
+// 不按节次上的课可以改填具体时间（`time`）：这时整段只存一条，带上 `customStartTime`／
+// `customEndTime`，节次取和这段时间重叠的那几节（见 shared/scheduleCustomTime.ts）。
 import {
   createCustomCourseId,
   customCourseWeeksLabel,
@@ -10,6 +13,14 @@ import {
   type CustomScheduleItem,
 } from "@/utils/scheduleEdits";
 import { normalizedCourseWeekList } from "@/utils/scheduleWeeks";
+import {
+  courseCustomTime,
+  customClockMinutes,
+  customTimeSlotRange,
+  customTimeText,
+  normalizeCustomTimeRange,
+  type CustomTimeRange,
+} from "@/utils/scheduleCustomTime";
 import { normalizeSlotRange, smallSlots } from "./slots";
 import type { ScheduleCell, ScheduleCourse } from "./types";
 
@@ -18,6 +29,22 @@ export interface CourseArrangement {
   slots: number[];
   /** 空数组表示全部周。 */
   weekList: number[];
+  /** 不按节次上时的具体时间；有它时不看 `slots`，课表上占的节次按时间算。 */
+  time?: CustomTimeRange;
+}
+
+type SlotClock = { no: number; start: string; end: string };
+
+/** 按时间上课时，课表网格上占的那一段节次。时间不合法时为 null。 */
+export function arrangementTimeRun(time: CustomTimeRange, clocks: SlotClock[] = smallSlots): SlotRun | null {
+  return customTimeSlotRange(time.start, time.end, clocks);
+}
+
+/** 这个上课时间在网格上占的连续节次段。 */
+function arrangementSlotRuns(arrangement: CourseArrangement, clocks: SlotClock[]) {
+  if (!arrangement.time) return arrangementRuns(arrangement.slots);
+  const run = arrangementTimeRun(arrangement.time, clocks);
+  return run ? [run] : [];
 }
 
 export interface SlotRun {
@@ -61,6 +88,8 @@ export function arrangementCustomItems(input: {
   primaryId: string;
   primarySourceKey?: string;
   makeId?: () => string;
+  /** 按时间上课时用来算占哪几节的作息表。 */
+  clocks?: SlotClock[];
 }): CustomScheduleItem[] {
   const makeId = input.makeId ?? createCustomCourseId;
   const items: CustomScheduleItem[] = [];
@@ -68,7 +97,8 @@ export function arrangementCustomItems(input: {
     const weekList = cleanWeekList(arrangement.weekList);
     // 周次文字沿用网页编辑器一直以来的写法（「第 1-3、5 周」）。
     const weeks = customCourseWeeksLabel(weekList);
-    for (const run of arrangementRuns(arrangement.slots)) {
+    const time = arrangement.time ? normalizeCustomTimeRange(arrangement.time.start, arrangement.time.end) : null;
+    for (const run of arrangementSlotRuns(arrangement, input.clocks ?? smallSlots)) {
       const isPrimary = items.length === 0;
       const sourceKey = isPrimary ? officialCourseSourceKey(input.primarySourceKey) : undefined;
       items.push({
@@ -84,6 +114,7 @@ export function arrangementCustomItems(input: {
           weekList,
           startSlot: run.start,
           endSlot: run.end,
+          ...(time ? { customStartTime: time.start, customEndTime: time.end } : {}),
           slotNote: input.details.note.trim() || `第 ${run.start}-${run.end} 节`,
         },
       });
@@ -97,14 +128,21 @@ export function arrangementCustomItems(input: {
  * 只是在同几节里隔周上的课不算。
  *
  * `ignore` 用来排除正在编辑的课程本身。没有周次列表的课程视为每周都上。
+ *
+ * 按时间上课的一方（这个上课时间或表上那门课）按分钟比较，别的照旧按节次比较。
  */
 export function arrangementConflicts(
   arrangement: CourseArrangement,
   cells: ScheduleCell[],
   ignore: (course: ScheduleCourse, cell: ScheduleCell) => boolean = () => false,
+  clocks: SlotClock[] = smallSlots,
 ) {
-  if (!arrangement.slots.length) return [];
-  const slots = new Set(arrangement.slots);
+  const runs = arrangementSlotRuns(arrangement, clocks);
+  if (!runs.length) return [];
+  const slots = new Set(runs.flatMap((run) => Array.from({ length: run.end - run.start + 1 }, (_, index) => run.start + index)));
+  const ownMinutes = arrangement.time
+    ? [minutesOfTime(normalizeCustomTimeRange(arrangement.time.start, arrangement.time.end))]
+    : runs.map((run) => minutesOfRun(run, clocks));
   const weeks = new Set(arrangement.weekList);
   const names: string[] = [];
   for (const cell of cells) {
@@ -112,9 +150,15 @@ export function arrangementConflicts(
     for (const course of cell.courses) {
       if (ignore(course, cell)) continue;
       const range = normalizeSlotRange(cell.bigSlot, course);
+      const courseTime = courseCustomTime(course);
       let overlaps = false;
-      for (let slot = range.start; slot <= range.end; slot += 1) {
-        if (slots.has(slot)) { overlaps = true; break; }
+      if (arrangement.time || courseTime) {
+        const other = courseTime ? minutesOfTime(courseTime) : minutesOfRun(range, clocks);
+        overlaps = ownMinutes.some((own) => Boolean(own && other && own.start < other.end && other.start < own.end));
+      } else {
+        for (let slot = range.start; slot <= range.end; slot += 1) {
+          if (slots.has(slot)) { overlaps = true; break; }
+        }
       }
       if (!overlaps) continue;
       const courseWeeks = normalizedCourseWeekList(course);
@@ -123,6 +167,29 @@ export function arrangementConflicts(
     }
   }
   return names;
+}
+
+function minutesOfTime(time: CustomTimeRange | null) {
+  if (!time) return null;
+  const start = customClockMinutes(time.start);
+  const end = customClockMinutes(time.end);
+  return start === null || end === null ? null : { start, end };
+}
+
+function minutesOfRun(run: SlotRun, clocks: SlotClock[]) {
+  const start = customClockMinutes(clocks.find((slot) => slot.no === run.start)?.start);
+  const end = customClockMinutes(clocks.find((slot) => slot.no === run.end)?.end);
+  return start === null || end === null ? null : { start, end };
+}
+
+/** 「16:30–18:00 · 课表上排在第 8–9 节」；时间没填好时说哪里不对。 */
+export function arrangementTimeSummary(time: CustomTimeRange, clocks: SlotClock[] = smallSlots) {
+  if (customClockMinutes(time.start) === null || customClockMinutes(time.end) === null) return "填写开始和结束时间";
+  const normalized = normalizeCustomTimeRange(time.start, time.end);
+  if (!normalized) return "结束时间要晚于开始时间";
+  const run = arrangementTimeRun(normalized, clocks);
+  const slots = run ? ` · 课表上排在第 ${run.start === run.end ? run.start : `${run.start}–${run.end}`} 节` : "";
+  return `${customTimeText(normalized)}${slots}`;
 }
 
 /** 「第 1–2、5 节 · 08:00–09:40、13:30–14:15」 */

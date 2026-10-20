@@ -73,3 +73,38 @@ test("display priority survives a save from a client that does not send it", asy
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("a course's own start and end survive a save, and a broken pair is refused", async () => {
+  installFakeTables();
+  const app = express();
+  app.use(express.json());
+  app.use("/jwxt", jwxtRouter);
+  app.use(errorHandler);
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const origin = `http://127.0.0.1:${(server.address() as any).port}`;
+  const save = async (course: Record<string, unknown>) => {
+    const response = await fetch(`${origin}/jwxt/schedule-edits`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json", "X-CPU-Client": "android",
+        Authorization: `Bearer ${signToken({ userId: 8, studentId: "student-8", role: "user", campus: "" })}`,
+      },
+      body: JSON.stringify({ semester: "2026-2027-1", edits: { hidden: [], custom: [{ id: "custom-talk", day: 2, bigSlot: 3, course }] } }),
+    });
+    return { status: response.status, body: await response.json() as any };
+  };
+  const talk = { name: "学术讲座", weeks: "第 3 周", weekList: [3], startSlot: 5, endSlot: 7 };
+  try {
+    const saved = await save({ ...talk, customStartTime: "14:00", customEndTime: "16:00" });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.data.edits.custom[0].course.customStartTime, "14:00");
+    assert.equal(saved.body.data.edits.custom[0].course.customEndTime, "16:00");
+    assert.equal((await save({ ...talk, customStartTime: "14:00" })).status, 400);
+    assert.equal((await save({ ...talk, customStartTime: "16:00", customEndTime: "14:00" })).status, 400);
+    assert.equal((await save({ ...talk, customStartTime: "下午", customEndTime: "16:00" })).status, 400);
+    assert.equal("customStartTime" in (await save(talk)).body.data.edits.custom[0].course, false);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

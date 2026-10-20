@@ -11,6 +11,7 @@ import {
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
 import { normalizedCourseWeekList } from "@/utils/scheduleWeeks";
+import { courseCustomTime, normalizeCustomTimeRange } from "@/utils/scheduleCustomTime";
 import { MAX_SMALL_SLOT, clampSlot } from "@/views/schedule/slots";
 import type { ScheduleCourse, ScheduleResult, WeekCourseBlock } from "@/views/schedule/types";
 
@@ -27,6 +28,9 @@ export type CustomCourseForm = {
   location: string;
   teacher: string;
   note: string;
+  /** 不按节次上的课自己的时间（HH:MM）；空字符串表示按节次。 */
+  customStartTime: string;
+  customEndTime: string;
 };
 
 export type CourseFamilyKeyResolver = (day: number, bigSlot: number, course: ScheduleCourse) => string;
@@ -54,6 +58,8 @@ export function createCustomCourseForm(defaultDay: number): CustomCourseForm {
     location: "",
     teacher: "",
     note: "",
+    customStartTime: "",
+    customEndTime: "",
   };
 }
 
@@ -78,6 +84,8 @@ export function fillFormForNewCourse(
   form.location = "";
   form.teacher = "";
   form.note = "";
+  form.customStartTime = "";
+  form.customEndTime = "";
 }
 
 export function fillFormForExistingCourse(
@@ -97,6 +105,9 @@ export function fillFormForExistingCourse(
   form.location = block.course.location || "";
   form.teacher = block.course.teacher || "";
   form.note = noteFromCourse(block.course);
+  const time = courseCustomTime(block.course);
+  form.customStartTime = time?.start ?? "";
+  form.customEndTime = time?.end ?? "";
   setFormWeeksFromCourse(form, block.course, input);
 }
 
@@ -135,6 +146,8 @@ export function buildCustomCourseItem(
   const name = form.name.trim();
   const startSlot = clampSlot(form.startSlot);
   const endSlot = Math.max(startSlot, clampSlot(form.endSlot));
+  // 旧版原生壳不传这两个字段，照旧按节次保存。
+  const time = normalizeCustomTimeRange(form.customStartTime, form.customEndTime);
   const item: CustomScheduleItem = {
     id: input.existing?.id || createCustomCourseId(),
     sourceKey: officialCourseSourceKey(input.existing ? input.existing.sourceKey : input.editingCourseKey),
@@ -148,6 +161,7 @@ export function buildCustomCourseItem(
       weekList: input.weekList,
       startSlot,
       endSlot,
+      ...(time ? { customStartTime: time.start, customEndTime: time.end } : {}),
       slotNote: form.note.trim() || `第 ${startSlot}-${endSlot} 节`,
     },
   };
@@ -165,7 +179,8 @@ export function isOriginalCourseEditUnchanged(
     ? originalWeeks
     : normalizeWeekList(weekNumberOptions);
   const editedWeeks = normalizedCourseWeekList(item.course);
-  return item.day === block.day
+  return !courseCustomTime(item.course)
+    && item.day === block.day
     && item.bigSlot === block.bigSlot
     && (item.course.startSlot ?? block.startSlot) === block.startSlot
     && (item.course.endSlot ?? block.endSlot) === block.endSlot

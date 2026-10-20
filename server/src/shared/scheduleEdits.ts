@@ -1,4 +1,5 @@
 import { normalizedCourseWeekList } from "./scheduleWeeks";
+import { courseCustomTime } from "./scheduleCustomTime";
 
 export interface EditableScheduleCourse {
   name: string;
@@ -9,6 +10,9 @@ export interface EditableScheduleCourse {
   slotNote?: string;
   startSlot?: number;
   endSlot?: number;
+  /** 不按节次上的课自己的上下课时间（HH:MM），见 scheduleCustomTime.ts。两个要么都有，要么都没有。 */
+  customStartTime?: string;
+  customEndTime?: string;
   sourceKey?: string;
   customId?: string;
   custom?: boolean;
@@ -68,10 +72,17 @@ export function normalizeScheduleEditsState(input: ScheduleEditState | null | un
           slotNote: item.course.slotNote?.trim() || undefined,
           startSlot: Number.isFinite(item.course.startSlot) ? Number(item.course.startSlot) : undefined,
           endSlot: Number.isFinite(item.course.endSlot) ? Number(item.course.endSlot) : undefined,
+          ...customTimeFields(item.course),
         },
       }))
     : [];
   return { hidden, custom };
+}
+
+/** 合法的一对时间原样补齐；只有一个、写错了或结束不晚于开始时两个都去掉。 */
+function customTimeFields(course: EditableScheduleCourse) {
+  const time = courseCustomTime(course);
+  return { customStartTime: time?.start, customEndTime: time?.end };
 }
 
 export function customCourseWeeksLabel(weekList: number[]) {

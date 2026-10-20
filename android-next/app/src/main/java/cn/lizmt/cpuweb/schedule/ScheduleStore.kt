@@ -659,6 +659,19 @@ class ScheduleStore(
     fun timeRange(startSlot: Int, endSlot: Int): String =
         "${periodTime(startSlot).startTime}-${periodTime(endSlot).endTime}"
 
+    /** When a block starts: the course's own time when it does not follow the periods, else its first period's. */
+    fun startTime(block: CourseBlock): String = block.course.customTime?.first ?: periodTime(block.startSlot).startTime
+
+    fun endTime(block: CourseBlock): String = block.course.customTime?.second ?: periodTime(block.endSlot).endTime
+
+    fun timeRange(block: CourseBlock): String = "${startTime(block)}-${endTime(block)}"
+
+    /** "第 1–2 节 · 08:00–09:40", or only "16:30–18:00" for a course on its own time. */
+    fun slotAndTime(block: CourseBlock): String {
+        val time = timeRange(block).replace('-', '–')
+        return if (block.course.customTime != null) time else "${ScheduleStyleTime.slotText(block.startSlot, block.endSlot)} · $time"
+    }
+
     // endregion
 
     // region Widget local schedule
@@ -695,8 +708,8 @@ class ScheduleStore(
                         // Like the server: the period note first, else the course weeks.
                         .put("note", slotNote ?: course.weeks.trim().takeIf { it.isNotEmpty() } ?: org.json.JSONObject.NULL)
                         .put("slotNote", slotNote ?: org.json.JSONObject.NULL)
-                        .put("startTime", periodTime(block.startSlot).startTime)
-                        .put("endTime", periodTime(block.endSlot).endTime)
+                        .put("startTime", startTime(block))
+                        .put("endTime", endTime(block))
                         .put("startSlot", block.startSlot)
                         .put("endSlot", block.endSlot)
                 }.sortedWith(compareBy({ it.optString("startTime") }, { it.optString("name") }))

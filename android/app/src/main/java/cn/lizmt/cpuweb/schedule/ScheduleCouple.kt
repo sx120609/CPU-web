@@ -243,7 +243,7 @@ class CoupleLayer(
     /** The status line: what the partner is doing right now. */
     fun nowText(today: String, minutes: Int, short: Boolean = true): String {
         val courses = blocksOn(today)?.map {
-            CoupleTimedCourse(it.course.name, store.periodTime(it.block.startSlot).startTime, store.periodTime(it.block.endSlot).endTime)
+            CoupleTimedCourse(it.course.name, store.startTime(it.block), store.endTime(it.block))
         }
         return CoupleRules.nowText(partnerName, true, courses, minutes, short)
     }

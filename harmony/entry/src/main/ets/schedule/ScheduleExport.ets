@@ -1,7 +1,15 @@
 import { NativeScheduleStore, NativeCourseBlock } from './NativeScheduleStore';
-import { scheduleCleanLocation } from './ScheduleStyle';
+import { scheduleCleanLocation, scheduleClockMinutes } from './ScheduleStyle';
 
 const DAYS: string[] = ['周一','周二','周三','周四','周五','周六','周日'];
+
+// A course on its own time exports that time, not the bell times of the periods it is drawn on.
+function blockTimes(store: NativeScheduleStore, block: NativeCourseBlock): string[] {
+  const start = (block.course.customStartTime ?? '').trim();
+  const end = (block.course.customEndTime ?? '').trim();
+  return scheduleClockMinutes(start) >= 0 && scheduleClockMinutes(end) > scheduleClockMinutes(start)
+    ? [start, end] : [store.slotStart(block.startSlot), store.slotEnd(block.endSlot)];
+}
 
 export function scheduleText(store: NativeScheduleStore): string {
   const lines: string[] = [`药大拾间 · ${store.selectedSemester} 第 ${store.selectedWeek} 周`];
@@ -10,7 +18,8 @@ export function scheduleText(store: NativeScheduleStore): string {
     if (!blocks.length) continue;
     lines.push('', `${DAYS[day - 1]} ${store.dayDate(day)}`);
     blocks.forEach((block: NativeCourseBlock) => {
-      lines.push(`${store.slotStart(block.startSlot)}–${store.slotEnd(block.endSlot)} ${block.course.name}`);
+      const times = blockTimes(store, block);
+      lines.push(`${times[0]}–${times[1]} ${block.course.name}`);
       if (scheduleCleanLocation(block.course.location)) lines.push(scheduleCleanLocation(block.course.location));
     });
   }
@@ -46,8 +55,9 @@ export function scheduleCalendar(store: NativeScheduleStore): string {
   for (let day = 1; day <= 7; day++) {
     store.blocksForDay(day).forEach((block: NativeCourseBlock, index: number) => {
       const date = week.days[day - 1];
-      const start = store.slotStart(block.startSlot);
-      const end = store.slotEnd(block.endSlot);
+      const times = blockTimes(store, block);
+      const start = times[0];
+      const end = times[1];
       if (!date || !start || !end) throw new Error('课程日期或节次不完整，无法安全导出');
       lines.push('BEGIN:VEVENT', `UID:${date}-${day}-${block.startSlot}-${index}@harmony.cputime.cn`,
         `DTSTAMP:${stamp}`, `DTSTART:${utcDate(date, start)}`, `DTEND:${utcDate(date, end)}`,

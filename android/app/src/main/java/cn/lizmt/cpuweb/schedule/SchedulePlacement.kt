@@ -98,7 +98,13 @@ object SchedulePriority {
  * edit payload describes one contiguous block per item, so an arrangement is
  * written as one item per run of consecutive periods.
  */
-data class CourseArrangement(val day: Int, val slots: Set<Int>, val weekList: List<Int>) {
+data class CourseArrangement(
+    val day: Int,
+    val slots: Set<Int>,
+    val weekList: List<Int>,
+    /** A course that does not follow the periods: its own start and end; [slots] are then the periods it is drawn on. */
+    val time: Pair<String, String>? = null,
+) {
     /** The runs of consecutive periods, in order: [1, 2, 5, 6, 9] → 1..2, 5..6, 9..9. */
     val runs: List<IntRange>
         get() {
@@ -115,18 +121,35 @@ data class CourseArrangement(val day: Int, val slots: Set<Int>, val weekList: Li
      * intersecting periods and at least one week in common. Courses that only
      * alternate weeks in the same periods do not count. A course without a
      * week list meets every week.
+     *
+     * When either side keeps its own time and [period] gives the bell
+     * schedule, the two are compared by the minute instead of by period.
      */
-    fun conflicts(cells: List<ScheduleCell>, ignoring: (ScheduleCell, ScheduleCourse) -> Boolean = { _, _ -> false }): List<String> {
+    fun conflicts(
+        cells: List<ScheduleCell>,
+        period: ((Int) -> SchedulePeriod)? = null,
+        ignoring: (ScheduleCell, ScheduleCourse) -> Boolean = { _, _ -> false },
+    ): List<String> {
         if (slots.isEmpty()) return emptyList()
         val weeks = weekList.toSet()
         val names = mutableListOf<String>()
+        fun timeMinutes(range: Pair<String, String>?) = range?.let {
+            val start = CourseCustomTime.minutes(it.first)
+            val end = CourseCustomTime.minutes(it.second)
+            if (start != null && end != null) start to end else null
+        }
+        fun runMinutes(run: IntRange) = period?.let { timeMinutes(it(run.first).startTime to it(run.last).endTime) }
+        val own = time?.let { listOfNotNull(timeMinutes(it)) } ?: runs.mapNotNull { runMinutes(it) }
         for (cell in cells) {
             if (cell.day != day) continue
             for (course in cell.courses) {
                 if (ignoring(cell, course)) continue
                 val start = course.startSlot ?: (cell.bigSlot * 2 - 1)
                 val end = maxOf(start, course.endSlot ?: (cell.bigSlot * 2))
-                if (slots.none { it in start..end }) continue
+                val other = if (time != null || course.customTime != null) timeMinutes(course.customTime) ?: runMinutes(start..end) else null
+                val overlaps = if (other != null && own.isNotEmpty()) own.any { it.first < other.second && other.first < it.second }
+                else slots.any { it in start..end }
+                if (!overlaps) continue
                 val courseWeeks = course.weekList.toSet()
                 if (weeks.isNotEmpty() && courseWeeks.isNotEmpty() && weeks.intersect(courseWeeks).isEmpty()) continue
                 if (course.name !in names) names += course.name

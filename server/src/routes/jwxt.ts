@@ -17,6 +17,7 @@ import {
   scheduleWidgetFallbackPayload,
 } from "../services/scheduleWidget";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "../shared/scheduleEdits";
+import { normalizeCustomTimeRange } from "../shared/scheduleCustomTime";
 import {
   MAX_SCHEDULE_PRIORITIES,
   MAX_SCHEDULE_PRIORITY,
@@ -325,7 +326,14 @@ const scheduleEditCourseSchema = z.object({
   slotNote: z.string().trim().max(120).optional(),
   startSlot: z.number().int().min(1).max(20).optional(),
   endSlot: z.number().int().min(1).max(20).optional(),
-});
+  // 不按节次上的课自己的上下课时间，见 shared/scheduleCustomTime.ts。
+  customStartTime: z.string().trim().regex(/^\d{1,2}:\d{2}$/).optional(),
+  customEndTime: z.string().trim().regex(/^\d{1,2}:\d{2}$/).optional(),
+}).refine(
+  (course) => (!course.customStartTime && !course.customEndTime)
+    || Boolean(normalizeCustomTimeRange(course.customStartTime, course.customEndTime)),
+  "上课时间无效：要同时填写开始和结束，并且结束晚于开始",
+);
 
 const scheduleEditItemSchema = z.object({
   id: z.string().trim().min(1).max(80),

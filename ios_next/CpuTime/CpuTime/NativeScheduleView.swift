@@ -1433,7 +1433,10 @@ struct NativeScheduleView: View {
         let status = ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil)
         let slots = block.startSlot == block.endSlot
             ? "第 \(block.startSlot) 节" : "第 \(block.startSlot)–\(block.endSlot) 节"
-        return [ScheduleStyleTime.weekday(day), slots, "\(status.start(block))–\(status.end(block))"]
+        // A course on its own time shows that time, not the periods it is drawn on.
+        let ownTime = NativeCourseTime(start: block.course.customStartTime, end: block.course.customEndTime) != nil
+        return [ScheduleStyleTime.weekday(day), ownTime ? nil : slots, "\(status.start(block))–\(status.end(block))"]
+            .compactMap { $0 }
             .joined(separator: " · ")
     }
 
@@ -3437,11 +3440,15 @@ private struct NativeCourseEditorSheet: View {
         let start = selection?.startSlot ?? defaultStartSlot
         let end = max(start, selection?.endSlot ?? min(defaultStartSlot + 1, ScheduleSlot.all.count))
         let list = course?.weekList ?? [defaultWeek]
+        let ownTime = course.flatMap { NativeCourseTime(start: $0.customStartTime, end: $0.customEndTime) }
         _arrangements = State(initialValue: [ArrangementDraft(
             day: selection?.day ?? defaultDay,
             slots: Set(start...end),
             weekMode: list.isEmpty ? "all" : (list == [defaultWeek] ? "current" : "custom"),
-            selectedWeeks: Set(list.isEmpty ? [defaultWeek] : list)
+            selectedWeeks: Set(list.isEmpty ? [defaultWeek] : list),
+            timeMode: ownTime != nil,
+            startMinutes: ownTime?.startMinutes,
+            endMinutes: ownTime?.endMinutes
         )])
     }
 
@@ -3452,7 +3459,16 @@ private struct NativeCourseEditorSheet: View {
         /// "current", "all" or "custom".
         var weekMode: String
         var selectedWeeks: Set<Int>
+        /// Meets at its own time instead of on the periods (a lecture, a lab);
+        /// `slots` are then kept only for switching back.
+        var timeMode = false
+        /// Minutes since midnight.
+        var startMinutes: Int?
+        var endMinutes: Int?
     }
+
+    /// The bell schedule the editor's period chips show.
+    private static let periodClocks = ScheduleSlot.all.map { (number: $0.number, start: $0.start, end: $0.end) }
 
     var body: some View {
         NavigationStack {
@@ -3680,7 +3696,9 @@ private struct NativeCourseEditorSheet: View {
         var resolved: [NativeCourseArrangement] = []
         for (index, draft) in arrangements.enumerated() {
             let title = arrangements.count > 1 ? "上课时间 \(index + 1)：" : ""
-            let slots = draft.slots.filter { (1...ScheduleSlot.all.count).contains($0) }
+            let time = draftTime(draft)
+            if draft.timeMode, time == nil { errorMessage = "\(title)结束时间要晚于开始时间"; return }
+            let slots = drawnSlots(draft).filter { (1...ScheduleSlot.all.count).contains($0) }
             guard !slots.isEmpty else { errorMessage = "\(title)请选择至少一节"; return }
             let weekList: [Int]
             switch draft.weekMode {
@@ -3690,7 +3708,7 @@ private struct NativeCourseEditorSheet: View {
                 weekList = draft.selectedWeeks.sorted()
                 guard !weekList.isEmpty else { errorMessage = "\(title)请选择至少一个周次"; return }
             }
-            resolved.append(NativeCourseArrangement(day: draft.day, slots: slots, weekList: weekList))
+            resolved.append(NativeCourseArrangement(day: draft.day, slots: slots, weekList: weekList, time: time))
         }
         guard let first = resolved.first, let firstRun = first.runs.first else { return }
         let source = selection?.course
@@ -3897,9 +3915,34 @@ private struct NativeCourseEditorSheet: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                 }
-                slotChipPicker(arrangement.slots)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                // Lectures, labs and the like do not follow the periods: they take a start and an end instead.
+                editorFieldRow("方式") {
+                    Picker("填写方式", selection: Binding(
+                        get: { draft.timeMode },
+                        set: { setTimeMode(arrangement, $0) }
+                    )) {
+                        Text("按节次").tag(false)
+                        Text("按时间").tag(true)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+                if draft.timeMode {
+                    editorFieldRow("开始") { timePicker(arrangement.startMinutes, label: "开始时间") }
+                    editorFieldRow("结束") { timePicker(arrangement.endMinutes, label: "结束时间") }
+                    Text(timeSummary(draft))
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                } else {
+                    slotChipPicker(arrangement.slots)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                }
             }
             if !conflicts.isEmpty {
                 // A hint only: overlapping courses can still be saved.
@@ -3933,8 +3976,67 @@ private struct NativeCourseEditorSheet: View {
         case "current": weekList = [defaultWeek]
         default: weekList = draft.selectedWeeks.sorted()
         }
-        return NativeCourseArrangement(day: draft.day, slots: draft.slots, weekList: weekList)
-            .conflicts(in: result.cells, ignoring: Set([selection?.course.id].compactMap { $0 }))
+        return NativeCourseArrangement(day: draft.day, slots: drawnSlots(draft), weekList: weekList, time: draftTime(draft))
+            .conflicts(in: result.cells, ignoring: Set([selection?.course.id].compactMap { $0 }), clock: { slot in
+                ScheduleSlot.all.first { $0.number == slot }.map { (start: $0.start, end: $0.end) }
+            })
+    }
+
+    /// The group's own time in time mode, when both ends are picked and in order.
+    private func draftTime(_ draft: ArrangementDraft) -> NativeCourseTime? {
+        guard draft.timeMode, let start = draft.startMinutes, let end = draft.endMinutes else { return nil }
+        return NativeCourseTime(start: NativeCourseTime.text(start), end: NativeCourseTime.text(end))
+    }
+
+    /// The periods a group is drawn on: its own in period mode, the ones its time overlaps in time mode.
+    private func drawnSlots(_ draft: ArrangementDraft) -> Set<Int> {
+        guard draft.timeMode else { return draft.slots }
+        guard let range = draftTime(draft)?.slotRange(in: Self.periodClocks) else { return [] }
+        return Set(range)
+    }
+
+    /// "16:30–18:00 · 课表上排在第 8–9 节"
+    private func timeSummary(_ draft: ArrangementDraft) -> String {
+        guard let time = draftTime(draft) else { return "结束时间要晚于开始时间" }
+        guard let range = time.slotRange(in: Self.periodClocks) else { return "\(time.start)–\(time.end)" }
+        let slots = range.lowerBound == range.upperBound ? "\(range.lowerBound)" : "\(range.lowerBound)–\(range.upperBound)"
+        return "\(time.start)–\(time.end) · 课表上排在第 \(slots) 节"
+    }
+
+    /// Switching keeps what is picked: periods become their bell times, a time becomes the periods it is drawn on.
+    private func setTimeMode(_ arrangement: Binding<ArrangementDraft>, _ timeMode: Bool) {
+        var draft = arrangement.wrappedValue
+        guard draft.timeMode != timeMode else { return }
+        draft.timeMode = timeMode
+        if timeMode {
+            if draft.startMinutes == nil || draft.endMinutes == nil {
+                let low = draft.slots.min() ?? 1
+                let high = draft.slots.max() ?? low
+                draft.startMinutes = NativeCourseTime.minutes(ScheduleSlot.all.first { $0.number == low }?.start) ?? 8 * 60
+                draft.endMinutes = NativeCourseTime.minutes(ScheduleSlot.all.first { $0.number == high }?.end) ?? 9 * 60
+            }
+        } else if let start = draft.startMinutes, let end = draft.endMinutes,
+                  let range = NativeCourseTime(start: NativeCourseTime.text(start), end: NativeCourseTime.text(end))?
+                    .slotRange(in: Self.periodClocks) {
+            draft.slots = Set(range)
+        }
+        arrangement.wrappedValue = draft
+    }
+
+    /// A start or end time on the clock.
+    private func timePicker(_ minutes: Binding<Int?>, label: String) -> some View {
+        DatePicker(label, selection: Binding(
+            get: {
+                let value = minutes.wrappedValue ?? 8 * 60
+                return Calendar.current.date(bySettingHour: value / 60, minute: value % 60, second: 0, of: Date()) ?? Date()
+            },
+            set: { date in
+                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+                minutes.wrappedValue = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+            }
+        ), displayedComponents: .hourAndMinute)
+        .labelsHidden()
+        .disabled(saving)
     }
 
     /// "第 1–2、5 节 · 08:00–09:40、13:30–14:15"

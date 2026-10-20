@@ -538,3 +538,39 @@
   font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
+.editor-segmented {
+  justify-self: end;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--cpu-radius-m);
+  background: var(--schedule-surface-bg-soft);
+}
+.editor-segmented button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: calc(var(--cpu-radius-m) - 2px);
+  background: transparent;
+  color: var(--schedule-text-secondary);
+  font: inherit;
+  font-size: var(--cpu-fs-s);
+  font-weight: 560;
+}
+.editor-segmented button.active {
+  background: var(--schedule-surface-bg);
+  color: var(--schedule-accent-strong);
+  box-shadow: 0 0 0 1px var(--schedule-border);
+}
+.editor-segmented button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.editor-row input[type="time"] {
+  justify-self: end;
+  width: auto;
+  min-width: 96px;
+}
+.editor-time-summary {
+  margin: 0 14px;
+  padding: 10px 0 12px;
+}

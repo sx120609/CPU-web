@@ -3,10 +3,14 @@ import { NativeCourseBlock, NativeScheduleCell, NativeScheduleCourse, NativeSche
 // One "when it meets" group of a course as it is sent to the Web bridge: a weekday, any set of
 // periods and the weeks it runs. The saved edit payload shared with Web, Android and iOS describes
 // one contiguous block per item, so the bridge writes one item per run of consecutive periods.
+// A course that does not follow the periods (a lecture, a lab) sends its own `startTime`/`endTime`
+// (HH:MM); `slots` are then the periods it is drawn on and the bridge saves it as one block.
 export interface CourseArrangementForm {
   day: number;
   slots: number[];
   weekList: number[];
+  startTime?: string;
+  endTime?: string;
 }
 export interface CourseEditorForm {
   name: string;
@@ -39,6 +43,10 @@ export interface CourseArrangementDraft {
   // current | all | custom
   weekMode: string;
   weeks: number[];
+  // Meets at its own time instead of on the periods; `slots` are then kept only for switching back.
+  timeMode: boolean;
+  startTime: string;
+  endTime: string;
 }
 interface HiddenCourse { key: string; label: string; }
 interface EditorReply {
@@ -60,6 +68,55 @@ export function courseSlotRuns(slots: number[]): number[][] {
   return runs;
 }
 
+/** "8:05" or "08:05" → 485; -1 when it is not a time of day. Port of the Web `scheduleCustomTime.ts`. */
+export function courseClockMinutes(value?: string): number {
+  const match = /^(\d{1,2}):(\d{2})$/.exec((value ?? '').trim());
+  if (!match) return -1;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours > 23 || minutes > 59 ? -1 : hours * 60 + minutes;
+}
+
+export function courseClockText(minutes: number): string {
+  const safe = Math.max(0, Math.min(23 * 60 + 59, Math.round(minutes)));
+  return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+/** [start, end] with two-digit hours when both are valid and the end is after the start; empty otherwise. */
+export function courseTimeRange(start?: string, end?: string): string[] {
+  const from = courseClockMinutes(start);
+  const to = courseClockMinutes(end);
+  return from < 0 || to <= from ? [] : [courseClockText(from), courseClockText(to)];
+}
+
+/**
+ * The periods a time is drawn on, [first, last]: the ones it overlaps, or the nearest one when it
+ * overlaps none. Empty for an invalid time or an empty bell schedule.
+ */
+export function courseTimeSlots(start: string, end: string, slots: number[], starts: string[], ends: string[]): number[] {
+  const range = courseTimeRange(start, end);
+  if (!range.length) return [];
+  const from = courseClockMinutes(range[0]);
+  const to = courseClockMinutes(range[1]);
+  let first = -1;
+  let last = -1;
+  let nearest = -1;
+  let best = Number.MAX_VALUE;
+  slots.forEach((slot: number, index: number) => {
+    const periodStart = courseClockMinutes(starts[index]);
+    const periodEnd = courseClockMinutes(ends[index]);
+    if (periodStart < 0 || periodEnd < 0) return;
+    if (periodStart < to && from < periodEnd) {
+      if (first < 0) first = slot;
+      last = slot;
+    }
+    const distance = periodEnd <= from ? from - periodEnd : periodStart - to;
+    if (distance < best) { best = distance; nearest = slot; }
+  });
+  if (first > 0) return [first, last];
+  return nearest > 0 ? [nearest, nearest] : [];
+}
+
 function sameCourse(course: NativeScheduleCourse, day: number, original?: NativeCourseBlock): boolean {
   if (!original) return false;
   const own = original.course;
@@ -74,17 +131,36 @@ function sameCourse(course: NativeScheduleCourse, day: number, original?: Native
  * Names of the courses an arrangement would sit on top of: same weekday, intersecting periods and
  * at least one week in common. Courses that only alternate weeks in the same periods do not count,
  * and the course being edited does not collide with itself. A course without a week list meets every week.
+ *
+ * When either side keeps its own time (`time` is [start, end]) and `clock` gives the bell times of a
+ * period, the two are compared by the minute instead of by period.
  */
 export function courseArrangementConflicts(day: number, slots: number[], weekList: number[], cells: NativeScheduleCell[],
-  original?: NativeCourseBlock): string[] {
+  original?: NativeCourseBlock, time: string[] = [], clock?: (slot: number, end: boolean) => string): string[] {
   const names: string[] = [];
   if (!slots.length) return names;
+  const runMinutes = (first: number, last: number): number[] => {
+    if (!clock) return [];
+    const from = courseClockMinutes(clock(first, false));
+    const to = courseClockMinutes(clock(last, true));
+    return from < 0 || to <= from ? [] : [from, to];
+  };
+  const own: number[][] = time.length === 2
+    ? [[courseClockMinutes(time[0]), courseClockMinutes(time[1])]]
+    : courseSlotRuns(slots).map((run: number[]) => runMinutes(run[0], run[1])).filter((value: number[]) => value.length === 2);
   cells.filter((cell: NativeScheduleCell) => cell.day === day).forEach((cell: NativeScheduleCell) => {
     cell.courses.forEach((course: NativeScheduleCourse) => {
       if (sameCourse(course, cell.day, original)) return;
       const start = Number(course.startSlot) || cell.bigSlot * 2 - 1;
       const end = Math.max(start, Number(course.endSlot) || cell.bigSlot * 2);
-      if (!slots.some((slot: number) => slot >= start && slot <= end)) return;
+      const courseTime = courseTimeRange(course.customStartTime, course.customEndTime);
+      const other: number[] = courseTime.length
+        ? [courseClockMinutes(courseTime[0]), courseClockMinutes(courseTime[1])]
+        : time.length === 2 ? runMinutes(start, end) : [];
+      const overlaps = other.length === 2 && own.length
+        ? own.some((value: number[]) => value[0] < other[1] && other[0] < value[1])
+        : slots.some((slot: number) => slot >= start && slot <= end);
+      if (!overlaps) return;
       const weeks = course.weekList ?? [];
       if (weekList.length && weeks.length && !weekList.some((week: number) => weeks.includes(week))) return;
       if (!names.includes(course.name)) names.push(course.name);
@@ -151,9 +227,11 @@ export class NativeCourseEditorModel {
     for (let value = start; value <= end; value += 1) slots.push(value);
     const list = block ? block.course.weekList ?? [] : [this.defaultWeek];
     const everyWeek = list.length === 0 || (this.options.length > 0 && this.options.every(week => list.includes(week)));
+    const time = courseTimeRange(block?.course.customStartTime, block?.course.customEndTime);
     this.arrangements = [{ id: ++this.draftSequence, day: block?.day ?? day ?? store.selectedDay, slots,
       weekMode: everyWeek ? 'all' : list.length === 1 && list[0] === this.defaultWeek ? 'current' : 'custom',
-      weeks: everyWeek ? [...this.options] : [...list].sort((a, b) => a - b) }];
+      weeks: everyWeek ? [...this.options] : [...list].sort((a, b) => a - b),
+      timeMode: time.length === 2, startTime: time[0] ?? '', endTime: time[1] ?? '' }];
     this.preferred = !!block && (store.displayPriorities()[this.priorityKey(block.course.name)] ?? 0) > 0;
     this.session = '';
     this.hidden = [];
@@ -168,14 +246,22 @@ export class NativeCourseEditorModel {
       for (let index = 0; index < this.arrangements.length; index += 1) {
         const draft = this.arrangements[index];
         const title = this.arrangements.length > 1 ? `上课时间 ${index + 1}：` : '';
-        if (!draft.slots.length) { this.error = `${title}请选择至少一节`; return; }
+        const time = draft.timeMode ? courseTimeRange(draft.startTime, draft.endTime) : [];
+        if (draft.timeMode && !time.length) {
+          this.error = draft.startTime && draft.endTime ? `${title}结束时间要晚于开始时间` : `${title}请选择开始和结束时间`;
+          return;
+        }
+        const drawn = this.drawnSlots(draft);
+        if (!drawn.length) { this.error = `${title}请选择至少一节`; return; }
         const weekList = this.weekList(draft);
         if (!weekList.length) { this.error = `${title}请选择至少一个周次`; return; }
-        resolved.push({ day: draft.day, slots: [...draft.slots].sort((a, b) => a - b), weekList });
+        const form: CourseArrangementForm = { day: draft.day, slots: drawn, weekList };
+        if (time.length) { form.startTime = time[0]; form.endTime = time[1]; }
+        resolved.push(form);
       }
     } else {
       this.arrangements.forEach((draft: CourseArrangementDraft) => {
-        resolved.push({ day: draft.day, slots: [...draft.slots].sort((a, b) => a - b), weekList: this.weekList(draft) });
+        resolved.push({ day: draft.day, slots: this.drawnSlots(draft), weekList: this.weekList(draft) });
       });
     }
     const first: CourseArrangementForm = resolved.length ? resolved[0] : { day: 1, slots: [1], weekList: [] };
@@ -238,34 +324,80 @@ export class NativeCourseEditorModel {
   addArrangement(): void {
     const last = this.arrangements.length ? this.arrangements[this.arrangements.length - 1] : undefined;
     this.arrangements = [...this.arrangements, { id: ++this.draftSequence, day: last?.day ?? 1, slots: [],
-      weekMode: last?.weekMode ?? 'all', weeks: last ? [...last.weeks] : [this.defaultWeek] }];
+      weekMode: last?.weekMode ?? 'all', weeks: last ? [...last.weeks] : [this.defaultWeek],
+      timeMode: false, startTime: '', endTime: '' }];
   }
   removeArrangement(id: number): void {
     if (this.arrangements.length > 1) this.arrangements = this.arrangements.filter(item => item.id !== id);
   }
   setDay(id: number, day: number): void {
     this.replace(id, (draft: CourseArrangementDraft): CourseArrangementDraft =>
-      ({ id: draft.id, day, slots: draft.slots, weekMode: draft.weekMode, weeks: draft.weeks }));
+      ({ id: draft.id, day, slots: draft.slots, weekMode: draft.weekMode, weeks: draft.weeks,
+        timeMode: draft.timeMode, startTime: draft.startTime, endTime: draft.endTime }));
   }
   toggleSlot(id: number, slot: number): void {
     this.replace(id, (draft: CourseArrangementDraft): CourseArrangementDraft => ({ id: draft.id, day: draft.day,
       slots: draft.slots.includes(slot) ? draft.slots.filter(value => value !== slot) : [...draft.slots, slot].sort((a, b) => a - b),
-      weekMode: draft.weekMode, weeks: draft.weeks }));
+      weekMode: draft.weekMode, weeks: draft.weeks, timeMode: draft.timeMode, startTime: draft.startTime, endTime: draft.endTime }));
   }
   setWeekMode(id: number, mode: string): void {
     this.replace(id, (draft: CourseArrangementDraft): CourseArrangementDraft => ({ id: draft.id, day: draft.day, slots: draft.slots,
-      weekMode: mode, weeks: mode === 'all' ? [...this.options] : mode === 'current' ? [this.defaultWeek] : draft.weeks }));
+      weekMode: mode, weeks: mode === 'all' ? [...this.options] : mode === 'current' ? [this.defaultWeek] : draft.weeks,
+      timeMode: draft.timeMode, startTime: draft.startTime, endTime: draft.endTime }));
   }
   setWeeks(id: number, weeks: number[]): void {
     this.replace(id, (draft: CourseArrangementDraft): CourseArrangementDraft =>
-      ({ id: draft.id, day: draft.day, slots: draft.slots, weekMode: draft.weekMode, weeks: [...weeks].sort((a, b) => a - b) }));
+      ({ id: draft.id, day: draft.day, slots: draft.slots, weekMode: draft.weekMode, weeks: [...weeks].sort((a, b) => a - b),
+        timeMode: draft.timeMode, startTime: draft.startTime, endTime: draft.endTime }));
+  }
+  // Switching keeps what is picked: periods become their bell times, a time becomes the periods it is drawn on.
+  setTimeMode(id: number, timeMode: boolean): void {
+    this.replace(id, (draft: CourseArrangementDraft): CourseArrangementDraft => {
+      let slots = draft.slots;
+      let startTime = draft.startTime;
+      let endTime = draft.endTime;
+      if (timeMode && !courseTimeRange(startTime, endTime).length && slots.length) {
+        startTime = this.slotStarts[this.slots.indexOf(Math.min(...slots))] ?? '';
+        endTime = this.slotEnds[this.slots.indexOf(Math.max(...slots))] ?? '';
+      } else if (!timeMode) {
+        const drawn = this.timeSlots(startTime, endTime);
+        if (drawn.length) slots = drawn;
+      }
+      return { id: draft.id, day: draft.day, slots, weekMode: draft.weekMode, weeks: draft.weeks, timeMode, startTime, endTime };
+    });
+  }
+  setTime(id: number, end: boolean, value: string): void {
+    this.replace(id, (draft: CourseArrangementDraft): CourseArrangementDraft => ({ id: draft.id, day: draft.day, slots: draft.slots,
+      weekMode: draft.weekMode, weeks: draft.weeks, timeMode: draft.timeMode,
+      startTime: end ? draft.startTime : value, endTime: end ? value : draft.endTime }));
+  }
+  // The periods an arrangement is drawn on: its own in period mode, the ones its time overlaps in time mode.
+  drawnSlots(draft: CourseArrangementDraft): number[] {
+    return draft.timeMode ? this.timeSlots(draft.startTime, draft.endTime) : [...draft.slots].sort((a, b) => a - b);
+  }
+  // "16:30–18:00 · 课表上排在第 8–9 节"
+  timeSummary(draft: CourseArrangementDraft): string {
+    if (courseClockMinutes(draft.startTime) < 0 || courseClockMinutes(draft.endTime) < 0) return '选择开始和结束时间';
+    const time = courseTimeRange(draft.startTime, draft.endTime);
+    if (!time.length) return '结束时间要晚于开始时间';
+    const drawn = this.timeSlots(time[0], time[1]);
+    const place = drawn.length ? ` · 课表上排在第 ${drawn[0] === drawn[drawn.length - 1] ? drawn[0] : `${drawn[0]}–${drawn[drawn.length - 1]}`} 节` : '';
+    return `${time[0]}–${time[1]}${place}`;
+  }
+  private timeSlots(start: string, end: string): number[] {
+    const range = courseTimeSlots(start, end, this.slots, this.slotStarts, this.slotEnds);
+    const slots: number[] = [];
+    if (range.length === 2) for (let value = range[0]; value <= range[1]; value += 1) slots.push(value);
+    return slots;
   }
   toggleWeek(id: number, week: number): void {
     const draft = this.arrangements.find(item => item.id === id);
     if (draft) this.setWeeks(id, draft.weeks.includes(week) ? draft.weeks.filter(value => value !== week) : [...draft.weeks, week]);
   }
   conflicts(draft: CourseArrangementDraft): string[] {
-    return courseArrangementConflicts(draft.day, draft.slots, draft.weekMode === 'all' ? [] : this.weekList(draft), this.cells, this.original);
+    return courseArrangementConflicts(draft.day, this.drawnSlots(draft), draft.weekMode === 'all' ? [] : this.weekList(draft), this.cells,
+      this.original, draft.timeMode ? courseTimeRange(draft.startTime, draft.endTime) : [],
+      (slot: number, end: boolean): string => (end ? this.slotEnds : this.slotStarts)[this.slots.indexOf(slot)] ?? '');
   }
   // Every other course some arrangement of this one sits on top of. A priority is per course
   // name, so it cannot rank a course against itself.
@@ -465,17 +597,38 @@ export struct NativeCourseEditor {
             .onSelect((selected: number) => this.model.setDay(draft.id, selected + 1))
         }.width('100%').height(48).padding({ left: 14, right: 8 })
           .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
+        // Lectures, labs and the like do not follow the periods: they take a start and an end instead.
+        Row({ space: 12 }) {
+          Text('方式').fontSize(16).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+          Row({ space: 6 }) {
+            Column() {
+              this.chip('按节次', !draft.timeMode, '按节次填写上课时间', () => this.model.setTimeMode(draft.id, false))
+            }.layoutWeight(1)
+            Column() {
+              this.chip('按时间', draft.timeMode, '按具体时间填写上课时间', () => this.model.setTimeMode(draft.id, true))
+            }.layoutWeight(1)
+          }.width(168)
+        }.width('100%').height(52).padding({ left: 14, right: 14 })
+          .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
         Column({ space: 8 }) {
-          Text('节次').fontSize(16).fontColor($r('app.color.app_text_primary')).width('100%')
-          Grid() {
-            ForEach(this.model.slots, (slot: number) => {
-              GridItem() {
-                this.chip(String(slot), draft.slots.includes(slot), this.slotSpoken(slot), () => this.model.toggleSlot(draft.id, slot))
-              }
-            }, (slot: number) => slot + ':' + (draft.slots.includes(slot) ? 1 : 0))
-          }.columnsTemplate('1fr 1fr 1fr 1fr 1fr 1fr').columnsGap(6).rowsGap(6)
-            .height(Math.ceil(this.model.slots.length / 6) * 40 - 6)
-          Text(this.model.slotSummary(draft.slots)).fontSize(12).fontColor($r('app.color.app_text_secondary')).width('100%')
+          if (draft.timeMode) {
+            Row({ space: 8 }) {
+              this.timeField(draft, '开始', draft.startTime, false)
+              this.timeField(draft, '结束', draft.endTime, true)
+            }.width('100%')
+            Text(this.model.timeSummary(draft)).fontSize(12).fontColor($r('app.color.app_text_secondary')).width('100%')
+          } else {
+            Text('节次').fontSize(16).fontColor($r('app.color.app_text_primary')).width('100%')
+            Grid() {
+              ForEach(this.model.slots, (slot: number) => {
+                GridItem() {
+                  this.chip(String(slot), draft.slots.includes(slot), this.slotSpoken(slot), () => this.model.toggleSlot(draft.id, slot))
+                }
+              }, (slot: number) => slot + ':' + (draft.slots.includes(slot) ? 1 : 0))
+            }.columnsTemplate('1fr 1fr 1fr 1fr 1fr 1fr').columnsGap(6).rowsGap(6)
+              .height(Math.ceil(this.model.slots.length / 6) * 40 - 6)
+            Text(this.model.slotSummary(draft.slots)).fontSize(12).fontColor($r('app.color.app_text_secondary')).width('100%')
+          }
         }.width('100%').padding({ left: 14, right: 14, top: 10, bottom: 12 })
           .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
       }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
@@ -484,6 +637,30 @@ export struct NativeCourseEditor {
         Text(`与「${this.model.conflicts(draft).join('」「')}」时间重叠`).fontSize(12).fontColor('#C2410C').width('100%').padding({ left: 4, right: 4 })
       }
     }.width('100%')
+  }
+
+  // A start or end time; a tap opens the time picker.
+  @Builder
+  private timeField(draft: CourseArrangementDraft, title: string, value: string, end: boolean) {
+    Column({ space: 2 }) {
+      Text(title).fontSize(12).fontColor($r('app.color.app_text_secondary'))
+      Text(value || '选择').fontSize(16).fontWeight(FontWeight.Medium)
+        .fontColor(value ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
+    }.layoutWeight(1).alignItems(HorizontalAlign.Start).padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .borderRadius(10).backgroundColor($r('app.color.app_surface')).border({ width: 1, color: $r('app.color.app_divider'), radius: 10 })
+      .accessibilityText(`${title}时间，${value || '未选择'}`)
+      .onClick(() => this.pickTime(draft, value, end))
+  }
+
+  private pickTime(draft: CourseArrangementDraft, value: string, end: boolean): void {
+    if (this.model.busy) return;
+    const minutes = courseClockMinutes(value);
+    const selected = new Date();
+    selected.setHours(minutes < 0 ? 8 : Math.floor(minutes / 60), minutes < 0 ? 0 : minutes % 60, 0, 0);
+    TimePickerDialog.show({ selected, useMilitaryTime: true,
+      onAccept: (result: TimePickerResult) => {
+        this.model.setTime(draft.id, end, courseClockText((result.hour ?? 0) * 60 + (result.minute ?? 0)));
+      } });
   }
 
   @Builder

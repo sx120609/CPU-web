@@ -32,7 +32,14 @@ data class ScheduleCourse(
     val orphaned: Boolean = false,
     /** The note the course arrived with; [slotNote] is replaced by the merged period label. */
     val sourceNote: String? = null,
+    /** A course that does not follow the periods: its own start and end, "HH:MM" ([CourseCustomTime]). */
+    val customStartTime: String? = null,
+    val customEndTime: String? = null,
 ) {
+    /** The course's own start and end when both are valid and in order; null for a course on the periods. */
+    val customTime: Pair<String, String>?
+        get() = CourseCustomTime.range(customStartTime, customEndTime)
+
     /** The user's own note for the editor, without generated period labels (Web `noteFromCourse`). */
     val editableNote: String
         get() {
@@ -54,6 +61,8 @@ data class ScheduleCourse(
         customId?.let { put("customId", it) }
         if (custom) put("custom", true)
         if (orphaned) put("orphaned", true)
+        customStartTime?.let { put("customStartTime", it) }
+        customEndTime?.let { put("customEndTime", it) }
     }
 }
 
@@ -244,6 +253,8 @@ object ScheduleJson {
             customId = json.optStringOrNull("customId"),
             custom = json.optBoolean("custom", false),
             orphaned = json.optBoolean("orphaned", false),
+            customStartTime = json.optStringOrNull("customStartTime"),
+            customEndTime = json.optStringOrNull("customEndTime"),
         )
     }
 

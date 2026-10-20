@@ -84,8 +84,7 @@ fun CourseQuickLookSheet(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(Icons.Outlined.Schedule, contentDescription = null, tint = meta, modifier = Modifier.size(15.dp))
                     Text(
-                        "${WEEKDAY_LABELS[block.day - 1]} · ${ScheduleStyleTime.slotText(block.startSlot, block.endSlot)} · " +
-                            store.timeRange(block.startSlot, block.endSlot).replace('-', '–'),
+                        "${WEEKDAY_LABELS[block.day - 1]} · ${store.slotAndTime(block)}",
                         fontSize = 14.sp, color = meta,
                     )
                 }

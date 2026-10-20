@@ -137,3 +137,32 @@ test('the note field holds what the person wrote, never the period label the tim
   open({ slotNote: '06-07节' });
   assert.equal(h.model.note, '');
 });
+
+test('time mode submits its own start and end with the periods it is drawn on', () => {
+  const h = harness(); h.model.open(h.store);
+  h.model.accept(h.requests.at(-1).id, JSON.stringify({ session: 'current' }));
+  // The fake bell schedule puts period n at (n + 7):00–(n + 7):45.
+  h.model.setTimeMode(h.model.arrangements[0].id, true);
+  let draft = h.model.arrangements[0];
+  assert.equal(`${draft.startTime}-${draft.endTime}`, '08:00-09:45');
+  h.model.setTime(draft.id, false, '14:10'); h.model.setTime(draft.id, true, '16:20');
+  draft = h.model.arrangements[0];
+  assert.equal(h.model.timeSummary(draft), '14:10–16:20 · 课表上排在第 7–9 节');
+  h.model.name = '学术讲座'; h.model.submit('save');
+  const form = h.requests.at(-1).request.form;
+  assert.equal(JSON.stringify(form.arrangements), JSON.stringify([{ day: 2, slots: [7, 8, 9], weekList: [2], startTime: '14:10', endTime: '16:20' }]));
+  assert.equal(`${form.startSlot}-${form.endSlot}`, '7-9');
+  // Switching back keeps the periods the time was drawn on.
+  h.model.setTimeMode(draft.id, false);
+  assert.equal(JSON.stringify(h.model.arrangements[0].slots), '[7,8,9]');
+});
+
+test('time mode refuses an end before the start', () => {
+  const h = harness(); h.model.open(h.store);
+  h.model.accept(h.requests.at(-1).id, JSON.stringify({ session: 'current' }));
+  const id = h.model.arrangements[0].id;
+  h.model.setTimeMode(id, true); h.model.setTime(id, false, '16:00'); h.model.setTime(id, true, '15:00');
+  h.model.name = '学术讲座'; h.model.submit('save');
+  assert.equal(h.requests.length, 1); assert.match(h.model.error, /结束时间要晚于开始时间/);
+  assert.equal(h.model.timeSummary(h.model.arrangements[0]), '结束时间要晚于开始时间');
+});

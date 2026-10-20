@@ -379,6 +379,7 @@ import {
 } from "@/utils/scheduleEdits";
 import { courseMatchesWeek, normalizedCourseWeekList } from "@/utils/scheduleWeeks";
 import { smallSlots, MAX_SMALL_SLOT } from "@/views/schedule/slots";
+import { courseCustomTime } from "@/utils/scheduleCustomTime";
 import { classroomOnly } from "@/views/schedule/nowIndicator";
 import { deleteCourseEdit, isOriginalCourseEditUnchanged, saveCustomCourseEdit } from "@/views/schedule/courseEditor";
 import {
@@ -1700,6 +1701,13 @@ async function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeek
   editDialogOpen.value = true;
 }
 
+function keptCustomTime(startSlot: number, endSlot: number) {
+  const block = editingCourseBlock.value;
+  const time = block ? courseCustomTime(block.course) : null;
+  if (!block || !time || block.day !== customCourseForm.day || block.startSlot !== startSlot || block.endSlot !== endSlot) return null;
+  return { customStartTime: time.start, customEndTime: time.end };
+}
+
 function saveCourseEdit(keepAsCustom = false) {
   if (courseEditBusy.value) return;
   const name = customCourseForm.name.trim();
@@ -1732,6 +1740,8 @@ function saveCourseEdit(keepAsCustom = false) {
         weekList,
         startSlot,
         endSlot,
+        // 这里只能按节次改；节次没动时保留课程自己的上下课时间。
+        ...(keptCustomTime(startSlot, endSlot) ?? {}),
         slotNote: customCourseForm.note.trim() || `第 ${startSlot}-${endSlot} 节`,
       },
     };

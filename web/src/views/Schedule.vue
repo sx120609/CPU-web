@@ -560,7 +560,7 @@
                     <strong>{{ piece.block.course.name }}</strong>
                     <span v-if="piece.block.course.location">@{{ classroomOnly(piece.block.course.location) }}</span>
                     <span v-if="display.showTeacher && piece.block.course.teacher" class="week-course-teacher">{{ piece.block.course.teacher }}</span>
-                    <em>{{ piece.block.course.slotNote || piece.block.course.weeks }}</em>
+                    <em>{{ courseCardNote(piece.block.course) }}</em>
                     <div v-if="isCoupleShared(page, piece.block) || coupleClashesFor(page, piece.block).length" class="couple-notes">
                       <b v-if="isCoupleShared(page, piece.block)" class="couple-note together"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z" /></svg>一起</b>
                       <b
@@ -679,7 +679,7 @@
                         <span v-if="piece.block.course.location">@{{ classroomOnly(piece.block.course.location) }}</span>
                         <span v-if="piece.block.course.teacher">{{ piece.block.course.teacher }}</span>
                       </div>
-                      <div class="day-course-note">{{ piece.block.course.slotNote || piece.block.course.weeks }}</div>
+                      <div class="day-course-note">{{ courseCardNote(piece.block.course) }}</div>
                     </article>
                   </div>
                 </section>
@@ -1013,7 +1013,46 @@
                       <option v-for="d in 7" :key="d" :value="d">{{ dayLabel(d) }}</option>
                     </select>
                   </label>
-                  <div class="editor-week-picker editor-slot-picker">
+                  <!-- 讲座、实验这类不按节次上的课改填具体时间；课表上仍排在重叠的那几节。 -->
+                  <div class="editor-row">
+                    <span>方式</span>
+                    <div class="editor-segmented" role="radiogroup" aria-label="上课时间的填写方式">
+                      <button
+                        type="button"
+                        role="radio"
+                        :class="{ active: !arrangement.timeMode }"
+                        :aria-checked="!arrangement.timeMode"
+                        :disabled="courseEditBusy"
+                        @click="setArrangementTimeMode(arrangement, false)"
+                      >
+                        按节次
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        :class="{ active: arrangement.timeMode }"
+                        :aria-checked="arrangement.timeMode"
+                        :disabled="courseEditBusy"
+                        @click="setArrangementTimeMode(arrangement, true)"
+                      >
+                        按时间
+                      </button>
+                    </div>
+                  </div>
+                  <template v-if="arrangement.timeMode">
+                    <label class="editor-row">
+                      <span>开始</span>
+                      <input v-model="arrangement.startTime" type="time" :disabled="courseEditBusy" />
+                    </label>
+                    <label class="editor-row">
+                      <span>结束</span>
+                      <input v-model="arrangement.endTime" type="time" :disabled="courseEditBusy" />
+                    </label>
+                    <p class="editor-slot-summary editor-time-summary">
+                      {{ arrangementTimeSummary({ start: arrangement.startTime, end: arrangement.endTime }) }}
+                    </p>
+                  </template>
+                  <div v-else class="editor-week-picker editor-slot-picker">
                     <span>节次</span>
                     <div>
                       <div class="week-chip-grid">
@@ -1136,8 +1175,11 @@ import {
   arrangementConflicts,
   arrangementCustomItems,
   arrangementSlotSummary,
+  arrangementTimeRun,
+  arrangementTimeSummary,
   type CourseArrangement,
 } from "@/views/schedule/arrangements";
+import { normalizeCustomTimeRange } from "@/utils/scheduleCustomTime";
 import {
   normalizeSchedulePriority,
   placeCourseBlocks,
@@ -1148,7 +1190,7 @@ import {
 } from "@/views/schedule/displayPriority";
 import { buildWeekIcs, saveWeekIcs, weekIcsFileName } from "@/views/schedule/icsExport";
 import { buildDateIndex, buildMonthDays, calendarMonths, monthKeyOf } from "@/views/schedule/monthModel";
-import { blockScheduleLine, classroomOnly, formatClock, nowRowPosition, shanghaiMinutes } from "@/views/schedule/nowIndicator";
+import { blockScheduleLine, classroomOnly, courseCardNote, formatClock, nowRowPosition, shanghaiMinutes } from "@/views/schedule/nowIndicator";
 import {
   DEFAULT_SCHEDULE_STYLE,
   readStoredScheduleStyle,
@@ -3329,8 +3371,13 @@ function saveCourseEdit(keepAsCustom = false) {
   const resolved: CourseArrangement[] = [];
   for (const [index, draft] of drafts.entries()) {
     const title = drafts.length > 1 ? `上课时间 ${index + 1}：` : "";
+    const time = draft.timeMode ? normalizeCustomTimeRange(draft.startTime, draft.endTime) : null;
+    if (draft.timeMode && !time) {
+      showEditorMessage("warning", draft.startTime && draft.endTime ? `${title}结束时间要晚于开始时间` : `${title}请填写开始和结束时间`);
+      return;
+    }
     const slots = draft.slots.filter((slot) => slot >= 1 && slot <= MAX_SMALL_SLOT);
-    if (!slots.length) {
+    if (!time && !slots.length) {
       showEditorMessage("warning", `${title}请选择至少一节`);
       return;
     }
@@ -3339,7 +3386,7 @@ function saveCourseEdit(keepAsCustom = false) {
       showEditorMessage("warning", `${title}请选择周次`);
       return;
     }
-    resolved.push({ day: draft.day, slots, weekList });
+    resolved.push({ day: draft.day, slots, weekList, ...(time ? { time } : {}) });
   }
   if (!resolved.length) return;
   courseEditAction.value = "save";
@@ -4294,6 +4341,10 @@ interface ArrangementDraft {
   slots: number[];
   weekMode: "current" | "all" | "custom";
   weekList: number[];
+  /** 按具体时间而不是节次上课；这时 `slots` 不保存，只在切回节次时沿用。 */
+  timeMode: boolean;
+  startTime: string;
+  endTime: string;
 }
 
 const editorArrangements = ref<ArrangementDraft[]>([]);
@@ -4304,12 +4355,16 @@ let arrangementSeq = 0;
 function resetEditorArrangements() {
   const start = Math.min(customCourseForm.startSlot, customCourseForm.endSlot);
   const end = Math.max(customCourseForm.startSlot, customCourseForm.endSlot);
+  const time = normalizeCustomTimeRange(customCourseForm.customStartTime, customCourseForm.customEndTime);
   editorArrangements.value = [{
     id: arrangementSeq += 1,
     day: customCourseForm.day,
     slots: Array.from({ length: end - start + 1 }, (_, index) => start + index),
     weekMode: customCourseForm.weekMode,
     weekList: [...customCourseForm.weekList],
+    timeMode: Boolean(time),
+    startTime: time?.start ?? "",
+    endTime: time?.end ?? "",
   }];
 }
 
@@ -4322,6 +4377,9 @@ function addArrangement() {
     slots: [],
     weekMode: last?.weekMode ?? "all",
     weekList: [...(last?.weekList ?? [])],
+    timeMode: false,
+    startTime: "",
+    endTime: "",
   });
 }
 
@@ -4340,6 +4398,23 @@ function toggleNumber(list: number[], value: number) {
 function toggleArrangementSlot(arrangement: ArrangementDraft, slot: number) {
   if (courseEditBusy.value) return;
   arrangement.slots = toggleNumber(arrangement.slots, slot);
+}
+
+/** 两种填法互相换时沿用已经选好的：节次换成它们的上下课时间，时间换成课表上占的那几节。 */
+function setArrangementTimeMode(arrangement: ArrangementDraft, timeMode: boolean) {
+  if (courseEditBusy.value || arrangement.timeMode === timeMode) return;
+  arrangement.timeMode = timeMode;
+  if (timeMode) {
+    if (normalizeCustomTimeRange(arrangement.startTime, arrangement.endTime)) return;
+    const first = Math.min(...arrangement.slots);
+    const last = Math.max(...arrangement.slots);
+    arrangement.startTime = smallSlots.find((slot) => slot.no === first)?.start ?? "";
+    arrangement.endTime = smallSlots.find((slot) => slot.no === last)?.end ?? "";
+    return;
+  }
+  const time = normalizeCustomTimeRange(arrangement.startTime, arrangement.endTime);
+  const run = time ? arrangementTimeRun(time) : null;
+  if (run) arrangement.slots = Array.from({ length: run.end - run.start + 1 }, (_, index) => run.start + index);
 }
 
 function toggleArrangementWeek(arrangement: ArrangementDraft, weekNo: number) {
@@ -4380,7 +4455,12 @@ function arrangementConflictNames(arrangement: ArrangementDraft) {
   const sameName = (value: string) => value.trim().replace(/\s+/gu, " ") === editing?.course.name.trim().replace(/\s+/gu, " ");
   return arrangementConflicts(
     // 「全部周」比较时算每周都上。
-    { day: arrangement.day, slots: arrangement.slots, weekList: arrangement.weekMode === "all" ? [] : arrangementWeekList(arrangement) },
+    {
+      day: arrangement.day,
+      slots: arrangement.slots,
+      weekList: arrangement.weekMode === "all" ? [] : arrangementWeekList(arrangement),
+      ...(arrangement.timeMode ? { time: { start: arrangement.startTime, end: arrangement.endTime } } : {}),
+    },
     editorConflictCells.value,
     (course, cell) => {
       if (!editing) return false;

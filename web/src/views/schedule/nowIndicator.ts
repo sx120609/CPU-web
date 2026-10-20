@@ -139,14 +139,23 @@ export function weekdayLabel(day: number) {
   return WEEKDAYS[day - 1] ?? `周${day}`;
 }
 
-/** 课程速览里的「周一 · 第 1–2 节 · 08:00–09:40」。 */
+/** 课表卡片最下面一行：按时间上的课写它自己的时间，其余照旧写备注或周次。 */
+export function courseCardNote(course: WeekCourseBlock["course"]) {
+  const start = ownClock(course.customStartTime);
+  const end = ownClock(course.customEndTime);
+  if (start && end) return `${start}–${end}`;
+  return course.slotNote || course.weeks;
+}
+
+/** 课程速览里的「周一 · 第 1–2 节 · 08:00–09:40」；按时间上的课不写节次：「周二 · 16:30–18:00」。 */
 export function blockScheduleLine(block: WeekCourseBlock, clocks: SlotClock[]) {
   const status: DayStatus = { clocks, now: null, completedBefore: null };
   const start = blockStart(status, block);
   const end = blockEnd(status, block);
+  const ownTime = Boolean(ownClock(block.course.customStartTime) && ownClock(block.course.customEndTime));
   return [
     weekdayLabel(block.day),
-    slotText(block),
+    ownTime ? "" : slotText(block),
     start !== "—" && end !== "—" ? `${start}–${end}` : "",
   ].filter(Boolean).join(" · ");
 }

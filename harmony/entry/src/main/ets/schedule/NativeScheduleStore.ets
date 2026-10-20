@@ -147,6 +147,22 @@ export interface NativeCourseBlock {
   course: NativeScheduleCourse;
 }
 
+/** A course's own [start, end] when it does not follow the periods; empty when it has none or they are not valid. */
+export function ownCourseTime(course: NativeScheduleCourse): string[] {
+  const minutes = (value?: string): number => {
+    const match = /^(\d{1,2}):(\d{2})$/.exec((value ?? '').trim());
+    if (!match) return -1;
+    const hours = Number(match[1]);
+    const minute = Number(match[2]);
+    return hours <= 23 && minute <= 59 ? hours * 60 + minute : -1;
+  };
+  const start = minutes(course.customStartTime);
+  const end = minutes(course.customEndTime);
+  if (start < 0 || end <= start) return [];
+  const text = (value: number): string => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  return [text(start), text(end)];
+}
+
 // 某一天在校历里的位置：第几教学周的星期几。
 export interface NativeScheduleDaySlot {
   week: number;
@@ -1010,6 +1026,17 @@ export class NativeScheduleStore {
 
   slotEnd(number: number): string {
     return this.periods.find((period: NativeSchedulePeriod) => period.number === number)?.endTime ?? '';
+  }
+
+  // A course that does not follow the periods starts and ends at its own time (both HH:MM, end after start).
+  blockStart(block: NativeCourseBlock): string {
+    const own = ownCourseTime(block.course);
+    return own.length ? own[0] : this.slotStart(block.startSlot);
+  }
+
+  blockEnd(block: NativeCourseBlock): string {
+    const own = ownCourseTime(block.course);
+    return own.length ? own[1] : this.slotEnd(block.endSlot);
   }
 
   private snapshotPeriods(snapshot: NativeScheduleSnapshot): NativeSchedulePeriod[] {

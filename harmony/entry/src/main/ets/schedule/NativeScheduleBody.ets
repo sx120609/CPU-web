@@ -1296,9 +1296,9 @@ export struct NativeScheduleBody {
   }
 
   private timeRangeSuffix(block: PlacedCourseBlock): string {
-    const start = this.view.slotStart(block.startSlot);
-    const end = this.view.slotEnd(block.endSlot);
-    return start && end ? ` · ${start}-${end}` : '';
+    const start = this.blockStart(block);
+    const end = this.blockEnd(block);
+    return start !== '—' && end !== '—' ? ` · ${start}-${end}` : '';
   }
 
   private courseAccessibility(block: PlacedCourseBlock, day: number): string {

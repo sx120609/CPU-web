@@ -3,6 +3,7 @@ import { courseEditKey, courseWeeksOverlap, normalizeScheduleEditsState } from '
 import { buildCustomCourseItem, saveCustomCourseEdit, deleteCourseEdit, restoreOriginalCourseEdit } from '../../web/src/views/schedule/courseEditor';
 import { buildCourseFamilyKey } from '../../web/src/views/schedule/viewModels';
 import { MAX_SMALL_SLOT } from '../../web/src/views/schedule/slots';
+import { normalizeCustomTimeRange } from '../../web/src/utils/scheduleCustomTime';
 
 type PriorityMap = Record<string, number>;
 
@@ -105,14 +106,21 @@ export function installHarmonyEditor() {
             ? Array.from({ length: form.endSlot - form.startSlot + 1 }, (_, index) => form.startSlot + index) : [form.startSlot, form.endSlot],
         }];
         if (groups.length > 12) throw Error('上课时间太多，请分成几门课程保存');
-        const blocks: Array<{ day: number; startSlot: number; endSlot: number; weekList: number[] }> = [];
+        const blocks: Array<{ day: number; startSlot: number; endSlot: number; weekList: number[]; customStartTime: string; customEndTime: string }> = [];
         for (const group of groups) {
           const slots = (Array.isArray(group.slots) ? group.slots : []).map(Number);
           if (!Number.isInteger(group.day) || group.day<1 || group.day>7 || !slots.length ||
             slots.some((slot: number) => !Number.isInteger(slot) || slot<1 || slot>MAX_SMALL_SLOT)) throw Error('请检查星期和节次范围');
           const weekList = [...new Set<number>((group.weekList || []).map(Number))].sort((a,b)=>a-b);
           if (!weekList.length || weekList.some(n=>!Number.isInteger(n)||n<1||n>64)) throw Error('请选择有效教学周');
-          for (const [startSlot, endSlot] of slotRuns(slots)) blocks.push({ day: group.day, startSlot, endSlot, weekList });
+          // A course that does not follow the periods sends `startTime`/`endTime` (HH:MM); its `slots`
+          // are the periods it is drawn on, and the group is saved as one block across them.
+          const timed = Boolean(group.startTime || group.endTime);
+          const time = timed ? normalizeCustomTimeRange(group.startTime, group.endTime) : null;
+          if (timed && !time) throw Error('请检查开始和结束时间，结束要晚于开始');
+          const own = { customStartTime: time?.start ?? '', customEndTime: time?.end ?? '' };
+          if (time) blocks.push({ day: group.day, startSlot: Math.min(...slots), endSlot: Math.max(...slots), weekList, ...own });
+          else for (const [startSlot, endSlot] of slotRuns(slots)) blocks.push({ day: group.day, startSlot, endSlot, weekList, ...own });
         }
         // The first block keeps the identity of the course being edited, and for an official course
         // stays tied to the original it replaces. Every further block is a plain custom item.
