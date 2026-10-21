@@ -39,6 +39,9 @@ import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeSch
   SCHEDULE_ROW_HEIGHT_MAX, SCHEDULE_ROW_HEIGHT_MIN, SCHEDULE_ROW_HEIGHT_STEP, scheduleNormalizedRowHeight,
   scheduleNormalizedTextSize } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
+import { NativeAgendaModel } from '../schedule/NativeAgenda';
+import { syncAgendaReminders } from '../schedule/NativeAgendaReminders';
+import { NativeAgendaItem } from '../schedule/NativeScheduleStore';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
 import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidgetPreview, saveScheduleWidgetTheme, refreshAllScheduleForms, clearScheduleWidgetAccount, readScheduleWidgetSettings, saveLocalScheduleSnapshot } from '../common/ScheduleWidgetService';
@@ -80,6 +83,8 @@ struct Index {
   private pendingNativeLoginRequests: Map<string, NativeLoginPending> = new Map();
   @State private scheduleStore: NativeScheduleStore = new NativeScheduleStore();
   @State private editorModel: NativeCourseEditorModel = new NativeCourseEditorModel();
+  // 日程 come through the site's bridge and are drawn on scheduleStore; see NativeAgenda.ets.
+  private agendaModel?: NativeAgendaModel;
   @State private scheduleStyleVisible: boolean = false;
   @State private sharingModel: NativeScheduleSharingModel = new NativeScheduleSharingModel();
   @State private coupleModel: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
@@ -217,6 +222,7 @@ struct Index {
       `).catch(() => this.editorModel.accept(id, '{"error":"网页会话尚未就绪"}'));
     }, () => this.scheduleStore.load(true),
       (semester: string, priority: Record<string, number>) => this.scheduleStore.setPriorities(semester, priority));
+    this.attachAgenda(context);
     if (context) {
       void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
         this.scheduleStore.palette = String(await prefs.get('palette', 'color-glass'));
@@ -247,10 +253,15 @@ struct Index {
       }).catch(() => undefined);
     }
     setNativeScheduleHostCallbacks({
-      onReady: () => this.scheduleStore.markBridgeReady(),
+      onReady: () => {
+        this.scheduleStore.markBridgeReady();
+        this.agendaModel?.refresh(true);
+      },
       onAuthChanged: (scope: string) => {
         if (scope.trim()) this.resolveAuthenticated(false);
         else if (this.webHeader.contentReady && !this.webHeader.authenticated) this.scheduleLoginGate();
+        // 日程跟着账号走：登录后重新读，退出后网页回答未登录时清掉。
+        this.agendaModel?.refresh(true);
         // 共享课表按账号分开存；换了身份（本科/研究生）还是同一个账号。
         this.sharingModel.adopt(scope.split(':')[0]);
         this.coupleModel.adopt(scope.split(':')[0]);
@@ -300,6 +311,8 @@ struct Index {
       },
       onAppearanceChanged: (mode: string) => this.applyAppearance(mode, false),
       onEditorResult: (id: string, payload: string) => this.editorModel.accept(id, payload),
+      onAgendaResult: (id: string, payload: string) => this.agendaModel?.accept(id, payload),
+      onAgendaChanged: () => this.agendaModel?.refresh(true),
       onNativeLoginResult: (id: string, payload: string) => this.acceptNativeLoginResult(id, payload),
       onWebTaskResult: (id: string, payload: string) => this.acceptWebTaskResult(id, payload)
     });
@@ -334,7 +347,9 @@ struct Index {
       'widgetSetupFailed',
       'appearanceChanged',
       'webOverlayChanged',
-      'editorResult'
+      'editorResult',
+      'agendaResult',
+      'agendaChanged'
     ];
   }
 
@@ -470,6 +485,7 @@ struct Index {
           bridge.navigate = path => host.navigate(String(path || ''));
           bridge.schedulePrefetched = value => host.schedulePrefetched(JSON.stringify(value));
           bridge.scheduleWeekPrefetched = value => host.scheduleWeekPrefetched(JSON.stringify(value));
+          bridge.agendaChanged = () => host.agendaChanged();
           bridge.loadSchedule = options => window.CPUTimeNativeScheduleFetch?.(
             options?.semester, options?.week, Boolean(options?.force)
           );
@@ -996,6 +1012,33 @@ struct Index {
     });
   }
 
+  /** 日程: requests through the page, a saved copy for the first frame, and system reminders. */
+  private attachAgenda(context?: common.UIAbilityContext): void {
+    const model = new NativeAgendaModel(this.scheduleStore);
+    this.agendaModel = model;
+    let saved: preferences.Preferences | undefined;
+    model.attach((id: string, payload: string) => {
+      const requestId = JSON.stringify(id);
+      void this.controller.runJavaScript(`
+        Promise.resolve(typeof window.CPUTimeNativeAgenda === 'function' ? window.CPUTimeNativeAgenda(${payload}) : { missing: true })
+          .then(value => window.CPUHarmony.agendaResult(${requestId}, JSON.stringify(value)))
+          .catch(() => window.CPUHarmony.agendaResult(${requestId}, '{"missing":true}'));
+      `).catch(() => model.accept(id, '{"missing":true}'));
+    }, (raw: string) => {
+      if (!saved) return;
+      void saved.put('items', raw).then(() => saved?.flush()).catch(() => undefined);
+    }, (items: NativeAgendaItem[]) => {
+      if (context) syncAgendaReminders(context, items);
+    });
+    this.scheduleStore.agendaOpen = (id: string, _date: string) => this.selectTab(3, `/agenda?item=${encodeURIComponent(id)}`);
+    this.scheduleStore.agendaToggle = (id: string, date: string, done: boolean) => model.toggle(id, date, done);
+    if (!context) return;
+    void preferences.getPreferences(context, { name: 'native_agenda' }).then(async (prefs) => {
+      saved = prefs;
+      model.restore(String(await prefs.get('items', '')));
+    }).catch(() => undefined);
+  }
+
   private selectTab(index: number, destination?: string): void {
     if (index < 0 || index > 4) return;
     if (this.requiresLogin) return;
@@ -1010,6 +1053,7 @@ struct Index {
       clearTimeout(this.scheduleRetireTimer);
       this.scheduleLayerVisible = true;
       this.scheduleStore.load(false);
+      this.agendaModel?.refresh();
       return;
     }
     this.pendingWebNavigation = revision;

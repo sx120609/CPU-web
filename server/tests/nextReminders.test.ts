@@ -22,3 +22,22 @@ test("reminders due since the last pass go out; later and stale ones wait or are
   assert.deepEqual(dueReminders(plans, now - 60 * 60_000, now).map((item) => item.key), ["course:2026-10-20:08:00"]);
   assert.equal(reminderDedupeKey(due[0]), `next-reminder:1:course:2026-10-20:08:00:${now - 10_000}`);
 });
+
+test("accounts that turned on relaying get their agenda reminders from the synced items", async () => {
+  const { dueAgendaReminders } = await import("../src/services/nextReminders");
+  // 2026-10-20 08:00 in Shanghai; a meeting at 08:15 with a 15-minute reminder is due now.
+  const at = Date.UTC(2026, 9, 20, 0, 0);
+  const meeting = { id: "meeting00001", title: "组会", date: "2026-10-20", start: "08:15", remind: 15, location: "药学楼" };
+  const settings = [{ userId: 1, data: JSON.stringify({ relay: true }) }, { userId: 2, data: JSON.stringify({ relay: false }) }];
+  const agenda = [
+    { userId: 1, data: JSON.stringify(meeting) },
+    { userId: 1, data: JSON.stringify({ ...meeting, id: "later0000001", start: "09:00" }) },
+    { userId: 2, data: JSON.stringify(meeting) },
+    { userId: 1, data: "broken" },
+  ];
+  const due = dueAgendaReminders(settings, agenda, at - 30_000, at);
+  assert.deepEqual(due.map((item) => [item.userId, item.key, item.link]), [[1, "agenda:meeting00001:2026-10-20", "/agenda"]]);
+  assert.equal(due[0].title, "日程提醒 · 组会");
+  assert.equal(due[0].text, "08:15 · 药学楼");
+  assert.equal(due[0].at, at);
+});

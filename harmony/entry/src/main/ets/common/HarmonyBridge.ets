@@ -492,6 +492,14 @@ export class HarmonyJavaScriptProxy {
     this.nativeScheduleHost.editorResult(id, payload);
   }
 
+  agendaResult(id: string, payload: string): void {
+    this.nativeScheduleHost.agendaResult(id, payload);
+  }
+
+  agendaChanged(): void {
+    this.nativeScheduleHost.agendaChanged();
+  }
+
   navigationReady(revision: number): void { this.nativeScheduleHost.navigationReady(revision); }
   headerChanged(payload: string): void { this.nativeScheduleHost.headerChanged(payload); }
 

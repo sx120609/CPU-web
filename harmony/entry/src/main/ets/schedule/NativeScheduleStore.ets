@@ -49,6 +49,27 @@ export interface NativeScheduleCell {
   courses: NativeScheduleCourse[];
 }
 
+/**
+ * One of the user's 日程, as the site's bridge `CPUTimeNativeAgenda` returns it (the same records
+ * as the Web page and 药大拾间 NEXT, rules in server/src/shared/agenda.ts). Dates are YYYY-MM-DD and
+ * times HH:MM; a repeating item keeps the days it was ticked off in `doneDates`.
+ */
+export interface NativeAgendaItem {
+  id: string;
+  title: string;
+  date: string;
+  start: string;
+  end: string;
+  location: string;
+  note: string;
+  remind: number;
+  repeat: string;
+  until: string;
+  done: boolean;
+  doneDates: string[];
+  createdAt: number;
+}
+
 export interface NativeCalendarWeek {
   week: number;
   days: string[];
@@ -216,6 +237,10 @@ export class NativeScheduleStore {
   source: string = '';
   bridgeReady: boolean = false;
   dataRevision: number = 0;
+  // 自己的日程，画在自己的课表上（共享课表和预览里为空）。打开和勾选交给 Index 接上的回调。
+  agendaItems: NativeAgendaItem[] = [];
+  agendaOpen?: (id: string, date: string) => void;
+  agendaToggle?: (id: string, date: string, done: boolean) => void;
   // 只读：别人共享的课表。不加载也不保存个人修改，不写卡片和本地缓存。
   readOnly: boolean = false;
   // 课表风格（ScheduleStyle.ets），与配色、深浅色互不影响。

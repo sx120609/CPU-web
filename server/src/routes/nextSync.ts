@@ -13,7 +13,7 @@ nextSyncRouter.use((_req, res, next) => {
 });
 
 nextSyncRouter.get("/", securityRateLimit("next-sync-pull", 240, 60_000), async (req: any, res, next) => {
-  try { ok(res, await listNextSyncChanges(req.user.userId, req.query.cursor)); } catch (error) { next(error); }
+  try { ok(res, await listNextSyncChanges(req.user.userId, req.query.cursor, req.query.collection)); } catch (error) { next(error); }
 });
 
 nextSyncRouter.post("/", securityRateLimit("next-sync-push", 120, 60_000), validate(nextSyncPushSchema), async (req: any, res, next) => {

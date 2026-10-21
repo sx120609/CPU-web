@@ -69,6 +69,9 @@
         "name": "ohos.permission.INTERNET"
       },
       {
+        "name": "ohos.permission.PUBLISH_AGENT_REMINDER"
+      },
+      {
         "name": "ohos.permission.CAMERA",
         "reason": "$string:permission_camera_reason",
         "usedScene": {

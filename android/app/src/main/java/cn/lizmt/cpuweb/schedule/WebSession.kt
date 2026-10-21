@@ -125,6 +125,8 @@ class WebSession(
     var onAuthStateChanged: ((NativeAuthState) -> Unit)? = null
     var onBridgeReady: (() -> Unit)? = null
     var onSchedulePrefetched: ((String) -> Unit)? = null
+    /** The page saved a change to the user's 日程. */
+    var onAgendaChanged: (() -> Unit)? = null
     var onBridgeLost: ((String) -> Unit)? = null
     var onAppearanceReported: ((mode: String) -> Unit)? = null
     /** The renderer process died; true for a crash, false when the system reclaimed it. */
@@ -279,6 +281,7 @@ class WebSession(
             // native mode is pushed on `ready`, later changes come from the page.
             "appearance" -> if (bridgeReady) onAppearanceReported?.invoke(payload.optString("mode", "system"))
             "schedulePrefetched" -> payload.optJSONObject("snapshot")?.let { onSchedulePrefetched?.invoke(it.toString()) }
+            "agendaChanged" -> onAgendaChanged?.invoke()
             "header" -> payload.optJSONObject("state")?.let { state ->
                 val next = WebHeaderState(
                     path = state.optString("path", "/home"),
@@ -444,6 +447,12 @@ class WebSession(
         val priority = runCatching { JSONObject(raw) }.getOrNull()?.optJSONObject("priority") ?: return null
         return priority.keys().asSequence().associateWith { priority.optInt(it, 0) }.filter { it.value > 0 }
     }
+
+    /** One 日程 request (`CPUTimeNativeAgenda`, see web/src/utils/nativeAgendaBridge.ts); `{ missing: true }` on an older site. */
+    suspend fun agenda(payload: JSONObject): String? = call(
+        "var run=window.CPUTimeNativeAgenda;if(typeof run!=='function')return {missing:true};return await run(args.payload);",
+        JSONObject().put("payload", payload), 30_000,
+    )
 
     /** One share-code request (`CPUAndroidShares`): the reply is `{ data }` or `{ error, status }`. */
     suspend fun shares(payload: JSONObject): String? = call(

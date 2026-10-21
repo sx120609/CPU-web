@@ -48,8 +48,25 @@ object DebugScheduleFixture {
     }
 
     /** Applies the screenshot extras of a debug launch. Nothing here runs in a release build. */
+    /** Sample 日程 around today, the same set as 药大拾间 NEXT's fixture. */
+    private fun sampleAgenda(): List<cn.lizmt.cpuweb.schedule.agenda.AgendaItem> {
+        val today = java.time.LocalDate.now()
+        val wednesday = today.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.WEDNESDAY))
+        fun item(id: String, title: String, date: String, start: String = "", end: String = "", location: String = "", repeat: cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat = cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat.None) =
+            cn.lizmt.cpuweb.schedule.agenda.AgendaItem(id, cn.lizmt.cpuweb.schedule.agenda.AgendaKind.Event, title, date, start, end, location, repeat = repeat, createdAt = 1)
+        return listOf(
+            item("debugagenda01", "有机化学实验", today.toString(), "15:00", "16:30", "实验楼 B204"),
+            item("debugagenda02", "交药理学实验报告", today.toString()),
+            item("debugagenda03", "体检", today.plusDays(1).toString(), location = "校医院"),
+            // Over a class of the sample timetable: drawn beside it in the week grid.
+            item("debugagenda04", "英语答疑", today.plusDays(1).toString(), "10:00", "10:40", "文科楼"),
+            item("debugagenda05", "羽毛球", wednesday.toString(), "19:00", "20:30", "体育馆", cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat.Weekly),
+        )
+    }
+
     fun configure(activity: MainActivity, intent: Intent) {
         intent.getStringExtra("debugStyle")?.let { activity.style.selectVisualStyle(ScheduleVisualStyle.fromId(it)) }
+        if (intent.getBooleanExtra("debugAgenda", false)) activity.agenda.debugSeed(sampleAgenda())
         intent.getStringExtra("debugView")?.let { activity.schedule.selectViewMode(it) }
         intent.getIntExtra("debugDay", 0).takeIf { it in 1..7 }?.let { activity.schedule.selectDay(it) }
         pinnedNow = intent.getStringExtra("debugNow")?.let(ScheduleStyleTime::clockMinutes)

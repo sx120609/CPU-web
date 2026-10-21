@@ -5,6 +5,9 @@ import { prisma } from "../prisma";
  * 药大拾间 NEXT 的跨设备同步。每台手机把自己的日程、拾间AI 对话和操作记录按条
  * 推上来，再拉下其他设备改过的条目；同一条以客户端修改时间新的为准，删除留下
  * 墓碑，免得离线的设备把删掉的东西又推回来。这里只校验大小和格式，不解读内容。
+ *
+ * 日程（`agenda`）也是网页和其他客户端的日程数据：它们只拉 `agenda` 和 `settings`
+ * 两个集合（`?collection=agenda,settings`），和 NEXT 改的是同一批记录。
  */
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/u;
@@ -89,12 +92,24 @@ export const reminderPlanSchema = z.object({
   })).max(400).default([]),
 });
 
+/**
+ * Account-wide choices that travel with the agenda. `relay`: the server sends the
+ * agenda's reminders itself (site notification, then the bound WeChat and QQ),
+ * whichever client the items were made on. Record id {@link AGENDA_SETTINGS_ID}.
+ */
+export const agendaSettingsSchema = z.object({
+  relay: z.boolean().default(false),
+});
+
+export const AGENDA_SETTINGS_ID = "agenda-preferences";
+
 /** Each collection: its record format, how many live records a user may keep, and the largest record. */
 export const NEXT_SYNC_COLLECTIONS = {
   agenda: { schema: agendaSchema, max: 600, maxBytes: 4_000, overflow: "reject" },
   conversation: { schema: conversationSchema, max: 100, maxBytes: 120_000, overflow: "prune" },
   activity: { schema: activitySchema, max: 300, maxBytes: 5_000, overflow: "prune" },
   reminders: { schema: reminderPlanSchema, max: 5, maxBytes: 90_000, overflow: "prune" },
+  settings: { schema: agendaSettingsSchema, max: 5, maxBytes: 2_000, overflow: "reject" },
 } as const;
 
 export type NextSyncCollection = keyof typeof NEXT_SYNC_COLLECTIONS;
@@ -161,15 +176,33 @@ function toOut(row: { collection: string; id: string; data: string; clientUpdate
   return { collection: row.collection, id: row.id, updatedAt: row.clientUpdatedAt.getTime(), deleted: Boolean(row.deletedAt) || data === null, data };
 }
 
-/** The records changed after [cursor], oldest change first, one page at a time. */
-export async function listNextSyncChanges(userId: number, cursorValue: unknown) {
+/**
+ * `collection=agenda,settings` → the known collections asked for; absent or empty
+ * means every collection (what NEXT asks for). Unknown names are left out.
+ */
+export function parseNextSyncCollections(value: unknown): NextSyncCollection[] | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const names = [...new Set(value.split(",").map((name) => name.trim()))]
+    .filter((name): name is NextSyncCollection => Object.hasOwn(NEXT_SYNC_COLLECTIONS, name));
+  return names;
+}
+
+/**
+ * The records changed after [cursor], oldest change first, one page at a time.
+ * With [collectionsValue] only those collections; a cursor is then only good for
+ * the same selection.
+ */
+export async function listNextSyncChanges(userId: number, cursorValue: unknown, collectionsValue?: unknown) {
   const cursor = parseNextSyncCursor(cursorValue);
+  const collections = parseNextSyncCollections(collectionsValue);
   await prisma.nextSyncRecord.deleteMany({
     where: { userId, deletedAt: { lt: new Date(Date.now() - TOMBSTONE_LIFETIME_MS) } },
   });
+  if (collections && !collections.length) return { records: [], cursor: typeof cursorValue === "string" ? cursorValue : "", more: false };
   const rows = await prisma.nextSyncRecord.findMany({
     where: {
       userId,
+      ...(collections ? { collection: { in: collections } } : {}),
       ...(cursor ? {
         OR: [
           { updatedAt: { gt: cursor.at } },

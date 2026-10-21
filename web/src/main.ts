@@ -8,6 +8,7 @@ import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, installNativeAppearanceBridge, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
 import { installIosNextScheduleBridge } from "./utils/iosNextScheduleBridge";
+import { installNativeAgendaBridge } from "./utils/nativeAgendaBridge";
 import {
   isAndroidNativeApp,
   isDesktopNativeApp,
@@ -469,6 +470,7 @@ watch(() => useAuthStore().user?.id, () => {
   }
 }, { flush: "sync" });
 installIosNextScheduleBridge(router, { reportRefreshFailures: isIosNativeApp() });
+installNativeAgendaBridge(router);
 installJwxtDataPrewarmTriggers();
 // 安卓小组件读 App 写的本地课表：退出登录、换账号时要删掉。只在支持的安卓壳里按需加载。
 if (typeof (window as any).CPUAndroid?.saveScheduleWidgetLocalDays === "function") {

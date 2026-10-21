@@ -12,6 +12,9 @@ export interface NativeScheduleHostCallbacks {
   onWebTaskResult: (id: string, payload: string) => void;
   onWebOverlayChanged: (visible: boolean) => void;
   onHeaderChanged: (payload: string) => void;
+  /** A reply of the site's 日程 bridge, and the page telling that an item changed. */
+  onAgendaResult?: (id: string, payload: string) => void;
+  onAgendaChanged?: () => void;
 }
 
 let activeCallbacks: NativeScheduleHostCallbacks | undefined;
@@ -39,6 +42,8 @@ export class NativeScheduleHost {
   navigationReady(revision: number): void { activeCallbacks?.onNavigationReady(revision); }
   webOverlayChanged(visible: boolean): void { activeCallbacks?.onWebOverlayChanged(visible); }
   editorResult(id: string, payload: string): void { activeCallbacks?.onEditorResult(id, payload); }
+  agendaResult(id: string, payload: string): void { activeCallbacks?.onAgendaResult?.(id ?? '', payload ?? ''); }
+  agendaChanged(): void { activeCallbacks?.onAgendaChanged?.(); }
   nativeLoginResult(id: string, payload: string): void { activeCallbacks?.onNativeLoginResult(id, payload); }
   webTaskResult(id: string, payload: string): void { activeCallbacks?.onWebTaskResult(id ?? '', payload ?? ''); }
   appearanceChanged(mode: string): void {

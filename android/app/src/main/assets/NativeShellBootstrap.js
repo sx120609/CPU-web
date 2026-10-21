@@ -86,6 +86,7 @@
   bridge.ready = () => post({ type: 'ready' });
   bridge.schedulePrefetched = (snapshot) => post({ type: 'schedulePrefetched', snapshot });
   bridge.scheduleWeekPrefetched = bridge.schedulePrefetched;
+  bridge.agendaChanged = () => post({ type: 'agendaChanged' });
   bridge.authChanged = (value, canAccessAdmin = false, ready = true, authenticated) => {
     const info = value && typeof value === 'object' ? value : {
       account: String(value == null ? '' : value), canAccessAdmin, ready,

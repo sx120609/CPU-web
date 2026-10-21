@@ -145,7 +145,11 @@ internal fun dateHeaderMark(style: ScheduleVisualStyle, today: Boolean, selected
  * each keep a mark of their own.
  */
 @Composable
-internal fun StyledDateHeader(day: Int, date: String, today: Boolean, adjustmentKind: String?, modifier: Modifier, selected: Boolean? = null) {
+internal fun StyledDateHeader(
+    day: Int, date: String, today: Boolean, adjustmentKind: String?, modifier: Modifier, selected: Boolean? = null,
+    /** `yyyy-MM-dd`, for the dot of a day with all-day items; empty draws none. */
+    fullDate: String = "",
+) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
     val mark = dateHeaderMark(style, today, selected)
@@ -165,6 +169,7 @@ internal fun StyledDateHeader(day: Int, date: String, today: Boolean, adjustment
                     fontWeight = FontWeight.SemiBold, maxLines = 1, color = if (today) scope.themeText else scope.secondary)
             }
             if (adjustmentKind != null) Box(Modifier.align(Alignment.TopEnd).padding(end = 2.dp)) { ScheduleAdjustmentMark(adjustmentKind) }
+            AgendaHeaderDot(fullDate, Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 6.dp))
         }
         return
     }
@@ -210,6 +215,7 @@ internal fun StyledDateHeader(day: Int, date: String, today: Boolean, adjustment
                 modifier = if (paper && today) Modifier.border(1.dp, scope.accent, CircleShape).padding(horizontal = 4.dp) else Modifier,
             )
             if (adjustmentKind != null) ScheduleAdjustmentMark(adjustmentKind, onInk = mark == DateHeaderMark.Ink)
+            AgendaHeaderDot(fullDate, Modifier)
         }
     }
 }
@@ -477,6 +483,8 @@ internal fun StyledDayColumn(
     /** Courses that do not run this week, drawn faded under the others. */
     offWeek: List<PlacedBlock> = emptyList(),
     onOffWeek: (PlacedBlock) -> Unit = {},
+    /** `yyyy-MM-dd` of a week column, whose own events and to-dos are drawn over it; empty draws none. */
+    date: String = "",
 ) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
@@ -572,6 +580,7 @@ internal fun StyledDayColumn(
                 else CoupleNote(place, CoupleRules.noteLabel(block.notes), couple?.tint(block.notes[0], scope.dark)) { onCourse(block.notes[0]) }
             }
         }
+        if (date.isNotEmpty()) AgendaColumnChips(date, blocks, periods, columnWidth, rowHeight.value, gap.value)
     }
 }
 
@@ -746,6 +755,7 @@ internal fun StyledWeekGrid(
                                         contentDescription = WEEKDAY_LABELS[day.day - 1] + " " + day.date +
                                             (day.adjustmentKind?.let { if (it == "off") "，休息" else "，补班" } ?: "") + "，查看当天课程"
                                     },
+                                fullDate = day.date,
                             )
                         }
                         StyledDayColumn(
@@ -753,7 +763,7 @@ internal fun StyledWeekGrid(
                             today = day.today, adjustmentKind = day.adjustmentKind, compact = !dayRow, dayRow = dayRow,
                             now = if (day.today) now else null, canAdd = canAdd && day.canAdd,
                             onCourse = { onCourse(day, it) }, onAddSlot = { onAddSlot(day.day, it) }, interactive = interactive,
-                            offWeek = day.offWeek, onOffWeek = onOffWeek,
+                            offWeek = day.offWeek, onOffWeek = onOffWeek, date = day.date,
                         )
                     }
                 }

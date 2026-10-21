@@ -147,6 +147,16 @@
       </div>
     </article>
 
+    <!-- 自己的日程：按钟点画在那一天的列上，和课重叠的靠右。 -->
+    <template v-for="(item, column) in days" :key="`agenda-${item.day}`">
+      <AgendaGridLayer
+        v-if="agendaChipsOf(item).length"
+        :chips="agendaChipsOf(item)"
+        :style="{ gridColumn: column + 2, gridRow: `${rowBase} / span ${rows.length}` }"
+        @open="(entry, date) => emit('agenda', entry, date)"
+      />
+    </template>
+
     <!-- 「现在」：节次栏上一个胶囊，今天那一列一条线，在同一个高度。 -->
     <template v-if="nowPlacement">
       <div class="ss-now-anchor" :style="{ gridColumn: 1, gridRow: nowPlacement.row + rowBase }" aria-hidden="true">
@@ -188,6 +198,9 @@ import {
   type ScheduleStyleKey,
 } from "./scheduleStyle";
 import { displayBlockOf, type StyledDay, type TileOwner, type TileToneResolver } from "./styledTypes";
+import AgendaGridLayer from "@/views/agenda/AgendaGridLayer.vue";
+import { agendaChips } from "@/views/agenda/agendaChips";
+import type { AgendaItem } from "@/utils/agenda";
 import type { PlacedCourseBlock } from "./displayPriority";
 import type { WeekCourseBlock } from "./types";
 
@@ -210,7 +223,10 @@ const props = withDefaults(defineProps<{
   /** 关掉以后节次栏只写第几节。 */
   showSlotTime?: boolean;
   compact?: boolean;
+  /** 自己的日程；共享课表、风格预览不传。 */
+  agenda?: AgendaItem[];
 }>(), {
+  agenda: () => [],
   showTeacher: false,
   showSlotTime: true,
   compact: false,
@@ -227,7 +243,13 @@ const emit = defineEmits<{
   (event: "offWeek", block: WeekCourseBlock, source: Event): void;
   (event: "slot", day: number, slot: number): void;
   (event: "day", day: number): void;
+  (event: "agenda", item: AgendaItem, date: string): void;
 }>();
+
+function agendaChipsOf(item: StyledDay) {
+  if (!props.agenda.length || props.dayPresentation) return [];
+  return agendaChips(props.agenda, item.rawDate, props.clocks, item.pieces);
+}
 
 const layout = computed(() => scheduleStyleLayout(props.visualStyle));
 const framesPanel = computed(() => scheduleStyleFramesPanel(props.visualStyle));

@@ -55,6 +55,9 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private set
     lateinit var sharing: ScheduleSharing
     lateinit var couple: ScheduleCouple
+    lateinit var agenda: AgendaRemote
+    /** A 日程 page asked for before the shell signed in (a notification tapped at launch). */
+    private var pendingAgendaPath: String? = null
         private set
     private lateinit var clientStats: ClientStats
     private var reportsClientStats = false
@@ -97,6 +100,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         }
     }
 
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     private val webPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         val callback = permissionCallback ?: return@registerForActivityResult
         permissionCallback = null
@@ -134,6 +139,33 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         couple = if (debugFixture) ScheduleCouple(lifecycleScope, null, { DebugScheduleFixture.couple(it) })
         else ScheduleCouple(lifecycleScope, getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE), { web.couple(it) })
         shell = ShellCoordinator(lifecycleScope, web, schedule)
+        agenda = AgendaRemote(this, lifecycleScope) { web.agenda(it) }
+        web.onAgendaChanged = { agenda.refresh(force = true) }
+        // 日程 with a reminder ahead: ask once for the notification permission (Android 13+).
+        lifecycleScope.launch {
+            snapshotFlow { agenda.items }.collectLatest { items ->
+                val prefs = getSharedPreferences(SHELL_PREFS, MODE_PRIVATE)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !AgendaReminders.canNotify(this@MainActivity) &&
+                    !prefs.getBoolean(KEY_AGENDA_NOTIFICATIONS_ASKED, false) && AgendaReminders.wantsNotifications(items)) {
+                    prefs.edit().putBoolean(KEY_AGENDA_NOTIFICATIONS_ASKED, true).apply()
+                    notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        }
+        lifecycleScope.launch {
+            snapshotFlow { web.authState.ready to web.authState.authenticated }.collectLatest { (ready, authenticated) ->
+                if (!ready) return@collectLatest
+                if (!authenticated) {
+                    agenda.clear()
+                    return@collectLatest
+                }
+                agenda.refresh(force = true)
+                pendingAgendaPath?.let { path ->
+                    pendingAgendaPath = null
+                    shell.openWeb(path, ShellTab.Services)
+                }
+            }
+        }
         clientStats = ClientStats(this, lifecycleScope) {
             ClientFeatureState(appearance.mode, style.visualStyle.id, style.background != null)
         }
@@ -224,8 +256,19 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         handleLaunchIntent(intent)
     }
 
-    /** Widgets open the native timetable at the current week (or the week they showed). */
+    /** Opens the Web 日程 page at one item, or a new one on [date] (`yyyy-MM-dd`) when [id] is null. */
+    fun openAgenda(id: String?, date: String?) {
+        val path = if (id != null) "/agenda?item=${Uri.encode(id)}" else "/agenda?new=1" + (date?.let { "&date=$it" } ?: "")
+        if (web.authState.ready && web.authState.authenticated) shell.openWeb(path, ShellTab.Services) else pendingAgendaPath = path
+    }
+
+    /** Widgets open the native timetable at the current week (or the week they showed); reminders open their item. */
     private fun handleLaunchIntent(intent: Intent?) {
+        intent?.getStringExtra(AgendaReminders.EXTRA_OPEN_AGENDA)?.let { id ->
+            intent.removeExtra(AgendaReminders.EXTRA_OPEN_AGENDA)
+            openAgenda(id, null)
+            return
+        }
         if (intent?.getBooleanExtra(EXTRA_OPEN_SCHEDULE, false) != true) return
         val semester = intent.getStringExtra(EXTRA_SEMESTER)?.takeIf { Regex("^\\d{4}-\\d{4}-[12]$").matches(it) }
         val week = intent.getStringExtra(EXTRA_WEEK)?.takeIf { it.toIntOrNull() in 1..64 }
@@ -239,6 +282,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         legacyBridge.resumePendingInstall()
         widgets.refreshForNightMode()
         if (reportsClientStats) clientStats.report()
+        agenda.refresh()
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -418,6 +462,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private const val KEY_PRIORITIES = "v1"
         private const val COUPLE_PREFS = "native_schedule_couple"
         private const val KEY_WELCOME_SEEN = "welcome_seen_v4"
+        private const val KEY_AGENDA_NOTIFICATIONS_ASKED = "agenda_notifications_asked"
         private const val REQUEST_WRITE_STORAGE = 2002
     }
 }

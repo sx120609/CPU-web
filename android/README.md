@@ -15,6 +15,7 @@
 - **缓存**：内存缓存 12 小时、最多 4 个学期；整学期规则只缓存一次，旧服务端的逐周数据由网页桥后台预取并推入原生缓存。最近一次成功的课表写入不参与备份的私有目录，并记录站点会话 Cookie 的指纹；冷启动先核对指纹再显示，随后静默刷新。账号变化或退出登录立即清空内存与磁盘缓存。
 - **个人课程**：原生添加、修改、隐藏、删除、恢复教务原始安排与恢复已隐藏课程，经网页同源接口与 CSRF 保存，并核对服务器修改基线以避免覆盖并发编辑；研究生课表沿用网站限制。一门课可以有多组上课时间，节次可以不连续；保存时每段连续节次写成一条原有格式的修改项，其他客户端照常读取。与已有课程时间重叠时只提示，不阻止保存。
 - **共享课表**（更多 → 共享课表）：为当前学期生成、更新、撤销分享码（每学期一个，走 `/api/schedule-shares`，需要已部署 `a9d92248` 之后的服务端才能列出自己的码、原地更新和免凭据撤销）；输入分享码或粘贴链接，预览后加备注导入。导入的课表整份保存在本机不参与备份的目录、按账号隔离，以只读方式打开，不进入小组件和冷启动缓存；对方更新后自动换新，撤销后保留副本并标记。iOS 的“关心”依赖实时活动，安卓没有对应功能。
+- **日程**（`AgendaRemote.kt`、`ScheduleAgenda.kt`、`AgendaReminders.kt`）：和网页 `/agenda`、药大拾间 NEXT 是同一份，存在站点 `/api/next-sync` 的 `agenda` 集合里。App 经网页桥 `CPUTimeNativeAgenda` 用 WebView 的登录会话读取和勾选，不另做登录。周视图按钟点画在当天那一列（和课程同一时段时贴在课程右侧），日期表头有圆点，日视图上方列出当天的日程，可直接勾选。新建（更多 → 添加日程）和修改（点日程）在服务栏目里打开网页的日程页。读到的列表存在 `files/agenda-cache.json`，冷启动先画它；提醒按每条的下一次发生设闹钟，App 没开也会响，通知可稍后 10 分钟再提醒。退出登录时清空，换账号后换成新账号的。
 - **样式与导出**：九套 Web 主题配色（由 `web/src/components/jwxt/scheduleTheme.ts` 生成）、相册背景（22%–88% 显现，默认 76%；Android 12 起支持 0–18 柔化）、深浅色，所有主题的课程文字对比度有回归检查。可按所选周以文本分享、导出 ICS 日历（北京时间，不含订阅地址或登录信息）。
 - **图片**：网页图集交给原生查看器，支持左右切图、双指缩放、双击放大、下滑关闭和保存到相册。
 - **网页权限**：仅对本站页面按需申请相机、麦克风；文件选择沿用系统文档选择器。
@@ -35,6 +36,7 @@ UA 追加 `CPUWebScheduleApp/<versionCode> CPUWebScheduleAppVersion/<versionName
 - `app/src/main/assets/NativeShellBootstrap.js`：页面开始时注入（仅本站来源），隐藏网页栏、创建 `window.CPUTimeNative` 并上报路由、登录状态与外观。消息优先经按来源限定、只接收主框架的 `WebMessageListener` 送达 Kotlin；旧版 WebView 回退到 JavaScript 接口。
 - `app/src/main/assets/NativeWebCompatibility.js`：由 `android/bridge/*.ts` 生成，页面加载完成后执行。线上网页尚未提供课表桥时，用现有 Pinia 状态和同源 Cookie 安装兼容桥，并提供原生登录、顶栏状态、返回导航、弹层检测与课程编辑（`CPUAndroidEditor`）。
 - 原有 `CPUAndroid` 桥（应用内更新、小组件、图片保存）保留，仅对本站页面开放。
+- 日程读网页的 `CPUTimeNativeAgenda`（`web/src/utils/nativeAgendaBridge.ts`，`list` / `toggle` / `open`）；列表变化时网页调用 `CPUTimeNative.agendaChanged()`，App 重新读取。线上网页还没有这个桥时保留上次读到的。
 
 修改 `android/bridge`、共享课表桥或网页主题后，在仓库根目录运行：
 
@@ -79,6 +81,7 @@ adb shell am start -n cn.lizmt.cpuweb/cn.lizmt.cpuweb.schedule.MainActivity --ez
 | `--es debugDisplay sundayFirst,offWeek` | 先恢复默认再套用显示设置：`sundayFirst`、`offWeek`、`teacher`、`compact`、`noTime`、`noSaturday`、`noSunday`、`noToday`、`small` / `large`、`rows=140` |
 | `--ez debugPublished true` | 假接口里已有自己的分享码 |
 | `--ez debugShared true` | 启动后打开一份共享课表 |
+| `--ez debugAgenda true` | 课表里画一组示例日程（不连站点，勾选只改本机显示） |
 
 自动测试与模拟器检查不能代替真机验收：需要用真实账号覆盖登录与验证码、本科/研究生课表、快速切周、授权失效、账号切换、断网恢复、课程编辑、背景与导出、所有小组件尺寸与深浅色、冷/热启动与小组件跳转、应用内更新。
 

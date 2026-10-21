@@ -73,3 +73,13 @@ test("a push carries at most fifty records", () => {
   assert.throws(() => nextSyncPushSchema.parse({ records }));
   assert.equal(nextSyncPushSchema.parse({ records: records.slice(0, 2) }).records[0].deleted, false);
 });
+
+test("a pull can ask for some collections; settings carry the agenda relay switch", async () => {
+  const { parseNextSyncCollections, sanitizeNextSyncRecord, AGENDA_SETTINGS_ID } = await import("../src/services/nextSync");
+  assert.equal(parseNextSyncCollections(undefined), null);
+  assert.equal(parseNextSyncCollections(""), null);
+  assert.deepEqual(parseNextSyncCollections("agenda,settings,agenda"), ["agenda", "settings"]);
+  assert.deepEqual(parseNextSyncCollections("nope"), []);
+  const settings = sanitizeNextSyncRecord({ collection: "settings", id: AGENDA_SETTINGS_ID, updatedAt: 1, deleted: false, data: { relay: true, extra: 1 } }, 10);
+  assert.ok(settings.ok && settings.data === JSON.stringify({ relay: true }));
+});

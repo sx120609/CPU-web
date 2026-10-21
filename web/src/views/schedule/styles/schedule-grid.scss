@@ -597,3 +597,13 @@ body[data-cpu-native-app="1"] .schedule-page .week-grid-head {
 .month-content .schedule-body-scroll {
   padding-bottom: var(--schedule-scroll-bottom-gap);
 }
+
+/* 这一天有没做完的全天日程或待办。 */
+.agenda-head-dot {
+  display: block;
+  width: 4px;
+  height: 4px;
+  margin: 2px auto 0;
+  border-radius: 50%;
+  background: var(--schedule-accent);
+}

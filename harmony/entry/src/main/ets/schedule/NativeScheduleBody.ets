@@ -1,4 +1,5 @@
 import { NativeCourseBlock, NativeScheduleStore } from './NativeScheduleStore';
+import { agendaChips, agendaHeaderDot, agendaOn, NativeAgendaChip, NativeAgendaOccurrence } from './NativeAgenda';
 import { scheduleCardTone } from './ScheduleVisuals';
 import { scheduleAccent, scheduleCell, scheduleCellBorder, scheduleGridMetrics, ScheduleGridMetrics,
   scheduleSecondaryText, scheduleSurface, scheduleText, scheduleTint } from './ScheduleLayout';
@@ -72,6 +73,7 @@ export struct NativeScheduleBody {
     Scroll() {
       Column() {
         if (this.showDayStrip && this.view.viewMode === 'day' && this.view.calendar) this.dayStrip()
+        if (this.view.viewMode === 'day' && this.view.result && this.agendaDayEntries().length) this.agendaDayList()
         if (this.view.status === 'unauthorized') {
           this.stateCard('教务授权已失效', '请重新登录并完成教务授权后读取课表', '去登录', () => this.onLogin())
         } else if ((this.view.status === 'idle' || this.view.status === 'loading') && !this.view.result) {
@@ -115,6 +117,7 @@ export struct NativeScheduleBody {
         .backgroundColor(selected ? scheduleTint(this.accentColor(), 0.12) : (this.store.backgroundPath ? this.surfaceColor() : Color.Transparent))
         .border({ width: selected ? 0.8 : 0, color: scheduleTint(this.accentColor(), 0.3), radius: 10 })
       this.adjustmentBadge(day, 12)
+      this.agendaDot(day)
     }.width('100%').height(this.metrics().header)
   }
 
@@ -206,6 +209,7 @@ export struct NativeScheduleBody {
                 .accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
                 .onClick(() => this.openTile(block, day))
             })
+            this.agendaColumn(day, this.metrics().weekRow, this.metrics().gap, this.weekColumn())
             if (this.view.shownIsToday(day) && this.weekNowY(this.metrics().weekRow, this.metrics().gap) >= 0) {
               this.nowLine(this.weekColumn(), this.weekNowY(this.metrics().weekRow, this.metrics().gap))
             }
@@ -276,6 +280,86 @@ export struct NativeScheduleBody {
         }
       }.layoutWeight(1).height(this.dayStride() * this.view.slotCount() - this.metrics().dayGap)
     }.width('100%').alignItems(VerticalAlign.Top)
+  }
+
+  // ---- 日程 ----
+
+  // A dot on a day with all-day items or to-dos still open.
+  @Builder
+  private agendaDot(day: number) {
+    if (this.store.agendaItems.length && agendaHeaderDot(this.store.agendaItems, this.view.shownRawDate(day))) {
+      Circle().width(5).height(5).fill(scheduleThemeFill(this.store.palette))
+        .position({ x: 4, y: 4 }).hitTestBehavior(HitTestMode.None).accessibilityLevel('no')
+    }
+  }
+
+  // The day's timed items over one week column, at their clock time; beside a class they keep to the right.
+  @Builder
+  private agendaColumn(day: number, rowHeight: number, gap: number, width: number) {
+    ForEach(this.agendaChipsFor(day, rowHeight, gap), (chip: NativeAgendaChip) => {
+      Button() {
+        Column() {
+          Text((chip.entry.done ? '✓ ' : '') + chip.entry.item.title).fontSize(9).fontWeight(600).fontColor(this.themeText())
+            .lineHeight(11).maxLines(Math.max(1, Math.floor((chip.height - 4) / 11))).textOverflow({ overflow: TextOverflow.Ellipsis })
+            .decoration({ type: chip.entry.done ? TextDecorationType.LineThrough : TextDecorationType.None })
+        }.width('100%').height('100%').alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Start)
+          .padding({ left: 3, right: 3, top: 2, bottom: 2 })
+      }.type(ButtonType.Normal).padding(0).clip(true)
+        .width(chip.beside ? width * 0.44 : width - 2).height(chip.height)
+        .position({ x: chip.beside ? width * 0.56 - 1 : 1, y: chip.y })
+        .borderRadius(6).backgroundColor(scheduleThemeTint(this.store.palette, this.store.dark ? 0.32 : 0.18))
+        .border({ width: 1, color: scheduleAlpha(this.themeText(), 0.6), radius: 6 })
+        .opacity(chip.entry.done ? 0.55 : 1)
+        .accessibilityText('日程，' + chip.entry.item.title + '，' + chip.entry.item.start + (chip.entry.item.end ? ' 至 ' + chip.entry.item.end : '') + (chip.entry.done ? '，已完成' : ''))
+        .onClick(() => this.store.agendaOpen?.(chip.entry.item.id, chip.entry.date))
+    }, (chip: NativeAgendaChip) => chip.entry.item.id + ':' + chip.entry.date + ':' + (chip.entry.done ? 1 : 0) + ':' + chip.y)
+  }
+
+  // The day view's list of the user's own items, above the classes in every style.
+  @Builder
+  private agendaDayList() {
+    Column() {
+      Row() {
+        Text('日程').fontSize(11).fontWeight(600).fontColor(this.secondaryColor()).layoutWeight(1)
+        Text(`${this.agendaDayEntries().length} 项`).fontSize(11).fontColor(this.secondaryColor())
+      }.width('100%').padding({ left: 12, right: 12, top: 8, bottom: 2 })
+      ForEach(this.agendaDayEntries(), (entry: NativeAgendaOccurrence) => {
+        Row() {
+          Text(entry.item.start ? (entry.item.end ? `${entry.item.start}–${entry.item.end}` : entry.item.start) : '全天')
+            .fontSize(12).fontWeight(600).fontColor(this.themeText()).width(84).maxLines(1)
+          Stack() {
+            if (entry.done) Text('✓').fontSize(10).fontColor('#FFFFFF')
+          }.width(16).height(16).borderRadius(8).margin({ right: 8 })
+            .backgroundColor(entry.done ? scheduleThemeFill(this.store.palette) : Color.Transparent)
+            .border({ width: entry.done ? 0 : 1.5, color: this.secondaryColor(), radius: 8 })
+            .responseRegion({ x: -10, y: -11, width: 36, height: 38 })
+            .accessibilityText(entry.done ? '标为未完成' : '标为完成')
+            .onClick(() => this.store.agendaToggle?.(entry.item.id, entry.date, !entry.done))
+          Text(entry.item.title).fontSize(14).fontColor(this.textColor()).layoutWeight(1).maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .decoration({ type: entry.done ? TextDecorationType.LineThrough : TextDecorationType.None })
+          if (entry.item.location) {
+            Text(entry.item.location).fontSize(12).fontColor(this.secondaryColor()).maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis }).constraintSize({ maxWidth: 110 }).margin({ left: 8 })
+          }
+        }.width('100%').height(38).padding({ left: 12, right: 12 }).opacity(entry.done ? 0.55 : 1)
+          .onClick(() => this.store.agendaOpen?.(entry.item.id, entry.date))
+      }, (entry: NativeAgendaOccurrence) => entry.item.id + ':' + entry.date + ':' + (entry.done ? 1 : 0))
+    }.width('100%').padding({ bottom: 4 }).margin({ bottom: 10 }).borderRadius(14).backgroundColor(this.surfaceColor())
+      .border({ width: 0.6, color: scheduleCellBorder(this.store.dark), radius: 14 })
+  }
+
+  private agendaChipsFor(day: number, rowHeight: number, gap: number): NativeAgendaChip[] {
+    if (!this.store.agendaItems.length) return [];
+    const slots = this.view.slots();
+    const courses = this.placed(day).map((block: PlacedCourseBlock) => [block.startSlot, block.endSlot]);
+    return agendaChips(this.store.agendaItems, this.view.shownRawDate(day),
+      slots.map((slot: number) => this.view.slotStart(slot)), slots.map((slot: number) => this.view.slotEnd(slot)), rowHeight, gap, courses);
+  }
+
+  private agendaDayEntries(): NativeAgendaOccurrence[] {
+    if (!this.store.agendaItems.length) return [];
+    return agendaOn(this.store.agendaItems, this.view.shownRawDate(this.view.selectedDay));
   }
 
   // ---- "Now" ----
@@ -406,6 +490,7 @@ export struct NativeScheduleBody {
       if (!dayRow) {
         Stack({ alignContent: Alignment.TopEnd }) {
           this.styledDateHeader(day)
+          this.agendaDot(day)
           if (this.store.visualStyle === 'minimal' && this.view.shownAdjustment(day)) {
             Column() { this.adjustmentBadge(day, 12) }.margin({ right: 2 })
           }
@@ -423,6 +508,7 @@ export struct NativeScheduleBody {
           this.nowLine(this.columnWidth(dayRow), this.columnNowY(day, dayRow))
         }
         ForEach(this.tiles(day, dayRow), (block: PlacedCourseBlock) => { this.styledTile(block, day, dayRow) })
+        if (!dayRow) this.agendaColumn(day, this.cellRow(false), STYLED_SLOT_GAP, this.columnWidth(false))
         if (this.store.visualStyle !== 'grid' && this.columnNowY(day, dayRow) >= 0) {
           this.nowLine(this.columnWidth(dayRow), this.columnNowY(day, dayRow))
         }

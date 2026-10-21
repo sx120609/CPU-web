@@ -92,6 +92,10 @@
                   <el-icon><Plus /></el-icon>
                   <span>添加课程</span>
                 </button>
+                <button v-if="auth.isLoggedIn" type="button" @click="runMoreAction(() => router.push('/agenda'))">
+                  <el-icon><Calendar /></el-icon>
+                  <span>日程</span>
+                </button>
                 <button type="button" @click="runMoreAction(openSharingDialog)">
                   <el-icon><Share /></el-icon>
                   <span>共享课表</span>
@@ -499,6 +503,12 @@
             :aria-hidden="page.delta !== 0"
           >
             <div class="schedule-body-scroll">
+              <AgendaDayStrip
+                v-if="viewMode === 'day'"
+                :entries="agendaDayEntries(page)"
+                @open="openAgendaItem"
+                @toggle="toggleAgenda"
+              />
               <section
                 v-if="viewMode === 'week' && scheduleStyle === 'classic'"
                 class="week-overview"
@@ -517,6 +527,7 @@
                   >
                     <span>{{ d.label.replace("周", "") }}</span>
                     <b>{{ d.date || "--" }}</b>
+                    <i v-if="agendaDotFor(page, d.day)" class="agenda-head-dot" aria-label="有全天日程或待办" />
                   </div>
                 </div>
                 <div class="week-grid-body">
@@ -533,6 +544,15 @@
                       :style="{ gridColumn: `${column + 2} / ${column + 3}`, gridRow: `${slot.no} / ${slot.no + 1}` }"
                       :class="{ today: page.dayTabs[day - 1]?.isToday }"
                       @click="onWeekPageSlotClick($event, page, day, slot.no)"
+                    />
+                  </template>
+                  <!-- 自己的日程：按钟点画在那一天的列上，和课重叠的靠右。 -->
+                  <template v-for="(day, column) in columnsFor(page)" :key="`agenda-${page.key}-${day}`">
+                    <AgendaGridLayer
+                      v-if="agendaChipsFor(page, day).length"
+                      :chips="agendaChipsFor(page, day)"
+                      :style="{ gridColumn: `${column + 2} / ${column + 3}`, gridRow: `1 / ${smallSlots.length + 1}` }"
+                      @open="openAgendaItem"
                     />
                   </template>
                   <!-- 非本周的课：淡淡地画在本周空着的节次里。 -->
@@ -610,6 +630,8 @@
                 :show-teacher="display.showTeacher"
                 :show-slot-time="display.showSlotTime"
                 :compact="display.compact"
+                :agenda="agendaItemsShown"
+                @agenda="openAgendaItem"
                 @course="(block, owner, source) => onStyledPageCourseClick(source, block, owner, page)"
                 @off-week="(block, source) => onOffWeekCourseClick(source, block, page)"
                 @slot="(day, slot) => onWeekPageSlotClick(null, page, day, slot)"
@@ -918,6 +940,8 @@
 
     <CoupleDialog :couple="couple" :page-style="pageStyle" :initial-code="coupleInviteCode" @changed="onCoupleStatusChanged" />
 
+    <AgendaEditor :open="agendaEditorOpen" :draft="agendaEditorDraft" @close="agendaEditorOpen = false" />
+
     <CourseQuickLook
       :block="quickLook?.block ?? null"
       :schedule-line="quickLookLine"
@@ -1166,6 +1190,12 @@ import {
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
 import CourseQuickLook from "@/views/schedule/CourseQuickLook.vue";
+import AgendaDayStrip from "@/views/agenda/AgendaDayStrip.vue";
+import AgendaEditor, { type AgendaEditorDraft } from "@/views/agenda/AgendaEditor.vue";
+import AgendaGridLayer from "@/views/agenda/AgendaGridLayer.vue";
+import { agendaChips, agendaHeaderDot } from "@/views/agenda/agendaChips";
+import { useAgendaStore } from "@/stores/agenda";
+import { agendaOn, type AgendaItem } from "@/utils/agenda";
 import ScheduleMonthView from "@/views/schedule/ScheduleMonthView.vue";
 import ScheduleSharingDialog from "@/views/schedule/ScheduleSharingDialog.vue";
 import ScheduleStylePicker from "@/views/schedule/ScheduleStylePicker.vue";
@@ -2085,6 +2115,8 @@ async function writeClipboard(text: string): Promise<boolean> {
 
 onMounted(() => {
   disposed = false;
+  if (agenda.attach()) void agenda.sync();
+  document.addEventListener("visibilitychange", syncAgendaWhenVisible);
   couple.start();
   void couple.refresh();
   // 旧的 /schedule/couple 链接和邀请链接都会带 couple=1 打开情侣课表弹窗。
@@ -2179,6 +2211,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true;
+  document.removeEventListener("visibilitychange", syncAgendaWhenVisible);
   couple.stop();
   if (androidWidgetSyncTimer) window.clearTimeout(androidWidgetSyncTimer);
   androidWidgetSyncTimer = 0;
@@ -2846,7 +2879,10 @@ function onWeekSlotClick(event: MouseEvent, day: number, slot: number, targetWee
     week.value = targetWeek;
     saveLastState();
   }
-  if (!ensureScheduleEditEnabled()) return;
+  if (!ensureScheduleEditEnabled()) {
+    openNewAgendaAt(targetWeek, day, slot);
+    return;
+  }
   openAddCourse(day, slot, targetWeek);
 }
 
@@ -2855,7 +2891,10 @@ function onDaySlotClick(event: MouseEvent, day: number, slot: number, targetWeek
     event.preventDefault();
     return;
   }
-  if (!ensureScheduleEditEnabled()) return;
+  if (!ensureScheduleEditEnabled()) {
+    openNewAgendaAt(targetWeek, day, slot);
+    return;
+  }
   openAddCourse(day, slot, targetWeek);
 }
 
@@ -4166,9 +4205,61 @@ function onStyledSlotClick(day: number, slot: number, targetWeek: string) {
     week.value = targetWeek;
     saveLastState();
   }
-  if (!ensureScheduleEditEnabled()) return;
+  if (!ensureScheduleEditEnabled()) {
+    openNewAgendaAt(targetWeek, day, slot);
+    return;
+  }
   void openAddCourse(day, slot, targetWeek);
 }
+
+// MARK: 日程
+
+const agenda = useAgendaStore();
+const agendaEditorOpen = ref(false);
+const agendaEditorDraft = ref<AgendaEditorDraft | null>(null);
+// 日程只画在自己的课表上；研究生调试数据里没有。
+const agendaItemsShown = computed<AgendaItem[]>(() => (
+  auth.isLoggedIn && scheduleSource.value !== "graduate-debug" && agenda.ready ? agenda.items : []
+));
+
+function agendaChipsFor(page: SchedulePageModel, day: number) {
+  if (!agendaItemsShown.value.length) return [];
+  const courses = piecesFor(page).filter((piece) => piece.block.day === day);
+  return agendaChips(agendaItemsShown.value, pageDate(page as WeekPage, day), smallSlots, courses);
+}
+
+function agendaDotFor(page: SchedulePageModel, day: number) {
+  return agendaItemsShown.value.length > 0 && agendaHeaderDot(agendaItemsShown.value, pageDate(page as WeekPage, day));
+}
+
+function agendaDayEntries(page: SchedulePageModel) {
+  const date = pageDate(page as WeekPage);
+  return date && agendaItemsShown.value.length ? agendaOn(agendaItemsShown.value, date) : [];
+}
+
+function openAgendaItem(item: AgendaItem) {
+  agendaEditorDraft.value = { ...item };
+  agendaEditorOpen.value = true;
+}
+
+function toggleAgenda(item: AgendaItem, date: string, done: boolean) {
+  agenda.setDone(item.id, date, done);
+}
+
+/** 不能编辑课程的地方（浏览器里），点空着的节次就在那一天那个钟点记一条日程。 */
+function openNewAgendaAt(weekValue: string | number, day: number, slot: number) {
+  if (!auth.isLoggedIn) return;
+  const date = normalizeCalendarWeekDays(weekInfoFor(String(weekValue || week.value))?.days ?? [])[day - 1] ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(date)) return;
+  agendaEditorDraft.value = { date, start: smallSlots.find((item) => item.no === slot)?.start ?? "" };
+  agendaEditorOpen.value = true;
+}
+
+function syncAgendaWhenVisible() {
+  if (document.visibilityState === "visible" && agenda.attach()) void agenda.sync();
+}
+
+watch(() => auth.user?.id, () => { if (agenda.attach()) void agenda.sync(); });
 
 // MARK: 课程速览
 
