@@ -166,6 +166,43 @@ test("regulations answer with the current version, its document number and appli
   assert.ok(hit && hit.status === "historical" && /已废止/u.test(hit.note || ""));
 });
 
+const hitText = (hits: ReturnType<typeof searchSchoolDocs>) => hits
+  .map((hit) => [hit.docNo, hit.heading, hit.excerpt, hit.note, ...(hit.related || []).flatMap((item) => [item.heading, item.excerpt])].join("\n"))
+  .join("\n");
+
+test("a hit carries its document's scope and precedence clauses", () => {
+  // 133号 says 以本办法为准 but leaves amounts to the specific award rules (第四十条).
+  const hits = searchSchoolDocs("我是2022级本科生，评优秀学生奖学金按哪个文件执行？");
+  assert.match(hitText(hits), /由对应的评选文件具体规定/u);
+  assert.match(hitText(hits), /381/u);
+});
+
+test("other articles of the same document that answer the question come along", () => {
+  const text = hitText(searchSchoolDocs("考试作弊会受到什么处分？"));
+  assert.match(text, /留校察看/u);
+  assert.match(text, /开除学籍/u);
+});
+
+test("a transition to an older document brings the clause where the versions differ", () => {
+  // 119号 keeps 2024级 and earlier on 79号, whose only extra clause is the English requirement.
+  const text = hitText(searchSchoolDocs("2024级本科生拿学士学位要不要过四级？"));
+  assert.match(text, /79/u);
+  assert.match(text, /425/u);
+});
+
+test("grade-year questions reach transition clauses written as grade ranges", () => {
+  assert.match(hitText(searchSchoolDocs("2021级本科生评单项奖学金按哪个文件？")), /370/u);
+  const terms = extractKnowledgeQueryTerms("2021级本科生评单项奖学金按哪个文件？");
+  assert.ok(terms.some((term) => term.includes("级至") && term.includes("级及之前")));
+  for (const junk of ["金按", "个文", "级本"]) assert.ok(!terms.includes(junk), junk);
+});
+
+test("rules for a specific group give way unless the question names that group", () => {
+  const general = searchSchoolDocs("受了处分多久能解除，怎么解除？");
+  assert.ok(general.some((hit) => hit.docNo === "药大学〔2023〕159号"), JSON.stringify(general.map((hit) => hit.docNo)));
+  assert.equal(searchSchoolDocs("留学生违纪处分按什么规定？")[0]?.docNo, "药大外〔2020〕40号");
+});
+
 test("a school-docs copy of a regulation is replaced by the regulation original", () => {
   const hits = searchSchoolDocs("本科生综合素质测评办法 测评内容");
   assert.ok(hits.length);

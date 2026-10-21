@@ -162,6 +162,27 @@ def chunk_document(doc_id: str, title: str, paras: list[str]) -> list[dict]:
     return [{"id": c["id"], "doc": c["doc"], "path": c["path"], "text": c["text"]} for c in chunks]
 
 
+# Clauses that decide who an article applies to or which document wins:
+# scope, precedence, deferral to another document, transition, reference.
+SCOPE_CLAUSE = re.compile(
+    r"本(?:实施)?(?:办法|规定|细则|条例|规则|意见|方案|标准|准则|章程|守则|规程)[^。；]{0,12}适用于"
+    r"|以本(?:实施)?(?:办法|规定|细则)为准|不一致的?[^。；]{0,12}以[^。；]{0,12}为准"
+    r"|由(?:对应|相关|各)[^。；]{0,20}(?:文件|办法|细则|规定|通知)[^。；]{0,10}(?:规定|执行|确定)"
+    r"|另行(?:规定|制定|发文|通知)|参照[^。；]{1,40}执行|仍按")
+
+
+def scope_clauses(body: str, effective: str, limit: int = 3) -> list[str]:
+    found = []
+    for s in sentences(body):
+        s = re.sub(r"\s+", "", s).strip("；")
+        if not SCOPE_CLAUSE.search(s) or len(s) > 220 or s in found or s in re.sub(r"\s+", "", effective):
+            continue
+        found.append(s)
+        if len(found) >= limit:
+            break
+    return found
+
+
 def sentences(text: str):
     return [s for s in re.split(r"(?<=[。；\n])", text) if s.strip()]
 
@@ -200,6 +221,7 @@ def main(snapshot: pathlib.Path, out: pathlib.Path, school_docs_path: pathlib.Pa
             "publishType": m.get("publishType_name") or "",
             "interpretDept": interpret,
             "effectiveNote": effective[:160],
+            "scopeNotes": scope_clauses(body, effective),
             "ocr": seq in scanned,
             "missing": not doc_chunks,
             "fileName": pathlib.Path(local).name if local else "",
@@ -227,7 +249,9 @@ def main(snapshot: pathlib.Path, out: pathlib.Path, school_docs_path: pathlib.Pa
                 if t is d:
                     continue
                 note = re.sub(r"\s+", "", s)[:200]
-                kind = "partial" if re.search(r"仍按|继续执行", s) else "supersededBy"
+                # "本办法从2025级开始执行，原《…》同时废止" repeals for new cohorts only;
+                # earlier cohorts may still be under the old document.
+                kind = "partial" if re.search(r"仍按|继续执行|\d{4}\s*级", s) else "supersededBy"
                 rel[t["id"]][kind].append({"doc": d["id"], "docNo": d["docNo"], "note": note})
                 rel[d["id"]]["supersedes"].append({"doc": t["id"], "docNo": t["docNo"], "note": note})
     for group in by_title.values():
@@ -289,11 +313,13 @@ def main(snapshot: pathlib.Path, out: pathlib.Path, school_docs_path: pathlib.Pa
             parts.append("本文件替代或调整了：" + "、".join(sorted({x["docNo"] for x in d["supersedes"]})))
         if d["effectiveNote"]:
             parts.append("施行：" + d["effectiveNote"])
+        if d["scopeNotes"]:
+            parts.append("适用与衔接：" + " ".join(d["scopeNotes"]))
         if d["interpretDept"]:
             parts.append("解释部门：" + d["interpretDept"])
         if d["ocr"]:
             parts.append("扫描件识别文字，个别字可能有误")
-        return "。".join(p.rstrip("。") for p in parts)[:500]
+        return "。".join(p.rstrip("。") for p in parts)[:700]
 
     kept = [d for d in docs if not d["missing"]]
     index_of = {d["id"]: i for i, d in enumerate(kept)}
@@ -328,6 +354,10 @@ def main(snapshot: pathlib.Path, out: pathlib.Path, school_docs_path: pathlib.Pa
             "extracted": "ocr" if d["ocr"] else "pdf",
             "docNo": d["docNo"],
             "note": note_for(d),
+            # Documents this one replaces, defers to or is replaced by; search attaches
+            # their best-matching article (e.g. 119号 → 79号's English requirement).
+            "links": sorted({x["doc"] for k in ("supersedes", "supersededBy", "partial", "versions")
+                             for x in d.get(k, []) if x["doc"] in index_of}),
         } for d in kept],
         "chunks": out_chunks,
     }, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")

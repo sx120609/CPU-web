@@ -52,7 +52,7 @@ function fromSchoolDoc(hit: SchoolDocHit): Omit<CampusKnowledgeItem, "ref"> {
     status: hit.status,
     ...(hit.docNo ? { docNo: hit.docNo } : {}),
     ...(hit.note ? { note: hit.note } : {}),
-    excerpt: hit.excerpt,
+    excerpt: [hit.excerpt, ...(hit.related || []).map((item) => `【同一文件 ${item.heading}】${item.excerpt}`)].join("\n"),
     coverage: hit.coverage,
     source: hit.sourceUrl && /^https?:\/\//iu.test(hit.sourceUrl)
       ? { title: sourceTitle("学校文件", hit.docNo ? `${hit.title}（${hit.docNo}）` : hit.title), url: hit.sourceUrl }

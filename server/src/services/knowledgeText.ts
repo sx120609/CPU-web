@@ -18,7 +18,14 @@ const QUERY_SYNONYMS: Array<{ pattern: RegExp; terms: string[] }> = [
   { pattern: /材料|交什么|提交什么/gu, terms: ["材料", "提交", "附件"] },
   // 也切开“硕士学费”这类连写：否则“士学”会去匹配制度里到处都有的“硕士学位”“学士学位”。
   { pattern: /学费|收费标准|收费/gu, terms: ["学费", "收费"] },
+  // “处分多久能解除”切出的“分多”“能解”会拉低覆盖率，整段换成期限类说法。
+  { pattern: /多长时间|多久|多长|期限|有效期/gu, terms: ["期限", "时间", "多久"] },
+  // “我是2021级”：年份另作一个词；“级”匹配过渡条款的区间写法（“2020级至2022级”
+  // “2024级及之前”“从2025级起”），原文里往往没有用户那一年。
+  { pattern: /(?<=\d)\s*级/gu, terms: ["级至", "级及之前", "级及以前", "级及以后", "级以后", "级起", "级开始", "级入学"] },
 ];
+// 问“按哪个文件”“依据什么”的问法词：切成“个文”“金按”这类碎片只会稀释覆盖率。
+const QUERY_NOISE = /按照?哪(?:个|份|一个|一份|种|条|版)?(?:文件|规定|办法|版本)?|哪(?:个|份|一个|一份|版)(?:文件|规定|办法|版本)?|依据什么|根据什么/gu;
 const SYNONYM_MARKER_BASE = 0xe000;
 const STOP_BIGRAMS = new Set([
   "请问", "有没", "没有", "有人", "人知", "知道", "谁知", "怎么", "么办", "什么", "为什", "如何", "可以", "能不",
@@ -57,7 +64,7 @@ export function knowledgePlainText(value: string) {
  * 英文和数字按整词。顺序保留，越靠前越重要（标题在前）。
  */
 export function extractKnowledgeQueryTerms(value: string, limit = MAX_QUERY_TERMS) {
-  let text = normalizeKnowledgeText(value).replace(/[\uE000-\uE0FF]/gu, " ");
+  let text = normalizeKnowledgeText(value).replace(/[\uE000-\uE0FF]/gu, " ").replace(QUERY_NOISE, " ");
   QUERY_SYNONYMS.forEach((synonym, index) => {
     text = text.replace(synonym.pattern, ` ${String.fromCharCode(SYNONYM_MARKER_BASE + index)} `);
   });
@@ -100,6 +107,20 @@ export type KnowledgeIndexEntry = {
 
 export type RankedKnowledgeEntry<T> = { entry: T; coverage: number; rank: number };
 
+export type KnowledgeTermStats = { total: number; frequency: number[] };
+
+/** 每个查询词在多少条目里出现，供 rankKnowledgeEntries 的 corpusStats 复用。 */
+export function knowledgeTermStats(entries: Iterable<KnowledgeIndexEntry>, terms: string[]): KnowledgeTermStats {
+  const alternatives = terms.slice(0, MAX_QUERY_TERMS).map((term) => term.split("|"));
+  const frequency = new Array<number>(alternatives.length).fill(0);
+  let total = 0;
+  for (const entry of entries) {
+    total += 1;
+    alternatives.forEach((group, index) => { if (group.some((term) => entry.bodyKey.includes(term))) frequency[index] += 1; });
+  }
+  return { total, frequency };
+}
+
 /**
  * 命中覆盖率 = 命中词的 idf 加权和 / 全部查询词的 idf 加权和；标题命中额外加分，
  * 再乘调用方给的先验（时效、可信度、回复数）。覆盖率不够或只命中一个词的不要。
@@ -109,6 +130,9 @@ export function rankKnowledgeEntries<T extends KnowledgeIndexEntry>(
   terms: string[],
   options: {
     allow?: (entry: T) => boolean;
+    /** 用 knowledgeTermStats 预先算好的全库词频，而不是 entries 自己的：在一份文件里挑
+     * 条款时，文件内只出现一两次的词正是区分条款的词，不能按“偶然出现”压低。 */
+    corpusStats?: KnowledgeTermStats;
     prior?: (entry: T) => number;
     minCoverage: number;
     limit: number;
@@ -136,6 +160,10 @@ export function rankKnowledgeEntries<T extends KnowledgeIndexEntry>(
     if (textMask) hits.push({ entry, textMask, titleMask });
   }
   if (!hits.length) return [];
+  if (options.corpusStats) {
+    total = options.corpusStats.total;
+    options.corpusStats.frequency.slice(0, count).forEach((frequency, index) => { documentFrequency[index] = frequency; });
+  }
   // 越靠前的词（标题、问题本身）权重越高，后面的正文细节只作补充。
   const weights = Array.from({ length: count }, (_, index) => 1 / (1 + index / 12));
   const rawIdf = (frequency: number) => Math.log(1 + (total - frequency + 0.5) / (frequency + 0.5));
