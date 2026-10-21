@@ -104,6 +104,10 @@
                   <el-icon><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z" /></svg></el-icon>
                   <span>情侣课表</span>
                 </button>
+                <button v-if="parsed" type="button" @click="runMoreAction(openDormDialog)">
+                  <el-icon><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 20V9.6L12 4l8 5.6V20h-5.5v-5.2h-5V20H4zm2.2-9.4V18h2.8v-5.2h6V18h2.8v-7.4L12 6.4 6.2 10.6z" /></svg></el-icon>
+                  <span>宿舍课表</span>
+                </button>
                 <button v-if="parsed && calendar && !isNativeScheduleApp" type="button" @click="runMoreAction(exportWeekCalendarFile)">
                   <el-icon><Calendar /></el-icon>
                   <span>导出日历</span>
@@ -940,6 +944,13 @@
 
     <CoupleDialog :couple="couple" :page-style="pageStyle" :initial-code="coupleInviteCode" @changed="onCoupleStatusChanged" />
 
+    <DormDialog
+      v-model="dormDialogOpen"
+      :page-style="pageStyle"
+      :initial-code="dormInviteCode"
+      :sync-now="() => queueDormScheduleSync(300)"
+    />
+
     <AgendaEditor :open="agendaEditorOpen" :draft="agendaEditorDraft" @close="agendaEditorOpen = false" />
 
     <CourseQuickLook
@@ -1142,10 +1153,12 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Brush, Calendar, CirclePlus, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Operation, Picture, Plus, QuestionFilled, Refresh, Share, Tools, WarningFilled } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
+import { syncDormScheduleIfJoined } from "@/views/schedule/dormSync";
 import { findOverlapNotice, overlapNoticeKey, overlapNoticeSeen, overlapNoticeText, rememberOverlapNotice } from "@/views/schedule/overlapNotice";
 import { couplePersonTone } from "@/views/schedule/couple";
 import { useCoupleOverlay } from "@/views/schedule/useCoupleOverlay";
 import CoupleDialog from "@/views/schedule/CoupleDialog.vue";
+import DormDialog from "@/views/schedule/DormDialog.vue";
 import CoupleDayView from "@/views/schedule/CoupleDayView.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useAppearanceStore } from "@/stores/appearance";
@@ -1600,37 +1613,58 @@ watch(
 );
 watch(scheduleEdits, queueAndroidWidgetLocalDaysSync, { deep: true });
 
-// 情侣课表：已绑定时把当前学期课表（含自定义修改）同步给对方，见 docs/couple-schedule.md。
+// 情侣课表、宿舍课表：加入关系后把当前学期课表（含自定义修改）同步给对方，
+// 见 docs/couple-schedule.md 和 docs/dorm-schedule.md。
 let coupleSyncTimer = 0;
-function syncCoupleSchedule() {
-  coupleSyncTimer = 0;
-  if (disposed || loading.value || !auth.isLoggedIn || !auth.user?.id) return;
-  if (scheduleSource.value === "graduate-debug") return;
+let dormSyncTimer = 0;
+function scheduleSyncPayload() {
+  if (disposed || loading.value || !auth.isLoggedIn || !auth.user?.id) return null;
+  if (scheduleSource.value === "graduate-debug") return null;
   const data = parsed.value;
   const source = displayCalendar.value;
-  if (!data?.currentSemester || !source?.weeks?.length) return;
-  if (source.currentSemester && source.currentSemester !== data.currentSemester) return;
+  if (!data?.currentSemester || !source?.weeks?.length) return null;
+  if (source.currentSemester && source.currentSemester !== data.currentSemester) return null;
   // 对方看到的永远是当前学期；翻看往年学期时不覆盖。
   const currentSemester = data.semesters?.find((item) => item.current)?.value;
-  if (currentSemester && currentSemester !== data.currentSemester) return;
+  if (currentSemester && currentSemester !== data.currentSemester) return null;
   const complete = data.scope === "semester" || scheduleStorageScope() === "graduate";
-  void syncCoupleScheduleIfBound({
+  return {
     userId: auth.user.id,
     semester: data.currentSemester,
-    parsed: complete ? { ...data, scope: "semester" } : data,
+    parsed: complete ? { ...data, scope: "semester" as const } : data,
     calendar: source,
     edits: scheduleEdits.value,
     loadSemesterSchedule: scheduleSource.value === "jwxt" ? () => loadSemesterCompleteSchedule(data.currentSemester) : undefined,
-  });
+  };
+}
+function syncCoupleSchedule() {
+  coupleSyncTimer = 0;
+  const payload = scheduleSyncPayload();
+  if (payload) void syncCoupleScheduleIfBound(payload);
+}
+function syncDormSchedule() {
+  dormSyncTimer = 0;
+  const payload = scheduleSyncPayload();
+  if (payload) void syncDormScheduleIfJoined(payload);
 }
 function queueCoupleScheduleSync() {
   if (coupleSyncTimer) window.clearTimeout(coupleSyncTimer);
   // 等教务课表与自定义修改都加载完再同步，避免同一次打开上传两次。
   coupleSyncTimer = window.setTimeout(syncCoupleSchedule, 4000);
 }
-watch(() => [parsed.value, calendar.value, scheduleSource.value, auth.isLoggedIn], queueCoupleScheduleSync);
+function queueDormScheduleSync(delay = 4000) {
+  if (dormSyncTimer) window.clearTimeout(dormSyncTimer);
+  dormSyncTimer = window.setTimeout(syncDormSchedule, delay);
+}
+watch(() => [parsed.value, calendar.value, scheduleSource.value, auth.isLoggedIn], () => {
+  queueCoupleScheduleSync();
+  queueDormScheduleSync();
+});
 
-watch(scheduleEdits, queueCoupleScheduleSync, { deep: true });
+watch(scheduleEdits, () => {
+  queueCoupleScheduleSync();
+  queueDormScheduleSync();
+}, { deep: true });
 
 const scriptableWidgetScript = ref("");
 const widgetCopyMessage = ref("");
@@ -2130,6 +2164,16 @@ onMounted(() => {
       if (!disposed) openCoupleDialog(code);
     })();
   }
+  // 宿舍邀请链接会带 dorm=1 打开宿舍课表弹窗。
+  if (route.query.dorm === "1") {
+    const code = typeof route.query.code === "string" ? route.query.code : "";
+    const { dorm: _dorm, code: _dormCode, ...rest } = route.query;
+    void router.replace({ query: rest });
+    void (async () => {
+      if (!auth.user && auth.token) await auth.fetchMe().catch(() => undefined);
+      if (!disposed) openDormDialog(code);
+    })();
+  }
   document.documentElement.classList.add("schedule-scroll-lock");
   document.body.classList.add("schedule-scroll-lock");
   jwxt.hydrate();
@@ -2544,6 +2588,19 @@ function onCoupleStatusChanged(next: string) {
     if (coupleSyncTimer) window.clearTimeout(coupleSyncTimer);
     coupleSyncTimer = window.setTimeout(syncCoupleSchedule, 300);
   }
+}
+
+const dormDialogOpen = ref(false);
+const dormInviteCode = ref("");
+function openDormDialog(code = "") {
+  moreMenuOpen.value = false;
+  if (!auth.isLoggedIn) {
+    ElMessage.info("登录后才能使用宿舍课表");
+    void router.push({ name: "login", query: { redirect: "/schedule?dorm=1" } });
+    return;
+  }
+  dormInviteCode.value = code;
+  dormDialogOpen.value = true;
 }
 
 watch(activePageScrollKey, (value, previousValue) => {

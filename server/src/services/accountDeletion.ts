@@ -10,6 +10,7 @@ import { refreshBoardTopicCounts, refreshTopicReplyStats } from "./forumStats";
 import { voiceHubProxyConfig } from "./voiceHubProxy";
 import { purgeAccountMediaCaches } from "./accountDeletionCdn";
 import { deleteCoupleDataForUser } from "./coupleSchedule";
+import { deleteDormDataForUser } from "./dormSchedule";
 import { eraseWorkshopAccountData, lockWorkshopAuthor, revokeWorkshopAccountWorks } from "./workshopAccountDeletion";
 import { removeWorkshopPackage } from "./workshopPackage";
 
@@ -110,6 +111,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   await tx.directMessageRemark.deleteMany({ where: { OR: [{ ownerId: userId }, { targetUserId: userId }] } });
   await tx.userBlock.deleteMany({ where: { OR: [{ ownerId: userId }, { targetId: userId }] } });
   await deleteCoupleDataForUser(tx, userId);
+  await deleteDormDataForUser(tx, userId);
   await tx.forumReport.deleteMany({ where: { OR: [{ reporterId: userId }, { targetAuthorId: userId }] } });
   await tx.questionnaireResponse.deleteMany({ where: { respondentId: userId } });
   await tx.questionnaire.deleteMany({ where: { createdById: userId, isSystem: false } });
