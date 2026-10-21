@@ -1,4 +1,4 @@
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler } from "express";
 import path from "node:path";
 import { readFileSync, statSync } from "node:fs";
 import { resolveTencentCosDeliveryUrl } from "./tencentCos";
@@ -87,18 +87,30 @@ export function createWebStaticPublicCosHandler(distRoot: string): RequestHandle
 export function createWebStaticIndexHandler(
   distRoot: string,
   resolveAssetBaseUrl: () => Promise<string> = resolveWebStaticAssetBaseUrl,
+  transformHtml?: (html: string, req: Request) => Promise<string>,
 ): RequestHandler {
   const indexPath = path.resolve(distRoot, "index.html");
   const readIndex = watchPublishedFile(indexPath, () => readFileSync(indexPath, "utf8"));
 
-  return async (_req, res) => {
+  return async (req, res) => {
     res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    let html: string;
     try {
-      const assetBaseUrl = await resolveAssetBaseUrl();
-      res.type("html").send(rewriteWebStaticAssetUrls(readIndex(), assetBaseUrl));
+      html = readIndex();
     } catch {
       res.sendFile(indexPath);
+      return;
     }
+    try {
+      html = rewriteWebStaticAssetUrls(html, await resolveAssetBaseUrl());
+    } catch {
+      // 取不到对象存储地址时保留本地资源路径，和直接发送 index.html 相同。
+    }
+    if (transformHtml) {
+      // 按页面换标题和描述只是附加信息；出错时照常返回原页面。
+      html = await transformHtml(html, req).catch(() => html);
+    }
+    res.type("html").send(html);
   };
 }
 

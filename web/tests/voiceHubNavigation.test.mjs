@@ -23,6 +23,7 @@ function mainGuard(user) {
     router: { beforeEach: fn => { guard = fn } },
     window: { location: { replace: url => redirects.push(url) } },
     document: {},
+    applyRouteTitle: () => {},
     hidesNativeCommerce: () => false,
     isNativeScheduleShell: () => false,
     // 普通浏览器中不存在原生壳的内网限制账号，也不会隐藏小游戏入口。

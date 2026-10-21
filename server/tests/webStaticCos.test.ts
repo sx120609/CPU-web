@@ -131,6 +131,37 @@ test("index handler emits entry modules on one direct CDN origin", async (t) => 
   );
 });
 
+test("index handler applies per-page metadata even when the CDN origin is unavailable", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cpu-web-static-seo-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(path.join(directory, "index.html"), '<title>站点</title><script type="module" src="./assets/main.js"></script>');
+
+  const send = async (transform: (html: string, req: any) => Promise<string>) => {
+    let body = "";
+    const handler = createWebStaticIndexHandler(directory, async () => { throw new Error("no storage"); }, transform);
+    await handler({ path: "/announcements" } as any, {
+      setHeader() {},
+      type() {
+        return this;
+      },
+      send(value: string) {
+        body = value;
+        return this;
+      },
+    } as any, () => undefined);
+    return body;
+  };
+
+  assert.equal(
+    await send(async (html, req) => html.replace("站点", `站点${req.path}`)),
+    '<title>站点/announcements</title><script type="module" src="./assets/main.js"></script>',
+  );
+  assert.equal(
+    await send(async () => { throw new Error("lookup failed"); }),
+    '<title>站点</title><script type="module" src="./assets/main.js"></script>',
+  );
+});
+
 test("an existing index handler observes atomic frontend updates and rollback without a process restart", async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cpu-hot-index-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

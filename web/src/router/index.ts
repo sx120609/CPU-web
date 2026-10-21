@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
-import type { NavigationGuard } from "vue-router";
+import type { NavigationGuard, RouteLocationNormalized } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
@@ -20,6 +20,7 @@ import { readForumListRestoreState } from "@/utils/forumListRestore";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
 import { isCompactLayoutNow } from "@/utils/formFactor";
 import { forumListTarget, installForumListLayoutSync } from "@/utils/forumListRoute";
+import { setDocumentTitle } from "@/utils/documentTitle";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
 export const loadHomeView = () => import("@/views/Home.vue");
@@ -56,6 +57,14 @@ export function preloadEducationViews() {
 
 const CACHE_FIRST_EDUCATION_ROUTES = new Set(["jwxt", "schedule"]);
 const FORUM_LIST_ROUTES = new Set(["forum", "forum-hot", "forum-latest", "market", "board"]);
+const HOME_ROUTES = new Set(["home", "native-restricted-home"]);
+
+// 首页用完整站名做标题，其余页面是“页面名 · 药大拾间”。
+// 新增可公开访问的页面时，也要在 server/src/services/seo.ts 登记标题、描述和是否收录。
+function applyRouteTitle(to: RouteLocationNormalized) {
+  if (!to.meta.title) return;
+  setDocumentTitle(HOME_ROUTES.has(String(to.name)) ? null : String(to.meta.title));
+}
 
 function usesImmediateIosScroll() {
   return typeof navigator !== "undefined" && isLikelyIosDevice();
@@ -275,7 +284,7 @@ router.beforeEach(async (to) => {
   }
   // 课表和教务页必须先渲染本地缓存；站内会话探测放到后台，不能阻塞路由首屏。
   if (to.name && CACHE_FIRST_EDUCATION_ROUTES.has(String(to.name))) {
-    if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
+    applyRouteTitle(to);
     if (!auth.ready) void auth.fetchMe({ probe: true });
     return true;
   }
@@ -299,7 +308,7 @@ router.beforeEach(async (to) => {
       || ["conversation", "user", "forumKind", "forumId"].some((key) => key in to.query))) {
     return { name: "messages", replace: true };
   }
-  if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
+  applyRouteTitle(to);
 
   const nativeForumRestricted = isNativeForumIntranetOnlyAccount(auth.user?.username);
   if (to.name === "home" && nativeForumRestricted) {

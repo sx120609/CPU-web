@@ -50,6 +50,8 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
     const imageUrl = `${origin}/share/topic/${topic.id}/card.png`;
     const description = buildTopicDescription(topic);
     res.setHeader("Cache-Control", "public, max-age=60");
+    // 分享页只给聊天软件生成预览，搜索引擎收录原帖地址。
+    res.setHeader("X-Robots-Tag", "noindex");
     res.type("html").send(renderTopicSharePage({
       shareUrl,
       topicUrl,

@@ -22,6 +22,7 @@ import {
   createWebStaticIndexHandler,
   createWebStaticPublicCosHandler,
 } from "./services/webStaticCos";
+import { applyPageSeo, loadSitemapXml, renderRobotsTxt } from "./services/seo";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { startForumSubmissionReviewPoller } from "./services/forumSubmissionReview";
@@ -158,6 +159,21 @@ export function createApp(options: { workers?: boolean } = {}) {
     res.send("9abfb616e9ac54f49df77561d1d73d364e38f9a4");
   });
 
+  app.get("/robots.txt", (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.type("text/plain; charset=utf-8").send(renderRobotsTxt());
+  });
+
+  app.get("/sitemap.xml", async (_req, res, next) => {
+    try {
+      const xml = await loadSitemapXml();
+      res.setHeader("Cache-Control", "public, max-age=900");
+      res.type("application/xml; charset=utf-8").send(xml);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use("/share", shareRouter);
   app.use("/qqbot/ad-report", browserSessionMiddleware, authOptional, qqBotAdReportRouter);
   app.use("/qqbot/ai-reply", qqBotAiReplyRouter);
@@ -183,7 +199,7 @@ export function createApp(options: { workers?: boolean } = {}) {
       console.log(`📦 静态资源目录: ${dist}`);
       app.use("/assets", createWebStaticCosHandler(dist));
       app.use(createWebStaticPublicCosHandler(dist));
-      const webStaticIndexHandler = createWebStaticIndexHandler(dist);
+      const webStaticIndexHandler = createWebStaticIndexHandler(dist, undefined, (html, req) => applyPageSeo(html, req.path));
       app.get(["/", "/index.html"], webStaticIndexHandler);
       app.use(express.static(dist, {
         index: false,

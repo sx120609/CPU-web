@@ -82,6 +82,7 @@ import { topicApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 import { forumCacheScope, readForumBoardPage, writeForumBoardPage } from "@/utils/forumCache";
+import { useDocumentTitle } from "@/utils/documentTitle";
 
 type BoardRestoreState = {
   scrollY: number;
@@ -95,6 +96,7 @@ const router = useRouter();
 const auth = useAuthStore();
 
 const board = ref<Board | null>(null);
+useDocumentTitle(() => board.value?.name);
 const pinnedList = ref<any[]>([]);
 const list = ref<any[]>([]);
 const total = ref(0);

@@ -834,6 +834,7 @@ import { openImageGallery } from "@/utils/imageViewer";
 import { useMobileLayout } from "@/utils/mobileLayout";
 import { promptDirectMessageRemark } from "@/utils/directMessageRemark";
 import { topicBackLabel, topicBackStep } from "./topicBack";
+import { useDocumentTitle } from "@/utils/documentTitle";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -863,6 +864,7 @@ watch(replyComposerRef, (element, _previous, onCleanup) => {
 }, { flush: "post" });
 
 const topic = ref<Topic | null>(null);
+useDocumentTitle(() => topic.value?.title);
 const replies = ref<Reply[]>([]);
 const userRemarks = ref<Record<number, string>>({});
 const loading = ref(false);

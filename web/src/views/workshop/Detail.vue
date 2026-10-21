@@ -185,6 +185,7 @@ import { ArrowLeft, Star, StarFilled, Warning } from "@element-plus/icons-vue";
 import { workshopApi, type WorkshopLeaderboard, type WorkshopWork } from "@/api/workshop";
 import { useAuthStore } from "@/stores/auth";
 import WorkIcon from "./WorkIcon.vue";
+import { useDocumentTitle } from "@/utils/documentTitle";
 import {
   controlsText,
   openLabels,
@@ -211,6 +212,7 @@ const version = computed(
     work.value?.version ||
     work.value?.versions?.[0],
 );
+useDocumentTitle(() => version.value?.name);
 const isAuthor = computed(() => !!work.value && auth.user?.id === work.value.author.id);
 const canManage = computed(() => isAuthor.value || (!!work.value && auth.user?.role === "admin"));
 const canUse = computed(() => !!work.value?.publishedVersionId && !work.value.disabled);
