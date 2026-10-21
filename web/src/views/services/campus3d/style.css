@@ -217,14 +217,50 @@ button:active { filter: brightness(.94); }
 .night .lbl .glyph { border-color: #1c1c1e; box-shadow: 0 1px 4px rgba(0,0,0,.6); }
 
 .walkpad { position: absolute; z-index: 6; left: max(22px, env(safe-area-inset-left, 0px)); bottom: calc(92px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
-  width: 116px; height: 116px; border-radius: 50%; touch-action: none; }
+  width: 116px; height: 116px; border-radius: 50%; pointer-events: none; opacity: .55; transition: opacity .2s; }
+.walkpad.on { opacity: 1; }
+.xhair { position: absolute; z-index: 5; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.xhair[hidden] { display: none; }
+.xhair i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 4px rgba(0,0,0,.35); transition: all .16s cubic-bezier(.2,.8,.2,1); }
+.xhair.on i { left: -11px; top: -11px; width: 22px; height: 22px; background: transparent; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.22), inset 0 0 0 1px rgba(0,0,0,.22); }
+.xhint { position: absolute; z-index: 5; left: 50%; top: calc(50% + 24px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 5px 0 13px; border: 0; border-radius: 999px; font: 600 13px/1 var(--font); color: var(--label); cursor: pointer; white-space: nowrap; }
+.xhint[hidden] { display: none; }
+.walkpause kbd, .xhint kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px;
+  font: 600 12px/1 var(--font); color: var(--label); background: var(--fill-2); box-shadow: inset 0 -1px 0 rgba(0,0,0,.12); white-space: nowrap; }
+.walkpause { position: absolute; z-index: 9; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100% - 48px));
+  padding: 22px 22px 18px; border-radius: 22px; text-align: center; }
+.walkpause[hidden] { display: none; }
+.walkpause h3 { margin: 0 0 14px; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+.walkpause .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 16px; margin: 0 0 18px; font-size: 13px; color: var(--label-2); text-align: left; }
+.walkpause .keys span { display: flex; align-items: center; gap: 8px; }
+.walkpause .actions { display: flex; gap: 8px; }
+.walkpause.mini { top: auto; bottom: calc(92px + var(--safe-b, env(safe-area-inset-bottom, 0px))); transform: translateX(-50%); width: auto; padding: 6px; border-radius: 16px; }
+.walkpause.mini h3, .walkpause.mini .keys, .walkpause.mini #walkSound, .walkpause.mini #walkExit { display: none; }
+.walkpause.mini #walkResume { padding: 0 22px; }
+.walkbtns { position: absolute; z-index: 6; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(28px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
+  display: flex; align-items: flex-end; gap: 14px; }
+.walkbtns[hidden] { display: none; }
+.walkbtns .round { width: 56px; height: 56px; touch-action: none; }
+.walkbtns .round.big { width: 74px; height: 74px; }
+.walkbtns svg { width: 26px; height: 26px; stroke-width: 2.2; }
+.walkbtns .round:active { transform: scale(.93); }
+.walking .mapctl .stack { display: none; }
+.walking.locked .sidebar, .walking.locked .dock, .walking.locked .mapctl, .walking.locked .card, .walking.locked .scale { opacity: 0; pointer-events: none; }
+.walking.locked #stage canvas { cursor: none; }
+@media (pointer: coarse) {
+  .walking .dock, .walking .mini, .walking .scale { display: none; }
+  .xhint kbd { display: none; }
+  .xhint { padding: 0 14px; }
+}
 .walkpad[hidden] { display: none; }
 .walkpad i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: #fff;
   box-shadow: 0 3px 10px rgba(0,0,0,.25); transition: background .2s; }
 .walkpad.run i { background: var(--accent); }
 .walking #dim, .walking #measure { display: none; }
-.walking #stage canvas { cursor: default; }
-.walking #stage.grabbing canvas { cursor: grabbing; }
+.walking #stage canvas { cursor: pointer; }
 .rotate-tip { position: absolute; z-index: 12; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(300px, calc(100% - 48px));
   padding: 22px 20px 16px; border-radius: var(--r-xl); text-align: center; }
 .rotate-tip[hidden] { display: none; }
@@ -288,7 +324,8 @@ button:active { filter: brightness(.94); }
   .card { top: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(64px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: auto; max-height: 48%; }
   .card:not([hidden]) ~ .mapctl { display: none; }
   .dock { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); transform: none; justify-content: space-between; bottom: calc(10px + var(--safe-b, env(safe-area-inset-bottom, 0px))); }
-  .walkpad { left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(76px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: 108px; height: 108px; }
+  .walkpad { left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(40px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: 108px; height: 108px; }
+  .walkbtns { bottom: calc(40px + var(--safe-b, env(safe-area-inset-bottom, 0px))); }
   .walking .legal { display: none; }
   .tour { top: auto; bottom: calc(64px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); translate: none; padding: 10px 14px 12px; max-height: 34%; overflow-y: auto; border-radius: 18px; }
   .tour h3 { margin-top: 4px; font-size: 17px; }
@@ -351,6 +388,7 @@ button:active { filter: brightness(.94); }
   .card:not([hidden]) ~ .mapctl { display: none; }
   .tour { top: max(8px, env(safe-area-inset-top, 0px)); bottom: auto; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 280px); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 52px); width: auto; max-width: 460px; margin: 0 auto; translate: none; padding: 8px 14px 10px; border-radius: 16px; max-height: calc(100% - 92px - var(--safe-b, env(safe-area-inset-bottom, 0px))); overflow-y: auto; }
   .walkpad { left: max(18px, env(safe-area-inset-left, 0px)); bottom: calc(14px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: 104px; height: 104px; }
+  .walkbtns { bottom: calc(16px + var(--safe-b, env(safe-area-inset-bottom, 0px))); gap: 12px; }
   .walking .legal { display: none; }
   .tour h3 { margin-top: 4px; font-size: 15px; }
   .tour p { font-size: 12.5px; line-height: 1.45; }

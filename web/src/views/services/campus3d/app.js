@@ -1843,6 +1843,8 @@ function buildConference(b) {
   for (const x of [-445, -455]) addCyl('stoneWarm', x, 0, 176, 0.25, 5.0, 10);
   for (let k = 0; k < 7; k++) addBox('stoneWarm', -543 - k * 0.0, k * 0.6, 150 + k * 1.5, 5.5, 1.6, 0.6, 0);
   b.h = 18.6;
+  // the footprint actually built, for collision and keeping trees out (the OSM outline misses the arc's east end)
+  b.parts = [P, atr, [[-485, 113], [-480.4, 113], [-480.4, 158], [-485, 158]], [[-540, 148.4], [-512, 148.4], [-512, 161], [-540, 161]]];
   addCap('paveBrick', [[-483,100],[-437,100],[-432,181],[-462,185],[-462,161],[-482,158],[-483,113]], 0.04);
 }
 function buildGym(b) {
@@ -2965,6 +2967,31 @@ function crownGeometry(sp) {
 }
 let TREE_GROUPS = [], TREE_MESHES = [], LEAF_TEX = {}, WOOD_MAT = null;
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color(), _c2 = new THREE.Color(), _e = new THREE.Euler();
+// Keep every crown out of the buildings: a tree standing inside a footprint goes, one whose crown would cut
+// into a wall shrinks until it clears, and one that would have to shrink too far goes as well.
+function clearTreesFromBuildings() {
+  const polys = [];
+  for (const b of BLD) {
+    const ps = b.extra?.special === 'xueyuan' ? XY_PODS.map((q) => q.p).concat(XY_LINKS) : b.parts || [b.p];
+    for (const q of ps) polys.push({ q, bb: pBox(q), h: b.h });
+  }
+  const keep = [];
+  for (const t of TREES) {
+    const S = SPECIES[t.type], base = S.base * t.s;
+    let rc = S.rx * t.s * 0.8, ok = true;
+    for (const P of polys) {
+      if (P.h <= base || t.x < P.bb[0] - rc || t.x > P.bb[2] + rc || t.z < P.bb[1] - rc || t.z > P.bb[3] + rc) continue;
+      if (pip(t.x, t.z, P.q)) { ok = false; break; }
+      const d = nearestOnPoly(t.x, t.z, P.q)[0];
+      if (d < rc) { if (d < S.rx * t.s * 0.8 * 0.55) { ok = false; break; } rc = d; }
+    }
+    if (!ok) continue;
+    const k = rc / (S.rx * t.s * 0.8);
+    if (k < 1) t.s *= k;
+    keep.push(t);
+  }
+  TREES.length = 0; TREES.push(...keep);
+}
 function buildTrees() {
   for (const m of TREE_MESHES) scene.remove(m);
   TREE_MESHES = []; TREE_GROUPS = [];
@@ -3991,9 +4018,20 @@ function camFloor(x, z) {
   return top + 1.8;
 }
 // ---------- free exploration (first person) ----------
-const WALK = { x: 0, z: 0, y: 0, yaw: 0, pitch: 0, vx: 0, vz: 0, keys: new Set(), pad: { x: 0, y: 0 }, target: null, faceYaw: null, trans: null, fov: 62, bob: 0, stuck: 0 };
-const WALK_R = 0.42, EYE = 1.62, WALK_SPEED = 3.4, RUN_SPEED = 9;
-function walkPolys(x, z) {
+// An FPS controller: pointer-lock mouse look, Quake/Source-style ground friction and acceleration, jump with
+// coyote time and input buffering, crouch, sprint, stepping onto low props, head bob, landing dip, sprint FOV
+// kick and synthesized footsteps. Touch gets a floating stick on the left and look-drag on the right.
+const WALK = {
+  x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, yaw: 0, pitch: 0, ground: true, air: 0, jumpBuf: 0, crouch: 0, crouchOn: false,
+  keys: new Set(), pad: { x: 0, y: 0 }, padRun: false, fov: 72, zoom: 0, zoomOn: false, trans: null, faceYaw: null,
+  ph: 0, bobA: 0, stepY: 0, land: 0, landV: 0, roll: 0, kick: 0, sprint: false,
+  locked: false, unlockT: 0, inspect: false, noLock: TOUCH || !('requestPointerLock' in HTMLElement.prototype),
+  sound: !TOUCH, sens: 0.0022, aim: null, aimOwn: -1, aimT: 0,
+};
+const WALK_R = 0.38, EYE = 1.65, EYE_LOW = 1.05, STEP_UP = 0.5, WALK_FOV = 72;
+const MOVE = { run: 4.8, sprint: 8, crouch: 2.2, accel: 11, air: 1.8, friction: 7.5, stop: 2.2, gravity: 19, jump: 5.4 };
+// Walls around (x, z) for a walker whose feet are at height `feet`: buildings always, props only when taller than a step.
+function walkPolys(x, z, feet = groundAt(x, z)) {
   const out = [];
   for (const k of BGRID.at(x, z)) {
     const b = BLD[k];
@@ -4001,10 +4039,9 @@ function walkPolys(x, z) {
     if (b.extra?.special === 'xueyuan') { for (const q of XY_PODS) out.push(q.p); for (const q of XY_LINKS) out.push(q); continue; }
     for (const q of b.parts || [b.p]) out.push(q);
   }
-  const g = groundAt(x, z);
   for (const k of PGRID.at(x, z)) {
     const q = PROPS[k];
-    if (q.top < g + 0.4 || x < q.bb[0] - 2 || x > q.bb[2] + 2 || z < q.bb[1] - 2 || z > q.bb[3] + 2) continue;
+    if (q.top <= feet + STEP_UP || x < q.bb[0] - 2 || x > q.bb[2] + 2 || z < q.bb[1] - 2 || z > q.bb[3] + 2) continue;
     out.push(q.p);
   }
   return out;
@@ -4021,19 +4058,19 @@ function nearestOnPoly(x, z, q) {
 let TGRID = null;
 function trunkGrid() {
   TGRID = new Grid(10);
-  TREES.forEach((t, i) => { const r = SPECIES[t.type].tr * t.s; const e = r + WALK_R + 0.4; if (r > 0.05) TGRID.add(i, [t.x - e, t.z - e, t.x + e, t.z + e]); });
+  TREES.forEach((t, i) => { const r = SPECIES[t.type].tr * t.s, e = r + WALK_R + 0.4; if (r > 0.05) TGRID.add(i, [t.x - e, t.z - e, t.x + e, t.z + e]); });
 }
 // Push a walker circle out of every wall and trunk it overlaps; moving into one therefore slides along it.
-function walkResolve(x, z) {
+function walkResolve(x, z, feet) {
   if (!TGRID) trunkGrid();
   for (let it = 0; it < 3; it++) {
     let moved = false;
     for (const k of TGRID.at(x, z)) {
-      const t = TREES[k], R = SPECIES[t.type].tr * t.s + WALK_R + 0.3, dx = x - t.x, dz = z - t.z, d = Math.hypot(dx, dz);
+      const t = TREES[k], R = SPECIES[t.type].tr * t.s + WALK_R + 0.12, dx = x - t.x, dz = z - t.z, d = Math.hypot(dx, dz);
       if (d >= R) continue;
       const a = d > 1e-4 ? 1 / d : 0; x = t.x + (a ? dx * a : 1) * (R + 0.01); z = t.z + dz * a * (R + 0.01); moved = true;
     }
-    for (const q of walkPolys(x, z)) {
+    for (const q of walkPolys(x, z, feet)) {
       const [d, mx, mz] = nearestOnPoly(x, z, q), inside = pip(x, z, q);
       if (!inside && d >= WALK_R) continue;
       let nx = x - mx, nz = z - mz; const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
@@ -4047,16 +4084,28 @@ function walkResolve(x, z) {
 const onBridge = (x, z) => BRIDGES.some((b) => pip(x, z, b.p));
 const walkable = (x, z) => x > REG.x0 + 5 && x < REG.x1 - 5 && z > REG.z0 + 5 && z < REG.z1 - 5 && (!inWater(x, z) || onBridge(x, z));
 function walkMove(dx, dz) {
-  let [nx, nz] = walkResolve(WALK.x + dx, WALK.z + dz);
+  const f = WALK.y;
+  let [nx, nz] = walkResolve(WALK.x + dx, WALK.z + dz, f);
   if (!walkable(nx, nz)) {
-    const ax = walkResolve(WALK.x + dx, WALK.z), az = walkResolve(WALK.x, WALK.z + dz);
+    const ax = walkResolve(WALK.x + dx, WALK.z, f), az = walkResolve(WALK.x, WALK.z + dz, f);
     if (Math.abs(dx) > 1e-4 && walkable(ax[0], ax[1])) [nx, nz] = ax;
     else if (Math.abs(dz) > 1e-4 && walkable(az[0], az[1])) [nx, nz] = az;
-    else return 0;
+    else return;
   }
-  const moved = Math.hypot(nx - WALK.x, nz - WALK.z);
   WALK.x = nx; WALK.z = nz;
-  return moved;
+}
+// Highest surface under the walker it can stand on: terrain, bridges, steps, or a prop no taller than a step above the feet.
+function floorAt(x, z, feet) {
+  let y = groundAt(x, z);
+  const r = WALK_R * 0.6;
+  for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) {
+    const px = x + ox, pz = z + oz;
+    for (const k of PGRID.at(px, pz)) {
+      const q = PROPS[k];
+      if (q.top > y && q.top <= feet + STEP_UP && px >= q.bb[0] && px <= q.bb[2] && pz >= q.bb[1] && pz <= q.bb[3] && pip(px, pz, q.p)) y = q.top;
+    }
+  }
+  return y;
 }
 function walkSpot(x, z) {
   for (let r = 0; r < 200; r += 2) {
@@ -4072,11 +4121,10 @@ const walkForward = () => [-Math.sin(WALK.yaw), -Math.cos(WALK.yaw)];
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 function enterWalk(x, z, yaw, o = {}) {
   [x, z] = walkSpot(x, z);
-  const from = camera.position.clone(), q0 = camera.quaternion.clone(), fov0 = camera.fov;
-  Object.assign(WALK, { x, z, y: groundAt(x, z), yaw, pitch: o.pitch ?? -0.05, vx: 0, vz: 0, target: null, faceYaw: null, stuck: 0 });
-  walkMarker(null);
+  const from = camera.position.clone(), q0 = camera.quaternion.clone(), fov0 = camera.fov, y = groundAt(x, z);
+  Object.assign(WALK, { x, z, y, yaw, pitch: o.pitch ?? -0.04, vx: 0, vz: 0, vy: 0, ground: true, air: 0, jumpBuf: 0, faceYaw: null, stepY: 0, land: 0, landV: 0, roll: 0 });
   const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(WALK.pitch, yaw, 0, 'YXZ'));
-  WALK.trans = o.instant || REDUCED_MOTION.matches ? null : { t: 0, dur: o.dur || 1.5, p0: from, q0, q1, fov0, lift: Math.min(90, from.distanceTo(new THREE.Vector3(x, WALK.y + EYE, z)) * 0.25) };
+  WALK.trans = o.instant || REDUCED_MOTION.matches ? null : { t: 0, dur: o.dur || 1.5, p0: from, q0, q1, fov0, lift: Math.min(90, from.distanceTo(new THREE.Vector3(x, y + EYE, z)) * 0.25) };
 }
 // Drop the walker where the view was centred, stepping back toward the camera until the way ahead is open.
 function walkEntry() {
@@ -4095,11 +4143,6 @@ function walkEntry() {
   for (let back = 0; back <= 180; back += 4) { const x = t.x - dx * back, z = t.z - dz * back; if (open(x, z)) return { x, z, yaw }; }
   return { x: t.x, z: t.z, yaw };
 }
-function walkTo(x, z, faceYaw = null) {
-  const [px, pz] = walkSpot(x, z);
-  WALK.target = { x: px, z: pz }; WALK.faceYaw = faceYaw; WALK.stuck = 0;
-  walkMarker(px, pz, true);
-}
 function placeFront(p) {
   if (p.bld) {
     const b = BLD[p.bld[0]], e = edgeFacing(b.p, b.c[0] - 100, b.c[1] + 100, 6);
@@ -4110,162 +4153,295 @@ function placeFront(p) {
 }
 function walkToPlace(p) {
   const f = placeFront(p);
-  if (Math.hypot(f.x - WALK.x, f.z - WALK.z) > 220) enterWalk(f.x, f.z, f.yaw, { dur: 1.8 });
-  else walkTo(f.x, f.z, f.yaw);
+  enterWalk(f.x, f.z, f.yaw, { dur: Math.hypot(f.x - WALK.x, f.z - WALK.z) > 220 ? 1.8 : 1.1 });
 }
-let MARK = null;
-function walkMarker(x, z, fixed = false) {
-  if (!MARK) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.78, 1, 48), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.78, 48), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
-    MARK = new THREE.Group(); MARK.add(ring, disc); MARK.rotation.x = -Math.PI / 2; MARK.renderOrder = 8; MARK.visible = false;
-    scene.add(MARK); NO_AO.push(MARK);
+// One fixed physics step: friction, acceleration toward the wished velocity, sliding collision, then gravity and floors.
+function walkStep(h, wx, wz, wish) {
+  const W = WALK;
+  if (W.ground) {
+    const sp = Math.hypot(W.vx, W.vz);
+    if (sp > 1e-3) { const k = Math.max(0, sp - Math.max(sp, MOVE.stop) * MOVE.friction * h) / sp; W.vx *= k; W.vz *= k; }
   }
-  if (x == null) { if (!MARK.userData.fixed || fixed) { MARK.visible = false; MARK.userData.fixed = false; } return; }
-  if (MARK.userData.fixed && !fixed) return;
-  MARK.position.set(x, groundAt(x, z) + 0.05, z);
-  const d = Math.hypot(x - WALK.x, z - WALK.z), s = clamp(d * 0.035, 0.28, 2.4);
-  MARK.scale.setScalar(s); MARK.visible = true; MARK.userData.fixed = fixed; MARK.userData.t = 0;
-}
-function updateWalk(dt) {
-  const k = WALK.keys, run = k.has('ShiftLeft') || k.has('ShiftRight');
-  let f = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - WALK.pad.y;
-  let s = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0) + WALK.pad.x;
-  const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? 1 : 0) - (k.has('ArrowRight') || k.has('KeyE') ? 1 : 0);
-  if (turn) { WALK.yaw += turn * dt * 1.8; WALK.faceYaw = null; }
-  const mag = Math.min(1, Math.hypot(f, s)); if (mag > 0) { const l = Math.hypot(f, s); f /= l; s /= l; }
-  const padMag = Math.hypot(WALK.pad.x, WALK.pad.y);
-  const [fx, fz] = walkForward(), rx = -fz, rz = fx;
-  let tvx = 0, tvz = 0, accel = 10;
-  if (mag > 0.05) {
-    if (WALK.target) { WALK.target = null; walkMarker(null, null, true); }
-    const speed = padMag > 0 ? (padMag > 0.92 ? RUN_SPEED : WALK_SPEED * Math.min(1, padMag / 0.9)) : (run ? RUN_SPEED : WALK_SPEED);
-    tvx = (fx * f + rx * s) * speed; tvz = (fz * f + rz * s) * speed;
-  } else if (WALK.target) {
-    const dx = WALK.target.x - WALK.x, dz = WALK.target.z - WALK.z, d = Math.hypot(dx, dz);
-    if (d < 0.35) { WALK.target = null; walkMarker(null, null, true); }
-    else {
-      const speed = clamp(d * 1.6, 1.2, d > 60 ? 16 : 9.5);
-      tvx = dx / d * speed; tvz = dz / d * speed; accel = 5;
-      if (d > 2.5) { const want = Math.atan2(-dx, -dz); WALK.yaw += angDiff(want, WALK.yaw) * Math.min(1, dt * 2.4); }
+  if (wish > 0) {
+    const add = wish - (W.vx * wx + W.vz * wz);
+    if (add > 0) { const a = Math.min((W.ground ? MOVE.accel : MOVE.air) * wish * h, add); W.vx += wx * a; W.vz += wz * a; }
+  }
+  if (W.vx || W.vz) {
+    const px = W.x, pz = W.z;
+    walkMove(W.vx * h, W.vz * h);
+    // Keep only the velocity that actually moved the walker, so pushing into a wall never banks speed.
+    const mx = (W.x - px) / h, mz = (W.z - pz) / h;
+    if (Math.hypot(mx, mz) < Math.hypot(W.vx, W.vz) - 0.01) { W.vx = mx; W.vz = mz; }
+  }
+  W.jumpBuf = Math.max(0, W.jumpBuf - h);
+  if (W.ground) {
+    const fl = floorAt(W.x, W.z, W.y);
+    if (fl < W.y - 0.36) { W.ground = false; W.air = 0; W.vy = 0; }
+    else { W.stepY -= fl - W.y; W.y = fl; }
+  } else W.air += h;
+  if (W.jumpBuf > 0 && (W.ground || (W.air < 0.12 && W.vy <= 0))) {
+    W.vy = MOVE.jump * (W.crouch > 0.5 ? 0.85 : 1); W.ground = false; W.air = 0.2; W.jumpBuf = 0;
+    walkSound('jump');
+  }
+  if (!W.ground) {
+    W.vy -= MOVE.gravity * h; W.y += W.vy * h;
+    const fl = floorAt(W.x, W.z, W.y);
+    if (W.y <= fl && W.vy <= 0) {
+      const hit = -W.vy; W.y = fl; W.vy = 0; W.ground = true; W.air = 0;
+      if (hit > 2.2) { W.landV -= Math.min(1.6, hit * 0.16); walkSound('land', Math.min(1, hit / 8)); }
     }
   }
-  WALK.vx += (tvx - WALK.vx) * Math.min(1, dt * accel); WALK.vz += (tvz - WALK.vz) * Math.min(1, dt * accel);
-  const want = Math.hypot(WALK.vx, WALK.vz) * dt, moved = want > 1e-4 ? walkMove(WALK.vx * dt, WALK.vz * dt) : 0;
-  if (WALK.target && want > 0.01) {
-    WALK.stuck = moved < want * 0.25 ? WALK.stuck + dt : 0;
-    if (WALK.stuck > 0.5) { WALK.target = null; WALK.vx = WALK.vz = 0; walkMarker(null, null, true); toast('前面过不去了，换个方向试试', 1800); }
+}
+function updateWalk(dt) {
+  const W = WALK, k = W.keys, live = TOUCH || W.locked || W.noLock;
+  let f = 0, s = 0;
+  if (live) {
+    f = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - W.pad.y;
+    s = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) + W.pad.x;
   }
-  if (!WALK.target && WALK.faceYaw != null) {
-    const d = angDiff(WALK.faceYaw, WALK.yaw);
-    WALK.yaw += d * Math.min(1, dt * 3.5); if (Math.abs(d) < 0.01) WALK.faceYaw = null;
+  const padMag = Math.min(1, Math.hypot(W.pad.x, W.pad.y)), mag = Math.min(1, Math.hypot(f, s));
+  const crouch = live && (k.has('KeyC') || W.crouchOn);
+  W.crouch += ((crouch ? 1 : 0) - W.crouch) * Math.min(1, dt * 10);
+  W.sprint = live && !crouch && f > 0.3 && (k.has('ShiftLeft') || k.has('ShiftRight') || W.padRun);
+  const [fx, fz] = walkForward(), rx = -fz, rz = fx;
+  let wish = 0, wx = 0, wz = 0;
+  if (mag > 0.05 && !W.trans) {
+    const l = Math.hypot(f, s);
+    wx = (fx * f + rx * s) / l; wz = (fz * f + rz * s) / l;
+    wish = (W.sprint ? MOVE.sprint : crouch ? MOVE.crouch : MOVE.run) * (padMag > 0 && !W.sprint ? Math.min(1, padMag / 0.85) : 1);
   }
-  const gy = groundAt(WALK.x, WALK.z);
-  WALK.y += (gy - WALK.y) * Math.min(1, dt * 9);
-  const sp = Math.hypot(WALK.vx, WALK.vz);
-  WALK.bob += dt * sp * 1.9;
-  const bob = REDUCED_MOTION.matches ? 0 : Math.sin(WALK.bob * 2) * 0.03 * Math.min(1, sp / 3);
-  const eye = new THREE.Vector3(WALK.x, WALK.y + EYE + bob, WALK.z), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(WALK.pitch, WALK.yaw, 0, 'YXZ'));
-  if (WALK.trans) {
-    const T = WALK.trans; T.t = Math.min(1, T.t + dt / T.dur); const e = ease(T.t);
+  const h = Math.min(dt, 0.05), n = Math.max(1, Math.ceil(h * 120));
+  for (let i = 0; i < n; i++) walkStep(h / n, wx, wz, wish);
+  if (W.faceYaw != null) {
+    const d = angDiff(W.faceYaw, W.yaw);
+    W.yaw += d * Math.min(1, dt * 3.5); if (Math.abs(d) < 0.01) W.faceYaw = null;
+  }
+  // camera feel: smoothed steps, landing spring, footstep-locked bob, strafe lean, sprint FOV kick, right-button zoom
+  const still = REDUCED_MOTION.matches, e1 = Math.min(dt, 0.05);
+  W.stepY *= Math.exp(-dt * 14);
+  W.landV += (-90 * W.land - 13 * W.landV) * e1; W.land += W.landV * e1;
+  const sp = W.ground ? Math.hypot(W.vx, W.vz) : 0, before = Math.floor(W.ph / Math.PI);
+  W.ph += sp * dt / (0.62 + sp * 0.05) * Math.PI;
+  if (Math.floor(W.ph / Math.PI) !== before && sp > 1) walkSound('step', Math.min(1, sp / 6));
+  W.bobA += ((still ? 0 : Math.min(1, sp / 5)) - W.bobA) * Math.min(1, dt * 8);
+  const bobY = -Math.cos(W.ph * 2) * 0.042 * W.bobA * (W.sprint ? 1.35 : 1), bobX = Math.sin(W.ph) * 0.032 * W.bobA;
+  W.roll += ((still ? 0 : -s * 0.016 * Math.min(1, Math.hypot(W.vx, W.vz) / 3)) - W.roll) * Math.min(1, dt * 6);
+  W.zoom += ((W.zoomOn && live ? 1 : 0) - W.zoom) * Math.min(1, dt * 12);
+  W.kick += ((W.sprint && sp > 5 && !still ? 1 : 0) - W.kick) * Math.min(1, dt * 5);
+  const eyeH = EYE + (EYE_LOW - EYE) * W.crouch;
+  const eye = new THREE.Vector3(W.x + rx * bobX, W.y + eyeH + W.stepY + W.land + bobY, W.z + rz * bobX);
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(W.pitch, W.yaw, W.roll + Math.sin(W.ph) * 0.004 * W.bobA, 'YXZ'));
+  const fov = W.fov * (1 - 0.55 * W.zoom) + 7 * W.kick;
+  if (W.trans) {
+    const T = W.trans; T.t = Math.min(1, T.t + dt / T.dur); const e = ease(T.t);
     camera.position.lerpVectors(T.p0, eye, e); camera.position.y += Math.sin(Math.PI * e) * T.lift;
     camera.quaternion.slerpQuaternions(T.q0, q, e);
-    camera.fov = T.fov0 + (WALK.fov - T.fov0) * e; camera.updateProjectionMatrix();
-    if (T.t >= 1) WALK.trans = null;
+    camera.fov = T.fov0 + (fov - T.fov0) * e; camera.updateProjectionMatrix();
+    if (T.t >= 1) W.trans = null;
   } else {
     camera.position.copy(eye); camera.quaternion.copy(q);
-    if (Math.abs(camera.fov - WALK.fov) > 0.01) { camera.fov += (WALK.fov - camera.fov) * Math.min(1, dt * 10); camera.updateProjectionMatrix(); }
+    if (Math.abs(camera.fov - fov) > 0.01) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 12); camera.updateProjectionMatrix(); }
   }
-  controls.target.set(WALK.x + fx * 20, WALK.y + EYE, WALK.z + fz * 20);
-  if (MARK && MARK.visible) {
-    MARK.userData.t += dt;
-    const a = MARK.userData.fixed ? 0.65 + 0.3 * Math.sin(MARK.userData.t * 5) : 0.75;
-    MARK.children[0].material.opacity = a; MARK.children[1].material.opacity = a * 0.28;
-  }
+  controls.target.set(W.x + fx * 20, W.y + EYE, W.z + fz * 20);
+  W.aimT -= dt;
+  if (W.aimT <= 0) { W.aimT = 0.1; walkAim(); }
 }
-const WALK_PTR = new Map();
-let walkPinch = null, walkHoverT = 0;
+// ---- aiming and inspecting buildings ----
+function placeOf(own) {
+  const pl = PLACES.find((q) => q.bld && q.bld.includes(own)); if (pl) return pl;
+  const b = BLD[own]; if (!b || !b.name) return null;
+  return { name: b.name, cat: b.cls.cat || 'teach', bld: [own], x: b.c[0], z: b.c[1], h: b.h };
+}
+function walkAim() {
+  let own = -1;
+  if (!WALK.trans && (WALK.locked || WALK.noLock)) {
+    ndc.set(0, 0); ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(PICKABLE, false)[0], o = hit ? hit.object.userData.owner?.[hit.faceIndex] : null;
+    if (o != null && o >= 0 && hit.distance < 90) own = o;
+  }
+  if (own === WALK.aimOwn) return;
+  WALK.aimOwn = own; WALK.aim = own >= 0 ? placeOf(own) : null;
+  $('#xhair').classList.toggle('on', Boolean(WALK.aim));
+  $('#xhint').hidden = !WALK.aim; if (WALK.aim) $('#xhintName').textContent = WALK.aim.name;
+}
+function walkInspect(p = WALK.aim) {
+  if (!p) return;
+  select(p); WALK.inspect = true; WALK.zoomOn = false;
+  walkUnlock(); walkHud();
+}
 function walkPick(e) {
   screenRay(e);
   const hit = ray.intersectObjects(PICKABLE, false)[0], own = hit ? hit.object.userData.owner?.[hit.faceIndex] : null;
-  if (own != null && own >= 0 && hit.distance < 900) return { own };
-  let p = hit ? hit.point.clone() : null;
-  if (!p || p.y > 3) { p = new THREE.Vector3(); if (!ray.ray.intersectPlane(GROUND_PLANE, p)) return null; }
-  if (Math.hypot(p.x - WALK.x, p.z - WALK.z) > 600) return null;
-  return { x: p.x, z: p.z };
+  return own != null && own >= 0 && hit.distance < 400 ? placeOf(own) : null;
 }
-renderer.domElement.addEventListener('pointerdown', (e) => {
-  if (mode !== 'walk') return;
-  WALK_PTR.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), button: e.button });
-  try { renderer.domElement.setPointerCapture(e.pointerId); } catch (_) { }
-  if (WALK_PTR.size === 2) { const [a, b] = [...WALK_PTR.values()]; walkPinch = { d: Math.hypot(a.x - b.x, a.y - b.y), fov: WALK.fov }; }
-  stage.classList.add('grabbing');
+// ---- pointer lock ----
+const LOCK_EL = renderer.domElement;
+const isLocked = () => LOCK_EL.getRootNode().pointerLockElement === LOCK_EL;
+function walkLock() {
+  walkAudioWake();
+  if (WALK.noLock || mode !== 'walk' || isLocked()) return;
+  let p = null;
+  try { p = LOCK_EL.requestPointerLock({ unadjustedMovement: true }); } catch (_) { p = null; }
+  if (p && p.catch) p.catch(() => { try { const r = LOCK_EL.requestPointerLock(); if (r && r.catch) r.catch(() => { }); } catch (_) { } });
+}
+function walkUnlock() { if (isLocked()) document.exitPointerLock(); }
+function walkLockChange() {
+  const l = isLocked();
+  if (WALK.locked && !l) WALK.unlockT = performance.now();
+  WALK.locked = l;
+  $('#app').classList.toggle('locked', l && mode === 'walk');
+  if (l) {
+    if (WALK.inspect && !$('#info').hidden) $('#infoClose').click(); WALK.inspect = false;
+    if (!WALK.hinted) { WALK.hinted = true; toast('WASD 移动 · 空格跳 · Shift 冲刺 · C 蹲 · E 查看 · Esc 暂停', 3600); }
+  }
+  else { WALK.keys.clear(); WALK.zoomOn = false; }
+  walkHud();
+}
+function walkLockError() { if (mode === 'walk') toast('再点一下画面继续', 1600); }
+on(document, 'pointerlockchange', walkLockChange);
+on(document, 'pointerlockerror', walkLockError);
+function walkHud() {
+  const on = mode === 'walk';
+  $('#xhair').hidden = !on || (!TOUCH && !WALK.noLock && !WALK.locked);
+  $('#walkPause').hidden = !on || WALK.noLock || WALK.locked;
+  $('#walkPause').classList.toggle('mini', WALK.inspect);
+  $('#walkbtns').hidden = !(on && TOUCH); $('#walkpad').hidden = !(on && TOUCH);
+  if (!on || $('#xhair').hidden) { WALK.aimOwn = -1; WALK.aim = null; $('#xhair').classList.remove('on'); $('#xhint').hidden = true; }
+}
+// ---- footsteps (synthesized, no audio files) ----
+let AUD = null, GROUND_CTX = null;
+function walkAudioWake() {
+  if (AUD === false || !WALK.sound) return;
+  if (!AUD) {
+    try {
+      const C = new (window.AudioContext || window.webkitAudioContext)();
+      const n = Math.floor(C.sampleRate * 0.3), buf = C.createBuffer(1, n, C.sampleRate), d = buf.getChannelData(0);
+      let b = 0; for (let i = 0; i < n; i++) { b = b * 0.55 + (Math.random() * 2 - 1) * 0.45; d[i] = b * Math.pow(1 - i / n, 3); }
+      const out = C.createGain(); out.gain.value = 0.5; out.connect(C.destination);
+      AUD = { C, buf, out };
+    } catch (_) { AUD = false; return; }
+  }
+  if (AUD.C.state === 'suspended') AUD.C.resume().catch(() => { });
+}
+function walkAudioClose() { if (AUD) AUD.C.close().catch(() => { }); AUD = null; }
+function surfaceHard() {
+  const W = WALK;
+  if (W.y > 0.05 || onBridge(W.x, W.z)) return true;
+  try {
+    GROUND_CTX ||= GROUND.canvas.getContext('2d');
+    const px = Math.floor((W.x - REG.x0) / REGW * GROUND.canvas.width), py = Math.floor((W.z - REG.z0) / REGH * GROUND.canvas.height);
+    const [r, g, b] = GROUND_CTX.getImageData(px, py, 1, 1).data;
+    return !(g > r * 1.06 && g > b * 1.12);
+  } catch (_) { return true; }
+}
+function walkSound(kind, k = 1) {
+  if (!WALK.sound || !AUD || AUD.C.state !== 'running') return;
+  const { C, buf, out } = AUD, t = C.currentTime, hard = surfaceHard();
+  const src = C.createBufferSource(), fl = C.createBiquadFilter(), g = C.createGain();
+  src.buffer = buf; src.playbackRate.value = (hard ? 1.3 : 0.8) * (0.9 + Math.random() * 0.2);
+  fl.type = hard ? 'bandpass' : 'lowpass'; fl.frequency.value = hard ? 1500 + Math.random() * 600 : 900 + Math.random() * 300; fl.Q.value = hard ? 1.4 : 0.6;
+  const v = (kind === 'land' ? 0.6 : kind === 'jump' ? 0.22 : 0.16 + 0.16 * k) * (hard ? 1 : 0.8), len = kind === 'land' ? 0.22 : hard ? 0.09 : 0.16;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  src.connect(fl); fl.connect(g); g.connect(out); src.start(t); src.stop(t + len + 0.02);
+  if (kind === 'land' || hard) {
+    const o = C.createOscillator(), og = C.createGain();
+    o.frequency.setValueAtTime(kind === 'land' ? 110 : 150, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.08);
+    og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(v * 0.5, t + 0.005); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.12);
+  }
+}
+// ---- input ----
+LOCK_EL.addEventListener('mousemove', (e) => {
+  if (mode !== 'walk' || !WALK.locked || WALK.trans) return;
+  const mx = e.movementX || 0, my = e.movementY || 0;
+  if (Math.abs(mx) > 400 || Math.abs(my) > 400) return; // some browsers send one bogus jump right after locking
+  const k = WALK.sens * camera.fov / WALK_FOV;
+  WALK.yaw -= mx * k; WALK.pitch = clamp(WALK.pitch - my * k, -1.5, 1.5); WALK.faceYaw = null;
 });
-renderer.domElement.addEventListener('pointermove', (e) => {
+const WALK_PTR = new Map();
+const STICK_R = 52;
+let stickC = null, stickId = null;
+function stickAt(x, y, start) {
+  const pad = $('#walkpad');
+  if (start) {
+    const pr = pad.parentElement.getBoundingClientRect();
+    stickC = { x, y }; pad.style.left = (x - pr.left - pad.offsetWidth / 2) + 'px'; pad.style.top = (y - pr.top - pad.offsetHeight / 2) + 'px'; pad.style.bottom = 'auto';
+    pad.classList.add('on');
+  }
+  let dx = (x - stickC.x) / STICK_R, dy = (y - stickC.y) / STICK_R; const l = Math.hypot(dx, dy);
+  WALK.padRun = l > 1.25 && dy < -0.6 * l;
+  if (l > 1) { dx /= l; dy /= l; }
+  WALK.pad.x = dx; WALK.pad.y = dy;
+  $('#walknub').style.transform = `translate(${dx * 36}px, ${dy * 36}px)`;
+  pad.classList.toggle('run', WALK.padRun);
+}
+function stickEnd() {
+  const pad = $('#walkpad');
+  stickC = null; stickId = null; WALK.pad.x = WALK.pad.y = 0; WALK.padRun = false;
+  pad.style.left = pad.style.top = pad.style.bottom = ''; pad.classList.remove('on', 'run'); $('#walknub').style.transform = '';
+}
+LOCK_EL.addEventListener('pointerdown', (e) => {
   if (mode !== 'walk') return;
-  const p = WALK_PTR.get(e.pointerId);
-  if (!p) {
-    if (TOUCH || e.buttons) return;
-    const now = performance.now(); if (now - walkHoverT < 50) return; walkHoverT = now;
-    const t = walkPick(e);
-    stage.classList.toggle('pointer', Boolean(t && t.own != null));
-    if (t && t.own == null) walkMarker(t.x, t.z); else walkMarker(null);
+  if (e.pointerType === 'mouse' && !WALK.noLock) {
+    if (!WALK.locked) { walkLock(); return; }
+    if (e.button === 0) walkInspect(); else if (e.button === 2) WALK.zoomOn = true;
     return;
   }
+  walkAudioWake();
+  const r = LOCK_EL.getBoundingClientRect();
+  const stick = e.pointerType === 'touch' && stickId == null && e.clientX - r.left < r.width * 0.42;
+  WALK_PTR.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), stick });
+  if (stick) { stickId = e.pointerId; stickAt(e.clientX, e.clientY, true); }
+  try { LOCK_EL.setPointerCapture(e.pointerId); } catch (_) { }
+});
+LOCK_EL.addEventListener('pointermove', (e) => {
+  if (mode !== 'walk') return;
+  const p = WALK_PTR.get(e.pointerId); if (!p) return;
+  if (p.stick) { stickAt(e.clientX, e.clientY); return; }
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-  if (WALK_PTR.size >= 2 && walkPinch) {
-    const [a, b] = [...WALK_PTR.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
-    if (d > 10) WALK.fov = clamp(walkPinch.fov * walkPinch.d / d, 34, 80);
-    return;
-  }
-  const k = 0.0042 * camera.fov / 62;
-  WALK.yaw += dx * k; WALK.pitch = clamp(WALK.pitch + dy * k, -1.25, 1.25); WALK.faceYaw = null;
-  if (WALK.trans) WALK.trans = null;
+  if (WALK.trans) return;
+  const k = (e.pointerType === 'touch' ? 0.0052 : 0.0035) * camera.fov / WALK_FOV;
+  WALK.yaw -= dx * k; WALK.pitch = clamp(WALK.pitch - dy * k, -1.5, 1.5); WALK.faceYaw = null;
 });
 function walkPointerEnd(e) {
+  if (e.pointerType === 'mouse' && e.button === 2) WALK.zoomOn = false;
   const p = WALK_PTR.get(e.pointerId); if (!p) return;
   WALK_PTR.delete(e.pointerId);
-  if (WALK_PTR.size < 2) walkPinch = null;
-  if (!WALK_PTR.size) stage.classList.remove('grabbing');
-  if (mode !== 'walk' || e.type !== 'pointerup' || p.button !== 0 || WALK_PTR.size) return;
-  if (Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > 6 || performance.now() - p.t0 > 400) return;
-  const t = walkPick(e); if (!t) return;
-  if (t.own != null) {
-    const pl = PLACES.find((q) => q.bld && q.bld.includes(t.own)), b = BLD[t.own];
-    select(pl || { name: b.name || '未命名建筑', cat: b.cls.cat || 'teach', bld: [t.own], x: b.c[0], z: b.c[1], h: b.h });
-  } else walkTo(t.x, t.z);
+  if (p.stick) { stickEnd(); return; }
+  if (mode !== 'walk' || e.type !== 'pointerup') return;
+  if (Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 8 && performance.now() - p.t0 < 300) { const pl = walkPick(e); if (pl) walkInspect(pl); }
 }
-renderer.domElement.addEventListener('pointerup', walkPointerEnd);
-renderer.domElement.addEventListener('pointercancel', walkPointerEnd);
-renderer.domElement.addEventListener('pointerleave', () => { if (mode === 'walk' && !WALK_PTR.size) walkMarker(null); });
-renderer.domElement.addEventListener('wheel', (e) => {
+LOCK_EL.addEventListener('pointerup', walkPointerEnd);
+LOCK_EL.addEventListener('pointercancel', walkPointerEnd);
+LOCK_EL.addEventListener('wheel', (e) => {
   if (mode !== 'walk') return;
   e.preventDefault();
-  WALK.fov = clamp(WALK.fov * (1 + clamp(e.deltaY, -200, 200) * 0.0011), 34, 80);
+  WALK.fov = clamp(WALK.fov * (1 + clamp(e.deltaY, -200, 200) * 0.0011), 40, 90);
 }, { passive: false });
 const keyTarget = (e) => (e.composedPath ? e.composedPath()[0] : e.target);
 on(window, 'keydown', (e) => {
   if (mode !== 'walk') return;
-  const t = keyTarget(e); if (t && /^(INPUT|TEXTAREA)$/.test(t.tagName)) return;
-  if (e.code === 'Escape') { setMode('orbit'); return; }
+  const t = keyTarget(e); if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+  // With pointer lock the browser's own Esc releases the mouse and pauses; Esc again leaves exploration.
+  if (e.code === 'Escape') { if (!WALK.locked && performance.now() - WALK.unlockT > 400) setMode('orbit'); return; }
+  const live = WALK.locked || WALK.noLock;
+  if (e.code === 'KeyE' || e.code === 'KeyF') { if (live && !e.repeat) walkInspect(); return; }
+  if (e.code === 'Space') { e.preventDefault(); if (live && !e.repeat) WALK.jumpBuf = 0.15; return; }
+  if (!live) return;
   WALK.keys.add(e.code);
-  if (/^(Arrow|Space)/.test(e.code)) e.preventDefault();
+  if (/^Arrow/.test(e.code)) e.preventDefault();
 });
 on(window, 'keyup', (e) => WALK.keys.delete(e.code));
-on(window, 'blur', () => WALK.keys.clear());
-{
-  const pad = $('#walkpad'), nub = $('#walknub'); let pid = null;
-  const mv = (e) => {
-    const r = pad.getBoundingClientRect(); let x = (e.clientX - r.left - r.width / 2) / (r.width / 2), y = (e.clientY - r.top - r.height / 2) / (r.height / 2);
-    const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
-    WALK.pad.x = x; WALK.pad.y = y; nub.style.transform = `translate(${x * 36}px, ${y * 36}px)`;
-    pad.classList.toggle('run', Math.hypot(x, y) > 0.92);
-  };
-  pad.addEventListener('pointerdown', (e) => { pid = e.pointerId; try { pad.setPointerCapture(pid); } catch (_) { } mv(e); e.stopPropagation(); });
-  pad.addEventListener('pointermove', (e) => { if (e.pointerId === pid) mv(e); });
-  const end = (e) => { if (e.pointerId !== pid) return; pid = null; WALK.pad.x = WALK.pad.y = 0; nub.style.transform = ''; pad.classList.remove('run'); };
-  pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end);
-}
+on(window, 'blur', () => { WALK.keys.clear(); WALK.zoomOn = false; });
+$('#walkJump').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); WALK.jumpBuf = 0.15; walkAudioWake(); });
+$('#walkCrouch').addEventListener('click', (e) => { WALK.crouchOn = !WALK.crouchOn; e.currentTarget.setAttribute('aria-pressed', String(WALK.crouchOn)); });
+$('#xhint').addEventListener('click', () => walkInspect());
+$('#walkResume').addEventListener('click', () => walkLock());
+$('#walkExit').addEventListener('click', () => setMode('orbit'));
+$('#walkSound').addEventListener('click', (e) => {
+  WALK.sound = !WALK.sound; if (WALK.sound) walkAudioWake();
+  e.currentTarget.setAttribute('aria-pressed', String(WALK.sound)); e.currentTarget.textContent = WALK.sound ? '脚步声 开' : '脚步声 关';
+});
 let TOUR = null;
 function tourStops() {
   const lib = byName(/^图书馆$/), adm = byName(/^行政楼$/);
@@ -4309,17 +4485,20 @@ function setMode(m, at) {
     tween = null; controls.enabled = false;
     if (MEAS.on) measureSet(false);
     const e = at || walkEntry();
-    enterWalk(e.x, e.z, e.yaw);
-    WALK.fov = 62;
-    $('#app').classList.add('walking'); $('#walkpad').hidden = !TOUCH;
+    WALK.fov = WALK_FOV; enterWalk(e.x, e.z, e.yaw);
+    $('#app').classList.add('walking');
     if (innerWidth <= 760 || innerHeight <= 500) setSidebar(false);
-    toast(TOUCH ? '拖动环顾 · 点地面走过去 · 左下摇杆移动，推到底加速' : '拖动环顾 · 点地面走过去 · WASD 移动 · Shift 加速 · Esc 退出', 5200);
+    walkHud();
+    if (TOUCH) toast('左侧拖动移动，推出圈外冲刺 · 右侧拖动看四周 · 点建筑查看', 5200);
+    else if (WALK.noLock) toast('拖动看四周 · WASD 移动 · 空格跳 · Shift 冲刺 · Esc 退出', 5200);
+    else walkLock();
     return;
   }
   controls.enabled = true;
   if (prev === 'walk') {
-    $('#app').classList.remove('walking'); $('#walkpad').hidden = true;
-    WALK.keys.clear(); WALK.target = null; walkMarker(null, null, true);
+    walkUnlock(); $('#app').classList.remove('walking', 'locked');
+    WALK.keys.clear(); WALK.inspect = false; WALK.zoomOn = false; WALK.crouchOn = false;
+    $('#walkCrouch').setAttribute('aria-pressed', 'false'); stickEnd(); walkHud(); walkAudioClose();
     const [fx, fz] = walkForward(), tgt = new THREE.Vector3(WALK.x + fx * 14, 0, WALK.z + fz * 14);
     camera.fov = 50; camera.updateProjectionMatrix();
     flyTo(new THREE.Vector3(tgt.x - fx * 120, 90, tgt.z - fz * 120), tgt, 1.4);
@@ -4378,7 +4557,7 @@ function toast(msg, ms = 3800) {
   clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); setTimeout(() => { t.hidden = true; }, 400); }, ms);
 }
 $('#compass').addEventListener('click', () => {
-  if (mode === 'walk') { WALK.faceYaw = 0; WALK.target = null; return; }
+  if (mode === 'walk') { WALK.faceYaw = 0; return; }
   if (mode === 'tour') setMode('orbit');
   const t = controls.target.clone(), off = camera.position.clone().sub(t), hd = Math.hypot(off.x, off.z);
   flyTo(new THREE.Vector3(t.x, camera.position.y, t.z + hd), t, 1.0);
@@ -4590,7 +4769,7 @@ const VIEW_OFF = { x: 0, y: 0 };
 function updateViewOffset(dt) {
   const card = $('#info'), W = stage.clientWidth, H = stage.clientHeight;
   let tx = 0, ty = 0;
-  if (!FILMING && card && !card.hidden && W && H) {
+  if (!FILMING && mode !== 'walk' && card && !card.hidden && W && H) {
     const sr = stage.getBoundingClientRect(), r = card.getBoundingClientRect(), left = r.left - sr.left, top = r.top - sr.top;
     if (left > W * 0.4) tx = (W - left + 12) / 2;
     else if (top > H * 0.3) ty = (H - top + 12) / 2;
@@ -4659,7 +4838,7 @@ async function boot() {
       ['建造桥梁与围栏',()=>{buildBridges();buildShoreline();buildFence();}],['建造轨道与高架',buildRail],
       ['布置体育设施',()=>{buildSports();buildCourtFences();}],['构建远景',buildHills],['合并建筑与贴图',flushBuffers],['生成水面',buildWater],
       ['布置校园树木',placeTrees],['布置周边树木',placeOuterTrees],['布置北侧林地苗圃',placeNorthTrees],
-      ['铺设地表与树荫',()=>{paintTreeShade();buildGround();}],['生成树木模型',buildTrees],
+      ['铺设地表与树荫',()=>{clearTreesFromBuildings();paintTreeShade();buildGround();}],['生成树木模型',buildTrees],
       ['布置绿篱与路灯',()=>{buildHedges();buildLamps();}],['布置单车与行人',()=>{buildBikes();buildPeople();}],
       ['布置车辆与列车',()=>{buildCars();buildTrains();}],['准备地标与小地图',()=>{initGrid();buildPlaces();buildPlaceList();buildMinimap();}],
       ['设置四季与光照',()=>{buildParticles();applySeason();tuneEnv();}],
@@ -4689,6 +4868,7 @@ return function dispose() {
   DISPOSED = true;
   cancelAnimationFrame(RAF);
   for (const fn of CLEANUP.splice(0)) { try { fn(); } catch (_) { } }
+  try { walkUnlock(); walkAudioClose(); } catch (_) { }
   try { controls.enabled = false; } catch (_) { }
   try {
     scene.traverse((o) => {
