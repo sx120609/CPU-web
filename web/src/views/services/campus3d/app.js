@@ -4034,7 +4034,13 @@ function setSidebar(open) { $('#sidebar').dataset.open = String(open); $('#m-men
 $('#m-menu').addEventListener('click', () => setSidebar($('#sidebar').dataset.open !== 'true'));
 $('#infoClose').addEventListener('click', () => { $('#info').hidden = true; selected = null; highlight({}); LABELS.forEach((L) => L.el.classList.remove('sel')); root.querySelectorAll('.row').forEach((el) => el.setAttribute('aria-current', 'false')); });
 $('#infoFly').addEventListener('click', () => selected && flyToPlace(selected));
-$('#time').addEventListener('input', (e) => { hour = parseFloat(e.target.value); applyTime(); });
+// Scrubbing takes the clock over: the running clock used to rewrite the slider under the finger every 120 ms
+// (the thumb jumped back and forth) and wrapped 22:30 back to 5:00 (the thumb snapped to the left end).
+let timeScrub = false;
+const endTimeScrub = () => { timeScrub = false; };
+$('#time').addEventListener('pointerdown', () => { timeScrub = true; setAutoTime(false); });
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture', 'change', 'blur']) $('#time').addEventListener(ev, endTimeScrub);
+$('#time').addEventListener('input', (e) => { if (autoTime) setAutoTime(false); hour = parseFloat(e.target.value); applyTime(); });
 function setAutoTime(on) { autoTime = on; const b = $('#timePlay'); b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-label', on ? '暂停时间流逝' : '开始时间流逝'); }
 $('#timePlay').addEventListener('click', () => setAutoTime(!autoTime));
 const SEASON_NAMES = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' };
@@ -4140,7 +4146,7 @@ function loop(now) {
   const rdt = (now - last) / 1000, dt = Math.min(0.05, rdt); last = now; frameN++;
   if (frameN > 180 && rdt < 0.5) trackPerf(rdt);
   uTime.value += dt;
-  if (autoTime) {
+  if (autoTime && !timeScrub) {
     hour += dt * (hour >= 19.5 || hour < 6.2 ? 1 / 4 : 1 / 12); if (hour > 22.5) hour = 5;
     if (now - timeApplyAt > 120) { timeApplyAt = now; $('#time').value = hour; applyTime(); }
   }

@@ -24,7 +24,7 @@ export function buildCampusUI(root, opts) {
   e5.setAttribute("hidden", "");
   e4.appendChild(e5);
   const e6 = document.createElementNS(NS, "svg");
-  e6.setAttribute("viewbox", "0 0 24 24");
+  e6.setAttribute("viewBox", "0 0 24 24");
   e5.appendChild(e6);
   const e7 = document.createElementNS(NS, "path");
   e7.setAttribute("d", "M15 5l-7 7 7 7");
@@ -51,7 +51,7 @@ export function buildCampusUI(root, opts) {
   e12.setAttribute("aria-pressed", "true");
   e4.appendChild(e12);
   const e13 = document.createElementNS(NS, "svg");
-  e13.setAttribute("viewbox", "0 0 24 24");
+  e13.setAttribute("viewBox", "0 0 24 24");
   e12.appendChild(e13);
   const e14 = document.createElementNS(NS, "path");
   e14.setAttribute("d", "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01");
@@ -78,7 +78,7 @@ export function buildCampusUI(root, opts) {
   e19.setAttribute("class", "search");
   e18.appendChild(e19);
   const e20 = document.createElementNS(NS, "svg");
-  e20.setAttribute("viewbox", "0 0 24 24");
+  e20.setAttribute("viewBox", "0 0 24 24");
   e19.appendChild(e20);
   const e21 = document.createElementNS(NS, "path");
   e21.setAttribute("d", "M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM15.5 15.5 20 20");
@@ -117,7 +117,7 @@ export function buildCampusUI(root, opts) {
   e29.setAttribute("aria-label", "\u5173\u95ed");
   e25.appendChild(e29);
   const e30 = document.createElementNS(NS, "svg");
-  e30.setAttribute("viewbox", "0 0 24 24");
+  e30.setAttribute("viewBox", "0 0 24 24");
   e29.appendChild(e30);
   const e31 = document.createElementNS(NS, "path");
   e31.setAttribute("d", "M7 7l10 10M17 7 7 17");
@@ -130,7 +130,7 @@ export function buildCampusUI(root, opts) {
   e33.setAttribute("id", "infoFly");
   e32.appendChild(e33);
   const e34 = document.createElementNS(NS, "svg");
-  e34.setAttribute("viewbox", "0 0 24 24");
+  e34.setAttribute("viewBox", "0 0 24 24");
   e33.appendChild(e34);
   const e35 = document.createElementNS(NS, "path");
   e35.setAttribute("d", "M4 12 20 4l-8 16-2-6z");
@@ -183,7 +183,7 @@ export function buildCampusUI(root, opts) {
   e47.setAttribute("title", "\u65f6\u95f4\u6d41\u901d");
   e46.appendChild(e47);
   const e48 = document.createElementNS(NS, "svg");
-  e48.setAttribute("viewbox", "0 0 24 24");
+  e48.setAttribute("viewBox", "0 0 24 24");
   e47.appendChild(e48);
   const e49 = document.createElementNS(NS, "path");
   e49.setAttribute("class", "pause");
@@ -195,7 +195,7 @@ export function buildCampusUI(root, opts) {
   e48.appendChild(e50);
   const e51 = document.createElementNS(NS, "svg");
   e51.setAttribute("class", "sun");
-  e51.setAttribute("viewbox", "0 0 24 24");
+  e51.setAttribute("viewBox", "0 0 24 24");
   e46.appendChild(e51);
   const e52 = document.createElementNS(NS, "path");
   e52.setAttribute("d", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4");
@@ -258,7 +258,7 @@ export function buildCampusUI(root, opts) {
   e62.setAttribute("title", "\u753b\u9762\u9009\u9879");
   e60.appendChild(e62);
   const e63 = document.createElementNS(NS, "svg");
-  e63.setAttribute("viewbox", "0 0 24 24");
+  e63.setAttribute("viewBox", "0 0 24 24");
   e62.appendChild(e63);
   const e64 = document.createElementNS(NS, "path");
   e64.setAttribute("d", "M4 7h16M4 17h16M8 4v6M16 14v6");
@@ -277,7 +277,7 @@ export function buildCampusUI(root, opts) {
   e66.setAttribute("title", "\u5730\u540d");
   e65.appendChild(e66);
   const e67 = document.createElementNS(NS, "svg");
-  e67.setAttribute("viewbox", "0 0 24 24");
+  e67.setAttribute("viewBox", "0 0 24 24");
   e66.appendChild(e67);
   const e68 = document.createElementNS(NS, "path");
   e68.setAttribute("d", "M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10zM12 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4z");
@@ -290,7 +290,7 @@ export function buildCampusUI(root, opts) {
   e69.setAttribute("title", "\u9634\u5f71");
   e65.appendChild(e69);
   const e70 = document.createElementNS(NS, "svg");
-  e70.setAttribute("viewbox", "0 0 24 24");
+  e70.setAttribute("viewBox", "0 0 24 24");
   e69.appendChild(e70);
   const e71 = document.createElementNS(NS, "path");
   e71.setAttribute("d", "M12 3a9 9 0 1 0 0 18zM12 3a9 9 0 0 1 0 18");
@@ -307,7 +307,7 @@ export function buildCampusUI(root, opts) {
   e73.setAttribute("title", "\u6c34\u9762\u5012\u5f71");
   e65.appendChild(e73);
   const e74 = document.createElementNS(NS, "svg");
-  e74.setAttribute("viewbox", "0 0 24 24");
+  e74.setAttribute("viewBox", "0 0 24 24");
   e73.appendChild(e74);
   const e75 = document.createElementNS(NS, "path");
   e75.setAttribute("d", "M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z");
@@ -320,7 +320,7 @@ export function buildCampusUI(root, opts) {
   e76.setAttribute("title", "\u884c\u4eba\u4e0e\u8f66\u8f86");
   e65.appendChild(e76);
   const e77 = document.createElementNS(NS, "svg");
-  e77.setAttribute("viewbox", "0 0 24 24");
+  e77.setAttribute("viewBox", "0 0 24 24");
   e76.appendChild(e77);
   const e78 = document.createElementNS(NS, "path");
   e78.setAttribute("d", "M12 4.5a1.5 1.5 0 1 0 0 .01M9 21l1.5-6L8 12.5 9.5 8h5l1.5 4.5L13.5 15 15 21");
@@ -338,7 +338,7 @@ export function buildCampusUI(root, opts) {
   e81.setAttribute("title", "\u653e\u5927");
   e80.appendChild(e81);
   const e82 = document.createElementNS(NS, "svg");
-  e82.setAttribute("viewbox", "0 0 24 24");
+  e82.setAttribute("viewBox", "0 0 24 24");
   e81.appendChild(e82);
   const e83 = document.createElementNS(NS, "path");
   e83.setAttribute("d", "M12 5v14M5 12h14");
@@ -350,7 +350,7 @@ export function buildCampusUI(root, opts) {
   e84.setAttribute("title", "\u7f29\u5c0f");
   e80.appendChild(e84);
   const e85 = document.createElementNS(NS, "svg");
-  e85.setAttribute("viewbox", "0 0 24 24");
+  e85.setAttribute("viewBox", "0 0 24 24");
   e84.appendChild(e85);
   const e86 = document.createElementNS(NS, "path");
   e86.setAttribute("d", "M5 12h14");
@@ -370,7 +370,7 @@ export function buildCampusUI(root, opts) {
   e88.setAttribute("title", "\u6d4b\u8ddd");
   e79.appendChild(e88);
   const e89 = document.createElementNS(NS, "svg");
-  e89.setAttribute("viewbox", "0 0 24 24");
+  e89.setAttribute("viewBox", "0 0 24 24");
   e88.appendChild(e89);
   const e90 = document.createElementNS(NS, "path");
   e90.setAttribute("d", "M3 17 17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2");
@@ -381,7 +381,7 @@ export function buildCampusUI(root, opts) {
   e91.setAttribute("aria-label", "\u671d\u5317");
   e79.appendChild(e91);
   const e92 = document.createElementNS(NS, "svg");
-  e92.setAttribute("viewbox", "0 0 24 24");
+  e92.setAttribute("viewBox", "0 0 24 24");
   e92.setAttribute("id", "needle");
   e91.appendChild(e92);
   const e93 = document.createElementNS(NS, "path");
@@ -435,7 +435,7 @@ export function buildCampusUI(root, opts) {
   e1.appendChild(e102);
   const e103 = document.createElementNS(NS, "svg");
   e103.setAttribute("class", "phone");
-  e103.setAttribute("viewbox", "0 0 24 24");
+  e103.setAttribute("viewBox", "0 0 24 24");
   e102.appendChild(e103);
   const e104 = document.createElementNS(NS, "rect");
   e104.setAttribute("x", "7");
