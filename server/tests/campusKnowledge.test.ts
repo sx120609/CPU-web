@@ -51,7 +51,7 @@ function item(ref: string, overrides: Partial<CampusKnowledgeItem> = {}): Campus
   };
 }
 
-test("query terms skip function words instead of producing cross-word bigrams", () => {
+test("query terms skip function words instead of producing cross-word bigrams", async () => {
   const terms = extractKnowledgeQueryTerms("Journal of Medicinal Chemistry 在共识期刊目录里是什么级别");
   assert.ok(terms.includes("journal"));
   assert.ok(terms.includes("medicinal"));
@@ -61,7 +61,7 @@ test("query terms skip function words instead of producing cross-word bigrams", 
   assert.deepEqual(extractKnowledgeQueryTerms("你好"), []);
 });
 
-test("question wording maps to the words school documents use", () => {
+test("question wording maps to the words school documents use", async () => {
   const terms = extractKnowledgeQueryTerms("推免申请需要注意哪些时间节点？");
   assert.deepEqual(terms, ["推免", "免申", "申请", "注意", "日程|时间|截止|日期|安排"]);
   const entries = [entry("推免工作通知", "一、工作日程：9 月 1 日推免工作开始，9 月 15 日结束，学生按时提交申请，注意材料"), entry("宿舍", "空调报修")];
@@ -84,7 +84,7 @@ test("a follow-up keeps the documents the previous answer drew on", async () => 
   assert.ok(followUp.some((item) => !previousTitles.includes(item.title)), "the follow-up's own documents must be there too");
 });
 
-test("bare URLs become explicit links that stop before Chinese text", () => {
+test("bare URLs become explicit links that stop before Chinese text", async () => {
   const answer = normalizeCampusAssistantAnswerText("1. 先打开 https://i.cpu.edu.cn，确认学校统一认证能否正常登录。");
   assert.equal(answer, "1. 先打开 [https://i.cpu.edu.cn](https://i.cpu.edu.cn)，确认学校统一认证能否正常登录。");
   assert.equal(normalizeCampusAssistantAnswerText(answer), answer);
@@ -93,7 +93,7 @@ test("bare URLs become explicit links that stop before Chinese text", () => {
   assert.equal(linkifyAssistantUrls("end https://cputime.cn."), "end [https://cputime.cn](https://cputime.cn).");
 });
 
-test("factual questions search the web unless the site or school documents already cover them", () => {
+test("factual questions search the web unless the site or school documents already cover them", async () => {
   const action = { id: "dorm-electric", label: "宿舍电费查询", description: "", url: "/services?open=electric", icon: "", owner: "", requireLogin: true };
   assert.equal(shouldProactivelySearchWeb("学校有几个门", []), true);
   assert.equal(shouldProactivelySearchWeb("江宁校区图书馆几点开门", []), true);
@@ -106,7 +106,7 @@ test("factual questions search the web unless the site or school documents alrea
   assert.equal(shouldProactivelySearchWeb("请联网搜索中国药科大学最新通知", [action]), true);
 });
 
-test("terms absent from the whole corpus do not bury the matching entry", () => {
+test("terms absent from the whole corpus do not bury the matching entry", async () => {
   const entries = [
     entry("宿舍管理规定", "发现损坏及时报修，物业人员巡查宿舍卫生"),
     entry("奖学金评定", "国家奖学金评审条件"),
@@ -117,13 +117,13 @@ test("terms absent from the whole corpus do not bury the matching entry", () => 
   assert.equal(ranked.length, 1);
 });
 
-test("a single matching term is not enough when the query has several", () => {
+test("a single matching term is not enough when the query has several", async () => {
   const entries = [entry("食堂开放时间", "第一食堂早上六点半开门"), entry("图书馆", "开放时间八点")];
   const ranked = rankKnowledgeEntries(entries, extractKnowledgeQueryTerms("游泳馆开放时间"), { minCoverage: 0.6, limit: 3 });
   assert.equal(ranked.length, 0);
 });
 
-test("plain text drops markup and excerpts focus on the matching part", () => {
+test("plain text drops markup and excerpts focus on the matching part", async () => {
   assert.equal(knowledgePlainText("![图](a.png) **报名** 见[通知](https://x.cn/a)"), "报名 见通知");
   const long = `${"前言".repeat(200)}复试时间为九月二十日${"附则".repeat(200)}`;
   const excerpt = focusedExcerpt(long, ["复试", "时间"], 60);
@@ -131,86 +131,88 @@ test("plain text drops markup and excerpts focus on the matching part", () => {
   assert.ok(excerpt.startsWith("…"));
 });
 
-test("school documents answer handbook and recommendation questions", () => {
-  const advisor = searchSchoolDocs("研究生可以换导师吗");
+test("school documents answer handbook and recommendation questions", async () => {
+  const advisor = await searchSchoolDocs("研究生可以换导师吗");
   assert.ok(advisor.some((hit) => hit.documentId === "S0024" && /更换导师/u.test(`${hit.heading}${hit.excerpt}`)));
-  const score = searchSchoolDocs("推免综合成绩怎么算");
+  const score = await searchSchoolDocs("推免综合成绩怎么算");
   assert.ok(score.some((hit) => /综合成绩/u.test(hit.excerpt)));
-  const fee = searchSchoolDocs("硕士学费多少");
+  const fee = await searchSchoolDocs("硕士学费多少");
   assert.ok(fee.some((hit) => /学费标准/u.test(hit.excerpt)));
-  assert.deepEqual(searchSchoolDocs("你好"), []);
+  assert.deepEqual(await searchSchoolDocs("你好"), []);
 });
 
-test("regulations answer with the current version, its document number and applicability", () => {
-  const amount = searchSchoolDocs("优秀学生奖学金一等奖多少钱");
+test("regulations answer with the current version, its document number and applicability", async () => {
+  const amount = await searchSchoolDocs("优秀学生奖学金一等奖多少钱");
   const current = amount.find((hit) => hit.docNo === "药大学〔2024〕109号");
-  assert.ok(current && /3500/u.test(current.excerpt), JSON.stringify(amount.map((hit) => [hit.docNo, hit.heading])));
-  assert.match(current.heading, /附件1.*第五条/u);
+  // 附件1 第五条 may arrive as the hit or as a related article of the same document.
+  const passages = current ? [{ heading: current.heading, excerpt: current.excerpt }, ...(current.related || [])] : [];
+  assert.ok(passages.some((item) => /附件1.*第五条/u.test(item.heading) && /3500/u.test(item.excerpt)),
+    JSON.stringify(amount.map((hit) => [hit.docNo, hit.heading])));
   // The 2019 article is word-for-word the same amount; only one copy may take a slot.
   assert.ok(!amount.some((hit) => hit.docNo === "药大学〔2019〕381号" && /3500/u.test(hit.excerpt)));
 
-  const old = searchSchoolDocs("2019年优秀学生奖学金评选办法药大学〔2019〕381号还有效吗");
+  const old = await searchSchoolDocs("2019年优秀学生奖学金评选办法药大学〔2019〕381号还有效吗");
   const legacy = old.find((hit) => hit.docNo === "药大学〔2019〕381号");
   assert.ok(legacy, JSON.stringify(old.map((hit) => hit.docNo)));
   assert.match(legacy.note || "", /部分适用.*药大学〔2024〕109号.*2020级至2022级/u);
 
-  const grade = searchSchoolDocs("我是2022级本科生，评优秀学生奖学金按哪个文件执行？");
+  const grade = await searchSchoolDocs("我是2022级本科生，评优秀学生奖学金按哪个文件执行？");
   assert.ok(grade.some((hit) => /381/u.test(`${hit.excerpt}${hit.note || ""}`)), JSON.stringify(grade.map((hit) => hit.heading)));
 
   // The handbook copy and the 2020 留学生 rules repeat this article; the newest original wins.
-  const cheating = searchSchoolDocs("考试作弊会受到什么处分");
+  const cheating = await searchSchoolDocs("考试作弊会受到什么处分");
   assert.ok(cheating.some((hit) => hit.docNo === "药大学〔2023〕159号" && /留校察看/u.test(hit.excerpt)));
 
-  const repealed = searchSchoolDocs("异地研究院知识产权转化收益分配指导原则");
+  const repealed = await searchSchoolDocs("异地研究院知识产权转化收益分配指导原则");
   const hit = repealed.find((item) => item.docNo === "药大科〔2022〕124号");
   assert.ok(hit && hit.status === "historical" && /已废止/u.test(hit.note || ""));
 });
 
-const hitText = (hits: ReturnType<typeof searchSchoolDocs>) => hits
+const hitText = (hits: Awaited<ReturnType<typeof searchSchoolDocs>>) => hits
   .map((hit) => [hit.docNo, hit.heading, hit.excerpt, hit.note, ...(hit.related || []).flatMap((item) => [item.heading, item.excerpt])].join("\n"))
   .join("\n");
 
-test("a hit carries its document's scope and precedence clauses", () => {
+test("a hit carries its document's scope and precedence clauses", async () => {
   // 133号 says 以本办法为准 but leaves amounts to the specific award rules (第四十条).
-  const hits = searchSchoolDocs("我是2022级本科生，评优秀学生奖学金按哪个文件执行？");
+  const hits = await searchSchoolDocs("我是2022级本科生，评优秀学生奖学金按哪个文件执行？");
   assert.match(hitText(hits), /由对应的评选文件具体规定/u);
   assert.match(hitText(hits), /381/u);
 });
 
-test("other articles of the same document that answer the question come along", () => {
-  const text = hitText(searchSchoolDocs("考试作弊会受到什么处分？"));
+test("other articles of the same document that answer the question come along", async () => {
+  const text = hitText(await searchSchoolDocs("考试作弊会受到什么处分？"));
   assert.match(text, /留校察看/u);
   assert.match(text, /开除学籍/u);
 });
 
-test("a transition to an older document brings the clause where the versions differ", () => {
+test("a transition to an older document brings the clause where the versions differ", async () => {
   // 119号 keeps 2024级 and earlier on 79号, whose only extra clause is the English requirement.
-  const text = hitText(searchSchoolDocs("2024级本科生拿学士学位要不要过四级？"));
+  const text = hitText(await searchSchoolDocs("2024级本科生拿学士学位要不要过四级？"));
   assert.match(text, /79/u);
   assert.match(text, /425/u);
 });
 
-test("grade-year questions reach transition clauses written as grade ranges", () => {
-  assert.match(hitText(searchSchoolDocs("2021级本科生评单项奖学金按哪个文件？")), /370/u);
+test("grade-year questions reach transition clauses written as grade ranges", async () => {
+  assert.match(hitText(await searchSchoolDocs("2021级本科生评单项奖学金按哪个文件？")), /370/u);
   const terms = extractKnowledgeQueryTerms("2021级本科生评单项奖学金按哪个文件？");
   assert.ok(terms.some((term) => term.includes("级至") && term.includes("级及之前")));
   for (const junk of ["金按", "个文", "级本"]) assert.ok(!terms.includes(junk), junk);
 });
 
-test("rules for a specific group give way unless the question names that group", () => {
-  const general = searchSchoolDocs("受了处分多久能解除，怎么解除？");
+test("rules for a specific group give way unless the question names that group", async () => {
+  const general = await searchSchoolDocs("受了处分多久能解除，怎么解除？");
   assert.ok(general.some((hit) => hit.docNo === "药大学〔2023〕159号"), JSON.stringify(general.map((hit) => hit.docNo)));
-  assert.equal(searchSchoolDocs("留学生违纪处分按什么规定？")[0]?.docNo, "药大外〔2020〕40号");
+  assert.equal((await searchSchoolDocs("留学生违纪处分按什么规定？"))[0]?.docNo, "药大外〔2020〕40号");
 });
 
-test("a school-docs copy of a regulation is replaced by the regulation original", () => {
-  const hits = searchSchoolDocs("本科生综合素质测评办法 测评内容");
+test("a school-docs copy of a regulation is replaced by the regulation original", async () => {
+  const hits = await searchSchoolDocs("本科生综合素质测评办法 测评内容");
   assert.ok(hits.length);
   assert.ok(!hits.some((hit) => hit.documentId === "S0272"), "S0272 is the same file as 药大学〔2023〕160号");
   assert.ok(hits.some((hit) => hit.docNo === "药大学〔2023〕160号"));
 });
 
-test("near-duplicate passages from different files take one slot", () => {
+test("near-duplicate passages from different files take one slot", async () => {
   const doc = (id: string, title: string) => ({ id, title, category: "测试", status: "current" as const, date: null, sourceUrl: null, extracted: null });
   const text = "第十条 学生请假三天以内由辅导员审批，三天以上七天以内由学院分管领导审批，超过七天报学生工作处备案。";
   setSchoolDocsForTests([
@@ -219,14 +221,14 @@ test("near-duplicate passages from different files take one slot", () => {
       chunks: [{ d: 0, h: "第十条", t: text.replace("。", "，并录入系统。") }] },
   ]);
   try {
-    assert.equal(searchSchoolDocs("学生请假审批 辅导员 学院").length, 1);
+    assert.equal((await searchSchoolDocs("学生请假审批 辅导员 学院")).length, 1);
   } finally {
     setSchoolDocsForTests();
   }
 });
 
 for (const file of [schoolDocsFile, schoolRegulationsFile]) {
-  test(`${path.basename(file)} carries no student numbers or name lists`, () => {
+  test(`${path.basename(file)} carries no student numbers or name lists`, async () => {
     const data = JSON.parse(readFileSync(file, "utf8")) as {
       documents: Array<{ id: string; title: string }>;
       chunks: Array<{ t: string }>;
@@ -241,7 +243,7 @@ for (const file of [schoolDocsFile, schoolRegulationsFile]) {
   });
 }
 
-test("the prompt shows a regulation's document number and applicability note", () => {
+test("the prompt shows a regulation's document number and applicability note", async () => {
   const regulation = item("R1", {
     title: "中国药科大学优秀学生奖学金评选办法",
     docNo: "药大学〔2019〕381号",
@@ -252,7 +254,7 @@ test("the prompt shows a regulation's document number and applicability note", (
   assert.match(system, /"note":"部分适用/u);
 });
 
-test("follow-up questions are searched together with the previous question", () => {
+test("follow-up questions are searched together with the previous question", async () => {
   assert.equal(
     campusAssistantKnowledgeQuery("那第二批呢", [{ role: "user", content: "预推免什么时候报名" }, { role: "assistant", content: "……" }]),
     "那第二批呢\n预推免什么时候报名",
@@ -260,7 +262,7 @@ test("follow-up questions are searched together with the previous question", () 
   assert.equal(campusAssistantKnowledgeQuery("研究生请假需要哪些手续和审批流程", []), "研究生请假需要哪些手续和审批流程");
 });
 
-test("the assistant prompt carries campus knowledge only when something was found", () => {
+test("the assistant prompt carries campus knowledge only when something was found", async () => {
   const plain = buildAssistantMessages("怎么换导师", [], [], true, "test-model");
   assert.doesNotMatch(String(plain[0].content), /campus_knowledge=/u);
   const withKnowledge = buildAssistantMessages("怎么换导师", [], [], true, "test-model", [], undefined, [], undefined, [item("R1")]);
@@ -269,7 +271,7 @@ test("the assistant prompt carries campus knowledge only when something was foun
   assert.match(system, /knowledgeRefs/u);
 });
 
-test("cited knowledge becomes response sources; uncited and unlinked items do not", () => {
+test("cited knowledge becomes response sources; uncited and unlinked items do not", async () => {
   const items = [
     item("R1", { source: { title: "学校文件 · 推免办法", url: "https://jwc.cpu.edu.cn/a.htm" } }),
     item("R2"),
@@ -289,14 +291,14 @@ test("cited knowledge becomes response sources; uncited and unlinked items do no
   assert.equal(fallback.sources, undefined);
 });
 
-test("phones and emails quoted from retrieved documents pass the contact grounding check", () => {
+test("phones and emails quoted from retrieved documents pass the contact grounding check", async () => {
   const response = { answer: "可以联系研究生院 025-86185301，或发邮件到 yjsy@cpu.edu.cn。", actions: [], suggestions: [], fallback: false };
   assert.throws(() => groundDepartmentContactResponse(response, {}, undefined, ""), /DEPARTMENT_CONTACT_UNGROUNDED/u);
   const grounded = groundDepartmentContactResponse(response, {}, undefined, "联系电话：86185301；邮箱 yjsy@cpu.edu.cn");
   assert.equal(grounded.answer, response.answer);
 });
 
-test("only question-like posts on answerable boards get an AI answer", () => {
+test("only question-like posts on answerable boards get an AI answer", async () => {
   const base = { hidden: false, author: { role: "user" } };
   assert.ok(isForumAiAnswerCandidate({ ...base, title: "研究生换导师要走什么流程", content: "", board: { type: "question", slug: "question" } }));
   assert.ok(isForumAiAnswerCandidate({ ...base, title: "宿舍空调坏了怎么报修", content: "", board: { type: "normal", slug: "life" } }));
@@ -308,7 +310,7 @@ test("only question-like posts on answerable boards get an AI answer", () => {
   assert.ok(looksLikeForumQuestion("求问", "第二批预推免还能报名吗"));
 });
 
-test("course time questions get the jwxt course search as site knowledge", () => {
+test("course time questions get the jwxt course search as site knowledge", async () => {
   const items = siteKnowledgeItems(
     "公选课",
     "想知道公选课《中药和天然药现代研发范例解读》和《基于中药和天然药物的新药发现》每周什么时间在哪个教室上课呢？想去旁听",
@@ -320,7 +322,7 @@ test("course time questions get the jwxt course search as site knowledge", () =>
   assert.equal(jwxt.ref, `R${items.indexOf(jwxt) + 1}`);
 });
 
-test("forum answers need a question, enough confidence and real citations", () => {
+test("forum answers need a question, enough confidence and real citations", async () => {
   const items = [item("R1"), item("R2", { kind: "forum", title: "换导师经验", where: "提问广场", topicId: 7, source: { title: "论坛 · 换导师经验", url: "/forum/topic/7" } })];
   const answer = "可以。导师退休或离职时可以申请更换导师 [R2]。手册规定需要提交申请 [R1]，往期帖子里有同学提到要先和原导师沟通 [R2]。";
   assert.equal(resolveForumAiAnswer({ isQuestion: false, answerable: true, confidence: 90, answer, citations: ["R1"] }, items, 75).ok, false);
@@ -338,7 +340,7 @@ test("forum answers need a question, enough confidence and real citations", () =
   assert.deepEqual(accepted.sources.map((source) => [source.n, source.kind, source.url]), [[1, "forum", "/forum/topic/7"], [2, "school-doc", null]]);
 });
 
-test("forum answers with invented contacts are dropped", () => {
+test("forum answers with invented contacts are dropped", async () => {
   const items = [item("R1")];
   const invented = resolveForumAiAnswer({
     isQuestion: true, answerable: true, confidence: 90, citations: ["R1"],
@@ -352,7 +354,7 @@ test("forum answers with invented contacts are dropped", () => {
   assert.ok(quoted.ok);
 });
 
-test("the forum answer prompt sends the post and sources but no author", () => {
+test("the forum answer prompt sends the post and sources but no author", async () => {
   const messages = buildForumAiAnswerMessages({ boardName: "提问广场", title: "换导师流程", content: "**急** 想换导师" }, [item("R1")], new Date("2026-10-17T02:00:00Z"));
   const payload = JSON.parse(String(messages[1].content));
   assert.equal(payload.today, "2026-10-17");

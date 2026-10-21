@@ -37,7 +37,8 @@ export type CampusKnowledgeLimits = {
   forum?: number;
 };
 
-const DEFAULT_LIMITS: Required<CampusKnowledgeLimits> = { schoolDocs: 3, announcements: 2, forum: 3 };
+// 学校资料多给几条短摘录，由模型自己挑对题的那几条（相当于让生成模型兼任重排序）。
+const DEFAULT_LIMITS: Required<CampusKnowledgeLimits> = { schoolDocs: 5, announcements: 2, forum: 3 };
 
 function sourceTitle(prefix: string, title: string) {
   return `${prefix} · ${title}`.slice(0, 120);
@@ -159,7 +160,7 @@ export async function retrieveCampusKnowledge(query: string, options: {
     : Promise.resolve([] as ForumKnowledgeHit[]);
   let schoolDocs: SchoolDocHit[] = [];
   try {
-    schoolDocs = limits.schoolDocs > 0 ? searchSchoolDocs(text, { limit: limits.schoolDocs }) : [];
+    schoolDocs = limits.schoolDocs > 0 ? await searchSchoolDocs(text, { limit: limits.schoolDocs }) : [];
   } catch (error) {
     console.warn("[campus-knowledge] school document search failed", error instanceof Error ? error.message : error);
   }

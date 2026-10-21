@@ -366,7 +366,7 @@ export async function processForumAiAnswer(topicId: number, requestAi: typeof re
       audience: { forum: true, coursereview: true },
       excludeTopicIds: [topicId],
       waitForIndex: true,
-      limits: { schoolDocs: 3, announcements: 2, forum: 4 },
+      limits: { schoolDocs: 5, announcements: 2, forum: 4 },
     });
     const items: AnswerItem[] = [...knowledge, ...siteKnowledgeItems(topic.title, topic.content, knowledge.length + 1)];
     if (!items.length) {

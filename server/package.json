@@ -45,7 +45,9 @@
     "test:yaoda-nai": "node --import tsx --test tests/yaodaNai.test.ts",
     "test:greedy-nailong": "node --import tsx --test tests/greedyNailong.test.ts",
     "test:yaoda-mines": "node --import tsx --test tests/yaodaMines.test.ts",
-    "test:workshop": "node --import tsx --test tests/workshopPackage.test.ts tests/workshopPolicy.test.ts tests/workshopBridge.test.ts tests/workshopPlacements.test.ts tests/workshopAccountDeletion.test.ts"
+    "test:workshop": "node --import tsx --test tests/workshopPackage.test.ts tests/workshopPolicy.test.ts tests/workshopBridge.test.ts tests/workshopPlacements.test.ts tests/workshopAccountDeletion.test.ts",
+    "knowledge:model": "node scripts/fetch-knowledge-model.mjs",
+    "knowledge:vectors": "tsx scripts/build-knowledge-vectors.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -55,6 +57,7 @@
     "@alicloud/cms20190101": "^4.0.10",
     "@alicloud/esa20240910": "^3.14.0",
     "@discordapp/twemoji": "16.0.1",
+    "@huggingface/tokenizers": "0.2.0",
     "@prisma/client": "^5.22.0",
     "@resvg/resvg-js": "^2.6.2",
     "ali-oss": "^6.23.0",
@@ -76,6 +79,7 @@
     "marked": "^14.1.4",
     "morgan": "^1.10.0",
     "multer": "^2.4.0",
+    "onnxruntime-node": "1.30.0",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.4",

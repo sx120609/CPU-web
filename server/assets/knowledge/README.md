@@ -40,4 +40,24 @@ python -I server/scripts/build-campus-regulations.py <导出目录>
 - 跨页断开的半句在切分前接回去，否则“仍按照《…》（…号）执行”会被拆成两段。
 - 含学号、考生编号、身份证号的行整行删除，规则与上面相同。
 
-构建时 `scripts/copy-desktop-userscripts.mjs` 把这两个文件复制到 `dist/assets/knowledge/`。
+## 检索方式与 school-vectors
+
+`schoolDocsKnowledge.ts` 是一条 RAG 检索流水线：
+
+1. 召回：关键词（字二元组 + idf，`knowledgeText.ts`）和语义向量（bge-small-zh-v1.5，`knowledgeEmbedding.ts`）各取前 60 段；口语先按 `expandCampusQuery` 补上规定写法（挂科→不及格、综测→综合素质测评……）。
+2. 融合：两路分数各自归一化后加权（语义 0.4），乘时效、适用人群、专题、本科/研究生层次、点名文件等先验。
+3. 选段：默认 5 段短摘录，每份文件限额、近似重复留原文和新版、各层次各有代表；由生成模型自己挑对题的段落。
+4. 扩展：前 3 段附同一文件和关联文件的相关条款，文件的适用与衔接条款在 note 里。
+
+`school-vectors.bin` / `school-vectors.json` 是每段的语义向量（int8，按段落内容哈希对齐）。资料改了以后要重算，否则改过的段落只走关键词检索，`tests/knowledgeRetrievalEval.test.ts` 也会报未对齐：
+
+```bash
+npm --prefix server run knowledge:model     # 下载模型到 server/assets/models/（不进仓库）
+npm --prefix server run knowledge:vectors   # 只重算新增或改动的段落，默认 2 线程
+```
+
+模型在构建时由 `scripts/build-server.mjs` 下载（固定提交 + SHA-256 校验），随 dist 发布；线上只给问题编码（单线程，几毫秒）。模型或原生库加载失败时检索退回纯关键词。`server/.npmrc` 关掉了 onnxruntime-node 在 Linux 上默认下载 CUDA 组件的安装步骤。
+
+`tests/fixtures/knowledgeRetrievalEval.json` 是检索评测集：学生常问的问题和答案必须出现的原文片段，CI 要求召回率 ≥ 97%。改检索逻辑或资料时先跑它。
+
+构建时 `scripts/copy-desktop-userscripts.mjs` 把资料、向量和模型复制到 `dist/assets/`。

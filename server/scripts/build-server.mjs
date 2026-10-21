@@ -15,6 +15,9 @@ run(require.resolve('prisma/build/index.js'), ['generate'])
 if (process.env.NODE_ENV === 'production' && (process.env.JWXT_AGENT_SERVER || process.env.LOGIN_AGENT_SERVER)) {
   await installAgentArtifact(path.dirname(server))
 } else {
+  // 拾间AI 语义检索的向量模型；下载失败就让构建失败，不发布缺模型的制品。
+  const { ensureKnowledgeModel } = await import('./fetch-knowledge-model.mjs')
+  await ensureKnowledgeModel()
   run(require.resolve('typescript/bin/tsc'), ['-p', 'tsconfig.json'])
   run(path.join(server, 'scripts/copy-desktop-userscripts.mjs'))
 }
