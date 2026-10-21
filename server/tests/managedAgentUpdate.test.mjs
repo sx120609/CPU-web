@@ -4,12 +4,18 @@ import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } 
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { confirmReady, updateManagedAgent, validateManagedConfig } from '../../ops/deploy/managed-agent-update.mjs'
+import { artifactUrls, confirmReady, updateManagedAgent, validateManagedConfig } from '../../ops/deploy/managed-agent-update.mjs'
 import { createArtifactManifest } from '../../ops/deploy/artifact-manifest.mjs'
 
 // Directory symlinks are required by the production updater; exercise it on Linux CI.
 const skip = process.platform === 'win32'
 const commit = 'a'.repeat(40), oldCommit = 'b'.repeat(40)
+
+test('the artifact comes from the mirrors first and github.com last, all for the exact commit', () => {
+  const asset = `https://github.com/sx120609/CPU-web/releases/download/deploy-artifacts/cpu-web-linux-${commit}.tar.gz`
+  assert.deepEqual(artifactUrls(commit), [`https://ghfast.top/${asset}`, `https://gh.noki.eu.org/${asset}`, asset])
+  assert.throws(() => artifactUrls('main'))
+})
 
 test('registration waits for journalctl grep to find the new process handshake', async () => {
   let attempts = 0
@@ -63,6 +69,7 @@ async function fixture(t, options = {}) {
     download: async (url, file) => {
       calls.push(['download', url])
       if (options.noArtifact) throw new Error('missing artifact')
+      if (options.failingSource && url.startsWith(options.failingSource)) throw new Error('stalled source')
       if (url.includes('/releases/')) return copyFile(archive, file)
       assert.ok(url.startsWith('https://api.github.com/repos/sx120609/CPU-web/contents/server/'))
       assert.ok(url.endsWith(`?ref=${commit}`))
@@ -94,6 +101,14 @@ test('managed Agent stages a verified artifact before restarting and removes the
   assert.ok(f.calls[npm].includes('--ignore-scripts'))
   assert.equal(JSON.parse(await readFile(path.join(f.root, 'state/agent-remote-update.status.json'))).phase, 'success')
   await assert.rejects(readFile(f.config.requestFile), { code: 'ENOENT' })
+})
+
+test('managed Agent moves on to the next source when one stalls', { skip }, async t => {
+  const f = await fixture(t, { failingSource: 'https://ghfast.top/' })
+  const result = await updateManagedAgent(f.config, f.dependencies)
+  assert.equal(result.commit, commit)
+  const sources = f.calls.filter(call => call[0] === 'download' && call[1].includes('/releases/')).map(call => new URL(call[1]).host)
+  assert.deepEqual(sources, ['ghfast.top', 'gh.noki.eu.org'])
 })
 
 for (const [name, options, error] of [

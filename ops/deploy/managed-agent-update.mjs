@@ -32,11 +32,25 @@ async function execute(command, args, options = {}) {
   return result.stdout.trim()
 }
 
+/**
+ * Where the exact-SHA Linux artifact is fetched from, in order. github.com stalls from campus
+ * networks, so the mirrors go first (the main site's deploy.sh uses them too); every source is
+ * verified against the same commit afterwards. Measured 2026-10-21 from CPU-Server-03 for the
+ * 45 MB artifact: ghfast.top 2 MB/s, gh.noki.eu.org 13 KB/s, github.com no response.
+ */
+export function artifactUrls(commit) {
+  const asset = `https://github.com/${repository}/releases/download/deploy-artifacts/cpu-web-linux-${assertCommit(commit)}.tar.gz`
+  return [`https://ghfast.top/${asset}`, `https://gh.noki.eu.org/${asset}`, asset]
+}
+
 async function download(url, target) {
   const headers = url.startsWith(`https://api.github.com/repos/${repository}/contents/`)
     ? ['--header', 'Accept: application/vnd.github.raw+json'] : []
-  await execute('curl', ['--fail', '--location', '--silent', '--show-error', '--retry', '2',
-    '--connect-timeout', '15', '--max-time', '300', ...headers, '--output', target, url])
+  // A source that stalls (under 64 KB/s for 30 s) is dropped quickly, so the next one still
+  // fits in the unit's 20-minute limit instead of three 300-second tries per source.
+  await execute('curl', ['--fail', '--location', '--silent', '--show-error', '--retry', '1',
+    '--connect-timeout', '15', '--speed-limit', '65536', '--speed-time', '30', '--max-time', '300',
+    ...headers, '--output', target, url])
 }
 
 async function resolveCommit() {
@@ -107,9 +121,8 @@ export async function updateManagedAgent(input, dependencies = {}) {
     await mkdir(path.join(config.root, '.updates'), { recursive: true, mode: 0o700 })
     incoming = await mkdtemp(path.join(config.root, '.updates/incoming-'))
     const archive = path.join(incoming, 'bundle.tar.gz')
-    const asset = `https://github.com/${repository}/releases/download/deploy-artifacts/cpu-web-linux-${commit}.tar.gz`
     let downloaded = false
-    for (const url of [asset, `https://gh.noki.eu.org/${asset}`, `https://ghfast.top/${asset}`]) {
+    for (const url of artifactUrls(commit)) {
       try { await fetchFile(url, archive); downloaded = true; break } catch { /* bounded transport fallback */ }
     }
     if (!downloaded) throw new Error(`Verified GitHub artifact is unavailable for ${commit}`)
