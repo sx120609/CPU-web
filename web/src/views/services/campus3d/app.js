@@ -3793,7 +3793,7 @@ function buildPlaceList() {
         const meta = p.dorm ? `${p.bld.length} 栋` : p.bld ? `${Math.round(Math.max(...p.bld.map((i) => BLD[i].h)))} m` : '';
         const glyph = elt('span', 'glyph'); glyph.style.setProperty('--c', p.color); glyph.appendChild(svgIcon(p.icon));
         btn.append(glyph, elt('span', 'name', p.name), elt('span', 'meta', meta));
-        btn.addEventListener('click', () => { select(p); flyToPlace(p); if (innerWidth <= 760) setSidebar(false); });
+        btn.addEventListener('click', () => { select(p); flyToPlace(p); if (innerWidth <= 760 || innerHeight <= 500) setSidebar(false); });
         list.appendChild(btn);
       }
     }
