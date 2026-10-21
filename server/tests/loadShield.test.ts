@@ -93,3 +93,55 @@ test("a window budget allows a fixed number of events per window", () => {
   assert.equal(take(999), false);
   assert.deepEqual([take(1_000), take(1_001), take(1_002)], [true, true, false]);
 });
+
+test("expired and aborted queued tasks are removed and never execute", async () => {
+  const gate = new ConcurrencyGate(1, 3, 20);
+  let release!: () => void;
+  const running = gate.run(() => new Promise<void>(resolve => { release = resolve; }));
+  let calls = 0;
+  const expired = assert.rejects(gate.run(async () => { calls++; }), { name: "ConcurrencyGateTimeoutError" });
+  const controller = new AbortController();
+  const aborted = assert.rejects(gate.run(async () => { calls++; }, controller.signal), { name: "AbortError" });
+  controller.abort();
+  await Promise.all([expired, aborted]);
+  assert.equal(gate.queued, 0);
+  assert.equal(gate.active, 1);
+  release(); await running;
+  assert.equal(calls, 0);
+  assert.equal(await gate.run(async () => 42), 42);
+  assert.equal(gate.active, 0);
+});
+
+test("abort racing a permit handoff releases it exactly once", async () => {
+  const gate = new ConcurrencyGate(1, 2, 1000);
+  let release!: () => void;
+  const running = gate.run(() => new Promise<void>(resolve => { release = resolve; }));
+  const controller = new AbortController();
+  let calls = 0;
+  const rejected = assert.rejects(gate.run(async () => { calls++; }, controller.signal));
+  release();
+  // This continuation runs after the first task hands off its permit but
+  // before the queued task resumes from await.
+  await Promise.resolve();
+  controller.abort();
+  await Promise.all([running, rejected]);
+  assert.equal(calls, 0);
+  assert.equal(gate.active, 0);
+  assert.equal(gate.queued, 0);
+  assert.equal(await gate.run(async () => "reused"), "reused");
+});
+
+test("aborting running work does not free capacity before actual completion", async () => {
+  const gate = new ConcurrencyGate(1, 1, 1000);
+  const controller = new AbortController();
+  let release!: () => void;
+  const running = gate.run(() => new Promise<void>(resolve => { release = resolve; }), controller.signal);
+  controller.abort();
+  let nextStarted = false;
+  const next = gate.run(async () => { nextStarted = true; });
+  await Promise.resolve();
+  assert.equal(gate.active, 1);
+  assert.equal(nextStarted, false);
+  release(); await Promise.all([running, next]);
+  assert.equal(gate.active, 0);
+});

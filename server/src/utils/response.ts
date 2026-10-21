@@ -10,6 +10,7 @@ export function ok<T>(res: Response, data: T, message = "") {
 }
 
 export function fail(res: Response, code = 1, message = "请求失败", status = 400) {
+  res.locals.serviceErrorCode = code;
   return res.status(status).json({ code, data: null, message });
 }
 

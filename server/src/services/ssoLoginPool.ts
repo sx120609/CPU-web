@@ -13,6 +13,8 @@ import {
 import { getJwxtAgentCredentialPublicKey, getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
 import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
 import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
+import { AgentErrorCode } from "./jwxtAgentErrors";
+import { createWindowBudget } from "../utils/loadShield";
 
 type BeginResult = Awaited<ReturnType<typeof local.beginLogin>> & { credentialPublicKey?: string };
 type SecureLoginArgs = Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials };
@@ -64,6 +66,7 @@ type NodeRuntime = {
   inFlight: number;
   consecutiveFailures: number;
   lastError: string;
+  busyUntil?: number;
 };
 
 type PendingRoute = {
@@ -78,6 +81,7 @@ const PENDING_PREFIX = "slp1";
 // together. Import the value rather than duplicating it.
 const MAX_PENDING_AGE_MS = PENDING_LOGIN_TTL_MS;
 const MAX_INNER_PENDING_ID_LENGTH = 512;
+const logNodeFailure = createWindowBudget(20, 30000);
 
 const localNode: LocalNode = {
   kind: "local",
@@ -122,14 +126,24 @@ export function isPooledPendingId(pendingId: string) {
 export async function beginLogin(): Promise<BeginResult> {
   const excluded = new Set<string>();
   const failures: string[] = [];
+  const started = Date.now();
+  const deadline = started + config.ssoLoginPool.timeoutMs;
 
-  while (true) {
+  while (Date.now() < deadline) {
     const runtime = selectNode(excluded);
-    if (!runtime) break;
+    if (!runtime) {
+      // Absorb a short capacity gap without sending repeated login requests.
+      // Do not wait for offline nodes or retry a node already attempted.
+      const busy = syncRuntimes().some(r => r.node.enabled && r.node.kind === "agent"
+        && !excluded.has(r.node.key) && getJwxtAgentState(r.node.id).ready);
+      if (!busy || Date.now() >= Math.min(deadline, started + 1000)) break;
+      await new Promise(resolve => setTimeout(resolve, 50 + Math.floor(Math.random() * 50)));
+      continue;
+    }
     excluded.add(runtime.node.key);
 
     try {
-      const result = validateBeginResult(await runNodeBegin(runtime));
+      const result = validateBeginResult(await runNodeBegin(runtime, Math.max(1, deadline - Date.now())));
       markSuccess(runtime);
       return {
         ...result,
@@ -220,7 +234,9 @@ export function getSsoLoginPoolSnapshot() {
 function selectNode(excluded: Set<string>) {
   const candidates = syncRuntimes().filter((runtime) => (
     runtime.node.enabled
-    && (runtime.node.kind !== "agent" || isJwxtAgentAvailable(runtime.node.id, "jwxt"))
+    && (runtime.busyUntil ?? 0) <= Date.now()
+    && (runtime.node.kind !== "agent" || (isJwxtAgentAvailable(runtime.node.id, "jwxt")
+      && runtime.inFlight < runtime.node.config.maxConcurrent))
     && !excluded.has(runtime.node.key)
   ));
   if (!candidates.length) return null;
@@ -239,21 +255,21 @@ function selectNode(excluded: Set<string>) {
   return selected;
 }
 
-async function runNodeBegin(runtime: NodeRuntime): Promise<BeginResult> {
+async function runNodeBegin(runtime: NodeRuntime, timeoutMs: number): Promise<BeginResult> {
   runtime.inFlight += 1;
   try {
     if (runtime.node.kind === "local") {
-      return await withLocalNodeTimeout(local.beginLogin());
+      return await withLocalNodeTimeout(local.beginLogin(), timeoutMs);
     }
     if (runtime.node.kind === "agent") {
       return await requestJwxtAgent(
         runtime.node.id,
         "login.begin",
         {},
-        config.ssoLoginPool.timeoutMs,
+        timeoutMs,
       );
     }
-    return await callRemoteNode<BeginResult>(runtime.node, "/v1/login-pool/begin", {});
+    return await callRemoteNode<BeginResult>(runtime.node, "/v1/login-pool/begin", {}, timeoutMs);
   } finally {
     runtime.inFlight = Math.max(0, runtime.inFlight - 1);
   }
@@ -284,16 +300,14 @@ async function submitOnNode(
   return callRemoteNode<LoginNodeAttempt>(node, "/v1/login-pool/submit", args);
 }
 
-async function withLocalNodeTimeout<T>(request: Promise<T>): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new HttpError(504, 5000, "本机登录节点请求超时")), config.ssoLoginPool.timeoutMs);
-  });
-  try {
-    return await Promise.race([request, timeout]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+async function withLocalNodeTimeout<T>(request: Promise<T>, timeoutMs = config.ssoLoginPool.timeoutMs): Promise<T> {
+  const started = Date.now();
+  // The local adapter has its own HTTP timeouts, but no cancellation API.
+  // Keep the gate/runtime permit until it settles: racing an uncancelled
+  // promise releases capacity while the school request is still running.
+  const result = await request;
+  if (Date.now() - started >= timeoutMs) throw new HttpError(504, 5000, "本机登录节点请求超时");
+  return result;
 }
 
 async function consumeAtQueryTransport(handoff: LoginSessionHandoff, loginNode: LoginNode) {
@@ -320,9 +334,9 @@ async function consumeAtQueryTransport(handoff: LoginSessionHandoff, loginNode: 
   }
 }
 
-async function callRemoteNode<T>(node: RemoteNode, path: string, body: unknown): Promise<T> {
+async function callRemoteNode<T>(node: RemoteNode, path: string, body: unknown, timeoutMs = config.ssoLoginPool.timeoutMs): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.ssoLoginPool.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const url = new URL(path.replace(/^\/+/, ""), `${node.config.url}/`).toString();
 
   try {
@@ -451,12 +465,16 @@ async function parseEnvelope<T>(response: Response): Promise<ApiEnvelope<T>> {
 function markSuccess(runtime: NodeRuntime) {
   runtime.consecutiveFailures = 0;
   runtime.lastError = "";
+  runtime.busyUntil = 0;
 }
 
 function markFailure(runtime: NodeRuntime, error: unknown) {
   runtime.consecutiveFailures += 1;
   runtime.lastError = errorMessage(error);
-  console.warn(`[sso-login] 节点 ${runtime.node.name} 本次请求失败: ${runtime.lastError}`);
+  if (error instanceof HttpError && error.code === AgentErrorCode.busy) runtime.busyUntil = Date.now() + 1000;
+  if (logNodeFailure()) console.warn("[sso-login] node request failed", { kind: runtime.node.kind,
+    status: error instanceof HttpError ? error.status : 500,
+    code: error instanceof HttpError ? error.code : 5000, inFlight: runtime.inFlight });
 }
 
 function unavailableNodeReasons() {

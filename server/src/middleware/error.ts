@@ -19,6 +19,8 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     });
   }
   if (err instanceof HttpError) {
+    res.locals.serviceErrorCode = err.code;
+    if ((err.status === 503 || err.status === 429) && !res.hasHeader("Retry-After")) res.setHeader("Retry-After", "3");
     return res.status(err.status).json({ code: err.code, data: null, message: err.message });
   }
   if (err instanceof ZodError) {
@@ -28,5 +30,6 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (isDev) {
     console.error("[error]", err);
   }
+  res.locals.serviceErrorCode = 5000;
   return res.status(500).json({ code: 5000, data: null, message: "服务器内部错误，请稍后再试" });
 }

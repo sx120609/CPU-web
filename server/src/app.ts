@@ -4,6 +4,7 @@ import compression from "compression";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
+import { createServiceDiagnostics } from "./middleware/serviceDiagnostics";
 import { androidUpdateGate } from "./middleware/androidUpdate";
 import { router, apiAdmissionPaths } from "./routes";
 import { shareRouter } from "./routes/share";
@@ -91,6 +92,7 @@ export function createApp(options: { workers?: boolean } = {}) {
   app.use(compression({
     threshold: 1024,
   }));
+  app.use(createServiceDiagnostics().middleware);
   app.use((req, res, next) => {
     if (!isDatabaseMaintenanceActive()) return next();
     if (req.path === "/api/health") return next();

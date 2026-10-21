@@ -21,24 +21,24 @@ export function isRemoteMode() {
 
 // 学校 SSO 是第三方系统，登录入口又必须对未登录访客开放：洪泛不能经由本站原样转发过去，
 // 否则拖垮的是学校的认证服务，登录节点也可能被学校封禁。额度远高于选课高峰的正常并发，只截住洪泛。
-const ssoLoginGate = new ConcurrencyGate(64, 256);
+const ssoLoginGate = new ConcurrencyGate(64, 256, 3000);
 
-async function throughSsoLoginGate<T>(task: () => Promise<T>) {
+async function throughSsoLoginGate<T>(task: () => Promise<T>, signal?: AbortSignal) {
   try {
-    return await ssoLoginGate.run(task);
+    return await ssoLoginGate.run(task, signal);
   } catch (error) {
     if (error instanceof ConcurrencyGateFullError) throw Errors.busy("当前登录人数较多，请稍后重试");
     throw error;
   }
 }
 
-export function beginLogin(): ReturnType<typeof local.beginLogin> {
+export function beginLogin(signal?: AbortSignal): ReturnType<typeof local.beginLogin> {
   return throughSsoLoginGate(() => (loginPool.isDedicatedSsoLoginPool()
     ? loginPool.beginLogin()
-    : queryImpl().beginLogin()) as ReturnType<typeof local.beginLogin>);
+    : queryImpl().beginLogin()) as ReturnType<typeof local.beginLogin>, signal);
 }
 
-export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials }) {
+export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials }, signal?: AbortSignal) {
   return throughSsoLoginGate(async () => {
     if (loginPool.isPooledPendingId(args.pendingId)) return loginPool.submitLogin(args);
     if ("credentials" in args) {
@@ -46,7 +46,7 @@ export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pe
       return agentRemote.submitLogin(args);
     }
     return queryImpl().submitLogin(args);
-  });
+  }, signal);
 }
 
 export function logout(token: string) { return queryImpl().logout(token); }

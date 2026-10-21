@@ -15,6 +15,7 @@ import { recordAdminDailyLogin } from "../services/adminStats";
 import { isCookieAuthRequest, issueBrowserSession, revokeBrowserSession, updateBrowserSession } from "../services/browserSession";
 import { scheduleWidgetSessions } from "../services/scheduleWidgetSession";
 import { nicknameSetupRequired, normalizeNicknameSubmission, scheduleNicknameReview } from "../services/nicknameReview";
+import { requestCancellation } from "../utils/requestCancellation";
 
 export const authRouter = Router();
 
@@ -142,11 +143,12 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
 // ============ 学校 SSO 登录（主路径）============
 
 /** 第一步：拿登录页 + 可能的验证码 */
-authRouter.post("/sso-begin", async (_req, res, next) => {
+authRouter.post("/sso-begin", async (req, res, next) => {
+  const cancellation = requestCancellation(req, res);
   try {
-    const r = await beginLogin();
+    const r = await beginLogin(cancellation.signal);
     ok(res, r);
-  } catch (e) { next(e); }
+  } catch (e) { next(e); } finally { cancellation.dispose(); }
 });
 
 /**
@@ -164,13 +166,14 @@ authRouter.post(
     remember: z.boolean().optional().default(true),
   })),
   async (req, res, next) => {
+    const cancellation = requestCancellation(req, res);
     try {
       let { pendingId } = req.body;
       const { username, password, captcha, credentials, remember } = req.body;
       if (!credentials && (!username || !password)) throw Errors.badRequest("缺少登录凭据");
       if (String(pendingId || "").length < 8) {
         if (credentials) throw Errors.badRequest("加密登录会话已失效，请刷新后重试");
-        const fresh = await beginLogin();
+        const fresh = await beginLogin(cancellation.signal);
         if (fresh.needCaptcha) {
           return ok(res, {
             ok: false,
@@ -185,8 +188,8 @@ authRouter.post(
         pendingId = fresh.pendingId;
       }
       const r = credentials
-        ? await submitLogin({ pendingId, credentials })
-        : await submitLogin({ pendingId, username, password, captcha });
+        ? await submitLogin({ pendingId, credentials }, cancellation.signal)
+        : await submitLogin({ pendingId, username, password, captcha }, cancellation.signal);
       if (!r.ok || !r.token) {
         return ok(res, {
           ok: false,
@@ -281,7 +284,7 @@ authRouter.post(
           needNickname: nicknameSetupRequired(user),
         });
       }
-    } catch (e) { next(e); }
+    } catch (e) { next(e); } finally { cancellation.dispose(); }
   }
 );
 

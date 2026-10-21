@@ -4,6 +4,7 @@ import { appleReferenceSeconds, sendLiveActivityBroadcast } from "./apnsClient";
 import { getApnsConfig, withApnsConfigLock } from "./apnsConfig";
 import { type ScheduleTermConfigValue } from "./scheduleTermConfig";
 import { maintainApnsChannels } from "./apnsChannels";
+import { Errors, HttpError } from "../utils/response";
 
 import { tickRemoteStarts, START_BATCH_SIZE } from "./liveActivityRemoteStart";
 
@@ -20,20 +21,49 @@ let materializedDigest = "";
 
 // The client receives only public school timing/channel metadata. No device
 // token, personal timetable, activity state or future personal plan is stored.
+type BroadcastConfig = Awaited<ReturnType<typeof readBroadcastConfig>>;
+const broadcastReads = new Map<string, Promise<BroadcastConfig>>();
+
 export async function liveActivityBroadcastConfig(environment: string, bundleID: string, local = false) {
   if (!["production", "sandbox"].includes(environment)) throw new Error("APNs 环境无效");
-  return withApnsConfigLock(async db => {
-  const config = await getApnsConfig(db);
-  if (config.configured && bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
-  const timing = await currentTiming(db);
-  const issuedAt = Date.now() / 1000;
-  if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000), db);
-  return { protocolVersion: 2, scheduleId: timing.scheduleId, scheduleVersion: timing.id,
-    timezone: timing.timezone, periods: timing.periods, issuedAt,
-    usableUntil: issuedAt + 7 * 86400, broadcastUntil: issuedAt + 8 * 86400,
-    windows: local ? timing.periods.map(p => ({ id: String(p.id), startHour: 0, endHour: 24,
-      channelID: config.configured ? config.channels[endChannelKey(environment, timing.id, p.id)] || null : null })) : [] };
-  });
+  if (bundleID.length > 256) throw Errors.badRequest("Bundle ID 无效");
+  const key = JSON.stringify([environment, bundleID, local]);
+  let pending = broadcastReads.get(key);
+  if (!pending) {
+    if (broadcastReads.size >= 32) throw Errors.busy();
+    pending = readBroadcastConfig(environment, bundleID, local);
+    broadcastReads.set(key, pending);
+    const cleanup = () => { if (broadcastReads.get(key) === pending) broadcastReads.delete(key); };
+    pending.then(cleanup, cleanup);
+  }
+  // Share work only while it is in flight, never cache nullable/retired channel
+  // IDs or extend advertised validity without committing retention first.
+  return structuredClone(await pending);
+}
+
+async function readBroadcastConfig(environment: string, bundleID: string, local: boolean) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await withApnsConfigLock(async db => {
+        const config = await getApnsConfig(db);
+        if (config.configured && bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
+        const timing = await currentTiming(db);
+        const issuedAt = Date.now() / 1000;
+        if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000), db);
+        return { protocolVersion: 2, scheduleId: timing.scheduleId, scheduleVersion: timing.id,
+          timezone: timing.timezone, periods: timing.periods, issuedAt,
+          usableUntil: issuedAt + 7 * 86400, broadcastUntil: issuedAt + 8 * 86400,
+          windows: local ? timing.periods.map(p => ({ id: String(p.id), startHour: 0, endHour: 24,
+            channelID: config.configured ? config.channels[endChannelKey(environment, timing.id, p.id)] || null : null })) : [] };
+      });
+    } catch (error) {
+      // The advisory lock also fences channel retirement against retention.
+      // Retry only failure to acquire it, after the transaction has released
+      // its connection. Never hold a pool connection while waiting.
+      if (!(error instanceof HttpError) || error.code !== 5030 || attempt >= 3) throw error;
+      await new Promise(resolve => setTimeout(resolve, 25 * 2 ** attempt + Math.floor(Math.random() * 25)));
+    }
+  }
 }
 
 export function broadcastPayload(dateKey: string, timestamp: number, ended = false, scheduleVersion = "") {

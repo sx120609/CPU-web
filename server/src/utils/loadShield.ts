@@ -73,12 +73,16 @@ export class ConcurrencyGateFullError extends Error {
   }
 }
 
+export class ConcurrencyGateTimeoutError extends ConcurrencyGateFullError {
+  constructor() { super(); this.name = "ConcurrencyGateTimeoutError"; }
+}
+
 /** 最多同时运行 concurrency 个任务，最多排队 maxQueue 个；队列满时立即拒绝，不让请求在内存里越堆越多。 */
 export class ConcurrencyGate {
   private running = 0;
   private readonly queue: Array<() => void> = [];
 
-  constructor(private readonly concurrency: number, private readonly maxQueue: number) {}
+  constructor(private readonly concurrency: number, private readonly maxQueue: number, private readonly queueTimeoutMs = 5000) {}
 
   get active() {
     return this.running;
@@ -88,14 +92,29 @@ export class ConcurrencyGate {
     return this.queue.length;
   }
 
-  async run<T>(task: () => Promise<T>): Promise<T> {
+  async run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted();
     if (this.running >= this.concurrency) {
       if (this.queue.length >= this.maxQueue) throw new ConcurrencyGateFullError();
-      await new Promise<void>((resolve) => this.queue.push(resolve));
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
+        const take = () => { cleanup(); resolve(); };
+        const remove = (error: unknown) => {
+          const index = this.queue.indexOf(take);
+          if (index < 0) return;
+          this.queue.splice(index, 1);
+          cleanup(); reject(error);
+        };
+        const abort = () => remove(signal!.reason);
+        const timer = setTimeout(() => remove(new ConcurrencyGateTimeoutError()), this.queueTimeoutMs);
+        this.queue.push(take);
+        signal?.addEventListener("abort", abort, { once: true });
+      });
     } else {
       this.running += 1;
     }
     try {
+      signal?.throwIfAborted();
       return await task();
     } finally {
       // 名额直接交给下一个排队者；没人排队才释放。

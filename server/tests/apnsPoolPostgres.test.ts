@@ -46,7 +46,12 @@ test('real PostgreSQL: one-connection pool survives concurrent config reads, loc
     await assert.rejects(withApnsConfigLock(async () => assert.fail('must not acquire busy lock')), /busy/);
     assert.ok(Date.now() - started < 1500);
     await db.$queryRaw`SELECT 1`;
+    const reads = Array.from({ length: 20 }, () => liveActivityBroadcastConfig('production', 'test.app', true));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const [waiting] = await admin.$queryRawUnsafe<Array<{ count: bigint }>>("SELECT count(*) FROM pg_stat_activity WHERE application_name='apns-pool-regression' AND state='idle in transaction'");
+    assert.equal(Number(waiting.count), 0, 'lock backoff must release its pool connection');
     releaseLock!(); await holder;
+    assert.equal((await Promise.all(reads)).length, 20);
 
     let enteredApple!: () => void;
     const appleEntered = new Promise<void>(r => { enteredApple = r; });

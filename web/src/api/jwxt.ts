@@ -8,7 +8,7 @@ import axios from "axios";
 import { ElMessage } from "element-plus";
 import { detectAnalyticsClient } from "@/utils/clientInfo";
 import { COOKIE_SESSION_MARKER, getToken } from "./request";
-import { shouldRetryJwxtRead } from "@/utils/jwxtReadRetry";
+import { shouldRetryJwxtRead, jwxtRetryDelay, waitForJwxtRetry } from "@/utils/jwxtReadRetry";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
 export const JWXT_COOKIE_SESSION_MARKER = "__cpu_jwxt_cookie_session__";
@@ -129,9 +129,13 @@ inst.interceptors.response.use(
     const retryCount = Number(cfg?.cpuJwxtRecoveryRetries || 0);
     // Only read operations are replayed. Login, logout and updates are never retried here.
     if (cfg && shouldRetryJwxtRead({ method: cfg.method, status, code: Number(err.response?.data?.code), message: msg, attempts: retryCount, aborted: cfg.signal?.aborted })) {
-      cfg.cpuJwxtRecoveryRetries = retryCount + 1;
-      await new Promise(resolve => setTimeout(resolve, 300 * (retryCount + 1)));
-      return inst.request(cfg);
+      const delay = jwxtRetryDelay(retryCount, err.response?.headers?.["retry-after"]);
+      if (delay !== null) {
+        cfg.cpuJwxtRecoveryRetries = retryCount + 1;
+        await waitForJwxtRetry(delay, cfg.signal);
+        if (cfg.signal?.aborted) return Promise.reject(new axios.CanceledError());
+        return inst.request(cfg);
+      }
     }
     const authExpired = isJwxtAuthExpiredResponse(status, msg);
     if (authExpired) {

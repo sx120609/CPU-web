@@ -8,6 +8,7 @@ let active = 0;
 let transactions = 0;
 let lockBusy = false;
 let tail: Promise<unknown> = Promise.resolve();
+let beforeRetain: (() => Promise<void>) | undefined;
 const periods = [{ id: 1, name: '1', start: '08:00', end: '08:45' }];
 const models: any = {
   siteSetting: {
@@ -25,6 +26,7 @@ const models: any = {
       return versions.get(where.id);
     },
     updateMany: async ({ where, data }: any) => {
+      await beforeRetain?.();
       const row = versions.get(where.id);
       if (row && row.broadcastUntil < where.broadcastUntil.lt) Object.assign(row, data);
       return { count: row ? 1 : 0 };
@@ -76,15 +78,73 @@ function deferred() {
   return { promise, resolve };
 }
 beforeEach(() => {
-  settings.clear(); versions.clear(); lockBusy = false;
+  settings.clear(); versions.clear(); lockBusy = false; beforeRetain = undefined;
   for (const [k, v] of Object.entries({ keyPath: '/test-only.p8', keyID: 'TEST', teamID: 'TEAM', bundleID: 'test.app', channels: '{}' })) put('apns.' + k, v);
 });
 
 test('one-connection pool handles concurrent local configuration reads without nested acquisition', async () => {
+  const before = transactions;
   const results = await Promise.all(Array.from({ length: 20 }, () => liveActivityBroadcastConfig('production', 'test.app', true)));
   assert.ok(results.every(r => r.scheduleVersion === version));
   assert.ok(versions.get(version).broadcastUntil > new Date());
   assert.equal(active, 0);
+  assert.equal(transactions - before, 1, 'concurrent reads share one retention transaction');
+  assert.notEqual(results[0], results[1], 'callers cannot mutate another response');
+});
+
+test('transient lock contention retries outside the pool and keeps retention fenced', async () => {
+  lockBusy = true;
+  const reads = Array.from({ length: 30 }, () => liveActivityBroadcastConfig('production', 'test.app', true));
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(active, 0, 'no connection held during backoff');
+  assert.equal(versions.size, 0, 'retention must not bypass the held lock');
+  lockBusy = false;
+  const results = await Promise.all(reads);
+  const retained = versions.get(version).broadcastUntil.getTime();
+  assert.ok(results.every(r => r.broadcastUntil * 1000 <= retained));
+});
+
+test('a timing change and prune cannot retire the channel being retained by a reader', async () => {
+  const original = [...periods];
+  put('apns.channels', { [key('production')]: 'retained-prod', [key('sandbox')]: 'retained-sandbox' });
+  const entered = deferred(), finish = deferred();
+  beforeRetain = async () => { entered.resolve(); await finish.promise; };
+  const reader = liveActivityBroadcastConfig('production', 'test.app', true);
+  await entered.promise;
+  let retired = 0;
+  try {
+    periods[0] = { ...periods[0], start: '09:00', end: '09:45' };
+    const prune = provisionApnsChannels(Date.now(), true, {
+      create: async () => 'new-version-channel', delete: async () => { retired++; },
+    });
+    finish.resolve();
+    const response = await reader;
+    await prune;
+    assert.equal(response.windows[0].channelID, 'retained-prod');
+    assert.ok(versions.get(version).broadcastUntil.getTime() >= response.broadcastUntil * 1000);
+    assert.equal(retired, 0);
+    assert.equal(channels()[key('production')], 'retained-prod');
+  } finally { finish.resolve(); beforeRetain = undefined; periods.splice(0, periods.length, ...original); }
+});
+
+test('failed reads are removed; channel changes and environment/mode do not leak across reads', async () => {
+  lockBusy = true;
+  await assert.rejects(liveActivityBroadcastConfig('production', 'test.app', true), /busy/);
+  lockBusy = false;
+  const before = await liveActivityBroadcastConfig('production', 'test.app', true);
+  assert.equal(before.windows[0].channelID, null);
+  put('apns.channels', { [key('production')]: 'new-production', [key('sandbox')]: 'new-sandbox' });
+  const [production, sandbox, remote] = await Promise.all([
+    liveActivityBroadcastConfig('production', 'test.app', true),
+    liveActivityBroadcastConfig('sandbox', 'test.app', true),
+    liveActivityBroadcastConfig('production', 'test.app', false),
+  ]);
+  assert.equal(production.windows[0].channelID, 'new-production');
+  assert.equal(sandbox.windows[0].channelID, 'new-sandbox');
+  assert.deepEqual(remote.windows, []);
+  await assert.rejects(liveActivityBroadcastConfig('production', 'wrong.app', true), /Bundle ID/);
+  put('apns.bundleID', 'replacement.app');
+  await assert.rejects(liveActivityBroadcastConfig('production', 'test.app', true), /Bundle ID/);
 });
 
 test('slow Apple request holds zero database connections; another worker reuses the lease and IDs', async () => {
