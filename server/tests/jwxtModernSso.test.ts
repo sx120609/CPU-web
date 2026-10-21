@@ -190,3 +190,92 @@ test("concurrent modern requests share one SSO renewal and keep the restored coo
     await logout(token);
   }
 });
+
+test("modern JWXT accepts the root-context sso.jsp the school also serves", () => {
+  const rootEntry = "http://jwxt.cpu.edu.cn/sso.jsp";
+  const rootSso = "http://id.cpu.edu.cn/sso/login?service=http%3A%2F%2Fjwxt.cpu.edu.cn%2Fsso.jsp";
+  assert.equal(extractModernJwxtSsoRedirect(`<script>window.location.href='${rootSso}'</script>`, rootEntry), rootSso);
+});
+
+// 2026-10-21 起学校教务换完票后 302 到它自己的 IP，旧代码把这一跳当成不受信任的地址报错。
+test("modern JWXT stops at the jump to the school's own IP once the ticket is consumed", async () => {
+  const token = "modern-sso-ip-hop-token";
+  const now = Date.now();
+  await importSessionSnapshot(token, {
+    version: 1,
+    jar: { "id.cpu.edu.cn": { SESSION: "unified-session" } },
+    username: "2020240444",
+    createdAt: now,
+    lastSeenAt: now,
+  });
+
+  const originalFetch = globalThis.fetch;
+  const requested: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    const cookie = new Headers(init?.headers).get("cookie") || "";
+    requested.push(url.host + url.pathname);
+    if (url.hostname !== "jwxt.cpu.edu.cn" && url.hostname !== "id.cpu.edu.cn") throw new Error(`followed to ${url.host}`);
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xskb/xskb_list.do") {
+      if (/bzb_jsxsd=ip-hop-session/.test(cookie)) {
+        return new Response('<table class="qz-weeklyTable"><tr><td>2026-2027-1</td></tr></table>', { status: 200 });
+      }
+      return new Response(`<script>window.location.href='${ssoUrl}'</script>`, { status: 200 });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/sso.jsp" && !url.searchParams.has("ticket")) {
+      return new Response(`<script>window.location.href='${ssoUrl}'</script>`, { status: 200 });
+    }
+    if (url.hostname === "id.cpu.edu.cn" && url.pathname === "/sso/login") {
+      return new Response(null, { status: 302, headers: { location: "http://jwxt.cpu.edu.cn/jsxsd/sso.jsp?ticket=ST-ip-hop" } });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/sso.jsp" && url.searchParams.has("ticket")) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "https://202.119.191.121/jsxsd/framework/xsMainV.htmlx",
+          "set-cookie": "bzb_jsxsd=ip-hop-session; Path=/jsxsd; HttpOnly",
+        },
+      });
+    }
+    throw new Error(`unexpected request: ${url.toString()}`);
+  }) as typeof fetch;
+
+  try {
+    const html = await jwxtFetchModernHtml(token, "/jsxsd/xskb/xskb_list.do?viweType=0");
+    assert.match(html, /2026-2027-1/);
+    assert.ok(!requested.some((hop) => hop.startsWith("202.119.191.121")), "never requests the IP");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await logout(token);
+  }
+});
+
+test("a unified-auth jump to another host is still refused and named", async () => {
+  const token = "modern-sso-foreign-hop-token";
+  const now = Date.now();
+  await importSessionSnapshot(token, {
+    version: 1,
+    jar: { "id.cpu.edu.cn": { SESSION: "unified-session" } },
+    username: "2020240444",
+    createdAt: now,
+    lastSeenAt: now,
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    if (url.hostname === "jwxt.cpu.edu.cn") return new Response(`<script>window.location.href='${ssoUrl}'</script>`, { status: 200 });
+    if (url.hostname === "id.cpu.edu.cn") {
+      return new Response(null, { status: 302, headers: { location: "https://evil.example/collect?ticket=ST-x" } });
+    }
+    throw new Error(`followed to ${url.host}`);
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      jwxtFetchModernHtml(token, "/jsxsd/xskb/xskb_list.do?viweType=0"),
+      (error: Error) => /不受信任的地址：https:\/\/evil\.example\/collect$/.test(error.message),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    await logout(token);
+  }
+});

@@ -10,16 +10,19 @@ function trustedCpuUrl(value: string, expectedHost: string, pathCheck: (pathname
     || url.password
     || url.hash
     || !pathCheck(url.pathname)
-  ) throw new Error("教务统一认证跳转地址不受信任");
+  ) throw new Error(`教务统一认证跳转地址不受信任：${url.protocol}//${url.hostname.toLowerCase()}${url.pathname.split(";")[0]}`);
   return url;
 }
+
+/** 教务的换票入口：/jsxsd/ 下的那份，或根路径上部署的同一套系统。 */
+const isJwxtSsoEntry = (pathname: string) => pathname === "/jsxsd/sso.jsp" || pathname === "/sso.jsp";
 
 /**
  * jwxt 的 sso.jsp 不直接返回 302，而是返回一段 window.location 脚本。
  * 这里只接受 id.cpu.edu.cn/sso/login，且 service 必须精确回到 jwxt 的 sso.jsp。
  */
 export function extractModernJwxtSsoRedirect(html: string, pageUrl: string) {
-  trustedCpuUrl(pageUrl, MODERN_JWXT_HOST, (pathname) => pathname === "/jsxsd/sso.jsp");
+  trustedCpuUrl(pageUrl, MODERN_JWXT_HOST, isJwxtSsoEntry);
 
   const match = html.match(
     /window\.location(?:\.href)?\s*=\s*(["'])([^"']+)\1/i,
@@ -35,11 +38,7 @@ export function extractModernJwxtSsoRedirect(html: string, pageUrl: string) {
   );
   const serviceValue = target.searchParams.get("service");
   if (!serviceValue) throw new Error("教务统一认证缺少 service 参数");
-  const service = trustedCpuUrl(
-    serviceValue,
-    MODERN_JWXT_HOST,
-    (pathname) => pathname === "/jsxsd/sso.jsp",
-  );
+  const service = trustedCpuUrl(serviceValue, MODERN_JWXT_HOST, isJwxtSsoEntry);
   if (service.search) throw new Error("教务统一认证 service 参数不受信任");
   return target.toString();
 }

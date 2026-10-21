@@ -874,19 +874,28 @@ export async function getSession(token: string | undefined | null): Promise<Acti
   return getActiveSession(token);
 }
 
+/** 换票途中可以跟随的站点：统一认证和教务。路径不限，教务在根路径也部署了一份（/sso.jsp、/Logon.do）。 */
+function isTrustedModernSsoHop(url: URL) {
+  const host = url.hostname.toLowerCase();
+  return ["http:", "https:"].includes(url.protocol)
+    && (host === CPU_ID_SSO_HOST || host === MODERN_JWXT_HOST)
+    && !url.username
+    && !url.password;
+}
+
+/** 站点和路径，不含查询参数（里面可能有 ticket）和 ;jsessionid。 */
+function describeSsoHop(url: URL) {
+  return `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname.split(";")[0]}`;
+}
+
 function assertTrustedModernSsoHop(rawUrl: string) {
   const url = new URL(rawUrl);
-  const host = url.hostname.toLowerCase();
-  const trustedPath = host === CPU_ID_SSO_HOST
-    ? url.pathname.startsWith("/sso/")
-    : host === MODERN_JWXT_HOST && url.pathname.startsWith("/jsxsd/");
-  if (
-    !["http:", "https:"].includes(url.protocol)
-    || !trustedPath
-    || url.username
-    || url.password
-    || url.hash
-  ) throw Errors.badRequest("教务统一认证跳转地址不受信任");
+  // 片段不发给服务器。
+  url.hash = "";
+  if (!isTrustedModernSsoHop(url)) {
+    console.warn(`[jwxt] modern SSO redirect refused: ${describeSsoHop(url)}`);
+    throw Errors.badRequest(`教务统一认证跳转到了不受信任的地址：${describeSsoHop(url)}`);
+  }
   return url;
 }
 
@@ -905,7 +914,14 @@ async function followModernSsoRedirects(
     if (res.status < 300 || res.status >= 400) return { res, finalUrl: current, hops };
     const location = res.headers.get("location");
     if (!location) return { res, finalUrl: current, hops };
-    current = assertTrustedModernSsoHop(new URL(location, current).toString()).toString();
+    const next = new URL(location, current);
+    next.hash = "";
+    // 教务换完票后会把浏览器送去它自己的 IP（2026-10-21 起是 https://202.119.191.121/jsxsd/framework/xsMainV.htmlx）。
+    // 会话 Cookie 已经在这一跳记在 jwxt.cpu.edu.cn 上了，停在这里，由后面的课表探测确认会话。
+    if (!isTrustedModernSsoHop(next) && new URL(current).hostname.toLowerCase() === MODERN_JWXT_HOST) {
+      return { res, finalUrl: current, hops };
+    }
+    current = assertTrustedModernSsoHop(next.toString()).toString();
     if (res.status !== 307 && res.status !== 308) opts = { headers: init.headers };
   }
   throw new Error("Too many modern JWXT SSO redirects");
@@ -921,7 +937,8 @@ async function establishModernJwxtSession(jar: CookieJar) {
   let finalUrl = new URL(entry.finalUrl);
   const html = await entry.res.text();
 
-  if (finalUrl.hostname.toLowerCase() === MODERN_JWXT_HOST && finalUrl.pathname === "/jsxsd/sso.jsp") {
+  // 停在一次跳往教务自己 IP 的跳转上（3xx）时没有页面可读，直接去探测。
+  if (entry.res.status < 300 && finalUrl.hostname.toLowerCase() === MODERN_JWXT_HOST && finalUrl.pathname === "/jsxsd/sso.jsp") {
     const ssoUrl = extractModernJwxtSsoRedirect(html, entry.finalUrl);
     const handoff = await followModernSsoRedirects(jar, ssoUrl);
     throwForLoginUpstreamStatus(handoff.res);
