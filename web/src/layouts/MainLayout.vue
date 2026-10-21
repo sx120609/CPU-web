@@ -486,6 +486,7 @@ const showFloatingActions = computed(() => (
   && !useNativeShell.value
   && route.path !== "/search"
   && route.path !== "/messages"
+  && route.name !== "service-campus-3d"
 ));
 const assistantEntryVisible = computed(() => site.features.assistantEntry
   && !shouldHideHarmonyAssistant(auth.isLoggedIn, auth.user?.username));

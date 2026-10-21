@@ -88,6 +88,14 @@
     </div>
 
     <div v-else id="map-panel" class="cal-panel" role="tabpanel" aria-labelledby="map-tab">
+      <router-link class="pk-card cal-3d" :to="{ name: 'service-campus-3d' }">
+        <img :src="campus3dCover" alt="" loading="lazy" />
+        <span class="cal-3d-copy">
+          <b>三维校园</b>
+          <small>拖动、旋转、缩放江宁校区三维模型，查楼宇和宿舍楼号，切换四季与昼夜。</small>
+        </span>
+        <span class="pk-pill cal-3d-go">进入<el-icon aria-hidden="true"><ArrowRight /></el-icon></span>
+      </router-link>
       <section class="pk-card cal-media">
         <header class="pk-card-head">
           <div>
@@ -116,7 +124,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Calendar, Download, MapLocation, ZoomIn } from "@element-plus/icons-vue";
+import { ArrowRight, Calendar, Download, MapLocation, ZoomIn } from "@element-plus/icons-vue";
+import campus3dCover from "@/views/services/campus3d/cover.jpg";
 import calendarImage from "@/assets/school-calendar/cpu-school-calendar-2026-2027.png";
 import { cpuSchoolCalendar as calendar } from "@/data/schoolCalendar";
 import { openImageGallery } from "@/utils/imageViewer";
@@ -347,6 +356,20 @@ function shortRange(start: string, end: string) {
 .cal-frame--calendar img { min-width: 720px; }
 .cal-frame--map { background: #3f7458; }
 .cal-credit { margin-top: 10px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.cal-3d {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px 10px 10px;
+  color: var(--cpu-text);
+  text-decoration: none;
+}
+.cal-3d img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--cpu-radius-m); background: #b9c9d6; }
+.cal-3d-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.cal-3d-copy b { font-size: var(--cpu-fs-l); font-weight: 600; }
+.cal-3d-copy small { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.6; }
+.cal-3d-go { pointer-events: none; }
 
 @media (max-width: 768px) {
   .cal,
@@ -362,5 +385,7 @@ function shortRange(start: string, end: string) {
   .cal-actions { justify-content: flex-start; }
   .cal-frame { max-height: 62vh; }
   .cal-frame--calendar img { min-width: 0; }
+  .cal-3d { grid-template-columns: 112px minmax(0, 1fr); gap: 12px; }
+  .cal-3d-go { display: none; }
 }
 </style>
