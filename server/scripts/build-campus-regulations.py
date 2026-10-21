@@ -72,6 +72,17 @@ def paragraphs(raw: str) -> list[str]:
             cur = cur + line if cur else line
     if cur:
         paras.append(cur)
+    # A page break leaves an empty line in the middle of a sentence
+    # (“仍按照《…全日制本 / 科学士学位…》（…79 号）执行”); rejoin such halves.
+    joined = []
+    for p in paras:
+        prev = joined[-1] if joined else ""
+        if (len(prev) > 25 and not re.search(r"[。！？；：:）)」”]$", prev) and not is_title(prev)
+                and not STRUCT.match(p) and not ANNEX.match(p) and not is_title(p)):
+            joined[-1] = prev + p
+        else:
+            joined.append(p)
+    paras = joined
     # PDF layout can glue the next article or a chapter heading onto the
     # previous line; split only after a sentence end or a bare chapter heading
     # so in-text references such as “依据第五条” stay intact.
