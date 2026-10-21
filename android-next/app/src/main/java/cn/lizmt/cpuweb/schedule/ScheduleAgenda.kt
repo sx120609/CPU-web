@@ -84,12 +84,6 @@ internal fun agendaOffset(minutes: Int, periods: List<SchedulePeriod>, rowHeight
     return (periods.size * step - gap).coerceAtLeast(0f)
 }
 
-/** Clock minutes a course covers on the grid, from its first period's start to its last period's end. */
-private fun courseMinutes(block: PlacedBlock, periods: List<SchedulePeriod>): IntRange? {
-    val start = periods.firstOrNull { it.number == block.startSlot }?.startTime?.let(ScheduleStyleTime::clockMinutes) ?: return null
-    val end = periods.firstOrNull { it.number == block.endSlot }?.endTime?.let(ScheduleStyleTime::clockMinutes) ?: return null
-    return start until end
-}
 
 /**
  * The day's timed items over one week column. An item clear of classes spans
@@ -103,7 +97,9 @@ internal fun AgendaColumnChips(date: String, blocks: List<PlacedBlock>, periods:
     if (items.isEmpty()) return
     val scope = LocalScheduleStyle.current
     val colors = LocalScheduleColors.current
-    val courses = blocks.mapNotNull { courseMinutes(it, periods) }
+    // Where each course is drawn, as the Web grid decides: an item pinned onto a class
+    // (one before the first period, say) keeps beside it too.
+    val courses = blocks.map { (it.startSlot - 1) * (rowHeight + gap) to it.endSlot * (rowHeight + gap) - gap }
     val bottom = (periods.size * (rowHeight + gap) - gap).coerceAtLeast(0f)
     items.forEach { occurrence ->
         val item = occurrence.item
@@ -111,7 +107,7 @@ internal fun AgendaColumnChips(date: String, blocks: List<PlacedBlock>, periods:
         val end = AgendaItem.parseTime(item.end)?.let { it.hour * 60 + it.minute }?.takeIf { it > start } ?: (start + UNTIMED_SPAN_MINUTES)
         val top = agendaOffset(start, periods, rowHeight, gap)
         val height = (agendaOffset(end, periods, rowHeight, gap) - top).coerceAtLeast(20f).coerceAtMost((bottom - top).coerceAtLeast(20f))
-        val beside = courses.any { it.first < end && start < it.last + 1 }
+        val beside = courses.any { (from, to) -> from < top + height && top < to }
         val width = if (beside) columnWidth * 0.44f else columnWidth - 2.dp
         val x = if (beside) columnWidth - width - 1.dp else 1.dp
         val shape = RoundedCornerShape(6.dp)

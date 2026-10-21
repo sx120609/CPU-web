@@ -15,6 +15,9 @@ import type { AgendaItem } from "@/utils/agenda";
  * - `{ action: "open", item?, date?, start? }`：打开网页的日程页（有 item 时直接编辑那一条，
  *   没有时新建，带上日期和开始时间）。
  *
+ * 页面的登录状态还没恢复时先等它（最多 8 秒），等不到就返回 `{ missing: true }`，和没有这个桥的
+ * 旧网页一样，原生保留已显示的日程。
+ *
  * 请求走这个网页自己的登录会话，所以安卓、鸿蒙、iOS 不用各自再做一套鉴权。列表有变化时，
  * 如果原生注入了 `CPUTimeNative.agendaChanged`，会调用它（不带参数）。
  */
@@ -53,8 +56,27 @@ export function installNativeAgendaBridge(router: Router) {
     }
     : { authenticated: false, account: "", items: [], relay: false });
 
+  // 页面刚打开、登录状态还在恢复时分不清访客和已登录用户，等它确定（最多 8 秒）。
+  const authSettled = () => auth.ready
+    ? Promise.resolve(true)
+    : new Promise<boolean>((resolve) => {
+      let stop = () => {};
+      const timer = window.setTimeout(() => {
+        stop();
+        resolve(false);
+      }, 8000);
+      stop = watch(() => auth.ready, (ready) => {
+        if (!ready) return;
+        window.clearTimeout(timer);
+        stop();
+        resolve(true);
+      });
+    });
+
   host.CPUTimeNativeAgenda = async (request: AgendaRequest = {}) => {
     try {
+      // 原生收到 missing 时保留已显示的日程，不会当成退出登录清空。
+      if (!(await authSettled())) return { missing: true };
       if (!auth.isLoggedIn || !agenda.attach()) return reply();
       switch (request.action) {
         case "toggle":

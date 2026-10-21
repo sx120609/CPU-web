@@ -45,6 +45,11 @@ test('week chips sit at their clock time and keep beside a class', () => {
   assert.equal(chips[1].beside, false);
   assert.ok(chips[1].y >= 104 && chips[1].y <= 108);
   assert.ok(chips[1].height >= 20);
+  // Before the first period it is pinned onto period 1, so it keeps beside the class there.
+  const early = agendaChips([item({ id: 'run000000001', title: '晨跑', date: '2026-10-21', start: '07:00', end: '07:40' })],
+    '2026-10-21', starts, ends, 50, 4, [[1, 1]]);
+  assert.equal(early[0].y, 0);
+  assert.equal(early[0].beside, true);
 });
 
 test('reminders fire before each open occurrence', () => {

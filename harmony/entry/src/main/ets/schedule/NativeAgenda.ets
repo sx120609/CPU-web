@@ -144,12 +144,10 @@ export function agendaChips(items: NativeAgendaItem[], date: string, starts: str
     const end = endValue > start ? endValue : start + UNTIMED_SPAN_MINUTES;
     const y = Math.min(agendaGridOffset(start, starts, ends, rowHeight, gap), Math.max(0, bottom - 20));
     const height = Math.max(20, Math.min(agendaGridOffset(end, starts, ends, rowHeight, gap) - y, Math.max(20, bottom - y)));
-    // A course covers its periods' clock time: [first period start, last period end).
-    const beside = courses.some((range: number[]) => {
-      const from = agendaMinutes(starts[range[0] - 1] ?? '');
-      const to = agendaMinutes(ends[range[1] - 1] ?? '');
-      return from >= 0 && to >= 0 && from < end && start < to;
-    });
+    // Where each course is drawn, as the Web grid decides: an item pinned onto a class (one before
+    // the first period, say) keeps beside it too.
+    const step = rowHeight + gap;
+    const beside = courses.some((range: number[]) => (range[0] - 1) * step < y + height && y < range[1] * step - gap);
     chips.push({ entry, y, height, beside });
   });
   return chips;
