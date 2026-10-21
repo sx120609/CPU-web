@@ -2834,9 +2834,17 @@ function leafAtlas(kind) {
   return { map: t, alpha: at };
 }
 function barkTex() {
-  const c = mkCanvas(64, 256), g = c.getContext('2d'); g.fillStyle = '#6b5a4a'; g.fillRect(0, 0, 64, 256);
-  for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(${rand() < 0.5 ? '30,22,16' : '170,150,130'},${rr(0.08, 0.3)})`; g.fillRect(rand() * 64, rand() * 256, rr(1, 3), rr(10, 50)); }
-  return canvasTex(c);
+  const c = mkCanvas(256, 512), g = c.getContext('2d'); g.fillStyle = '#6b5a4a'; g.fillRect(0, 0, 256, 512);
+  // furrowed bark: long dark fissures between lighter plates, then fine grain
+  for (let i = 0; i < 140; i++) {
+    let x = rand() * 256, y = rand() * 512; const len = rr(40, 160), w = rr(2, 6);
+    g.strokeStyle = `rgba(28,20,14,${rr(0.35, 0.7)})`; g.lineWidth = w; g.beginPath(); g.moveTo(x, y);
+    for (let k = 0; k < 6; k++) { x += rr(-6, 6); y += len / 6; g.lineTo(x, y); }
+    g.stroke();
+  }
+  for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(${rand() < 0.5 ? '30,22,16' : '176,158,136'},${rr(0.06, 0.22)})`; g.fillRect(rand() * 256, rand() * 512, rr(1, 4), rr(4, 22)); }
+  for (const dx of [-256, 256]) g.drawImage(c, dx, 0);
+  const t = canvasTex(c); t.anisotropy = MAXANI; return t;
 }
 function treeGeometry(sp, seed, low) {
   const S = SPECIES[sp], rn = mulberry(seed * 7919 + sp.length * 131 + (low ? 17 : 0));
@@ -3114,10 +3122,15 @@ function buildHedges() {
   const lt = LEAF_TEX.broad ? LEAF_TEX.broad.map.clone() : ht; lt.wrapS = lt.wrapT = THREE.RepeatWrapping; lt.repeat.set(1.6, 0.6); lt.needsUpdate = true;
   const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map: lt, roughness: 0.92 }), segs.length);
   const COL = { green: ['#4c7a33', '#56853a', '#45702f'], red: ['#4c7a33', '#56853a', '#7d3328'], gold: ['#56853a', '#6d8a38', '#8f8a3a'] };
-  segs.forEach(([x, z, a, col], i) => { _e.set(0, -a, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, 0, z), _q, _s.set(1, rr(0.9, 1.1), 1)); im.setMatrixAt(i, _m4); im.setColorAt(i, _c.set(pick(COL[col]))); });
+  segs.forEach(([x, z, a, col], i) => {
+    const sy = rr(0.9, 1.1);
+    _e.set(0, -a, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, 0, z), _q, _s.set(1, sy, 1)); im.setMatrixAt(i, _m4); im.setColorAt(i, _c.set(pick(COL[col])));
+    PROPS.push({ p: rectPoly(x, z, 3.25, 1.0, a), top: 0.85 * sy, c: [x, z] });
+  });
   im.castShadow = true; im.receiveShadow = true; im.layers.set(1); scene.add(im); HEDGES = im;
 }
 let LAMP_GLOW = null;
+const LAMP_POS = [];
 function buildLamps() {
   const poles = [], heads = [];
   for (const r of D.r) {
@@ -3131,6 +3144,7 @@ function buildLamps() {
     const line = offsetLine(r.p, 2), cum = cumLen(line);
     for (let s = 8; s < cum[cum.length - 1]; s += 24) { const q = sampleAt(line, cum, s); if (!inWater(q.x, q.z) && !blocked(q.x, q.z)) poles.push([q.x, q.z, 0, 3.4]); }
   }
+  for (const [x, z] of poles) LAMP_POS.push([x, z]);
   const pg = new THREE.CylinderGeometry(0.06, 0.09, 1, 6); pg.translate(0, 0.5, 0);
   const hg = new THREE.BoxGeometry(0.9, 0.18, 0.36);
   const pm = new THREE.InstancedMesh(pg, MAT.metal, poles.length), hm = new THREE.InstancedMesh(hg, MAT.lamp, poles.length);
@@ -3144,6 +3158,13 @@ function buildLamps() {
   const gp = new Float32Array(poles.length * 3); poles.forEach(([x, z, a, h], i) => { gp[i * 3] = x + Math.sin(a) * 0.35; gp[i * 3 + 1] = h - 0.2; gp[i * 3 + 2] = z + Math.cos(a) * 0.35; });
   const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(gp, 3));
   LAMP_GLOW = new THREE.Points(gg, new THREE.PointsMaterial({ map: canvasTex(gc, true, false), size: 9, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, fog: true }));
+  // a glow is a halo seen from afar; walking right under a lamp it fades out instead of filling the screen
+  LAMP_GLOW.material.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vFade;')
+      .replace('#include <fog_vertex>', 'vFade = smoothstep(5.0, 28.0, -mvPosition.z);\ngl_PointSize = min(gl_PointSize, 260.0);\n#include <fog_vertex>');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vFade;')
+      .replace('#include <opaque_fragment>', 'diffuseColor.a *= vFade;\n#include <opaque_fragment>');
+  };
   LAMP_GLOW.layers.set(1); scene.add(LAMP_GLOW);
   const benches = [];
   for (const r of D.pa) for (let i = 0; i < r.p.length - 1; i += 2) {
@@ -3160,6 +3181,11 @@ function buildLamps() {
   bm.castShadow = true; bm.layers.set(1); scene.add(bm);
 }
 
+let BUSH_GRID = null, BIKE_SPOTS = [];
+function bushAt(x, z) {
+  if (!BUSH_GRID) { BUSH_GRID = new Grid(8); TREES.forEach((t, i) => { const r = SPECIES[t.type].rx * t.s * (t.type === 'shrub' ? 0.8 : 0.12) + 0.9; BUSH_GRID.add(i, [t.x - r, t.z - r, t.x + r, t.z + r]); }); }
+  return BUSH_GRID.at(x, z).some((i) => { const t = TREES[i], r = SPECIES[t.type].rx * t.s * (t.type === 'shrub' ? 0.8 : 0.12) + 0.9; return Math.hypot(t.x - x, t.z - z) < r; });
+}
 function buildBikes() {
   const parts = [];
   const rod = (a, b, r, color) => {
@@ -3185,9 +3211,10 @@ function buildBikes() {
     const n = Math.min(28, Math.floor(e.len * 0.9 / 1.1)) * (/食堂|图书馆/.test(b.name) ? 1 : 0.4);
     for (let k = 0; k < n; k++) {
       const t = 0.08 + 0.84 * k / n, x = e.a[0] + (e.b[0] - e.a[0]) * t + e.nx * 4.2, z = e.a[1] + (e.b[1] - e.a[1]) * t + e.nz * 4.2;
-      if (!inWater(x, z)) spots.push([x, z, Math.atan2(e.nz, e.nx) + rr(-0.12, 0.12) + Math.PI * 0.08]);
+      if (!inWater(x, z) && !bushAt(x, z)) spots.push([x, z, Math.atan2(e.nz, e.nx) + rr(-0.12, 0.12) + Math.PI * 0.08]);
     }
   }
+  BIKE_SPOTS = spots;
   const bm = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.2 }), spots.length);
   const cols = ['#f2c200', '#1f8fe0', '#2fb35a', '#f2c200', '#1f8fe0'];
   spots.forEach(([x, z, a], i) => { _e.set(0, -a, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, 0, z), _q, _s.set(1, 1, 1)); bm.setMatrixAt(i, _m4); bm.setColorAt(i, _c.set(pick(cols))); });
@@ -3632,12 +3659,30 @@ function buildGround() {
   tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true;
   const geo = new THREE.PlaneGeometry(REGW, REGH); geo.rotateX(-Math.PI / 2); geo.translate(REG.x0 + REGW / 2, 0, REG.z0 + REGH / 2);
   const det = canvasTex(noiseCanvas(256, 16, 3, 33, 0, 255), false);
+  const near = (() => {
+    // r: grass blades, g: fine grain for paving/asphalt, b: pebbles and stains
+    const c = mkCanvas(512, 512), g = c.getContext('2d'), N = 512;
+    g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, N, N);
+    const id = g.getImageData(0, 0, N, N), d = id.data;
+    for (let i = 0; i < N * N; i++) { d[i * 4 + 1] = 128 + (rand() - 0.5) * 70; d[i * 4] = 128 + (rand() - 0.5) * 40; d[i * 4 + 2] = 128 + (rand() - 0.5) * 30; }
+    g.putImageData(id, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < 9000; i++) {
+      const x = rand() * N, y = rand() * N, l = rr(5, 16), a = rr(-0.5, 0.5), v = Math.floor(rr(40, 230));
+      g.strokeStyle = `rgba(${v},128,128,${rr(0.5, 0.9)})`; g.lineWidth = rr(1, 2.2); g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.sin(a) * l, y - Math.cos(a) * l); g.stroke();
+      for (const [ox, oy] of [[-N, 0], [N, 0], [0, -N], [0, N]]) if ((x + ox > -20 && x + ox < N + 20) && (y + oy > -20 && y + oy < N + 20)) { g.beginPath(); g.moveTo(x + ox, y + oy); g.lineTo(x + ox + Math.sin(a) * l, y + oy - Math.cos(a) * l); g.stroke(); }
+    }
+    const id2 = g.getImageData(0, 0, N, N), e = id2.data;
+    for (let i = 0; i < 260; i++) { const cx = rand() * N, cy = rand() * N, r = rr(1, 3.5), v = rand() < 0.5 ? 70 : 190; for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) if (x * x + y * y <= r * r) { const px = (Math.floor(cx + x) + N) % N, py = (Math.floor(cy + y) + N) % N; e[(py * N + px) * 4 + 2] = v; } }
+    g.putImageData(id2, 0, 0);
+    const t = canvasTex(c, false); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAXANI; return t;
+  })();
   groundMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0 });
   groundMat.customProgramCacheKey = () => 'ground';
   groundMat.onBeforeCompile = (sh) => {
-    sh.uniforms.uDetail = { value: det }; sh.uniforms.uCam = { value: camera.position }; sh.uniforms.uGrass = SEASON_U.uGrass; sh.uniforms.uGrassAmt = SEASON_U.uGrassAmt;
+    sh.uniforms.uDetail = { value: det }; sh.uniforms.uNear = { value: near }; sh.uniforms.uCam = { value: camera.position }; sh.uniforms.uGrass = SEASON_U.uGrass; sh.uniforms.uGrassAmt = SEASON_U.uGrassAmt;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; uniform sampler2D uDetail; uniform vec3 uCam; uniform vec3 uGrass; uniform float uGrassAmt;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; uniform sampler2D uDetail; uniform sampler2D uNear; uniform vec3 uCam; uniform vec3 uGrass; uniform float uGrassAmt;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         float dd = distance(uCam, vWP); float kk = 1.0 - smoothstep(25.0, 260.0, dd);
         float det = texture2D(uDetail, vWP.xz * 0.23).r * 0.55 + texture2D(uDetail, vWP.xz * 0.047).r * 0.45;
@@ -3645,7 +3690,20 @@ function buildGround() {
         float gmx = max(diffuseColor.r, diffuseColor.b); float gr = clamp((diffuseColor.g - gmx) * 9.0, 0.0, 1.0);
         float glum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
         diffuseColor.rgb = mix(diffuseColor.rgb, uGrass * (0.42 + glum * 1.5), gr * uGrassAmt);
-        diffuseColor.rgb *= mix(1.0, 0.66, smoothstep(0.42, 0.8, dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))));`);
+        diffuseColor.rgb *= mix(1.0, 0.66, smoothstep(0.42, 0.8, dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))));
+        float kn = 1.0 - smoothstep(6.0, 70.0, dd);
+        if (kn > 0.0) {
+          vec3 nb = texture2D(uNear, vWP.xz * 0.55).rgb, nf = texture2D(uNear, vWP.xz * 1.9).rgb;
+          float gm = max(gr, step(gmx + 0.02, diffuseColor.g) * 0.6);
+          float blade = (nb.r - 0.5) * 0.55 + (nf.r - 0.5) * 0.35;
+          float grain = (nf.g - 0.5) * 0.22 + (nb.b - 0.5) * 0.14;
+          float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+          // light paving: 0.6 m slabs with thin joints
+          vec2 sl = fract(vWP.xz / 0.6); vec2 jd = min(sl, 1.0 - sl); float joint = 1.0 - smoothstep(0.0, 0.035, min(jd.x, jd.y));
+          float pave = smoothstep(0.32, 0.45, lum) * (1.0 - gm) * (1.0 - smoothstep(18.0, 40.0, dd));
+          diffuseColor.rgb *= 1.0 + kn * (gm * blade + (1.0 - gm) * grain);
+          diffuseColor.rgb *= 1.0 - pave * joint * 0.18;
+        }`);
   };
   const mesh = new THREE.Mesh(geo, groundMat); mesh.receiveShadow = true; scene.add(mesh);
   { const ot = new THREE.CanvasTexture(OUTER.canvas); ot.colorSpace = THREE.SRGBColorSpace; ot.anisotropy = MAXANI;
@@ -4056,9 +4114,12 @@ function nearestOnPoly(x, z, q) {
   return [md, mx, mz];
 }
 let TGRID = null;
+// Collision radius of a tree: its trunk, or for a bush the dense middle of its crown.
+const trunkR = (t) => t.type === 'shrub' ? SPECIES.shrub.rx * t.s * 0.5 : SPECIES[t.type].tr * t.s;
 function trunkGrid() {
   TGRID = new Grid(10);
-  TREES.forEach((t, i) => { const r = SPECIES[t.type].tr * t.s, e = r + WALK_R + 0.4; if (r > 0.05) TGRID.add(i, [t.x - e, t.z - e, t.x + e, t.z + e]); });
+  TREES.forEach((t, i) => { const r = trunkR(t), e = r + WALK_R + 0.4; if (r > 0.05) TGRID.add(i, [t.x - e, t.z - e, t.x + e, t.z + e]); });
+  LAMP_POS.forEach(([x, z], i) => { const e = 0.12 + WALK_R + 0.4; TGRID.add(~i, [x - e, z - e, x + e, z + e]); });
 }
 // Push a walker circle out of every wall and trunk it overlaps; moving into one therefore slides along it.
 function walkResolve(x, z, feet) {
@@ -4066,9 +4127,12 @@ function walkResolve(x, z, feet) {
   for (let it = 0; it < 3; it++) {
     let moved = false;
     for (const k of TGRID.at(x, z)) {
-      const t = TREES[k], R = SPECIES[t.type].tr * t.s + WALK_R + 0.12, dx = x - t.x, dz = z - t.z, d = Math.hypot(dx, dz);
+      let cx, cz, R;
+      if (k < 0) { [cx, cz] = LAMP_POS[~k]; R = 0.12 + WALK_R; }
+      else { const t = TREES[k]; if (t.type === 'shrub' && feet != null && feet > 0.8 * t.s) continue; cx = t.x; cz = t.z; R = trunkR(t) + WALK_R + (t.type === 'shrub' ? 0 : 0.12); }
+      const dx = x - cx, dz = z - cz, d = Math.hypot(dx, dz);
       if (d >= R) continue;
-      const a = d > 1e-4 ? 1 / d : 0; x = t.x + (a ? dx * a : 1) * (R + 0.01); z = t.z + dz * a * (R + 0.01); moved = true;
+      const a = d > 1e-4 ? 1 / d : 0; x = cx + (a ? dx * a : 1) * (R + 0.01); z = cz + dz * a * (R + 0.01); moved = true;
     }
     for (const q of walkPolys(x, z, feet)) {
       const [d, mx, mz] = nearestOnPoly(x, z, q), inside = pip(x, z, q);
@@ -4143,13 +4207,74 @@ function walkEntry() {
   for (let back = 0; back <= 180; back += 4) { const x = t.x - dx * back, z = t.z - dz * back; if (open(x, z)) return { x, z, yaw }; }
   return { x: t.x, z: t.z, yaw };
 }
-function placeFront(p) {
-  if (p.bld) {
-    const b = BLD[p.bld[0]], e = edgeFacing(b.p, b.c[0] - 100, b.c[1] + 100, 6);
-    if (e) return { x: e.mx + e.nx * 16, z: e.mz + e.nz * 16, yaw: Math.atan2(e.nx, e.nz) };
+// Distance from (x, z) to the nearest building wall within `r` metres (r when none is that close).
+function wallGap(x, z, r = 20) {
+  let m = r;
+  for (const b of BLD) {
+    if (b.cls.special === 'station' || x < b.bb[0] - r || x > b.bb[2] + r || z < b.bb[1] - r || z > b.bb[3] + r) continue;
+    const ps = b.extra?.special === 'xueyuan' ? XY_PODS.map((q) => q.p).concat(XY_LINKS) : b.parts || [b.p];
+    for (const q of ps) { if (pip(x, z, q)) return 0; m = Math.min(m, nearestOnPoly(x, z, q)[0]); }
   }
-  const dx = WALK.x - p.x, dz = WALK.z - p.z, l = Math.hypot(dx, dz) || 1;
-  return { x: p.x + dx / l * 18, z: p.z + dz / l * 18, yaw: Math.atan2(dx / l, dz / l) };
+  return m;
+}
+// Eye-level rays against the static scene (instanced trees, bikes and lamps ignored): the building ahead must not be
+// much closer than planned, and nothing may crowd the walker from the sides or behind.
+const SIGHT_RAY = new THREE.Raycaster();
+// No trunk, bush or lamp post right in the face, and none within the first metres of the view.
+function openAround(x, z, fx, fz) {
+  if (!TGRID) trunkGrid();
+  const seen = new Set();
+  for (let s = 0; s <= 9; s += 1.5) for (const k of TGRID.at(x + fx * s, z + fz * s)) {
+    if (seen.has(k)) continue; seen.add(k);
+    let cx, cz, r;
+    if (k < 0) { [cx, cz] = LAMP_POS[~k]; r = 0.15; } else { const t = TREES[k]; cx = t.x; cz = t.z; r = t.type === 'shrub' ? SPECIES.shrub.rx * t.s : trunkR(t); }
+    const dx = cx - x, dz = cz - z, along = dx * fx + dz * fz, side = Math.abs(dx * fz - dz * fx);
+    if (Math.hypot(dx, dz) < r + 2.2) return false;
+    if (along > 0 && along < 9 && side < r + 1.4) return false;
+  }
+  return true;
+}
+function sightOK(x, z, fx, fz, dist) {
+  const o = new THREE.Vector3(x, groundAt(x, z) + EYE, z), hitAt = (dx, dz, far) => {
+    SIGHT_RAY.set(o, new THREE.Vector3(dx, 0, dz)); SIGHT_RAY.far = far;
+    const h = SIGHT_RAY.intersectObjects(scene.children, true).find((q) => q.object.isMesh && !q.object.isInstancedMesh && q.object.visible && q.object.layers.test(camera.layers));
+    return h ? h.distance : far;
+  };
+  // open sky overhead: seen from above, the first solid surface must be the ground, not a roof the walker would stand under
+  SIGHT_RAY.set(new THREE.Vector3(x, 150, z), new THREE.Vector3(0, -1, 0)); SIGHT_RAY.far = 160;
+  for (const [ox, oz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    SIGHT_RAY.ray.origin.set(x + ox, 150, z + oz);
+    const top = SIGHT_RAY.intersectObjects(scene.children, true).find((q) => q.object.isMesh && !q.object.isInstancedMesh && q.object.visible && q.object.layers.test(camera.layers));
+    if (top && top.point.y > groundAt(x + ox, z + oz) + 1.2) return false;
+  }
+  if (hitAt(fx, fz, dist) < Math.min(dist * 0.6, dist - 6)) return false;
+  for (const [dx, dz, need] of [[fz, -fx, 3], [-fz, fx, 3], [-fx, -fz, 2.5], [(fx + fz) * 0.707, (fz - fx) * 0.707, 3], [(fx - fz) * 0.707, (fz + fx) * 0.707, 3]]) if (hitAt(dx, dz, need) < need) return false;
+  return true;
+}
+// Where to stand to look at a place: in front of its main face, backed off until the wall is comfortably far away
+// and nothing (wall, bush, post, water) is in the way of the first steps.
+function placeFront(p) {
+  let x, z, nx, nz;
+  const e = p.bld ? edgeFacing(BLD[p.bld[0]].p, BLD[p.bld[0]].c[0] - 100, BLD[p.bld[0]].c[1] + 100, 6) : null;
+  if (e) { x = e.mx; z = e.mz; nx = e.nx; nz = e.nz; }
+  else { const dx = WALK.x - p.x, dz = WALK.z - p.z, l = Math.hypot(dx, dz) || 1; x = p.x; z = p.z; nx = dx / l; nz = dz / l; }
+  const yaw = Math.atan2(nx, nz), h = p.bld ? Math.max(...p.bld.map((i) => BLD[i].h)) : 10, want = clamp(h * 0.7, 12, 30);
+  const clear = (px, pz) => { const [qx, qz] = walkResolve(px, pz); return Math.hypot(qx - px, qz - pz) < 0.05 && walkable(px, pz); };
+  // straight out from the face first, then swinging round to either side, always looking back at the face
+  for (const da of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) {
+    const c = Math.cos(da), sn = Math.sin(da), ux = nx * c - nz * sn, uz = nx * sn + nz * c;
+    for (let s = Math.max(10, want * (da ? 0.8 : 1)); s <= 70; s += 2) {
+      const px = x + ux * s, pz = z + uz * s;
+      if (clear(px, pz) && wallGap(px, pz, 8) >= 8 && openAround(px, pz, -ux, -uz) && sightOK(px, pz, -ux, -uz, s)) return { x: px, z: pz, yaw: Math.atan2(ux, uz) };
+    }
+  }
+  // boxed in on that side (a courtyard or forecourt): circle the place itself and take the first open spot facing it
+  const cx = p.bld ? BLD[p.bld[0]].c[0] : p.x, cz = p.bld ? BLD[p.bld[0]].c[1] : p.z;
+  for (let r = 24; r <= 110; r += 6) for (let i = 0; i < 24; i++) {
+    const a = Math.atan2(nz, nx) + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 12, ux = Math.cos(a), uz = Math.sin(a), px = cx + ux * r, pz = cz + uz * r;
+    if (clear(px, pz) && wallGap(px, pz, 8) >= 8 && openAround(px, pz, -ux, -uz) && sightOK(px, pz, -ux, -uz, r)) return { x: px, z: pz, yaw: Math.atan2(ux, uz) };
+  }
+  return { x: x + nx * want, z: z + nz * want, yaw };
 }
 function walkToPlace(p) {
   const f = placeFront(p);
