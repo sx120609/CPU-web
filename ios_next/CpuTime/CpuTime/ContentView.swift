@@ -1,6 +1,7 @@
 import Combine
 import SwiftUI
 import UIKit
+import UserNotifications
 
 extension Color {
     /// Keep native controls aligned with the Web brand instead of relying on
@@ -32,7 +33,7 @@ struct CpuTimeApp: App {
     }
 }
 
-final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate {
+final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -41,10 +42,30 @@ final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate {
         // finishes; SwiftUI's first onAppear is too late on iOS 18.
         if #available(iOS 17.0, *) {
             LiveActivityBackgroundRefresh.shared.register()
+            // Set before launch finishes, so a tapped 日程 reminder that
+            // launched the app is delivered here.
+            UNUserNotificationCenter.current().delegate = self
         }
         // Subscribe early: MetricKit delivers pending crash reports at launch.
         ClientDiagnosticsCollector.shared.start()
         return true
+    }
+
+    /// 日程 reminders also show while the app is open; anything else keeps
+    /// the system's default of not showing.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        guard #available(iOS 17.0, *), NativeAgendaReminders.isAgenda(notification) else { return [] }
+        return [.banner, .list, .sound]
+    }
+
+    /// A tapped 日程 reminder opens its item on the Web page.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard #available(iOS 17.0, *) else { return }
+        let info = response.notification.request.content.userInfo
+        guard let id = info[NativeAgendaReminders.itemKey] as? String else { return }
+        let date = info[NativeAgendaReminders.dateKey] as? String ?? ""
+        await NativeAgendaService.shared.openFromNotification(id: id, date: date)
     }
 }
 
@@ -182,6 +203,8 @@ struct ContentView: View {
                     Task { await NativeScheduleSharingService.shared.refresh() }
                     // The partner's timetable too; spaced out by the service itself.
                     Task { await NativeCoupleService.shared.refresh() }
+                    // 日程 edited on another device or on the Web page.
+                    Task { await NativeAgendaService.shared.refresh() }
                     if #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
                 }
             }
