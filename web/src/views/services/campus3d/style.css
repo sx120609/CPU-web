@@ -216,6 +216,15 @@ button:active { filter: brightness(.94); }
 .night .lbl.water .t { color: #8fd3ff; }
 .night .lbl .glyph { border-color: #1c1c1e; box-shadow: 0 1px 4px rgba(0,0,0,.6); }
 
+.walkpad { position: absolute; z-index: 6; left: max(22px, env(safe-area-inset-left, 0px)); bottom: calc(92px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
+  width: 116px; height: 116px; border-radius: 50%; touch-action: none; }
+.walkpad[hidden] { display: none; }
+.walkpad i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: #fff;
+  box-shadow: 0 3px 10px rgba(0,0,0,.25); transition: background .2s; }
+.walkpad.run i { background: var(--accent); }
+.walking #dim, .walking #measure { display: none; }
+.walking #stage canvas { cursor: default; }
+.walking #stage.grabbing canvas { cursor: grabbing; }
 .rotate-tip { position: absolute; z-index: 12; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(300px, calc(100% - 48px));
   padding: 22px 20px 16px; border-radius: var(--r-xl); text-align: center; }
 .rotate-tip[hidden] { display: none; }
@@ -279,6 +288,8 @@ button:active { filter: brightness(.94); }
   .card { top: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(64px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: auto; max-height: 48%; }
   .card:not([hidden]) ~ .mapctl { display: none; }
   .dock { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); transform: none; justify-content: space-between; bottom: calc(10px + var(--safe-b, env(safe-area-inset-bottom, 0px))); }
+  .walkpad { left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(76px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: 108px; height: 108px; }
+  .walking .legal { display: none; }
   .tour { top: auto; bottom: calc(64px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); translate: none; padding: 10px 14px 12px; max-height: 34%; overflow-y: auto; border-radius: 18px; }
   .tour h3 { margin-top: 4px; font-size: 17px; }
   .tour p { font-size: 13px; }
@@ -339,6 +350,8 @@ button:active { filter: brightness(.94); }
   .dock { left: auto; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(8px + var(--safe-b, env(safe-area-inset-bottom, 0px))); transform: none; width: min(400px, calc(100% - 320px)); }
   .card:not([hidden]) ~ .mapctl { display: none; }
   .tour { top: max(8px, env(safe-area-inset-top, 0px)); bottom: auto; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 280px); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 52px); width: auto; max-width: 460px; margin: 0 auto; translate: none; padding: 8px 14px 10px; border-radius: 16px; max-height: calc(100% - 92px - var(--safe-b, env(safe-area-inset-bottom, 0px))); overflow-y: auto; }
+  .walkpad { left: max(18px, env(safe-area-inset-left, 0px)); bottom: calc(14px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: 104px; height: 104px; }
+  .walking .legal { display: none; }
   .tour h3 { margin-top: 4px; font-size: 15px; }
   .tour p { font-size: 12.5px; line-height: 1.45; }
   .toast { top: max(10px, env(safe-area-inset-top, 0px)); bottom: auto; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 280px); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 52px); width: fit-content; max-width: none; margin: 0 auto; translate: none; }

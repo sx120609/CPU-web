@@ -668,7 +668,7 @@ function trackPerf(dt) {
 let shadowStamp = 0, shadowDirty = true;
 renderer.info.autoReset = false;
 function updateNear() {
-  const n = clamp(camera.position.y * 0.006, 1, 5);
+  const n = mode === 'walk' ? 0.15 : clamp(camera.position.y * 0.006, 1, 5);
   if (Math.abs(camera.near - n) > 0.04) { camera.near = n; camera.updateProjectionMatrix(); }
 }
 function renderFrame() {
@@ -1007,7 +1007,12 @@ function addCap(key, poly, y, down = false, holes = []) {
   }
 }
 function addPrism(key, poly, y0, y1, capKey, uvm) { addWalls(key, poly, y0, y1, uvm); addCap(capKey || key, poly, y1); }
-function addBox(key, cx, y0, cz, L, W, H, ang = 0, capKey) { addPrism(key, rectPoly(cx, cz, L, W, ang), y0, y0 + H, capKey); }
+const PROPS = [];
+function addBox(key, cx, y0, cz, L, W, H, ang = 0, capKey) {
+  const poly = rectPoly(cx, cz, L, W, ang);
+  if (y0 < 0.6 && H >= 0.45 && L * W >= 0.05 && L * W <= 600 && !/^(deck|f:|roof|glass|lamp|trim:white)/.test(key)) PROPS.push({ p: poly, top: y0 + H, c: [cx, cz] });
+  addPrism(key, poly, y0, y0 + H, capKey);
+}
 function addBeam(key, a, b, width = 0.18) {
   const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A).normalize();
   const u = new THREE.Vector3(0, 1, 0); if (Math.abs(d.y) > 0.95) u.set(1, 0, 0);
@@ -3026,7 +3031,7 @@ function updateTreeLOD(force) {
 function updateTreeFade(dt) {
   if (!TREE_GROUPS.length) return;
   const C = camera.position, T = controls.target, dx = T.x - C.x, dy = T.y - C.y, dz = T.z - C.z, L = Math.hypot(dx, dy, dz) || 1, ux = dx / L, uy = dy / L, uz = dz / L, step = Math.min(1, dt * 3.5);
-  const low = C.y < 70 || -uy < 0.4;
+  const walking = mode === 'walk', low = !walking && (C.y < 70 || -uy < 0.4);
   for (const g of TREE_GROUPS) {
     const S = SPECIES[g.sp], NL = g.nearLeaf, NW = g.nearWood, ah = NL.geometry.attributes.aHide, aw = NW && NW.geometry.attributes.aHide;
     let ch = false;
@@ -3035,7 +3040,7 @@ function updateTreeFade(dt) {
       const vx = t.x - C.x, vy = (S.base + S.ry * 0.85) * t.s - C.y, vz = t.z - C.z, along = vx * ux + vy * uy + vz * uz;
       let want = 0;
       if (low && along > -rc && along < L - rc - 6 && Math.hypot(vx - ux * along, vy - uy * along, vz - uz * along) < rc + Math.max(0, along) * 0.03) want = 1;
-      else if (C.y < 35 && along > -rc && vx * vx + vy * vy + vz * vz < (rc + 5) * (rc + 5)) want = 1;
+      else if (walking ? vx * vx + vy * vy + vz * vz < rc * rc * 0.45 : C.y < 35 && along > -rc && vx * vx + vy * vy + vz * vz < (rc + 5) * (rc + 5)) want = 1;
       const f = g.fade[j], nf = f + clamp(want - f, -step, step);
       if (nf !== f) { g.fade[j] = nf; ah.array[k] = nf; if (aw) aw.array[k] = nf; ch = true; }
     }
@@ -3969,10 +3974,14 @@ function viewFor(p) {
   const pos = tgt.clone().addScaledVector(dir, dist * Math.cos(0.72)).add(new THREE.Vector3(0, dist * Math.sin(0.72), 0));
   return { pos, tgt };
 }
-function flyToPlace(p) { if (mode === 'tour') setMode('orbit'); const v = viewFor(p); flyTo(v.pos, v.tgt, 2.2, () => { spin = { t: 0 }; }); }
+function flyToPlace(p) { if (mode === 'walk') { walkToPlace(p); return; } if (mode === 'tour') setMode('orbit'); const v = viewFor(p); flyTo(v.pos, v.tgt, 2.2, () => { spin = { t: 0 }; }); }
 
 const BGRID = new Grid(25);
-function initGrid() { BLD.forEach((b, i) => BGRID.add(i, b.bb)); }
+const PGRID = new Grid(25);
+function initGrid() {
+  BLD.forEach((b, i) => BGRID.add(i, b.bb));
+  PROPS.forEach((q, i) => { q.bb = pBox(q.p); q.skip = groundAt(q.c[0], q.c[1]) > 0.02; if (!q.skip) PGRID.add(i, q.bb); });
+}
 function camFloor(x, z) {
   let top = groundAt(x, z);
   for (const [ox, oz] of [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) {
@@ -3980,6 +3989,282 @@ function camFloor(x, z) {
     for (const k of BGRID.at(px, pz)) { const b = BLD[k]; if (b.h > top && px >= b.bb[0] && px <= b.bb[2] && pz >= b.bb[1] && pz <= b.bb[3] && (b.parts || [b.p]).some((q) => pip(px, pz, q))) top = b.h; }
   }
   return top + 1.8;
+}
+// ---------- free exploration (first person) ----------
+const WALK = { x: 0, z: 0, y: 0, yaw: 0, pitch: 0, vx: 0, vz: 0, keys: new Set(), pad: { x: 0, y: 0 }, target: null, faceYaw: null, trans: null, fov: 62, bob: 0, stuck: 0 };
+const WALK_R = 0.42, EYE = 1.62, WALK_SPEED = 3.4, RUN_SPEED = 9;
+function walkPolys(x, z) {
+  const out = [];
+  for (const k of BGRID.at(x, z)) {
+    const b = BLD[k];
+    if (b.cls.special === 'station' || x < b.bb[0] - 3 || x > b.bb[2] + 3 || z < b.bb[1] - 3 || z > b.bb[3] + 3) continue;
+    if (b.extra?.special === 'xueyuan') { for (const q of XY_PODS) out.push(q.p); for (const q of XY_LINKS) out.push(q); continue; }
+    for (const q of b.parts || [b.p]) out.push(q);
+  }
+  const g = groundAt(x, z);
+  for (const k of PGRID.at(x, z)) {
+    const q = PROPS[k];
+    if (q.top < g + 0.4 || x < q.bb[0] - 2 || x > q.bb[2] + 2 || z < q.bb[1] - 2 || z > q.bb[3] + 2) continue;
+    out.push(q.p);
+  }
+  return out;
+}
+function nearestOnPoly(x, z, q) {
+  let md = Infinity, mx = 0, mz = 0;
+  for (let i = 0; i < q.length; i++) {
+    const a = q[i], e = q[(i + 1) % q.length], ex = e[0] - a[0], ez = e[1] - a[1];
+    const t = clamp(((x - a[0]) * ex + (z - a[1]) * ez) / (ex * ex + ez * ez || 1), 0, 1), px = a[0] + ex * t, pz = a[1] + ez * t, d = Math.hypot(x - px, z - pz);
+    if (d < md) { md = d; mx = px; mz = pz; }
+  }
+  return [md, mx, mz];
+}
+let TGRID = null;
+function trunkGrid() {
+  TGRID = new Grid(10);
+  TREES.forEach((t, i) => { const r = SPECIES[t.type].tr * t.s; const e = r + WALK_R + 0.4; if (r > 0.05) TGRID.add(i, [t.x - e, t.z - e, t.x + e, t.z + e]); });
+}
+// Push a walker circle out of every wall and trunk it overlaps; moving into one therefore slides along it.
+function walkResolve(x, z) {
+  if (!TGRID) trunkGrid();
+  for (let it = 0; it < 3; it++) {
+    let moved = false;
+    for (const k of TGRID.at(x, z)) {
+      const t = TREES[k], R = SPECIES[t.type].tr * t.s + WALK_R + 0.3, dx = x - t.x, dz = z - t.z, d = Math.hypot(dx, dz);
+      if (d >= R) continue;
+      const a = d > 1e-4 ? 1 / d : 0; x = t.x + (a ? dx * a : 1) * (R + 0.01); z = t.z + dz * a * (R + 0.01); moved = true;
+    }
+    for (const q of walkPolys(x, z)) {
+      const [d, mx, mz] = nearestOnPoly(x, z, q), inside = pip(x, z, q);
+      if (!inside && d >= WALK_R) continue;
+      let nx = x - mx, nz = z - mz; const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
+      if (inside) { nx = -nx; nz = -nz; }
+      x = mx + nx * (WALK_R + 0.01); z = mz + nz * (WALK_R + 0.01); moved = true;
+    }
+    if (!moved) break;
+  }
+  return [x, z];
+}
+const onBridge = (x, z) => BRIDGES.some((b) => pip(x, z, b.p));
+const walkable = (x, z) => x > REG.x0 + 5 && x < REG.x1 - 5 && z > REG.z0 + 5 && z < REG.z1 - 5 && (!inWater(x, z) || onBridge(x, z));
+function walkMove(dx, dz) {
+  let [nx, nz] = walkResolve(WALK.x + dx, WALK.z + dz);
+  if (!walkable(nx, nz)) {
+    const ax = walkResolve(WALK.x + dx, WALK.z), az = walkResolve(WALK.x, WALK.z + dz);
+    if (Math.abs(dx) > 1e-4 && walkable(ax[0], ax[1])) [nx, nz] = ax;
+    else if (Math.abs(dz) > 1e-4 && walkable(az[0], az[1])) [nx, nz] = az;
+    else return 0;
+  }
+  const moved = Math.hypot(nx - WALK.x, nz - WALK.z);
+  WALK.x = nx; WALK.z = nz;
+  return moved;
+}
+function walkSpot(x, z) {
+  for (let r = 0; r < 200; r += 2) {
+    const n = r ? Math.ceil(r * 1.2) : 1;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r, [qx, qz] = walkResolve(px, pz);
+      if (Math.hypot(qx - px, qz - pz) < 0.05 && walkable(px, pz)) return [px, pz];
+    }
+  }
+  return [x, z];
+}
+const walkForward = () => [-Math.sin(WALK.yaw), -Math.cos(WALK.yaw)];
+const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+function enterWalk(x, z, yaw, o = {}) {
+  [x, z] = walkSpot(x, z);
+  const from = camera.position.clone(), q0 = camera.quaternion.clone(), fov0 = camera.fov;
+  Object.assign(WALK, { x, z, y: groundAt(x, z), yaw, pitch: o.pitch ?? -0.05, vx: 0, vz: 0, target: null, faceYaw: null, stuck: 0 });
+  walkMarker(null);
+  const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(WALK.pitch, yaw, 0, 'YXZ'));
+  WALK.trans = o.instant || REDUCED_MOTION.matches ? null : { t: 0, dur: o.dur || 1.5, p0: from, q0, q1, fov0, lift: Math.min(90, from.distanceTo(new THREE.Vector3(x, WALK.y + EYE, z)) * 0.25) };
+}
+// Drop the walker where the view was centred, stepping back toward the camera until the way ahead is open.
+function walkEntry() {
+  const t = controls.target, d = new THREE.Vector3(); camera.getWorldDirection(d);
+  let dx = d.x, dz = d.z, l = Math.hypot(dx, dz);
+  if (l < 0.12) { dx = 0; dz = -1; l = 1; }
+  dx /= l; dz /= l;
+  const yaw = Math.atan2(-dx, -dz);
+  const open = (x, z) => {
+    for (let s = 0; s <= 14; s += 2) {
+      const px = x + dx * s, pz = z + dz * s, [qx, qz] = walkResolve(px, pz);
+      if (Math.hypot(qx - px, qz - pz) > 0.05 || !walkable(px, pz)) return false;
+    }
+    return true;
+  };
+  for (let back = 0; back <= 180; back += 4) { const x = t.x - dx * back, z = t.z - dz * back; if (open(x, z)) return { x, z, yaw }; }
+  return { x: t.x, z: t.z, yaw };
+}
+function walkTo(x, z, faceYaw = null) {
+  const [px, pz] = walkSpot(x, z);
+  WALK.target = { x: px, z: pz }; WALK.faceYaw = faceYaw; WALK.stuck = 0;
+  walkMarker(px, pz, true);
+}
+function placeFront(p) {
+  if (p.bld) {
+    const b = BLD[p.bld[0]], e = edgeFacing(b.p, b.c[0] - 100, b.c[1] + 100, 6);
+    if (e) return { x: e.mx + e.nx * 16, z: e.mz + e.nz * 16, yaw: Math.atan2(e.nx, e.nz) };
+  }
+  const dx = WALK.x - p.x, dz = WALK.z - p.z, l = Math.hypot(dx, dz) || 1;
+  return { x: p.x + dx / l * 18, z: p.z + dz / l * 18, yaw: Math.atan2(dx / l, dz / l) };
+}
+function walkToPlace(p) {
+  const f = placeFront(p);
+  if (Math.hypot(f.x - WALK.x, f.z - WALK.z) > 220) enterWalk(f.x, f.z, f.yaw, { dur: 1.8 });
+  else walkTo(f.x, f.z, f.yaw);
+}
+let MARK = null;
+function walkMarker(x, z, fixed = false) {
+  if (!MARK) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.78, 1, 48), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.78, 48), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+    MARK = new THREE.Group(); MARK.add(ring, disc); MARK.rotation.x = -Math.PI / 2; MARK.renderOrder = 8; MARK.visible = false;
+    scene.add(MARK); NO_AO.push(MARK);
+  }
+  if (x == null) { if (!MARK.userData.fixed || fixed) { MARK.visible = false; MARK.userData.fixed = false; } return; }
+  if (MARK.userData.fixed && !fixed) return;
+  MARK.position.set(x, groundAt(x, z) + 0.05, z);
+  const d = Math.hypot(x - WALK.x, z - WALK.z), s = clamp(d * 0.035, 0.28, 2.4);
+  MARK.scale.setScalar(s); MARK.visible = true; MARK.userData.fixed = fixed; MARK.userData.t = 0;
+}
+function updateWalk(dt) {
+  const k = WALK.keys, run = k.has('ShiftLeft') || k.has('ShiftRight');
+  let f = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - WALK.pad.y;
+  let s = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0) + WALK.pad.x;
+  const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? 1 : 0) - (k.has('ArrowRight') || k.has('KeyE') ? 1 : 0);
+  if (turn) { WALK.yaw += turn * dt * 1.8; WALK.faceYaw = null; }
+  const mag = Math.min(1, Math.hypot(f, s)); if (mag > 0) { const l = Math.hypot(f, s); f /= l; s /= l; }
+  const padMag = Math.hypot(WALK.pad.x, WALK.pad.y);
+  const [fx, fz] = walkForward(), rx = -fz, rz = fx;
+  let tvx = 0, tvz = 0, accel = 10;
+  if (mag > 0.05) {
+    if (WALK.target) { WALK.target = null; walkMarker(null, null, true); }
+    const speed = padMag > 0 ? (padMag > 0.92 ? RUN_SPEED : WALK_SPEED * Math.min(1, padMag / 0.9)) : (run ? RUN_SPEED : WALK_SPEED);
+    tvx = (fx * f + rx * s) * speed; tvz = (fz * f + rz * s) * speed;
+  } else if (WALK.target) {
+    const dx = WALK.target.x - WALK.x, dz = WALK.target.z - WALK.z, d = Math.hypot(dx, dz);
+    if (d < 0.35) { WALK.target = null; walkMarker(null, null, true); }
+    else {
+      const speed = clamp(d * 1.6, 1.2, d > 60 ? 16 : 9.5);
+      tvx = dx / d * speed; tvz = dz / d * speed; accel = 5;
+      if (d > 2.5) { const want = Math.atan2(-dx, -dz); WALK.yaw += angDiff(want, WALK.yaw) * Math.min(1, dt * 2.4); }
+    }
+  }
+  WALK.vx += (tvx - WALK.vx) * Math.min(1, dt * accel); WALK.vz += (tvz - WALK.vz) * Math.min(1, dt * accel);
+  const want = Math.hypot(WALK.vx, WALK.vz) * dt, moved = want > 1e-4 ? walkMove(WALK.vx * dt, WALK.vz * dt) : 0;
+  if (WALK.target && want > 0.01) {
+    WALK.stuck = moved < want * 0.25 ? WALK.stuck + dt : 0;
+    if (WALK.stuck > 0.5) { WALK.target = null; WALK.vx = WALK.vz = 0; walkMarker(null, null, true); toast('前面过不去了，换个方向试试', 1800); }
+  }
+  if (!WALK.target && WALK.faceYaw != null) {
+    const d = angDiff(WALK.faceYaw, WALK.yaw);
+    WALK.yaw += d * Math.min(1, dt * 3.5); if (Math.abs(d) < 0.01) WALK.faceYaw = null;
+  }
+  const gy = groundAt(WALK.x, WALK.z);
+  WALK.y += (gy - WALK.y) * Math.min(1, dt * 9);
+  const sp = Math.hypot(WALK.vx, WALK.vz);
+  WALK.bob += dt * sp * 1.9;
+  const bob = REDUCED_MOTION.matches ? 0 : Math.sin(WALK.bob * 2) * 0.03 * Math.min(1, sp / 3);
+  const eye = new THREE.Vector3(WALK.x, WALK.y + EYE + bob, WALK.z), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(WALK.pitch, WALK.yaw, 0, 'YXZ'));
+  if (WALK.trans) {
+    const T = WALK.trans; T.t = Math.min(1, T.t + dt / T.dur); const e = ease(T.t);
+    camera.position.lerpVectors(T.p0, eye, e); camera.position.y += Math.sin(Math.PI * e) * T.lift;
+    camera.quaternion.slerpQuaternions(T.q0, q, e);
+    camera.fov = T.fov0 + (WALK.fov - T.fov0) * e; camera.updateProjectionMatrix();
+    if (T.t >= 1) WALK.trans = null;
+  } else {
+    camera.position.copy(eye); camera.quaternion.copy(q);
+    if (Math.abs(camera.fov - WALK.fov) > 0.01) { camera.fov += (WALK.fov - camera.fov) * Math.min(1, dt * 10); camera.updateProjectionMatrix(); }
+  }
+  controls.target.set(WALK.x + fx * 20, WALK.y + EYE, WALK.z + fz * 20);
+  if (MARK && MARK.visible) {
+    MARK.userData.t += dt;
+    const a = MARK.userData.fixed ? 0.65 + 0.3 * Math.sin(MARK.userData.t * 5) : 0.75;
+    MARK.children[0].material.opacity = a; MARK.children[1].material.opacity = a * 0.28;
+  }
+}
+const WALK_PTR = new Map();
+let walkPinch = null, walkHoverT = 0;
+function walkPick(e) {
+  screenRay(e);
+  const hit = ray.intersectObjects(PICKABLE, false)[0], own = hit ? hit.object.userData.owner?.[hit.faceIndex] : null;
+  if (own != null && own >= 0 && hit.distance < 900) return { own };
+  let p = hit ? hit.point.clone() : null;
+  if (!p || p.y > 3) { p = new THREE.Vector3(); if (!ray.ray.intersectPlane(GROUND_PLANE, p)) return null; }
+  if (Math.hypot(p.x - WALK.x, p.z - WALK.z) > 600) return null;
+  return { x: p.x, z: p.z };
+}
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (mode !== 'walk') return;
+  WALK_PTR.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), button: e.button });
+  try { renderer.domElement.setPointerCapture(e.pointerId); } catch (_) { }
+  if (WALK_PTR.size === 2) { const [a, b] = [...WALK_PTR.values()]; walkPinch = { d: Math.hypot(a.x - b.x, a.y - b.y), fov: WALK.fov }; }
+  stage.classList.add('grabbing');
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (mode !== 'walk') return;
+  const p = WALK_PTR.get(e.pointerId);
+  if (!p) {
+    if (TOUCH || e.buttons) return;
+    const now = performance.now(); if (now - walkHoverT < 50) return; walkHoverT = now;
+    const t = walkPick(e);
+    stage.classList.toggle('pointer', Boolean(t && t.own != null));
+    if (t && t.own == null) walkMarker(t.x, t.z); else walkMarker(null);
+    return;
+  }
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (WALK_PTR.size >= 2 && walkPinch) {
+    const [a, b] = [...WALK_PTR.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (d > 10) WALK.fov = clamp(walkPinch.fov * walkPinch.d / d, 34, 80);
+    return;
+  }
+  const k = 0.0042 * camera.fov / 62;
+  WALK.yaw += dx * k; WALK.pitch = clamp(WALK.pitch + dy * k, -1.25, 1.25); WALK.faceYaw = null;
+  if (WALK.trans) WALK.trans = null;
+});
+function walkPointerEnd(e) {
+  const p = WALK_PTR.get(e.pointerId); if (!p) return;
+  WALK_PTR.delete(e.pointerId);
+  if (WALK_PTR.size < 2) walkPinch = null;
+  if (!WALK_PTR.size) stage.classList.remove('grabbing');
+  if (mode !== 'walk' || e.type !== 'pointerup' || p.button !== 0 || WALK_PTR.size) return;
+  if (Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > 6 || performance.now() - p.t0 > 400) return;
+  const t = walkPick(e); if (!t) return;
+  if (t.own != null) {
+    const pl = PLACES.find((q) => q.bld && q.bld.includes(t.own)), b = BLD[t.own];
+    select(pl || { name: b.name || '未命名建筑', cat: b.cls.cat || 'teach', bld: [t.own], x: b.c[0], z: b.c[1], h: b.h });
+  } else walkTo(t.x, t.z);
+}
+renderer.domElement.addEventListener('pointerup', walkPointerEnd);
+renderer.domElement.addEventListener('pointercancel', walkPointerEnd);
+renderer.domElement.addEventListener('pointerleave', () => { if (mode === 'walk' && !WALK_PTR.size) walkMarker(null); });
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (mode !== 'walk') return;
+  e.preventDefault();
+  WALK.fov = clamp(WALK.fov * (1 + clamp(e.deltaY, -200, 200) * 0.0011), 34, 80);
+}, { passive: false });
+const keyTarget = (e) => (e.composedPath ? e.composedPath()[0] : e.target);
+on(window, 'keydown', (e) => {
+  if (mode !== 'walk') return;
+  const t = keyTarget(e); if (t && /^(INPUT|TEXTAREA)$/.test(t.tagName)) return;
+  if (e.code === 'Escape') { setMode('orbit'); return; }
+  WALK.keys.add(e.code);
+  if (/^(Arrow|Space)/.test(e.code)) e.preventDefault();
+});
+on(window, 'keyup', (e) => WALK.keys.delete(e.code));
+on(window, 'blur', () => WALK.keys.clear());
+{
+  const pad = $('#walkpad'), nub = $('#walknub'); let pid = null;
+  const mv = (e) => {
+    const r = pad.getBoundingClientRect(); let x = (e.clientX - r.left - r.width / 2) / (r.width / 2), y = (e.clientY - r.top - r.height / 2) / (r.height / 2);
+    const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+    WALK.pad.x = x; WALK.pad.y = y; nub.style.transform = `translate(${x * 36}px, ${y * 36}px)`;
+    pad.classList.toggle('run', Math.hypot(x, y) > 0.92);
+  };
+  pad.addEventListener('pointerdown', (e) => { pid = e.pointerId; try { pad.setPointerCapture(pid); } catch (_) { } mv(e); e.stopPropagation(); });
+  pad.addEventListener('pointermove', (e) => { if (e.pointerId === pid) mv(e); });
+  const end = (e) => { if (e.pointerId !== pid) return; pid = null; WALK.pad.x = WALK.pad.y = 0; nub.style.transform = ''; pad.classList.remove('run'); };
+  pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end);
 }
 let TOUR = null;
 function tourStops() {
@@ -4014,12 +4299,31 @@ function nextStop() {
 }
 function stopTour() { TOUR = null; tween = null; $('#tourcap').hidden = true; }
 
-function setMode(m) {
+function setMode(m, at) {
   if (m === mode && m !== 'tour') return;
   const prev = mode; mode = m; spin = null;
-  ['orbit', 'tour'].forEach((k) => $('#m-' + k).setAttribute('aria-pressed', String(k === m)));
+  ['orbit', 'walk', 'tour'].forEach((k) => $('#m-' + k).setAttribute('aria-pressed', String(k === m)));
+  $('#walkBtn').setAttribute('aria-pressed', String(m === 'walk'));
   if (prev === 'tour' && m !== 'tour') stopTour();
+  if (m === 'walk') {
+    tween = null; controls.enabled = false;
+    if (MEAS.on) measureSet(false);
+    const e = at || walkEntry();
+    enterWalk(e.x, e.z, e.yaw);
+    WALK.fov = 62;
+    $('#app').classList.add('walking'); $('#walkpad').hidden = !TOUCH;
+    if (innerWidth <= 760 || innerHeight <= 500) setSidebar(false);
+    toast(TOUCH ? '拖动环顾 · 点地面走过去 · 左下摇杆移动，推到底加速' : '拖动环顾 · 点地面走过去 · WASD 移动 · Shift 加速 · Esc 退出', 5200);
+    return;
+  }
   controls.enabled = true;
+  if (prev === 'walk') {
+    $('#app').classList.remove('walking'); $('#walkpad').hidden = true;
+    WALK.keys.clear(); WALK.target = null; walkMarker(null, null, true);
+    const [fx, fz] = walkForward(), tgt = new THREE.Vector3(WALK.x + fx * 14, 0, WALK.z + fz * 14);
+    camera.fov = 50; camera.updateProjectionMatrix();
+    flyTo(new THREE.Vector3(tgt.x - fx * 120, 90, tgt.z - fz * 120), tgt, 1.4);
+  }
   if (m === 'tour') startTour();
 }
 
@@ -4053,6 +4357,7 @@ function drawMinimap() {
 }
 mini.addEventListener('click', (e) => {
   const r = mini.getBoundingClientRect(), x = clamp(REG.x0 + (e.clientX - r.left) / r.width * REGW, -700, 870), z = clamp(REG.z0 + (e.clientY - r.top) / r.height * REGH, -1060, 845);
+  if (mode === 'walk') { enterWalk(x, z, WALK.yaw, { dur: 1.6 }); return; }
   if (mode === 'tour') setMode('orbit');
   const off = camera.position.clone().sub(controls.target);
   flyTo(new THREE.Vector3(x, 0, z).add(off), new THREE.Vector3(x, 0, z), 1.2);
@@ -4073,6 +4378,7 @@ function toast(msg, ms = 3800) {
   clearTimeout(toastT); toastT = setTimeout(() => { t.classList.add('out'); setTimeout(() => { t.hidden = true; }, 400); }, ms);
 }
 $('#compass').addEventListener('click', () => {
+  if (mode === 'walk') { WALK.faceYaw = 0; WALK.target = null; return; }
   if (mode === 'tour') setMode('orbit');
   const t = controls.target.clone(), off = camera.position.clone().sub(t), hd = Math.hypot(off.x, off.z);
   flyTo(new THREE.Vector3(t.x, camera.position.y, t.z + hd), t, 1.0);
@@ -4110,6 +4416,7 @@ function measureAdd(p) {
 $('#measure').addEventListener('click', () => measureSet(!MEAS.on));
 on(window, 'keydown', (e) => { if (e.code === 'Escape' && MEAS.on) measureSet(false); });
 function zoomBy(k) {
+  if (mode === 'walk') { WALK.fov = clamp(WALK.fov * (k < 1 ? 0.82 : 1.2), 34, 80); return; }
   if (mode === 'tour') setMode('orbit');
   const off = camera.position.clone().sub(controls.target), d = clamp(off.length() * k, controls.minDistance, controls.maxDistance);
   flyTo(controls.target.clone().add(off.setLength(d)), controls.target.clone(), 0.5);
@@ -4165,6 +4472,9 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   else select({ name: b.name || '未命名建筑', cat: b.cls.cat || 'teach', bld: [own], x: b.c[0], z: b.c[1], h: b.h });
 });
 $('#m-orbit').addEventListener('click', () => setMode('orbit'));
+$('#m-walk').addEventListener('click', () => setMode('walk'));
+$('#walkBtn').addEventListener('click', () => setMode(mode === 'walk' ? 'orbit' : 'walk'));
+$('#infoWalk').addEventListener('click', () => { if (!selected) return; if (mode === 'walk') walkToPlace(selected); else { const f = placeFront(selected); setMode('walk', f); } });
 $('#m-tour').addEventListener('click', () => { if (mode === 'tour') { setMode('orbit'); return; } setMode('orbit'); setMode('tour'); });
 function rotateTip() {
   const tip = $('#rotateTip'), portrait = matchMedia('(orientation: portrait)');
@@ -4243,7 +4553,7 @@ function updateLabels() {
   const scale = W < 760 ? 0.6 : 1;
   for (const L of LABELS) {
     const sel = L.el.classList.contains('sel'), d = cp.distanceTo(L.obj.position);
-    L.vis = sel || d <= L.max * scale;
+    L.vis = sel || d <= (mode === 'walk' ? Math.min(L.max, 420) : L.max) * scale;
     if (!L.vis) continue;
     _lp.copy(L.obj.position).project(camera);
     if (_lp.z > 1 || Math.abs(_lp.x) > 1.1 || Math.abs(_lp.y) > 1.1) { L.vis = false; continue; }
@@ -4263,8 +4573,8 @@ function updateLabels() {
 const _sm = new THREE.Matrix4();
 function updateShadowCam() {
   if (!sunLight.castShadow) return;
-  const c = controls.target;
-  const r = Math.min(700, 90 * Math.pow(1.2, Math.round(Math.log(clamp(camera.position.distanceTo(controls.target) * 0.8, 90, 700) / 90) / Math.log(1.2))));
+  const c = mode === 'walk' ? camera.position : controls.target;
+  const r = mode === 'walk' ? 120 : Math.min(700, 90 * Math.pow(1.2, Math.round(Math.log(clamp(camera.position.distanceTo(controls.target) * 0.8, 90, 700) / 90) / Math.log(1.2))));
   const cam = sunLight.shadow.camera;
   const desired=FILMING?QP.shadow:QUALITY==='high'?(PERF.lvl>=2?2048:4096):QP.shadow;
   if(desired!==sunLight.shadow.mapSize.x){sunLight.shadow.map?.dispose();sunLight.shadow.map=null;sunLight.shadow.mapSize.set(desired,desired);shadowDirty=true;}
@@ -4312,6 +4622,7 @@ function loop(now) {
     camera.lookAt(controls.target);
     if (tween.t >= 1) { const d = tween.done; tween = null; d && d(); }
   } else if (mode === 'orbit' && !camera.userData.reviewLock) controls.update(dt);
+  else if (mode === 'walk') updateWalk(dt);
   if (mode === 'tour' && TOUR && TOUR.phase === 'dwell') {
     TOUR.t += dt;
     const s = TOUR.stops[TOUR.i], ang = dt * 0.05, off = camera.position.clone().sub(s.tgt); off.applyAxisAngle(new THREE.Vector3(0, 1, 0), ang); camera.position.copy(s.tgt).add(off); camera.lookAt(s.tgt);
