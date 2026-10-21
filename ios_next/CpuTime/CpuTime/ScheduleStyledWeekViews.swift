@@ -614,9 +614,12 @@ struct NativeScheduleStyledDayColumn: View {
     /// The partner's courses that meet one of the user's: named in a line
     /// at the foot of that course instead of getting a tile.
     var coupleClashes: [NativeScheduleCourseBlock] = []
+    /// "yyyy-MM-dd" when the column draws the user's 日程; nil for none.
+    var agendaDate: String? = nil
 
     private var marksToday: Bool { isToday && !staticRendering }
     @Environment(\.scheduleCouple) private var couple
+    @Environment(\.scheduleAgenda) private var agenda
 
     /// Lane count of each card's overlap cluster. Courses that overlap, directly
     /// or through a chain, share the width; everything else stays full width.
@@ -652,6 +655,7 @@ struct NativeScheduleStyledDayColumn: View {
 
     var body: some View {
         let laneCounts = clusterLaneCounts
+        let chips = agenda?.chips(date: agendaDate, rowHeight: rowHeight, gap: Self.slotGap, blocks: blocks) ?? []
         VStack(spacing: 0) {
             if showsDateHeader {
                 Group {
@@ -661,6 +665,9 @@ struct NativeScheduleStyledDayColumn: View {
                     }
                 }
                 .frame(width: columnWidth, height: Self.dateHeaderHeight)
+                .overlay(alignment: .bottom) {
+                    if agenda?.headerDot(date: agendaDate) == true { ScheduleAgendaHeaderDot().padding(.bottom, 2) }
+                }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(headerAccessibilityLabel)
             }
@@ -676,14 +683,19 @@ struct NativeScheduleStyledDayColumn: View {
                 }
                 ForEach(offWeekBlocks) { block in offWeekCourse(block) }
                 ForEach(blocks) { block in course(block, lanes: laneCounts[block.id] ?? 1) }
+                ScheduleAgendaChipLayer(chips: chips, columnWidth: columnWidth)
+                    .zIndex(20)
             }
             .frame(width: columnWidth, height: columnHeight)
             .contentShape(Rectangle())
             // Resolve the tapped point against the drawn frames so a course
-            // always wins over the empty period beneath it.
+            // always wins over the empty period beneath it, and a 日程 drawn
+            // on top wins over both.
             .highPriorityGesture(
                 SpatialTapGesture().onEnded { value in
-                    if let block = block(at: value.location, laneCounts) {
+                    if let chip = chips.last(where: { $0.frame(columnWidth: columnWidth).contains(value.location) }) {
+                        agenda?.open(chip.entry)
+                    } else if let block = block(at: value.location, laneCounts) {
                         onCourseSelected(block)
                     } else if let slot = slot(at: value.location) {
                         onEmptySlot(slot)
@@ -1019,7 +1031,8 @@ struct ScheduleStyledWeekRows: View {
                     onEmptySlot: { onEmptySlot(day, $0) },
                     nowMinutes: day.isToday ? now : nil,
                     offWeekBlocks: day.offWeekBlocks,
-                    coupleClashes: day.coupleClashes
+                    coupleClashes: day.coupleClashes,
+                    agendaDate: staticRendering ? nil : day.rawDate
                 )
             }
         }

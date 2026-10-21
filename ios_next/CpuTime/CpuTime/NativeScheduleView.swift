@@ -11,6 +11,7 @@ struct NativeScheduleView: View {
     @ObservedObject private var store: NativeScheduleStore
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
     @ObservedObject private var couple = NativeCoupleService.shared
+    @ObservedObject private var agendaService = NativeAgendaService.shared
     @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
@@ -115,6 +116,18 @@ struct NativeScheduleView: View {
                             weekGrid(result)
                                 .padding(.horizontal, -Self.contentInset)
                         } else if viewMode == .day {
+                            if !isReadOnly {
+                                let date = rawDayDate(selectedDay, week: weekNumber(store.selectedWeek), result: result)
+                                let entries = agendaService.on(date)
+                                if !entries.isEmpty {
+                                    ScheduleAgendaDayList(
+                                        entries: entries,
+                                        onToggle: { agendaService.toggle($0) },
+                                        onOpen: { agendaService.open($0) },
+                                        onAdd: { agendaService.openNew(date: date) }
+                                    )
+                                }
+                            }
                             dayGrid(result)
                         } else {
                             monthCalendar(result)
@@ -153,6 +166,7 @@ struct NativeScheduleView: View {
         .environment(\.scheduleBackgroundVisibility, preferences.backgroundVisibility)
         .environment(\.scheduleStyle, style)
         .environment(\.scheduleCouple, coupleLayer)
+        .environment(\.scheduleAgenda, agendaContext)
         .environment(\.schedulePalette, preferences.palette)
         .environment(\.scheduleThemeBrand, ScheduleStyle.themeBrand(palette: preferences.palette))
         .task {
@@ -188,6 +202,10 @@ struct NativeScheduleView: View {
                         partner: debugPartnerSchedule(result)
                     )
                 }
+            }
+            // `CPU_DEBUG_AGENDA=1` draws a week of sample 日程 without a site session.
+            if !isBackgroundPreview, !isReadOnly, ProcessInfo.processInfo.environment["CPU_DEBUG_AGENDA"] == "1" {
+                NativeAgendaService.shared.installDebugSample()
             }
             if !isBackgroundPreview, !isReadOnly,
                let action = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_ACTION"] {
@@ -391,6 +409,13 @@ struct NativeScheduleView: View {
 
     /// Somebody else's shared timetable: everything that would change it is off.
     private var isReadOnly: Bool { store.isReadOnly }
+
+    /// The user's 日程 on their own timetable; somebody else's shared timetable draws none.
+    private var agendaContext: ScheduleAgendaContext? {
+        guard !isReadOnly, !agendaService.items.isEmpty else { return nil }
+        let service = agendaService
+        return ScheduleAgendaContext(items: service.items, open: { service.open($0) }, toggle: { service.toggle($0) })
+    }
 
 #if DEBUG
     /// The timetable on screen dressed up as one a roommate shared.
@@ -802,6 +827,14 @@ struct NativeScheduleView: View {
                                 week: Int(store.selectedWeek),
                                 startSlot: 1
                             )
+                        }
+                    }
+                    if !isReadOnly {
+                        scheduleToolRow("添加日程", systemImage: "calendar.badge.plus") {
+                            scheduleToolsPresented = false
+                            let date = viewMode == .day
+                                ? rawDayDate(selectedDay, week: weekNumber(store.selectedWeek), result: result) : nil
+                            agendaService.openNew(date: date ?? NativeAgendaRules.today())
                         }
                     }
                 }
@@ -1828,7 +1861,9 @@ struct NativeScheduleView: View {
                     },
                     offWeekBlocks: days.count > 1 && showsNow
                         ? offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown + clashes) : [],
-                    coupleClashes: clashes
+                    coupleClashes: clashes,
+                    // The day view lists its 日程 above the grid instead.
+                    agendaDate: days.count > 1 && showsNow ? rawDayDate(day, week: dayWeek, result: result) : nil
                 )
             }
         }
@@ -2864,6 +2899,7 @@ private struct NativeAdjustmentBadge: View {
 @available(iOS 17.0, *)
 private struct NativeScheduleDayColumn: View {
     @Environment(\.scheduleCouple) private var couple
+    @Environment(\.scheduleAgenda) private var agenda
     @Environment(\.colorScheme) private var colorScheme
     // Web's compact mobile grid uses 44px rows. Keeping that rhythm here
     // gives the week view enough breathing room while all eleven rows still
@@ -2898,6 +2934,8 @@ private struct NativeScheduleDayColumn: View {
     let offWeekBlocks: [NativeScheduleCourseBlock]
     /// The partner's courses that meet one of the user's: named at the foot of that course.
     var coupleClashes: [NativeScheduleCourseBlock] = []
+    /// "yyyy-MM-dd" when the column draws the user's 日程; nil for none.
+    var agendaDate: String? = nil
 
     init(
         day: Int,
@@ -2917,10 +2955,12 @@ private struct NativeScheduleDayColumn: View {
         onCourseSelected: @escaping (NativeScheduleCourseBlock) -> Void,
         onEmptySlot: @escaping (Int) -> Void,
         offWeekBlocks: [NativeScheduleCourseBlock] = [],
-        coupleClashes: [NativeScheduleCourseBlock] = []
+        coupleClashes: [NativeScheduleCourseBlock] = [],
+        agendaDate: String? = nil
     ) {
         self.offWeekBlocks = offWeekBlocks
         self.coupleClashes = coupleClashes
+        self.agendaDate = agendaDate
         self.day = day
         self.dateText = dateText
         self.isToday = isToday
@@ -2956,7 +2996,12 @@ private struct NativeScheduleDayColumn: View {
         return max(1, active.map { laneCount(for: $0) }.max() ?? 1)
     }
 
+    private var agendaChips: [NativeAgendaChip] {
+        agenda?.chips(date: agendaDate, rowHeight: rowHeight, gap: Self.slotGap, blocks: blocks) ?? []
+    }
+
     var body: some View {
+        let chips = agendaChips
         VStack(spacing: 0) {
             if showsDateHeader {
                 VStack(spacing: 3) {
@@ -2973,6 +3018,9 @@ private struct NativeScheduleDayColumn: View {
                     ? (colorScheme == .dark ? NativeSchedulePalette.RGBA(0x9fd9cf).color : Color.cpuBrand)
                     : NativeScheduleThemeColor.secondary(colorScheme))
                 .frame(width: columnWidth, height: Self.dateHeaderHeight - 8)
+                .overlay(alignment: .bottom) {
+                    if agenda?.headerDot(date: agendaDate) == true { ScheduleAgendaHeaderDot().padding(.bottom, 3) }
+                }
                 .background {
                     let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
                     NativeScheduleBackgroundSurface()
@@ -3072,6 +3120,8 @@ private struct NativeScheduleDayColumn: View {
                         y: CGFloat(block.startSlot - 1) * (rowHeight + Self.slotGap) + 1
                     )
                 }
+                ScheduleAgendaChipLayer(chips: chips, columnWidth: columnWidth)
+                    .zIndex(20)
             }
             .frame(
                 width: columnWidth,
@@ -3081,10 +3131,12 @@ private struct NativeScheduleDayColumn: View {
             // SwiftUI can deliver a tap to the underlying grid when a card is
             // offset across several rows. Resolve the actual point here first
             // so a course always wins; only a point outside every card creates
-            // a new course.
+            // a new course. A 日程 drawn on top wins over both.
             .highPriorityGesture(
                 SpatialTapGesture().onEnded { value in
-                    if let block = block(at: value.location) {
+                    if let chip = chips.last(where: { $0.frame(columnWidth: columnWidth).contains(value.location) }) {
+                        agenda?.open(chip.entry)
+                    } else if let block = block(at: value.location) {
                         onCourseSelected(block)
                     } else if let slot = slot(at: value.location) {
                         onEmptySlot(slot)

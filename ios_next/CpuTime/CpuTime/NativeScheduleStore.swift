@@ -1522,6 +1522,11 @@ public final class NativeScheduleStore: ObservableObject {
         await webViewLoader?.sessionNickname()
     }
 
+    /// One request to the page's 日程 bridge. See `NativeScheduleWebViewLoader.agenda`.
+    public func agenda(_ requestJSON: String) async -> String? {
+        await webViewLoader?.agenda(requestJSON)
+    }
+
     /// The account fingerprint of the timetable on screen, empty when unknown.
     public var accountFingerprint: String { accountKey }
 
@@ -2593,6 +2598,18 @@ public final class NativeScheduleWebViewLoader {
         return String(stores?.get('auth')?.user?.nickname || '');
         """, arguments: [:], in: nil, contentWorld: .page)
         return (raw as? String)?.trimmedNonEmpty
+    }
+
+    /// One request to the page's 日程 bridge `CPUTimeNativeAgenda`
+    /// (web/src/utils/nativeAgendaBridge.ts), answered as its JSON. A site
+    /// without the bridge answers `{"missing":true}`; nil when the page did not answer.
+    public func agenda(_ requestJSON: String) async -> String? {
+        guard let webView else { return nil }
+        let raw = try? await webView.callAsyncJavaScript("""
+        if (typeof window.CPUTimeNativeAgenda !== 'function') return JSON.stringify({missing: true});
+        return JSON.stringify(await window.CPUTimeNativeAgenda(JSON.parse(requestJSON)));
+        """, arguments: ["requestJSON": requestJSON], in: nil, contentWorld: .page)
+        return raw as? String
     }
 
     private func bridgeData(from rawValue: Any?) throws -> Data {

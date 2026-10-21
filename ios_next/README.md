@@ -73,6 +73,10 @@ Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=p
 
 Debug 构建的 `CPU_DEBUG_SCHEDULE_ACTION` 还支持 `sharing`、`shared-view`（用示例数据打开共享课表页或只读课表页）；配合 `CPU_DEBUG_MOCK_SCHEDULE=1`、`CPU_DEBUG_API_ORIGIN`、`CPU_DEBUG_API_TOKEN` 可以让示例课表直连一台本机服务端，用 `share-open`、`share-publish`、`share-import`、`share-import-view`（配 `CPU_DEBUG_SHARE_CODE`、`CPU_DEBUG_SHARE_REMARK`）把发布、导入、刷新和撤销实际走一遍。`style-picker` 打开课表风格页，`live-activity` 启动设备设置里那节演示课的实时活动；`CPU_DEBUG_MOCK_TABS=1` 给示例课表套上和登录后一样的底部标签栏（其余标签页是空的），用来截商店图。连本机服务端（`CPU_APP_URL`）拍课表以外的页面时，`CPU_DEBUG_LOGIN_USER`、`CPU_DEBUG_LOGIN_PASSWORD` 用种子数据里的示例账号自动登录，`CPU_DEBUG_TAB` 选标签页，`CPU_DEBUG_OPEN_PATH=/lost-found` 在首页标签里打开指定页面。`CPU_DEBUG_SCHEDULE_NOTE=带实验报告` 给示例课表（`CPU_DEBUG_VISUAL_SCHEDULE=1`）的第一门课加一条手写备注，`CPU_DEBUG_SCHEDULE_OVERLAP=1` 给示例课表加一门重叠的课，`CPU_DEBUG_SCHEDULE_PRIORITY=课名,课名` 按顺序指定优先显示的课。
 
+### 日程
+
+日程和网页 `/agenda`、安卓、鸿蒙、药大拾间 NEXT 是同一份，存在站点 `/api/next-sync` 的 `agenda` 集合里。App 经网页桥 `CPUTimeNativeAgenda`（`web/src/utils/nativeAgendaBridge.ts`）用 WKWebView 的登录会话读取和勾选，不另做登录；网页里的日程变了会调用 `CPUTimeNative.agendaChanged()`，App 重新读取，回到前台时也会读（20 秒内不重复）。周视图按钟点把日程画在当天那一列，和课程画在同一处时贴在列的右侧；日期表头上的圆点表示当天有没做完的全天日程或待办；日视图上方列出当天的日程，可以直接勾选。新建（「更多 → 添加日程」、日视图里的「添加」）和修改（点日程）在服务标签里打开网页的日程页。读到的列表存在 Application Support 的 `agenda-cache.json`（不进备份），冷启动先画它，退出登录时清空。提醒是本地通知：系统每个 App 最多挂 64 条，列表每次变化都重新排接下来 30 天里最早的 48 条；第一次有日程要提醒时才请求通知权限，点通知打开那条日程。规则在 `NativeAgendaRules.swift`，检查脚本是 `bash ios_next/scripts/check-agenda.sh`；Debug 构建用 `CPU_DEBUG_AGENDA=1` 在本周画一组示例日程（不连站点）。
+
 课表主体沿用 Web／安卓的主题色与课程色规则：课名按规范化空白、UTF-16 和 32 位溢出计算颜色，日／周／月视图共用配色。单色主题使用固定底色、边框及文字色；深色彩色课程使用浅色文字。`check-schedule-palette.sh` 直接读取 Web 配色函数，与 Swift 结果做跨端对照。
 
 ## Web 配套改动
@@ -113,6 +117,7 @@ bash ios_next/scripts/check-chinese-calendar.sh
 bash ios_next/scripts/check-course-arrangement.sh
 bash ios_next/scripts/check-schedule-priority.sh
 bash ios_next/scripts/check-shared-schedule.sh
+bash ios_next/scripts/check-agenda.sh
 swiftc ios_next/CpuTime/CpuTime/NativeScheduleStore.swift ios_next/tests/NativeSchedulePeriodChecks.swift -o /tmp/cpu-next-period-checks
 /tmp/cpu-next-period-checks
 swift test --package-path ios_next
