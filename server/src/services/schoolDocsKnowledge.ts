@@ -174,12 +174,29 @@ export function searchSchoolDocs(query: string, options: {
   for (const { entry, coverage } of ranked) {
     const used = perDoc.get(entry.doc.id) || 0;
     if (used >= perDocument) continue;
-    // 学生手册转录的规定、新旧两版里没改的条款，与已选中的段落几乎相同时不重复占名额。
+    // 学生手册转录的规定、新旧两版里没改的条款，与已选中的段落几乎相同时不重复占名额；
+    // 转录稿先被选中时换成带文号的制度原文，两份都是制度时换成较新的一份。
     const current = shingles(entry.text);
-    if (keptShingles.some((kept) => overlapRatio(current, kept) >= NEAR_DUPLICATE_OVERLAP)) continue;
+    const duplicate = keptShingles.findIndex((kept) => overlapRatio(current, kept) >= NEAR_DUPLICATE_OVERLAP);
+    if (duplicate >= 0) {
+      const kept = hits[duplicate];
+      const better = entry.doc.docNo && (!kept.docNo || (entry.doc.date || "") > (kept.date || ""));
+      if (!better || (perDoc.get(entry.doc.id) || 0) >= perDocument) continue;
+      perDoc.set(kept.documentId, (perDoc.get(kept.documentId) || 1) - 1);
+      perDoc.set(entry.doc.id, used + 1);
+      keptShingles[duplicate] = current;
+      hits[duplicate] = toHit(entry, coverage);
+      continue;
+    }
     keptShingles.push(current);
     perDoc.set(entry.doc.id, used + 1);
-    hits.push({
+    hits.push(toHit(entry, coverage));
+    if (hits.length >= limit) break;
+  }
+  return hits;
+
+  function toHit(entry: IndexedChunk, coverage: number): SchoolDocHit {
+    return {
       documentId: entry.doc.id,
       title: entry.doc.title,
       category: entry.doc.category,
@@ -191,8 +208,6 @@ export function searchSchoolDocs(query: string, options: {
       coverage,
       ...(entry.doc.docNo ? { docNo: entry.doc.docNo } : {}),
       ...(entry.doc.note ? { note: entry.doc.note } : {}),
-    });
-    if (hits.length >= limit) break;
+    };
   }
-  return hits;
 }

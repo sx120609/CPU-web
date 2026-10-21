@@ -154,6 +154,13 @@ test("regulations answer with the current version, its document number and appli
   assert.ok(legacy, JSON.stringify(old.map((hit) => hit.docNo)));
   assert.match(legacy.note || "", /部分适用.*药大学〔2024〕109号.*2020级至2022级/u);
 
+  const grade = searchSchoolDocs("我是2022级本科生，评优秀学生奖学金按哪个文件执行？");
+  assert.ok(grade.some((hit) => /381/u.test(`${hit.excerpt}${hit.note || ""}`)), JSON.stringify(grade.map((hit) => hit.heading)));
+
+  // The handbook copy and the 2020 留学生 rules repeat this article; the newest original wins.
+  const cheating = searchSchoolDocs("考试作弊会受到什么处分");
+  assert.ok(cheating.some((hit) => hit.docNo === "药大学〔2023〕159号" && /留校察看/u.test(hit.excerpt)));
+
   const repealed = searchSchoolDocs("异地研究院知识产权转化收益分配指导原则");
   const hit = repealed.find((item) => item.docNo === "药大科〔2022〕124号");
   assert.ok(hit && hit.status === "historical" && /已废止/u.test(hit.note || ""));

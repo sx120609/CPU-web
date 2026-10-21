@@ -288,6 +288,13 @@ def main(snapshot: pathlib.Path, out: pathlib.Path, school_docs_path: pathlib.Pa
     index_of = {d["id"]: i for i, d in enumerate(kept)}
     personal = re.compile(r"(?<!\d)20[0-3]\d{7,8}(?!\d)|(?<!\d)\d{15}(?!\d)|(?<!\d)\d{17}[\dXx](?![\dXx])")
     out_chunks = []
+    # One searchable status passage per document, so “还有效吗”“我这届按哪版” finds the
+    # applicability note instead of only the articles.
+    for d in kept:
+        note = note_for(d)
+        if note and (d["status"] != "现行" or d.get("supersedes")):
+            out_chunks.append({"d": index_of[d["id"]], "h": "文件状态与适用范围",
+                               "t": f"《{d['title']}》（{d['docNo']}，{d['signedDate'] or '日期不详'}）：{note}"})
     for c in chunks:
         if "dupOf" in c or c["doc"] not in index_of:
             continue
