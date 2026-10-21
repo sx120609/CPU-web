@@ -16,7 +16,10 @@ const knowledgeSourceDirectory = path.join(serverRoot, "assets", "knowledge");
 const knowledgeTargetDirectory = path.join(serverRoot, "dist", "assets", "knowledge");
 const knowledgeAssets = ["school-docs.json", "school-regulations.json", "school-vectors.bin", "school-vectors.json"];
 // 语义检索的向量模型，由 scripts/fetch-knowledge-model.mjs 在构建时下载。
-const { KNOWLEDGE_MODEL, knowledgeModelDirectory } = await import("./fetch-knowledge-model.mjs");
+// 所有构建路径（build、build:compile、CI）都经过这里；已下载并校验通过就跳过，下载失败
+// 让构建失败，不发布缺模型的制品。
+const { KNOWLEDGE_MODEL, ensureKnowledgeModel, knowledgeModelDirectory } = await import("./fetch-knowledge-model.mjs");
+await ensureKnowledgeModel();
 const modelTargetDirectory = path.join(serverRoot, "dist", "assets", "models", KNOWLEDGE_MODEL.directory);
 
 await mkdir(targetDirectory, { recursive: true });
