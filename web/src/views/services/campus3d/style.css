@@ -325,8 +325,9 @@ button:active { filter: brightness(.94); }
   .sidebar { top: max(8px, env(safe-area-inset-top, 0px)); left: max(10px, env(safe-area-inset-left, 0px)); right: auto; width: auto; max-width: 280px; max-height: calc(100% - 16px); border-radius: 18px; }
   .sidebar[data-open="true"] { width: 268px; }
   .mapctl { top: max(8px, env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: auto; }
-  .card { top: max(8px, env(safe-area-inset-top, 0px)); bottom: calc(60px + var(--safe-b, env(safe-area-inset-bottom, 0px))); left: auto; right: max(60px, calc(env(safe-area-inset-right, 0px) + 52px)); width: min(330px, 44vw); max-height: none; }
+  .card { top: max(8px, env(safe-area-inset-top, 0px)); bottom: calc(60px + var(--safe-b, env(safe-area-inset-bottom, 0px))); left: auto; right: max(10px, env(safe-area-inset-right, 0px)); width: min(320px, 42vw); max-height: none; }
   .dock { left: auto; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(8px + var(--safe-b, env(safe-area-inset-bottom, 0px))); transform: none; width: min(400px, calc(100% - 320px)); }
+  .card:not([hidden]) ~ .mapctl { display: none; }
   .tour { top: max(8px, env(safe-area-inset-top, 0px)); }
   .toast { top: max(10px, env(safe-area-inset-top, 0px)); bottom: auto; max-width: calc(100% - 640px); }
   .legal { left: max(12px, env(safe-area-inset-left, 0px)); right: auto; bottom: calc(8px + var(--safe-b, env(safe-area-inset-bottom, 0px))); color: rgba(255,255,255,.9); }

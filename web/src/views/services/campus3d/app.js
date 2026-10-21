@@ -4117,6 +4117,21 @@ function updateShadowCam() {
   sunLight.target.position.set(sx, 0, sz); sunLight.position.set(sx + dir.x * 1500, dir.y * 1500, sz + dir.z * 1500);
 }
 let FILMING = false, REVIEW_PAUSED = false, FRAME_SAMPLE = null;
+const VIEW_OFF = { x: 0, y: 0 };
+// Keep the picked place in the part of the map the info card leaves free.
+function updateViewOffset(dt) {
+  const card = $('#info'), W = stage.clientWidth, H = stage.clientHeight;
+  let tx = 0, ty = 0;
+  if (!FILMING && card && !card.hidden && W && H) {
+    const sr = stage.getBoundingClientRect(), r = card.getBoundingClientRect(), left = r.left - sr.left, top = r.top - sr.top;
+    if (left > W * 0.4) tx = (W - left + 12) / 2;
+    else if (top > H * 0.3) ty = (H - top + 12) / 2;
+  }
+  const k = Math.min(1, dt * 6);
+  VIEW_OFF.x += (tx - VIEW_OFF.x) * k; VIEW_OFF.y += (ty - VIEW_OFF.y) * k;
+  if (Math.abs(VIEW_OFF.x) < 0.5 && Math.abs(VIEW_OFF.y) < 0.5 && !tx && !ty) { if (camera.view && camera.view.enabled) camera.clearViewOffset(); return; }
+  camera.setViewOffset(W, H, VIEW_OFF.x, VIEW_OFF.y, W, H);
+}
 function loop(now) {
   if (DISPOSED) return;
   if (FILMING || REVIEW_PAUSED) { last = now; RAF = requestAnimationFrame(loop); return; }
@@ -4150,6 +4165,7 @@ function loop(now) {
   updateParticles(dt); updateTreeLOD(); updateTreeFade(dt);
   if (HL) HL.material.opacity = 0.16 + 0.08 * Math.sin((now - HL.userData.t0) * 0.004);
   updateShadowCam();
+  updateViewOffset(dt);
   const submitStart = performance.now();
   renderFrame();
   if (FRAME_SAMPLE && now > FRAME_SAMPLE.start) {
