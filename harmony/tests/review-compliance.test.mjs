@@ -86,6 +86,7 @@ function loadMainRouteGuard({ user = null, hideGame = false, hideAssistant = fal
   const context = vm.createContext({ module: { exports: {} },
     router: { beforeEach: (callback) => { guard = callback; } },
     window: { location: { replace() {} } }, document: {},
+    applyRouteTitle: () => {},
     hidesNativeCommerce: () => false, isNativeScheduleShell: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, user, token: user ? 'session' : '', canAccessForum: true }),
