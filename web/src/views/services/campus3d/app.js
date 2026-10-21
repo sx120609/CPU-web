@@ -90,7 +90,18 @@ function obb(p) {
   best.ux = Math.cos(best.ang); best.uz = Math.sin(best.ang);
   return best;
 }
-const scalePoly = (p, c, k) => p.map((q) => [c[0] + (q[0] - c[0]) * k, c[1] + (q[1] - c[1]) * k]);
+// Distance along (dx, dz) from (ox, oz) to the nearest edge of p, or Infinity.
+function rayPoly(p, ox, oz, dx, dz) {
+  let t = Infinity;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length], ex = b[0] - a[0], ez = b[1] - a[1], den = dx * ez - dz * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const wx = a[0] - ox, wz = a[1] - oz, s = (wx * ez - wz * ex) / den, r = (wx * dz - wz * dx) / den;
+    if (s > 0 && r >= 0 && r <= 1) t = Math.min(t, s);
+  }
+  return t;
+}
+const scalePoly =(p, c, k) => p.map((q) => [c[0] + (q[0] - c[0]) * k, c[1] + (q[1] - c[1]) * k]);
 function rectPoly(cx, cz, L, W, ang) {
   const c = Math.cos(ang), s = Math.sin(ang);
   return [[L / 2, W / 2], [-L / 2, W / 2], [-L / 2, -W / 2], [L / 2, -W / 2]].map(([u, v]) => [cx + u * c - v * s, cz + u * s + v * c]);
@@ -197,6 +208,20 @@ function iconFor(p) {
 const placeColor = (p) => (p.water || /河道/.test(p.name) ? '#30b0c7' : CATS[p.cat]?.color || '#007aff');
 const CAMPUS = D.campus;
 { const yc = D.r.find((r) => r.n === '以诚路'); if (yc) { yc.p = [[-278, 245], [-250, 200], [-206, 154], [-194.5, 141], [-186, 114], [-172.4, 60.6], [-160, 20], [-140, 0], [-108, -36], [-89, -58], [-66, -84]]; yc.wide = 24; } }
+// 文德苑（研究生公寓四期，OSM 553917100）：形体按 z18/z19 卫星图的屋面，立面与层数按 r01.jpg / official_graduate.png。
+// 西端斜向西南的弧形板楼接东西向主楼，东端一段南北向短翼（南山墙每层居中一窗），楼前一圈向南凸出的单层弧形裙房。
+const WENDE = (() => {
+  const H = 9 * 3.3, ctr = [], P0 = [375.5, -374], P1 = [388.5, -357.2], P2 = [404, -356.6];
+  for (let i = 0; i <= 10; i++) { const t = i / 10, a = (1 - t) ** 2, m = 2 * t * (1 - t), c = t * t; ctr.push([a * P0[0] + m * P1[0] + c * P2[0], a * P0[1] + m * P1[1] + c * P2[1]]); }
+  ctr.push([420, -356.6], [436.5, -356.6]);
+  const north = offsetLine(ctr, -6.4), south = offsetLine(ctr, 6.4);
+  const slab = north.concat(south.slice().reverse());
+  const wing = [[436.5, -377], [448.5, -377], [448.5, -348.5], [436.5, -348.5]];
+  const arc = []; for (let i = 0; i <= 14; i++) { const x = 436.5 - 36.5 * i / 14; arc.push([x, -350.2 + 7.7 * Math.sin(Math.PI * (x - 400) / 36.5)]); }
+  const podium = arc.concat([[400, -351.4], [436.5, -351.4]]);
+  const footprint = north.concat(wing.slice(0, 3), [[436.5, -348.5]], arc, south.filter((q) => q[0] < 399.9).reverse());
+  return { H, slab, wing, podium, footprint };
+})();
 const NE = {
   site: [[397,-563],[490,-565],[535,-530],[580,-505],[592,-410],[560,-393],[425,-398],[402,-448]],
   beds: [[380,-620],[429,-635],[472,-597],[420,-565]],
@@ -236,7 +261,8 @@ const FAC = {
   admin: { bw: 3.6, fh: 3.9, lit: 0.22 }, dorm: { bw: 3.6, fh: 3.3, lit: 0.62 }, dormStripe: { bw: 3.6, fh: 3.3, lit: 0.6 },
   canteen: { bw: 4.2, fh: 4.5, lit: 0.8 }, labw: { bw: 3.0, fh: 4.2, lit: 0.4 }, whiteGreen: { bw: 3.0, fh: 4.2, lit: 0.36 },
   glass: { bw: 1.6, fh: 4.0, lit: 0.55 }, glassGrey: { bw: 3.0, fh: 4.2, lit: 0.3 }, plain: { bw: 3.6, fh: 3.6, lit: 0.3 },
-  beigeBand: { bw: 3.4, fh: 3.1, lit: 0.6 }, podium: { bw: 6.0, fh: 4.5, lit: 0.8 }, shed: { bw: 6.0, fh: 6.5, lit: 0.04 },
+  beigeBand: { bw: 3.4, fh: 3.1, lit: 0.6 }, podium: { bw: 6.0, fh: 4.5, lit: 0.8 },
+  wende: { bw: 3.6, fh: 3.3, lit: 0.62 }, wendeSolid: { bw: 3.6, fh: 3.3, lit: 0 }, wendePodium: { bw: 4.2, fh: 5.6, lit: 0.8 }, shed: { bw: 6.0, fh: 6.5, lit: 0.04 },
   city: { bw: 3.3, fh: 3.0, lit: 0.5 }, cityB: { bw: 3.3, fh: 3.0, lit: 0.5 }, cityW: { bw: 3.3, fh: 3.0, lit: 0.5 },
   villa: { bw: 3.6, fh: 3.2, lit: 0.42 }, stone: { bw: 4, fh: 4, lit: 0 },
 };
@@ -283,7 +309,7 @@ const EXTRA = [
   { name: '新建科研楼 B', p: [[-298, -412], [-202, -412], [-202, -376], [-298, -376]], st: 'glassGrey', fl: 6, src: 'sat-inferred', cat: 'teach', group: 'newlab' },
   { name: '新建科研楼 C', p: [[-404, -420], [-308, -420], [-308, -380], [-404, -380]], st: 'whiteGreen', fl: 6, src: 'sat-inferred', cat: 'teach', group: 'newlab' },
   { name: '', p: [[-160, -446], [-137, -446], [-137, -400], [-160, -400]], st: 'plain', fl: 2, src: 'sat', cat: 'teach' },
-  { name: '文德苑', p: NE.phase4, special:'graduate',st:'beigeBand',fl:18,h:57.6,src:'sat-inferred',cat:'life' },
+  { name: '文德苑', p: WENDE.footprint, special: 'wende', st: 'wende', fl: 9, h: WENDE.H, src: 'photo+sat', cat: 'life' },
   { name: '文正苑6、7号楼', p:NE.phase5,special:'graduate',st:'beigeBand',fl:8,h:25.6,src:'sat-inferred',cat:'life' },
   { name: '文华苑1号楼', p: rectPoly(531.6, -135.2, 81, 21.7, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
   { name: '文华苑2号楼', p: rectPoly(496.2, -81.1, 71, 20.2, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
@@ -317,15 +343,67 @@ for (const b of BLD) {
 for (const b of BLD) {
   const c = b.cls; c.fh = c.fh || (FAC[c.st] ? FAC[c.st].fh : 3.6);
   b.h = c.h || c.fl * c.fh;
-  if (/教学楼[ABDE]/.test(b.name)) {
-    const ob = obb(b.p), pt = (u, v) => [ob.cx + ob.ux * u - ob.uz * v, ob.cz + ob.uz * u + ob.ux * v];
-    const wing = 14;
-    b.parts = [-1, 1].map(s => { const q = pt(s * (ob.L - wing) / 2, 0); return rectPoly(...q, wing, ob.W, ob.ang); });
-    b.parts.push(rectPoly(ob.cx, ob.cz, Math.min(27, ob.L - 2 * wing), 18, ob.ang));
-  }
+  if (/教学楼[ABDE]/.test(b.name)) b.parts = courtyardParts(b.p);
+}
+// 教学楼 A/B/D/E are courtyard blocks: long wings on the main side walls (their roof grilles show on the
+// satellite tiles), end blocks across both ends and a garden court inside. Where the OSM outline juts past a
+// side wall at one end (求实楼 and 求新楼, facing each other across 求真楼's forecourt) that corner is a stair tower.
+// parts: [wing -v, wing +v, end -u, end +u, ...towers]; front is the u sign facing the lakeside avenue.
+function courtyardParts(p) {
+  const ob = obb(p), dw = 15, de = 13;
+  const U = (q) => (q[0] - ob.cx) * ob.ux + (q[1] - ob.cz) * ob.uz, V = (q) => -(q[0] - ob.cx) * ob.uz + (q[1] - ob.cz) * ob.ux;
+  const box = (u0, u1, v0, v1) => rectPoly(ob.cx + ob.ux * (u0 + u1) / 2 - ob.uz * (v0 + v1) / 2, ob.cz + ob.uz * (u0 + u1) / 2 + ob.ux * (v0 + v1) / 2, u1 - u0, v1 - v0, ob.ang);
+  const wall = [-1, 1].map((s) => {
+    let best = null;
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], c = p[(i + 1) % p.length], len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      if (len < 8 || Math.abs(((c[0] - a[0]) * ob.ux + (c[1] - a[1]) * ob.uz) / len) < 0.9) continue;
+      const v = (V(a) + V(c)) / 2;
+      if (v * s > 0 && (!best || len > best.len)) best = { len, v };
+    }
+    return best ? best.v : s * ob.W / 2;
+  });
+  const L2 = ob.L / 2, parts = [box(-L2, L2, wall[0], wall[0] + dw), box(-L2, L2, wall[1] - dw, wall[1]), box(-L2, -L2 + de, wall[0] + dw, wall[1] - dw), box(L2 - de, L2, wall[0] + dw, wall[1] - dw)];
+  parts.court = box(-L2 + de, L2 - de, wall[0] + dw, wall[1] - dw);
+  parts.front = ob.ux * -0.84 + ob.uz * -0.54 > 0 ? 1 : -1;
+  parts.tw = [false, false];
+  [-1, 1].forEach((s, k) => {
+    const out = p.filter((q) => V(q) * s > Math.abs(wall[k]) + 2); if (!out.length) return;
+    const us = out.map(U), u0 = Math.max(-L2, Math.min(...us)), u1 = Math.min(L2, Math.max(...us));
+    if (u1 - u0 < 4) return;
+    parts.push(s < 0 ? box(u0, u1, -ob.W / 2, wall[k]) : box(u0, u1, wall[k], ob.W / 2)); parts.tw[k] = true;
+  });
+  return parts;
 }
 const byName = (re) => BLD.find((b) => re.test(b.name));
+// 求真楼 (C) is the entrance block in the middle of the row: centred between the long wings of 求实楼 and 求新楼,
+// bridged to both by open corridors and facing the lakeside avenue across a forecourt (photos r21, r38).
+// The OSM outline is squared off and re-centred in that gap.
+const TEACH_WINGS = BLD.filter((b) => b.parts && /教学楼[BD]/.test(b.name)).flatMap((b) => b.parts);
+const TEACH_C = byName(/教学楼C/);
+if (TEACH_C && TEACH_WINGS.length) {
+  const ob = obb(TEACH_C.p), vx = -ob.uz, vz = ob.ux, hit = (dx, dz) => Math.min(...TEACH_WINGS.map((p) => rayPoly(p, ob.cx, ob.cz, dx, dz)));
+  const a = hit(vx, vz), d = hit(-vx, -vz), off = a + d < 90 ? (a - d) / 2 : 0;
+  TEACH_C.p = rectPoly(ob.cx + vx * off, ob.cz + vz * off, ob.L, ob.W, ob.ang);
+  TEACH_C.c = pCentroid(TEACH_C.p); TEACH_C.bb = pBox(TEACH_C.p); TEACH_C.area = Math.abs(pArea(TEACH_C.p));
+}
+const TEACH_FORE = (() => {
+  if (!TEACH_C || !TEACH_WINGS.length) return null;
+  const ob = obb(TEACH_C.p), sg = ob.ux * -0.84 + ob.uz * -0.54 > 0 ? 1 : -1, fx = ob.ux * sg, fz = ob.uz * sg, sx = -fz, sz = fx;
+  const hit = (x, z, dx, dz) => Math.min(...TEACH_WINGS.map((p) => rayPoly(p, x, z, dx, dz)));
+  const f0 = ob.L / 2, at = (f, s) => [ob.cx + fx * f + sx * s, ob.cz + fz * f + sz * s];
+  const right = hit(...at(f0 + 3, 0), sx, sz), left = hit(...at(f0 + 3, 0), -sx, -sz);
+  if (right + left > 90) return null;
+  let depth = 26;
+  for (const s of [right - 2, 2 - left]) depth = Math.min(depth, hit(...at(f0 + 1, s), fx, fz) + 1);
+  return { ob, fx, fz, sx, sz, f0, f1: f0 + depth, right, left, at, hit };
+})();
 const ACADEMIC_COURTS = BLD.filter(b=>b.parts).map(b=>obb(b.p));
+if (TEACH_FORE) {
+  const F = TEACH_FORE, f0 = F.f0 - 12, f1 = F.f1 + 2, [cx, cz] = F.at((f0 + f1) / 2, (F.right - F.left) / 2);
+  ACADEMIC_COURTS.push({ cx, cz, ux: F.fx, uz: F.fz, L: f1 - f0, W: F.right + F.left });
+}
+const TEACH_TREES = [];
 
 const INFO = {
   '图书馆': { d: '江宁校区的中心建筑，正对中心广场与镜湖。主楼地上 7 层，前部为两层白色柱廊裙房与宽阔台阶，立面为灰色石材配白色边框与横向带窗。江宁校区馆面积约 2.3 万平方米，二层设借阅室与学术报告厅。', s: '层数：OpenStreetMap；面积与楼层功能：百度百科“中国药科大学图书馆”；立面：公开照片' },
@@ -336,7 +414,7 @@ const INFO = {
   '新建科研楼 A': { d: '明湖西侧近年落成的白色带状立面科研楼。学校基建处列出的近年竣工项目包括：学院实验楼二期（2021）、药学动物中心（2023）、临床药学研究中心与药物再评价中心（2025）、创新药物成药性评价中心（2025），本楼为其中之一，具体对应关系为推断。', s: '形体：卫星影像；项目清单：学校基建处“已建项目”' },
   '新建科研楼 B': { d: '灰色玻璃幕墙配白色横向框线、屋顶设备密集的科研楼，形态与基建处公布的药学动物中心照片接近（推断）。', s: '形体：卫星影像；参考：学校基建处“已建项目”照片' },
   '新建科研楼 C': { d: '白色横带配青绿色玻璃的六层科研楼，形态与基建处公布的临床药学研究中心照片接近（推断）。', s: '形体：卫星影像；参考：学校基建处“已建项目”照片' },
-  '文德苑': {d:'东北生活区的折线形高层板楼，按卫星轮廓及审阅定位建模。米色与浅砖色横带立面，东端向南转折。约18层、58米为影像估算。',s:'基建处四期竣工资料；z18/z19卫星图。分期对应与高度未由测绘资料确认。'},
+  '文德苑': {d:'研究生公寓四期，位于文思苑北侧。9 层弧形板楼，西端斜向西南，东端接一段南北向短翼；米色窗间墙与深棕窗带横向相间，楼前是一圈向南凸出的单层裙房和入口。',s:'学校基建处与校友会发布的实景照片；z18/z19 卫星图。层高为照片估算，非测绘数据。'},
   '一食堂': { d: '学生第一食堂，位于学生公寓区西侧。四层，深灰面砖墙面，窗间饰白色竖向条板。', s: '名称与位置：OpenStreetMap；外观参照二食堂实景照片' },
   '二食堂': { d: '学生第二食堂，四层，深灰面砖墙面配白色窗下板，转角立面有竖排“二食堂”字样；楼前常停满自行车。', s: '名称与位置：OpenStreetMap；外观：实景照片' },
   '体育馆': { d: '校园南部的综合体育馆，银灰色金属拱形屋面，正立面为带菱形桁架的玻璃幕墙。', s: '位置：OpenStreetMap；外观：实景照片' },
@@ -346,9 +424,9 @@ const INFO = {
   '实训楼': { d: '明湖东岸、药用植物园南侧的实训教学楼。', s: '位置：OpenStreetMap' },
   '综合研发楼': { d: '位于实训楼南侧，沿精业路布置的科研楼。', s: '位置：OpenStreetMap' },
 };
-const TEACH_DESC = '教学楼 A–E（求知、求实、求真、求新、求同）沿镜湖东侧一字排开，是公共课与考试的主要场所，也是全国硕士研究生招生考试中国药科大学考点的考场所在地。灰色立面、白色楼层线，端部楼梯间高出屋面。';
+const TEACH_DESC = '教学楼 A–E（求知、求实、求真、求新、求同）沿镜湖东侧一字排开，是公共课与考试的主要场所，也是全国硕士研究生招生考试中国药科大学考点的考场所在地。居中的求真楼面朝湖边大道，白色柱廊前立着雕像、摆着红色花箱；求实楼与求新楼的长翼在两侧夹出前院，端部楼梯塔高出屋面，三层连廊把它们和求真楼连在一起。求知、求实、求新、求同四栋各自围合一个内院。灰色立面、白色楼层线。';
 const LAB_DESC = '沿校内河道西岸排列的学院科研楼，深浅灰色面砖墙面，楼梯间塔楼高出屋面，顶部为白色玻璃“灯笼”，倒映在河道中。';
-const DORM_DESC = '本科生公寓按“文”字组团命名：文萃、文轩、文菁、文澜、文枢、文昌、文思、文德等苑。不同组团采用米白、砖色或灰色墙面，配白色窗框和生活阳台；北部文思苑、文德苑为白色与深蓝相间立面。';
+const DORM_DESC = '本科生公寓按“文”字组团命名：文萃、文轩、文菁、文澜、文枢、文昌、文思、文德等苑。不同组团采用米白、砖色或灰色墙面，配白色窗框和生活阳台；北部文思苑为白色与深蓝相间立面，文德苑（研究生公寓）为米色与深棕横带。';
 
 const stage = $('#stage');
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
@@ -707,6 +785,17 @@ function drawFacade(name, cx) {
     case 'glassGrey': wall(g, '#e5e6e3', 0, 400); cell((x, y) => { win(cx, x + 2, y + 8, 60, 54, { c1: '#353f48', c2: '#6c7883', mull: '#c3c8cb', mn: 3 }, L); }); break;
     case 'plain': wall(g, '#c3beb3', 0); cell((x, y) => win(cx, x + 18, y + 14, 28, 32, { frame: '#ebe9e3', fw: 2, c1: '#36404a', c2: '#5d6a74', mull: '#ebe9e3', mn: 2 }, L)); break;
     case 'beigeBand': wall(g, '#b6977a', 0, 900); cell((x, y) => { g.fillStyle = '#ddcdb0'; g.fillRect(x, y, 64, 20); win(cx, x + 6, y + 27, 52, 30, { c1: '#3a4651', c2: '#6f7f8c', mull: '#e6e0d4', mn: 3 }, L); }); break;
+    // 文德苑：每层一条米色窗间墙，下面是深棕窗带；窗间每隔几跨夹白色空调百叶或木纹板（r01.jpg）
+    case 'wende': case 'wendeSolid': wall(g, '#4a403a', 0, 900); cell((x, y, b) => {
+      g.fillStyle = '#d6c4a2'; g.fillRect(x, y, 64, 21); speckle(g, x, y, 64, 21, 24, 0.04); cx.hh.fillStyle = '#c4c4c4'; cx.hh.fillRect(x, y, 64, 21);
+      g.fillStyle = '#342c27'; g.fillRect(x, y + 21, 64, 2);
+      if (name === 'wendeSolid') return;
+      const louver = b % 4 === 1, timber = b % 4 === 3, ww = louver || timber ? 38 : 56;
+      win(cx, x + 4, y + 30, ww, 27, { c1: '#2d3a40', c2: '#677b84', mull: '#60767b', mn: louver || timber ? 2 : 3 }, L);
+      if (louver) { g.fillStyle = '#e4e4e0'; g.fillRect(x + 46, y + 27, 14, 33); g.fillStyle = 'rgba(0,0,0,.2)'; for (let k = 2; k < 33; k += 3) g.fillRect(x + 46, y + 27 + k, 14, 1); }
+      if (timber) { g.fillStyle = '#7b5844'; g.fillRect(x + 46, y + 28, 14, 31); g.fillStyle = 'rgba(0,0,0,.22)'; for (let k = 1; k < 14; k += 2) g.fillRect(x + 46 + k, y + 28, 1, 31); }
+    }); break;
+    case 'wendePodium': wall(g, '#d6c4a2', 0, 600); cell((x, y) => { g.fillStyle = '#4a403a'; g.fillRect(x, y + 11, 64, 9); win(cx, x + 7, y + 23, 57, 41, { c1: '#2b3c41', c2: '#5e7780', mull: '#2e4749', mn: 3, tr: 0.72 }, L); g.fillStyle = '#3d3530'; g.fillRect(x, y + 20, 7, 44); }); break;
     case 'podium': wall(g, '#eeeeea', 0, 300); cell((x, y) => { win(cx, x + 11, y + 2, 53, 62, { c1: '#2e3d48', c2: '#5c7080', mull: '#dfe2e3', mn: 3, tr: 0.75 }, L); g.fillStyle = '#f2f2ee'; g.fillRect(x, y, 11, 64); }); break;
     case 'shed': g.fillStyle = '#b7bbbe'; g.fillRect(0, 0, 512, 256); for (let x = 0; x < 512; x += 8) { g.fillStyle = 'rgba(0,0,0,.1)'; g.fillRect(x, 0, 2, 256); g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x + 3, 0, 1, 256); } cell((x, y, b, f) => { if (f % 2 === 0 && b % 2 === 0) win(cx, x + 6, y + 4, 52, 10, { c1: '#3a4651', c2: '#6f7f8c' }, L); }); break;
     case 'city': wall(g, '#d9d4ca', 0); cell((x, y) => { win(cx, x + 12, y + 16, 40, 28, { c1: '#3a4651', c2: '#6f7f8c', mull: '#f0eee8', mn: 3 }, L); g.fillStyle = '#f2f0ea'; g.fillRect(x, y + 46, 64, 6); }); break;
@@ -808,6 +897,7 @@ function initMaterials() {
   MAT.deck = plainMat('#c3c0b8', { map: rt, roughness: 0.9 });
   MAT.solar = plainMat('#1c2d4a', { roughness: 0.25, metalness: 0.7 });
   MAT.seatBlue = plainMat('#2f62a6', { roughness: 0.6 });
+  MAT.wendeBeige = baseAO(plainMat('#d6c4a2', { map: rt, roughness: 0.85 }));
   MAT.metal = plainMat('#9aa1a6', { roughness: 0.4, metalness: 0.7 });
   MAT.dark = plainMat('#2b2e31', { roughness: 0.7 });
   MAT.glassClear = new THREE.MeshStandardMaterial({ color: '#eaf3f5', roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.55, emissive: 0xfff3dc, emissiveIntensity: 0, depthWrite: false });
@@ -1398,49 +1488,58 @@ function academicRoof(p, h) {
 }
 function buildAcademic(b) {
   const h = /教学楼C/.test(b.name) ? 16.5 : b.h, parts = b.parts || [b.p];
+  // Stair tower rising above the roof: stone shaft, a glazed top storey in a white frame (r38).
+  // The corner towers of 求实楼 and 求新楼 are whole bays, so they keep the window grid below the roof line.
+  const glassTop = (tp, ang, big) => {
+    if (big) { addWalls('f:teach', tp, 0, h); addWalls('plinth', tp, 0, 0.5); addWalls('f:stone', tp, h, h + 1.4); }
+    else addWalls('f:stone', tp, 0, h + 1.4);
+    addCap('roof:mid', tp, h + 1.4);
+    addWalls('f:ribbonGlass', insetPoly(tp, 0.6), h + 1.4, h + 5.2);
+    for (const q of tp) addBox('trim:white', q[0], h + 1.2, q[1], 0.5, 0.5, 4.3, ang);
+    if (big) { addCap('roof:mid', tp, h + 5.4); addParapet('trim:white', tp, h + 5.4, 0.55, 0.35); }
+    else addCap('trim:white', tp, h + 5.4);
+  };
   for (let i = 0; i < parts.length; i++) {
-    const p = parts[i], y = i === 2 ? h - 3.5 : h;
-    addWalls(i === 2 || !b.parts ? 'stoneFacade' : 'f:teach', p, 0, y); addWalls('plinth', p, 0, 0.5);
-    addCap('roof:dark', p, y); addParapet('trim:grey', p, y, 0.6, 0.3);
-    if (i !== 2) academicRoof(p, y);
-    roofClutter(p, y, 3);
-    const ob = obb(p);
-    if (i < 2 && ob.L > 50) {
-      const sg = ob.ux * -100 + ob.uz * 160 > 0 ? 1 : -1;
-      const x = ob.cx + ob.ux * sg * (ob.L / 2 - 3.2), z = ob.cz + ob.uz * sg * (ob.L / 2 - 3.2), tp = rectPoly(x, z, 6.4, ob.W + 0.5, ob.ang);
-      addWalls('f:stone', tp, 0, h + 1.4); addCap('roof:mid', tp, h + 1.4);
-      addWalls('f:ribbonGlass', insetPoly(tp, 0.6), h + 1.4, h + 5.2);
-      for (const q of tp) addBox('trim:white', q[0], h + 1.2, q[1], 0.5, 0.5, 4.3, ob.ang);
-      addCap('trim:white', tp, h + 5.4);
+    const p = parts[i], ob = obb(p);
+    if (i >= 4) { glassTop(p, ob.ang, true); continue; }
+    addWalls(b.parts ? 'f:teach' : 'stoneFacade', p, 0, h); addWalls('plinth', p, 0, 0.5);
+    addCap('roof:dark', p, h); addParapet('trim:grey', p, h, 0.6, 0.3);
+    if (b.parts && i < 2) academicRoof(p, h);
+    roofClutter(p, h, i < 2 ? 3 : 1);
+    // Wings without a corner tower get a stair tower with a glazed top at the avenue end.
+    if (b.parts && i < 2 && !b.parts.tw[i] && ob.L > 50) {
+      const sg = ob.ux * -0.84 + ob.uz * -0.54 > 0 ? 1 : -1;
+      const x = ob.cx + ob.ux * sg * (ob.L / 2 - 3.2), z = ob.cz + ob.uz * sg * (ob.L / 2 - 3.2);
+      glassTop(rectPoly(x, z, 6.4, ob.W + 0.5, ob.ang), ob.ang);
     }
   }
   if (b.parts) {
-    const ob = obb(b.p), hallWidth = Math.min(27, ob.L - 28), bridgeL = (ob.L - 28 - hallWidth) / 2;
-    addBox('deck', ob.cx, 0.015, ob.cz, ob.L - 26, ob.W + 24, 0.035, ob.ang);
-    const railP = (u, v, y) => [ob.cx + ob.ux * u - ob.uz * v, y, ob.cz + ob.uz * u + ob.ux * v];
-    for (const s of [-1, 1]) {
-      const v = ob.W / 2 + 10;
-      for (const y of [0.36, 1.15]) addBeam('stoneWarm', railP(s * 10, v, y), railP(s * (ob.L / 2 - 3), v, y), 0.18);
-      for (let u = 10; u < ob.L / 2 - 2; u += 1.9) { const q = railP(s * u, v, 0); addBox('stoneWarm', q[0], 0.05, q[2], 0.28, 0.3, 1.22, ob.ang); }
+    // Garden court inside the ring.
+    const oc = obb(b.parts.court);
+    addCap('garden', insetPoly(b.parts.court, 0.6), 0.03);
+    addBox('deck', oc.cx, 0.02, oc.cz, oc.L - 1.2, 2.6, 0.04, oc.ang); addBox('deck', oc.cx, 0.02, oc.cz, 2.6, oc.W - 1.2, 0.04, oc.ang);
+    for (const su of [-1, 1]) for (const sv of [-1, 1]) {
+      const u = su * oc.L / 4, v = sv * oc.W / 4;
+      TEACH_TREES.push(['camphor', oc.cx + oc.ux * u - oc.uz * v, oc.cz + oc.uz * u + oc.ux * v, 0.72]);
     }
-    for (const u of [-10, 10]) for (const v of [-ob.W * 0.34, ob.W * 0.34]) {
-      const x = ob.cx + ob.ux * u - ob.uz * v, z = ob.cz + ob.uz * u + ob.ux * v;
-      addBox('stone', x, 0, z, 7, 9, 0.28, ob.ang); addBox('redPlant', x, 0.28, z, 6.5, 8.5, 0.5, ob.ang);
-    }
-    for (const sg of [-1, 1]) {
-      const u = sg * (hallWidth / 2 + bridgeL / 2), x = ob.cx + ob.ux * u, z = ob.cz + ob.uz * u;
-      addBox('f:glassGrey', x, 4, z, bridgeL + 0.8, 6, h - 4.6, ob.ang, 'roof:dark');
-      for (let f = 1; f < b.cls.fl; f++) addBox('trim:white', x, f * 4 - 0.15, z, bridgeL + 0.6, 6.3, 0.3, ob.ang);
-    }
+    b.area = b.parts.reduce((sum, p) => sum + Math.abs(pArea(p)), 0);
+    b.h = h + 5.4;
+    return;
   }
-  const hall = parts[2] || b.p, e = edgeFacing(hall, b.c[0] - 100, b.c[1] + 160, 10), a = Math.atan2(e.dz, e.dx), width = Math.min(16, e.len - 2);
+
+  // 求真楼: white two-storey portico, entrance steps and the statue on the forecourt axis.
+  const F = TEACH_FORE;
+  const e = F
+    ? { mx: F.ob.cx + F.fx * F.f0, mz: F.ob.cz + F.fz * F.f0, nx: F.fx, nz: F.fz, dx: F.sx, dz: F.sz, len: F.ob.W }
+    : edgeFacing(b.p, b.c[0] - 84, b.c[1] - 54, 10);
+  const a = Math.atan2(e.dz, e.dx), width = Math.min(16, e.len - 2);
   for (const u of [-8, 0, 8]) addBox('f:ribbonGlass', e.mx + e.dx * u + e.nx * 0.06, 12.4, e.mz + e.dz * u + e.nz * 0.06, u === 0 ? 6.2 : 4.3, 0.12, 2.4, a);
   addBox('f:libPodium', e.mx + e.nx * 0.06, 1, e.mz + e.nz * 0.06, width - 2, 0.14, 3.8, a);
   for (let i = 0; i < 6; i++) addBox('stone', e.mx + e.nx * (3.8 - i * 0.5), 0, e.mz + e.nz * (3.8 - i * 0.5), width, 0.52, (i + 1) * 0.17, a);
   addBox('dark', e.mx + e.nx * 0.18, 5, e.mz + e.nz * 0.18, width - 3, 0.3, 5, a);
   addBox('trim:white', e.mx + e.nx * 2, 10.4, e.mz + e.nz * 2, width, 3.8, 0.45, a);
   for (const u of [-width / 2 + 0.5, width / 2 - 0.5]) addBox('trim:white', e.mx + e.dx * u + e.nx * 3, 1, e.mz + e.dz * u + e.nz * 3, 0.45, 0.45, 9.4, a);
-  if (b.parts) {
+  {
     const x = e.mx + e.nx * 11, z = e.mz + e.nz * 11;
     addBox('stoneWarm',x,0.05,z,1.7,1.7,0.9,a);
     // Simplified standing stone figure; facial likeness is not inferred.
@@ -1448,7 +1547,36 @@ function buildAcademic(b) {
     addCyl('stoneWarm',x,2.6,z,0.19,0.36,10,0.16);
     for (const s of [-1,1]) { addBeam('stoneWarm',[x+e.dx*s*0.25,2.37,z+e.dz*s*0.25],[x+e.dx*s*0.42,1.35,z+e.dz*s*0.42],0.15); }
   }
-  if (b.parts) b.area = b.parts.reduce((sum, p) => sum + Math.abs(pArea(p)), 0);
+  if (F) {
+    const D = F.f1 - F.f0, fa = Math.atan2(F.fz, F.fx), sa = Math.atan2(F.sz, F.sx), P = (f, s) => F.at(F.f0 + f, s);
+    const rect = (f0, f1, s0, s1) => { const [x, z] = P((f0 + f1) / 2, (s0 + s1) / 2); return rectPoly(x, z, f1 - f0, s1 - s0, fa); };
+    // Forecourt: stone paving between the wings, a brick-paved axis from the steps out through the gap between the corner towers.
+    addCap('deck', rect(0, D, -F.left, F.right), 0.03);
+    addCap('paveBrick', rect(3.8, D + 6, -9, 9), 0.045);
+    for (const s of [-1, 1]) {
+      // Red-leaf hedge beds with a row of round trees, then a clipped green hedge towards the wings (r21).
+      const [bx, bz] = P(5 + (D - 8) / 2, s * 12.5);
+      addBox('stone', bx, 0, bz, D - 8, 4.6, 0.3, fa); addBox('redPlant', bx, 0.3, bz, D - 8.4, 4, 0.55, fa);
+      const [gx, gz] = P(5 + (D - 8) / 2, s * 16.5);
+      addBox('garden', gx, 0, gz, D - 8, 1.6, 1.05, fa);
+      for (let f = 7; f < D - 3; f += 6) TEACH_TREES.push(['camphor', ...P(f, s * 12.5), 0.55]);
+      for (let f = 4; f < D - 1; f += 7) TEACH_TREES.push(['ginkgo', ...P(f, s * (s > 0 ? F.right : F.left) - s * 5), 0.7]);
+    }
+    // A row of four red planters at the edge of the court.
+    for (const s of [-10.5, -3.5, 3.5, 10.5]) { const [x, z] = P(D - 2.5, s); addBox('redcol', x, 0.05, z, 1.7, 1.7, 0.95, fa, 'garden'); }
+    // Open corridors on three floors from both sides of 求真楼 to the wings, set back from its front face (r38).
+    const fc = -7, w = 5.2;
+    for (const s of [1, -1]) {
+      const [ox, oz] = P(fc, 0), t0 = rayPoly(b.p, ox, oz, F.sx * s, F.sz * s), t1 = F.hit(ox, oz, F.sx * s, F.sz * s);
+      if (!isFinite(t0) || !isFinite(t1) || t1 - t0 < 1 || t1 - t0 > 25) continue;
+      const len = t1 - t0 + 0.4, [x, z] = P(fc, s * (t0 + t1) / 2);
+      for (let lv = 1; lv <= 4; lv++) {
+        const y = lv * 4 - 0.35;
+        addBox('trim:white', x, y, z, len, w, 0.4, sa, lv === 4 ? 'roof:dark' : undefined);
+        if (lv < 4) for (const k of [-1, 1]) addBox('stone', x + F.fx * k * (w / 2 - 0.12), y + 0.4, z + F.fz * k * (w / 2 - 0.12), len, 0.24, 1.05, sa);
+      }
+    }
+  }
   b.h = h + 5.4;
 }
 function dormDetails(b, h) {
@@ -1477,6 +1605,28 @@ function dormDetails(b, h) {
       if (b.cls.st === 'dormBeige') for (const t of [1.1, e.len - 1.1]) addBox('terracotta', e.a[0] + e.dx * t + e.nx * 0.2, 0.6, e.a[1] + e.dz * t + e.nz * 0.2, 1.3, 0.5, h - 0.6, a);
     }
   }
+}
+function buildWende(b) {
+  const { H, slab, wing, podium } = WENDE;
+  const rail = (poly, y) => {
+    const ring = insetPoly(poly, 0.18).concat([insetPoly(poly, 0.18)[0]]), cum = cumLen(ring), L = cum[cum.length - 1];
+    for (let d = 0; d < L; d += 2.4) { const q = sampleAt(ring, cum, d); addBox('equip', q.x, y, q.z, 0.06, 0.06, 1.05, 0); }
+    addWalls('equip', insetPoly(poly, 0.16), y + 1.0, y + 1.06); addWalls('equip', insetPoly(poly, 0.2), y + 1.0, y + 1.06, undefined, true);
+  };
+  for (const p of [slab, wing]) {
+    addWalls('f:wende', p, 0, H); addWalls('plinth', insetPoly(p, -0.04), 0, 0.6);
+    addCap('roof:light', p, H); addParapet('wendeBeige', p, H, 0.9, 0.3); rail(p, H + 0.9);
+  }
+  roofClutter(slab, H, 6); roofClutter(wing, H, 2);
+  // the wing's south gable: bands without the ribbon windows, one window per floor in the middle
+  addBox('f:wendeSolid', 442.5, 0, -348.44, 12.1, 0.12, H, 0);
+  for (let f = 0; f < 9; f++) { addBox('trim:dark', 442.5, f * 3.3 + 1.05, -348.35, 1.9, 0.08, 1.6, 0); addBox('museumGlass', 442.5, f * 3.3 + 1.12, -348.3, 1.6, 0.06, 1.42, 0); }
+  // curved single-storey podium with its entrance canopy, steps and roof units
+  addWalls('f:wendePodium', podium, 0, 5.6); addCap('roof:light', podium, 5.6); addParapet('wendeBeige', podium, 5.6, 0.5, 0.25);
+  addBox('museumGlass', 418.2, 3.55, -341.6, 9.5, 2.8, 0.14, 0); addBox('trim:dark', 418.2, 3.69, -341.6, 9.7, 3.0, 0.06, 0);
+  for (const [z, w] of [[-341.2, 11], [-340.4, 12.5], [-339.6, 14]]) addBox('concrete', 418.2, 0, z, w, 0.8, z === -341.2 ? 0.45 : z === -340.4 ? 0.3 : 0.15, 0);
+  for (const x of [404, 409.5, 427, 432.5]) addBox('trim:white', x, 5.6, -349.6, 2.3, 1.7, 1.9, 0, 'equip');
+  b.h = H + 2;
 }
 function buildGraduate(b) {
   const fl=b.cls.fl||18,h=b.cls.h||fl*3.2;
@@ -2563,7 +2713,7 @@ function addTree(type, x, z, s = 1) {
   if(pip(x,z,NE.site)||pip(x,z,NE.beds)||pip(x,z,NE.phase5Yard))return;
   for (const ob of ACADEMIC_COURTS) {
     const u = (x - ob.cx) * ob.ux + (z - ob.cz) * ob.uz, v = -(x - ob.cx) * ob.uz + (z - ob.cz) * ob.ux;
-    if (Math.abs(u) < ob.L / 2 - 12 && Math.abs(v) < ob.W / 2 + 22) return;
+    if (Math.abs(u) < ob.L / 2 + 1 && Math.abs(v) < ob.W / 2 + 1) return;
   }
   TREES.push({ type, x, z, s: s * rr(0.8, 1.2), r: rand(), rot: rand() * 6.28, v: Math.floor(rand() * 3) });
 }
@@ -2615,6 +2765,7 @@ function placeTrees() {
   for (let i = 0; i < 1600 * dens; i++) { const x = rr(REG.x0, REG.x1), z = rr(REG.z0, REG.z1); if (!inCampus(x, z) && !blocked(x, z)) addTree(weighted([['camphor', 4], ['metasequoia', 1], ['shrub', 2], ['cedar', 0.5]]), x, z, 0.9); }
   addTree('camphor', -451, 113, 1.35); addTree('camphor', -432, 151, 1.4);
   for (const [x, z] of LIB_TREES) addTree('camphor', x, z, 0.62);
+  for (const [type, x, z, s] of TEACH_TREES) TREES.push({ type, x, z, s: s * rr(0.85, 1.1), r: rand(), rot: rand() * 6.28, v: Math.floor(rand() * 3) });
   for (let b = -17; b > -70; b -= 6.5) for (const a of [-9.6, 8.6]) { const [x, z] = gateP(a, b); addTree('ginkgo', x, z, 1.05); }
   for (let b = -18; b > -76; b -= 5) for (const a of [-12.5, 11.5]) { const [x, z] = gateP(a, b); addTree('ginkgo', x, z, 0.85); }
 }
@@ -3557,6 +3708,7 @@ function buildBuildings() {
     else if (sp === 'natatorium') buildNatatorium(b);
     else if (sp === 'admin') buildAdmin(b);
     else if (sp === 'graduate') buildGraduate(b);
+    else if (sp === 'wende') buildWende(b);
     else if (sp === 'hdorm') buildHighDorm(b);
     else if (sp === 'construction') buildConstruction(b);
     else if (sp === 'gardenService') buildGardenService(b);
@@ -3571,7 +3723,7 @@ function buildBuildings() {
   }
   for (const b of BLD) {
     const m = b.name.match(/^(求.楼)/); if (!m) continue;
-    const e = (b.parts ? b.parts.slice(0, 2) : [b.p]).map((q) => edgeFacing(q, -300, 300, 10)).filter(Boolean).sort((u, v) => Math.hypot(u.mx + 300, u.mz - 300) - Math.hypot(v.mx + 300, v.mz - 300))[0]; if (!e) continue;
+    const e = (b.parts ? b.parts.slice(0, 2) : [b.p]).map((q) => edgeFacing(q, -300, -190, 10)).filter(Boolean).sort((u, v) => Math.hypot(u.mx + 300, u.mz + 190) - Math.hypot(v.mx + 300, v.mz + 190))[0]; if (!e) continue;
     addSign(m[1], e.a[0] + e.dx * 3 + e.nx * 0.1, Math.min(b.h - 5, (b.cls.fl || 5) * 4 - 4), e.a[1] + e.dz * 3 + e.nz * 0.1, e.nx, e.nz, 6, { vertical: true, color: '#f2efe6', metal: 0.1, glow: '#fff3d6' });
   }
 }
