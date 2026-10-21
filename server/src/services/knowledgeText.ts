@@ -16,6 +16,8 @@ const QUERY_SYNONYMS: Array<{ pattern: RegExp; terms: string[] }> = [
   { pattern: /流程|步骤|手续|怎么办理|如何办理|怎么申请|如何申请/gu, terms: ["程序", "流程", "步骤", "办理", "手续"] },
   { pattern: /条件|资格|门槛/gu, terms: ["条件", "资格", "要求"] },
   { pattern: /材料|交什么|提交什么/gu, terms: ["材料", "提交", "附件"] },
+  // 也切开“硕士学费”这类连写：否则“士学”会去匹配制度里到处都有的“硕士学位”“学士学位”。
+  { pattern: /学费|收费标准|收费/gu, terms: ["学费", "收费"] },
 ];
 const SYNONYM_MARKER_BASE = 0xe000;
 const STOP_BIGRAMS = new Set([

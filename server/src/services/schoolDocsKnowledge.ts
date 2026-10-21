@@ -1,7 +1,8 @@
 /**
- * 学校事务资料（学生手册、推免办法与细则、招生简章、期刊目录等）的检索。
+ * 学校事务资料（学生手册、推免办法与细则、招生简章、期刊目录、规章制度等）的检索。
  * 资料由 server/scripts/import-school-knowledge.mjs 从资料包整理成 assets/knowledge/school-docs.json，
- * 名单类资料和学号等个人信息在整理时已去掉。
+ * 规章制度由 server/scripts/build-campus-regulations.py 从制度公开平台整理成 school-regulations.json；
+ * 两份文件建成同一个索引一起排序。名单类资料和学号等个人信息在整理时已去掉。
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -22,6 +23,10 @@ export type SchoolDocument = {
   date: string | null;
   sourceUrl: string | null;
   extracted: string | null;
+  /** 规章制度的发文字号。 */
+  docNo?: string;
+  /** 适用范围、新旧版本关系、施行时间和解释部门，由整理脚本从文件正文推断。 */
+  note?: string;
 };
 
 type SchoolDocsFile = {
@@ -29,6 +34,8 @@ type SchoolDocsFile = {
   source: string;
   documents: SchoolDocument[];
   chunks: Array<{ d: number; h: string; t: string }>;
+  /** 其他资料文件里与本文件重复的文档 id → 本文件的文档 id；加载时以本文件为准。 */
+  replaces?: Record<string, string>;
 };
 
 type IndexedChunk = {
@@ -50,62 +57,93 @@ export type SchoolDocHit = {
   heading: string;
   excerpt: string;
   coverage: number;
+  docNo?: string;
+  note?: string;
 };
 
-const SCHOOL_DOCS_FILE = "school-docs.json";
+// 后面的文件可以用 replaces 替换前面文件里的同一份文档（红头原文替换资料包里的转录稿）。
+const SCHOOL_DOCS_FILES = ["school-docs.json", "school-regulations.json"];
+// 结果里两段文字的四字片段重合到这个比例，就当作同一条规定的不同版本或转录，只留排名靠前的。
+const NEAR_DUPLICATE_OVERLAP = 0.6;
 // 汇总整理稿以原文为准、往年版本只作参考，排序时略让位给现行原文。往年资料里也有
 // 目前唯一的数据（例如上一年的复试线），所以不压得太低，由模型按年份说明适用性。
 const STATUS_PRIOR: Record<SchoolDocStatus, number> = { current: 1, summary: 0.85, historical: 0.8 };
 
 let corpus: { source: string; chunks: IndexedChunk[] } | null | undefined;
 
-function findSchoolDocsFile() {
+function findSchoolDocsFile(name: string) {
   const candidates = [
-    resolve(__dirname, "../assets/knowledge", SCHOOL_DOCS_FILE),
-    resolve(__dirname, "../../assets/knowledge", SCHOOL_DOCS_FILE),
+    resolve(__dirname, "../assets/knowledge", name),
+    resolve(__dirname, "../../assets/knowledge", name),
   ];
   return candidates.find((candidate) => existsSync(candidate)) || null;
 }
 
-function indexSchoolDocs(data: SchoolDocsFile) {
-  return data.chunks.map((chunk, index) => {
-    const doc = data.documents[chunk.d];
-    const titleKey = normalizeKnowledgeText(`${doc.title} ${chunk.h}`);
-    return {
-      index,
-      doc,
-      heading: chunk.h,
-      text: chunk.t,
-      titleKey,
-      bodyKey: `${titleKey}\n${normalizeKnowledgeText(doc.category)}\n${normalizeKnowledgeText(chunk.t)}`,
-    };
-  });
+function indexSchoolDocs(files: SchoolDocsFile[]) {
+  const replaced = new Set(files.flatMap((file) => Object.keys(file.replaces || {})));
+  const chunks: IndexedChunk[] = [];
+  for (const data of files) {
+    for (const chunk of data.chunks) {
+      const doc = data.documents[chunk.d];
+      if (!doc || replaced.has(doc.id)) continue;
+      const titleKey = normalizeKnowledgeText(`${doc.title} ${doc.docNo || ""} ${chunk.h}`);
+      chunks.push({
+        index: chunks.length,
+        doc,
+        heading: chunk.h,
+        text: chunk.t,
+        titleKey,
+        bodyKey: `${titleKey}\n${normalizeKnowledgeText(doc.category)}\n${normalizeKnowledgeText(chunk.t)}`,
+      });
+    }
+  }
+  return chunks;
+}
+
+function buildCorpus(files: SchoolDocsFile[]) {
+  return files.length ? { source: files.map((file) => file.source).join("；"), chunks: indexSchoolDocs(files) } : null;
 }
 
 function loadCorpus() {
   if (corpus !== undefined) return corpus;
-  const file = findSchoolDocsFile();
-  if (!file) {
-    console.warn("[school-docs] knowledge file not found; school document answers are disabled");
-    corpus = null;
-    return corpus;
+  const files: SchoolDocsFile[] = [];
+  for (const name of SCHOOL_DOCS_FILES) {
+    const file = findSchoolDocsFile(name);
+    if (!file) {
+      console.warn(`[school-docs] knowledge file ${name} not found; its documents are disabled`);
+      continue;
+    }
+    try {
+      files.push(JSON.parse(readFileSync(file, "utf8")) as SchoolDocsFile);
+    } catch (error) {
+      console.warn(`[school-docs] failed to load ${name}`, error instanceof Error ? error.message : error);
+    }
   }
-  try {
-    const data = JSON.parse(readFileSync(file, "utf8")) as SchoolDocsFile;
-    corpus = { source: data.source, chunks: indexSchoolDocs(data) };
-  } catch (error) {
-    console.warn("[school-docs] failed to load knowledge file", error instanceof Error ? error.message : error);
-    corpus = null;
-  }
+  corpus = buildCorpus(files);
   return corpus;
 }
 
-export function setSchoolDocsForTests(data?: SchoolDocsFile | null) {
+export function setSchoolDocsForTests(data?: SchoolDocsFile | SchoolDocsFile[] | null) {
   if (data === undefined) {
     corpus = undefined;
     return;
   }
-  corpus = data ? { source: data.source, chunks: indexSchoolDocs(data) } : null;
+  corpus = data ? buildCorpus(Array.isArray(data) ? data : [data]) : null;
+}
+
+function shingles(text: string) {
+  const compact = normalizeKnowledgeText(text).replace(/[^\p{L}\p{N}]/gu, "");
+  const set = new Set<string>();
+  for (let index = 0; index + 4 <= compact.length; index += 1) set.add(compact.slice(index, index + 4));
+  return set;
+}
+
+function overlapRatio(a: Set<string>, b: Set<string>) {
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  for (const item of small) if (large.has(item)) shared += 1;
+  return shared / small.size;
 }
 
 export function schoolDocsSourceLabel() {
@@ -132,9 +170,14 @@ export function searchSchoolDocs(query: string, options: {
   });
   const perDoc = new Map<string, number>();
   const hits: SchoolDocHit[] = [];
+  const keptShingles: Array<Set<string>> = [];
   for (const { entry, coverage } of ranked) {
     const used = perDoc.get(entry.doc.id) || 0;
     if (used >= perDocument) continue;
+    // 学生手册转录的规定、新旧两版里没改的条款，与已选中的段落几乎相同时不重复占名额。
+    const current = shingles(entry.text);
+    if (keptShingles.some((kept) => overlapRatio(current, kept) >= NEAR_DUPLICATE_OVERLAP)) continue;
+    keptShingles.push(current);
     perDoc.set(entry.doc.id, used + 1);
     hits.push({
       documentId: entry.doc.id,
@@ -146,6 +189,8 @@ export function searchSchoolDocs(query: string, options: {
       heading: entry.heading,
       excerpt: focusedExcerpt(entry.text, terms, options.excerptChars ?? 700),
       coverage,
+      ...(entry.doc.docNo ? { docNo: entry.doc.docNo } : {}),
+      ...(entry.doc.note ? { note: entry.doc.note } : {}),
     });
     if (hits.length >= limit) break;
   }

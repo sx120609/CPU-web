@@ -18,6 +18,10 @@ export type CampusKnowledgeItem = {
   where: string;
   date: string | null;
   status?: SchoolDocStatus;
+  /** 规章制度的文号。 */
+  docNo?: string;
+  /** 规章制度的适用范围、新旧版本关系和解释部门。 */
+  note?: string;
   excerpt: string;
   replies?: Array<{ text: string; likes: number; accepted?: boolean }>;
   topicId?: number;
@@ -46,10 +50,12 @@ function fromSchoolDoc(hit: SchoolDocHit): Omit<CampusKnowledgeItem, "ref"> {
     where: hit.heading,
     date: hit.date,
     status: hit.status,
+    ...(hit.docNo ? { docNo: hit.docNo } : {}),
+    ...(hit.note ? { note: hit.note } : {}),
     excerpt: hit.excerpt,
     coverage: hit.coverage,
     source: hit.sourceUrl && /^https?:\/\//iu.test(hit.sourceUrl)
-      ? { title: sourceTitle("学校文件", hit.title), url: hit.sourceUrl }
+      ? { title: sourceTitle("学校文件", hit.docNo ? `${hit.title}（${hit.docNo}）` : hit.title), url: hit.sourceUrl }
       : null,
   };
 }
@@ -177,6 +183,8 @@ export function presentCampusKnowledgeForPrompt(items: CampusKnowledgeItem[]) {
     ...(item.where ? { where: item.where } : {}),
     ...(item.date ? { date: item.date } : {}),
     ...(item.status ? { status: item.status } : {}),
+    ...(item.docNo ? { docNo: item.docNo } : {}),
+    ...(item.note ? { note: item.note } : {}),
     text: item.excerpt,
     ...(item.replies?.length ? { replies: item.replies } : {}),
   }));

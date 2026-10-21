@@ -14,7 +14,7 @@ const siteAssetDirectory = path.join(serverRoot, "dist", "assets", "site");
 // 拾间AI 检索用的学校事务资料，由 scripts/import-school-knowledge.mjs 生成。
 const knowledgeSourceDirectory = path.join(serverRoot, "assets", "knowledge");
 const knowledgeTargetDirectory = path.join(serverRoot, "dist", "assets", "knowledge");
-const knowledgeAssets = ["school-docs.json"];
+const knowledgeAssets = ["school-docs.json", "school-regulations.json"];
 
 await mkdir(targetDirectory, { recursive: true });
 for (const file of files) {
@@ -34,4 +34,4 @@ for (const file of knowledgeAssets) {
   await copyFile(path.join(knowledgeSourceDirectory, file), path.join(knowledgeTargetDirectory, file));
 }
 
-console.log(`Copied ${files.length} desktop userscripts, ${fontAssets.length} schedule font assets, the site logo and ${knowledgeAssets.length} assistant knowledge file into server/dist/assets`);
+console.log(`Copied ${files.length} desktop userscripts, ${fontAssets.length} schedule font assets, the site logo and ${knowledgeAssets.length} assistant knowledge files into server/dist/assets`);

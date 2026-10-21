@@ -9,7 +9,7 @@ import {
   normalizeKnowledgeText,
   rankKnowledgeEntries,
 } from "../src/services/knowledgeText";
-import { searchSchoolDocs } from "../src/services/schoolDocsKnowledge";
+import { searchSchoolDocs, setSchoolDocsForTests } from "../src/services/schoolDocsKnowledge";
 import { readCampusKnowledgeRefs, type CampusKnowledgeItem } from "../src/services/campusKnowledge";
 import {
   attachCampusKnowledgeSources,
@@ -30,6 +30,7 @@ import {
 } from "../src/services/forumAiAnswer";
 
 const schoolDocsFile = path.resolve(__dirname, "../assets/knowledge/school-docs.json");
+const schoolRegulationsFile = path.resolve(__dirname, "../assets/knowledge/school-regulations.json");
 
 function entry(title: string, body: string) {
   const titleKey = normalizeKnowledgeText(title);
@@ -140,18 +141,71 @@ test("school documents answer handbook and recommendation questions", () => {
   assert.deepEqual(searchSchoolDocs("你好"), []);
 });
 
-test("the school document corpus carries no student numbers or name lists", () => {
-  const data = JSON.parse(readFileSync(schoolDocsFile, "utf8")) as {
-    documents: Array<{ id: string; title: string }>;
-    chunks: Array<{ t: string }>;
-  };
-  const text = data.chunks.map((chunk) => chunk.t).join("\n");
-  assert.equal(text.match(/(?<!\d)20[0-3]\d{7,8}(?!\d)/gu), null, "student or application numbers left in the corpus");
-  assert.equal(text.match(/(?<!\d)\d{17}[\dXx](?![\dXx])/gu), null, "ID card numbers left in the corpus");
-  for (const doc of data.documents) {
-    assert.doesNotMatch(doc.title, /名单|评定结果|加分公示|一志愿/u, `${doc.id} ${doc.title}`);
+test("regulations answer with the current version, its document number and applicability", () => {
+  const amount = searchSchoolDocs("优秀学生奖学金一等奖多少钱");
+  const current = amount.find((hit) => hit.docNo === "药大学〔2024〕109号");
+  assert.ok(current && /3500/u.test(current.excerpt), JSON.stringify(amount.map((hit) => [hit.docNo, hit.heading])));
+  assert.match(current.heading, /附件1.*第五条/u);
+  // The 2019 article is word-for-word the same amount; only one copy may take a slot.
+  assert.ok(!amount.some((hit) => hit.docNo === "药大学〔2019〕381号" && /3500/u.test(hit.excerpt)));
+
+  const old = searchSchoolDocs("2019年优秀学生奖学金评选办法药大学〔2019〕381号还有效吗");
+  const legacy = old.find((hit) => hit.docNo === "药大学〔2019〕381号");
+  assert.ok(legacy, JSON.stringify(old.map((hit) => hit.docNo)));
+  assert.match(legacy.note || "", /部分适用.*药大学〔2024〕109号.*2020级至2022级/u);
+
+  const repealed = searchSchoolDocs("异地研究院知识产权转化收益分配指导原则");
+  const hit = repealed.find((item) => item.docNo === "药大科〔2022〕124号");
+  assert.ok(hit && hit.status === "historical" && /已废止/u.test(hit.note || ""));
+});
+
+test("a school-docs copy of a regulation is replaced by the regulation original", () => {
+  const hits = searchSchoolDocs("本科生综合素质测评办法 测评内容");
+  assert.ok(hits.length);
+  assert.ok(!hits.some((hit) => hit.documentId === "S0272"), "S0272 is the same file as 药大学〔2023〕160号");
+  assert.ok(hits.some((hit) => hit.docNo === "药大学〔2023〕160号"));
+});
+
+test("near-duplicate passages from different files take one slot", () => {
+  const doc = (id: string, title: string) => ({ id, title, category: "测试", status: "current" as const, date: null, sourceUrl: null, extracted: null });
+  const text = "第十条 学生请假三天以内由辅导员审批，三天以上七天以内由学院分管领导审批，超过七天报学生工作处备案。";
+  setSchoolDocsForTests([
+    { version: 1, source: "a", documents: [doc("S1", "研究生学生手册")], chunks: [{ d: 0, h: "请假", t: text }] },
+    { version: 1, source: "b", documents: [{ ...doc("R1", "学生请假管理办法"), docNo: "药大学〔2025〕1号" }],
+      chunks: [{ d: 0, h: "第十条", t: text.replace("。", "，并录入系统。") }] },
+  ]);
+  try {
+    assert.equal(searchSchoolDocs("学生请假审批 辅导员 学院").length, 1);
+  } finally {
+    setSchoolDocsForTests();
   }
-  assert.ok(!data.documents.some((doc) => doc.id === "S0290"), "the recommended-student list must stay out");
+});
+
+for (const file of [schoolDocsFile, schoolRegulationsFile]) {
+  test(`${path.basename(file)} carries no student numbers or name lists`, () => {
+    const data = JSON.parse(readFileSync(file, "utf8")) as {
+      documents: Array<{ id: string; title: string }>;
+      chunks: Array<{ t: string }>;
+    };
+    const text = data.chunks.map((chunk) => chunk.t).join("\n");
+    assert.equal(text.match(/(?<!\d)20[0-3]\d{7,8}(?!\d)/gu), null, "student or application numbers left in the corpus");
+    assert.equal(text.match(/(?<!\d)\d{17}[\dXx](?![\dXx])/gu), null, "ID card numbers left in the corpus");
+    for (const doc of data.documents) {
+      assert.doesNotMatch(doc.title, /名单|评定结果|加分公示|一志愿/u, `${doc.id} ${doc.title}`);
+    }
+    assert.ok(!data.documents.some((doc) => doc.id === "S0290"), "the recommended-student list must stay out");
+  });
+}
+
+test("the prompt shows a regulation's document number and applicability note", () => {
+  const regulation = item("R1", {
+    title: "中国药科大学优秀学生奖学金评选办法",
+    docNo: "药大学〔2019〕381号",
+    note: "部分适用：药大学〔2024〕109号规定2020级至2022级学生仍按本办法执行",
+  });
+  const system = String(buildAssistantMessages("优秀奖学金", [], [], true, "test-model", [], undefined, [], undefined, [regulation])[0].content);
+  assert.match(system, /"docNo":"药大学〔2019〕381号"/u);
+  assert.match(system, /"note":"部分适用/u);
 });
 
 test("follow-up questions are searched together with the previous question", () => {
