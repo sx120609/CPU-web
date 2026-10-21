@@ -114,7 +114,7 @@
           </div>
         </header>
         <button data-cpu-button="media" class="cal-frame cal-frame--map" type="button" aria-label="放大查看校园地图" @click="openImageViewer('map')">
-          <img :src="campusMapOriginalViewUrl" alt="中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施" loading="lazy" />
+          <img :src="campusMapCard" width="1280" height="1165" alt="中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施" loading="lazy" />
         </button>
         <p class="cal-credit">静态导览图 · 图片来自用户提供素材，图中署名：药学卷王。</p>
       </section>
@@ -127,6 +127,9 @@ import { computed, ref } from "vue";
 import { ArrowRight, Calendar, Download, MapLocation, ZoomIn } from "@element-plus/icons-vue";
 import campus3dCover from "@/views/services/campus3d/cover.jpg";
 import calendarImage from "@/assets/school-calendar/cpu-school-calendar-2026-2027.png";
+// 原图 5000 × 4551、20 MB，页面和放大查看只用缩小的预览图，原图只走“下载原图”。
+import campusMapCard from "@/assets/school-calendar/cpu-campus-map-card.webp";
+import campusMapPreview from "@/assets/school-calendar/cpu-campus-map-preview.webp";
 import { cpuSchoolCalendar as calendar } from "@/data/schoolCalendar";
 import { openImageGallery } from "@/utils/imageViewer";
 import "@/styles/page-kit.css";
@@ -134,7 +137,6 @@ import "@/styles/page-kit.css";
 type ViewName = "calendar" | "map";
 
 const campusMapOriginalDownloadUrl = "/api/site/downloads/campus-map-original";
-const campusMapOriginalViewUrl = "/api/site/media/campus-map-original";
 const views = [
   { name: "calendar", label: "校历", icon: Calendar },
   { name: "map", label: "校园地图", icon: MapLocation },
@@ -212,10 +214,12 @@ function openImageViewer(kind: ViewName) {
       fileName: `${calendar.academicYear}中国药科大学校历.png`,
     },
     {
-      src: campusMapOriginalViewUrl,
+      src: campusMapPreview,
       title: "中国药科大学校园地图",
       alt: "中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施",
-      fileName: "中国药科大学校园地图.png",
+      fileName: "中国药科大学校园地图.webp",
+      width: 2400,
+      height: 2184,
     },
   ], kind === "map" ? 1 : 0, { className: "cpu-calendar-image-viewer" });
 }
