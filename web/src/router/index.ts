@@ -205,12 +205,14 @@ export const router = createRouter({
         { path: "services/tools/games", name: "service-games", component: () => import("@/views/services/games/Index.vue"), meta: { title: "小游戏", public: true, miniGame: true } },
         { path: "services/tools/yaoda-can-fly", name: "service-yaoda-can-fly", component: () => import("@/views/services/games/YaodaCanFly.vue"), meta: { nativeChrome: "page", title: "药大人能飞", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
         // 已发布的原生壳只对 /services/tools/yaoda-can-fly 这个前缀隐藏自己的顶栏和底栏，其他游戏页也放在它下面。
+        // 三维校园同样需要原生壳让出顶栏和底栏，所以借用这个前缀；它不是小游戏，不带 miniGame。
+        { path: "services/tools/yaoda-can-fly/campus-3d", name: "service-campus-3d", component: () => import("@/views/services/Campus3D.vue"), meta: { nativeChrome: "page", title: "三维校园", public: true, fullWidthContent: true, immersive: true } },
+        { path: "services/tools/campus-3d", redirect: { name: "service-campus-3d" } },
         { path: "services/tools/yaoda-can-fly/tomato-egg-noodles", name: "service-tomato-egg-noodles", component: () => import("@/views/services/games/TomatoEggNoodles.vue"), meta: { nativeChrome: "page", title: "番茄鸡蛋面", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
         { path: "services/tools/yaoda-can-fly/zombie-defense", name: "service-zombie-defense", component: () => import("@/views/services/games/YaodaVsZombies.vue"), meta: { nativeChrome: "page", title: "药大人大战僵尸", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
         { path: "services/tools/yaoda-can-fly/yaoda-nai", name: "service-yaoda-nai", component: () => import("@/views/services/games/MergeYaodaNai.vue"), meta: { nativeChrome: "page", title: "合成药大奶", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
         { path: "services/tools/yaoda-can-fly/greedy-nailong", name: "service-greedy-nailong", component: () => import("@/views/services/games/GreedyNailong.vue"), meta: { nativeChrome: "page", title: "药大人能吃", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
         { path: "services/tools/yaoda-can-fly/yaoda-mines", name: "service-yaoda-mines", component: () => import("@/views/services/games/YaodaMines.vue"), meta: { nativeChrome: "page", title: "清扫药大雷", public: true, fullWidthContent: true, miniGame: true, immersive: true } },
-        { path: "services/tools/campus-3d", name: "service-campus-3d", component: () => import("@/views/services/Campus3D.vue"), meta: { title: "三维校园", public: true, fullWidthContent: true, fullHeightContent: true } },
         { path: "services/tools/voicehub", name: "service-voicehub", component: () => import("@/views/services/VoiceHubLaunch.vue"), meta: { nativeChrome: "page", title: "药苑之声", public: true, fullWidthContent: true } },
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
         { path: "services/tools/qqbot-reminders", redirect: "/messages/qqbot-reminders" },

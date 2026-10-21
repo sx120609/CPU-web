@@ -57,6 +57,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .apptitle { min-width: 0; flex: 1; }
 .apptitle p { margin: 3px 0 0; font-size: 13px; color: var(--label-2); }
 .iconbtn.listbtn { display: none; }
+.backbtn[hidden] { display: none; }
+.backbtn svg { width: 20px; height: 20px; stroke-width: 2.2; }
 
 .segmented { display: flex; gap: 2px; padding: 2px; margin: 0 16px 12px; border-radius: 9px; background: var(--fill); }
 .segmented button { flex: 1; border: 0; background: transparent; padding: 6px 10px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer;
@@ -110,7 +112,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .source[open] summary::after { transform: rotate(-90deg); }
 .source p { margin: 6px 0 0; line-height: 1.5; }
 
-.dock { position: absolute; z-index: 5; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+.dock { position: absolute; z-index: 5; left: 50%; transform: translateX(-50%); bottom: calc(18px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
   display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 16px; border-radius: 999px; flex-wrap: nowrap; }
 .time { display: flex; align-items: center; gap: 8px; }
 .time .sun { width: 18px; height: 18px; color: #ff9f0a; }
@@ -163,14 +165,14 @@ button:active { filter: brightness(.94); }
 .compass svg { width: 26px; height: 26px; stroke: none; transition: transform .1s linear; }
 .compass .n { fill: #ff3b30; }
 .compass .s { fill: var(--label-3); }
-.scale { position: absolute; z-index: 4; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(282px + env(safe-area-inset-bottom, 0px));
+.scale { position: absolute; z-index: 4; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(282px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
   display: flex; align-items: flex-end; gap: 6px; font-size: 11px; font-weight: 600; color: #1d1d1f; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
 .scale i { display: block; height: 5px; border: 2px solid #1d1d1f; border-top: 0; box-shadow: 0 1px 0 rgba(255,255,255,.8); }
 
-.mini { position: absolute; z-index: 5; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+.mini { position: absolute; z-index: 5; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(40px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
   padding: 5px; border-radius: 18px; }
 .mini canvas { display: block; width: 186px; height: 229px; border-radius: 13px; cursor: crosshair; }
-.legal { position: absolute; z-index: 4; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+.legal { position: absolute; z-index: 4; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(18px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
   font-size: 10px; color: rgba(255,255,255,.92); text-shadow: 0 1px 2px rgba(0,0,0,.55); text-decoration: none; }
 
 .tour { position: absolute; z-index: 6; left: 50%; transform: translateX(-50%); top: calc(16px + env(safe-area-inset-top, 0px));
@@ -214,6 +216,14 @@ button:active { filter: brightness(.94); }
 .night .lbl.water .t { color: #8fd3ff; }
 .night .lbl .glyph { border-color: #1c1c1e; box-shadow: 0 1px 4px rgba(0,0,0,.6); }
 
+.rotate-tip { position: absolute; z-index: 12; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(300px, calc(100% - 48px));
+  padding: 22px 20px 16px; border-radius: var(--r-xl); text-align: center; }
+.rotate-tip[hidden] { display: none; }
+.rotate-tip .phone { display: block; margin: 0 auto; width: 52px; height: 52px; stroke-width: 1.7; color: var(--accent); animation: tipTurn 2.6s cubic-bezier(.6,0,.3,1) infinite; }
+@keyframes tipTurn { 0%, 25% { transform: rotate(0); } 55%, 85% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
+.rotate-tip h3 { margin: 10px 0 4px; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.rotate-tip p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--label-2); }
+.rotate-tip .actions { margin: 16px 0 0; }
 #loading { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: var(--bg); transition: opacity .6s;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 #loading .box { width: min(300px, 100%); display: grid; justify-items: center; text-align: center; }
@@ -224,54 +234,102 @@ button:active { filter: brightness(.94); }
 #loading.done { opacity: 0; pointer-events: none; }
 
 @media (max-width: 760px) {
-  .sidebar { width: auto; right: max(16px, env(safe-area-inset-right, 0px)); max-height: 56%; border-radius: 18px; }
-  .sidebar[data-open="false"] .collapsible { display: none; }
-  .appbar { padding: 12px 12px 10px; }
-  .emblem { width: 38px; height: 38px; }
-  .wordmark { width: 112px; height: 27px; }
-  .segmented { margin: 0 12px 12px; }
-  .search { margin: 0 12px 8px; }
+  .sidebar[data-open="false"] .collapsible, .sidebar[data-open="false"] .segmented { display: none; }
+  .appbar { gap: 8px; padding: 6px 6px 6px 8px; }
+  .sidebar[data-open="true"] .appbar { padding-bottom: 8px; }
+  .emblem { width: 30px; height: 30px; padding: 1px; }
+  .wordmark { width: 88px; height: 21px; }
+  .apptitle { flex: none; }
+  .apptitle p { margin-top: 1px; font-size: 11px; }
   .iconbtn.listbtn { display: grid; }
-  .card { top: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
-    width: auto; max-height: 52%; }
-  .dock { left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); transform: none; justify-content: space-between;
-    gap: 8px; padding: 6px 8px 6px 12px; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+  .iconbtn { width: 40px; height: 40px; flex: none; }
+  .segmented { margin: 0 10px 10px; }
+  .segmented button { min-height: 36px; }
+  .search { margin: 0 10px 8px; }
+  .mapctl { gap: 8px; }
+  .mapctl .stack { display: none; }
+  .round, .compass { width: 40px; height: 40px; }
+  .compass svg { width: 24px; height: 24px; }
+  .mini, .scale { display: none; }
   .dock .segmented { display: none; }
   .seasonbtn { display: grid; }
-  .toast { top: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); white-space: normal; text-align: center; width: max-content; max-width: calc(100% - 48px); }
-  input[type=range] { width: 100%; min-width: 40px; height: 44px; }
-  .time { flex: 1; min-width: 0; }
-  .icons { gap: 0; }
-  .iconbtn, .close { width: 44px; height: 44px; flex: none; }
-  .pill, .segmented button { min-height: 44px; }
   .settingsbtn { display: grid !important; }
-  .scene-options { display: none; position: absolute; right: 0; bottom: 68px; padding: 10px; border-radius: 18px; background: var(--material-strong); box-shadow: var(--shadow); grid-template-columns: 44px 44px; gap: 10px; }
+  .scene-options { display: none; position: absolute; right: 0; bottom: 56px; padding: 8px; border-radius: 16px; background: var(--material-strong); box-shadow: var(--shadow); grid-template-columns: 40px 40px; gap: 8px; }
   .scene-options.open { display: grid; }
-  .mini, .scale { display: none; }
-  .legal { display: block; left: 12px; right: auto; bottom: calc(9px + env(safe-area-inset-bottom, 0px)); color: var(--label); background: var(--material-strong); padding: 2px 6px; border-radius: 5px; text-shadow: none; font-size: 10px; }
-  .mapctl { top: auto; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); gap: 8px; }
-  .mapctl .stack { display: grid; }
-  .card:not([hidden]) ~ .mapctl { right: max(16px, env(safe-area-inset-right, 0px)); display: none; }
-  .tour { top: auto; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
-  .card { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+  .dock { gap: 4px; padding: 4px 6px 4px 10px; }
+  .time { flex: 1; min-width: 0; gap: 6px; }
   .time .sun { display: none; }
+  .time output { font-size: 14px; min-width: 38px; }
+  input[type=range] { width: 100%; min-width: 40px; height: 40px; }
+  .icons { gap: 0; }
+  .close { width: 36px; height: 36px; }
+  .pill { min-height: 40px; }
+  .card { padding: 14px 14px 12px; border-radius: 18px; }
+  .card h2 { font-size: 20px; }
+  .card header p { font-size: 13px; }
+  .actions { margin: 12px 0 10px; }
+  .about { font-size: 14px; }
+  .legal { display: block; font-size: 9px; }
+  .toast { white-space: normal; text-align: center; width: max-content; max-width: calc(100% - 48px); font-size: 13px; padding: 8px 14px; }
+
+  .sidebar { top: calc(10px + env(safe-area-inset-top, 0px)); left: max(10px, env(safe-area-inset-left, 0px)); right: auto; width: auto; max-width: calc(100% - 80px); max-height: 62%; border-radius: 18px; }
+  .sidebar[data-open="true"] { right: max(10px, env(safe-area-inset-right, 0px)); max-width: none; }
+  .sidebar[data-open="true"] ~ .mapctl { display: none; }
+  .mapctl { top: calc(10px + env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: auto; }
+  .card { top: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(64px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: auto; max-height: 48%; }
+  .card:not([hidden]) ~ .mapctl { display: none; }
+  .dock { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); transform: none; justify-content: space-between; bottom: calc(10px + var(--safe-b, env(safe-area-inset-bottom, 0px))); }
+  .tour { top: auto; bottom: calc(64px + var(--safe-b, env(safe-area-inset-bottom, 0px))); width: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); transform: none; padding: 12px 16px 14px; }
+  .toast { top: auto; bottom: calc(66px + var(--safe-b, env(safe-area-inset-bottom, 0px))); }
+  .legal { left: auto; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(60px + var(--safe-b, env(safe-area-inset-bottom, 0px))); }
 }
 @media (max-height: 500px) and (orientation: landscape) {
-  .sidebar { width: 275px; right: auto; max-height: calc(100% - 110px); }
-  .card { left: auto; width: min(340px, 48vw); top: 12px; bottom: 100px; max-height: none; }
-  .dock { left: auto; right: 16px; transform: none; width: min(390px, calc(100% - 315px)); }
-  .mini, .scale { display: none; }
-  .mapctl { top: 12px; right: 12px; }
+  .sidebar[data-open="false"] .collapsible, .sidebar[data-open="false"] .segmented { display: none; }
+  .appbar { gap: 8px; padding: 6px 6px 6px 8px; }
+  .sidebar[data-open="true"] .appbar { padding-bottom: 8px; }
+  .emblem { width: 30px; height: 30px; padding: 1px; }
+  .wordmark { width: 88px; height: 21px; }
+  .apptitle { flex: none; }
+  .apptitle p { margin-top: 1px; font-size: 11px; }
+  .iconbtn.listbtn { display: grid; }
+  .iconbtn { width: 40px; height: 40px; flex: none; }
+  .segmented { margin: 0 10px 10px; }
+  .segmented button { min-height: 36px; }
+  .search { margin: 0 10px 8px; }
+  .mapctl { gap: 8px; }
   .mapctl .stack { display: none; }
+  .round, .compass { width: 40px; height: 40px; }
+  .compass svg { width: 24px; height: 24px; }
+  .mini, .scale { display: none; }
   .dock .segmented { display: none; }
   .seasonbtn { display: grid; }
-  .scene-options { display: none; position: absolute; right: 0; bottom: 68px; padding: 10px; border-radius: 18px; background: var(--material-strong); box-shadow: var(--shadow); grid-template-columns: 44px 44px; gap: 10px; }
-  .scene-options.open { display: grid; }
   .settingsbtn { display: grid !important; }
-  .iconbtn { width:44px; height:44px;flex:none; }
-  .time { min-width:0;flex:1; }
-  .time input { min-width:32px;width:100%; }
-  .legal { left:16px;right:auto;bottom:12px;color:var(--label);background:var(--material-strong);padding:2px 6px;border-radius:5px;text-shadow:none; }
+  .scene-options { display: none; position: absolute; right: 0; bottom: 56px; padding: 8px; border-radius: 16px; background: var(--material-strong); box-shadow: var(--shadow); grid-template-columns: 40px 40px; gap: 8px; }
+  .scene-options.open { display: grid; }
+  .dock { gap: 4px; padding: 4px 6px 4px 10px; }
+  .time { flex: 1; min-width: 0; gap: 6px; }
+  .time .sun { display: none; }
+  .time output { font-size: 14px; min-width: 38px; }
+  input[type=range] { width: 100%; min-width: 40px; height: 40px; }
+  .icons { gap: 0; }
+  .close { width: 36px; height: 36px; }
+  .pill { min-height: 40px; }
+  .card { padding: 14px 14px 12px; border-radius: 18px; }
+  .card h2 { font-size: 20px; }
+  .card header p { font-size: 13px; }
+  .actions { margin: 12px 0 10px; }
+  .about { font-size: 14px; }
+  .legal { display: block; font-size: 9px; }
+  .toast { white-space: normal; text-align: center; width: max-content; max-width: calc(100% - 48px); font-size: 13px; padding: 8px 14px; }
+
+  .sidebar { top: max(8px, env(safe-area-inset-top, 0px)); left: max(10px, env(safe-area-inset-left, 0px)); right: auto; width: auto; max-width: 280px; max-height: calc(100% - 16px); border-radius: 18px; }
+  .sidebar[data-open="true"] { width: 268px; }
+  .mapctl { top: max(8px, env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: auto; }
+  .card { top: max(8px, env(safe-area-inset-top, 0px)); bottom: calc(60px + var(--safe-b, env(safe-area-inset-bottom, 0px))); left: auto; right: max(60px, calc(env(safe-area-inset-right, 0px) + 52px)); width: min(330px, 44vw); max-height: none; }
+  .dock { left: auto; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(8px + var(--safe-b, env(safe-area-inset-bottom, 0px))); transform: none; width: min(400px, calc(100% - 320px)); }
+  .tour { top: max(8px, env(safe-area-inset-top, 0px)); }
+  .toast { top: max(10px, env(safe-area-inset-top, 0px)); bottom: auto; max-width: calc(100% - 640px); }
+  .legal { left: max(12px, env(safe-area-inset-left, 0px)); right: auto; bottom: calc(8px + var(--safe-b, env(safe-area-inset-bottom, 0px))); color: rgba(255,255,255,.9); }
 }
 @media (prefers-reduced-motion: reduce) {
   .segmented button, .iconbtn, .dots i, #loading, #loading .bar i, .toast, .compass svg { transition: none; }

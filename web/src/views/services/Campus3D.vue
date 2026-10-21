@@ -7,8 +7,10 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import styleText from "./campus3d/style.css?inline";
 
+const router = useRouter();
 const hostEl = ref<HTMLDivElement | null>(null);
 const failed = ref("");
 let dispose: (() => void) | null = null;
@@ -19,7 +21,13 @@ function syncTheme(host: HTMLElement) {
   host.dataset.theme = document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+function leave() {
+  if (window.history.state?.back) router.back();
+  else void router.push({ name: "service-tool-detail", params: { slug: "school_calendar" } });
+}
+
 onMounted(async () => {
+  document.documentElement.classList.add("campus3d-open");
   const host = hostEl.value;
   if (!host) return;
   syncTheme(host);
@@ -41,15 +49,21 @@ onMounted(async () => {
     if (unmounted) return;
     host.style.setProperty("--wm", `url("${calliUrl}")`);
     buildCampusUI(shadow, { emblemUrl });
+    const back = shadow.querySelector<HTMLButtonElement>("#m-back");
+    if (back) {
+      back.hidden = false;
+      back.addEventListener("click", leave);
+    }
     dispose = mountCampus3D(shadow, { emblemUrl, calliUrl, data, outer });
   } catch (error) {
     console.error("[campus3d]", error);
-    if (!unmounted) failed.value = "三维校园加载失败，请刷新页面重试。";
+    if (!unmounted) failed.value = "三维校园加载失败，请返回后重试。";
   }
 });
 
 onBeforeUnmount(() => {
   unmounted = true;
+  document.documentElement.classList.remove("campus3d-open");
   themeObserver?.disconnect();
   themeObserver = null;
   dispose?.();
@@ -58,11 +72,19 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+:global(html.campus3d-open),
+:global(html.campus3d-open body) {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+/* 全屏地图盖住站点顶栏和底栏。鸿蒙壳不提供 safe-area，只给“底栏 + 手势条 + 间距”的总和；
+   这里没有底栏，减掉底栏的 72 就是手势条要让开的高度。 */
 .campus3d-page {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 420px;
+  --safe-b: max(env(safe-area-inset-bottom, 0px), calc(var(--cpu-harmony-bottom-clearance, 72px) - 72px));
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
   overflow: hidden;
   background: #b9c9d6;
 }
@@ -78,7 +100,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   margin: 0;
-  color: var(--cpu-text-secondary);
+  color: #1d1d1f;
   font-size: 14px;
 }
 </style>

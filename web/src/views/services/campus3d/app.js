@@ -4014,6 +4014,22 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 });
 $('#m-orbit').addEventListener('click', () => setMode('orbit'));
 $('#m-tour').addEventListener('click', () => { if (mode === 'tour') { setMode('orbit'); return; } setMode('orbit'); setMode('tour'); });
+function rotateTip() {
+  const tip = $('#rotateTip'), portrait = matchMedia('(orientation: portrait)');
+  let dismissed = false;
+  try { dismissed = sessionStorage.getItem('campus3d-rotate-tip') === '1'; } catch (_) { }
+  const update = () => { tip.hidden = dismissed || !TOUCH || !portrait.matches || innerWidth > 760; };
+  const canLock = Boolean(screen.orientation && screen.orientation.lock && document.fullscreenEnabled);
+  $('#rotateGo').hidden = !canLock;
+  const close = () => { dismissed = true; try { sessionStorage.setItem('campus3d-rotate-tip', '1'); } catch (_) { } update(); };
+  $('#rotateLater').addEventListener('click', close);
+  $('#rotateGo').addEventListener('click', async () => {
+    try { await $('#app').requestFullscreen({ navigationUI: 'hide' }); await screen.orientation.lock('landscape'); } catch (_) { }
+    close();
+  });
+  on(portrait, 'change', update);
+  update();
+}
 function setSidebar(open) { $('#sidebar').dataset.open = String(open); $('#m-menu').setAttribute('aria-pressed', String(open)); }
 $('#m-menu').addEventListener('click', () => setSidebar($('#sidebar').dataset.open !== 'true'));
 $('#infoClose').addEventListener('click', () => { $('#info').hidden = true; selected = null; highlight({}); LABELS.forEach((L) => L.el.classList.remove('sel')); root.querySelectorAll('.row').forEach((el) => el.setAttribute('aria-current', 'false')); });
@@ -4171,7 +4187,8 @@ async function boot() {
     for(const [label,work] of jobs)await loadStage(label,work);
     LOAD_STATE.readyAt=performance.now();$('#loadMsg').textContent=`准备就绪 · ${jobs.length}/${jobs.length}`;
     $('#loading').classList.add('done'); setTimeout(() => { $('#loading').hidden = true; }, 300);
-    setSidebar(innerWidth > 760);
+    setSidebar(innerWidth > 760 && innerHeight > 500);
+    rotateTip();
     setTimeout(() => toast(TOUCH ? '单指拖动平移 · 双指缩放旋转 · 点按建筑查看' : '拖动平移 · 右键或 Ctrl+拖动旋转倾斜 · 滚轮缩放 · 双击放大', 5200), 900);
     RAF = requestAnimationFrame(loop);
   } catch (err) {
