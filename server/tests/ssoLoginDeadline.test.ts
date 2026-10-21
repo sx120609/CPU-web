@@ -26,5 +26,5 @@ test("login begin shares one deadline across nodes instead of multiplying timeou
   const started = Date.now();
   await assert.rejects(beginLogin(), { status: 503 });
   assert.ok(Date.now() - started < 550, "must not use a fresh 300ms budget per node");
-  assert.ok(calls <= 2, "deadline exhaustion must not dispatch another login");
+  assert.ok(calls <= 3, "each node is attempted at most once within the shared budget");
 });

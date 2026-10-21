@@ -181,11 +181,12 @@ async function followRedirects(
       if (!loc) return { res, finalUrl: current, hops };
       const referer = current;
       current = new URL(loc, current).toString();
+      await res.body?.cancel();
       // 重定向后默认走 GET（除非是 307/308 保留方法）
       if (res.status === 307 || res.status === 308) {
         // 保留 method 与 body
       } else {
-        opts = { headers: { Referer: referer } };
+        opts = { headers: { Referer: referer }, signal: opts.signal };
       }
       continue;
     }
@@ -214,13 +215,14 @@ async function followUntilJwxtCallback(
       const loc = res.headers.get("location");
       if (!loc) return { res, finalUrl: current, hops };
       const next = new URL(loc, current);
+      await res.body?.cancel();
       if (next.hostname.toLowerCase() === JWXT_HOST) {
         return { res, finalUrl: current, callbackUrl: next.toString(), hops };
       }
       const referer = current;
       current = next.toString();
       if (res.status !== 307 && res.status !== 308) {
-        opts = { headers: { Referer: referer } };
+        opts = { headers: { Referer: referer }, signal: opts.signal };
       }
       continue;
     }
@@ -485,18 +487,38 @@ async function getActiveSession(token: string | undefined | null): Promise<Activ
 }
 
 /** 第一步：只准备学校统一认证表单。jwxt 会在登录后自动继承该会话。 */
-export async function beginLogin(): Promise<{
+export function beginLogin(signal?: AbortSignal) {
+  return runLoginRequest(prepareLogin, signal);
+}
+
+async function runLoginRequest<T>(work: (signal: AbortSignal) => Promise<T>, external?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  const signal = external ?? controller.signal;
+  const timer = external ? undefined : setTimeout(() => controller.abort(new HttpError(504, 5000, "本机登录节点请求超时")), config.ssoLoginPool.timeoutMs);
+  try {
+    signal.throwIfAborted();
+    const result = await work(signal);
+    signal.throwIfAborted();
+    return result;
+  } catch (error) {
+    signal.throwIfAborted();
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
+async function prepareLogin(signal: AbortSignal): Promise<{
   pendingId: string;
   needCaptcha: boolean;
   captchaImage?: string;
 }> {
   const jar = new CookieJar();
   // GET 入口 → 302 链到 SSO 登录页
-  const { res, finalUrl } = await followRedirects(jar, ENTRY_URL);
+  const { res, finalUrl } = await followRedirects(jar, ENTRY_URL, { signal });
   throwForLoginUpstreamStatus(res);
   const html = await res.text();
   if (isDev) await saveDebug("login-page.html", html);
   const form = parseCpuSsoPasswordForm(html, finalUrl);
+  signal.throwIfAborted();
 
   const id = genId();
   await savePendingLogin(id, {
@@ -508,15 +530,15 @@ export async function beginLogin(): Promise<{
   });
 
   if (form.needCaptcha) {
-    return { pendingId: id, needCaptcha: true, captchaImage: await fetchCaptchaOrEmpty(jar, finalUrl) };
+    return { pendingId: id, needCaptcha: true, captchaImage: await fetchCaptchaOrEmpty(jar, finalUrl, signal) };
   }
   return { pendingId: id, needCaptcha: false };
 }
 
 /** 拉取验证码图片（用同一个 jar 保持 session） */
-async function fetchCaptcha(jar: CookieJar, refer: string): Promise<string> {
+async function fetchCaptcha(jar: CookieJar, refer: string, signal?: AbortSignal): Promise<string> {
   const url = `https://id.cpu.edu.cn/sso/authImg?now=${Date.now()}&refresh=1&authCodeKey=authCodeKeySSO`;
-  const res = await fetchWithJar(jar, url, { headers: { Referer: refer } });
+  const res = await fetchWithJar(jar, url, { headers: { Referer: refer }, signal });
   throwForLoginUpstreamStatus(res);
   const ct = res.headers.get("content-type") || "";
   if (res.ok && ct.startsWith("image/")) {
@@ -526,10 +548,11 @@ async function fetchCaptcha(jar: CookieJar, refer: string): Promise<string> {
   throw new Error("authImg 返回非图片");
 }
 
-async function fetchCaptchaOrEmpty(jar: CookieJar, refer: string) {
+async function fetchCaptchaOrEmpty(jar: CookieJar, refer: string, signal?: AbortSignal) {
   try {
-    return await fetchCaptcha(jar, refer);
+    return await fetchCaptcha(jar, refer, signal);
   } catch (error) {
+    signal?.throwIfAborted();
     if (error instanceof HttpError) throw error;
     return "";
   }
@@ -581,14 +604,17 @@ function scrubCpuSsoCredentialCookies(jar: CookieJar) {
 async function exchangeLoginCredentials(
   args: LoginSubmitArgs,
   stopBeforeCallback: boolean,
+  signal: AbortSignal,
 ): Promise<LoginCredentialExchange> {
   const pending = await getPendingLogin(args.pendingId);
+  signal.throwIfAborted();
   if (!pending) return { ok: false, attempt: { ok: false, error: "登录会话已过期，请刷新页面重试" } };
   const { jar, ssoUrl, submitUrl, hidden } = pending;
 
   const body = buildCpuSsoSubmitBody(hidden, args);
 
   const requestInit: RequestInit = {
+    signal,
     method: "POST",
     body,
     headers: buildCpuSsoSubmitHeaders(ssoUrl, submitUrl),
@@ -641,7 +667,7 @@ async function exchangeLoginCredentials(
       hidden: refreshedForm.hidden,
       createdAt: Date.now(),
     });
-    const img = await fetchCaptchaOrEmpty(jar, r.finalUrl);
+    const img = await fetchCaptchaOrEmpty(jar, r.finalUrl, signal);
     return {
       ok: false,
       attempt: {
@@ -662,17 +688,19 @@ function isCpuSsoUnauthorized(error: unknown) {
 
 async function submitWithFreshPendingRetry<T extends LoginAttempt | LoginHandoffAttempt>(
   args: LoginSubmitArgs,
-  submit: (nextArgs: LoginSubmitArgs) => Promise<T>,
+  submit: (nextArgs: LoginSubmitArgs, signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal,
 ): Promise<T> {
   try {
-    return await submit(args);
+    return await submit(args, signal);
   } catch (error) {
     if (!isCpuSsoUnauthorized(error)) throw error;
   }
 
   // 学校 SSO 偶尔会拒绝一个已经准备好的 execution。凭据保持原样，只重新拿表单重试一次。
   await deletePendingLogin(args.pendingId);
-  const fresh = await beginLogin();
+  signal.throwIfAborted();
+  const fresh = await beginLogin(signal);
   if (fresh.needCaptcha) {
     return {
       ok: false,
@@ -683,7 +711,8 @@ async function submitWithFreshPendingRetry<T extends LoginAttempt | LoginHandoff
   }
 
   try {
-    return await submit({ ...args, pendingId: fresh.pendingId });
+    signal.throwIfAborted();
+    return await submit({ ...args, pendingId: fresh.pendingId }, signal);
   } catch (error) {
     if (isCpuSsoUnauthorized(error)) {
       return { ok: false, error: CPU_SSO_REJECTED_MESSAGE } as T;
@@ -693,8 +722,8 @@ async function submitWithFreshPendingRetry<T extends LoginAttempt | LoginHandoff
 }
 
 /** 第二步：用 pendingId + 凭据完成登录（兼容旧的节点内建会话流程）。 */
-async function submitLoginOnThisNode(args: LoginSubmitArgs): Promise<LoginAttempt> {
-  const exchanged = await exchangeLoginCredentials(args, false);
+async function submitLoginOnThisNode(args: LoginSubmitArgs, signal: AbortSignal): Promise<LoginAttempt> {
+  const exchanged = await exchangeLoginCredentials(args, false, signal);
   if (!exchanged.ok) return exchanged.attempt;
 
   // 注意：不保存 post-login.html —— 它含学生姓名/学号等个人信息。
@@ -709,15 +738,15 @@ async function submitLoginOnThisNode(args: LoginSubmitArgs): Promise<LoginAttemp
   return { ok: true, token };
 }
 
-export async function submitLogin(args: LoginSubmitArgs): Promise<LoginAttempt> {
-  return submitWithFreshPendingRetry(args, submitLoginOnThisNode);
+export async function submitLogin(args: LoginSubmitArgs, signal?: AbortSignal): Promise<LoginAttempt> {
+  return runLoginRequest(deadline => submitWithFreshPendingRetry(args, submitLoginOnThisNode, deadline), signal);
 }
 
 /**
  * 登录池专用提交：只完成 CAS 凭据校验，不在登录节点建立最终教务 token。
  */
-async function submitLoginForHandoffOnThisNode(args: LoginSubmitArgs): Promise<LoginHandoffAttempt> {
-  const exchanged = await exchangeLoginCredentials(args, true);
+async function submitLoginForHandoffOnThisNode(args: LoginSubmitArgs, signal: AbortSignal): Promise<LoginHandoffAttempt> {
+  const exchanged = await exchangeLoginCredentials(args, true, signal);
   if (!exchanged.ok) return exchanged.attempt;
   if (!exchanged.callbackUrl) throw Errors.server("统一认证未返回可交接的 service ticket");
 
@@ -733,8 +762,8 @@ async function submitLoginForHandoffOnThisNode(args: LoginSubmitArgs): Promise<L
   };
 }
 
-export async function submitLoginForHandoff(args: LoginSubmitArgs): Promise<LoginHandoffAttempt> {
-  return submitWithFreshPendingRetry(args, submitLoginForHandoffOnThisNode);
+export async function submitLoginForHandoff(args: LoginSubmitArgs, signal?: AbortSignal): Promise<LoginHandoffAttempt> {
+  return runLoginRequest(deadline => submitWithFreshPendingRetry(args, submitLoginForHandoffOnThisNode, deadline), signal);
 }
 
 function getJwxtCookies(jar: CookieJar): Record<string, Record<string, string>> {

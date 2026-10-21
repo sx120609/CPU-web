@@ -123,13 +123,14 @@ export function isPooledPendingId(pendingId: string) {
   return pendingId.startsWith(`${PENDING_PREFIX}.`);
 }
 
-export async function beginLogin(): Promise<BeginResult> {
+export async function beginLogin(signal?: AbortSignal): Promise<BeginResult> {
   const excluded = new Set<string>();
   const failures: string[] = [];
   const started = Date.now();
   const deadline = started + config.ssoLoginPool.timeoutMs;
 
   while (Date.now() < deadline) {
+    signal?.throwIfAborted();
     const runtime = selectNode(excluded);
     if (!runtime) {
       // Absorb a short capacity gap without sending repeated login requests.
@@ -137,13 +138,17 @@ export async function beginLogin(): Promise<BeginResult> {
       const busy = syncRuntimes().some(r => r.node.enabled && r.node.kind === "agent"
         && !excluded.has(r.node.key) && getJwxtAgentState(r.node.id).ready);
       if (!busy || Date.now() >= Math.min(deadline, started + 1000)) break;
-      await new Promise(resolve => setTimeout(resolve, 50 + Math.floor(Math.random() * 50)));
+      await waitForCapacity(50 + Math.floor(Math.random() * 50), signal);
       continue;
     }
     excluded.add(runtime.node.key);
 
     try {
-      const result = validateBeginResult(await runNodeBegin(runtime, Math.max(1, deadline - Date.now())));
+      signal?.throwIfAborted();
+      // Reserve part of the remaining total budget for other ready nodes, so
+      // a hung local request can be cancelled before a healthy Agent is tried.
+      const budget = Math.max(1, Math.floor((deadline - Date.now()) / (eligibleNodes(excluded).length + 1)));
+      const result = validateBeginResult(await runNodeBegin(runtime, budget));
       markSuccess(runtime);
       return {
         ...result,
@@ -153,6 +158,7 @@ export async function beginLogin(): Promise<BeginResult> {
           : {}),
       };
     } catch (error) {
+      signal?.throwIfAborted();
       markFailure(runtime, error);
       failures.push(`${runtime.node.name}: ${errorMessage(error)}`);
     }
@@ -161,6 +167,16 @@ export async function beginLogin(): Promise<BeginResult> {
   const details = failures.length ? failures : unavailableNodeReasons();
   const suffix = details.length ? `（${details.join("；")}）` : "";
   throw new HttpError(503, 5000, `所有统一认证登录节点暂时不可用${suffix}`);
+}
+
+function waitForCapacity(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    const abort = () => { clearTimeout(timer); cleanup(); reject(signal?.reason); };
+    const timer = setTimeout(() => { cleanup(); resolve(); }, ms);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 export async function submitLogin(args: SecureLoginArgs): Promise<LoginAttempt> {
@@ -231,14 +247,18 @@ export function getSsoLoginPoolSnapshot() {
   };
 }
 
-function selectNode(excluded: Set<string>) {
-  const candidates = syncRuntimes().filter((runtime) => (
+function eligibleNodes(excluded: Set<string>) {
+  return syncRuntimes().filter((runtime) => (
     runtime.node.enabled
     && (runtime.busyUntil ?? 0) <= Date.now()
     && (runtime.node.kind !== "agent" || (isJwxtAgentAvailable(runtime.node.id, "jwxt")
       && runtime.inFlight < runtime.node.config.maxConcurrent))
     && !excluded.has(runtime.node.key)
   ));
+}
+
+function selectNode(excluded: Set<string>) {
+  const candidates = eligibleNodes(excluded);
   if (!candidates.length) return null;
 
   const totalWeight = candidates.reduce((total, runtime) => total + runtime.node.weight, 0);
@@ -259,7 +279,7 @@ async function runNodeBegin(runtime: NodeRuntime, timeoutMs: number): Promise<Be
   runtime.inFlight += 1;
   try {
     if (runtime.node.kind === "local") {
-      return await withLocalNodeTimeout(local.beginLogin(), timeoutMs);
+      return await withLocalNodeTimeout(signal => local.beginLogin(signal), timeoutMs);
     }
     if (runtime.node.kind === "agent") {
       return await requestJwxtAgent(
@@ -288,7 +308,7 @@ async function submitOnNode(
       config.ssoLoginPool.timeoutMs,
     );
   }
-  if (node.kind === "local") return withLocalNodeTimeout(local.submitLoginForHandoff(args));
+  if (node.kind === "local") return withLocalNodeTimeout(signal => local.submitLoginForHandoff(args, signal));
   if (node.kind === "agent") {
     return requestJwxtAgent(
       node.id,
@@ -300,14 +320,19 @@ async function submitOnNode(
   return callRemoteNode<LoginNodeAttempt>(node, "/v1/login-pool/submit", args);
 }
 
-async function withLocalNodeTimeout<T>(request: Promise<T>, timeoutMs = config.ssoLoginPool.timeoutMs): Promise<T> {
-  const started = Date.now();
-  // The local adapter has its own HTTP timeouts, but no cancellation API.
-  // Keep the gate/runtime permit until it settles: racing an uncancelled
-  // promise releases capacity while the school request is still running.
-  const result = await request;
-  if (Date.now() - started >= timeoutMs) throw new HttpError(504, 5000, "本机登录节点请求超时");
-  return result;
+async function withLocalNodeTimeout<T>(request: (signal: AbortSignal) => Promise<T>, timeoutMs = config.ssoLoginPool.timeoutMs): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new HttpError(504, 5000, "本机登录节点请求超时")), timeoutMs);
+  try {
+    // The same signal covers redirects, body reads and captcha requests.
+    // Await actual cancellation; never free capacity through Promise.race.
+    const result = await request(controller.signal);
+    controller.signal.throwIfAborted();
+    return result;
+  } catch (error) {
+    controller.signal.throwIfAborted();
+    throw error;
+  } finally { clearTimeout(timer); }
 }
 
 async function consumeAtQueryTransport(handoff: LoginSessionHandoff, loginNode: LoginNode) {

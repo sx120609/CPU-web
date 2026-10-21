@@ -145,3 +145,18 @@ test("aborting running work does not free capacity before actual completion", as
   release(); await Promise.all([running, next]);
   assert.equal(gate.active, 0);
 });
+
+test("an overdue waiter cannot run when a delayed timer loses to permit handoff", async () => {
+  const gate = new ConcurrencyGate(1, 2, 10);
+  let release!: () => void;
+  const first = gate.run(() => new Promise<void>(resolve => { release = resolve; }));
+  let ran = false;
+  const overdue = assert.rejects(gate.run(async () => { ran = true; }), { name: "ConcurrencyGateTimeoutError" });
+  const until = performance.now() + 25;
+  while (performance.now() < until) { /* Deliberately delay the timer phase. */ }
+  release();
+  await Promise.all([first, overdue]);
+  assert.equal(ran, false);
+  assert.equal(gate.active, 0);
+  assert.equal(await gate.run(async () => "reused"), "reused");
+});

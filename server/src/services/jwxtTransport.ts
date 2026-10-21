@@ -34,7 +34,7 @@ async function throughSsoLoginGate<T>(task: () => Promise<T>, signal?: AbortSign
 
 export function beginLogin(signal?: AbortSignal): ReturnType<typeof local.beginLogin> {
   return throughSsoLoginGate(() => (loginPool.isDedicatedSsoLoginPool()
-    ? loginPool.beginLogin()
+    ? loginPool.beginLogin(signal)
     : queryImpl().beginLogin()) as ReturnType<typeof local.beginLogin>, signal);
 }
 

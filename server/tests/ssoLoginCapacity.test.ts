@@ -21,13 +21,14 @@ test("concurrent login begins wait for Agent capacity without replaying or excee
   gateway.attachJwxtAgentGateway(server);
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   let active = 0, peak = 0, calls = 0;
+  let block: Promise<void> | undefined;
   const client = startJwxtAgentClient({
     serverUrl: `ws://127.0.0.1:${(server.address() as AddressInfo).port}/api/internal/jwxt-agent/connect`,
     agentId: "capacity-agent", token, reconnectMs: 100, log: () => {},
     dispatch: async action => {
       assert.equal(action, "login.begin");
       active++; peak = Math.max(peak, active); const id = ++calls;
-      try { await new Promise(resolve => setTimeout(resolve, 20)); return { pendingId: `capacity-pending-${id}`, needCaptcha: false }; }
+      try { await (block ?? new Promise(resolve => setTimeout(resolve, 20))); return { pendingId: `capacity-pending-${id}`, needCaptcha: false }; }
       finally { active--; }
     },
   });
@@ -44,4 +45,19 @@ test("concurrent login begins wait for Agent capacity without replaying or excee
   assert.equal(new Set(results.map(result => result.pendingId)).size, 6);
   assert.equal(calls, 6);
   assert.equal(peak, 1);
+  let release!: () => void;
+  block = new Promise<void>(resolve => { release = resolve; });
+  const first = beginLogin();
+  while (calls < 7) await new Promise(resolve => setTimeout(resolve, 5));
+  const controller = new AbortController();
+  const cancelled = assert.rejects(beginLogin(controller.signal), { name: "AbortError" });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  controller.abort();
+  await cancelled;
+  release(); await first;
+  block = undefined;
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.equal(calls, 7, "cancelled capacity wait must never dispatch after capacity returns");
+  await beginLogin();
+  assert.equal(calls, 8);
 });

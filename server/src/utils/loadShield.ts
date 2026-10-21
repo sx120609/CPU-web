@@ -94,8 +94,10 @@ export class ConcurrencyGate {
 
   async run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     signal?.throwIfAborted();
+    let queueDeadline = Infinity;
     if (this.running >= this.concurrency) {
       if (this.queue.length >= this.maxQueue) throw new ConcurrencyGateFullError();
+      queueDeadline = performance.now() + this.queueTimeoutMs;
       await new Promise<void>((resolve, reject) => {
         const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
         const take = () => { cleanup(); resolve(); };
@@ -115,6 +117,9 @@ export class ConcurrencyGate {
     }
     try {
       signal?.throwIfAborted();
+      // Timers can run late under event-loop pressure. The handed-off permit
+      // must still be released in finally when its waiter has expired.
+      if (performance.now() >= queueDeadline) throw new ConcurrencyGateTimeoutError();
       return await task();
     } finally {
       // 名额直接交给下一个排队者；没人排队才释放。
