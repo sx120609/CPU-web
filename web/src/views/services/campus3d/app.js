@@ -1167,7 +1167,7 @@ const PLAZAS = {
   gate: [gateP(-11.8, 3.4), gateP(13.5, 3.4), gateP(15.8, -13), gateP(5, -13), gateP(5, -70), gateP(8, -70), gateP(8, -86), gateP(-9, -86), gateP(-9, -70), gateP(-6, -70), gateP(-6, -13), gateP(-14.6, -13)],
   xueyuan: null,
   xyLawns: null,
-  rondo: [-55, -112, 24],
+  rondo: [-52.9, -102.4, 19.1],
 };
 function paintParcel(g,p,kind) {
   const ob=obb(p),cols=kind==='wood'?['#526447','#5f714d','#465d3b']:['#a1946d','#76855a','#879566','#596e45'];
@@ -1231,13 +1231,6 @@ function paintGround() {
     const p = circlePoly(x, z, r, 48).map(([px,pz],i) => [x+(px-x)*(1+0.18*Math.sin(i/48*Math.PI*4)),z+(pz-z)*0.8]);
     fillPoly(g, p, '#7da352'); g.fillStyle = grassP; g.fill(); g.strokeStyle = '#efece4'; g.lineWidth = 1.2; g.stroke();
   }
-  {
-    const [x, z, r] = PLAZAS.rondo; fillPoly(g, circlePoly(x, z, r, 60), '#d5bdb5');
-    g.strokeStyle = 'rgba(150,95,90,.55)'; g.lineWidth = 0.6;
-    for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; g.beginPath(); g.moveTo(x + Math.cos(a) * 8, z + Math.sin(a) * 8); g.lineTo(x + Math.cos(a) * r, z + Math.sin(a) * r); g.stroke(); }
-    for (const rr2 of [12, 17, 21]) { g.beginPath(); g.arc(x, z, rr2, 0, 7); g.stroke(); }
-    fillPoly(g, circlePoly(x, z, 8, 40), '#79a050');
-  }
   paintSports(g);
   paintNortheast(g);
   g.strokeStyle = '#b3aea3'; g.lineWidth = 7;
@@ -1261,6 +1254,18 @@ function paintGround() {
       g.strokeStyle = 'rgba(235,235,230,.75)'; g.lineWidth = 0.15; g.setLineDash([3, 4]); traceLine(g, r.p); g.stroke();
     }
     g.setLineDash([]);
+  }
+  {
+    // Roundabout island: lawn inside the kerb line with a band of bedding flowers; the shrub ring and the tree in the
+    // middle are planted in placeTrees. It used to be a pink paved plaza 9 m off the ring, spilling over the road.
+    const [x, z, r] = PLAZAS.rondo, rn = mulberry(4417);
+    fillPoly(g, circlePoly(x, z, r - 0.7, 72), '#7da352'); g.fillStyle = grassP; g.fill();
+    g.save(); g.beginPath(); g.arc(x, z, 13.6, 0, 7); g.arc(x, z, 11.6, 0, 7, true); g.clip();
+    g.fillStyle = '#5d4b3b'; g.fillRect(x - 14, z - 14, 28, 28);
+    const FLOWER = ['#d8344a', '#f2c230', '#f1efe9', '#e46a9a', '#c4263a', '#f08a2c'];
+    for (let i = 0; i < 1400; i++) { const a = rn() * Math.PI * 2, d = 11.6 + rn() * 2; g.fillStyle = FLOWER[Math.floor(rn() * FLOWER.length)]; g.fillRect(x + Math.cos(a) * d - 0.18, z + Math.sin(a) * d - 0.18, 0.36, 0.36); }
+    g.restore();
+    g.strokeStyle = '#4e6b33'; g.lineWidth = 0.35; for (const d of [11.45, 13.75]) { g.beginPath(); g.arc(x, z, d, 0, 7); g.stroke(); }
   }
   for (const [k, x, z] of D.n) {
     if (k !== 'crossing') continue;
@@ -2858,6 +2863,12 @@ function placeTrees() {
   addTree('camphor', -451, 113, 1.35); addTree('camphor', -432, 151, 1.4);
   for (const [x, z] of LIB_TREES) addTree('camphor', x, z, 0.62);
   for (const [type, x, z, s] of TEACH_TREES) TREES.push({ type, x, z, s: s * rr(0.85, 1.1), r: rand(), rot: rand() * 6.28, v: Math.floor(rand() * 3) });
+  {
+    const [x, z] = PLAZAS.rondo, rn = mulberry(5521), put = (type, px, pz, sc) => TREES.push({ type, x: px, z: pz, s: sc, r: rn(), rot: rn() * 6.28, v: Math.floor(rn() * 3) });
+    for (let i = 0; i < 30; i++) { const a = i / 30 * Math.PI * 2; put('shrub', x + Math.cos(a) * 16.6, z + Math.sin(a) * 16.6, 0.82 + rn() * 0.12); }
+    put('camphor', x, z, 0.9);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.3; put('shrub', x + Math.cos(a) * 4.2, z + Math.sin(a) * 4.2, 0.7 + rn() * 0.1); }
+  }
   for (let b = -17; b > -70; b -= 6.5) for (const a of [-9.6, 8.6]) { const [x, z] = gateP(a, b); addTree('ginkgo', x, z, 1.05); }
   for (let b = -18; b > -76; b -= 5) for (const a of [-12.5, 11.5]) { const [x, z] = gateP(a, b); addTree('ginkgo', x, z, 0.85); }
 }
@@ -3515,7 +3526,6 @@ function buildPeople() {
   const standSpots = [];
   const lib = byName(/^图书馆$/);
   if (lib && lib.front) for (let i = 0; i < 16; i++) standSpots.push([lib.front.x + rr(-35, 35), lib.front.z + rr(-35, 35)]);
-  for (let i = 0; i < 12; i++) standSpots.push([PLAZAS.rondo[0] + rr(-18, 18), PLAZAS.rondo[1] + rr(-18, 18)]);
   for (const [x, z] of standSpots) if (!inWater(x, z)) list.push({ stand: true, x, z, a: rand() * 6.28, ph: rand() * 6, sc: rr(0.92, 1.08) });
   // three meshes sharing each walker's matrix: top (shirt colour), bottom (trousers colour), skin (face, neck, hands)
   const shirtP = [], pantsP = [], skinP = [];
@@ -3699,7 +3709,7 @@ function buildCars() {
     for (let s = 5; s < cum[cum.length - 1] - 5; s += 5.6) {
       if (rand() > dens) continue; const q = sampleAt(line, cum, s);
       const academicEntry = BLD.some(b => b.parts && Math.hypot(q.x-b.c[0],q.z-b.c[1])<125);
-      if (!academicEntry && Math.hypot(q.x - GATE.x, q.z - GATE.z) > 48 && Math.hypot(q.x - PLAZAS.rondo[0], q.z - PLAZAS.rondo[1]) > PLAZAS.rondo[2] + 4 && !D.sq.some((g) => pip(q.x, q.z, g.p)) && !D.g.some((g) => pip(q.x, q.z, g.p)) && !inWater(q.x, q.z) && !BLD.some((b) => pip(q.x, q.z, b.p))) parked.push([q.x, q.z, Math.atan2(q.dz, q.dx)]);
+      if (!academicEntry && Math.hypot(q.x - GATE.x, q.z - GATE.z) > 48 && Math.hypot(q.x - PLAZAS.rondo[0], q.z - PLAZAS.rondo[1]) > PLAZAS.rondo[2] + 9 && !D.sq.some((g) => pip(q.x, q.z, g.p)) && !D.g.some((g) => pip(q.x, q.z, g.p)) && !inWater(q.x, q.z) && !BLD.some((b) => pip(q.x, q.z, b.p))) parked.push([q.x, q.z, Math.atan2(q.dz, q.dx)]);
     }
   }
   for (const l of D.lu) if (l.k === 'parking') { const ob = obb(l.p); for (let u = -ob.L / 2 + 1.5; u < ob.L / 2 - 1; u += 2.5) for (const v of [-ob.W / 2 + 3, ob.W / 2 - 3]) if (rand() < 0.7) parked.push([ob.cx + ob.ux * u - ob.uz * v, ob.cz + ob.uz * u + ob.ux * v, ob.ang + Math.PI / 2]); }
