@@ -3402,7 +3402,7 @@ function buildLamps() {
   chunkify(bm, 320, 300);
 }
 
-let BUSH_GRID = null, BIKE_SPOTS = [];
+let BUSH_GRID = null, BIKE_SPOTS = [], BIKE_CHUNKS = [];
 function bushAt(x, z) {
   if (!BUSH_GRID) { BUSH_GRID = new Grid(8); TREES.forEach((t, i) => { const r = SPECIES[t.type].rx * t.s * (t.type === 'shrub' ? 0.8 : 0.12) + 0.9; BUSH_GRID.add(i, [t.x - r, t.z - r, t.x + r, t.z + r]); }); }
   return BUSH_GRID.at(x, z).some((i) => { const t = TREES[i], r = SPECIES[t.type].rx * t.s * (t.type === 'shrub' ? 0.8 : 0.12) + 0.9; return Math.hypot(t.x - x, t.z - z) < r; });
@@ -3442,7 +3442,7 @@ function buildBikes() {
   const lean = new THREE.Euler(0, 0, 0, 'YXZ');
   spots.forEach(([x, z, a], i) => { lean.set(-0.11, -a, 0); _q.setFromEuler(lean); _m4.compose(_v.set(x, 0, z), _q, _s.set(1, 1, 1)); bm.setMatrixAt(i, _m4); bm.setColorAt(i, _c.set(pick(cols))); });
   bm.castShadow = false; bm.layers.set(1); scene.add(bm);
-  chunkify(bm, 260, 240, true);
+  BIKE_CHUNKS = chunkify(bm, 260, 240, true);
 }
 function mergeColored(parts) {
   const pos = [], nor = [], col = [], limbs = [];
@@ -3475,7 +3475,7 @@ function chunkify(im, maxD, cell = 140, life = false) {
     ids.forEach((i, j) => { im.getMatrixAt(i, m); c.setMatrixAt(j, m); if (im.instanceColor) { im.getColorAt(i, col); c.setColorAt(j, col); } });
     c.castShadow = im.castShadow; c.receiveShadow = im.receiveShadow; c.layers.mask = im.layers.mask;
     if (im.customDepthMaterial) c.customDepthMaterial = im.customDepthMaterial;
-    c.computeBoundingSphere(); c.userData.maxD = maxD; c.userData.life = life;
+    c.computeBoundingSphere(); c.userData.maxD = maxD; c.userData.life = life; c.userData.ids = ids;
     parent.add(c); CHUNKS.push(c); out.push(c);
   }
   return out;
@@ -4616,6 +4616,7 @@ function placeFront(p) {
 }
 function walkToPlace(p) {
   if (DRIVE.on) exitCar();
+  if (RIDE.on) exitBike();
   const f = placeFront(p);
   enterWalk(f.x, f.z, f.yaw, { dur: Math.hypot(f.x - WALK.x, f.z - WALK.z) > 220 ? 1.8 : 1.1 });
 }
@@ -4677,6 +4678,7 @@ function walkStep(h, wx, wz, wish) {
 }
 function updateWalk(dt) {
   if (DRIVE.on) { updateDrive(dt); return; }
+  if (RIDE.on) { updateRide(dt); return; }
   const W = WALK, k = W.keys, live = TOUCH || W.locked || W.noLock;
   let f = 0, s = 0;
   if (live) {
@@ -4871,6 +4873,179 @@ function updateDrive(dt) {
     D.snd.g.gain.setTargetAtTime(WALK.sound ? 0.035 + Math.max(0, thr) * 0.03 + Math.abs(D.v) * 0.0015 : 0, t, 0.1);
   }
 }
+// ======================= cycling =======================
+// Any parked bike can be ridden: pedal, brake, steer, lean into turns, bunny-hop, ring the bell. First person shows the
+// rider's own arms and pedalling legs; third person shows the whole rider. Riding into a lake throws the rider in.
+const RIDE = { on: false, k: -1, x: 0, z: 0, a: 0, y: 0, v: 0, steer: 0, lean: 0, crank: 0, spin: 0, hop: 0, hopV: 0,
+  cam: 'fp', camYaw: 0, camPitch: -0.08, lookT: 0, root: null, near: -1, tick: 0 };
+function bikeSlot(k) { for (const c of BIKE_CHUNKS) { const j = c.userData.ids.indexOf(k); if (j >= 0) return [c, j]; } return [null, -1]; }
+function nearBike() {
+  const [fx, fz] = walkForward(); let best = -1, bd = 1e9;
+  BIKE_SPOTS.forEach(([x, z], k) => {
+    if (k === RIDE.k && RIDE.on) return;
+    const dx = x - WALK.x, dz = z - WALK.z, d = Math.hypot(dx, dz);
+    if (d < 2.6 && (d < 1.4 || (dx * fx + dz * fz) / d > 0.25) && d < bd) { bd = d; best = k; }
+  });
+  return best;
+}
+const limbTo = (m, a, b) => { const d = new THREE.Vector3().subVectors(b, a), l = d.length(); m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.divideScalar(l || 1)); m.scale.set(1, l, 1); };
+function rideMesh() {
+  if (RIDE.root) return RIDE.root;
+  const root = new THREE.Group(), V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const frameMat = new THREE.MeshStandardMaterial({ color: '#1f8fe0', roughness: 0.45, metalness: 0.35 }), dark = new THREE.MeshStandardMaterial({ color: '#1a1b1d', roughness: 0.7 });
+  const steel = new THREE.MeshStandardMaterial({ color: '#b7bcc2', roughness: 0.35, metalness: 0.8 });
+  const unit = new THREE.CylinderGeometry(1, 1, 1, 8); unit.translate(0, 0, 0);
+  const rod = (a, b, r, mat, parent = root) => { const m = new THREE.Mesh(unit, mat); m.scale.x = m.scale.z = r; limbTo(m, a, b); m.scale.x = m.scale.z = r; parent.add(m); m.castShadow = true; return m; };
+  const wheel = () => {
+    const g = new THREE.Group();
+    const t = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.032, 8, 32), dark); g.add(t);
+    const rimM = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 6, 32), steel); g.add(rimM);
+    for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, sp = new THREE.Mesh(unit, steel); sp.scale.set(0.004, 0.3, 0.004); sp.position.set(Math.cos(a) * 0.15, Math.sin(a) * 0.15, 0); sp.rotation.z = a - Math.PI / 2; g.add(sp); }
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.12, 10), steel); hub.rotation.x = Math.PI / 2; g.add(hub);
+    t.castShadow = true; return g;
+  };
+  const back = V(-0.52, 0.36, 0), crank = V(-0.05, 0.36, 0), seatTop = V(-0.22, 0.85, 0), front = V(0.52, 0.36, 0), stem = V(0.37, 0.84, 0);
+  for (const [a, b] of [[back, crank], [back, seatTop], [seatTop, crank], [seatTop, stem], [crank, stem]]) rod(a, b, 0.024, frameMat);
+  rod(V(-0.52, 0.36, 0.05), V(-0.22, 0.85, 0.02), 0.012, frameMat); rod(V(-0.52, 0.36, -0.05), V(-0.22, 0.85, -0.02), 0.012, frameMat);
+  rod(seatTop, V(-0.25, 0.95, 0), 0.016, steel);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.15), dark); seat.position.set(-0.26, 0.98, 0); root.add(seat);
+  const rear = wheel(); rear.position.copy(back); root.add(rear);
+  // steering assembly turns about the head tube
+  const steerG = new THREE.Group(); steerG.position.copy(stem); root.add(steerG);
+  const axis = new THREE.Vector3().subVectors(front, stem).normalize();
+  rod(V(0, 0, 0), V(0.15, -0.48, 0.05), 0.014, frameMat, steerG); rod(V(0, 0, 0), V(0.15, -0.48, -0.05), 0.014, frameMat, steerG);
+  rod(V(0, 0, 0), V(0.04, 0.18, 0), 0.018, steel, steerG);
+  rod(V(0.04, 0.18, -0.29), V(0.04, 0.18, 0.29), 0.013, steel, steerG);
+  for (const z of [-0.26, 0.26]) { const gr = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.1, 8), dark); gr.rotation.x = Math.PI / 2; gr.position.set(0.04, 0.18, z); steerG.add(gr); }
+  const basket = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.34), new THREE.MeshStandardMaterial({ color: '#2a2c2f', roughness: 0.6, wireframe: true })); basket.position.set(0.25, 0.1, 0); steerG.add(basket);
+  const frontW = wheel(); frontW.position.set(0.15, -0.48, 0); steerG.add(frontW);
+  // crank and pedals
+  const crankG = new THREE.Group(); crankG.position.copy(crank); root.add(crankG);
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.01, 20), steel); ring.rotation.x = Math.PI / 2; ring.position.z = 0.06; crankG.add(ring);
+  const pedals = [];
+  for (const sd of [1, -1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.17, 0.02), steel); arm.position.set(0, -0.085 * sd, 0.09 * sd); crankG.add(arm);
+    const pd = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.025, 0.08), dark); pd.position.set(0, -0.17 * sd, 0.14 * sd); crankG.add(pd); pedals.push(pd);
+  }
+  // rider: torso leaning over the bars, arms to the grips, legs solved to the pedals every frame
+  const skin = new THREE.MeshStandardMaterial({ color: '#d9b08d', roughness: 0.75 }), shirt = new THREE.MeshStandardMaterial({ color: '#2f3b4c', roughness: 0.85 }), pants = new THREE.MeshStandardMaterial({ color: '#23272e', roughness: 0.85 });
+  const rider = new THREE.Group(); root.add(rider);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.56, 12), shirt); torso.scale.z = 0.7; torso.position.set(-0.12, 1.24, 0); torso.rotation.z = -0.55; rider.add(torso);
+  const head = new THREE.Group(); head.position.set(0.12, 1.6, 0); rider.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), skin));
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.106, 14, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), new THREE.MeshStandardMaterial({ color: '#1d1714', roughness: 0.9 })); hair.position.y = 0.03; head.add(hair);
+  const limbs = {};
+  for (const sd of [1, -1]) {
+    limbs['ua' + sd] = rod(V(0, 0, 0), V(0, 1, 0), 0.045, shirt, rider); limbs['fa' + sd] = rod(V(0, 0, 0), V(0, 1, 0), 0.038, skin, rider);
+    limbs['th' + sd] = rod(V(0, 0, 0), V(0, 1, 0), 0.065, pants, rider); limbs['sh' + sd] = rod(V(0, 0, 0), V(0, 1, 0), 0.05, pants, rider);
+  }
+  Object.assign(RIDE, { root, rear, frontW, steerG, axis, crankG, pedals, rider, head, limbs, frameMat, shirt });
+  root.visible = false; scene.add(root); return root;
+}
+function poseRider() {
+  const R = RIDE, V = (x, y, z) => new THREE.Vector3(x, y, z), L = R.limbs;
+  for (const sd of [1, -1]) {
+    const sh = V(0.05, 1.4, 0.17 * sd), grip = V(0.41, 1.0, 0.25 * sd);
+    grip.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0).sub(V(0.37, 0.84, 0)).applyAxisAngle(R.axis, -R.steer).add(V(0.37, 0.84, 0));
+    const elbow = sh.clone().lerp(grip, 0.5).add(V(-0.04, -0.06, 0.05 * sd));
+    limbTo(L['ua' + sd], sh, elbow); L['ua' + sd].scale.x = L['ua' + sd].scale.z = 0.045;
+    limbTo(L['fa' + sd], elbow, grip); L['fa' + sd].scale.x = L['fa' + sd].scale.z = 0.038;
+    // two-bone leg: hip to pedal with 0.46 m thigh and shin, knee bent forward
+    const ang = R.crank + (sd > 0 ? 0 : Math.PI), pedal = V(-0.05 - Math.sin(ang) * 0.17, 0.36 - Math.cos(ang) * 0.17, 0.14 * sd), hip = V(-0.25, 1.0, 0.1 * sd);
+    const d = pedal.clone().sub(hip), dl = Math.min(d.length(), 0.9), mid = hip.clone().addScaledVector(d.clone().normalize(), dl / 2);
+    const bend = Math.sqrt(Math.max(0, 0.46 * 0.46 - (dl / 2) * (dl / 2))), perp = new THREE.Vector3(-d.y, d.x, 0).normalize();
+    if (perp.x < 0) perp.negate();
+    const knee = mid.addScaledVector(perp, bend);
+    limbTo(L['th' + sd], hip, knee); L['th' + sd].scale.x = L['th' + sd].scale.z = 0.065;
+    limbTo(L['sh' + sd], knee, pedal); L['sh' + sd].scale.x = L['sh' + sd].scale.z = 0.05;
+  }
+}
+function enterBike(k) {
+  const [c, j] = bikeSlot(k); if (!c) return;
+  rideMesh();
+  const [x, z, a] = BIKE_SPOTS[k], col = new THREE.Color(); c.getColorAt(j, col);
+  _m4.makeScale(0, 0, 0); c.setMatrixAt(j, _m4); c.instanceMatrix.needsUpdate = true;
+  Object.assign(RIDE, { on: true, k, x, z, a, y: groundAt(x, z), v: 0, steer: 0, lean: 0, hop: 0, hopV: 0, camYaw: 0, camPitch: -0.08, lookT: 0 });
+  RIDE.frameMat.color.copy(col); RIDE.shirt.color.set(pick(['#f2f1ec', '#2f3b4c', '#7b8ea3', '#c48f8f', '#4a5a4c', '#d7b46a', '#9a3d3d']));
+  RIDE.root.visible = true; WALK.vx = WALK.vz = WALK.vy = 0; WALK.trans = null; setUnderwater(false);
+  walkAudioWake(); walkHud();
+  toast(TOUCH ? '左侧摇杆骑行 · 跳跃键小跳 · 点“下车”离开' : 'W 蹬车 · S 刹车 · A/D 转向 · Shift 加速 · 空格小跳 · B 车铃 · V 视角 · E 下车', 4200);
+}
+function exitBike(o = {}) {
+  if (!RIDE.on) return;
+  const R = RIDE, [c, j] = bikeSlot(R.k), c0 = Math.cos(R.a), s0 = Math.sin(R.a);
+  if (c && !o.swim) {
+    const lean = new THREE.Euler(-0.11, -R.a, 0, 'YXZ'); _q.setFromEuler(lean);
+    _m4.compose(_v.set(R.x, groundAt(R.x, R.z), R.z), _q, _s.set(1, 1, 1)); c.setMatrixAt(j, _m4); c.instanceMatrix.needsUpdate = true; c.computeBoundingSphere();
+    BIKE_SPOTS[R.k] = [R.x, R.z, R.a];
+  } else { BIKE_SPOTS[R.k] = [1e9, 1e9, 0]; }
+  R.on = false; R.root.visible = false;
+  if (o.swim) {
+    Object.assign(WALK, { x: R.x + c0 * 1.2, z: R.z + s0 * 1.2, y: 0, yaw: Math.atan2(-c0, -s0), vx: c0 * R.v * 0.5, vz: s0 * R.v * 0.5, vy: 1.5, ground: false, swim: false });
+  } else {
+    const [px, pz] = walkSpot(R.x + s0 * 0.9, R.z - c0 * 0.9);
+    Object.assign(WALK, { x: px, z: pz, y: floorAt(px, pz, 5), yaw: Math.atan2(-c0, -s0), pitch: -0.05, vx: 0, vz: 0, vy: 0, ground: true, swim: false });
+  }
+  walkHud();
+}
+function updateRide(dt) {
+  const R = RIDE, k = WALK.keys, pad = WALK.pad, live = TOUCH || WALK.locked || WALK.noLock, h = Math.min(dt, 0.05);
+  const thr = live ? clamp((k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - pad.y, -1, 1) : 0;
+  const st = live ? clamp((k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - pad.x, -1, 1) : 0;
+  const fast = live && (k.has('ShiftLeft') || k.has('ShiftRight') || WALK.padRun), max = fast ? 8.5 : 5.6;
+  if (thr > 0.05) R.v += (2.9 * (1 - Math.max(0, R.v) / max) + 0.2) * thr * h;
+  else if (thr < -0.05) R.v = R.v > 0.2 ? R.v - 6 * -thr * h : Math.max(-0.8, R.v - 1.5 * h);
+  R.v -= R.v * 0.06 * h + Math.sign(R.v) * Math.min(Math.abs(R.v), 0.18 * h);
+  const tgt = st * (0.62 - 0.44 * Math.min(1, Math.abs(R.v) / 7));
+  R.steer += (tgt - R.steer) * Math.min(1, h * 7);
+  R.a -= R.v / 1.05 * Math.tan(R.steer) * h;
+  R.lean += (clamp(-Math.atan(R.v * R.v * Math.tan(R.steer) / 1.05 / 9.8) * 0.8, -0.4, 0.4) - R.lean) * Math.min(1, h * 4);
+  // bunny hop
+  if (WALK.jumpBuf > 0 && R.hop <= 0.001) { R.hopV = 2.8; WALK.jumpBuf = 0; walkSound('jump', 0.6); }
+  WALK.jumpBuf = Math.max(0, WALK.jumpBuf - h);
+  if (R.hop > 0 || R.hopV > 0) { R.hopV -= 15 * h; R.hop = Math.max(0, R.hop + R.hopV * h); if (R.hop === 0) { if (R.hopV < -2) walkSound('land', 0.4); R.hopV = 0; } }
+  const c = Math.cos(R.a), sn = Math.sin(R.a);
+  let nx = R.x + c * R.v * h, nz = R.z + sn * R.v * h, px = 0, pz = 0;
+  for (const off of [0.5, -0.5]) {
+    const cx = nx + c * off, cz = nz + sn * off, [rx, rz] = walkResolve(cx, cz, groundAt(cx, cz) + R.hop, 0.32);
+    if (Math.hypot(rx - cx, rz - cz) > Math.hypot(px, pz)) { px = rx - cx; pz = rz - cz; }
+  }
+  if (isWet(nx + c * 0.6, nz + sn * 0.6) && R.v > 0.5) { walkSound('splash', 0.8); exitBike({ swim: true }); return; }
+  if (!inRegion(nx, nz)) { nx = R.x; nz = R.z; R.v = 0; }
+  const want = R.v * h; nx += px; nz += pz;
+  const got = (nx - R.x) * c + (nz - R.z) * sn, ratio = Math.abs(want) > 1e-4 ? got / want : 1;
+  if (ratio < 0.35) { if (Math.abs(R.v) > 2.5) walkSound('bump', 0.5); R.v *= 0.2; } else if (ratio < 0.98) R.v *= 1 - (1 - ratio) * 0.4;
+  R.x = nx; R.z = nz; R.y += (groundAt(R.x, R.z) - R.y) * Math.min(1, h * 12);
+  // drivetrain: wheels roll, cranks turn while pedalling, freewheel ticks while coasting
+  R.spin -= R.v * h / 0.33;
+  const pedal = thr > 0.05 && R.v > 0;
+  if (pedal) R.crank += R.v * h / 0.33 / 2.4;
+  R.tick += Math.abs(R.v) * h; if (!pedal && R.v > 1 && R.tick > 0.35) { R.tick = 0; walkSound('tick', 0.4); }
+  const root = R.root; root.position.set(R.x, R.y + R.hop, R.z); root.rotation.set(R.lean, -R.a, 0, 'YXZ');
+  R.rear.rotation.z = R.spin; R.frontW.rotation.z = R.spin;
+  R.steerG.quaternion.setFromAxisAngle(R.axis, -R.steer);
+  R.crankG.rotation.z = -R.crank; R.pedals.forEach((pd) => { pd.rotation.z = R.crank; });
+  poseRider();
+  WALK.x = R.x; WALK.z = R.z; WALK.y = R.y;
+  // camera: the rider's eyes (leaning with the bike, pedalling bob), or a chase view behind
+  R.lookT += dt; if (R.lookT > 1.6) { R.camYaw *= Math.exp(-dt * 2.5); R.camPitch += ((R.cam === 'fp' ? -0.08 : 0.2) - R.camPitch) * Math.min(1, dt * 2); }
+  R.head.visible = R.cam !== 'fp';
+  if (R.cam === 'fp') {
+    const eye = new THREE.Vector3(0.14, 1.62 + Math.abs(Math.sin(R.crank)) * 0.025 * Math.min(1, R.v / 3), 0).applyEuler(new THREE.Euler(R.lean, -R.a, 0, 'YXZ'));
+    camera.position.set(R.x + eye.x, R.y + R.hop + eye.y, R.z + eye.z);
+    camera.quaternion.setFromEuler(new THREE.Euler(R.camPitch, -R.a - Math.PI / 2 + R.camYaw, -R.lean * 0.45, 'YXZ'));
+  } else {
+    const ca = R.a + Math.PI + R.camYaw, dist = 4.2;
+    const want2 = new THREE.Vector3(R.x + Math.cos(ca) * dist, R.y + 1.9 + Math.sin(R.camPitch) * dist, R.z + Math.sin(ca) * dist);
+    want2.y = Math.max(want2.y, groundAt(want2.x, want2.z) + 0.5);
+    camera.position.lerp(want2, 1 - Math.exp(-dt * 7));
+    camera.lookAt(R.x + c * 1.5, R.y + 1.1, R.z + sn * 1.5);
+  }
+  const fov = 72 + Math.min(10, Math.abs(R.v) * 0.9);
+  if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
+  controls.target.set(R.x + c * 20, R.y + 1.2, R.z + sn * 20);
+  const spd = $('#speedo b'); if (spd) spd.textContent = String(Math.round(Math.abs(R.v) * 3.6));
+}
 // ---- aiming and inspecting buildings ----
 function placeOf(own) {
   const pl = PLACES.find((q) => q.bld && q.bld.includes(own)); if (pl) return pl;
@@ -4878,13 +5053,19 @@ function placeOf(own) {
   return { name: b.name, cat: b.cls.cat || 'teach', bld: [own], x: b.c[0], z: b.c[1], h: b.h };
 }
 function walkAim() {
-  const car = !WALK.trans && (WALK.locked || WALK.noLock || TOUCH) ? nearCar() : -1;
-  if (car !== DRIVE.near) {
-    DRIVE.near = car;
-    if (car >= 0) { WALK.aimOwn = -2; WALK.aim = null; $('#xhair').classList.add('on'); $('#xhint').hidden = false; $('#xhintName').textContent = '上车'; return; }
+  const live = !WALK.trans && (WALK.locked || WALK.noLock || TOUCH);
+  let car = live ? nearCar() : -1, bike = live ? nearBike() : -1;
+  if (car >= 0 && bike >= 0) {
+    const ce = CARS.parkedM[car].elements, [bx, bz] = BIKE_SPOTS[bike];
+    if (Math.hypot(ce[12] - WALK.x, ce[14] - WALK.z) - 1.2 < Math.hypot(bx - WALK.x, bz - WALK.z)) bike = -1; else car = -1;
+  }
+  const key = car >= 0 ? 'c' + car : bike >= 0 ? 'b' + bike : '';
+  if (key !== WALK.vehKey) {
+    WALK.vehKey = key; DRIVE.near = car; RIDE.near = bike;
+    if (key) { WALK.aimOwn = -2; WALK.aim = null; $('#xhair').classList.add('on'); $('#xhint').hidden = false; $('#xhintName').textContent = car >= 0 ? '上车' : '骑车'; return; }
     WALK.aimOwn = -3;
   }
-  if (car >= 0) return;
+  if (key) return;
   let own = -1;
   if (!WALK.trans && (WALK.locked || WALK.noLock)) {
     ndc.set(0, 0); ray.setFromCamera(ndc, camera);
@@ -4898,7 +5079,9 @@ function walkAim() {
 }
 function walkInspect(p = WALK.aim) {
   if (DRIVE.on) { exitCar(); return; }
-  if (p === WALK.aim && DRIVE.near >= 0) { enterCar(DRIVE.near); DRIVE.near = -1; return; }
+  if (RIDE.on) { exitBike(); return; }
+  if (p === WALK.aim && DRIVE.near >= 0) { enterCar(DRIVE.near); DRIVE.near = -1; WALK.vehKey = null; return; }
+  if (p === WALK.aim && RIDE.near >= 0) { enterBike(RIDE.near); RIDE.near = -1; WALK.vehKey = null; return; }
   if (!p) return;
   select(p); WALK.inspect = true; WALK.zoomOn = false;
   walkUnlock(); walkHud();
@@ -4936,8 +5119,9 @@ on(document, 'pointerlockchange', walkLockChange);
 on(document, 'pointerlockerror', walkLockError);
 function walkHud() {
   const on = mode === 'walk';
-  $('#speedo').hidden = !(on && DRIVE.on); $('#carExit').hidden = !(on && DRIVE.on && TOUCH); $('#walkCrouch').hidden = on && DRIVE.on;
-  $('#xhair').hidden = !on || DRIVE.on || (!TOUCH && !WALK.noLock && !WALK.locked);
+  const veh = DRIVE.on || RIDE.on;
+  $('#speedo').hidden = !(on && veh); $('#carExit').hidden = !(on && veh && TOUCH); $('#walkCrouch').hidden = on && veh;
+  $('#xhair').hidden = !on || veh || (!TOUCH && !WALK.noLock && !WALK.locked);
   $('#walkPause').hidden = !on || WALK.noLock || WALK.locked;
   $('#walkPause').classList.toggle('mini', WALK.inspect);
   $('#walkbtns').hidden = !(on && TOUCH); $('#walkpad').hidden = !(on && TOUCH);
@@ -4971,6 +5155,21 @@ function surfaceHard() {
 }
 function walkSound(kind, k = 1) {
   if (!WALK.sound || !AUD || AUD.C.state !== 'running') return;
+  if (kind === 'bell') {
+    const { C, out } = AUD, t = C.currentTime;
+    for (const [f0, t0] of [[2350, 0], [2350, 0.16]]) for (const f of [f0, f0 * 1.5]) {
+      const o = C.createOscillator(), g = C.createGain(); o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + t0); g.gain.exponentialRampToValueAtTime(f === f0 ? 0.22 : 0.08, t + t0 + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + t0 + 0.9);
+      o.connect(g); g.connect(out); o.start(t + t0); o.stop(t + t0 + 0.95);
+    }
+    return;
+  }
+  if (kind === 'tick') {
+    const { C, out } = AUD, t = C.currentTime, o = C.createOscillator(), g = C.createGain(); o.type = 'square'; o.frequency.value = 3200;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.03 * k, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.025);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.03);
+    return;
+  }
   if (kind === 'splash' || kind === 'stroke' || kind === 'bump') {
     const { C, buf, out } = AUD, t = C.currentTime, src = C.createBufferSource(), fl = C.createBiquadFilter(), g = C.createGain();
     const len = kind === 'splash' ? 0.7 : kind === 'bump' ? 0.25 : 0.32;
@@ -5000,6 +5199,7 @@ LOCK_EL.addEventListener('mousemove', (e) => {
   const mx = e.movementX || 0, my = e.movementY || 0;
   if (Math.abs(mx) > 400 || Math.abs(my) > 400) return; // some browsers send one bogus jump right after locking
   const k = WALK.sens * camera.fov / WALK_FOV;
+  if (RIDE.on) { RIDE.camYaw = clamp(RIDE.camYaw - mx * k, -2.4, 2.4); RIDE.camPitch = clamp(RIDE.camPitch - my * k, -1.0, 1.0); RIDE.lookT = 0; return; }
   if (DRIVE.on) { DRIVE.camYaw = clamp(DRIVE.camYaw - mx * k, -2.6, 2.6); DRIVE.camPitch = clamp(DRIVE.camPitch - my * k, -0.25, 1.1); DRIVE.lookT = 0; return; }
   WALK.yaw -= mx * k; WALK.pitch = clamp(WALK.pitch - my * k, -1.5, 1.5); WALK.faceYaw = null;
 });
@@ -5046,6 +5246,7 @@ LOCK_EL.addEventListener('pointermove', (e) => {
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
   if (WALK.trans) return;
   const k = (e.pointerType === 'touch' ? 0.0052 : 0.0035) * camera.fov / WALK_FOV;
+  if (RIDE.on) { RIDE.camYaw = clamp(RIDE.camYaw - dx * k, -2.4, 2.4); RIDE.camPitch = clamp(RIDE.camPitch - dy * k, -1.0, 1.0); RIDE.lookT = 0; return; }
   if (DRIVE.on) { DRIVE.camYaw = clamp(DRIVE.camYaw - dx * k, -2.6, 2.6); DRIVE.camPitch = clamp(DRIVE.camPitch - dy * k, -0.25, 1.1); DRIVE.lookT = 0; return; }
   WALK.yaw -= dx * k; WALK.pitch = clamp(WALK.pitch - dy * k, -1.5, 1.5); WALK.faceYaw = null;
 });
@@ -5072,6 +5273,8 @@ on(window, 'keydown', (e) => {
   if (e.code === 'Escape') { if (!WALK.locked && performance.now() - WALK.unlockT > 400) setMode('orbit'); return; }
   const live = WALK.locked || WALK.noLock;
   if (e.code === 'KeyE' || e.code === 'KeyF') { if (live && !e.repeat) walkInspect(); return; }
+  if (RIDE.on && e.code === 'KeyV' && !e.repeat) { RIDE.cam = RIDE.cam === 'fp' ? 'chase' : 'fp'; RIDE.camYaw = 0; RIDE.camPitch = RIDE.cam === 'fp' ? -0.08 : 0.2; return; }
+  if (RIDE.on && e.code === 'KeyB' && !e.repeat) { walkSound('bell'); return; }
   if (DRIVE.on && e.code === 'KeyV' && !e.repeat) { DRIVE.cam = DRIVE.cam === 'chase' ? 'seat' : 'chase'; DRIVE.camYaw = 0; DRIVE.camPitch = 0.18; return; }
   if (e.code === 'Space') { e.preventDefault(); if (DRIVE.on) { if (live) WALK.keys.add('Space'); return; } if (live && !e.repeat) WALK.jumpBuf = 0.15; return; }
   if (!live) return;
@@ -5082,7 +5285,7 @@ on(window, 'keyup', (e) => WALK.keys.delete(e.code));
 on(window, 'blur', () => { WALK.keys.clear(); WALK.zoomOn = false; });
 $('#walkJump').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); WALK.jumpBuf = 0.15; if (DRIVE.on) WALK.keys.add('Space'); walkAudioWake(); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('#walkJump').addEventListener(ev, () => WALK.keys.delete('Space'));
-$('#carExit').addEventListener('click', () => exitCar());
+$('#carExit').addEventListener('click', () => { exitCar(); exitBike(); });
 $('#walkCrouch').addEventListener('click', (e) => { WALK.crouchOn = !WALK.crouchOn; e.currentTarget.setAttribute('aria-pressed', String(WALK.crouchOn)); });
 $('#xhint').addEventListener('click', () => walkInspect());
 $('#walkResume').addEventListener('click', () => walkLock());
@@ -5145,7 +5348,7 @@ function setMode(m, at) {
   }
   controls.enabled = true;
   if (prev === 'walk') {
-    if (DRIVE.on) exitCar(); setUnderwater(false);
+    if (DRIVE.on) exitCar(); if (RIDE.on) exitBike(); setUnderwater(false);
     walkUnlock(); $('#app').classList.remove('walking', 'locked');
     WALK.keys.clear(); WALK.inspect = false; WALK.zoomOn = false; WALK.crouchOn = false;
     $('#walkCrouch').setAttribute('aria-pressed', 'false'); stickEnd(); walkHud(); walkAudioClose();
