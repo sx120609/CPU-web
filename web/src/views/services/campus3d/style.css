@@ -251,6 +251,7 @@ button:active { filter: brightness(.94); }
   display: flex; align-items: flex-end; gap: 14px; }
 .walkbtns[hidden] { display: none; }
 .walkbtns [hidden] { display: none; }
+.walkbtns .pedal:active { background: var(--accent); color: #fff; }
 .walkbtns .round { width: 56px; height: 56px; touch-action: none; }
 .walkbtns .round.big { width: 74px; height: 74px; }
 .walkbtns svg { width: 26px; height: 26px; stroke-width: 2.2; }
