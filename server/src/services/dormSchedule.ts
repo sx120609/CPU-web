@@ -118,14 +118,14 @@ async function notify(userId: number, title: string, content: string) {
   }).catch(() => null);
 }
 
-async function membershipOf(userId: number) {
-  return prisma.dormMember.findUnique({
+async function membershipOf(userId: number, db: Prisma.TransactionClient = prisma) {
+  return db.dormMember.findUnique({
     where: { userId },
     include: {
       link: {
         include: {
           members: {
-            orderBy: { joinedAt: "asc" },
+            orderBy: [{ joinedAt: "asc" }, { userId: "asc" }],
             include: {
               user: { select: memberUserSelect },
               snapshot: { select: { semester: true, syncedAt: true, changedAt: true } },
@@ -185,14 +185,34 @@ function presentStatus(membership: Membership | null, userId: number, now = new 
   };
 }
 
-async function activeMembership(userId: number) {
-  const membership = await membershipOf(userId);
+// Always lock the acting user before the dorm. The user lock also covers users
+// who have no membership yet; the dorm row serializes joins, departures and
+// permission checks, including account erasure. Never act on a pre-lock roster.
+async function lockDormUser(tx: Prisma.TransactionClient, userId: number) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${20261022}::int, ${userId}::int)`;
+}
+
+async function lockDorm(tx: Prisma.TransactionClient, linkId: number) {
+  await tx.$queryRaw`SELECT "id" FROM "DormLink" WHERE "id" = ${linkId} FOR UPDATE`;
+}
+
+async function lockedMembership(tx: Prisma.TransactionClient, userId: number) {
+  await lockDormUser(tx, userId);
+  const member = await tx.dormMember.findUnique({ where: { userId }, select: { linkId: true } });
+  if (!member) return null;
+  await lockDorm(tx, member.linkId);
+  const current = await membershipOf(userId, tx);
+  return current?.linkId === member.linkId ? current : null;
+}
+
+async function activeMembership(tx: Prisma.TransactionClient, userId: number) {
+  const membership = await lockedMembership(tx, userId);
   if (!membership) throw Errors.notFound("你还没有加入宿舍课表");
   return membership;
 }
 
 export async function getDormStatus(userId: number) {
-  return presentStatus(await membershipOf(userId), userId);
+  return prisma.$transaction(async (tx) => presentStatus(await lockedMembership(tx, userId), userId));
 }
 
 /**
@@ -201,156 +221,151 @@ export async function getDormStatus(userId: number) {
  */
 export async function createDormInvite(userId: number, now = new Date()) {
   const expiresAt = new Date(now.getTime() + DORM_INVITE_TTL_MS);
-  const existing = await membershipOf(userId);
-  if (existing && existing.link.members.find((member) => member.userId === userId)?.role !== "owner") {
-    throw Errors.forbidden("只有舍长能生成宿舍码");
-  }
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const inviteCode = generateDormInviteCode();
     try {
-      if (existing) {
-        await prisma.dormLink.update({ where: { id: existing.linkId }, data: { inviteCode, inviteExpiresAt: expiresAt } });
-      } else {
-        await prisma.dormLink.create({
-          data: {
-            inviteCode,
-            inviteExpiresAt: expiresAt,
-            memberLimit: DORM_MEMBER_LIMIT,
-            members: { create: { userId, role: "owner" } },
-          },
-        });
-      }
-      return getDormStatus(userId);
+      return await prisma.$transaction(async (tx) => {
+        const existing = await lockedMembership(tx, userId);
+        if (existing) {
+          if (existing.role !== "owner") throw Errors.forbidden("只有舍长能生成宿舍码");
+          await tx.dormLink.update({ where: { id: existing.linkId }, data: { inviteCode, inviteExpiresAt: expiresAt } });
+        } else {
+          await tx.dormLink.create({
+            data: {
+              inviteCode,
+              inviteExpiresAt: expiresAt,
+              memberLimit: DORM_MEMBER_LIMIT,
+              members: { create: { userId, role: "owner" } },
+            },
+          });
+        }
+        return presentStatus(await membershipOf(userId, tx), userId, now);
+      });
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      // 并发请求已经建好了宿舍或占用了同一个码，重新读一次现状即可。
-      const current = await membershipOf(userId);
-      if (current) return presentStatus(current, userId, now);
+      // Invite-code collisions roll the transaction back; retry with a new code.
     }
   }
   throw Errors.server("邀请码生成失败，请重试");
 }
 
 export async function cancelDormInvite(userId: number) {
-  const membership = await membershipOf(userId);
-  if (!membership || membership.link.members.find((member) => member.userId === userId)?.role !== "owner") {
-    return getDormStatus(userId);
-  }
-  await prisma.dormLink.update({ where: { id: membership.linkId }, data: { inviteCode: null, inviteExpiresAt: null } });
-  return getDormStatus(userId);
+  return prisma.$transaction(async (tx) => {
+    const membership = await lockedMembership(tx, userId);
+    if (!membership) return { status: "none" as const };
+    if (membership.role !== "owner") throw Errors.forbidden("只有舍长能取消宿舍码");
+    await tx.dormLink.update({ where: { id: membership.linkId }, data: { inviteCode: null, inviteExpiresAt: null } });
+    return presentStatus(await membershipOf(userId, tx), userId);
+  });
 }
 
 /**
  * 用宿舍码加入。码在有效期内可以被多人重复使用，所以这里只校验有效期和容量，
- * 不消耗邀请码。容量检查放在事务里，避免并发加入把宿舍撑到超过上限。
+ * 未满员时不消耗邀请码。锁定宿舍后检查容量，避免并发加入超过上限。
  */
 export async function joinDorm(userId: number, rawCode: unknown, now = new Date()) {
   const code = normalizeDormInviteCode(rawCode);
   if (!code) throw Errors.badRequest("宿舍码应为 6 位字母或数字");
-  const link = await prisma.dormLink.findUnique({ where: { inviteCode: code }, include: { members: true } });
-  if (!link || !link.inviteExpiresAt || link.inviteExpiresAt.getTime() <= now.getTime()) {
-    throw Errors.notFound("宿舍码不存在或已过期");
-  }
-  if (link.members.some((member) => member.userId === userId)) return getDormStatus(userId);
-  const own = await membershipOf(userId);
-  if (own) {
-    throw Errors.conflict(own.link.id === link.id ? "你已经在这个宿舍里了" : "你已经加入了别的宿舍，请先退出");
-  }
-
+  let result: { status: Awaited<ReturnType<typeof getDormStatus>>; ownerId: number | null };
   try {
-    await prisma.$transaction(async (tx) => {
-      const count = await tx.dormMember.count({ where: { linkId: link.id } });
-      if (count >= link.memberLimit) throw Errors.conflict("这个宿舍已经满了");
+    result = await prisma.$transaction(async (tx) => {
+      await lockDormUser(tx, userId);
+      const target = await tx.dormLink.findUnique({ where: { inviteCode: code }, select: { id: true } });
+      if (!target) throw Errors.notFound("宿舍码不存在或已过期");
+      await lockDorm(tx, target.id);
+      const link = await tx.dormLink.findUnique({ where: { id: target.id }, include: { members: true } });
+      if (!link || link.inviteCode !== code || !link.inviteExpiresAt || link.inviteExpiresAt.getTime() <= now.getTime()) {
+        throw Errors.notFound("宿舍码不存在或已过期");
+      }
+      const own = await tx.dormMember.findUnique({ where: { userId } });
+      if (own?.linkId === link.id) return { status: presentStatus(await membershipOf(userId, tx), userId, now), ownerId: null };
+      if (own) throw Errors.conflict("你已经加入了别的宿舍，请先退出");
+      const limit = Math.min(DORM_MEMBER_MAX, link.memberLimit);
+      if (link.members.length >= limit) throw Errors.conflict("这个宿舍已经满了");
       await tx.dormMember.create({ data: { userId, linkId: link.id, role: "member" } });
+      if (link.members.length + 1 >= limit) {
+        await tx.dormLink.update({ where: { id: link.id }, data: { inviteCode: null, inviteExpiresAt: null } });
+      }
+      return { status: presentStatus(await membershipOf(userId, tx), userId, now), ownerId: ownerOf(link.members)?.userId ?? null };
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw Errors.conflict("你已经在宿舍课表里了，请刷新页面");
     throw error;
   }
 
-  const status = await getDormStatus(userId);
-  const owner = ownerOf(link.members);
-  if (status.status === "active" && owner) {
-    await notify(owner.userId, "有人加入了宿舍课表", `${status.me.nickname || "新室友"} 加入了宿舍，现在可以一起看空闲时间了。`);
+  const { status, ownerId } = result;
+  if (status.status === "active" && ownerId) {
+    await notify(ownerId, "有人加入了宿舍课表", `${status.me.nickname || "新室友"} 加入了宿舍，现在可以一起看空闲时间了。`);
   }
   return status;
 }
 
 export async function updateDormSettings(userId: number, input: { name?: unknown; myColor?: unknown }) {
-  const membership = await activeMembership(userId);
-  const { link } = membership;
-
-  if (input.name !== undefined) {
-    if (link.members.find((member) => member.userId === userId)?.role !== "owner") throw Errors.forbidden("只有舍长能改宿舍名");
-    await prisma.dormLink.update({ where: { id: membership.linkId }, data: { name: normalizeDormName(input.name) } });
-  }
-  if (input.myColor !== undefined) {
-    if (!isDormColor(input.myColor)) throw Errors.badRequest("没有这种颜色");
-    const colors = dormSwapColors(link.members, userId, input.myColor);
-    await prisma.$transaction(link.members.map((member) => prisma.dormMember.update({
-      where: { userId: member.userId },
-      data: { color: colors.get(member.userId) ?? null },
-    })));
-  }
-  return getDormStatus(userId);
+  const name = input.name === undefined ? undefined : normalizeDormName(input.name);
+  const myColor = input.myColor;
+  if (myColor !== undefined && !isDormColor(myColor)) throw Errors.badRequest("没有这种颜色");
+  return prisma.$transaction(async (tx) => {
+    const membership = await activeMembership(tx, userId);
+    const { link } = membership;
+    if (name !== undefined) {
+      if (membership.role !== "owner") throw Errors.forbidden("只有舍长能改宿舍名");
+      await tx.dormLink.update({ where: { id: link.id }, data: { name } });
+    }
+    if (isDormColor(myColor)) {
+      const colors = dormSwapColors(link.members, userId, myColor);
+      for (const member of link.members) {
+        await tx.dormMember.updateMany({ where: { userId: member.userId, linkId: link.id }, data: { color: colors.get(member.userId) } });
+      }
+    }
+    return presentStatus(await membershipOf(userId, tx), userId);
+  });
 }
 
 /**
  * 退出宿舍。舍长退出时把身份转给最早加入的其他人；最后一个人退出就整条删除。
  */
 export async function leaveDorm(userId: number) {
-  const membership = await membershipOf(userId);
-  if (!membership) return { status: "none" as const };
-  const { link } = membership;
-  const me = link.members.find((member) => member.userId === userId);
-  const rest = link.members.filter((member) => member.userId !== userId);
-  if (!rest.length) {
-    await prisma.dormLink.deleteMany({ where: { id: link.id } });
-    return { status: "none" as const };
-  }
-  await prisma.$transaction(async (tx) => {
-    await tx.dormMember.deleteMany({ where: { userId } });
-    if (me?.role === "owner") {
-      const next = rest[0];
-      await tx.dormMember.update({ where: { userId: next.userId }, data: { role: "owner" } });
-    }
-  });
+  await prisma.$transaction((tx) => deleteDormDataForUser(tx, userId));
   return { status: "none" as const };
 }
 
 /** 舍长把某人移出宿舍；被移出的人会收到站内通知。 */
 export async function removeDormMember(userId: number, targetUserId: number) {
-  const membership = await activeMembership(userId);
-  const me = membership.link.members.find((member) => member.userId === userId);
-  if (me?.role !== "owner") throw Errors.forbidden("只有舍长能移出成员");
   if (targetUserId === userId) throw Errors.badRequest("要退出宿舍请用「退出宿舍」");
-  const target = membership.link.members.find((member) => member.userId === targetUserId);
-  if (!target) throw Errors.notFound("这个人不在你的宿舍里");
-  await prisma.dormMember.deleteMany({ where: { userId: targetUserId } });
-  await notify(targetUserId, "你已被移出宿舍课表", `${membership.link.name || "宿舍"} 的舍长把你移出了宿舍，课表快照已删除。`);
-  return getDormStatus(userId);
+  const result = await prisma.$transaction(async (tx) => {
+    const membership = await activeMembership(tx, userId);
+    if (membership.role !== "owner") throw Errors.forbidden("只有舍长能移出成员");
+    const target = membership.link.members.find((member) => member.userId === targetUserId);
+    if (!target) throw Errors.notFound("这个人不在你的宿舍里");
+    await tx.dormMember.deleteMany({ where: { userId: targetUserId, linkId: membership.linkId } });
+    return { name: membership.link.name, status: presentStatus(await membershipOf(userId, tx), userId) };
+  });
+  await notify(targetUserId, "你已被移出宿舍课表", `${result.name || "宿舍"} 的舍长把你移出了宿舍，课表快照已删除。`);
+  return result.status;
 }
 
 export async function saveDormScheduleSnapshot(userId: number, input: ScheduleShareInput, now = new Date()) {
-  await activeMembership(userId);
   const normalized = normalizeSchedulePayload(input);
   const contentHash = crypto.createHash("sha256").update(normalized.payload).digest("hex");
-  const existing = await prisma.dormScheduleSnapshot.findUnique({ where: { userId }, select: { contentHash: true } });
-  const changed = existing?.contentHash !== contentHash;
-  const snapshot = changed
-    ? await prisma.dormScheduleSnapshot.upsert({
-      where: { userId },
-      create: { userId, semester: normalized.semester, payload: normalized.payload, contentHash, syncedAt: now, changedAt: now },
-      update: { semester: normalized.semester, payload: normalized.payload, contentHash, syncedAt: now, changedAt: now },
-    })
-    : await prisma.dormScheduleSnapshot.update({ where: { userId }, data: { syncedAt: now } });
-  return {
-    changed,
-    contentHash,
-    semester: snapshot.semester,
-    syncedAt: snapshot.syncedAt.toISOString(),
-    changedAt: snapshot.changedAt.toISOString(),
-  };
+  return prisma.$transaction(async (tx) => {
+    await activeMembership(tx, userId);
+    const existing = await tx.dormScheduleSnapshot.findUnique({ where: { userId }, select: { contentHash: true } });
+    const changed = existing?.contentHash !== contentHash;
+    const snapshot = changed
+      ? await tx.dormScheduleSnapshot.upsert({
+        where: { userId },
+        create: { userId, semester: normalized.semester, payload: normalized.payload, contentHash, syncedAt: now, changedAt: now },
+        update: { semester: normalized.semester, payload: normalized.payload, contentHash, syncedAt: now, changedAt: now },
+      })
+      : await tx.dormScheduleSnapshot.update({ where: { userId }, data: { syncedAt: now } });
+    return {
+      changed,
+      contentHash,
+      semester: snapshot.semester,
+      syncedAt: snapshot.syncedAt.toISOString(),
+      changedAt: snapshot.changedAt.toISOString(),
+    };
+  });
 }
 
 function parseSnapshot(row: { semester: string; payload: string; syncedAt: Date; changedAt: Date } | null) {
@@ -371,29 +386,30 @@ function parseSnapshot(row: { semester: string; payload: string; syncedAt: Date;
 
 /** 读取整个宿舍的课表快照，自己那份也在里面（前端按 userId 区分）。 */
 export async function getDormSchedules(userId: number) {
-  const membership = await activeMembership(userId);
-  const { link } = membership;
-  const colors = dormMemberColors(link.members);
-  const rows = await prisma.dormScheduleSnapshot.findMany({
-    where: { userId: { in: link.members.map((member) => member.userId) } },
+  return prisma.$transaction(async (tx) => {
+    const membership = await activeMembership(tx, userId);
+    const { link } = membership;
+    const colors = dormMemberColors(link.members);
+    const rows = await tx.dormScheduleSnapshot.findMany({
+      where: { member: { linkId: link.id } },
+    });
+    return {
+      members: link.members.map((member) => ({
+        id: member.userId,
+        color: colors.get(member.userId)!,
+        nickname: member.user.nickname,
+        snapshot: parseSnapshot(rows.find((row) => row.userId === member.userId) ?? null),
+      })),
+    };
   });
-  const ordered = [...link.members].sort((a, b) => joinedTime(a.joinedAt) - joinedTime(b.joinedAt));
-  return {
-    members: ordered.map((member) => ({
-      id: member.userId,
-      color: colors.get(member.userId)!,
-      nickname: member.user.nickname,
-      snapshot: parseSnapshot(rows.find((row) => row.userId === member.userId) ?? null),
-    })),
-  };
 }
 
 /** 注销账号时调用：先把自己从宿舍里摘掉，宿舍因此空掉时整条删除。 */
 export async function deleteDormDataForUser(tx: Prisma.TransactionClient, userId: number) {
-  const member = await tx.dormMember.findUnique({ where: { userId }, select: { linkId: true, role: true } });
+  const member = await lockedMembership(tx, userId);
   if (!member) return;
-  await tx.dormMember.deleteMany({ where: { userId } });
-  const remaining = await tx.dormMember.findMany({ where: { linkId: member.linkId }, orderBy: { joinedAt: "asc" } });
+  await tx.dormMember.deleteMany({ where: { userId, linkId: member.linkId } });
+  const remaining = await tx.dormMember.findMany({ where: { linkId: member.linkId }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
   if (!remaining.length) {
     await tx.dormLink.deleteMany({ where: { id: member.linkId } });
     return;
