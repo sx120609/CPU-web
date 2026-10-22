@@ -4786,7 +4786,7 @@ function driveMesh() {
 function enterCar(k) {
   const m = CARS.parkedM[k], e = m.elements, root = driveMesh();
   Object.assign(DRIVE, { on: true, k, x: e[12], z: e[14], a: Math.atan2(e[2], e[0]), v: 0, vx: 0, vz: 0, r: 0, steer: 0, pitch: 0, roll: 0, vlPrev: 0, shake: 0, camYaw: 0, camPitch: 0.2, lookT: 0, gas: false, brake: false });
-  DRIVE.camA = DRIVE.a;
+  DRIVE.camA = DRIVE.a; DRIVE.camW = DRIVE.a + Math.PI; DRIVE.cam = 'chase';
   DRIVE.y = groundAt(DRIVE.x, DRIVE.z);
   DRIVE.bodyMat.color.copy(CARS.carCols[CARS.movers.length + k]);
   CARS.taken = k; root.visible = true;
@@ -4828,6 +4828,35 @@ function camBlocked(x, y, z) {
     if ((b.parts || [b.p]).some((q) => pip(x, z, q))) return true;
   }
   return false;
+}
+// Third-person boom shared by the car and the bike. The mouse or a drag orbits it in world space, so it moves the way it
+// reads on screen and stays where it was put; only after ~2 s without input, and only while the vehicle is moving, does
+// it swing back behind the direction of travel (faster at speed). It pulls in when a wall or the ground is in the way.
+function chaseCam(S, dt, o) {
+  S.lookT += dt;
+  const travel = o.speed > 2.2 && o.fwd ? Math.atan2(o.vz, o.vx) : o.heading;
+  if (S.lookT > 2 && o.speed > 2.2) {
+    S.camW += angDiff(travel + Math.PI, S.camW) * Math.min(1, dt * (1.1 + o.speed * 0.12));
+    S.camPitch += (o.pitch0 - S.camPitch) * Math.min(1, dt * 1.5);
+  }
+  const pc = Math.cos(S.camPitch), ps = Math.sin(S.camPitch);
+  const piv = new THREE.Vector3(o.x, o.y + o.height, o.z), dir = new THREE.Vector3(Math.cos(S.camW) * pc, ps, Math.sin(S.camW) * pc);
+  let arm = o.dist;
+  for (let t = 0.6; t <= o.dist; t += 0.35) { const q = piv.clone().addScaledVector(dir, t); if (camBlocked(q.x, q.y, q.z)) { arm = Math.max(1.0, t - 0.45); break; } }
+  camera.position.lerp(piv.clone().addScaledVector(dir, arm), 1 - Math.exp(-dt * 18));
+  if (o.shake) { camera.position.x += (Math.random() - 0.5) * o.shake; camera.position.y += (Math.random() - 0.5) * o.shake; }
+  const la = o.lookAhead;
+  camera.lookAt(o.x - Math.cos(S.camW) * la, o.y + o.height - 0.3, o.z - Math.sin(S.camW) * la);
+}
+// Looking around from a seat: the head turns with the mouse and stays turned; it eases back only while moving.
+function seatLook(S, dt, moving, pitch0) {
+  S.lookT += dt;
+  if (S.lookT > 2 && moving) { S.camYaw *= Math.exp(-dt * 2); S.camPitch += (pitch0 - S.camPitch) * Math.min(1, dt * 2); }
+}
+function vehicleLook(S, dx, dy, k) {
+  if (S.cam === 'chase') { S.camW += dx * k; S.camPitch = clamp(S.camPitch + dy * k, -0.12, 1.2); }
+  else { S.camYaw = clamp(S.camYaw - dx * k, -2.4, 2.4); S.camPitch = clamp(S.camPitch - dy * k, -1.0, 0.9); }
+  S.lookT = 0;
 }
 function updateDrive(dt) {
   const D = DRIVE, k = WALK.keys, pad = WALK.pad, live = TOUCH || WALK.locked || WALK.noLock, h = Math.min(dt, 0.05);
@@ -4886,25 +4915,12 @@ function updateDrive(dt) {
   WALK.x = D.x; WALK.z = D.z; WALK.y = D.y;
   VEH_FOCUS.set(D.x, D.y + 1, D.z);
   // camera
-  D.lookT += dt;
-  if (D.lookT > 1.4) { D.camYaw *= Math.exp(-dt * 2.6); D.camPitch += ((D.cam === 'chase' ? 0.2 : 0) - D.camPitch) * Math.min(1, dt * 2); }
   D.shake *= Math.exp(-dt * 7);
   const shk = D.shake > 0.01 ? D.shake * 0.12 : 0;
   if (D.cam === 'chase') {
-    // the boom swings round to the direction of travel with angular lag (not positional lag), pulls in when a wall is
-    // behind the car, and looks a little ahead of the bonnet at speed
-    const travel = sp > 2.5 && vl > 0 ? Math.atan2(D.vz, D.vx) : D.a;
-    D.camA += angDiff(travel, D.camA) * Math.min(1, dt * 3.4);
-    const yawC = D.camA + Math.PI + D.camYaw, dist = 5.6 + Math.min(2.4, sp * 0.1), pc = Math.cos(D.camPitch), ps = Math.sin(D.camPitch);
-    const piv = new THREE.Vector3(D.x, D.y + 1.35, D.z), dir = new THREE.Vector3(Math.cos(yawC) * pc, ps, Math.sin(yawC) * pc);
-    let arm = dist;
-    for (let t = 0.8; t <= dist; t += 0.4) { const q = piv.clone().addScaledVector(dir, t); if (camBlocked(q.x, q.y, q.z)) { arm = Math.max(1.2, t - 0.5); break; } }
-    const want = piv.addScaledVector(dir, arm); want.y += 0.25;
-    camera.position.lerp(want, 1 - Math.exp(-dt * 16));
-    camera.position.x += (Math.random() - 0.5) * shk; camera.position.y += (Math.random() - 0.5) * shk;
-    const la = 2.2 + Math.min(4, Math.max(0, vl) * 0.16);
-    camera.lookAt(D.x + Math.cos(D.camA) * la, D.y + 1.05, D.z + Math.sin(D.camA) * la);
+    chaseCam(D, dt, { x: D.x, y: D.y, z: D.z, vx: D.vx, vz: D.vz, heading: D.a, speed: sp, fwd: vl > 0, dist: 5.6 + Math.min(2.4, sp * 0.1), height: 1.35, pitch0: 0.2, lookAhead: 2.2 + Math.min(4, Math.max(0, vl) * 0.16), shake: shk });
   } else {
+    seatLook(D, dt, sp > 2, 0);
     camera.position.set(D.x - ca * 0.32 + sa * 0.36 - clamp(D.r * vl * 0.004, -0.05, 0.05) * sa, D.y + 1.24 + (Math.random() - 0.5) * shk * 0.5, D.z - sa * 0.32 - ca * 0.36);
     camera.quaternion.setFromEuler(new THREE.Euler(D.camPitch - 0.05 + D.pitch * 0.5, -D.a - Math.PI / 2 + D.camYaw, -D.roll * 0.6, 'YXZ'));
   }
@@ -4924,7 +4940,7 @@ function updateDrive(dt) {
 // Any parked bike can be ridden: pedal, brake, steer, lean into turns, bunny-hop, ring the bell. First person shows the
 // rider's own arms and pedalling legs; third person shows the whole rider. Riding into a lake throws the rider in.
 const RIDE = { on: false, k: -1, x: 0, z: 0, a: 0, y: 0, v: 0, steer: 0, lean: 0, crank: 0, spin: 0, hop: 0, hopV: 0,
-  cam: 'fp', camYaw: 0, camPitch: -0.08, lookT: 0, root: null, near: -1, tick: 0 };
+  cam: 'chase', camW: 0, camYaw: 0, camPitch: 0.24, lookT: 0, root: null, near: -1, tick: 0 };
 function bikeSlot(k) { for (const c of BIKE_CHUNKS) { const j = c.userData.ids.indexOf(k); if (j >= 0) return [c, j]; } return [null, -1]; }
 function nearBike() {
   const [fx, fz] = walkForward(); let best = -1, bd = 1e9;
@@ -5012,7 +5028,7 @@ function enterBike(k) {
   rideMesh();
   const [x, z, a] = BIKE_SPOTS[k], col = new THREE.Color(); c.getColorAt(j, col);
   _m4.makeScale(0, 0, 0); c.setMatrixAt(j, _m4); c.instanceMatrix.needsUpdate = true;
-  Object.assign(RIDE, { on: true, k, x, z, a, y: groundAt(x, z), v: 0, steer: 0, lean: 0, hop: 0, hopV: 0, camYaw: 0, camPitch: -0.08, lookT: 0 });
+  Object.assign(RIDE, { on: true, k, x, z, a, y: groundAt(x, z), v: 0, steer: 0, lean: 0, hop: 0, hopV: 0, cam: 'chase', camW: a + Math.PI, camYaw: 0, camPitch: 0.24, lookT: 0 });
   RIDE.frameMat.color.copy(col); RIDE.shirt.color.set(pick(['#f2f1ec', '#2f3b4c', '#7b8ea3', '#c48f8f', '#4a5a4c', '#d7b46a', '#9a3d3d']));
   RIDE.root.visible = true; WALK.vx = WALK.vz = WALK.vy = 0; WALK.trans = null; setUnderwater(false);
   walkAudioWake(); walkHud();
@@ -5074,21 +5090,18 @@ function updateRide(dt) {
   R.crankG.rotation.z = -R.crank; R.pedals.forEach((pd) => { pd.rotation.z = R.crank; });
   poseRider();
   WALK.x = R.x; WALK.z = R.z; WALK.y = R.y; VEH_FOCUS.set(R.x, R.y + 1.1, R.z);
-  // camera: the rider's eyes (leaning with the bike, pedalling bob), or a chase view behind
-  R.lookT += dt; if (R.lookT > 1.6) { R.camYaw *= Math.exp(-dt * 2.5); R.camPitch += ((R.cam === 'fp' ? -0.08 : 0.2) - R.camPitch) * Math.min(1, dt * 2); }
+  // camera: a chase boom behind the rider, or the rider's eyes (gentle pedalling bob, a little lean, head turned into the corner)
   R.head.visible = R.cam !== 'fp';
-  if (R.cam === 'fp') {
-    const eye = new THREE.Vector3(0.14, 1.62 + Math.abs(Math.sin(R.crank)) * 0.025 * Math.min(1, R.v / 3), 0).applyEuler(new THREE.Euler(R.lean, -R.a, 0, 'YXZ'));
-    camera.position.set(R.x + eye.x, R.y + R.hop + eye.y, R.z + eye.z);
-    camera.quaternion.setFromEuler(new THREE.Euler(R.camPitch, -R.a - Math.PI / 2 + R.camYaw, -R.lean * 0.45, 'YXZ'));
+  const spd0 = Math.abs(R.v);
+  if (R.cam === 'chase') {
+    chaseCam(R, dt, { x: R.x, y: R.y + R.hop, z: R.z, vx: c * R.v, vz: sn * R.v, heading: R.a, speed: spd0, fwd: R.v > 0, dist: 3.5 + Math.min(1.5, spd0 * 0.12), height: 1.3, pitch0: 0.24, lookAhead: 1.2 + Math.min(2, Math.max(0, R.v) * 0.18) });
   } else {
-    const ca = R.a + Math.PI + R.camYaw, dist = 4.2;
-    const want2 = new THREE.Vector3(R.x + Math.cos(ca) * dist, R.y + 1.9 + Math.sin(R.camPitch) * dist, R.z + Math.sin(ca) * dist);
-    want2.y = Math.max(want2.y, groundAt(want2.x, want2.z) + 0.5);
-    camera.position.lerp(want2, 1 - Math.exp(-dt * 7));
-    camera.lookAt(R.x + c * 1.5, R.y + 1.1, R.z + sn * 1.5);
+    seatLook(R, dt, spd0 > 1.5, -0.14);
+    const eye = new THREE.Vector3(0.1, 1.57 + Math.abs(Math.sin(R.crank)) * 0.012 * Math.min(1, R.v / 3), 0).applyEuler(new THREE.Euler(R.lean, -R.a, 0, 'YXZ'));
+    camera.position.set(R.x + eye.x, R.y + R.hop + eye.y, R.z + eye.z);
+    camera.quaternion.setFromEuler(new THREE.Euler(R.camPitch, -R.a - Math.PI / 2 + R.camYaw + R.steer * 0.35, -R.lean * 0.3, 'YXZ'));
   }
-  const fov = 72 + Math.min(10, Math.abs(R.v) * 0.9);
+  const fov = (R.cam === 'chase' ? 64 : 74) + Math.min(9, Math.abs(R.v) * 0.8);
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
   controls.target.set(R.x + c * 20, R.y + 1.2, R.z + sn * 20);
   const spd = $('#speedo b'); if (spd) spd.textContent = String(Math.round(Math.abs(R.v) * 3.6));
@@ -5169,6 +5182,7 @@ function walkHud() {
   const veh = DRIVE.on || RIDE.on;
   $('#speedo').hidden = !(on && veh); $('#carExit').hidden = !(on && veh && TOUCH); $('#walkCrouch').hidden = on && veh;
   $('#drvGas').hidden = $('#drvBrake').hidden = !(on && DRIVE.on && TOUCH);
+  $('#vehView').hidden = !(on && veh && TOUCH);
   $('#xhair').hidden = !on || veh || (!TOUCH && !WALK.noLock && !WALK.locked);
   $('#walkPause').hidden = !on || WALK.noLock || WALK.locked;
   $('#walkPause').classList.toggle('mini', WALK.inspect);
@@ -5247,8 +5261,8 @@ LOCK_EL.addEventListener('mousemove', (e) => {
   const mx = e.movementX || 0, my = e.movementY || 0;
   if (Math.abs(mx) > 400 || Math.abs(my) > 400) return; // some browsers send one bogus jump right after locking
   const k = WALK.sens * camera.fov / WALK_FOV;
-  if (RIDE.on) { RIDE.camYaw = clamp(RIDE.camYaw - mx * k, -2.4, 2.4); RIDE.camPitch = clamp(RIDE.camPitch - my * k, -1.0, 1.0); RIDE.lookT = 0; return; }
-  if (DRIVE.on) { DRIVE.camYaw = clamp(DRIVE.camYaw - mx * k, -2.6, 2.6); DRIVE.camPitch = clamp(DRIVE.camPitch - my * k, -0.25, 1.1); DRIVE.lookT = 0; return; }
+  if (RIDE.on) { vehicleLook(RIDE, mx, my, k); return; }
+  if (DRIVE.on) { vehicleLook(DRIVE, mx, my, k); return; }
   WALK.yaw -= mx * k; WALK.pitch = clamp(WALK.pitch - my * k, -1.5, 1.5); WALK.faceYaw = null;
 });
 const WALK_PTR = new Map();
@@ -5294,8 +5308,8 @@ LOCK_EL.addEventListener('pointermove', (e) => {
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
   if (WALK.trans) return;
   const k = (e.pointerType === 'touch' ? 0.0052 : 0.0035) * camera.fov / WALK_FOV;
-  if (RIDE.on) { RIDE.camYaw = clamp(RIDE.camYaw - dx * k, -2.4, 2.4); RIDE.camPitch = clamp(RIDE.camPitch - dy * k, -1.0, 1.0); RIDE.lookT = 0; return; }
-  if (DRIVE.on) { DRIVE.camYaw = clamp(DRIVE.camYaw - dx * k, -2.6, 2.6); DRIVE.camPitch = clamp(DRIVE.camPitch - dy * k, -0.25, 1.1); DRIVE.lookT = 0; return; }
+  if (RIDE.on) { vehicleLook(RIDE, dx, dy, k); return; }
+  if (DRIVE.on) { vehicleLook(DRIVE, dx, dy, k); return; }
   WALK.yaw -= dx * k; WALK.pitch = clamp(WALK.pitch - dy * k, -1.5, 1.5); WALK.faceYaw = null;
 });
 function walkPointerEnd(e) {
@@ -5321,9 +5335,9 @@ on(window, 'keydown', (e) => {
   if (e.code === 'Escape') { if (!WALK.locked && performance.now() - WALK.unlockT > 400) setMode('orbit'); return; }
   const live = WALK.locked || WALK.noLock;
   if (e.code === 'KeyE' || e.code === 'KeyF') { if (live && !e.repeat) walkInspect(); return; }
-  if (RIDE.on && e.code === 'KeyV' && !e.repeat) { RIDE.cam = RIDE.cam === 'fp' ? 'chase' : 'fp'; RIDE.camYaw = 0; RIDE.camPitch = RIDE.cam === 'fp' ? -0.08 : 0.2; return; }
+  if (RIDE.on && e.code === 'KeyV' && !e.repeat) { RIDE.cam = RIDE.cam === 'fp' ? 'chase' : 'fp'; RIDE.camYaw = 0; RIDE.camW = RIDE.a + Math.PI; RIDE.camPitch = RIDE.cam === 'fp' ? -0.14 : 0.24; RIDE.lookT = 9; return; }
   if (RIDE.on && e.code === 'KeyB' && !e.repeat) { walkSound('bell'); return; }
-  if (DRIVE.on && e.code === 'KeyV' && !e.repeat) { DRIVE.cam = DRIVE.cam === 'chase' ? 'seat' : 'chase'; DRIVE.camYaw = 0; DRIVE.camPitch = 0.18; return; }
+  if (DRIVE.on && e.code === 'KeyV' && !e.repeat) { DRIVE.cam = DRIVE.cam === 'chase' ? 'seat' : 'chase'; DRIVE.camYaw = 0; DRIVE.camW = DRIVE.a + Math.PI; DRIVE.camPitch = DRIVE.cam === 'chase' ? 0.2 : 0; DRIVE.lookT = 9; return; }
   if (e.code === 'Space') { e.preventDefault(); if (DRIVE.on) { if (live) WALK.keys.add('Space'); return; } if (live && !e.repeat) WALK.jumpBuf = 0.15; return; }
   if (!live) return;
   WALK.keys.add(e.code);
@@ -5334,6 +5348,10 @@ on(window, 'blur', () => { WALK.keys.clear(); WALK.zoomOn = false; });
 $('#walkJump').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); WALK.jumpBuf = 0.15; if (DRIVE.on) WALK.keys.add('Space'); walkAudioWake(); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('#walkJump').addEventListener(ev, () => WALK.keys.delete('Space'));
 $('#carExit').addEventListener('click', () => { exitCar(); exitBike(); });
+$('#vehView').addEventListener('click', () => {
+  const S = DRIVE.on ? DRIVE : RIDE.on ? RIDE : null; if (!S) return;
+  S.cam = S.cam === 'chase' ? (S === DRIVE ? 'seat' : 'fp') : 'chase'; S.camYaw = 0; S.camW = S.a + Math.PI; S.camPitch = S.cam === 'chase' ? (S === DRIVE ? 0.2 : 0.24) : (S === DRIVE ? 0 : -0.14); S.lookT = 9;
+});
 for (const [id, key] of [['#drvGas', 'gas'], ['#drvBrake', 'brake']]) {
   const el = $(id);
   el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); DRIVE[key] = true; walkAudioWake(); try { el.setPointerCapture(e.pointerId); } catch (_) { } });

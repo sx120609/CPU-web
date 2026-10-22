@@ -262,6 +262,8 @@ button:active { filter: brightness(.94); }
 @media (pointer: coarse) {
   .walking .dock, .walking .mini, .walking .scale { display: none; }
   .xhint kbd { display: none; }
+  .speedo { bottom: auto; top: calc(66px + env(safe-area-inset-top, 0px)); padding: 6px 14px 7px; }
+  .speedo b { font-size: 24px; }
   .xhint { padding: 0 14px; }
 }
 .walkpad[hidden] { display: none; }
