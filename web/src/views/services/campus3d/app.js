@@ -4483,9 +4483,77 @@ function collisionGrids() {
   COLLISION_INFO = { walls: WSEG.length, caps: WCAPS.length, posts: WCYL.length, backstops };
 }
 let COLLISION_INFO = null;
+// Building picks (crosshair aim, hover, click, spawn checks) used to raycast every merged building mesh, ~600k
+// triangles, on the CPU: about 45 ms per ray on a desktop and several times that on a phone, ten times a second while
+// exploring. An xz grid over the triangles lets a ray test only the cells it crosses, nearest cell first.
+// The merged meshes are non-indexed, sit untransformed in the scene and never move.
+const PICK_CELL = 16;
+let PICK_IDX = null;
+function pickIndex() {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  const pos = PICKABLE.map((m) => m.geometry.attributes.position.array);
+  for (const P of pos) for (let i = 0; i < P.length; i += 3) { const x = P[i], z = P[i + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+  const nx = Math.floor((x1 - x0) / PICK_CELL) + 1, nz = Math.floor((z1 - z0) / PICK_CELL) + 1;
+  const start = new Int32Array(nx * nz + 1);
+  let mesh = null, tri = null;
+  for (let pass = 0; pass < 2; pass++) {
+    const fill = pass ? start.slice() : null;
+    pos.forEach((P, m) => {
+      for (let f = 0, o = 0; o < P.length; f++, o += 9) {
+        const i0 = Math.floor((Math.min(P[o], P[o + 3], P[o + 6]) - x0) / PICK_CELL), i1 = Math.floor((Math.max(P[o], P[o + 3], P[o + 6]) - x0) / PICK_CELL);
+        const j0 = Math.floor((Math.min(P[o + 2], P[o + 5], P[o + 8]) - z0) / PICK_CELL), j1 = Math.floor((Math.max(P[o + 2], P[o + 5], P[o + 8]) - z0) / PICK_CELL);
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const c = j * nx + i;
+          if (pass) { const k = fill[c]++; mesh[k] = m; tri[k] = f; } else start[c + 1]++;
+        }
+      }
+    });
+    if (!pass) { for (let c = 0; c < nx * nz; c++) start[c + 1] += start[c]; mesh = new Uint16Array(start[nx * nz]); tri = new Int32Array(start[nx * nz]); }
+  }
+  PICK_IDX = { x0, z0, nx, nz, start, mesh, tri, pos, q: 0, stamp: pos.map((P) => new Uint32Array(P.length / 9)),
+    side: PICKABLE.map((m) => (m.material.side === THREE.DoubleSide ? 2 : m.material.side === THREE.BackSide ? 1 : 0)) };
+}
+// Nearest building hit along a ray, shaped like a Raycaster hit ({ distance, point, object, faceIndex }), or null.
+function pickRay(r, far = Infinity) {
+  if (!PICK_IDX) pickIndex();
+  const I = PICK_IDX, C = PICK_CELL, ox = r.origin.x, oy = r.origin.y, oz = r.origin.z;
+  const L = Math.hypot(r.direction.x, r.direction.y, r.direction.z) || 1, dx = r.direction.x / L, dy = r.direction.y / L, dz = r.direction.z / L;
+  const X1 = I.x0 + I.nx * C, Z1 = I.z0 + I.nz * C, flatX = Math.abs(dx) < 1e-12, flatZ = Math.abs(dz) < 1e-12;
+  let t0 = 0, t1 = far;
+  if (flatX) { if (ox < I.x0 || ox >= X1) return null; } else { const a = (I.x0 - ox) / dx, b = (X1 - ox) / dx; t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b)); }
+  if (flatZ) { if (oz < I.z0 || oz >= Z1) return null; } else { const a = (I.z0 - oz) / dz, b = (Z1 - oz) / dz; t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b)); }
+  if (t0 > t1) return null;
+  let i = clamp(Math.floor((ox + dx * t0 - I.x0) / C), 0, I.nx - 1), j = clamp(Math.floor((oz + dz * t0 - I.z0) / C), 0, I.nz - 1);
+  const si = dx > 0 ? 1 : -1, sj = dz > 0 ? 1 : -1, di = flatX ? Infinity : C / Math.abs(dx), dj = flatZ ? Infinity : C / Math.abs(dz);
+  let ti = flatX ? Infinity : (I.x0 + (i + (dx > 0 ? 1 : 0)) * C - ox) / dx, tj = flatZ ? Infinity : (I.z0 + (j + (dz > 0 ? 1 : 0)) * C - oz) / dz;
+  const q = ++I.q;
+  let bt = far, bm = -1, bf = -1;
+  for (;;) {
+    const exit = Math.min(ti, tj, t1), c = j * I.nx + i;
+    for (let k = I.start[c], e = I.start[c + 1]; k < e; k++) {
+      const m = I.mesh[k], f = I.tri[k], S = I.stamp[m];
+      if (S[f] === q) continue; S[f] = q;
+      // Möller–Trumbore; det > 0 means the ray meets the front face
+      const P = I.pos[m], o = f * 9, ax = P[o], ay = P[o + 1], az = P[o + 2];
+      const e1x = P[o + 3] - ax, e1y = P[o + 4] - ay, e1z = P[o + 5] - az, e2x = P[o + 6] - ax, e2y = P[o + 7] - ay, e2z = P[o + 8] - az;
+      const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x, det = e1x * px + e1y * py + e1z * pz, sd = I.side[m];
+      if (sd === 0 ? det <= 1e-12 : sd === 1 ? det >= -1e-12 : Math.abs(det) <= 1e-12) continue;
+      const inv = 1 / det, sx = ox - ax, sy = oy - ay, sz = oz - az, u = (sx * px + sy * py + sz * pz) * inv;
+      if (u < 0 || u > 1) continue;
+      const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x, v = (dx * qx + dy * qy + dz * qz) * inv;
+      if (v < 0 || u + v > 1) continue;
+      const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+      if (t >= 0 && t < bt) { bt = t; bm = m; bf = f; }
+    }
+    if ((bm >= 0 && bt <= exit) || exit >= t1) break;
+    if (ti < tj) { i += si; ti += di; if (i < 0 || i >= I.nx) break; } else { j += sj; tj += dj; if (j < 0 || j >= I.nz) break; }
+  }
+  return bm < 0 ? null : { distance: bt, point: new THREE.Vector3(ox + dx * bt, oy + dy * bt, oz + dz * bt), object: PICKABLE[bm], faceIndex: bf };
+}
 function initGrid() {
   BLD.forEach((b, i) => BGRID.add(i, b.bb));
   collisionGrids();
+  pickIndex();
   PROPS.forEach((q, i) => { q.bb = pBox(q.p); q.skip = groundAt(q.c[0], q.c[1]) > 0.02; if (!q.skip) PGRID.add(i, q.bb); });
 }
 function camFloor(x, z) {
@@ -4723,17 +4791,26 @@ function openAround(x, z, fx, fz) {
   }
   return true;
 }
+// Buildings come from the pick index; the few other plain meshes (ground, bridges, signs) go through the raycaster.
+// Instanced meshes are left out up front: they never count, and three.js tests every instance of them.
+function sightHit(far, rest) {
+  SIGHT_RAY.far = far;
+  const b = pickRay(SIGHT_RAY.ray, far);
+  const h = SIGHT_RAY.intersectObjects(rest, false).find((q) => q.object.visible && q.object.layers.test(camera.layers));
+  return h && (!b || h.distance < b.distance) ? h : b;
+}
 function sightOK(x, z, fx, fz, dist) {
+  const rest = []; scene.traverse((q) => { if (q.isMesh && !q.isInstancedMesh && !q.userData.owner) rest.push(q); });
   const o = new THREE.Vector3(x, groundAt(x, z) + EYE, z), hitAt = (dx, dz, far) => {
-    SIGHT_RAY.set(o, new THREE.Vector3(dx, 0, dz)); SIGHT_RAY.far = far;
-    const h = SIGHT_RAY.intersectObjects(scene.children, true).find((q) => q.object.isMesh && !q.object.isInstancedMesh && q.object.visible && q.object.layers.test(camera.layers));
+    SIGHT_RAY.set(o, new THREE.Vector3(dx, 0, dz));
+    const h = sightHit(far, rest);
     return h ? h.distance : far;
   };
   // open sky overhead: seen from above, the first solid surface must be the ground, not a roof the walker would stand under
   SIGHT_RAY.set(new THREE.Vector3(x, 150, z), new THREE.Vector3(0, -1, 0)); SIGHT_RAY.far = 160;
   for (const [ox, oz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
     SIGHT_RAY.ray.origin.set(x + ox, 150, z + oz);
-    const top = SIGHT_RAY.intersectObjects(scene.children, true).find((q) => q.object.isMesh && !q.object.isInstancedMesh && q.object.visible && q.object.layers.test(camera.layers));
+    const top = sightHit(160, rest);
     if (top && top.point.y > groundAt(x + ox, z + oz) + 1.2) return false;
   }
   if (hitAt(fx, fz, dist) < Math.min(dist * 0.6, dist - 6)) return false;
@@ -5424,7 +5501,7 @@ function walkAim() {
   let own = -1;
   if (!WALK.trans && (WALK.locked || WALK.noLock)) {
     ndc.set(0, 0); ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(PICKABLE, false)[0], o = hit ? hit.object.userData.owner?.[hit.faceIndex] : null;
+    const hit = pickRay(ray.ray), o = hit ? hit.object.userData.owner?.[hit.faceIndex] : null;
     if (o != null && o >= 0 && hit.distance < 90) own = o;
   }
   if (own === WALK.aimOwn) return;
@@ -5443,7 +5520,7 @@ function walkInspect(p = WALK.aim) {
 }
 function walkPick(e) {
   screenRay(e);
-  const hit = ray.intersectObjects(PICKABLE, false)[0], own = hit ? hit.object.userData.owner?.[hit.faceIndex] : null;
+  const hit = pickRay(ray.ray), own = hit ? hit.object.userData.owner?.[hit.faceIndex] : null;
   return own != null && own >= 0 && hit.distance < 400 ? placeOf(own) : null;
 }
 // ---- pointer lock ----
@@ -5788,7 +5865,7 @@ let downXY = null;
 const activePointers = new Set();
 const GROUND_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function screenRay(e) { const r = renderer.domElement.getBoundingClientRect(); ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1); ray.setFromCamera(ndc, camera); }
-function groundPoint(e) { screenRay(e); const hit = ray.intersectObjects(PICKABLE, false)[0]; if (hit) return hit.point.clone(); const p = new THREE.Vector3(); return ray.ray.intersectPlane(GROUND_PLANE, p) ? p : null; }
+function groundPoint(e) { screenRay(e); const hit = pickRay(ray.ray); if (hit) return hit.point.clone(); const p = new THREE.Vector3(); return ray.ray.intersectPlane(GROUND_PLANE, p) ? p : null; }
 const MEAS = { on: false, pts: [], line: null, lbls: [] };
 function measureClear() {
   if (MEAS.line) { scene.remove(MEAS.line); MEAS.line.geometry.dispose(); MEAS.line = null; }
@@ -5842,7 +5919,7 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   if (mode !== 'orbit' || e.buttons || MEAS.on || TOUCH) return;
   const now = performance.now(); if (now - hoverT < 90) return;
   hoverT = now; screenRay(e);
-  const hit = ray.intersectObjects(PICKABLE, false)[0], own = hit ? hit.object.userData.owner?.[hit.faceIndex] : -1;
+  const hit = pickRay(ray.ray), own = hit ? hit.object.userData.owner?.[hit.faceIndex] : -1;
   stage.classList.toggle('pointer', own != null && own >= 0);
 });
 renderer.domElement.addEventListener('pointerdown', (e) => { if (mode === 'orbit' && e.button === 0 && !MEAS.on) stage.classList.add('grabbing'); });
@@ -5861,7 +5938,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (!tap || tap.id!==e.pointerId || tap.dragged || e.button!==0 || activePointers.size || mode !== 'orbit') return;
   if (MEAS.on) { const p = groundPoint(e); if (p) measureAdd(p); return; }
   screenRay(e);
-  const hit = ray.intersectObjects(PICKABLE, false)[0];
+  const hit = pickRay(ray.ray);
   if (!hit) return;
   const own = hit.object.userData.owner?.[hit.faceIndex];
   if (own == null || own < 0) return;
