@@ -21,12 +21,15 @@ export const DORM_COLOR_FAMILIES: Record<DormColor, { hue: number }> = {
   green: { hue: 138 }, amber: { hue: 42 }, orange: { hue: 22 }, red: { hue: 358 },
 };
 
-/** 一个人的颜色：这个人所有的课都用它。 */
+/**
+ * 一个人的颜色：这个人所有的课都用它。
+ * name 是直接写在页面底色上的人名颜色，border 只用于描边和色点，对比度不够当文字用。
+ */
 export function dormPersonTone(color: DormColor, dark: boolean) {
   const hue = (DORM_COLOR_FAMILIES[color] ?? DORM_COLOR_FAMILIES.blue).hue;
   return dark
-    ? { bg: `hsl(${hue} 48% 29%)`, border: `hsl(${hue} 62% 50%)`, text: "#f5f7ff" }
-    : { bg: `hsl(${hue} 88% 93%)`, border: `hsl(${hue} 72% 77%)`, text: `hsl(${hue} 58% 27%)` };
+    ? { bg: `hsl(${hue} 48% 29%)`, border: `hsl(${hue} 62% 50%)`, text: "#f5f7ff", name: `hsl(${hue} 75% 74%)` }
+    : { bg: `hsl(${hue} 88% 93%)`, border: `hsl(${hue} 72% 77%)`, text: `hsl(${hue} 58% 27%)`, name: `hsl(${hue} 62% 30%)` };
 }
 
 export const DORM_WEEKDAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"] as const;
@@ -122,6 +125,10 @@ export interface DormDayAvailability {
   knownIds: number[];
   /** 当天没有课表数据、无法判断的人。 */
   unknownIds: number[];
+  /** 本次要求至少几个人有空；默认等于 knownIds.length。 */
+  requiredFree: number;
+  /** 要求的人数超过了有数据的人数，这天无法判断。 */
+  insufficientData: boolean;
   /** 满足“至少 minFree 人有空”的连续时间块。 */
   windows: DormFreeWindow[];
   /** 当天所有室友都空闲的时间块（不考虑没有数据的人）。 */
@@ -138,6 +145,57 @@ export interface DormAvailabilityOptions {
 
 function sameIds(a: number[], b: number[]) {
   return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
+function isSubset(small: number[], large: number[]) {
+  return small.every((id) => large.includes(id));
+}
+
+/**
+ * 放宽人数时，短于 minMinutes 的碎片段按“同一批人”并进相邻段，避免漏报。
+ * 例如 A、B 整小时都空、C 每 10 分钟上下课：{A,B,C} 和 {A,B} 交替，每段都太短，
+ * 但 A、B 这一小时确实连续有空。
+ *
+ * 规则：短段 S 只能并进相邻段 R，且 R 的人必须是 S 的人的子集（R 的那批人在 S 期间也都空着），
+ * 并后的段仍是 R 那批人；R 自己的人数要够 requiredFree。这样合并后的整段一定是同一批人空闲，
+ * 不会把 {A,B} 和 {B,C} 算成“2 人有空”。两侧都能并时优先人更多的一侧，打平时并到前面。
+ * 默认要求全员时，能并的只有同一批全员，和逐段合并的结果相同，所以默认语义不变。
+ */
+function absorbShortSegments(segments: DormFreeWindow[], requiredFree: number, minMinutes: number) {
+  const list = segments.map((segment) => ({ ...segment, freeIds: [...segment.freeIds] }));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let index = 0; index < list.length; index += 1) {
+      const short = list[index];
+      if (short.end - short.start >= minMinutes) continue;
+      const candidates = [index - 1, index + 1].filter((at) => {
+        const neighbour = list[at];
+        return neighbour
+          && neighbour.freeIds.length >= requiredFree
+          && (neighbour.end === short.start || neighbour.start === short.end)
+          && isSubset(neighbour.freeIds, short.freeIds);
+      });
+      if (!candidates.length) continue;
+      const target = candidates.reduce((best, at) => (list[at].freeIds.length > list[best].freeIds.length ? at : best));
+      const into = list[target];
+      into.start = Math.min(into.start, short.start);
+      into.end = Math.max(into.end, short.end);
+      list.splice(index, 1);
+      // 并完后两侧可能变成同一批人的相邻段，接起来。
+      for (let at = list.length - 1; at > 0; at -= 1) {
+        const before = list[at - 1];
+        const after = list[at];
+        if (before.end === after.start && sameIds(before.freeIds, after.freeIds)) {
+          before.end = after.end;
+          list.splice(at, 1);
+        }
+      }
+      changed = true;
+      break;
+    }
+  }
+  return list;
 }
 
 /**
@@ -188,15 +246,21 @@ export function dormDayAvailability(
   }
 
   const minMinutes = Math.max(0, options.minMinutes ?? 20);
-  const minFree = Math.max(1, Math.min(options.minFree ?? knownIds.length, Math.max(1, knownIds.length)));
+  // 明确要求 N 人时不能压到有数据的人数：只有 2 人有课表时，“至少 3 人有空”无从判断。
+  const requiredFree = Math.max(1, Math.floor(options.minFree ?? knownIds.length));
+  const insufficientData = requiredFree > knownIds.length;
   const usable = segments.filter((segment) => segment.end - segment.start >= minMinutes);
+  const relaxed = insufficientData ? [] : absorbShortSegments(segments, requiredFree, minMinutes)
+    .filter((segment) => segment.end - segment.start >= minMinutes && segment.freeIds.length >= requiredFree);
   return {
     ymd,
     weekday,
     window,
     knownIds,
     unknownIds,
-    windows: usable.filter((segment) => segment.freeIds.length >= minFree),
+    requiredFree,
+    insufficientData,
+    windows: relaxed,
     allFreeWindows: usable.filter((segment) => knownIds.length > 0 && segment.freeIds.length === knownIds.length),
   };
 }
@@ -237,18 +301,58 @@ export interface DormMorningDay {
   ymd: string;
   weekday: number;
   duties: DormMorningDuty[];
+  /** 当天有可用课表的人数。 */
+  knownCount: number;
   /** 当天有多少人没有可用课表，早八名单可能不全。 */
   unknownCount: number;
 }
 
 /** 连续若干天的早八名单，用于宿舍的“这周谁要早起”。 */
 export function dormMorningDays(readers: DormDayReader[], dates: string[]): DormMorningDay[] {
-  return dates.map((ymd) => ({
-    ymd,
-    weekday: dayOfWeekForCalendarYmd(ymd),
-    duties: dormMorningDuties(readers, ymd),
-    unknownCount: readers.filter((reader) => !reader.coursesForDate(ymd)).length,
-  }));
+  return dates.map((ymd) => {
+    const unknownCount = readers.filter((reader) => !reader.coursesForDate(ymd)).length;
+    return {
+      ymd,
+      weekday: dayOfWeekForCalendarYmd(ymd),
+      duties: dormMorningDuties(readers, ymd),
+      knownCount: readers.length - unknownCount,
+      unknownCount,
+    };
+  });
+}
+
+/** 一段空档旁边的说明。有人没数据时只能说“已同步的人都有空”，不能说全宿舍。 */
+export function dormFreeWindowLabel(window: DormFreeWindow, day: DormDayAvailability) {
+  const count = window.freeIds.length;
+  if (count < day.knownIds.length) return `${count} 人有空`;
+  if (day.unknownIds.length) return `已同步的 ${count} 人都有空`;
+  return count > 1 ? "全宿舍都有空" : "有空";
+}
+
+/** 这天没有空档时的说明，区分“确实凑不齐”和“数据不够没法判断”。 */
+export function dormFreeEmptyText(day: DormDayAvailability, explicitMinFree: boolean) {
+  if (!day.knownIds.length) return "这天大家都没有可用课表，没法判断谁有空。";
+  if (day.insufficientData) {
+    return `要 ${day.requiredFree} 人同时有空，但这天只有 ${day.knownIds.length} 人有课表数据，没法判断。可以放宽条件，或等室友同步课表。`;
+  }
+  const scope = day.unknownIds.length ? `已同步的 ${day.knownIds.length} 人里` : "这天";
+  const requirement = explicitMinFree && day.requiredFree < day.knownIds.length
+    ? `${day.requiredFree} 人同时有空`
+    : (day.unknownIds.length ? "大家同时有空" : "全宿舍同时有空");
+  return `${scope}没有${requirement}的时段。可以把条件放宽一点再看。`;
+}
+
+/** 早八列表里某一天没有人早八时的说法。 */
+export function dormMorningNoneText(day: DormMorningDay) {
+  if (!day.knownCount) return "没有数据";
+  return day.unknownCount ? "已同步的人没有早八" : "没人早八";
+}
+
+/** 早八页顶部的总结；名单不全时不说“放心熬”。 */
+export function dormMorningSummaryText(days: DormMorningDay[]) {
+  if (!days.length || days.every((day) => !day.knownCount)) return `未来 ${days.length} 天大家都没有可用课表，看不出谁有早八。`;
+  if (days.some((day) => day.unknownCount)) return `已同步课表的室友未来 ${days.length} 天都没有早八；还有人没同步，名单可能不全。`;
+  return `未来 ${days.length} 天都没有早八，晚上可以放心熬。`;
 }
 
 export function formatMinute(value: number) {

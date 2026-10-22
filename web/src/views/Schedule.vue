@@ -948,7 +948,8 @@
       v-model="dormDialogOpen"
       :page-style="pageStyle"
       :initial-code="dormInviteCode"
-      :sync-now="() => queueDormScheduleSync(300)"
+      :sync-now="syncDormScheduleNow"
+      :sync-version="dormSyncVersion"
     />
 
     <AgendaEditor :open="agendaEditorOpen" :draft="agendaEditorDraft" @close="agendaEditorOpen = false" />
@@ -1153,7 +1154,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Brush, Calendar, CirclePlus, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Operation, Picture, Plus, QuestionFilled, Refresh, Share, Tools, WarningFilled } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
-import { syncDormScheduleIfJoined } from "@/views/schedule/dormSync";
+import { syncDormScheduleIfJoined, type DormSyncNowOptions, type DormSyncNowResult } from "@/views/schedule/dormSync";
 import { findOverlapNotice, overlapNoticeKey, overlapNoticeSeen, overlapNoticeText, rememberOverlapNotice } from "@/views/schedule/overlapNotice";
 import { couplePersonTone } from "@/views/schedule/couple";
 import { useCoupleOverlay } from "@/views/schedule/useCoupleOverlay";
@@ -1642,10 +1643,35 @@ function syncCoupleSchedule() {
   const payload = scheduleSyncPayload();
   if (payload) void syncCoupleScheduleIfBound(payload);
 }
+// 后台同步和弹窗里的手动同步串行执行，避免同一份课表并发上传两次。
+let dormSyncQueue: Promise<unknown> = Promise.resolve();
+function runDormScheduleSync(options: DormSyncNowOptions = {}): Promise<DormSyncNowResult> {
+  const userId = auth.user?.id;
+  if (!userId || !scheduleSyncPayload()) return Promise.resolve("unavailable");
+  // 排队期间页面可能已卸载或换了账号：轮到执行时重新确认，并用那一刻的课表组装上传内容。
+  const stillCurrent = () => !disposed && auth.isLoggedIn && auth.user?.id === userId;
+  const task = dormSyncQueue.then((): Promise<DormSyncNowResult> | DormSyncNowResult => {
+    if (!stillCurrent()) return "skipped";
+    const payload = scheduleSyncPayload();
+    if (!payload) return "unavailable";
+    return syncDormScheduleIfJoined({ ...payload, ...options, isCurrent: stillCurrent });
+  });
+  dormSyncQueue = task.catch(() => undefined);
+  return task;
+}
+// 后台上传成功的次数；宿舍弹窗开着时据此刷新一次，例如从邀请链接打开时课表还没加载完。
+const dormSyncVersion = ref(0);
 function syncDormSchedule() {
   dormSyncTimer = 0;
-  const payload = scheduleSyncPayload();
-  if (payload) void syncDormScheduleIfJoined(payload);
+  void runDormScheduleSync().then((result) => {
+    if (result === "synced" && !disposed) dormSyncVersion.value += 1;
+  });
+}
+/** 宿舍弹窗里创建、加入、打开或手动同步时调用，等上传完成后弹窗再刷新数据。 */
+function syncDormScheduleNow(options: DormSyncNowOptions = {}) {
+  if (dormSyncTimer) window.clearTimeout(dormSyncTimer);
+  dormSyncTimer = 0;
+  return runDormScheduleSync(options);
 }
 function queueCoupleScheduleSync() {
   if (coupleSyncTimer) window.clearTimeout(coupleSyncTimer);
@@ -2261,6 +2287,8 @@ onBeforeUnmount(() => {
   androidWidgetSyncTimer = 0;
   if (coupleSyncTimer) window.clearTimeout(coupleSyncTimer);
   coupleSyncTimer = 0;
+  if (dormSyncTimer) window.clearTimeout(dormSyncTimer);
+  dormSyncTimer = 0;
   if (nowTimer) window.clearInterval(nowTimer);
   nowTimer = 0;
   document.removeEventListener("visibilitychange", tickNow);
@@ -2596,7 +2624,9 @@ function openDormDialog(code = "") {
   moreMenuOpen.value = false;
   if (!auth.isLoggedIn) {
     ElMessage.info("登录后才能使用宿舍课表");
-    void router.push({ name: "login", query: { redirect: "/schedule?dorm=1" } });
+    // 邀请链接里的宿舍码要跟着登录跳转带回来，登录后不用再手输。
+    const redirect = code ? `/schedule?dorm=1&code=${encodeURIComponent(code)}` : "/schedule?dorm=1";
+    void router.push({ name: "login", query: { redirect } });
     return;
   }
   dormInviteCode.value = code;
