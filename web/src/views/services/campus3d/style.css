@@ -240,9 +240,17 @@ button:active { filter: brightness(.94); }
 .walkpause.mini { top: auto; bottom: calc(92px + var(--safe-b, env(safe-area-inset-bottom, 0px))); transform: translateX(-50%); width: auto; padding: 6px; border-radius: 16px; }
 .walkpause.mini h3, .walkpause.mini .keys, .walkpause.mini #walkSound, .walkpause.mini #walkExit { display: none; }
 .walkpause.mini #walkResume { padding: 0 22px; }
+.speedo { position: absolute; z-index: 6; left: 50%; bottom: calc(24px + var(--safe-b, env(safe-area-inset-bottom, 0px))); transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: 6px; padding: 8px 18px 9px; border-radius: 18px; pointer-events: none; }
+.speedo[hidden] { display: none; }
+.speedo b { font: 700 30px/1 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -.02em; min-width: 2ch; text-align: right; }
+.speedo small { font-size: 12px; font-weight: 600; color: var(--label-2); }
+#app.underwater #stage::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse at 50% 20%, rgba(70, 150, 150, .12), rgba(4, 38, 44, .5)); }
 .walkbtns { position: absolute; z-index: 6; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(28px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
   display: flex; align-items: flex-end; gap: 14px; }
 .walkbtns[hidden] { display: none; }
+.walkbtns [hidden] { display: none; }
 .walkbtns .round { width: 56px; height: 56px; touch-action: none; }
 .walkbtns .round.big { width: 74px; height: 74px; }
 .walkbtns svg { width: 26px; height: 26px; stroke-width: 2.2; }
