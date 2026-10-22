@@ -3560,23 +3560,70 @@ function buildPeople() {
   bm.layers.set(1); pmesh.layers.set(1); hm.layers.set(1); scene.add(bm, pmesh, hm); LIFE.push(bm, pmesh, hm);
   PEOPLE = { list, bm, hm, pants: pmesh, aPh, aSt };
 }
+// Pedestrians are solid (walkResolve reads PED_GRID), and they look after themselves: a car or bike heading for someone
+// makes them stop, turn to it and step off its line until it has passed; parked cars on their path are walked round.
+let PED_GRID = null;
+function vehicleThreat() {
+  if (mode !== 'walk') return null;
+  let x, z, vx, vz, a, len, half;
+  if (DRIVE.on) { ({ x, z, vx, vz, a } = DRIVE); len = 2.35; half = 0.95; }
+  else if (RIDE.on) { x = RIDE.x; z = RIDE.z; a = RIDE.a; vx = Math.cos(a) * RIDE.v; vz = Math.sin(a) * RIDE.v; len = 0.95; half = 0.4; }
+  else return null;
+  const sp = Math.hypot(vx, vz), ux = sp > 0.5 ? vx / sp : Math.cos(a), uz = sp > 0.5 ? vz / sp : Math.sin(a);
+  return { x, z, ux, uz, sp, len, half };
+}
+const pedBlocked = (x, z) => inWater(x, z) || camBlocked(x, 0.6, z);
 function updatePeople(dt, t) {
-  if (!PEOPLE || !PEOPLE.bm.visible) return;
+  if (!PEOPLE || !PEOPLE.bm.visible) { PED_GRID = null; return; }
   const { list, bm, hm, pants, aPh, aSt } = PEOPLE, cp = camera.position, R = mode === 'walk' ? 260 : 320 + Math.max(0, cp.y) * 1.5;
+  const V = vehicleThreat(), G = new Grid(8), step = 3.2 * dt;
   let j = 0;
-  list.forEach((p) => {
+  list.forEach((p, i) => {
     let x, z, a, y = 0;
+    p.wait = Math.max(0, (p.wait || 0) - dt); p.ox ||= 0; p.oz ||= 0; p.tx ||= 0; p.tz ||= 0;
     if (p.stand) { x = p.x; z = p.z; a = p.a + Math.sin(t * 0.3 + p.ph) * 0.3; y = p.gy ??= groundAt(x, z); }
     else {
-      p.s += p.v * p.dir * dt; if (p.s > p.r.L) { p.s = p.r.L; p.dir = -1; } else if (p.s < 0) { p.s = 0; p.dir = 1; }
+      if (p.wait <= 0) { p.s += p.v * p.dir * dt; if (p.s > p.r.L) { p.s = p.r.L; p.dir = -1; } else if (p.s < 0) { p.s = 0; p.dir = 1; } }
       const q = sampleAt(p.r.p, p.r.cum, p.s); x = q.x - q.dz * p.lat; z = q.z + q.dx * p.lat; a = Math.atan2(q.dx * p.dir, q.dz * p.dir);
-      y = Math.abs(Math.sin(t * 7 * p.v + p.ph)) * 0.035 + groundAt(x, z);
+      y = groundAt(x, z);
     }
     if (Math.abs(x - cp.x) > R || Math.abs(z - cp.z) > R) return;
+    // where to stand aside to: off the line of the vehicle being driven, or round a parked car
+    let threat = false, tx = 0, tz = 0;
+    if (V) {
+      const rx = x - V.x, rz = z - V.z;
+      if (rx * rx + rz * rz < 1600) {
+        const ahead = rx * V.ux + rz * V.uz, side = -rx * V.uz + rz * V.ux, moving = V.sp > 1.2, wide = V.half + (moving ? 1.7 : 0.6);
+        if (ahead > -V.len - 0.6 && ahead < V.len + 0.6 + V.sp * 1.5 && Math.abs(side) < wide) {
+          const sg = side >= 0 ? 1 : -1, clear = V.half + (moving ? 1.35 : 0.7);
+          tx = -V.uz * sg * (clear - Math.abs(side)); tz = V.ux * sg * (clear - Math.abs(side));
+          if (pedBlocked(x + tx, z + tz)) { tx = V.uz * sg * (clear + Math.abs(side)); tz = -V.ux * sg * (clear + Math.abs(side)); if (pedBlocked(x + tx, z + tz)) tx = tz = 0; }
+          threat = moving;
+          if (moving) { a = Math.atan2(V.x - x, V.z - z); p.wait = 1.1; }
+        }
+      }
+    }
+    if (!threat && !p.stand && CARS) {
+      for (let k = 0; k < CARS.parkedM.length; k++) {
+        if (k === CARS.taken) continue;
+        const e = CARS.parkedM[k].elements, dx = x - e[12], dz = z - e[14];
+        if (Math.abs(dx) > 3.4 || Math.abs(dz) > 3.4) continue;
+        const ca = e[0], sa = e[2], lx = dx * ca + dz * sa, lz = -dx * sa + dz * ca;
+        if (Math.abs(lx) < 2.75 && Math.abs(lz) < 1.35) { const sg = lz >= 0 ? 1 : -1, d = 1.4 - Math.abs(lz); tx = -sa * sg * d; tz = ca * sg * d; if (pedBlocked(x + tx, z + tz)) tx = tz = 0; break; }
+      }
+    }
+    if (tx || tz || p.wait <= 0) { p.tx = tx; p.tz = tz; }
+    const dxo = p.tx - p.ox, dzo = p.tz - p.oz, dl = Math.hypot(dxo, dzo), stepping = dl > 0.04;
+    if (stepping) { const k2 = Math.min(1, step / dl); p.ox += dxo * k2; p.oz += dzo * k2; }
+    x += p.ox; z += p.oz;
+    const walking = !p.stand && p.wait <= 0, stride = walking ? p.v : stepping ? 1.3 : 0;
+    if (stride) y += Math.abs(Math.sin(t * 7 * stride + p.ph)) * 0.035;
+    p.cx = x; p.cz = z; p.cy = y; G.add(i, [x - 1.3, z - 1.3, x + 1.3, z + 1.3]);
     _e.set(0, a, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, y, z), _q, _s.setScalar(p.sc)); bm.setMatrixAt(j, _m4); hm.setMatrixAt(j, _m4);
     bm.setColorAt(j, p.c[0]); pants.setColorAt(j, p.c[1]); hm.setColorAt(j, p.c[2]);
-    aPh.array[j] = p.ph; aSt.array[j] = p.stand ? 0 : p.v; j++;
+    aPh.array[j] = p.ph; aSt.array[j] = stride; j++;
   });
+  PED_GRID = G;
   bm.count = pants.count = hm.count = j;
   bm.instanceMatrix.needsUpdate = hm.instanceMatrix.needsUpdate = true;
   for (const m of [bm, pants, hm]) m.instanceColor.needsUpdate = true;
@@ -4453,6 +4500,13 @@ function walkResolve(x, z, feet, RR = WALK_R) {
       const dx = x - cx, dz = z - cz, d = Math.hypot(dx, dz);
       if (d >= R) continue;
       const a = d > 1e-4 ? 1 / d : 0; x = cx + (a ? dx * a : 1) * (R + 0.01); z = cz + dz * a * (R + 0.01); moved = true;
+    }
+    if (PED_GRID && PEOPLE) for (const i of PED_GRID.at(x, z)) {
+      const pd = PEOPLE.list[i], R = 0.28 + RR;
+      if (feet != null && feet > (pd.cy || 0) + 1.4) continue;
+      const dx = x - pd.cx, dz = z - pd.cz, d = Math.hypot(dx, dz);
+      if (d >= R) continue;
+      const a = d > 1e-4 ? 1 / d : 0; x = pd.cx + (a ? dx * a : 1) * (R + 0.01); z = pd.cz + dz * a * (R + 0.01); moved = true;
     }
     // parked cars are solid boxes (4.6 x 1.8 m) for walkers and for the car being driven
     if (CARS) for (let k = 0; k < CARS.parkedM.length; k++) {
