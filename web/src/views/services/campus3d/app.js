@@ -7,7 +7,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 export function mountCampus3D(root, opts) {
@@ -613,10 +612,16 @@ const GradeShader = {
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform float uSat, uCon, uVig, uGrain, uT, uSharp; uniform vec2 uTexel; uniform vec3 uLift, uGain; varying vec2 vUv;
     float hh(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + uT) * 43758.5453); }
+    vec3 outp(vec3 c){
+      #ifdef TONE_MAPPING
+      c = toneMapping(c);
+      #endif
+      return linearToOutputTexel(vec4(c, 1.0)).rgb;
+    }
     void main(){
-      vec4 c = texture2D(tDiffuse, vUv); vec3 col = c.rgb;
-      vec3 sn = texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb, ss = texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb;
-      vec3 se = texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb, sw = texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb;
+      vec4 c = texture2D(tDiffuse, vUv); vec3 col = outp(c.rgb);
+      vec3 sn = outp(texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb), ss = outp(texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb);
+      vec3 se = outp(texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb), sw = outp(texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb);
       vec3 mn = min(min(min(sn, ss), min(se, sw)), col), mx = max(max(max(sn, ss), max(se, sw)), col);
       vec3 wgt = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0)) * (-1.0 / mix(8.0, 5.0, uSharp));
       col = clamp((col + (sn + ss + se + sw) * wgt) / (1.0 + 4.0 * wgt), 0.0, 1.0);
@@ -629,11 +634,24 @@ const GradeShader = {
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
     }`,
 };
+const CopyShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ gl_FragColor = texture2D(tDiffuse, vUv); }',
+};
+// Only the scene needs multisampling. The full-screen passes after it used to draw into 4x MSAA half-float targets
+// and resolve them again, costing about as much GPU time as the campus itself. Now the scene alone renders with MSAA
+// and is resolved once into a plain target, the AO is multiplied into that frame in place, and tone mapping + sRGB
+// output happen inside the grade pass instead of a pass of their own. The picture is the same.
 function initComposer() {
   const w = stage.clientWidth, h = stage.clientHeight;
-  const rt = new THREE.WebGLRenderTarget(w * viewPR, h * viewPR, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 2 : 4 });
+  const rt = new THREE.WebGLRenderTarget(w * viewPR, h * viewPR, { type: THREE.HalfFloatType });
   composer = new EffectComposer(renderer, rt);
-  composer.addPass(new RenderPass(scene, camera));
+  const msaa = new THREE.WebGLRenderTarget(w * viewPR, h * viewPR, { type: THREE.HalfFloatType, samples: QUALITY === 'low' ? 2 : 4 });
+  const scenePass = new RenderPass(scene, camera), resolve = new ShaderPass(CopyShader), drawScene = scenePass.render.bind(scenePass);
+  scenePass.render = (r, write, read, ...a) => { drawScene(r, write, msaa, ...a); resolve.render(r, read, msaa); };
+  scenePass.setSize = (w2, h2) => msaa.setSize(w2, h2);
+  composer.addPass(scenePass);
   if (QUALITY !== 'low') {
     gtaoPass = new GTAOPass(scene, camera, w, h);
     gtaoPass.updateGtaoMaterial({ radius: 4.5, distanceExponent: 1.5, thickness: 2.5, scale: 1.25, samples: 8, distanceFallOff: 1.0, screenSpaceRadius: false });
@@ -642,13 +660,16 @@ function initComposer() {
     const sz0 = gtaoPass.setSize.bind(gtaoPass);
     gtaoPass.setSize = (w2, h2) => sz0(Math.max(1, Math.round(w2 / 2)), Math.max(1, Math.round(h2 / 2)));
     gtaoPass.blendIntensity = 0.9;
+    // blend the AO straight into the frame instead of copying the frame first and blending onto the copy
+    gtaoPass.needsSwap = false;
+    const out0 = gtaoPass.renderPass.bind(gtaoPass);
+    gtaoPass.renderPass = (r, mat, ...a) => { if (mat !== gtaoPass.copyMaterial) out0(r, mat, ...a); };
     const r0 = gtaoPass.render.bind(gtaoPass);
-    gtaoPass.render = (...a) => { const hid = []; for (const o of NO_AO) if (o.visible) { o.visible = false; hid.push(o); } r0(...a); for (const o of hid) o.visible = true; };
+    gtaoPass.render = (r, write, read, ...a) => { const hid = []; for (const o of NO_AO) if (o.visible) { o.visible = false; hid.push(o); } r0(r, read, read, ...a); for (const o of hid) o.visible = true; };
     composer.addPass(gtaoPass);
   }
   bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.14, 0.5, 0.96);
   composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
   gradePass = new ShaderPass(GradeShader); composer.addPass(gradePass); gradePass.uniforms.uTexel.value.set(1 / (w * viewPR), 1 / (h * viewPR));
   composer.setPixelRatio(viewPR); composer.setSize(w, h);
 }
@@ -970,10 +991,24 @@ class GB {
     if (nx * ox + ny * oy + nz * oz < 0) { this.tri(A, C, B); this.tri(A, D, C); } else { this.tri(A, B, C); this.tri(A, C, D); }
   }
   geo() {
+    const P = this.p, N = this.n, U = this.u, n = P.length / 3, idx = new Uint32Array(n), src = new Int32Array(n);
+    let m = 0;
+    for (let i = 0; i < n; i++) {
+      let j = -1;
+      for (let k = m - 1; k >= 0 && k >= m - 8; k--) {
+        const a = src[k];
+        if (P[a * 3] === P[i * 3] && P[a * 3 + 1] === P[i * 3 + 1] && P[a * 3 + 2] === P[i * 3 + 2] && N[a * 3] === N[i * 3] && N[a * 3 + 1] === N[i * 3 + 1] && N[a * 3 + 2] === N[i * 3 + 2] && U[a * 2] === U[i * 2] && U[a * 2 + 1] === U[i * 2 + 1]) { j = k; break; }
+      }
+      if (j < 0) { j = m++; src[j] = i; }
+      idx[i] = j;
+    }
+    const pos = new Float32Array(m * 3), nor = new Float32Array(m * 3), uv = new Float32Array(m * 2);
+    for (let k = 0; k < m; k++) { const a = src[k]; pos.set([P[a * 3], P[a * 3 + 1], P[a * 3 + 2]], k * 3); nor.set([N[a * 3], N[a * 3 + 1], N[a * 3 + 2]], k * 3); uv[k * 2] = U[a * 2]; uv[k * 2 + 1] = U[a * 2 + 1]; }
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.u, 2));
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setIndex(new THREE.BufferAttribute(m < 65536 ? Uint16Array.from(idx) : idx, 1));
     g.computeBoundingSphere(); return g;
   }
 }
@@ -3595,8 +3630,26 @@ function vehicleThreat() {
   return { x, z, ux, uz, sp, len, half };
 }
 const pedBlocked = (x, z) => inWater(x, z) || camBlocked(x, 0.6, z);
+// People and cars are instanced campus-wide with culling off (their bounds change every frame), so the GPU used to draw
+// every one in range in each pass, those behind the camera too. Only the ones inside a view frustum widened by 40
+// degrees are packed now; that margin and a test at the tip of each shadow keep shadows and lake reflections that
+// come in from outside the view. Collision and traffic still see everyone.
+const LIFE_VIEW = { fr: new THREE.Frustum(), m: new THREE.Matrix4(), cam: new THREE.PerspectiveCamera(), s: new THREE.Sphere(), tx: 0, tz: 0 };
+function lifeView() {
+  const L = LIFE_VIEW; camera.updateMatrixWorld();
+  L.cam.copy(camera, false); L.cam.fov = Math.min(150, camera.fov + 40); L.cam.updateProjectionMatrix(); L.cam.updateMatrixWorld();
+  L.fr.setFromProjectionMatrix(L.m.multiplyMatrices(L.cam.projectionMatrix, L.cam.matrixWorldInverse));
+  const k = 1 / Math.max(0.15, SUN.y), sx = -SUN.x * k, sz = -SUN.z * k, sl = Math.hypot(sx, sz), cap = sl > 8 ? 8 / sl : 1;
+  L.tx = sx * cap; L.tz = sz * cap;
+}
+function lifeSeen(x, y, z, r, h) {
+  const L = LIFE_VIEW;
+  if (L.fr.intersectsSphere(L.s.set(L.s.center.set(x, y + h / 2, z), r))) return true;
+  return L.fr.intersectsSphere(L.s.set(L.s.center.set(x + L.tx * h, y, z + L.tz * h), r));
+}
 function updatePeople(dt, t) {
   if (!PEOPLE || !PEOPLE.bm.visible) { PED_GRID = null; return; }
+  lifeView();
   const { list, bm, hm, pants, aPh, aSt } = PEOPLE, cp = camera.position, R = mode === 'walk' ? 260 : 320 + Math.max(0, cp.y) * 1.5;
   const V = vehicleThreat(), G = new Grid(8), step = 3.2 * dt;
   let j = 0;
@@ -3641,6 +3694,7 @@ function updatePeople(dt, t) {
     const walking = !p.stand && p.wait <= 0, stride = walking ? p.v : stepping ? 1.3 : 0;
     if (stride) y += Math.abs(Math.sin(t * 7 * stride + p.ph)) * 0.035;
     p.cx = x; p.cz = z; p.cy = y; G.add(i, [x - 1.3, z - 1.3, x + 1.3, z + 1.3]);
+    if (!lifeSeen(x, y, z, 1.6, 1.8)) return;
     _e.set(0, a, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, y, z), _q, _s.setScalar(p.sc)); bm.setMatrixAt(j, _m4); hm.setMatrixAt(j, _m4);
     bm.setColorAt(j, p.c[0]); pants.setColorAt(j, p.c[1]); hm.setColorAt(j, p.c[2]);
     aPh.array[j] = p.ph; aSt.array[j] = stride; j++;
@@ -3729,6 +3783,7 @@ function updateCars(dt) {
   const cp = camera.position, R = mode === 'walk' ? 600 : 700 + Math.max(0, cp.y) * 2, im = CARS.im;
   const P = mode !== 'walk' ? null : DRIVE.on ? [DRIVE.x, DRIVE.z, 2.4] : RIDE.on ? [RIDE.x, RIDE.z, 1] : [WALK.x, WALK.z, 0.5];
   const live = [];
+  lifeView();
   let j = 0;
   CARS.movers.forEach((c, i) => {
     if (c.drive) return;
@@ -3743,15 +3798,16 @@ function updateCars(dt) {
       q = sampleAt(c.r.p, c.r.cum, c.s); x = q.x - q.dz * c.lane; z = q.z + q.dx * c.lane;
     }
     if (Math.abs(x - cp.x) > R || Math.abs(z - cp.z) > R) return;
-    const ang = Math.atan2(q.dz * c.dir, q.dx * c.dir);
-    _e.set(0, -ang, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, c.r.br ? groundAt(x, z) : 0, z), _q, _s.set(1, 1, 1));
-    im.setMatrixAt(j, _m4); im.setColorAt(j, CARS.carCols[i]); j++;
+    const ang = Math.atan2(q.dz * c.dir, q.dx * c.dir), y = c.r.br ? groundAt(x, z) : 0;
     if (P && Math.abs(x - P[0]) < 60 && Math.abs(z - P[1]) < 60) live.push([x, z, Math.cos(ang), Math.sin(ang)]);
+    if (!lifeSeen(x, y, z, 3.2, 1.6)) return;
+    _e.set(0, -ang, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, y, z), _q, _s.set(1, 1, 1));
+    im.setMatrixAt(j, _m4); im.setColorAt(j, CARS.carCols[i]); j++;
   });
   CARS.live = live;
   CARS.parkedM.forEach((m, k) => {
     if (CARS.taken === k) return;
-    const e = m.elements; if (Math.abs(e[12] - cp.x) > R || Math.abs(e[14] - cp.z) > R) return;
+    const e = m.elements; if (Math.abs(e[12] - cp.x) > R || Math.abs(e[14] - cp.z) > R || !lifeSeen(e[12], e[13], e[14], 3.2, 1.6)) return;
     im.setMatrixAt(j, m); im.setColorAt(j, CARS.carCols[CARS.movers.length + k]); j++;
   });
   im.count = CARS.trim.count = j;
@@ -4409,8 +4465,8 @@ function highlight(p) {
   if (!p.bld) return;
   const own = new Set(p.bld), pos = [], line = [];
   for (const m of PICKABLE) {
-    const ow = m.userData.owner, P = m.geometry.attributes.position.array;
-    for (let i = 0; i < ow.length; i++) if (own.has(ow[i])) for (let k = 0; k < 9; k++) pos.push(P[i * 9 + k]);
+    const ow = m.userData.owner, P = m.geometry.attributes.position.array, X = m.geometry.index.array;
+    for (let i = 0; i < ow.length; i++) if (own.has(ow[i])) for (let v = 0; v < 3; v++) { const a = X[i * 3 + v] * 3; pos.push(P[a], P[a + 1], P[a + 2]); }
   }
   for (const i of p.bld) {
     const b = BLD[i];
@@ -4496,12 +4552,12 @@ let COLLISION_INFO = null;
 // Building picks (crosshair aim, hover, click, spawn checks) used to raycast every merged building mesh, ~600k
 // triangles, on the CPU: about 45 ms per ray on a desktop and several times that on a phone, ten times a second while
 // exploring. An xz grid over the triangles lets a ray test only the cells it crosses, nearest cell first.
-// The merged meshes are non-indexed, sit untransformed in the scene and never move.
+// The merged meshes are indexed (triangle i is owner[i]), sit untransformed in the scene and never move.
 const PICK_CELL = 16;
 let PICK_IDX = null;
 function pickIndex() {
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
-  const pos = PICKABLE.map((m) => m.geometry.attributes.position.array);
+  const pos = PICKABLE.map((m) => m.geometry.attributes.position.array), ix = PICKABLE.map((m) => m.geometry.index.array);
   for (const P of pos) for (let i = 0; i < P.length; i += 3) { const x = P[i], z = P[i + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
   const nx = Math.floor((x1 - x0) / PICK_CELL) + 1, nz = Math.floor((z1 - z0) / PICK_CELL) + 1;
   const start = new Int32Array(nx * nz + 1);
@@ -4509,9 +4565,11 @@ function pickIndex() {
   for (let pass = 0; pass < 2; pass++) {
     const fill = pass ? start.slice() : null;
     pos.forEach((P, m) => {
-      for (let f = 0, o = 0; o < P.length; f++, o += 9) {
-        const i0 = Math.floor((Math.min(P[o], P[o + 3], P[o + 6]) - x0) / PICK_CELL), i1 = Math.floor((Math.max(P[o], P[o + 3], P[o + 6]) - x0) / PICK_CELL);
-        const j0 = Math.floor((Math.min(P[o + 2], P[o + 5], P[o + 8]) - z0) / PICK_CELL), j1 = Math.floor((Math.max(P[o + 2], P[o + 5], P[o + 8]) - z0) / PICK_CELL);
+      const X = ix[m];
+      for (let f = 0; f < X.length / 3; f++) {
+        const a = X[f * 3] * 3, b = X[f * 3 + 1] * 3, c = X[f * 3 + 2] * 3;
+        const i0 = Math.floor((Math.min(P[a], P[b], P[c]) - x0) / PICK_CELL), i1 = Math.floor((Math.max(P[a], P[b], P[c]) - x0) / PICK_CELL);
+        const j0 = Math.floor((Math.min(P[a + 2], P[b + 2], P[c + 2]) - z0) / PICK_CELL), j1 = Math.floor((Math.max(P[a + 2], P[b + 2], P[c + 2]) - z0) / PICK_CELL);
         for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
           const c = j * nx + i;
           if (pass) { const k = fill[c]++; mesh[k] = m; tri[k] = f; } else start[c + 1]++;
@@ -4520,7 +4578,7 @@ function pickIndex() {
     });
     if (!pass) { for (let c = 0; c < nx * nz; c++) start[c + 1] += start[c]; mesh = new Uint16Array(start[nx * nz]); tri = new Int32Array(start[nx * nz]); }
   }
-  PICK_IDX = { x0, z0, nx, nz, start, mesh, tri, pos, q: 0, stamp: pos.map((P) => new Uint32Array(P.length / 9)),
+  PICK_IDX = { x0, z0, nx, nz, start, mesh, tri, pos, ix, q: 0, stamp: ix.map((X) => new Uint32Array(X.length / 3)),
     side: PICKABLE.map((m) => (m.material.side === THREE.DoubleSide ? 2 : m.material.side === THREE.BackSide ? 1 : 0)) };
 }
 // Nearest building hit along a ray, shaped like a Raycaster hit ({ distance, point, object, faceIndex }), or null.
@@ -4544,8 +4602,8 @@ function pickRay(r, far = Infinity) {
       const m = I.mesh[k], f = I.tri[k], S = I.stamp[m];
       if (S[f] === q) continue; S[f] = q;
       // Möller–Trumbore; det > 0 means the ray meets the front face
-      const P = I.pos[m], o = f * 9, ax = P[o], ay = P[o + 1], az = P[o + 2];
-      const e1x = P[o + 3] - ax, e1y = P[o + 4] - ay, e1z = P[o + 5] - az, e2x = P[o + 6] - ax, e2y = P[o + 7] - ay, e2z = P[o + 8] - az;
+      const P = I.pos[m], X = I.ix[m], a = X[f * 3] * 3, b = X[f * 3 + 1] * 3, c2 = X[f * 3 + 2] * 3, ax = P[a], ay = P[a + 1], az = P[a + 2];
+      const e1x = P[b] - ax, e1y = P[b + 1] - ay, e1z = P[b + 2] - az, e2x = P[c2] - ax, e2y = P[c2 + 1] - ay, e2z = P[c2 + 2] - az;
       const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x, det = e1x * px + e1y * py + e1z * pz, sd = I.side[m];
       if (sd === 0 ? det <= 1e-12 : sd === 1 ? det >= -1e-12 : Math.abs(det) <= 1e-12) continue;
       const inv = 1 / det, sx = ox - ax, sy = oy - ay, sz = oz - az, u = (sx * px + sy * py + sz * pz) * inv;
