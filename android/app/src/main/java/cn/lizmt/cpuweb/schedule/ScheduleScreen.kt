@@ -306,6 +306,8 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                         "导出所选周日历" to { exportSchedule(activity, store) },
                         ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
                         ("情侣课表" to { sheet = ScheduleSheet.Couple }).takeIf { !store.readOnly },
+                        // The dorm timetable is a Web page; Back returns here.
+                        ("宿舍课表" to { activity.openDormSchedule() }).takeIf { !store.readOnly },
                         ("应用外观" to { sheet = ScheduleSheet.Appearance }).takeIf { !store.readOnly },
                     ),
                 )

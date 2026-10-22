@@ -152,19 +152,34 @@ class ShellCoordinator(
         web.navigate(tab.path, replace = true)
     }
 
-    /** Open a Web page from native chrome (quick entry, bell, top-bar login). */
-    fun openWeb(path: String, tab: ShellTab = ShellTab.Profile) {
+    /**
+     * Open a Web page from native chrome (quick entry, bell, top-bar login).
+     * [replace] starts the page's own history there, so Back goes to the page's
+     * parent (the dorm page's is the timetable) rather than the last Web page.
+     */
+    fun openWeb(path: String, tab: ShellTab = ShellTab.Profile, replace: Boolean = false) {
         if (ShellTab.isLoginPath(path)) {
             applyLoginGate(navigateToLogin = true)
             return
         }
         if (requiresLogin) return
         if (ShellTab.isSchedulePath(path)) {
+            ScheduleDorm.pagePath(path)?.let { page ->
+                openDorm(page)
+                return
+            }
             userSelected(ShellTab.Schedule)
             return
         }
         selectedTab = if (tab == ShellTab.Schedule) ShellTab.Profile else tab
-        web.navigate(path, replace = false)
+        web.navigate(path, replace = replace)
+    }
+
+    /** Opens the dorm page; the activity sets this to hand the page this term's timetable first. */
+    var onOpenDorm: ((String) -> Unit)? = null
+
+    private fun openDorm(page: String) {
+        onOpenDorm?.invoke(page) ?: openWeb(page, ShellTab.Services, replace = true)
     }
 
     /** A widget or notification asked for the timetable. */
@@ -204,6 +219,11 @@ class ShellCoordinator(
 
     private fun handleNavigate(path: String) {
         if (requiresLogin) return
+        // A dorm invite link opened inside the app keeps its code on the dorm page.
+        ScheduleDorm.pagePath(path)?.let { page ->
+            openDorm(page)
+            return
+        }
         val destination = ShellTab.fromPath(path) ?: return
         if (destination == ShellTab.Schedule) {
             val query = android.net.Uri.parse("https://local$path")

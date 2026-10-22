@@ -14,6 +14,8 @@ struct NativeScheduleView: View {
     @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
+    /// Opens the dorm timetable, a site page; nil where there is no shell to open it in.
+    private let onDormSchedule: (() -> Void)?
     private let isBackgroundPreview: Bool
 
     @State private var selectedDay = 1
@@ -54,11 +56,13 @@ struct NativeScheduleView: View {
         store: NativeScheduleStore,
         onLogin: @escaping () -> Void = {},
         onDeviceSettings: @escaping () -> Void = {},
+        onDormSchedule: (() -> Void)? = nil,
         isBackgroundPreview: Bool = false
     ) {
         _store = ObservedObject(wrappedValue: store)
         self.onDeviceSettings = onDeviceSettings
         self.onLogin = onLogin
+        self.onDormSchedule = onDormSchedule
         self.isBackgroundPreview = isBackgroundPreview
     }
 
@@ -840,6 +844,12 @@ struct NativeScheduleView: View {
                         scheduleToolRow("情侣课表", systemImage: "heart") {
                             scheduleToolsPresented = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
+                        }
+                        if let onDormSchedule {
+                            scheduleToolRow("宿舍课表", systemImage: "bed.double") {
+                                scheduleToolsPresented = false
+                                onDormSchedule()
+                            }
                         }
                     }
                 }

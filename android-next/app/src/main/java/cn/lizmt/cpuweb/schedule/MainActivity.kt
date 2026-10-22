@@ -200,6 +200,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         shell.onOpenSettings = { route -> openSettings(route) }
         shell.onOpenExternal = { url -> openExternal(Uri.parse(url)) }
         shell.onConfirmExit = { toast("再按一次退出拾间") }
+        shell.onOpenDorm = { page -> openDormSchedule(page) }
         applyCustomization()
         clientStats = ClientStats(this, lifecycleScope) {
             ClientFeatureState(appearance.mode, style.visualStyle.id, style.background != null)
@@ -228,6 +229,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                         couple.refresh()
                         delay(4_000)
                         if (schedule.selectedSemester == schedule.currentSemesterValue()) couple.sync(schedule.completeSnapshot())
+                        // The dorm page uploads it when the user is in a dorm (it asks the server, not us).
+                        if (!debugFixture) offerDormSchedule()
                     }
                 }
         }
@@ -319,6 +322,24 @@ class MainActivity : ComponentActivity(), WebSessionHost {
 
     fun closeSettings() {
         settingsRoute = null
+    }
+
+    /**
+     * The dorm timetable is the site page `/dorm-schedule`. It is handed this
+     * term's timetable first, so its 立即同步 can upload what the grid shows.
+     */
+    fun openDormSchedule(page: String = ScheduleDorm.PAGE) {
+        lifecycleScope.launch { offerDormSchedule() }
+        shell.openWeb(page, replace = true)
+    }
+
+    /**
+     * Hands the site page the term running now, edits included. Only that term:
+     * a past one the user is browsing must never replace it on the server.
+     */
+    private suspend fun offerDormSchedule() {
+        if (!web.authState.authenticated || schedule.selectedSemester != schedule.currentSemesterValue()) return
+        ScheduleDorm.offer(schedule.completeSnapshot())?.let { web.dorm(it) }
     }
 
     // region Agenda and 拾间AI

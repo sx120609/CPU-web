@@ -468,6 +468,12 @@ class WebSession(
         JSONObject().put("payload", payload), 45_000,
     )
 
+    /** One dorm-timetable request (`CPUTimeNativeDorm`, see web/src/utils/nativeDormBridge.ts); `{ missing: true }` on an older site. */
+    suspend fun dorm(payload: JSONObject): String? = call(
+        "var run=window.CPUTimeNativeDorm;if(typeof run!=='function')return {missing:true};return await run(args.payload);",
+        JSONObject().put("payload", payload), 45_000,
+    )
+
     suspend fun refreshAuthCapability(): NativeAuthState? {
         val value = call(
             "for(var attempt=0;attempt<20;attempt+=1){var refresh=window.CPUTimeNative&&window.CPUTimeNative.refreshAuth;" +

@@ -21,6 +21,7 @@ import { isForumDestination } from "@/utils/nativeForumVisibility";
 import { isCompactLayoutNow } from "@/utils/formFactor";
 import { forumListTarget, installForumListLayoutSync } from "@/utils/forumListRoute";
 import { setDocumentTitle } from "@/utils/documentTitle";
+import { dormScheduleLocation, scheduleDormLocation } from "@/utils/dormScheduleRoute";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
 export const loadHomeView = () => import("@/views/Home.vue");
@@ -229,6 +230,15 @@ export const router = createRouter({
         { path: "schedule", name: "schedule", component: loadScheduleView, meta: { title: "课表", public: true, hideChrome: true } },
         // 情侣课表已并入课表页；旧链接和邀请链接跳转到课表并打开情侣课表弹窗。
         { path: "schedule/couple", redirect: (to) => ({ path: "/schedule", query: { couple: "1", ...(typeof to.query.code === "string" ? { code: to.query.code } : {}) } }) },
+        // 原生 App 的课表是原生画的，/schedule 会被原生接走；宿舍课表在原生壳里用这个独立页面。
+        // 网页和其他客户端仍在课表页里打开宿舍课表弹窗。
+        {
+          path: "dorm-schedule",
+          name: "dorm-schedule",
+          component: () => import("@/views/DormSchedule.vue"),
+          beforeEnter: (to) => (isNativeScheduleShell() ? true : scheduleDormLocation(to.query.code)),
+          meta: { title: "宿舍课表" },
+        },
         { path: "schedule/share/:code", name: "schedule-share", component: () => import("@/views/ScheduleShare.vue"), meta: { title: "共享课表", public: true } },
         { path: "download", name: "download", component: () => import("@/views/Download.vue"), meta: { title: "客户端下载", public: true } },
         { path: "downloads", redirect: "/download" },
@@ -269,6 +279,10 @@ router.beforeEach(async (to) => {
     return { path: "/profile", replace: true };
   }
   const nativeShell = (window as any).CPUTimeNative;
+  // 宿舍邀请链接（/schedule?dorm=1&code=…）在原生壳里交给原生课表会丢掉宿舍码，改去宿舍课表页。
+  if (to.path === "/schedule" && to.query.dorm === "1" && isNativeScheduleShell()) {
+    return { ...dormScheduleLocation(to.query.code), replace: true };
+  }
   if (to.path === "/schedule" && isNativeScheduleShell() && typeof nativeShell?.navigate === "function") {
     nativeShell.navigate(to.fullPath);
     return false;

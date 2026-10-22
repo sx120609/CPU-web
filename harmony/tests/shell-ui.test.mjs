@@ -19,7 +19,17 @@ function harness() {
   vm.runInContext(transformSync(source,{loader:'ts',format:'cjs'}).code,context);
   return {api:context.module.exports,items,notifications,frames,mutate:()=>mutation(),observers:()=>observers};
 }
-const overlay = (style={}) => ({style:{display:'block',visibility:'visible',opacity:'1',...style},getClientRects:()=>[{}],getAttribute:()=>null});
+const overlay = (style={}, host=null) => ({style:{display:'block',visibility:'visible',opacity:'1',...style},getClientRects:()=>[{}],getAttribute:()=>null,
+  closest:selector=>selector==='[data-cpu-inline-dialog]'?host:null});
+
+test('a dialog laid out as the page itself leaves the native bars and Back alone',()=>{
+  const h=harness();
+  // The dorm timetable page renders its dialog inline; the shell must not treat it as covering the screen.
+  h.items.push(overlay({}, {page:'/dorm-schedule'}));
+  assert.equal(h.api.hasVisibleWebOverlay(),false);
+  // A confirmation opened from that page is a real dialog again.
+  h.items.push(overlay()); assert.equal(h.api.hasVisibleWebOverlay(),true);
+});
 
 test('closed and transparent web overlays do not hide native navigation',()=>{
   const h=harness();

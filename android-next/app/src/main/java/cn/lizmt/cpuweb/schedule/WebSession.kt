@@ -491,6 +491,12 @@ class WebSession(
         JSONObject().put("payload", payload), 45_000,
     )
 
+    /** One dorm-timetable request (`CPUTimeNativeDorm`, see web/src/utils/nativeDormBridge.ts); `{ missing: true }` on an older site. */
+    suspend fun dorm(payload: JSONObject): String? = call(
+        "var run=window.CPUTimeNativeDorm;if(typeof run!=='function')return {missing:true};return await run(args.payload);",
+        JSONObject().put("payload", payload), 45_000,
+    )
+
     /** Data for 拾间AI (`CPUAndroidAgentData`: grades, exams, a site path, who the user is): `{ data }` or `{ error, status }`. */
     suspend fun agentData(payload: JSONObject): String? = call(
         "var run=window.CPUAndroidAgentData;if(typeof run!=='function')return {error:'页面尚未就绪，请稍后重试',status:0};" +

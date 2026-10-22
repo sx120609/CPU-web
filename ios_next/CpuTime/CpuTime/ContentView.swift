@@ -85,6 +85,7 @@ struct ContentView: View {
                     NativeWidgetLocalSchedule.connect(to: scheduleStore)
                     NativeScheduleSharingService.shared.connect(to: scheduleStore)
                     NativeCoupleService.shared.connect(to: scheduleStore)
+                    NativeDormService.shared.connect(to: scheduleStore)
                     guard url.scheme == "cputime-next", url.host == "schedule" else { return }
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
@@ -159,6 +160,7 @@ struct ContentView: View {
                 NativeWidgetLocalSchedule.connect(to: scheduleStore)
                 NativeScheduleSharingService.shared.connect(to: scheduleStore)
                 NativeCoupleService.shared.connect(to: scheduleStore)
+                NativeDormService.shared.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
                 IosClientHeartbeat.shared.report()
             }
@@ -992,7 +994,8 @@ struct NativeShellView: View {
             NativeScheduleView(
                 store: scheduleStore,
                 onLogin: { shell.openWeb(path: "/login", tab: .profile) },
-                onDeviceSettings: { deviceSettingsPresented = true }
+                onDeviceSettings: { deviceSettingsPresented = true },
+                onDormSchedule: { shell.openDormSchedule() }
             )
             .tabItem {
                 Label(ShellTab.schedule.label, systemImage: ShellTab.schedule.systemImage)

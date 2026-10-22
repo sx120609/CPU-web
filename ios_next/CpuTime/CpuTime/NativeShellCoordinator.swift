@@ -246,9 +246,23 @@ final class NativeShellCoordinator: ObservableObject {
         applyLoginGate(navigateToLogin: true)
     }
 
+    /// The dorm timetable is the site page `/dorm-schedule`, under 服务. It is
+    /// handed this term's timetable first, so its 立即同步 can upload what the
+    /// grid shows; its close button comes back to the timetable.
+    func openDormSchedule(page: String = DormRules.page) {
+        guard !requiresLogin else { return }
+        Task { await NativeDormService.shared.offer() }
+        openWeb(path: page, tab: .services)
+    }
+
     private func handleNavigate(path: String, source: String, webSession: HybridWebViewStore?) {
         guard !requiresLogin else { return }
         guard selectedTab != .schedule, source == selectedTab.rawValue else { return }
+        // A dorm invite link opened inside the app keeps its code on the dorm page.
+        if let page = DormRules.pagePath(path) {
+            openDormSchedule(page: page)
+            return
+        }
         if let destination = ShellTab.from(path: path) {
             setSelectedTab(destination)
             webSession?.activate(tab: destination)

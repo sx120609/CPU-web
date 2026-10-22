@@ -210,14 +210,22 @@ class ShellCoordinator(
         }
     }
 
-    /** Open a site page from native chrome; it shows under the tab that owns its path. */
-    fun openWeb(path: String) {
+    /**
+     * Open a site page from native chrome; it shows under the tab that owns its path.
+     * [replace] starts the page's own history there, so Back goes to the page's
+     * parent (the dorm page's is the timetable) rather than the last site page.
+     */
+    fun openWeb(path: String, replace: Boolean = false) {
         if (ShellRoutes.isLoginPath(path)) {
             applyLoginGate(navigateToLogin = true)
             return
         }
         if (requiresLogin) return
         if (ShellRoutes.isSchedulePath(path)) {
+            ScheduleDorm.pagePath(path)?.let { page ->
+                openDorm(page)
+                return
+            }
             openSchedule(null, null)
             return
         }
@@ -226,7 +234,14 @@ class ShellCoordinator(
             if (owner !in layout().tabs && selectedIsTab) returnTabId = selectedId
             selectedId = owner
         }
-        web.navigate(path, replace = false)
+        web.navigate(path, replace = replace)
+    }
+
+    /** Opens the dorm page; the activity sets this to hand the page this term's timetable first. */
+    var onOpenDorm: ((String) -> Unit)? = null
+
+    private fun openDorm(page: String) {
+        onOpenDorm?.invoke(page) ?: openWeb(page, replace = true)
     }
 
     /** A widget or notification asked for the timetable. */
@@ -344,6 +359,11 @@ class ShellCoordinator(
     /** The page asked the shell to show a path (a `/schedule` link, a popup). */
     private fun handleNavigate(path: String) {
         if (requiresLogin) return
+        // A dorm invite link opened inside the app keeps its code on the dorm page.
+        ScheduleDorm.pagePath(path)?.let { page ->
+            openDorm(page)
+            return
+        }
         if (ShellRoutes.isSchedulePath(path)) {
             val query = android.net.Uri.parse("https://local$path")
             if (DestinationCatalog.SCHEDULE !in layout().tabs && selectedIsTab) returnTabId = selectedId

@@ -542,6 +542,52 @@ class ScheduleParityTest {
     }
 
     @Test
+    fun theDormPageGetsTheTermWithTheCoursesOwnClockTimes() = runTest {
+        val store = ScheduleStore(this)
+        store.accept(snapshot(JSONArray().put(JSONObject().put("day", 1).put("bigSlot", 1).put("courses", JSONArray()
+            .put(course("药理学", 1, 2, listOf(1, 2)))
+            .put(course("早读", 1, 1, listOf(1)).put("custom", true).put("customStartTime", "07:40").put("customEndTime", "08:20"))))), false)
+        val offer = ScheduleDorm.offer(store.completeSnapshot())
+        assertNotNull(offer)
+        assertEquals("offer", offer!!.getString("action"))
+        // The page only takes it for the account whose timetable this is.
+        assertEquals("acct-a", offer.getString("account"))
+        val body = offer.getJSONObject("snapshot")
+        assertEquals("2026-2027-1", body.getString("semester"))
+        val sent = body.getJSONObject("schedule").getJSONArray("cells").getJSONObject(0).getJSONArray("courses")
+        // The user's own course and its own clock times go to the dorm; the share body stays as it was.
+        assertEquals("07:40", sent.getJSONObject(1).getString("customStartTime"))
+        assertEquals("08:20", sent.getJSONObject(1).getString("customEndTime"))
+        assertFalse(sent.getJSONObject(0).has("customStartTime"))
+        val shared = SharedSchedule.publishBody(store.completeSnapshot()).getJSONObject("schedule").getJSONArray("cells")
+            .getJSONObject(0).getJSONArray("courses").getJSONObject(1)
+        assertFalse(shared.has("customStartTime"))
+        assertEquals(1, body.getJSONObject("calendar").getJSONArray("periods").length())
+
+        // Nothing goes to the page before the whole term is in.
+        val partial = ScheduleStore(this)
+        partial.accept(snapshot(cells(1 to course("药理学", 1, 2)), complete = false), false)
+        assertNull(ScheduleDorm.offer(partial.completeSnapshot()))
+        assertNull(ScheduleDorm.offer(null))
+    }
+
+    @Test
+    fun aDormInviteLinkOpensTheDormPageWithItsCode() {
+        assertEquals("/dorm-schedule?code=ABC234", ScheduleDorm.pagePath("/schedule?dorm=1&code=%20abc234"))
+        assertEquals("/dorm-schedule?code=ABC234", ScheduleDorm.pagePath("/schedule?code=ABC234&dorm=1#top"))
+        // A code that cannot be one is dropped; the page still opens.
+        assertEquals("/dorm-schedule", ScheduleDorm.pagePath("/schedule?dorm=1&code=%3Cscript%3E"))
+        assertEquals("/dorm-schedule", ScheduleDorm.pagePath("/schedule?dorm=1"))
+        // Everything else stays with the native timetable.
+        assertNull(ScheduleDorm.pagePath("/schedule"))
+        assertNull(ScheduleDorm.pagePath("/schedule?couple=1&code=ABC234"))
+        assertNull(ScheduleDorm.pagePath("/schedule?dorm=0"))
+        assertNull(ScheduleDorm.pagePath("/schedule/share/ABCD2345?dorm=1"))
+        assertNull(ScheduleDorm.pagePath("/dorm-schedule?code=ABC234"))
+        assertEquals("/dorm-schedule?code=K7M2QX", ScheduleDorm.page(" k7m2qx "))
+    }
+
+    @Test
     fun theLibraryBelongsToOneAccount() {
         val shared = SharedSchedule.read(shareDocument(), 0)
         val library = SharedScheduleLibrary().adopt("acct-a").save(shared, "室友")
