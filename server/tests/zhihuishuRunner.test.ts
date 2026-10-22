@@ -81,9 +81,9 @@ test("course refresh remains exclusive and does not lose login", async t => {
   await waitFor(() => r.snapshot(1).state === "ready");
   assert.equal(r.snapshot(1).courses.length, 2);
 });
-test("speed and default-off policy reach worker; changing policy stops active tasks", async t => {
+test("speed and default-on policy reach worker; changing policy stops active tasks", async t => {
   const r = setup(t);
-  assert.deepEqual(r.getAnswerPolicy(), { autoAnswer: false, autoSubmit: false });
+  assert.deepEqual(r.getAnswerPolicy(), { autoAnswer: true, autoSubmit: true });
   assert.throws(() => r.setAnswerPolicy({ autoAnswer: false, autoSubmit: true }), /先启用/);
   r.login(1);
   await waitFor(() => r.snapshot(1).loggedIn);
@@ -91,12 +91,43 @@ test("speed and default-off policy reach worker; changing policy stops active ta
   r.start(1, ["shared:one"], 1.75);
   await waitFor(() => r.snapshot(1).state === "completed");
   assert.equal(r.snapshot(1).speed, 1.75);
-  assert.equal(r.snapshot(1).current?.title, "speed=1.75;answer=False;submit=False");
-  r.setAnswerPolicy({ autoAnswer: true, autoSubmit: true });
+  assert.equal(r.snapshot(1).current?.title, "speed=1.75;answer=True;submit=True");
+  r.setAnswerPolicy({ autoAnswer: false, autoSubmit: false });
   r.start(1, ["hike:two"], 0.5);
   await waitFor(() => r.snapshot(1).current !== null);
-  assert.equal(r.snapshot(1).current?.title, "speed=0.5;answer=True;submit=True");
-  r.setAnswerPolicy({ autoAnswer: false, autoSubmit: false });
+  assert.equal(r.snapshot(1).current?.title, "speed=0.5;answer=False;submit=False");
+  r.setAnswerPolicy({ autoAnswer: true, autoSubmit: true });
   assert.equal(r.snapshot(1).state, "stopped");
   assert.equal(r.snapshot(1).loggedIn, false);
+});
+
+
+test("background ownership follows all running users without snapshot polling", async t => {
+  const changes: boolean[] = [];
+  const r = new ZhihuishuRunner({ enabled: true, python, worker, onRunningChange: running => changes.push(running) });
+  t.after(() => r.shutdown());
+  r.login(1); r.login(2);
+  await waitFor(() => r.snapshot(1).loggedIn && r.snapshot(2).loggedIn);
+  assert.deepEqual(changes, []);
+  r.start(1, ["hike:two"]); r.start(2, ["hike:two"]);
+  assert.deepEqual(changes, [true]);
+  r.stop(1); assert.deepEqual(changes, [true]);
+  r.setAnswerPolicy({ autoAnswer: false, autoSubmit: false });
+  assert.deepEqual(changes, [true, false]);
+});
+
+test("background ownership releases on natural completion and timeout", async t => {
+  const changes: boolean[] = [];
+  const r = new ZhihuishuRunner({ enabled: true, python, worker, taskTimeoutMs: 200, onRunningChange: running => changes.push(running) });
+  t.after(() => r.shutdown());
+  r.login(1); await waitFor(() => r.snapshot(1).loggedIn);
+  r.start(1, ["shared:one"]);
+  // The callback must fire even while nobody reads a snapshot.
+  await waitFor(() => changes.length === 2);
+  assert.deepEqual(changes, [true, false]);
+  assert.equal(r.snapshot(1).state, "completed");
+  r.start(1, ["hike:two"]);
+  await waitFor(() => changes.length === 4);
+  assert.deepEqual(changes, [true, false, true, false]);
+  assert.equal(r.snapshot(1).state, "stopped");
 });

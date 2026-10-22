@@ -24,8 +24,8 @@ app.whenReady().then(async () => {
     const unsupported = await window.cpuZhihuishu.request('exec', {command:'noop'});
     return {initial, invalid, session, unsupported, title:document.querySelector('h1')?.textContent, bridgeIsolated:typeof require === 'undefined'};
   })()`);
-  assert.equal(result.initial.value.autoAnswer, false);
-  assert.equal(result.initial.value.autoSubmit, false);
+  assert.equal(result.initial.value.autoAnswer, true);
+  assert.equal(result.initial.value.autoSubmit, true);
   assert.equal(result.invalid.ok, false);
   assert.equal(result.session.value.enabled, true);
   assert.equal(result.unsupported.ok, false);

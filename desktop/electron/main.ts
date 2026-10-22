@@ -60,6 +60,9 @@ import { LearningPageActions } from "./page-actions";
 
 import { isAuthorizedZhihuishuRequest, zhihuishuPage, zhihuishuRequest, shutdownZhihuishu } from "./zhihuishu";
 
+// Keep the assistant renderer responsive when the desktop window is minimized.
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
