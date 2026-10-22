@@ -1025,8 +1025,15 @@ function addSlopedPrism(key, poly, y0, hf, capKey) {
   const tris = THREE.ShapeUtils.triangulateShape(poly.map((q) => new THREE.Vector2(q[0], q[1])), []);
   for (const [i, j, k] of tris) { const P = (q) => [q[0], hf(q[0], q[1]), q[1], q[0] / 8, q[1] / 8]; const A = poly[i], Bq = poly[j], Cq = poly[k]; C.quadO(P(A), P(Bq), P(Cq), P(Cq), 0, 1, 0); }
 }
+// Collision comes from what is drawn: every vertical wall is a wall segment at its real height range, every upward cap a
+// surface that can be stood on, every cylinder a post. Decks are left to groundAt (bridges ramp), paint and roof glass skipped.
+const WSEG = [], WCAPS = [], WCYL = [];
+let WGRID = null, CGRID = null;
+const NOWALL = /^(deck|glass:roof|paint)/;
+function recWall(ax, az, bx, bz, y0, y1) { if (y1 - y0 >= 0.12 && y0 <= 14 && Math.hypot(bx - ax, bz - az) > 0.02) WSEG.push([ax, az, bx, bz, y0, y1]); }
 function addWalls(key, poly, y0, y1, uvm, flip) {
   const B = buf(key); B.cur = OWNER;
+  if (!NOWALL.test(key)) for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; recWall(a[0], a[1], b[0], b[1], Math.min(y0, y1), Math.max(y0, y1)); }
   const f = key.startsWith('f:') ? FAC[key.slice(2)] : null;
   const su = f ? f.bw * 8 : 4, sv = f ? f.fh * 4 : 4;
   const ccw = pArea(poly) > 0; let dist = 0;
@@ -1043,6 +1050,7 @@ function addWalls(key, poly, y0, y1, uvm, flip) {
 }
 function addCap(key, poly, y, down = false, holes = []) {
   const B = buf(key); B.cur = OWNER;
+  if (!down && y <= 14 && !/^(glass:roof|paint)/.test(key)) WCAPS.push({ p: poly, h: holes, y });
   const v2 = poly.map((q) => new THREE.Vector2(q[0], q[1]));
   const hv = holes.map((h) => h.map((q) => new THREE.Vector2(q[0], q[1])));
   let tris; try { tris = THREE.ShapeUtils.triangulateShape(v2, hv); } catch (e) { return; }
@@ -1063,6 +1071,8 @@ function addBox(key, cx, y0, cz, L, W, H, ang = 0, capKey) {
 }
 function addBeam(key, a, b, width = 0.18) {
   const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A).normalize();
+  if (Math.abs(d.y) < 0.35) recWall(a[0], a[2], b[0], b[2], Math.min(a[1], b[1]) - width / 2, Math.max(a[1], b[1]) + width / 2);
+  else if (Math.abs(d.y) > 0.92) WCYL.push([a[0], a[2], width / 2, Math.min(a[1], b[1]), Math.max(a[1], b[1])]);
   const u = new THREE.Vector3(0, 1, 0); if (Math.abs(d.y) > 0.95) u.set(1, 0, 0);
   u.cross(d).normalize().multiplyScalar(width / 2);
   const v = d.clone().cross(u).normalize().multiplyScalar(width / 2);
@@ -1074,6 +1084,7 @@ function addBeam(key, a, b, width = 0.18) {
 }
 function addCyl(key, x, y0, z, r, h, seg = 10, r2) {
   const B = buf(key); B.cur = OWNER; r2 = r2 ?? r;
+  if (h > 0.3 && y0 <= 14) WCYL.push([x, z, Math.max(r, r2), y0, y0 + h]);
   for (let i = 0; i < seg; i++) {
     const a0 = i / seg * Math.PI * 2, a1 = (i + 1) / seg * Math.PI * 2, am = (a0 + a1) / 2;
     B.quadO([x + Math.cos(a0) * r, y0, z + Math.sin(a0) * r, i / seg, 0], [x + Math.cos(a1) * r, y0, z + Math.sin(a1) * r, (i + 1) / seg, 0],
@@ -1947,6 +1958,7 @@ function buildGym(b) {
       arc += seg;
     }
   }
+  for (const u of [-L / 2, L / 2]) { const a = P(u, v0, 0), b2 = P(u, v1, 0); recWall(a[0], a[2], b2[0], b2[2], 0, 12); }
   const yLow = hE(vj), yHigh = hW(vj);
   for (let i = 0; i < 18; i++) {
     const ua = -L / 2 + L * i / 18, ub = ua + L / 18, q = (u, y) => [...P(u, vj, y), u / 12.8, (y - yLow) / 16];
@@ -2398,7 +2410,7 @@ function buildFence() {
       const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
       if (gaps.some(([gx, gz, r]) => Math.hypot(gx - mx, gz - mz) < r)) { dist += s1 - s; continue; }
       const u0 = dist / 1.2, u1 = (dist + s1 - s) / 1.2; dist += s1 - s;
-      pos.push(x0, 0, z0, x1, 0, z1, x1, H, z1, x0, 0, z0, x1, H, z1, x0, H, z0);
+      pos.push(x0, 0, z0, x1, 0, z1, x1, H, z1, x0, 0, z0, x1, H, z1, x0, H, z0); recWall(x0, z0, x1, z1, 0, H);
       uv.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
       if (Math.round(s) % 15 === 0) addBox('stone', x0, 0, z0, 0.55, 0.55, H + 0.35, Math.atan2(b[1] - a[1], b[0] - a[0]), 'stone');
     }
@@ -2495,7 +2507,7 @@ function buildCourtFences() {
   const pos = [], uv = [];
   for (const { p, h } of FENCE_RECTS) for (let i = 0; i < p.length; i++) {
     const a = p[i], b = p[(i + 1) % p.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    pos.push(a[0], 0, a[1], b[0], 0, b[1], b[0], h, b[1], a[0], 0, a[1], b[0], h, b[1], a[0], h, a[1]);
+    pos.push(a[0], 0, a[1], b[0], 0, b[1], b[0], h, b[1], a[0], 0, a[1], b[0], h, b[1], a[0], h, a[1]); recWall(a[0], a[1], b[0], b[1], 0, h);
     uv.push(0, 0, l / 3, 0, l / 3, h / 3, 0, 0, l / 3, h / 3, 0, h / 3);
   }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.computeVertexNormals();
@@ -3276,7 +3288,7 @@ function buildHedges() {
   segs.forEach(([x, z, a, col], i) => {
     const sy = rr(0.9, 1.1);
     _e.set(0, -a, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, 0, z), _q, _s.set(1, sy, 1)); im.setMatrixAt(i, _m4); im.setColorAt(i, _c.set(pick(COL[col])));
-    PROPS.push({ p: rectPoly(x, z, 3.25, 1.0, a), top: 0.85 * sy, c: [x, z] });
+    PROPS.push({ p: rectPoly(x, z, 3.25, 1.0, a), top: 0.85 * sy, c: [x, z], inst: true });
   });
   im.castShadow = true; im.receiveShadow = true; im.layers.set(1); scene.add(im); HEDGES = im;
   chunkify(im, 700, 260);
@@ -3397,7 +3409,7 @@ function buildLamps() {
     B(0.05, 0.05, 0.5, x, 0.41, 0.02, iron); B(0.05, 0.04, 0.44, x, 0.63, 0.0, iron);
   }
   const bm = new THREE.InstancedMesh(mergeColored(bp), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.15 }), benches.length);
-  for (const [x, z, a] of benches) PROPS.push({ p: rectPoly(x, z, 1.8, 0.6, -a), top: 0.8, c: [x, z] });
+  for (const [x, z, a] of benches) PROPS.push({ p: rectPoly(x, z, 1.8, 0.6, -a), top: 0.8, c: [x, z], inst: true });
   benches.forEach(([x, z, a], i) => { _e.set(0, a, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, 0, z), _q, _s.set(1, 1, 1)); bm.setMatrixAt(i, _m4); });
   bm.castShadow = true; bm.layers.set(1); scene.add(bm);
   chunkify(bm, 320, 300);
@@ -3705,15 +3717,28 @@ function buildCars() {
 function updateCars(dt) {
   if (!CARS || !CARS.im.visible) return;
   const cp = camera.position, R = mode === 'walk' ? 600 : 700 + Math.max(0, cp.y) * 2, im = CARS.im;
+  const P = mode !== 'walk' ? null : DRIVE.on ? [DRIVE.x, DRIVE.z, 2.4] : RIDE.on ? [RIDE.x, RIDE.z, 1] : [WALK.x, WALK.z, 0.5];
+  const live = [];
   let j = 0;
   CARS.movers.forEach((c, i) => {
-    c.s += c.v * c.dir * dt; if (c.s > c.r.L) c.s -= c.r.L; if (c.s < 0) c.s += c.r.L;
     if (c.drive) return;
-    const q = sampleAt(c.r.p, c.r.cum, c.s), x = q.x - q.dz * c.lane, z = q.z + q.dx * c.lane;
+    let q = sampleAt(c.r.p, c.r.cum, c.s), x = q.x - q.dz * c.lane, z = q.z + q.dx * c.lane;
+    let go = true;
+    if (P) {
+      const hx = q.dx * c.dir, hz = q.dz * c.dir, rx = P[0] - x, rz = P[1] - z, ahead = rx * hx + rz * hz, lat = Math.abs(-rx * hz + rz * hx);
+      if (ahead > 0 && ahead < 3 + P[2] + c.v * 0.7 && lat < 1.3 + P[2] * 0.5) go = false;
+    }
+    if (go) {
+      c.s += c.v * c.dir * dt; if (c.s > c.r.L) c.s -= c.r.L; if (c.s < 0) c.s += c.r.L;
+      q = sampleAt(c.r.p, c.r.cum, c.s); x = q.x - q.dz * c.lane; z = q.z + q.dx * c.lane;
+    }
     if (Math.abs(x - cp.x) > R || Math.abs(z - cp.z) > R) return;
-    _e.set(0, -Math.atan2(q.dz * c.dir, q.dx * c.dir), 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, c.r.br ? groundAt(x, z) : 0, z), _q, _s.set(1, 1, 1));
+    const ang = Math.atan2(q.dz * c.dir, q.dx * c.dir);
+    _e.set(0, -ang, 0); _q.setFromEuler(_e); _m4.compose(_v.set(x, c.r.br ? groundAt(x, z) : 0, z), _q, _s.set(1, 1, 1));
     im.setMatrixAt(j, _m4); im.setColorAt(j, CARS.carCols[i]); j++;
+    if (P && Math.abs(x - P[0]) < 60 && Math.abs(z - P[1]) < 60) live.push([x, z, Math.cos(ang), Math.sin(ang)]);
   });
+  CARS.live = live;
   CARS.parkedM.forEach((m, k) => {
     if (CARS.taken === k) return;
     const e = m.elements; if (Math.abs(e[12] - cp.x) > R || Math.abs(e[14] - cp.z) > R) return;
@@ -4430,8 +4455,37 @@ function flyToPlace(p) { if (mode === 'walk') { walkToPlace(p); return; } if (mo
 
 const BGRID = new Grid(25);
 const PGRID = new Grid(25);
+const segDist = (x, z, s) => { const ex = s[2] - s[0], ez = s[3] - s[1], t = clamp(((x - s[0]) * ex + (z - s[1]) * ez) / (ex * ex + ez * ez || 1), 0, 1); return Math.hypot(x - s[0] - ex * t, z - s[1] - ez * t); };
+function collisionGrids() {
+  const probe = new Grid(10);
+  WSEG.forEach((w, i) => { if (w[4] < 1.0 && w[5] > 2.2) probe.add(i, [Math.min(w[0], w[2]) - 2, Math.min(w[1], w[3]) - 2, Math.max(w[0], w[2]) + 2, Math.max(w[1], w[3]) + 2]); });
+  // a building gets its mapped footprint as walls only when hardly any tall drawn wall lies inside or along it
+  let backstops = 0;
+  for (const b of BLD) {
+    if (b.cls.special === 'station') continue;
+    for (const q of b.parts || [b.p]) {
+      const bb = pBox(q), seen = new Set(); let per = 0, got = 0;
+      for (let i = 0; i < q.length; i++) { const a = q[i], c = q[(i + 1) % q.length]; per += Math.hypot(c[0] - a[0], c[1] - a[1]); }
+      for (let ci = Math.floor((bb[0] - 2) / 10); ci <= Math.floor((bb[2] + 2) / 10); ci++) for (let cj = Math.floor((bb[1] - 2) / 10); cj <= Math.floor((bb[3] + 2) / 10); cj++) {
+        for (const k of probe.m.get(probe.k(ci, cj)) || []) {
+          if (seen.has(k)) continue; seen.add(k);
+          const w = WSEG[k], mx = (w[0] + w[2]) / 2, mz = (w[1] + w[3]) / 2;
+          if (pip(mx, mz, q) || nearestOnPoly(mx, mz, q)[0] < 1.5) got += Math.hypot(w[2] - w[0], w[3] - w[1]);
+        }
+      }
+      if (got < per * 0.4) { backstops++; for (let i = 0; i < q.length; i++) { const a = q[i], c = q[(i + 1) % q.length]; recWall(a[0], a[1], c[0], c[1], 0, Math.max(2, b.h)); } }
+    }
+  }
+  WGRID = new Grid(10); CGRID = new Grid(20);
+  WSEG.forEach((w, i) => WGRID.add(i, [Math.min(w[0], w[2]) - 1.1, Math.min(w[1], w[3]) - 1.1, Math.max(w[0], w[2]) + 1.1, Math.max(w[1], w[3]) + 1.1]));
+  WCYL.forEach((c, i) => WGRID.add(~i, [c[0] - c[2] - 1.1, c[1] - c[2] - 1.1, c[0] + c[2] + 1.1, c[1] + c[2] + 1.1]));
+  WCAPS.forEach((c, i) => { c.bb = pBox(c.p); CGRID.add(i, c.bb); });
+  COLLISION_INFO = { walls: WSEG.length, caps: WCAPS.length, posts: WCYL.length, backstops };
+}
+let COLLISION_INFO = null;
 function initGrid() {
   BLD.forEach((b, i) => BGRID.add(i, b.bb));
+  collisionGrids();
   PROPS.forEach((q, i) => { q.bb = pBox(q.p); q.skip = groundAt(q.c[0], q.c[1]) > 0.02; if (!q.skip) PGRID.add(i, q.bb); });
 }
 function camFloor(x, z) {
@@ -4458,15 +4512,9 @@ const MOVE = { run: 4.8, sprint: 8, crouch: 2.2, accel: 11, air: 1.8, friction: 
 // Walls around (x, z) for a walker whose feet are at height `feet`: buildings always, props only when taller than a step.
 function walkPolys(x, z, feet = groundAt(x, z)) {
   const out = [];
-  for (const k of BGRID.at(x, z)) {
-    const b = BLD[k];
-    if (b.cls.special === 'station' || x < b.bb[0] - 3 || x > b.bb[2] + 3 || z < b.bb[1] - 3 || z > b.bb[3] + 3) continue;
-    if (b.extra?.special === 'xueyuan') { for (const q of XY_PODS) out.push(q.p); for (const q of XY_LINKS) out.push(q); continue; }
-    for (const q of b.parts || [b.p]) out.push(q);
-  }
   for (const k of PGRID.at(x, z)) {
     const q = PROPS[k];
-    if (q.top <= feet + STEP_UP || x < q.bb[0] - 2 || x > q.bb[2] + 2 || z < q.bb[1] - 2 || z > q.bb[3] + 2) continue;
+    if (!q.inst || q.top <= feet + STEP_UP || x < q.bb[0] - 2 || x > q.bb[2] + 2 || z < q.bb[1] - 2 || z > q.bb[3] + 2) continue;
     out.push(q.p);
   }
   return out;
@@ -4519,6 +4567,35 @@ function walkResolve(x, z, feet, RR = WALK_R) {
       if (hx - Math.abs(lx) < hz - Math.abs(lz)) lx = (lx < 0 ? -1 : 1) * (hx + 0.01); else lz = (lz < 0 ? -1 : 1) * (hz + 0.01);
       x = cx + lx * ca - lz * sa; z = cz + lx * sa + lz * ca; moved = true;
     }
+    if (WGRID) {
+      const f0 = feet ?? groundAt(x, z), swimmer = WALK.swim && RR === WALK_R && f0 > -1.6;
+      for (const k of WGRID.at(x, z)) {
+        if (k >= 0) {
+          const w = WSEG[k];
+          if (w[4] > f0 + 1.7 || w[5] <= f0 + STEP_UP || (swimmer && w[5] < WATER_Y + 0.7)) continue;
+          const ex = w[2] - w[0], ez = w[3] - w[1], L2 = ex * ex + ez * ez, t = clamp(((x - w[0]) * ex + (z - w[1]) * ez) / L2, 0, 1);
+          const px = w[0] + ex * t, pz = w[1] + ez * t, dx = x - px, dz = z - pz, d = Math.hypot(dx, dz);
+          if (d >= RR) continue;
+          let nx, nz; if (d > 1e-5) { nx = dx / d; nz = dz / d; } else { const l = Math.sqrt(L2); nx = -ez / l; nz = ex / l; }
+          x = px + nx * (RR + 0.01); z = pz + nz * (RR + 0.01); moved = true;
+        } else {
+          const c = WCYL[~k];
+          if (c[3] > f0 + 1.7 || c[4] <= f0 + STEP_UP) continue;
+          const dx = x - c[0], dz = z - c[1], d = Math.hypot(dx, dz), R2 = c[2] + RR;
+          if (d >= R2) continue;
+          const a = d > 1e-4 ? 1 / d : 0; x = c[0] + (a ? dx * a : 1) * (R2 + 0.01); z = c[1] + dz * a * (R2 + 0.01); moved = true;
+        }
+      }
+    }
+    // cars moving on the roads are solid too
+    if (CARS && CARS.live) for (const [cx, cz, ca, sa] of CARS.live) {
+      if (Math.abs(x - cx) > 3.6 || Math.abs(z - cz) > 3.6) continue;
+      const dx = x - cx, dz = z - cz, hx = 2.3 + RR, hz = 0.92 + RR;
+      let lx = dx * ca + dz * sa, lz = -dx * sa + dz * ca;
+      if (Math.abs(lx) >= hx || Math.abs(lz) >= hz) continue;
+      if (hx - Math.abs(lx) < hz - Math.abs(lz)) lx = (lx < 0 ? -1 : 1) * (hx + 0.01); else lz = (lz < 0 ? -1 : 1) * (hz + 0.01);
+      x = cx + lx * ca - lz * sa; z = cz + lx * sa + lz * ca; moved = true;
+    }
     for (const q of walkPolys(x, z, feet)) {
       const [d, mx, mz] = nearestOnPoly(x, z, q), inside = pip(x, z, q);
       if (!inside && d >= RR) continue;
@@ -4557,9 +4634,13 @@ function floorAt(x, z, feet) {
   const r = WALK_R * 0.6;
   for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) {
     const px = x + ox, pz = z + oz;
+    if (CGRID) for (const k of CGRID.at(px, pz)) {
+      const c = WCAPS[k];
+      if (c.y > y && c.y <= feet + STEP_UP && px >= c.bb[0] && px <= c.bb[2] && pz >= c.bb[1] && pz <= c.bb[3] && pip(px, pz, c.p) && !c.h.some((hq) => pip(px, pz, hq))) y = c.y;
+    }
     for (const k of PGRID.at(px, pz)) {
       const q = PROPS[k];
-      if (q.top > y && q.top <= feet + STEP_UP && px >= q.bb[0] && px <= q.bb[2] && pz >= q.bb[1] && pz <= q.bb[3] && pip(px, pz, q.p)) y = q.top;
+      if (q.inst && q.top > y && q.top <= feet + STEP_UP && px >= q.bb[0] && px <= q.bb[2] && pz >= q.bb[1] && pz <= q.bb[3] && pip(px, pz, q.p)) y = q.top;
     }
   }
   return y;
@@ -4569,7 +4650,7 @@ function walkSpot(x, z) {
     const n = r ? Math.ceil(r * 1.2) : 1;
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r, [qx, qz] = walkResolve(px, pz);
-      if (Math.hypot(qx - px, qz - pz) < 0.05 && walkable(px, pz)) return [px, pz];
+      if (Math.hypot(qx - px, qz - pz) < 0.05 && walkable(px, pz) && !camBlocked(px, groundAt(px, pz) + 1.0, pz)) return [px, pz];
     }
   }
   return [x, z];
@@ -4846,7 +4927,7 @@ function enterCar(k) {
   CARS.taken = k; root.visible = true;
   WALK.vx = WALK.vz = WALK.vy = 0; WALK.trans = null; setUnderwater(false);
   driveSound(true); walkHud();
-  toast(TOUCH ? '左侧摇杆转向 · 右侧油门和刹车 · ^ 手刹' : 'W/S 油门刹车 · A/D 转向 · 空格手刹 · Shift 加速 · V 视角 · E 下车', 4200);
+  toast(TOUCH ? '摇杆往哪推，车就往哪开 · 往回拉刹车倒车 · ^ 手刹' : 'W/S 油门刹车 · A/D 转向 · 空格手刹 · Shift 加速 · V 视角 · E 下车', 4200);
 }
 function exitCar() {
   if (!DRIVE.on) return;
@@ -4912,11 +4993,27 @@ function vehicleLook(S, dx, dy, k) {
   else { S.camYaw = clamp(S.camYaw - dx * k, -2.4, 2.4); S.camPitch = clamp(S.camPitch - dy * k, -1.0, 0.9); }
   S.lookT = 0;
 }
+// Touch steering for vehicles: the stick points where to go on screen; the vehicle turns towards that heading and goes
+// as hard as the stick is pushed. Pointing behind brakes, then (for the car) reverses; letting go slows to a stop.
+function stickDrive(a, vl, canReverse) {
+  const px = WALK.pad.x, py = WALK.pad.y, mag = Math.min(1, Math.hypot(px, py));
+  if (mag < 0.15) return [vl > 0.4 ? -0.3 : vl < -0.4 ? 0.3 : 0, 0];
+  const d = new THREE.Vector3(); camera.getWorldDirection(d);
+  const fl = Math.hypot(d.x, d.z) || 1, fx = d.x / fl, fz = d.z / fl, wx = fx * -py - fz * px, wz = fz * -py + fx * px;
+  const tA = Math.atan2(wz, wx), diff = angDiff(tA, a);
+  if (Math.abs(diff) > 2.2) {
+    if (vl > 2.5) return [-mag, clamp(-diff * 1.5, -1, 1)];
+    if (canReverse) return [-mag, clamp(angDiff(tA, a + Math.PI) * 2, -1, 1)];
+    return [0.45 * mag, diff < 0 ? 1 : -1];
+  }
+  return [mag * (1 - smooth(0.9, 2.0, Math.abs(diff)) * 0.6), clamp(-diff * 2, -1, 1)];
+}
 function updateDrive(dt) {
   const D = DRIVE, k = WALK.keys, pad = WALK.pad, live = TOUCH || WALK.locked || WALK.noLock, h = Math.min(dt, 0.05);
   const gas = live && (k.has('KeyW') || k.has('ArrowUp') || D.gas), brk = live && (k.has('KeyS') || k.has('ArrowDown') || D.brake);
-  const thr = (gas ? 1 : 0) - (brk ? 1 : 0);
-  const st = live ? clamp((k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - pad.x, -1, 1) : 0;
+  let thr = (gas ? 1 : 0) - (brk ? 1 : 0);
+  let st = live ? clamp((k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (TOUCH ? 0 : pad.x), -1, 1) : 0;
+  if (TOUCH) [thr, st] = stickDrive(D.a, D.vx * Math.cos(D.a) + D.vz * Math.sin(D.a), true);
   const hb = live && k.has('Space'), boost = live && (k.has('ShiftLeft') || k.has('ShiftRight')), max = boost ? 26 : 17;
   const c = Math.cos(D.a), sn = Math.sin(D.a), rx = -sn, rz = c;
   let vl = D.vx * c + D.vz * sn, vt = D.vx * rx + D.vz * rz;
@@ -4942,7 +5039,7 @@ function updateDrive(dt) {
   const ca = Math.cos(D.a), sa = Math.sin(D.a);
   let nx = D.x + D.vx * h, nz = D.z + D.vz * h, px = 0, pz = 0, wet = false;
   for (const off of [1.3, -1.3]) {
-    const cx = nx + ca * off, cz = nz + sa * off, [qx, qz] = walkResolve(cx, cz, 0, 0.92);
+    const cx = nx + ca * off, cz = nz + sa * off, [qx, qz] = walkResolve(cx, cz, groundAt(cx, cz) - 0.25, 0.92);
     if (Math.hypot(qx - cx, qz - cz) > Math.hypot(px, pz)) { px = qx - cx; pz = qz - cz; }
     if (isWet(cx, cz) || !inRegion(cx, cz)) wet = true;
   }
@@ -5086,7 +5183,7 @@ function enterBike(k) {
   RIDE.frameMat.color.copy(col); RIDE.shirt.color.set(pick(['#f2f1ec', '#2f3b4c', '#7b8ea3', '#c48f8f', '#4a5a4c', '#d7b46a', '#9a3d3d']));
   RIDE.root.visible = true; WALK.vx = WALK.vz = WALK.vy = 0; WALK.trans = null; setUnderwater(false);
   walkAudioWake(); walkHud();
-  toast(TOUCH ? '左侧摇杆骑行 · 跳跃键小跳 · 点“下车”离开' : 'W 蹬车 · S 刹车 · A/D 转向 · Shift 加速 · 空格小跳 · B 车铃 · V 视角 · E 下车', 4200);
+  toast(TOUCH ? '摇杆往哪推就往哪骑，推出圈外加速 · ^ 小跳' : 'W 蹬车 · S 刹车 · A/D 转向 · Shift 加速 · 空格小跳 · B 车铃 · V 视角 · E 下车', 4200);
 }
 function exitBike(o = {}) {
   if (!RIDE.on) return;
@@ -5107,8 +5204,9 @@ function exitBike(o = {}) {
 }
 function updateRide(dt) {
   const R = RIDE, k = WALK.keys, pad = WALK.pad, live = TOUCH || WALK.locked || WALK.noLock, h = Math.min(dt, 0.05);
-  const thr = live ? clamp((k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - pad.y, -1, 1) : 0;
-  const st = live ? clamp((k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - pad.x, -1, 1) : 0;
+  let thr = live ? clamp((k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (TOUCH ? 0 : pad.y), -1, 1) : 0;
+  let st = live ? clamp((k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (TOUCH ? 0 : pad.x), -1, 1) : 0;
+  if (TOUCH) [thr, st] = stickDrive(R.a, R.v, false);
   const fast = live && (k.has('ShiftLeft') || k.has('ShiftRight') || WALK.padRun), max = fast ? 8.5 : 5.6;
   if (thr > 0.05) R.v += (2.9 * (1 - Math.max(0, R.v) / max) + 0.2) * thr * h;
   else if (thr < -0.05) R.v = R.v > 0.2 ? R.v - 6 * -thr * h : Math.max(-0.8, R.v - 1.5 * h);
@@ -5235,7 +5333,7 @@ function walkHud() {
   const on = mode === 'walk';
   const veh = DRIVE.on || RIDE.on;
   $('#speedo').hidden = !(on && veh); $('#carExit').hidden = !(on && veh && TOUCH); $('#walkCrouch').hidden = on && veh;
-  $('#drvGas').hidden = $('#drvBrake').hidden = !(on && DRIVE.on && TOUCH);
+  $('#drvGas').hidden = $('#drvBrake').hidden = true;
   $('#vehView').hidden = !(on && veh && TOUCH);
   $('#xhair').hidden = !on || veh || (!TOUCH && !WALK.noLock && !WALK.locked);
   $('#walkPause').hidden = !on || WALK.noLock || WALK.locked;
