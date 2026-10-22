@@ -150,6 +150,33 @@ test('the compatibility bundle serves the schedule bridge on an old Web deployme
   assert.equal(posts(p, 'header')[0].state.path, '/home');
 });
 
+test('the dorm page returns to the native timetable and is not a screen-covering dialog', async () => {
+  const { stores, routes } = legacyStores();
+  stores.router.currentRoute.value = { path: '/dorm-schedule', fullPath: '/dorm-schedule', query: {}, meta: { title: '宿舍课表' } };
+  const visible = { display: 'block', visibility: 'visible', opacity: '1' };
+  // The dorm page lays the shared dorm dialog out as the page itself.
+  const inline = { getClientRects: () => [{}], getAttribute: () => null, closest: selector => (selector === '[data-cpu-inline-dialog]' ? {} : null) };
+  const items = [inline];
+  const p = page({ stores });
+  p.context.getComputedStyle = () => visible;
+  p.context.document.querySelectorAll = () => items;
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  // The native bars stay and Back is not turned into Escape.
+  assert.deepEqual(posts(p, 'webOverlay').map(m => m.visible), [false]);
+  // Opened from the timetable, Back goes to /schedule, which the router hands to the shell.
+  assert.equal(await p.window.CPUAndroidBack('/services'), true);
+  assert.deepEqual(routes, ['/schedule']);
+
+  // A confirmation opened from that page is a real dialog again.
+  const q = page({ stores });
+  q.context.getComputedStyle = () => visible;
+  q.context.document.querySelectorAll = () => [inline, { ...inline, closest: () => null }];
+  vm.runInContext(bootstrap, q.context);
+  vm.runInContext(compatibility, q.context);
+  assert.deepEqual(posts(q, 'webOverlay').map(m => m.visible), [true]);
+});
+
 test('the compatibility bundle keeps a newer Web bridge and still adds the native helpers', () => {
   const { stores } = legacyStores();
   const p = page({ stores });

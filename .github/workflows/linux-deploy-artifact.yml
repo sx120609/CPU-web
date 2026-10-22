@@ -94,6 +94,11 @@ jobs:
           NEXT_SYNC_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cpu_apns_regression?schema=next_sync_test
         run: node tools/run-node-tests.mjs server/tests/nextSyncPostgres.test.ts
 
+      - name: Verify dorm capacity, ownership and snapshots on PostgreSQL
+        env:
+          DORM_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cpu_apns_regression?schema=dorm_test
+        run: node tools/run-node-tests.mjs server/tests/dormSchedulePostgres.test.ts
+
       - name: Verify HarmonyOS schedule bridges and shared visual tokens
         shell: bash
         run: |

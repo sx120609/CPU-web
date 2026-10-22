@@ -16,6 +16,7 @@ import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiReply, Share
 import { CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { findScheduleOverlap, PlacedCourseBlock, placeScheduleBlocks, scheduleOverlapKey, scheduleOverlapText } from '../schedule/SchedulePlacement';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
+import { DORM_SCHEDULE_PAGE, dormOfferRequest, dormPagePath } from '../schedule/ScheduleDorm';
 import { schedulePalette } from '../schedule/ScheduleVisuals';
 import common from '@ohos.app.ability.common';
 import webview from '@ohos.web.webview';
@@ -91,6 +92,8 @@ struct Index {
   // 共享课表是别人的课表，不叠情侣课表：给它一个始终未绑定的。
   @State private noCouple: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
   private coupleSyncTimer: number = -1;
+  // 课表所属的账号，交给宿舍课表页时让网页核对（换账号后旧课表不能传进新账号的宿舍）。
+  private dormAccount: string = '';
   // 同一时段排了两门课的提示：已经提醒过的那几处。
   private overlapSeen: string[] = [];
   private overlapLoaded: boolean = false;
@@ -265,6 +268,7 @@ struct Index {
         // 共享课表按账号分开存；换了身份（本科/研究生）还是同一个账号。
         this.sharingModel.adopt(scope.split(':')[0]);
         this.coupleModel.adopt(scope.split(':')[0]);
+        this.dormAccount = scope.split(':')[0];
         if (!this.scheduleStore.handleAuthChanged(scope)) return;
         this.priorityRequestKey = '';
         this.closeSharedSchedule(false);
@@ -828,12 +832,42 @@ struct Index {
     this.coupleSyncTimer = setTimeout(() => {
       const store = this.scheduleStore;
       if (!store.result || !store.bridgeReady || store.status !== 'loaded') return;
+      // 宿舍课表也用这一份：交给网页，在宿舍里时由网页上传。
+      void this.offerDormSchedule();
       void this.coupleModel.refresh().then(() => {
-        const current = store.semesterOptions().find((item: NativeScheduleSemester) => item.current)?.value ?? '';
-        if (current && current !== store.prioritySemester()) return;
+        if (!this.viewingCurrentSemester()) return;
         void this.coupleModel.sync((): SharePublishBody => this.sharePublishBody());
       });
     }, 4000);
+  }
+
+  // 只交正在进行的学期：翻看往年学期时不能用它覆盖服务端的本学期课表。
+  private viewingCurrentSemester(): boolean {
+    const store = this.scheduleStore;
+    const current = store.semesterOptions().find((item: NativeScheduleSemester) => item.current)?.value ?? '';
+    return !current || current === store.prioritySemester();
+  }
+
+  // 宿舍课表是网页 /dorm-schedule：把当前学期的整学期课表（含个人修改）交给网页，由网页按网页课表的规则上传。
+  private async offerDormSchedule(): Promise<void> {
+    const store = this.scheduleStore;
+    if (this.requiresLogin || !store.result || !store.bridgeReady || store.status !== 'loaded') return;
+    if (!this.viewingCurrentSemester()) return;
+    let snapshot: SharePublishBody;
+    try {
+      snapshot = this.sharePublishBody();
+    } catch (_) {
+      return;
+    }
+    const request = dormOfferRequest(snapshot, this.dormAccount);
+    await this.runWebTask(`typeof window.CPUTimeNativeDorm === 'function'
+      ? window.CPUTimeNativeDorm(${this.scriptLiteral(request)}) : null`, 60000);
+  }
+
+  // 宿舍课表开在“服务”标签下，返回回到原生课表（网页那边的上一级是 /schedule）。
+  private openDormSchedule(page: string = DORM_SCHEDULE_PAGE): void {
+    void this.offerDormSchedule();
+    this.selectTab(3, page);
   }
 
   // 重叠课程谁显示在前面，随个人修改存在服务端；每次拿到新的课表数据读一次。
@@ -948,6 +982,12 @@ struct Index {
 
   private handleNativeNavigation(path: string): void {
     if (this.requiresLogin) return;
+    // 应用内打开的宿舍邀请链接带着宿舍码去宿舍课表页，不进原生课表。
+    const dormPage = dormPagePath(path);
+    if (dormPage) {
+      this.openDormSchedule(dormPage);
+      return;
+    }
     if (path === '/schedule' || path.startsWith('/schedule?')) {
       this.navigationRevision += 1;
       this.pendingWebNavigation = 0;
@@ -1267,6 +1307,7 @@ struct Index {
               store: this.scheduleStore,
               couple: this.coupleModel,
               onCouple: () => this.coupleModel.open(),
+              onDorm: () => this.openDormSchedule(),
               bottomClearance: this.bottomContentClearance(),
               onLogin: () => {
                 this.selectTab(1);

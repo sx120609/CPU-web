@@ -34,6 +34,8 @@ export struct NativeSchedulePage {
   onExport: () => void = () => undefined;
   onSharing: () => void = () => undefined;
   onCouple: () => void = () => undefined;
+  // 宿舍课表是网页页面，返回回到这里。
+  onDorm: () => void = () => undefined;
   // Closes a read-only shared timetable.
   onClose: () => void = () => undefined;
   // Pins "now" (minutes since midnight) for acceptance screenshots; -1 follows the clock.
@@ -218,6 +220,7 @@ export struct NativeSchedulePage {
             { value: '导出所选周日历', action: () => this.onExport() },
             { value: '共享课表', action: () => this.onSharing() },
             { value: '情侣课表', action: () => this.onCouple() },
+            { value: '宿舍课表', action: () => this.onDorm() },
             { value: '应用外观', action: () => this.onAppearance() }
           ])
       }

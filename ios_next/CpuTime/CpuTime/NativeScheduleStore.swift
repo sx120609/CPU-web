@@ -1522,6 +1522,14 @@ public final class NativeScheduleStore: ObservableObject {
         await webViewLoader?.sessionNickname()
     }
 
+    /// One request to the dorm page's bridge; see `NativeDormService`.
+    public func dormRequest(_ request: [String: Any]) async -> String? {
+        guard let webViewLoader, JSONSerialization.isValidJSONObject(request),
+              let data = try? JSONSerialization.data(withJSONObject: request),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return await webViewLoader.dorm(requestJSON: text)
+    }
+
     /// The account fingerprint of the timetable on screen, empty when unknown.
     public var accountFingerprint: String { accountKey }
 
@@ -2583,6 +2591,23 @@ public final class NativeScheduleWebViewLoader {
             throw NativeScheduleAPIError(status: (object["__cpuStatus"] as? NSNumber)?.intValue ?? 0, message: message)
         }
         return data
+    }
+
+    /// One request to the dorm page's bridge (`window.CPUTimeNativeDorm`, see
+    /// web/src/utils/nativeDormBridge.ts) as JSON text. Returns its reply as
+    /// JSON text; nil without a web view, on an older site, or when it failed.
+    public func dorm(requestJSON: String) async -> String? {
+        guard let webView else { return nil }
+        let raw = try? await webView.callAsyncJavaScript("""
+        try {
+          const run = window.CPUTimeNativeDorm;
+          if (typeof run !== 'function') return null;
+          return JSON.stringify((await run(JSON.parse(requestJSON))) ?? null);
+        } catch (error) {
+          return null;
+        }
+        """, arguments: ["requestJSON": requestJSON], in: nil, contentWorld: .page)
+        return raw as? String
     }
 
     /// The signed-in user's site nickname, for naming a share they publish.

@@ -139,7 +139,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         couple = if (debugFixture) ScheduleCouple(lifecycleScope, null, { DebugScheduleFixture.couple(it) })
         else ScheduleCouple(lifecycleScope, getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE), { web.couple(it) })
         shell = ShellCoordinator(lifecycleScope, web, schedule)
-        agenda = AgendaRemote(this, lifecycleScope) { web.agenda(it) }
+        shell.onOpenDorm = { page -> openDormSchedule(page) }
+        agenda =AgendaRemote(this, lifecycleScope) { web.agenda(it) }
         web.onAgendaChanged = { agenda.refresh(force = true) }
         // 日程 with a reminder ahead: ask once for the notification permission (Android 13+).
         lifecycleScope.launch {
@@ -192,6 +193,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                         couple.refresh()
                         delay(4_000)
                         if (schedule.selectedSemester == schedule.currentSemesterValue()) couple.sync(schedule.completeSnapshot())
+                        // The dorm page uploads it when the user is in a dorm (it asks the server, not us).
+                        if (!debugFixture) offerDormSchedule()
                     }
                 }
         }
@@ -260,6 +263,24 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     fun openAgenda(id: String?, date: String?) {
         val path = if (id != null) "/agenda?item=${Uri.encode(id)}" else "/agenda?new=1" + (date?.let { "&date=$it" } ?: "")
         if (web.authState.ready && web.authState.authenticated) shell.openWeb(path, ShellTab.Services) else pendingAgendaPath = path
+    }
+
+    /**
+     * The dorm timetable is the Web page `/dorm-schedule`. It is handed this
+     * term's timetable first, so its 立即同步 can upload what the grid shows.
+     */
+    fun openDormSchedule(page: String = ScheduleDorm.PAGE) {
+        lifecycleScope.launch { offerDormSchedule() }
+        shell.openWeb(page, ShellTab.Services, replace = true)
+    }
+
+    /**
+     * Hands the Web page the term running now, edits included. Only that term:
+     * a past one the user is browsing must never replace it on the server.
+     */
+    private suspend fun offerDormSchedule() {
+        if (!web.authState.authenticated || schedule.selectedSemester != schedule.currentSemesterValue()) return
+        ScheduleDorm.offer(schedule.completeSnapshot())?.let { web.dorm(it) }
     }
 
     /** Widgets open the native timetable at the current week (or the week they showed); reminders open their item. */
