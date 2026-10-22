@@ -9,6 +9,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import styleText from "./campus3d/style.css?inline";
+import { request } from "@/api/request";
 
 const router = useRouter();
 const hostEl = ref<HTMLDivElement | null>(null);
@@ -16,6 +17,17 @@ const failed = ref("");
 let dispose: (() => void) | null = null;
 let themeObserver: MutationObserver | null = null;
 let unmounted = false;
+
+// 联机：自由探索时每 ~250 ms 同步一次位置。走站点自己的请求封装（登录态、CSRF），失败不弹提示，
+// 也不让高频的同步请求把页面其他接口的缓存标成过期。
+type PresenceState = { sid: string; key: string };
+const quiet = { suppressErrorMessage: true, preserveResponseCache: true };
+const presence = {
+  join: () => request.post<{ sid: string; key: string; pid: string; name: string }>("/tools/campus-3d/presence/join", {}, quiet),
+  sync: (body: PresenceState & { s: number[]; h?: boolean }) =>
+    request.post<{ t: number; n: number; p: Array<[string, string, number, number, number, number, number, number, number]> }>("/tools/campus-3d/presence/sync", body, quiet),
+  leave: (body: PresenceState) => request.post("/tools/campus-3d/presence/leave", body, quiet).catch(() => undefined),
+};
 
 function syncTheme(host: HTMLElement) {
   host.dataset.theme = document.documentElement.classList.contains("dark") ? "dark" : "light";
@@ -54,7 +66,7 @@ onMounted(async () => {
       back.hidden = false;
       back.addEventListener("click", leave);
     }
-    dispose = mountCampus3D(shadow, { emblemUrl, calliUrl, data, outer });
+    dispose = mountCampus3D(shadow, { emblemUrl, calliUrl, data, outer, presence });
   } catch (error) {
     console.error("[campus3d]", error);
     if (!unmounted) failed.value = "三维校园加载失败，请返回后重试。";

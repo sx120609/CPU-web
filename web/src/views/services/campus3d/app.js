@@ -4587,6 +4587,21 @@ function walkResolve(x, z, feet, RR = WALK_R) {
         }
       }
     }
+    for (const o of NET.others.values()) {
+      const dx = x - o.x, dz = z - o.z;
+      if (Math.abs(dx) > 3.6 || Math.abs(dz) > 3.6) continue;
+      if (o.m === 2) {
+        const ca = Math.cos(o.a), sa = Math.sin(o.a), hx = 2.3 + RR, hz = 0.92 + RR;
+        let lx = dx * ca + dz * sa, lz = -dx * sa + dz * ca;
+        if (Math.abs(lx) >= hx || Math.abs(lz) >= hz) continue;
+        if (hx - Math.abs(lx) < hz - Math.abs(lz)) lx = (lx < 0 ? -1 : 1) * (hx + 0.01); else lz = (lz < 0 ? -1 : 1) * (hz + 0.01);
+        x = o.x + lx * ca - lz * sa; z = o.z + lx * sa + lz * ca; moved = true;
+      } else {
+        const R2 = (o.m === 3 ? 0.55 : 0.3) + RR, d = Math.hypot(dx, dz);
+        if (d >= R2) continue;
+        const a = d > 1e-4 ? 1 / d : 0; x = o.x + (a ? dx * a : 1) * (R2 + 0.01); z = o.z + dz * a * (R2 + 0.01); moved = true;
+      }
+    }
     // cars moving on the roads are solid too
     if (CARS && CARS.live) for (const [cx, cz, ca, sa] of CARS.live) {
       if (Math.abs(x - cx) > 3.6 || Math.abs(z - cz) > 3.6) continue;
@@ -5258,6 +5273,134 @@ function updateRide(dt) {
   controls.target.set(R.x + c * 20, R.y + 1.2, R.z + sn * 20);
   const spd = $('#speedo b'); if (spd) spd.textContent = String(Math.round(Math.abs(R.v) * 3.6));
 }
+// ======================= multiplayer =======================
+// While exploring, the page syncs its own position four times a second through the host's presence API and gets the
+// people nearby back. Others are drawn with a short delay and interpolated between updates, as walkers, swimmers,
+// drivers or riders, with their nickname over their head; they are solid like everyone else. "隐身" keeps receiving
+// others but stops showing you to them.
+const PRESENCE_API = opts.presence || null;
+const NET_PAL = ['#f1f1ef', '#1c1d20', '#9aa0a6', '#c9ccd0', '#2c4a7a', '#8c2a2a', '#4a4f55', '#e8e2d2', '#2f6d4f', '#c48f2a', '#7b8ea3', '#d7b46a'];
+const NET = { on: false, busy: false, inflight: false, sid: null, key: null, name: '', t: 0, fail: 0, retry: 0, hidden: false, count: 0, shirt: 0, others: new Map(), greeted: false };
+let NET_GEO = null;
+const nearestPal = (col) => { let bi = 0, bd = 1e9; NET_PAL.forEach((h, i) => { _c2.set(h); const d = (_c2.r - col.r) ** 2 + (_c2.g - col.g) ** 2 + (_c2.b - col.b) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; };
+function netGeo() {
+  if (NET_GEO) return NET_GEO;
+  NET_GEO = { car: carGeometry(), unit: new THREE.CylinderGeometry(1, 1, 1, 10), ball: new THREE.SphereGeometry(1, 14, 10), wheel: new THREE.TorusGeometry(0.33, 0.035, 6, 20),
+    trim: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.35 }), skin: new THREE.MeshStandardMaterial({ color: '#dcb594', roughness: 0.7 }),
+    hair: new THREE.MeshStandardMaterial({ color: '#1d1714', roughness: 0.9 }), pants: new THREE.MeshStandardMaterial({ color: '#2b3442', roughness: 0.85 }),
+    dark: new THREE.MeshStandardMaterial({ color: '#1a1b1d', roughness: 0.7 }) };
+  return NET_GEO;
+}
+function makeAvatar(name) {
+  const G = netGeo(), root = new THREE.Group(), body = new THREE.Group();
+  body.rotation.order = 'YXZ'; body.rotation.y = Math.PI / 2; root.add(body);
+  const shirt = new THREE.MeshStandardMaterial({ color: '#2f6d9f', roughness: 0.85 });
+  const cyl = (mat, r, len) => { const m = new THREE.Mesh(G.unit, mat); m.scale.set(r, len, r * 0.78); m.castShadow = true; return m; };
+  const torso = cyl(shirt, 0.16, 0.56); torso.position.y = 1.14; body.add(torso);
+  const head = new THREE.Mesh(G.ball, G.skin); head.scale.set(0.09, 0.11, 0.1); head.position.y = 1.6; body.add(head);
+  const hair = new THREE.Mesh(G.ball, G.hair); hair.scale.set(0.096, 0.07, 0.1); hair.position.set(0, 1.665, -0.012); body.add(hair);
+  const limbs = [];
+  for (const sd of [1, -1]) {
+    const hip = new THREE.Group(); hip.position.set(sd * 0.085, 0.86, 0); body.add(hip);
+    const leg = cyl(G.pants, 0.062, 0.84); leg.position.y = -0.42; hip.add(leg);
+    const shoulder = new THREE.Group(); shoulder.position.set(sd * 0.2, 1.38, 0); body.add(shoulder);
+    const arm = cyl(shirt, 0.045, 0.58); arm.position.y = -0.29; shoulder.add(arm);
+    limbs.push(hip, shoulder);
+  }
+  const carMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.55 });
+  const car = new THREE.Group(); car.add(new THREE.Mesh(G.car.body, carMat), new THREE.Mesh(G.car.trim, G.trim)); car.visible = false; root.add(car);
+  const bike = new THREE.Group(), frameMat = new THREE.MeshStandardMaterial({ color: '#1f8fe0', roughness: 0.45, metalness: 0.35 });
+  for (const x of [-0.52, 0.52]) { const w = new THREE.Mesh(G.wheel, G.dark); w.position.set(x, 0.36, 0); bike.add(w); }
+  for (const [a, b] of [[[-0.52, 0.36], [-0.05, 0.36]], [[-0.52, 0.36], [-0.22, 0.85]], [[-0.22, 0.85], [-0.05, 0.36]], [[-0.22, 0.85], [0.37, 0.84]], [[-0.05, 0.36], [0.37, 0.84]], [[0.37, 0.84], [0.52, 0.36]], [[0.37, 0.84], [0.41, 1.02]]]) {
+    const r = new THREE.Mesh(G.unit, frameMat), dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy);
+    r.scale.set(0.022, l, 0.022); r.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0); r.rotation.z = Math.atan2(-dx, dy); bike.add(r);
+  }
+  bike.visible = false; root.add(bike);
+  const el = document.createElement('div'); el.className = 'plabel'; el.textContent = name;
+  const tag = new CSS2DObject(el); tag.position.y = 2.05; root.add(tag);
+  scene.add(root);
+  return { root, body, limbs, car, carMat, bike, frameMat, tag, el, shirt, ph: Math.random() * 6, samples: [], x: 0, y: 0, z: 0, a: 0, m: 0, v: 0, last: 0 };
+}
+function netDrop(pid) { const o = NET.others.get(pid); if (!o) return; o.tag.removeFromParent(); o.el.remove(); scene.remove(o.root); NET.others.delete(pid); }
+function netClear() { for (const pid of [...NET.others.keys()]) netDrop(pid); }
+function netStart() {
+  if (!PRESENCE_API || NET.on || NET.busy) return;
+  NET.busy = true;
+  PRESENCE_API.join().then((r) => {
+    NET.busy = false;
+    if (mode !== 'walk' || !r || !r.sid) return;
+    Object.assign(NET, { on: true, sid: r.sid, key: r.key, name: r.name, fail: 0, t: 1, shirt: Math.floor(Math.random() * NET_PAL.length), greeted: false });
+    netHud();
+  }).catch(() => { NET.busy = false; NET.retry = performance.now() + 20000; });
+}
+function netStop() {
+  if (NET.on && PRESENCE_API) { try { PRESENCE_API.leave({ sid: NET.sid, key: NET.key }); } catch (_) { } }
+  NET.on = false; NET.sid = NET.key = null; netClear(); netHud();
+}
+function netState() {
+  if (DRIVE.on) return [DRIVE.x, DRIVE.y, DRIVE.z, angDiff(DRIVE.a, 0), 2, nearestPal(DRIVE.bodyMat.color), DRIVE.v];
+  if (RIDE.on) return [RIDE.x, RIDE.y + RIDE.hop, RIDE.z, angDiff(RIDE.a, 0), 3, nearestPal(RIDE.frameMat.color), RIDE.v];
+  const W = WALK;
+  return [W.x, W.y, W.z, Math.atan2(-Math.cos(W.yaw), -Math.sin(W.yaw)), W.swim ? 1 : 0, NET.shirt, Math.hypot(W.vx, W.vz)];
+}
+function netReceive(r) {
+  const now = performance.now();
+  NET.count = r.n || 0;
+  for (const e of r.p || []) {
+    const [pid, name, x, y, z, a, m, c, v] = e;
+    let o = NET.others.get(pid);
+    if (!o) { o = makeAvatar(name); Object.assign(o, { x, y, z, a }); NET.others.set(pid, o); }
+    o.samples.push({ t: now, x, y, z, a, m, c, v }); if (o.samples.length > 10) o.samples.shift();
+    o.last = now;
+  }
+  for (const [pid, o] of NET.others) if (now - o.last > 2500) netDrop(pid);
+  if (!NET.greeted && NET.count > 1) { NET.greeted = true; toast(`已联机 · ${NET.count} 人在线`, 2600); }
+  netHud();
+}
+function netHud() {
+  const show = mode === 'walk' && NET.on;
+  $('#netChip').hidden = !show; $('#netCount').textContent = String(Math.max(1, NET.count));
+  $('#walkNet').hidden = !PRESENCE_API; $('#walkNet').textContent = NET.hidden ? '已隐身' : '联机可见';
+  $('#walkNet').setAttribute('aria-pressed', String(!NET.hidden));
+}
+function updateNet(dt) {
+  if (!PRESENCE_API) return;
+  if (mode !== 'walk') { if (NET.on) netStop(); return; }
+  if (!NET.on) { if (!NET.busy && performance.now() > NET.retry) netStart(); return; }
+  NET.t += dt;
+  if (NET.t >= 0.25 && !NET.inflight) {
+    NET.t = 0; NET.inflight = true;
+    PRESENCE_API.sync({ sid: NET.sid, key: NET.key, s: netState().map((v, i) => (i === 4 || i === 5 ? v : Math.round(v * 100) / 100)), h: NET.hidden })
+      .then((r) => { NET.inflight = false; NET.fail = 0; if (NET.on && r) netReceive(r); })
+      .catch(() => { NET.inflight = false; if (++NET.fail >= 4) { NET.on = false; NET.retry = performance.now() + 6000; netClear(); netHud(); } });
+  }
+  // draw everyone 300 ms in the past, interpolated between the two updates around that moment
+  const tr = performance.now() - 300, cp = camera.position;
+  for (const o of NET.others.values()) {
+    const S = o.samples; if (!S.length) continue;
+    let A = S[S.length - 1], B = A, k = 1;
+    if (tr <= S[0].t) { A = B = S[0]; }
+    else for (let i = 0; i < S.length - 1; i++) if (S[i].t <= tr && S[i + 1].t >= tr) { A = S[i]; B = S[i + 1]; k = (tr - A.t) / Math.max(1, B.t - A.t); break; }
+    o.x = A.x + (B.x - A.x) * k; o.y = A.y + (B.y - A.y) * k; o.z = A.z + (B.z - A.z) * k; o.a = A.a + angDiff(B.a, A.a) * k; o.v = A.v + (B.v - A.v) * k; o.m = B.m;
+    o.root.position.set(o.x, o.y, o.z); o.root.rotation.y = -o.a;
+    const mm = o.m, spd = Math.abs(o.v);
+    o.car.visible = mm === 2; o.bike.visible = mm === 3; o.body.visible = mm !== 2;
+    if (mm === 2) o.carMat.color.set(NET_PAL[B.c % NET_PAL.length]);
+    else o.shirt.color.set(NET_PAL[(mm === 3 ? B.c + 3 : B.c) % NET_PAL.length]);
+    if (mm === 3) o.frameMat.color.set(NET_PAL[B.c % NET_PAL.length]);
+    o.ph += dt * (mm === 3 ? spd / 0.8 : 2 + spd * 3.2);
+    const sw = mm === 0 ? Math.sin(o.ph) * 0.5 * Math.min(1, spd / 1.6) : 0;
+    o.body.position.set(mm === 3 ? -0.22 : 0, mm === 3 ? 0.12 : 0, 0); o.body.rotation.x = mm === 3 ? 0.35 : 0;
+    o.limbs.forEach((l, i) => {
+      const leg = i % 2 === 0, sd = i < 2 ? 1 : -1;
+      if (mm === 3) l.rotation.x = leg ? -1.25 + Math.sin(o.ph + (sd > 0 ? 0 : Math.PI)) * 0.35 : -0.9;
+      else if (mm === 1) l.rotation.x = leg ? Math.sin(o.ph * 2 + sd) * 0.3 : Math.sin(o.ph + (sd > 0 ? 0 : Math.PI)) * 1.6;
+      else l.rotation.x = (leg ? 1 : -0.8) * sw * sd;
+    });
+    const d = Math.hypot(o.x - cp.x, o.z - cp.z);
+    o.el.style.display = d < 80 ? '' : 'none'; o.el.style.opacity = String(clamp(1.4 - d / 60, 0.25, 1));
+  }
+}
 // ---- aiming and inspecting buildings ----
 function placeOf(own) {
   const pl = PLACES.find((q) => q.bld && q.bld.includes(own)); if (pl) return pl;
@@ -5513,6 +5656,7 @@ $('#walkCrouch').addEventListener('click', (e) => { WALK.crouchOn = !WALK.crouch
 $('#xhint').addEventListener('click', () => walkInspect());
 $('#walkResume').addEventListener('click', () => walkLock());
 $('#walkExit').addEventListener('click', () => setMode('orbit'));
+$('#walkNet').addEventListener('click', () => { NET.hidden = !NET.hidden; netHud(); toast(NET.hidden ? '已隐身：别人看不到你，你仍能看到别人' : '联机可见：附近的同学能看到你', 2200); });
 $('#walkSound').addEventListener('click', (e) => {
   WALK.sound = !WALK.sound; if (WALK.sound) walkAudioWake();
   e.currentTarget.setAttribute('aria-pressed', String(WALK.sound)); e.currentTarget.textContent = WALK.sound ? '脚步声 开' : '脚步声 关';
@@ -5884,7 +6028,7 @@ function loop(now) {
     if (TOUR.t > 4.5) nextStop();
   }
   if (waterObj && waterObj.visible) waterObj.material.uniforms.time.value += dt * 0.5;
-  updatePeople(dt, now / 1000); updateCars(dt); updateTrains(dt); updateChunks(); updateGrass();
+  updatePeople(dt, now / 1000); updateCars(dt); updateTrains(dt); updateChunks(); updateGrass(); updateNet(dt);
   TRAINS.forEach((T) => T.cars.forEach((c) => { if (c.userData.hide) c.visible = false; }));
   updateParticles(dt); updateTreeLOD(); updateTreeFade(dt);
   if (HL) HL.material.opacity = 0.16 + 0.08 * Math.sin((now - HL.userData.t0) * 0.004);
@@ -5944,7 +6088,7 @@ return function dispose() {
   DISPOSED = true;
   cancelAnimationFrame(RAF);
   for (const fn of CLEANUP.splice(0)) { try { fn(); } catch (_) { } }
-  try { walkUnlock(); walkAudioClose(); } catch (_) { }
+  try { walkUnlock(); walkAudioClose(); netStop(); } catch (_) { }
   try { controls.enabled = false; } catch (_) { }
   try {
     scene.traverse((o) => {
