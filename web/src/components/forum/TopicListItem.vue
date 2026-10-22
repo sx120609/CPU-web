@@ -34,6 +34,7 @@
             <span class="simple-author">{{ topic.author?.nickname ?? '—' }}</span>
             <UserVerificationBadge :verification="topic.author?.verification" />
             <UserReputationBadge :level="topic.author?.reputationLevel" />
+            <span v-if="topic.isAnonymous" class="simple-anon">匿名</span>
             <span class="simple-time">{{ fmtRelative(displayedTime) }}</span>
             <span v-if="topic.editCount && topic.editCount > 0" class="simple-edited">已编辑 {{ topic.editCount }} 次</span>
           </div>
@@ -335,7 +336,7 @@ function openTopic() {
 .main, .simple-main { min-width: 0; flex: 1; }
 
 /* 标签：全站一种小标签，18px 高、6px 圆角；只有置顶用琥珀色 */
-.tag, .simple-ai-tag, .simple-tag, .vip-badge, .line2 .anon, .simple-title b {
+.tag, .simple-ai-tag, .simple-tag, .vip-badge, .line2 .anon, .simple-anon, .simple-title b {
   display: inline-flex; height: 18px; flex-shrink: 0; align-items: center; padding: 0 5px; border: 0; border-radius: var(--cpu-radius-s);
   background: none; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-weight: 500; line-height: 18px; letter-spacing: 0; box-shadow: inset 0 0 0 1px var(--cpu-border);
 }
@@ -372,7 +373,7 @@ function openTopic() {
 .simple-context-text { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); white-space: nowrap; }
 .simple-context-text span { overflow: hidden; text-overflow: ellipsis; }
 .simple-context-text span + span::before, .simple-edited::before { content: "·"; margin: 0 6px; }
-.simple-byline > span + span:not(.simple-edited):not(.account-verification-badge):not(.reputation-badge)::before { content: "·"; margin-right: 6px; }
+.simple-byline > span + span:not(.simple-edited):not(.simple-anon):not(.account-verification-badge):not(.reputation-badge)::before { content: "·"; margin-right: 6px; }
 .simple-byline > .vip-badge + .simple-author::before { content: none; }
 .simple-ai-tags { flex: 0 0 auto; flex-wrap: wrap; gap: 4px; }
 
