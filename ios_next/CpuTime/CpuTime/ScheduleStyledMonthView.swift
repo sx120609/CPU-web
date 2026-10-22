@@ -83,15 +83,13 @@ struct ScheduleStyledMonthPage: View {
                     .frame(height: 30)
                     .padding(.horizontal, 12)
             }
-            HStack(spacing: 0) {
-                ForEach(Array(Self.weekdayLabels.enumerated()), id: \.offset) { index, label in
-                    Text(label)
-                        .font(.system(size: style == .paper ? 12 : 11,
-                                      weight: style == .board ? .bold : .medium,
-                                      design: style.fontDesign))
-                        .foregroundStyle(ink.opacity(index >= 5 ? 0.62 : 0.78))
-                        .frame(maxWidth: .infinity)
-                }
+            ScheduleFoldRow(count: Self.weekdayLabels.count, spacing: columnSpacing) { index in
+                Text(Self.weekdayLabels[index])
+                    .font(.system(size: style == .paper ? 12 : 11,
+                                  weight: style == .board ? .bold : .medium,
+                                  design: style.fontDesign))
+                    .foregroundStyle(ink.opacity(index >= 5 ? 0.62 : 0.78))
+                    .frame(maxWidth: .infinity)
             }
             .frame(height: style == .table || style == .board ? 28 : 22)
             .background(style == .table ? Color.primary.opacity(dark ? 0.06 : 0.045) : Color.clear)
@@ -104,16 +102,15 @@ struct ScheduleStyledMonthPage: View {
                 // The board is divided by a heavy rule under the weekdays.
                 Rectangle().fill(boardRule).frame(height: 2)
             }
-            VStack(spacing: style == .grid ? 5 : (style == .minimal ? 2 : 0)) {
+            VStack(spacing: columnSpacing) {
                 ForEach(rows, id: \.first?.date) { row in
-                    HStack(spacing: style == .grid ? 5 : (style == .minimal ? 2 : 0)) {
-                        ForEach(row) { day in cell(day) }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if style == .board && row.first?.date != rows.last?.first?.date {
-                            Rectangle().fill(ink.opacity(dark ? 0.24 : 0.16)).frame(height: 0.6)
+                    // On a partly folded iPhone Duo the fold is left empty.
+                    ScheduleFoldRow(count: row.count, spacing: columnSpacing) { index in cell(row[index]) }
+                        .overlay(alignment: .bottom) {
+                            if style == .board && row.first?.date != rows.last?.first?.date {
+                                Rectangle().fill(ink.opacity(dark ? 0.24 : 0.16)).frame(height: 0.6)
+                            }
                         }
-                    }
                 }
             }
         }
@@ -124,6 +121,8 @@ struct ScheduleStyledMonthPage: View {
     }
 
     private var squared: Bool { style == .table || style == .paper || style == .board }
+
+    private var columnSpacing: CGFloat { style == .grid ? 5 : (style == .minimal ? 2 : 0) }
 
     private func cell(_ day: Day) -> some View {
         let isToday = day.date == todayDate

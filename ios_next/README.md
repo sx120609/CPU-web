@@ -14,6 +14,8 @@
 - **文件下载**：网页里带 `download` 属性的链接、浏览器无法直接显示的响应和 `Content-Disposition: attachment` 的响应，由 `WebFileDownloader` 接成 WKWebView 下载，存到临时目录后交给系统分享面板（存到「文件」、存储图像、用其他 App 打开）。只接本站地址以及本站页面生成的 `blob:`／`data:`；其他域名的文件仍交给 Safari。原生界面和 iOS 15–16 的兼容界面都接了。网页生成 `blob:` 地址后不能在点击的同一时刻撤销它，否则 WebKit 还没读到就失效，App 里会提示「文件没有下载下来」。
 - **后台刷新**：`AppInfo.plist` 声明了 `UIBackgroundModes = fetch`。没有它，`BGTaskScheduler` 会拒绝实时活动的后台刷新请求（代码里吞掉了这个错误），App 挂起后结束过期实时活动的兜底就不会运行。
 
+- **iPhone Duo**：折叠时窗口在 466×678（合上）和 951×669（展开）之间变化，界面按可用宽度和尺寸类别排版，不按机型或屏幕判断；要用满屏幕必须用 Xcode 27.1（iOS 27.1 SDK）编译，四个 target 都已能用它编译。半折（书本姿势）时周视图分成折痕两边各带节次轴的两张表，月视图的日期格也避开折痕；分法由 `ScheduleFoldSplit` 计算，检查脚本是 `bash ios_next/scripts/check-fold-layout.sh`。已做的改动、在 iPhone Duo 模拟器（Device Hub）和可调尺寸显示器上的检查方法、Debug 构建的 `CPU_DEBUG_CANVAS`／`CPU_DEBUG_FOLD` 模拟和剩下的步骤见 [iPhone Duo 适配](docs/iphone-duo.md)。
+
 回归方式与实际测试范围见 [系统兼容测试记录](docs/ios-compatibility-qa.md)。App Store 已发布的 4.13 最低支持 iOS 15；网站下载页和 `web/src/utils/clientInfo.ts` 已同步这一要求，并注明 iOS 15–16 的网页兼容界面与 iOS 17 及以上的原生功能边界。
 
 ## 当前范围
@@ -112,6 +114,7 @@ bash ios_next/scripts/check-schedule-palette.sh
 bash ios_next/scripts/check-chinese-calendar.sh
 bash ios_next/scripts/check-course-arrangement.sh
 bash ios_next/scripts/check-schedule-priority.sh
+bash ios_next/scripts/check-fold-layout.sh
 bash ios_next/scripts/check-shared-schedule.sh
 swiftc ios_next/CpuTime/CpuTime/NativeScheduleStore.swift ios_next/tests/NativeSchedulePeriodChecks.swift -o /tmp/cpu-next-period-checks
 /tmp/cpu-next-period-checks

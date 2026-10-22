@@ -15,6 +15,7 @@ test("device identifiers map to marketing names and fall back to the raw identif
   assert.equal(iosDeviceName("arm64"), "模拟器");
   assert.equal(iosDeviceName("iPad14,1"), "iPad mini（第 6 代）");
   assert.equal(iosDeviceName("iPhone19,7"), "iPhone 18 Pro Max");
+  assert.equal(iosDeviceName("iPhone19,4"), "iPhone Duo");
   assert.equal(iosDeviceName("iPhone99,7"), "iPhone99,7");
 });
 

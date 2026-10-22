@@ -8,6 +8,7 @@ import UIKit
 @available(iOS 17.0, *)
 struct NativeScheduleView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
     @ObservedObject private var store: NativeScheduleStore
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
     @ObservedObject private var couple = NativeCoupleService.shared
@@ -157,6 +158,12 @@ struct NativeScheduleView: View {
         .environment(\.scheduleThemeBrand, ScheduleStyle.themeBrand(palette: preferences.palette))
         .task {
             viewMode = ScheduleViewMode(rawValue: preferences.defaultView) ?? .week
+#if DEBUG
+            // `CPU_DEBUG_SCHEDULE_VIEW=day` or `month` opens that view for one launch.
+            if let mode = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_VIEW"].flatMap(ScheduleViewMode.init) {
+                viewMode = mode
+            }
+#endif
             adoptSelectionIfNeeded()
             if viewMode == .month { seedMonthSelection(store.result) }
 #if DEBUG
@@ -911,7 +918,7 @@ struct NativeScheduleView: View {
 
     private var scheduleToolsDetentHeight: CGFloat {
         let measured = scheduleToolsContentHeight > 0 ? scheduleToolsContentHeight + 54 : 420
-        return min(max(measured, 330), UIScreen.main.bounds.height * 0.82)
+        return min(max(measured, 330), WindowGeometry.size.height * 0.82)
     }
 
     private func weekStepButton(
@@ -1046,39 +1053,41 @@ struct NativeScheduleView: View {
     private func weekGrid(_ result: NativeScheduleResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
+                let contentWidth = proxy.size.width - 2 * Self.contentInset
+                let fold = proxy.verticalFold.map {
+                    ($0.lowerBound - Self.contentInset)...($0.upperBound - Self.contentInset)
+                }
                 weekPager(result: result, width: proxy.size.width) { week in
                     let days = weekColumns(week: week, result: result)
-                    if style == .classic {
-                        let columnWidth = max(
-                            24,
-                            (proxy.size.width - 2 * Self.contentInset - Self.slotAxisWidth
-                                - CGFloat(days.count) * Self.columnGap) / CGFloat(days.count)
-                        )
-                        scheduleRows(
-                            result: result,
-                            week: week,
-                            days: days,
-                            columnWidth: columnWidth,
-                            compactCards: preferences.density == "compact",
-                            rowHeight: weekRowHeight,
-                            showsDateHeader: preferences.showDateHeader
-                        )
-                        // Keep the date headers' top border clear of the
-                        // pager's clipping edge.
-                        .padding(.top, Self.weekGridTopInset)
-                        .padding(.horizontal, Self.contentInset)
-                        .frame(width: proxy.size.width, alignment: .leading)
-                    } else {
-                        styledWeekRows(
-                            result: result,
-                            week: week,
-                            days: days,
-                            contentWidth: proxy.size.width - 2 * Self.contentInset
-                        )
-                        .padding(.top, Self.weekGridTopInset)
-                        .padding(.horizontal, Self.contentInset)
-                        .frame(width: proxy.size.width, alignment: .leading)
+                    Group {
+                        if style == .classic {
+                            foldPages(dayCount: days.count, contentWidth: contentWidth, fold: fold, columnWidth: { width, count in
+                                max(24, (width - Self.slotAxisWidth - CGFloat(count) * Self.columnGap) / CGFloat(count))
+                            }) { columns, columnWidth in
+                                scheduleRows(
+                                    result: result,
+                                    week: week,
+                                    days: days,
+                                    columns: columns,
+                                    columnWidth: columnWidth,
+                                    compactCards: preferences.density == "compact",
+                                    rowHeight: weekRowHeight,
+                                    showsDateHeader: preferences.showDateHeader
+                                )
+                            }
+                        } else {
+                            foldPages(dayCount: days.count, contentWidth: contentWidth, fold: fold, columnWidth: { width, count in
+                                ScheduleStyledWeekRows.columnWidth(contentWidth: width, dayCount: count, style: style)
+                            }) { columns, columnWidth in
+                                styledWeekRows(result: result, week: week, days: days, columns: columns, columnWidth: columnWidth)
+                            }
+                        }
                     }
+                    // Keep the date headers' top border clear of the
+                    // pager's clipping edge.
+                    .padding(.top, Self.weekGridTopInset)
+                    .padding(.horizontal, Self.contentInset)
+                    .frame(width: proxy.size.width, alignment: .leading)
                 }
             }
             .frame(height: weekGridHeight)
@@ -1088,6 +1097,30 @@ struct NativeScheduleView: View {
             showTeacher: preferences.showTeacherInWeek,
             showSlotTime: preferences.showSlotTime
         ))
+    }
+
+    /// The week's columns as one grid or, when the fold of a partly folded
+    /// iPhone Duo runs down it, as two grids that meet at the fold. `grid`
+    /// draws the given columns at the given width.
+    @ViewBuilder
+    private func foldPages<Grid: View>(
+        dayCount: Int,
+        contentWidth: CGFloat,
+        fold: ClosedRange<CGFloat>?,
+        columnWidth: (CGFloat, Int) -> CGFloat,
+        @ViewBuilder grid: (Range<Int>, CGFloat) -> Grid
+    ) -> some View {
+        if let fold, let split = ScheduleFoldSplit(contentWidth: contentWidth, fold: fold,
+                                                   dayCount: dayCount, columnWidth: columnWidth) {
+            HStack(alignment: .top, spacing: split.foldWidth) {
+                grid(0..<split.leadingCount, columnWidth(split.leadingWidth, split.leadingCount))
+                    .frame(width: split.leadingWidth, alignment: .leading)
+                grid(split.leadingCount..<dayCount, columnWidth(split.trailingWidth, dayCount - split.leadingCount))
+                    .frame(width: split.trailingWidth, alignment: .leading)
+            }
+        } else {
+            grid(0..<dayCount, columnWidth(contentWidth, dayCount))
+        }
     }
 
     /// The pager's fixed cross axis for the week view in the current style.
@@ -1103,15 +1136,17 @@ struct NativeScheduleView: View {
 
     /// The week grid of every style except classic. Calendar resolution, lanes
     /// and editing are the same as the classic grid; only the drawing differs.
+    /// `columns` picks which of the week's `days` to draw (all by default).
     private func styledWeekRows(
         result: NativeScheduleResult,
         week: Int?,
         days: [Int],
-        contentWidth: CGFloat,
+        columns: Range<Int>? = nil,
+        columnWidth: CGFloat,
         isStatic: Bool = false
     ) -> some View {
         ScheduleStyledWeekRows(
-            days: days.map { day in
+            days: (columns.map { Array(days[$0]) } ?? days).map { day in
                 // With Sunday first, the Sunday column belongs to the week before.
                 let dayWeek = columnWeek(day, week: week, days: days)
                 let shown = columnBlocks(for: day, week: week, days: days, result: result, couple: !isStatic)
@@ -1127,7 +1162,7 @@ struct NativeScheduleView: View {
                     coupleClashes: clashes
                 )
             },
-            columnWidth: ScheduleStyledWeekRows.columnWidth(contentWidth: contentWidth, dayCount: days.count, style: style),
+            columnWidth: columnWidth,
             rowHeight: weekRowHeight,
             compactCards: !isStatic && preferences.density == "compact",
             showsDateHeader: isStatic || preferences.showDateHeader,
@@ -1778,24 +1813,27 @@ struct NativeScheduleView: View {
         }
     }
 
+    /// `columns` picks which of the week's `days` to draw (all by default).
     private func scheduleRows(
         result: NativeScheduleResult,
         week: Int?,
         days: [Int],
+        columns: Range<Int>? = nil,
         columnWidth: CGFloat,
         compactCards: Bool,
         rowHeight: CGFloat = NativeScheduleDayColumn.slotHeight,
         showsDateHeader: Bool = true,
         showsNow: Bool = true
     ) -> some View {
+        let shownDays = columns.map { Array(days[$0]) } ?? days
         let todayIndex = showsNow && preferences.showNowIndicator
-            ? days.firstIndex { dayIsToday($0, week: columnWeek($0, week: week, days: days), result: result) } : nil
+            ? shownDays.firstIndex { dayIsToday($0, week: columnWeek($0, week: week, days: days), result: result) } : nil
         // The period times can be hidden in the week view; the day view keeps them.
         let showsSlotTime = days.count == 1 || !showsNow || preferences.showSlotTime
         return HStack(alignment: .top, spacing: Self.columnGap) {
             slotAxis(rowHeight: rowHeight, showsHeader: showsDateHeader, showsTime: showsSlotTime)
 
-            ForEach(days, id: \.self) { day in
+            ForEach(shownDays, id: \.self) { day in
                 // With Sunday first, the Sunday column belongs to the week before.
                 let dayWeek = columnWeek(day, week: week, days: days)
                 let effective = effectiveSlot(day: day, week: dayWeek, result: result)
@@ -2154,7 +2192,8 @@ struct NativeScheduleView: View {
             // same whenever it is opened.
             : AnyView(
                 styledWeekRows(result: result, week: week, days: Array(1...7),
-                               contentWidth: gridWidth, isStatic: true)
+                               columnWidth: ScheduleStyledWeekRows.columnWidth(contentWidth: gridWidth, dayCount: 7, style: style),
+                               isStatic: true)
             )
 
         let content = VStack(alignment: .leading, spacing: 18) {
@@ -2191,7 +2230,7 @@ struct NativeScheduleView: View {
         .environment(\.colorScheme, style == .classic ? .light : colorScheme)
 
         let renderer = ImageRenderer(content: content)
-        renderer.scale = UIScreen.main.scale
+        renderer.scale = displayScale
         guard let image = renderer.uiImage else { return }
         guard let url = NativeScheduleSharePresenter.writeImage(image, fileName: "药大拾间-第\(week)周-周课表.png") else { return }
         Task { @MainActor in
@@ -2865,6 +2904,7 @@ private struct NativeAdjustmentBadge: View {
 private struct NativeScheduleDayColumn: View {
     @Environment(\.scheduleCouple) private var couple
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scheduleWeekDisplay) private var weekDisplay
     // Web's compact mobile grid uses 44px rows. Keeping that rhythm here
     // gives the week view enough breathing room while all eleven rows still
     // fit above the native tab bar.
@@ -3013,7 +3053,7 @@ private struct NativeScheduleDayColumn: View {
                         showTeacher: showTeacher,
                         showPeriod: showPeriod,
                         showWeeks: showWeeks,
-                        compact: compactCards || columnWidth < 70
+                        compact: compactCards || !NativeScheduleCourseCard.fitsFullLayout(columnWidth: columnWidth, textScale: weekDisplay.textScale)
                     )
                     .overlay(alignment: .bottom) { ScheduleOffWeekTag() }
                     .frame(width: max(12, columnWidth - 2), height: cardHeight)
@@ -3054,7 +3094,7 @@ private struct NativeScheduleDayColumn: View {
                                 showTeacher: showTeacher && !tiny,
                                 showPeriod: showPeriod && !tiny,
                                 showWeeks: showWeeks && !tiny,
-                                compact: compactCards || columnWidth < 70
+                                compact: compactCards || !NativeScheduleCourseCard.fitsFullLayout(columnWidth: columnWidth, textScale: weekDisplay.textScale)
                             )
                             .frame(width: cardWidth, height: cardHeight)
                         }
@@ -3264,6 +3304,16 @@ private struct NativeScheduleCourseCard: View {
     let showPeriod: Bool
     let showWeeks: Bool
     var compact = false
+
+    /// The full card sets the name at 18 points inside 14 points of padding on
+    /// each side, so it needs room for a four-character name on one line at its
+    /// smallest scale. Narrower columns get the compact card, which keeps the
+    /// whole classroom: the iPhone Duo's open display held upright and its
+    /// closed display turned give columns of about 80 points, where the full
+    /// card cut the classroom down to 「@教…」.
+    static func fitsFullLayout(columnWidth: CGFloat, textScale: CGFloat) -> Bool {
+        columnWidth - 2 - 2 * 14 >= 4 * 18 * 0.85 * textScale
+    }
 
     var body: some View {
         GeometryReader { geometry in

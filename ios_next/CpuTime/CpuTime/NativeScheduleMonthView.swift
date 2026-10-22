@@ -75,11 +75,8 @@ struct NativeScheduleMonthView: View {
         // 每月铺满整周；农历与课程数据只构建一次。
         let days = buildDays()
         if style == .classic {
-            GeometryReader { geometry in
-                let dayWidth = max(1, (geometry.size.width - 2 * Self.gridInset - Self.gutterWidth - 7 * Self.columnSpacing) / 7)
-                monthGrid(days, dayWidth: dayWidth)
-            }
-            .frame(height: CGFloat(weeks(days).count) * (rowHeight + 6) + 38)
+            monthGrid(days)
+                .frame(height: CGFloat(weeks(days).count) * (rowHeight + 6) + 38, alignment: .top)
             .modifier(ScheduleMonthSwipe(onMove: onMoveMonth))
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
@@ -108,18 +105,19 @@ struct NativeScheduleMonthView: View {
 
     // MARK: 月历
 
-    private func monthGrid(_ days: [Day], dayWidth: CGFloat) -> some View {
+    /// 折叠到一半的 iPhone Duo 上，折痕两边各排几天，折痕上不放日期（`ScheduleFoldRow`）。
+    private func monthGrid(_ days: [Day]) -> some View {
         VStack(spacing: 6) {
             HStack(spacing: Self.columnSpacing) {
                 Text("周")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .frame(width: Self.gutterWidth)
-                ForEach(Array(Self.weekdayLabels.enumerated()), id: \.offset) { index, label in
-                    Text(label)
+                ScheduleFoldRow(count: Self.weekdayLabels.count, spacing: Self.columnSpacing) { index in
+                    Text(Self.weekdayLabels[index])
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(index >= 5 ? Color.pink.opacity(0.8) : Color.secondary)
-                        .frame(width: dayWidth)
+                        .frame(maxWidth: .infinity)
                 }
             }
 
@@ -129,9 +127,9 @@ struct NativeScheduleMonthView: View {
                         .font(.caption2.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.tertiary)
                         .frame(width: Self.gutterWidth)
-                    ForEach(row) { day in
-                        dayCell(day)
-                            .frame(width: dayWidth)
+                    ScheduleFoldRow(count: row.count, spacing: Self.columnSpacing) { index in
+                        dayCell(row[index])
+                            .frame(maxWidth: .infinity)
                     }
                 }
             }
