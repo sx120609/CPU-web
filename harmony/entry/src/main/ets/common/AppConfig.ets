@@ -1,5 +1,5 @@
 export const APP_NAME = '药大拾间';
-export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCode=28&appVersionName=3.0.8';
+export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCode=29&appVersionName=3.0.9';
 export const APP_HOST = 'cputime.cn';
 export const VERSION_CODE = 29;
 export const VERSION_NAME = '3.0.9';
