@@ -15,7 +15,16 @@ struct CpuTimeApp: App {
     var body: some Scene {
         WindowGroup {
             if #available(iOS 17.0, *) {
+#if DEBUG
+                let canvases = DebugDisplayCanvas<ContentView>.canvases
+                if !canvases.isEmpty {
+                    DebugDisplayCanvas(canvases: canvases) { ContentView() }
+                } else {
+                    ContentView()
+                }
+#else
                 ContentView()
+#endif
             } else {
                 LegacyWebView()
             }
@@ -1098,7 +1107,7 @@ struct NativeShellView: View {
     private var quickEntryDetentHeight: CGFloat {
         let fallback: CGFloat = webSession.isLoggedIn ? 520 : 440
         let measured = quickEntryContentHeight > 0 ? quickEntryContentHeight + 68 : fallback
-        return min(max(measured, 360), UIScreen.main.bounds.height * 0.86)
+        return min(max(measured, 360), WindowGeometry.size.height * 0.86)
     }
 }
 

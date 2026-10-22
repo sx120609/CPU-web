@@ -223,8 +223,8 @@ struct NativeScheduleBackgroundEditor: View {
             GeometryReader { proxy in
                 if let scheduleStore {
                     // Render the actual timetable, including the same crop and
-                    // surfaces, at the device aspect ratio. No sample courses.
-                    let size = UIScreen.main.bounds.size
+                    // surfaces, at the window's aspect ratio. No sample courses.
+                    let size = WindowGeometry.size
                     NativeScheduleView(store: scheduleStore, isBackgroundPreview: true)
                         .frame(width: size.width, height: size.height - 100)
                         .scaleEffect(proxy.size.width / size.width, anchor: .topLeading)

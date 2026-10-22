@@ -47,6 +47,7 @@ const DEVICE_NAMES: Record<string, string> = {
   "iPhone18,5": "iPhone 17e",
   "iPhone19,2": "iPhone 18 Pro",
   "iPhone19,3": "iPhone 18 Pro Max",
+  "iPhone19,4": "iPhone Duo",
   "iPhone19,7": "iPhone 18 Pro Max",
   "iPad7,5": "iPad（第 6 代）",
   "iPad7,6": "iPad（第 6 代）",

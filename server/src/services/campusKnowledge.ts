@@ -18,6 +18,10 @@ export type CampusKnowledgeItem = {
   where: string;
   date: string | null;
   status?: SchoolDocStatus;
+  /** 规章制度的文号。 */
+  docNo?: string;
+  /** 规章制度的适用范围、新旧版本关系和解释部门。 */
+  note?: string;
   excerpt: string;
   replies?: Array<{ text: string; likes: number; accepted?: boolean }>;
   topicId?: number;
@@ -33,7 +37,8 @@ export type CampusKnowledgeLimits = {
   forum?: number;
 };
 
-const DEFAULT_LIMITS: Required<CampusKnowledgeLimits> = { schoolDocs: 3, announcements: 2, forum: 3 };
+// 学校资料多给几条短摘录，由模型自己挑对题的那几条（相当于让生成模型兼任重排序）。
+const DEFAULT_LIMITS: Required<CampusKnowledgeLimits> = { schoolDocs: 5, announcements: 2, forum: 3 };
 
 function sourceTitle(prefix: string, title: string) {
   return `${prefix} · ${title}`.slice(0, 120);
@@ -46,10 +51,12 @@ function fromSchoolDoc(hit: SchoolDocHit): Omit<CampusKnowledgeItem, "ref"> {
     where: hit.heading,
     date: hit.date,
     status: hit.status,
-    excerpt: hit.excerpt,
+    ...(hit.docNo ? { docNo: hit.docNo } : {}),
+    ...(hit.note ? { note: hit.note } : {}),
+    excerpt: [hit.excerpt, ...(hit.related || []).map((item) => `【同一文件 ${item.heading}】${item.excerpt}`)].join("\n"),
     coverage: hit.coverage,
     source: hit.sourceUrl && /^https?:\/\//iu.test(hit.sourceUrl)
-      ? { title: sourceTitle("学校文件", hit.title), url: hit.sourceUrl }
+      ? { title: sourceTitle("学校文件", hit.docNo ? `${hit.title}（${hit.docNo}）` : hit.title), url: hit.sourceUrl }
       : null,
   };
 }
@@ -153,7 +160,7 @@ export async function retrieveCampusKnowledge(query: string, options: {
     : Promise.resolve([] as ForumKnowledgeHit[]);
   let schoolDocs: SchoolDocHit[] = [];
   try {
-    schoolDocs = limits.schoolDocs > 0 ? searchSchoolDocs(text, { limit: limits.schoolDocs }) : [];
+    schoolDocs = limits.schoolDocs > 0 ? await searchSchoolDocs(text, { limit: limits.schoolDocs }) : [];
   } catch (error) {
     console.warn("[campus-knowledge] school document search failed", error instanceof Error ? error.message : error);
   }
@@ -177,6 +184,8 @@ export function presentCampusKnowledgeForPrompt(items: CampusKnowledgeItem[]) {
     ...(item.where ? { where: item.where } : {}),
     ...(item.date ? { date: item.date } : {}),
     ...(item.status ? { status: item.status } : {}),
+    ...(item.docNo ? { docNo: item.docNo } : {}),
+    ...(item.note ? { note: item.note } : {}),
     text: item.excerpt,
     ...(item.replies?.length ? { replies: item.replies } : {}),
   }));

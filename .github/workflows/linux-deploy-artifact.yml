@@ -72,6 +72,10 @@ jobs:
           done
           exit "$failed"
 
+      - name: Fetch 拾间AI knowledge model
+        # 测试里的检索评测要用语义模型；构建时复制脚本会复用这次下载。
+        run: node server/scripts/fetch-knowledge-model.mjs
+
       - name: Run server and web unit tests
         run: node tools/run-node-tests.mjs
 

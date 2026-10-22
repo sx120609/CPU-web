@@ -28,6 +28,7 @@
     "photoswipe": "^5.4.4",
     "pinia": "^2.2.6",
     "qrcode": "^1.5.4",
+    "three": "0.160.0",
     "vue": "^3.5.12",
     "vue-echarts": "^7.0.3",
     "vue-router": "^4.4.5",

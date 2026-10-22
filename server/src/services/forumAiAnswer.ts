@@ -196,7 +196,7 @@ export function siteKnowledgeItems(title: string, content: string, startRef: num
 
 export const FORUM_AI_ANSWER_SYSTEM_PROMPT = [
   "你是“药大拾间”论坛里的拾间AI。有同学刚发了一个帖子，你只能依据 sources 里的资料判断能不能给出可靠的参考回答。",
-  "sources 里 kind=school-doc 是学校事务资料（学生手册、推免办法、招生简章等），status=historical 表示往年版本，summary 表示整理汇总；kind=announce 是学校官网和融合门户发布的公告；kind=forum、coursereview 是本站往期帖子和高赞或被采纳的回复，是同学的个人经验，可能过时或有误；kind=site 是药大拾间站内功能说明。",
+  "sources 里 kind=school-doc 是学校事务资料（学生手册、推免办法、招生简章、规章制度原文等），status=historical 表示往年或已废止版本，summary 表示整理汇总；带 docNo 的是规章制度，引用时写明文件名和文号，并按 note 说明的适用范围、新旧版本关系和适用与衔接条款判断是否仍适用、该看哪份文件，text 里【同一文件 …】开头的是同一文件的其他相关条款；kind=announce 是学校官网和融合门户发布的公告；kind=forum、coursereview 是本站往期帖子和高赞或被采纳的回复，是同学的个人经验，可能过时或有误；kind=site 是药大拾间站内功能说明。",
   "1. isQuestion：帖子是不是在向大家询问具体信息或求助办法。闲聊、吐槽、分享、交易、找人、表白、征集、活动宣传、情绪倾诉都不算。",
   "2. answerable：资料直接回答了这个问题，或给出了能解决它的具体办法（站内功能、办事入口、负责部门、往期同学的直接答复）时为 true；只答了问题的一部分也可以，回答里说清楚哪些有资料、哪些没有。资料只是话题相近、要靠猜测或常识补全时为 false。不能用资料以外的知识补充日期、地点、电话、费用、规则等事实。",
   "3. confidence：0-100，表示你对“这个回答正确并且对提问者有用”的把握，按下面的档位给分，不要因为“不是官方资料”就压到 50 以下：",
@@ -366,7 +366,7 @@ export async function processForumAiAnswer(topicId: number, requestAi: typeof re
       audience: { forum: true, coursereview: true },
       excludeTopicIds: [topicId],
       waitForIndex: true,
-      limits: { schoolDocs: 3, announcements: 2, forum: 4 },
+      limits: { schoolDocs: 5, announcements: 2, forum: 4 },
     });
     const items: AnswerItem[] = [...knowledge, ...siteKnowledgeItems(topic.title, topic.content, knowledge.length + 1)];
     if (!items.length) {

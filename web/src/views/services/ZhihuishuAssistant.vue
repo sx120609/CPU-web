@@ -27,7 +27,7 @@
     </section>
     <section v-if="activeTab === 'admin' && settings?.canAdmin" id="admin-content" class="panel admin-panel" role="tabpanel" aria-labelledby="admin-tab">
       <div class="panel-title"><h2>题目作答与提交</h2><span class="status">管理员设置</span></div>
-      <p class="muted">控制视频中途的弹题。两个开关默认关闭；{{ desktopMode ? '设置仅对当前电脑的本次客户端运行生效，退出客户端后恢复关闭。' : '设置对本站全部在线助手用户生效，服务重启后恢复关闭。' }}</p>
+      <p class="muted">控制视频中途的弹题。两个开关默认开启；{{ desktopMode ? '设置仅对当前电脑的本次客户端运行生效，退出客户端后恢复默认开启。' : '设置对本站全部在线助手用户生效，服务重启后恢复默认开启。' }}</p>
       <label class="setting-row"><span><strong>弹题自动作答</strong><small>允许脚本选择弹题答案。关闭时遇到弹题停止，交由你在官方页面处理。</small></span><input v-model="autoAnswer" type="checkbox" role="switch" aria-label="弹题自动作答" :disabled="saving" @change="autoSubmit = autoAnswer && autoSubmit" /></label>
       <label class="setting-row"><span><strong>弹题自动提交</strong><small>允许把所选答案提交到智慧树。需先开启自动作答；关闭时不会提交答案。</small></span><input v-model="autoSubmit" type="checkbox" role="switch" aria-label="弹题自动提交" :disabled="saving || !autoAnswer" /></label>
       <div class="audit-note"><strong>排查结果</strong><p>上游共享课包含弹题自动作答及提交，现已增加独立开关。AI 测验、保存试卷答案和自动交卷代码也存在于上游，但未接入此工作台，保持不可用。</p><p>这里的开关不影响视频学习进度上报。更改开关并保存，会停止正在运行的任务并清除这些任务的登录会话；已提交记录无法撤回。</p></div>
@@ -72,7 +72,7 @@
               <label><input v-model="selected" type="checkbox" :value="course.key" :disabled="!canSelect || busy || (selected.length >= 20 && !selected.includes(course.key))" /><span class="course-icon">{{ course.kind === 'shared' ? '共' : '校' }}</span><span class="course-info"><strong>{{ course.name }}</strong><small>{{ course.kind === 'shared' ? '共享课' : '校内课' }}</small></span></label>
             </li>
           </ul>
-          <div class="speed-control"><label for="playback-speed">后台播放速度 <strong>{{ speed }}×</strong></label><select id="playback-speed" v-model.number="speed" :disabled="busy || view?.state === 'running'"><option v-for="value in speeds" :key="value" :value="value">{{ value }} 倍速{{ value === 1 ? '（默认）' : '' }}</option></select><p>开始任务时生效，运行中不能更改。实际耗时还会受请求和暂停影响。</p><p v-if="settings">弹题自动作答：{{ settings.autoAnswer ? '开启' : '关闭' }} · 自动提交：{{ settings.autoSubmit ? '开启' : '关闭' }}</p></div>
+          <div class="speed-control"><label for="playback-speed">后台播放速度 <strong>{{ speed }}×</strong></label><select id="playback-speed" v-model.number="speed" :disabled="busy || view?.state === 'running'"><option v-for="value in speeds" :key="value" :value="value">{{ value }} 倍速{{ value === 1 ? '（默认）' : '' }}</option></select><p>开始任务时生效，运行中不能更改。实际耗时还会受请求和暂停影响。</p><p v-if="desktopMode">运行中可最小化窗口或切换标签，电脑将保持运行并允许息屏；退出客户端会停止任务。</p><p v-if="settings">弹题自动作答：{{ settings.autoAnswer ? '开启' : '关闭' }} · 自动提交：{{ settings.autoSubmit ? '开启' : '关闭' }}</p></div>
           <footer class="course-footer"><span>每次最多选择 20 门课程</span><button type="button" class="button primary" :disabled="!canSelect || busy || !selected.length" @click="act(() => zhihuishuApi.start([...selected], speed))">开始运行<span v-if="selected.length"> · {{ selected.length }} 门</span> →</button></footer>
         </section>
       </div>
@@ -133,8 +133,8 @@ const speed = ref(1);
 const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const activeTab = ref('workspace');
 const settings = ref<ZhsSettings | null>(null);
-const autoAnswer = ref(false);
-const autoSubmit = ref(false);
+const autoAnswer = ref(true);
+const autoSubmit = ref(true);
 const saving = ref(false);
 const settingsMessage = ref('');
 const liveCollapsed = ref(false);
@@ -216,6 +216,9 @@ async function reload() {
     }
   } catch (e) { if (!disposed && current === revision) error.value = message(e); }
 }
+function refreshWhenVisible() {
+  if (!disposed && !document.hidden && !busy.value) void reload();
+}
 async function poll() {
   if (disposed) return;
   if (!busy.value) await reload();
@@ -242,9 +245,11 @@ onMounted(() => {
   colorQuery?.addEventListener('change', systemThemeChanged);
   window.addEventListener('storage', storedThemeChanged);
   try { const previous = sessionStorage.getItem('cpu-zhs-history-scope'); if (previous) loadHistory(previous); } catch { /* The storage error is shown when saving. */ }
+  document.addEventListener("visibilitychange", refreshWhenVisible);
+  window.addEventListener("focus", refreshWhenVisible);
   void poll();
 });
-onBeforeUnmount(() => { disposed = true; revision += 1; clearTimeout(timer); colorQuery?.removeEventListener('change', systemThemeChanged); window.removeEventListener('storage', storedThemeChanged); });
+onBeforeUnmount(() => { document.removeEventListener("visibilitychange", refreshWhenVisible); window.removeEventListener("focus", refreshWhenVisible); disposed = true; revision += 1; clearTimeout(timer); colorQuery?.removeEventListener('change', systemThemeChanged); window.removeEventListener('storage', storedThemeChanged); });
 </script>
 
 <style scoped>

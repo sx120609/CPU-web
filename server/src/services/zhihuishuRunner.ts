@@ -37,7 +37,15 @@ export class ZhsRunnerError extends Error {
 }
 export class ZhihuishuRunner {
   private entries = new Map<number, Entry>();
-  private answerPolicy: AnswerPolicy = { autoAnswer: false, autoSubmit: false };
+  private answerPolicy: AnswerPolicy = { autoAnswer: true, autoSubmit: true };
+  private running = false;
+  private updateRunning() {
+    const running = [...this.entries.values()].some(e => e.view.state === "running");
+    if (running !== this.running) {
+      this.running = running;
+      this.options.onRunningChange?.(running);
+    }
+  }
   getAnswerPolicy() { return { ...this.answerPolicy }; }
   setAnswerPolicy(policy: AnswerPolicy) {
     const parsed = answerPolicySchema.parse(policy);
@@ -49,7 +57,7 @@ export class ZhihuishuRunner {
     }
     return this.getAnswerPolicy();
   }
-  constructor(private options: { enabled: boolean; python: string; worker: string; packaged?: boolean; maxSessions?: number; loginTimeoutMs?: number; taskTimeoutMs?: number }) {}
+  constructor(private options: { enabled: boolean; python: string; worker: string; packaged?: boolean; maxSessions?: number; loginTimeoutMs?: number; taskTimeoutMs?: number; onRunningChange?: (running: boolean) => void }) {}
 
   snapshot(userId: number): ZhsSnapshot {
     return structuredClone(this.entries.get(userId)?.view ?? this.blank());
@@ -75,6 +83,7 @@ export class ZhihuishuRunner {
     e.busy = false;
     e.view.state = state; e.view.message = message; e.view.loggedIn = false; e.view.qr = null;
     e.view.courses = [];
+    this.updateRunning();
     this.log(e, message);
     if (e.child) {
       const child = e.child;
@@ -135,6 +144,7 @@ export class ZhihuishuRunner {
           case "courseDone": e.view.completed = event.completed; this.log(e, `已处理 ${event.completed} / ${e.view.total} 门课程`); break;
           case "done":
             e.view.state = "completed"; e.view.message = "任务已结束，请在智慧树核对学习记录"; e.busy = false;
+            this.updateRunning();
             this.log(e, e.view.message); this.deadline(e, 30 * 60_000, "会话已过期，请重新扫码"); break;
           case "error": this.finish(e, "error", event.message); break;
         }
@@ -166,7 +176,14 @@ export class ZhihuishuRunner {
     e.view.activity = { message: "正在启动课程任务", updatedAt: new Date().toISOString() };
     this.log(e, `开始处理 ${courses.length} 门课程，${speed} 倍速；自动作答${this.answerPolicy.autoAnswer ? "开启" : "关闭"}，自动提交${this.answerPolicy.autoSubmit ? "开启" : "关闭"}`);
     this.deadline(e, this.options.taskTimeoutMs ?? 2 * 60 * 60_000, "本次运行已达到两小时上限，请核对进度后重新连接");
-    this.send(e, { action: "run", courses, speed, ...this.answerPolicy }); return this.snapshot(userId);
+    try {
+      this.updateRunning();
+      this.send(e, { action: "run", courses, speed, ...this.answerPolicy });
+    } catch (error) {
+      this.finish(e, "error", "启动任务失败，请重新连接");
+      throw error;
+    }
+    return this.snapshot(userId);
   }
   stop(userId: number) {
     const e = this.entries.get(userId);

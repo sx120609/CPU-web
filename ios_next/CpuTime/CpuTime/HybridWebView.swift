@@ -408,6 +408,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         configuration.applicationNameForUserAgent = "CPUWebIOSApp/1 CPUTimeNative/1"
 
         let webView = ImmersiveWebView(frame: .zero, configuration: configuration)
+        webView.onFootChange = { [weak self] _ in self?.applyPageFoot() }
         webView.allowsLinkPreview = false
         webView.allowsBackForwardNavigationGestures = true
         webView.isOpaque = false
@@ -574,6 +575,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           nativeAuthFallback: Boolean(window.CPUTimeNative?.__cpuNativeAuthFallback),
           nativeBridgeError: window.__cpuNativeBridgeError || null,
           nativeIosMarker: document.documentElement?.dataset?.cpuIosNext || null,
+          footClear: document.documentElement.hasAttribute('data-cpu-foot-clear'),
+          bottomClearance: getComputedStyle(document.documentElement).getPropertyValue('--cpu-ios-bottom-clearance').trim(),
           inner: [innerWidth, innerHeight],
           vv: [Math.round(visualViewport.width), Math.round(visualViewport.height)],
           docScroll: [document.scrollingElement.scrollTop, document.scrollingElement.scrollHeight],
@@ -1388,9 +1391,27 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         // network report. API requests are handled by the Web page itself.
         errorMessage = nil
         serviceUnavailableMessage = nil
+        applyPageFoot()
         guard let url, let path = Self.path(for: url) else { return }
         currentPath = path
         onRoute?(path, activeTab.rawValue)
+    }
+
+    /// Tells the page whether the native tab bar covers its foot. A new
+    /// document starts without the attribute, so this runs after every load.
+    private func applyPageFoot() {
+        guard let webView = webView as? ImmersiveWebView else { return }
+        let foot = webView.foot
+        let script = """
+        (() => {
+          const root = document.documentElement;
+          if (!root) return;
+          root.toggleAttribute('data-cpu-foot-clear', \(!foot.tabBarCovers));
+          root.style.setProperty('--cpu-ios-home-indicator', '\(Int(foot.homeIndicator.rounded()))px');
+        })();
+        true;
+        """
+        webView.evaluateJavaScript(script)
     }
 
     fileprivate func openNativeRoute(_ path: String) {
@@ -1458,6 +1479,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           const style = document.createElement('style');
           style.textContent = `
             html[data-cpu-ios-next] { --cpu-ios-bottom-clearance: 96px; }
+            /* A tab bar along the top (iPad) or down the trailing edge (iPhone
+               Duo) leaves only the home indicator at the foot of the page. */
+            html[data-cpu-ios-next][data-cpu-foot-clear] { --cpu-ios-bottom-clearance: var(--cpu-ios-home-indicator, 0px); }
             html[data-cpu-ios-next][data-cpu-page-navigation] { --cpu-ios-bottom-clearance: 0px; }
             /* The native shell supplies both bars. The Web top bar stays in the
                DOM so its drawer and account actions remain reusable. */
@@ -1931,9 +1955,46 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     }
 }
 
+/// What lies over the foot of the page: the floating tab bar, or only the
+/// home indicator when the tab bar sits along the top (iPad) or down the
+/// trailing edge (iPhone Duo).
+private struct NativePageFoot: Equatable {
+    var tabBarCovers = true
+    var homeIndicator: CGFloat = 0
+}
+
 /// WebKit receives no extra bottom safe-area inset; the native tab bar floats
 /// over the edge-to-edge page instead of reserving another blank strip.
 private final class ImmersiveWebView: WKWebView {
+    private(set) var foot = NativePageFoot()
+    var onFootChange: ((NativePageFoot) -> Void)?
+    /// SwiftUI lifts the page above the keyboard, which would read as a tab
+    /// bar that moved away. The foot is left as it was until the keyboard goes.
+    private var keyboardShown = false
+    private var keyboardObservers: [NSObjectProtocol] = []
+
+    override init(frame: CGRect, configuration: WKWebViewConfiguration) {
+        super.init(frame: frame, configuration: configuration)
+        let center = NotificationCenter.default
+        keyboardObservers = [
+            center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.keyboardShown = true
+            },
+            center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.keyboardShown = false
+                self?.setNeedsLayout()
+            },
+        ]
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    deinit {
+        keyboardObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
     override var safeAreaInsets: UIEdgeInsets {
         var insets = super.safeAreaInsets
         if let window {
@@ -1941,6 +2002,34 @@ private final class ImmersiveWebView: WKWebView {
         }
         insets.bottom = 0
         return insets
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        updateFoot()
+    }
+
+    // An inset that stays zero never reports a change, so placement and size
+    // changes are checked as well.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateFoot()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateFoot()
+    }
+
+    private func updateFoot() {
+        guard let window, !keyboardShown else { return }
+        // The page ignores the bottom safe area, so UIKit's inset here is what
+        // covers its foot. More than the device's own inset means the tab bar.
+        let device = max(0, window.safeAreaInsets.bottom - (window.bounds.maxY - convert(bounds, to: window).maxY))
+        let next = NativePageFoot(tabBarCovers: super.safeAreaInsets.bottom > device + 8, homeIndicator: device)
+        guard next != foot else { return }
+        foot = next
+        onFootChange?(next)
     }
 }
 

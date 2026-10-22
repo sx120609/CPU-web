@@ -1,4 +1,3 @@
-import { isAuthorBlocked } from "../services/userBlock";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
@@ -8,7 +7,7 @@ import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCa
 import { getFeatures } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
-import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
+import { decodeTopicsForViewerForList, forumAuthorReputationSelect } from "../services/forumPresentation";
 import {
   askCampusAssistant,
   campusActionToSearchService,
@@ -110,7 +109,7 @@ searchRouter.get("/", async (req, res, next) => {
     if (!servicesOnly && forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
 
     const cacheParts = [
-      "retired-boards-v1",
+      "retired-boards-v2",
       q,
       servicesOnly ? "services-only" : "all-content",
       forumAccessEnabled ? "forum-enabled" : "announce-only",
@@ -130,8 +129,8 @@ searchRouter.get("/", async (req, res, next) => {
           orderBy: { lastReplyAt: "desc" },
           take: 10,
           include: {
-            board: { select: { slug: true, name: true } },
-            author: { select: { nickname: true } },
+            board: { select: { slug: true, name: true, color: true, type: true } },
+            author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
             tags: { include: { tag: true } },
           },
         }),
@@ -165,16 +164,8 @@ searchRouter.get("/", async (req, res, next) => {
     });
 
     ok(res, {
-      topics: topics.filter((topic: any) => !isAuthorBlocked(topic.authorId, req.user)).map((topic: any) => {
-        const presented = sanitizeLostFoundTopicFields(topic, req.user);
-        return {
-          ...presented,
-          metadata: safeJson(presented.metadata),
-          tags: Array.isArray(presented.tags)
-            ? presented.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
-            : [],
-        };
-      }),
+      // 缓存里是原始行，匿名作者按当前查看者解码，和首页、板块列表同一出口
+      topics: await decodeTopicsForViewerForList(topics, req.user),
       courses: courses.map((c: any) => ({
         ...c,
         teachers: (c.courseTeachers ?? []).map((ct: any) => ({
@@ -478,10 +469,6 @@ searchRouter.post(
   },
 );
 
-function safeJson(s: string | null | undefined) {
-  if (!s) return {};
-  try { return JSON.parse(s); } catch { return {}; }
-}
 
 function writeAssistantEvent(res: any, event: string, payload: unknown) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);

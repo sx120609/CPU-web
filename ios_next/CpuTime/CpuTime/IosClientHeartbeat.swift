@@ -118,6 +118,7 @@ final class IosClientHeartbeat {
         case .systemMedium: return "systemMedium"
         case .systemLarge: return "systemLarge"
         case .systemExtraLarge: return "systemExtraLarge"
+        case .systemExtraLargePortrait: return "systemExtraLargePortrait"
         case .accessoryCircular: return "accessoryCircular"
         case .accessoryRectangular: return "accessoryRectangular"
         case .accessoryInline: return "accessoryInline"

@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Monitor, OfficeBuilding, Phone, Tools, Trophy } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, MapLocation, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Monitor, OfficeBuilding, Phone, Tools, Trophy } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -143,6 +143,21 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "school_calendar",
     accent: "#7c3aed",
     iconComponent: Calendar,
+  },
+  {
+    slug: "campus_3d",
+    name: "三维校园",
+    summary: "拖动、旋转、缩放的江宁校区三维地图",
+    description: "按卫星影像、OpenStreetMap 和实景照片还原的江宁校区三维模型，可搜索楼宇和宿舍楼号，切换四季与昼夜。非官方模型，位置与通行以校内指引为准。",
+    icon: "map",
+    status: "ready",
+    category: "校园指南",
+    routeName: "service-campus-3d",
+    componentKey: "campus_3d",
+    accent: "#2563eb",
+    iconComponent: MapLocation,
+    badge: "3D",
+    badgeType: "primary",
   },
   {
     slug: "venue_reservation",

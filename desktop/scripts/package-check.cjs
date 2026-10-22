@@ -24,6 +24,7 @@ const has = (target) => entries.includes(target);
 const required = [
   "/package.json",
   "/dist/electron/zhihuishu.js",
+  "/dist/electron/zhihuishu-background.js",
   "/dist/electron/zhihuishu-preload.js",
   "/dist/zhihuishu-runner.cjs",
   "/dist/zhihuishu/index.html",

@@ -16,7 +16,18 @@ const QUERY_SYNONYMS: Array<{ pattern: RegExp; terms: string[] }> = [
   { pattern: /流程|步骤|手续|怎么办理|如何办理|怎么申请|如何申请/gu, terms: ["程序", "流程", "步骤", "办理", "手续"] },
   { pattern: /条件|资格|门槛/gu, terms: ["条件", "资格", "要求"] },
   { pattern: /材料|交什么|提交什么/gu, terms: ["材料", "提交", "附件"] },
+  // 也切开“硕士学费”这类连写：否则“士学”会去匹配制度里到处都有的“硕士学位”“学士学位”。
+  { pattern: /学费|收费标准|收费/gu, terms: ["学费", "收费"] },
+  // 问“后果”的，规定里写的是处分、处理、不得、取消、记零分。
+  { pattern: /有什么后果|什么后果|后果|会怎么样|会怎样|怎么处理|如何处理|怎么处罚|会不会被/gu, terms: ["处分", "处理", "后果", "不得", "取消", "记为", "0 分|零分"] },
+  // “处分多久能解除”切出的“分多”“能解”会拉低覆盖率，整段换成期限类说法。
+  { pattern: /多长时间|多久|多长|期限|有效期/gu, terms: ["期限", "时间", "多久"] },
+  // “我是2021级”：年份另作一个词；“级”匹配过渡条款的区间写法（“2020级至2022级”
+  // “2024级及之前”“从2025级起”），原文里往往没有用户那一年。
+  { pattern: /(?<=\d)\s*级/gu, terms: ["级至", "级及之前", "级及以前", "级及以后", "级以后", "级起", "级开始", "级入学"] },
 ];
+// 问“按哪个文件”“依据什么”的问法词：切成“个文”“金按”这类碎片只会稀释覆盖率。
+const QUERY_NOISE = /按照?哪(?:个|份|一个|一份|种|条|版)?(?:文件|规定|办法|版本)?|哪(?:个|份|一个|一份|版)(?:文件|规定|办法|版本)?|依据什么|根据什么/gu;
 const SYNONYM_MARKER_BASE = 0xe000;
 const STOP_BIGRAMS = new Set([
   "请问", "有没", "没有", "有人", "人知", "知道", "谁知", "怎么", "么办", "什么", "为什", "如何", "可以", "能不",
@@ -26,6 +37,30 @@ const STOP_BIGRAMS = new Set([
   "情况", "怎样", "哪里", "哪个", "哪些", "多少", "有点", "比较", "真的", "其实", "觉得", "感觉", "请教", "帮忙",
   "麻烦", "急急", "大佬", "宝子", "家人", "姐妹", "兄弟", "有无", "能否", "可否", "会不", "不会", "要不", "不要",
 ]);
+
+// 学生口语 → 规定里的写法。只补充、不替换：原话仍参与检索，向量模型也能看到正式说法。
+const CAMPUS_TERMS: Array<[RegExp, string]> = [
+  [/挂科|挂了|不及格/u, "考核不合格 不及格 补考 重修"],
+  [/综测/u, "综合素质测评"],
+  [/保研|推免/u, "推荐免试攻读研究生"],
+  [/绩点|gpa/iu, "平均学分绩点"],
+  [/四六级|四级|六级|cet/iu, "大学英语四级 六级考试成绩"],
+  [/体测/u, "学生体质健康测试"],
+  [/逃课|翘课|旷课/u, "旷课 无故缺课 考勤"],
+  [/挂学籍|休学/u, "休学 保留学籍"],
+  [/转专业/u, "转专业 专业调整"],
+  [/处分.{0,4}(?:撤销|消除|取消)|销处分/u, "解除处分"],
+  [/学位证/u, "授予学位"],
+  [/毕业证/u, "准予毕业 毕业证书"],
+  [/奖学金.{0,4}(?:多少|几等|金额)/u, "奖励标准 每人每年"],
+];
+
+/** 在问题后补上口语对应的规定写法，关键词和语义两路检索共用。 */
+export function expandCampusQuery(query: string) {
+  const text = String(query || "").trim();
+  const extra = CAMPUS_TERMS.filter(([pattern]) => pattern.test(text)).map(([, terms]) => terms);
+  return extra.length ? `${text} ${extra.join(" ")}` : text;
+}
 
 /** NFKC 统一全角半角，小写，空白折叠，便于子串匹配。 */
 export function normalizeKnowledgeText(value: string) {
@@ -55,7 +90,7 @@ export function knowledgePlainText(value: string) {
  * 英文和数字按整词。顺序保留，越靠前越重要（标题在前）。
  */
 export function extractKnowledgeQueryTerms(value: string, limit = MAX_QUERY_TERMS) {
-  let text = normalizeKnowledgeText(value).replace(/[\uE000-\uE0FF]/gu, " ");
+  let text = normalizeKnowledgeText(value).replace(/[\uE000-\uE0FF]/gu, " ").replace(QUERY_NOISE, " ");
   QUERY_SYNONYMS.forEach((synonym, index) => {
     text = text.replace(synonym.pattern, ` ${String.fromCharCode(SYNONYM_MARKER_BASE + index)} `);
   });
@@ -98,6 +133,20 @@ export type KnowledgeIndexEntry = {
 
 export type RankedKnowledgeEntry<T> = { entry: T; coverage: number; rank: number };
 
+export type KnowledgeTermStats = { total: number; frequency: number[] };
+
+/** 每个查询词在多少条目里出现，供 rankKnowledgeEntries 的 corpusStats 复用。 */
+export function knowledgeTermStats(entries: Iterable<KnowledgeIndexEntry>, terms: string[]): KnowledgeTermStats {
+  const alternatives = terms.slice(0, MAX_QUERY_TERMS).map((term) => term.split("|"));
+  const frequency = new Array<number>(alternatives.length).fill(0);
+  let total = 0;
+  for (const entry of entries) {
+    total += 1;
+    alternatives.forEach((group, index) => { if (group.some((term) => entry.bodyKey.includes(term))) frequency[index] += 1; });
+  }
+  return { total, frequency };
+}
+
 /**
  * 命中覆盖率 = 命中词的 idf 加权和 / 全部查询词的 idf 加权和；标题命中额外加分，
  * 再乘调用方给的先验（时效、可信度、回复数）。覆盖率不够或只命中一个词的不要。
@@ -107,6 +156,9 @@ export function rankKnowledgeEntries<T extends KnowledgeIndexEntry>(
   terms: string[],
   options: {
     allow?: (entry: T) => boolean;
+    /** 用 knowledgeTermStats 预先算好的全库词频，而不是 entries 自己的：在一份文件里挑
+     * 条款时，文件内只出现一两次的词正是区分条款的词，不能按“偶然出现”压低。 */
+    corpusStats?: KnowledgeTermStats;
     prior?: (entry: T) => number;
     minCoverage: number;
     limit: number;
@@ -134,6 +186,10 @@ export function rankKnowledgeEntries<T extends KnowledgeIndexEntry>(
     if (textMask) hits.push({ entry, textMask, titleMask });
   }
   if (!hits.length) return [];
+  if (options.corpusStats) {
+    total = options.corpusStats.total;
+    options.corpusStats.frequency.slice(0, count).forEach((frequency, index) => { documentFrequency[index] = frequency; });
+  }
   // 越靠前的词（标题、问题本身）权重越高，后面的正文细节只作补充。
   const weights = Array.from({ length: count }, (_, index) => 1 / (1 + index / 12));
   const rawIdf = (frequency: number) => Math.log(1 + (total - frequency + 0.5) / (frequency + 0.5));
