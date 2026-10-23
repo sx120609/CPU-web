@@ -111,6 +111,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .source summary::after { content: "›"; font-size: 16px; transform: rotate(90deg); transition: transform .2s; }
 .source[open] summary::after { transform: rotate(-90deg); }
 .source p { margin: 6px 0 0; line-height: 1.5; }
+.source a { color: var(--label); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.source a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 
 .dock { position: absolute; z-index: 5; left: 50%; transform: translateX(-50%); bottom: calc(18px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
   display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 16px; border-radius: 999px; flex-wrap: nowrap; }

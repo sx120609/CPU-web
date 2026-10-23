@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "objective": "持续优化3D地图，细节与实际对齐，全面核验。",
+  "status": "in_progress",
+  "checkedOn": "2026-10-23",
+  "worktree": "CPU-web-campus3d",
+  "branch": "feat/campus-3d",
+  "baselineCommit": "d4e25ba966d70ad0ec71d40dfbe86bfe285687c8",
+  "route": "/services/tools/yaoda-can-fly/campus-3d",
+  "story": "从校园地标列表搜索地点，查看有来源的建筑资料，在三维场景中定位并探索；建筑、道路与景观需逐项与实际核对。",
+  "sources": [
+    {
+      "url": "https://jjc.cpu.edu.cn/71/8b/c499a225675/page.htm",
+      "title": "游泳池改扩建项目消防咨询服务询价公告",
+      "publishedOn": "2025-07-08",
+      "supports": "公告载明地上2层、地下1层、建筑高度14.80米。属于项目公告，不是竣工测绘。"
+    },
+    {
+      "url": "https://www.cpu.edu.cn/b1/34/c11509a241972/page.htm",
+      "title": "我校江宁校区游泳馆隆重开馆",
+      "publishedOn": "2026-07-01",
+      "supports": "室内恒温游泳馆于2026-07-01正式开馆。"
+    },
+    {
+      "url": "https://jjh.cpu.edu.cn/article/17511",
+      "title": "我校海鲸天悦运动健身中心正式开馆",
+      "publishedOn": "2026-09-20",
+      "supports": "海鲸天悦运动健身中心位于游泳馆内，开馆活动日期为2026-09-18。"
+    },
+    {
+      "url": "https://jjc.cpu.edu.cn/506/list.htm",
+      "title": "已建项目",
+      "supports": "游泳池改扩建项目2026-06-03通过验收；页面配图仅能作为官方项目图参考，不能当作当前实景测绘。"
+    },
+    {
+      "url": "https://jjc.cpu.edu.cn/ba/c9/c494a244425/page.htm",
+      "title": "关于江宁校区南大门封闭施工的通告",
+      "publishedOn": "2026-09-21",
+      "supports": "通知中的封闭日期为2026-09-26至2026-10-07，不能据此把10月23日的南门设为封闭；也不能据通知到期断言现场已经开放。"
+    }
+  ],
+  "fixed": [
+    {
+      "id": "natatorium-height",
+      "before": "绘制屋面16米，女儿墙顶16.6米，列表及详情四舍五入显示17米。",
+      "after": "建筑初始化、屋面与女儿墙总高、详情和列表统一到公告14.8米。",
+      "evidence": "campus3dMetadata.test.mjs执行实际建筑数据准备及buildNatatorium，检查生成面最高标高；浏览器详情显示14.8 m。",
+      "remaining": "现轮廓仍由旧泳池轮廓外扩，入口与立面构造尚未逐面实景核验。"
+    },
+    {
+      "id": "dorm-count",
+      "before": "文澜苑D2的两个OSM部分重复计数，显示7栋；H6/H7的共享模型被计为1栋，文正苑显示3栋。",
+      "after": "按苑名与楼号去重并展开合并楼号，分别显示6栋、4栋；保留所有几何部分与定位关系。",
+      "evidence": "真实OSM数据及补建数据覆盖10个宿舍组团；执行实际mapNames确认D2保留两个模型部分。浏览器搜索与详情均确认D1–D6和H4–H7。",
+      "limitation": "本轮证据证明楼号与模型的一致性，不证明所有宿舍楼号已由当前官方总平面图逐栋确认。"
+    },
+    {
+      "id": "facts-and-provenance",
+      "before": "估算的高度、占地等直接称为高度/占地；卫星补建的文正苑详情默认声称轮廓来自OpenStreetMap。",
+      "after": "模型估算数据标明模型与约数，公告数据注明来源；依据建筑实际src展示轮廓出处，保留推断说明；游泳馆附三条学校资料链接。",
+      "evidence": "单元检查加浏览器读取详情，确认来源切换后旧链接不会残留，卫星补建不再声称来自OSM。"
+    },
+    {
+      "id": "natatorium-use",
+      "after": "补充正式开馆日期、室内恒温用途与海鲸天悦运动健身中心；搜索海鲸可定位游泳馆。",
+      "evidence": "官方公告与浏览器搜索实际结果。"
+    }
+  ],
+  "verification": {
+    "automated": {
+      "command": "node --test web/tests/campus3dMetadata.test.mjs",
+      "result": "7 passed, 0 failed",
+      "scope": "真实地图数据的宿舍楼号统计、实际模型数据准备与命名、游泳馆生成高度、公告与估算尺寸、来源分类。"
+    },
+    "typeCheck": {
+      "command": "npm run type-check --prefix web",
+      "result": "passed",
+      "limitation": "app.js与placeMetadata.js为JS，vue-tsc不是这两个文件的行为验证。"
+    },
+    "browser": {
+      "environment": "本地Vite，127.0.0.1:5186，Codex内置Chromium",
+      "passed": [
+        "场景加载进度30/30，canvas有实际3D像素输出。",
+        "游泳馆搜索结果14.8 m，详情层数、公告高度和三个官方来源链接正确。",
+        "搜索海鲸返回游泳馆，详情显示馆内健身中心。",
+        "文澜苑列表及详情显示6栋，H4–H7文正苑显示4栋，D2两个部分保留。",
+        "文正苑详情来源为卫星影像近似重建，切换地点后旧来源链接清除。",
+        "390×844竖屏、844×390横屏：详情未横向溢出，选中后列表自动收起；已恢复默认视口。"
+      ],
+      "limitations": [
+        "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
+        "本地未启动后端，站点初始化请求返回500；地图数据在客户端可独立加载。联机presence、登录和生产API未验证。",
+        "手机仅测试视口布局，未模拟触摸指针，未测试原生设备或WebKit。",
+        "类型检查之后的追加改动仅为JS及CSS；追加JS改动已由回归和浏览器重载检查。"
+      ]
+    }
+  },
+  "remainingRequirements": [
+    {
+      "scope": "建筑与实际对齐",
+      "status": "incomplete",
+      "nextEvidence": "取得可追溯的现状总平面图/有日期的实景资料，逐栋复核西北科研楼、活动中心、研究生公寓、游泳馆、食堂、图书馆及教学楼轮廓、楼层、入口、立面。"
+    },
+    {
+      "scope": "道路、水体与景观",
+      "status": "incomplete",
+      "nextEvidence": "复核路口、校门、桥梁、湖岸、岛屿、球场尺寸和围栏；分清历史通知与当前施工状态。北门19点关闭的现有说明尚缺当前有效依据。"
+    },
+    {
+      "scope": "场景交互",
+      "status": "incomplete",
+      "nextEvidence": "逐项验证鸟瞰/导览/实地看看、测距、碰撞、步行骑行驾驶、水域与桥面高度、选择高亮和导航回退。"
+    },
+    {
+      "scope": "跨设备与画面",
+      "status": "incomplete",
+      "nextEvidence": "恢复可用的整页截图；测试触摸、暗色、大字、减少动效、低性能设备、WebKit及原生壳。不得将DOM尺寸检查等同于完整视觉核验。"
+    },
+    {
+      "scope": "联机与资源生命周期",
+      "status": "not_verified",
+      "nextEvidence": "本地后端、presence会话隔离与断线、多用户同步、反复进出页面资源释放、WebGL丢失恢复。"
+    },
+    {
+      "scope": "生成源维护",
+      "status": "needs_follow_up",
+      "nextEvidence": "app.js声明来自cpu-jiangning-3d/src/main.js导出；现有工作树及已搜索的本地项目目录未找到该源项目或export_cpuweb.py。再次导出时须保留本轮placeMetadata模块、导入和调用点，避免覆盖修正。"
+    }
+  ],
+  "publication": {
+    "pushed": false,
+    "deployed": false,
+    "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
+  }
+}

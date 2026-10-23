@@ -8,6 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { NATATORIUM, DORM_LETTER, dormSummary, heightLabel, buildingFacts, geometrySource } from './placeMetadata.js';
 
 export function mountCampus3D(root, opts) {
 let DISPOSED = false, RAF = 0;
@@ -325,7 +326,7 @@ for (const e of EXTRA) BLD.push({ name: e.name, p: e.p, src: e.src, extra: e, cl
 const poolPi = D.pi.find((q) => q.k === 'swimming_pool');
 if (poolPi) {
   const ob = obb(poolPi.p);
-  BLD.push({ name: '游泳馆', p: rectPoly(ob.cx, ob.cz, ob.L + 16, ob.W + 14, ob.ang), src: 'osm+', cls: { special: 'natatorium', fl: 2, cat: 'sport', label: '游泳馆', st: 'labw' } });
+  BLD.push({ name: '游泳馆', p: rectPoly(ob.cx, ob.cz, ob.L + 16, ob.W + 14, ob.ang), src: 'osm+', cls: { special: 'natatorium', fl: NATATORIUM.floors, h: NATATORIUM.height, cat: 'sport', label: '游泳馆', st: 'labw' } });
 }
 
 for (const b of BLD) {
@@ -418,14 +419,14 @@ const INFO = {
   '二食堂': { d: '学生第二食堂，四层，深灰面砖墙面配白色窗下板，转角立面有竖排“二食堂”字样；楼前常停满自行车。', s: '名称与位置：OpenStreetMap；外观：实景照片' },
   '体育馆': { d: '校园南部的综合体育馆，银灰色金属拱形屋面，正立面为带菱形桁架的玻璃幕墙。', s: '位置：OpenStreetMap；外观：实景照片' },
   '体育场': { d: '标准 400 米田径场，跑道为蓝色塑胶，西侧有白色悬挑顶棚看台；东侧另有足球场、篮球场群与六片蓝色网球场。', s: '位置：OpenStreetMap；跑道颜色与看台：卫星影像' },
-  '游泳馆': { d: '原室外游泳池，游泳池改扩建项目于 2026 年 6 月 3 日通过竣工验收。此处按基建处公布的白色馆体、深色横向条带与屋顶光伏建模。', s: '学校基建处“已建项目”' },
+  '游泳馆': { d: '由原室外游泳池改扩建为室内恒温游泳馆，2026 年 7 月 1 日正式开馆。项目公告载明地上 2 层、地下 1 层，建筑高度 14.80 米。馆内的海鲸天悦运动健身中心于 2026 年 9 月 18 日开馆。外形参照基建后勤处项目配图，轮廓仍为旧泳池位置上的近似重建。', s: '学校新闻、基建后勤处项目公告、教育发展基金会；核对日期：2026-10-23。建筑高度为项目公告值，非竣工实测；模型占地不等于项目总建筑面积。', links: NATATORIUM.sources },
   '药用植物园温室': { d: '药用植物园东区的展示温室，园内栽培多种药用植物，是药大最有特色的校园景观之一。', s: '位置：OpenStreetMap；简介：去哪儿网游记' },
   '实训楼': { d: '明湖东岸、药用植物园南侧的实训教学楼。', s: '位置：OpenStreetMap' },
   '综合研发楼': { d: '位于实训楼南侧，沿精业路布置的科研楼。', s: '位置：OpenStreetMap' },
 };
 const TEACH_DESC = '教学楼 A–E（求知、求实、求真、求新、求同）沿镜湖东侧一字排开，是公共课与考试的主要场所，也是全国硕士研究生招生考试中国药科大学考点的考场所在地。居中的求真楼面朝湖边大道，白色柱廊前立着雕像、摆着红色花箱；求实楼与求新楼的长翼在两侧夹出前院，端部楼梯塔高出屋面，三层连廊把它们和求真楼连在一起。求知、求实、求新、求同四栋各自围合一个内院。灰色立面、白色楼层线。';
 const LAB_DESC = '沿校内河道西岸排列的学院科研楼，深浅灰色面砖墙面，楼梯间塔楼高出屋面，顶部为白色玻璃“灯笼”，倒映在河道中。';
-const DORM_DESC = '本科生公寓按“文”字组团命名：文萃、文轩、文菁、文澜、文枢、文昌、文思、文德等苑。不同组团采用米白、砖色或灰色墙面，配白色窗框和生活阳台；北部文思苑为白色与深蓝相间立面，文德苑（研究生公寓）为米色与深棕横带。';
+const DORM_DESC = '学生公寓按“文”字组团命名：文萃、文轩、文菁、文澜、文枢、文昌、文思、文德等苑。不同组团采用米白、砖色或灰色墙面，配白色窗框和生活阳台；北部文思苑为白色与深蓝相间立面，文德苑（研究生公寓）为米色与深棕横带。';
 
 const stage = $('#stage');
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
@@ -2051,7 +2052,8 @@ function buildGreenhouse(b) {
   b.h = h + 2.6;
 }
 function buildNatatorium(b) {
-  const P = b.p, h = 16;
+  // h is the roof deck; the parapet extends another 0.6 m above it.
+  const P = b.p, h = NATATORIUM.height - 0.6;
   addWalls('f:glassGrey', P, 0, 5.5); addWalls('trim:white', P, 5.5, 7); addWalls('f:ribbonGlass', P, 7, h - 1.5);
   addWalls('plinth', insetPoly(P, -0.05), 0, 0.7); addCap('roof:light', P, h); addParapet('trim:white', insetPoly(P, -0.6), h - 1.5, 2.1, 0.65);
   const ob = obb(P);
@@ -2063,8 +2065,8 @@ function buildNatatorium(b) {
     for (const t of [e.len * 0.18, e.len * 0.78]) { const a = q(t), c = q(t + 7); addBeam('trim:white', [a[0], 0.3, a[1]], [c[0], h - 0.2, c[1]], 1.6); }
   }
   const e = edgeFacing(P, b.c[0] - 80, b.c[1], 10);
-  if (e) addSign('游泳池', e.mx + e.nx * 0.15 + e.dx * e.len * 0.25, 9.5, e.mz + e.nz * 0.15 + e.dz * e.len * 0.25, e.nx, e.nz, 2.4, { color: '#3d4247', family: '"Noto Serif SC", serif', metal: 0.3 });
-  b.h = h + 0.6;
+  if (e) addSign('游泳馆', e.mx + e.nx * 0.15 + e.dx * e.len * 0.25, 9.5, e.mz + e.nz * 0.15 + e.dz * e.len * 0.25, e.nx, e.nz, 2.4, { color: '#3d4247', family: '"Noto Serif SC", serif', metal: 0.3 });
+  b.h = NATATORIUM.height;
 }
 function buildStation(b) {
   const ob = obb(b.p), cx = ob.cx, cz = ob.cz, ux = ob.ux, uz = ob.uz, ang = ob.ang, L = ob.L, W = Math.max(20, ob.W);
@@ -4351,7 +4353,7 @@ function buildPlaces() {
     if (!label || seen.has(label)) return; seen.add(label);
     const cat = b.cls.cat || 'teach';
     const major = /图书馆|行政楼|学院实验楼|体育馆|药学博物馆|食堂|教学楼|游泳馆/.test(label);
-    PLACES.push({ name: label, cat, bld: [i], x: b.c[0], z: b.c[1], h: b.h, major, inferred: /inferred/.test(b.src || '') });
+    PLACES.push({ name: label, cat, bld: [i], x: b.c[0], z: b.c[1], h: b.h, major, inferred: /inferred/.test(b.src || ''), sub: b.cls.special === 'natatorium' ? '室内恒温泳池 · 海鲸天悦运动健身中心' : undefined });
   });
   BLD.forEach((b, i) => { if (b.extra?.nolabel && b.name) { const p = PLACES.find((q) => q.name === b.name); if (p) p.bld.push(i); } });
   for (const [g, idx] of Object.entries(dormGroups)) {
@@ -4376,7 +4378,6 @@ function buildPlaces() {
     p.label = addLabel(p.name, p.x, (p.h || 10) + (p.unit ? 1.5 : p.water ? 1 : 3), p.z, { cls: p.unit ? 'unit' : p.water ? 'water' : p.major ? 'major' : p.dorm ? '' : 'minor', color: p.color, icon: p.icon, max: p.unit ? 480 : p.major || p.water ? 2600 : p.dorm ? 1100 : 750, onClick: () => select(p), place: p, prio: /^图书馆$/.test(p.name) ? 12 : /^(正门|兴药楼|镜湖)$/.test(p.name) ? 11 : p.major ? 10 : p.water ? 9 : p.dorm ? 5 : p.unit ? 2 : 3 });
   }
 }
-const DORM_LETTER = { 文轩苑: 'A', 文菁苑: 'B', 文萃苑: 'C', 文澜苑: 'D', 文枢苑: 'E', 文昌苑: 'F', 文思苑: 'G', 文华苑: 'H', 文正苑: 'H' };
 const MAP_NAMES = {
   学院实验楼: ['兴药楼', '新大楼 · 一期 / 二期（学院实验楼）'], 会议中心: ['大礼堂', '学术报告厅 · 会议中心'], 同位素楼: ['核药中心'],
   '新建科研楼 A': ['成药性评价中心'], '新建科研楼 B': ['动物中心'], '新建科研楼 C': ['临床中心'], 综合门诊楼: ['医务室', '综合门诊楼'],
@@ -4400,10 +4401,11 @@ function mapNames() {
   }
   for (const p of PLACES) {
     if (!p.dorm) continue;
-    const L = DORM_LETTER[p.name], codes = p.bld.map((i) => BLD[i].code).filter(Boolean);
-    if (L === 'H') { const ns = codes.map((c) => c.match(/\d+/g)).flat().map(Number); p.name = `H${Math.min(...ns)}–${Math.max(...ns)} ${p.name}`; }
+    const L = DORM_LETTER[p.name], summary = dormSummary(p.bld.map(i => BLD[i])), codes = summary.codes;
+    p.dormCount = summary.count;
+    if (L === 'H' && summary.numbers.length) { const ns = summary.numbers; p.name = `H${Math.min(...ns)}–${Math.max(...ns)} ${p.name}`; }
     else if (L) p.name = `${L} ${p.name}`;
-    if (codes.length) p.sub = `学生公寓 · ${p.bld.length} 栋 · ${codes.join(' ')}`;
+    p.sub = `学生公寓 · ${summary.count} 栋${codes.length ? ` · ${codes.join(' ')}` : ''}`;
   }
   const med = BLD.findIndex((b) => !b.name && Math.hypot(b.c[0] - 301, b.c[1] - 114) < 12);
   if (med >= 0) { BLD[med].name = '医学楼'; PLACES.push({ name: '医学楼', cat: 'teach', bld: [med], x: BLD[med].c[0], z: BLD[med].c[1], h: BLD[med].h }); }
@@ -4421,16 +4423,8 @@ function mapNames() {
   if (lib >= 0) pt('药大文创', 'life', BLD[lib].c[0] - 16, BLD[lib].c[1] + 4, 6, '图书馆二楼', { bld: [lib], desc: '药大文创位于图书馆二楼。' });
 }
 function placeFacts(p) {
-  const facts = [];
-  if (p.bld) {
-    const bs = p.bld.map((i) => BLD[i]);
-    const area = bs.reduce((a, b) => a + b.area, 0), h = Math.max(...bs.map((b) => b.h));
-    const fl = bs[0].cls.fl;
-    if (!p.dorm) facts.push(['层数', bs[0].cls.special === 'gym' ? '大空间' : `${fl} 层`]);
-    facts.push(['高度', `${Math.round(h)} m`]);
-    facts.push(['占地', `${Math.round(area).toLocaleString('zh-CN')} m²`]);
-  }
-  if (p.area) facts.push(['水面', `${Math.round(p.area).toLocaleString('zh-CN')} m²`]);
+  const facts = buildingFacts(p, (p.bld || []).map(i => BLD[i]));
+  if (p.area) facts.push(['模型水面', `约 ${Math.round(p.area).toLocaleString('zh-CN')} m²`]);
   return facts;
 }
 function select(p) {
@@ -4451,11 +4445,15 @@ function select(p) {
   $('#infoDesc').textContent = desc;
   const facts = placeFacts(p), [lat, lon] = toLL(p.x, p.z);
   const cell = (k, v, wide) => { const d = elt('div'); if (wide) d.style.gridColumn = 'span 2'; d.append(elt('span', '', k), elt('b', '', v)); return d; };
-  $('#infoFacts').replaceChildren(...facts.map(([k, v], i) => cell(k, v, facts.length % 2 && i === facts.length - 1)), cell('坐标', `${lat.toFixed(5)}° N, ${lon.toFixed(5)}° E`, true));
-  let src = p.src || info?.s || '轮廓：OpenStreetMap';
+  $('#infoFacts').replaceChildren(...facts.map(([k, v], i) => cell(k, v, facts.length % 2 && i === facts.length - 1)), cell('参考坐标（WGS84）', `约 ${lat.toFixed(5)}° N, ${lon.toFixed(5)}° E`, true));
+  let src = p.src || info?.s || geometrySource(bs);
   if (bs.some((b) => /inferred/.test(b.src))) src += '。名称与位置为推断，以学校公布为准。';
   else if (bs.some((b) => b.src === 'sat')) src += '。OpenStreetMap 未收录，按卫星影像补建。';
   $('#infoSrc').textContent = src;
+  for (const link of info?.links || []) {
+    const a = elt('a', '', link.title); a.href = link.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    $('#infoSrc').append(document.createElement('br'), a);
+  }
   highlight(p);
   root.querySelectorAll('.row').forEach((el) => el.setAttribute('aria-current', String(el.dataset.name === p.name)));
 }
@@ -4490,7 +4488,7 @@ function buildPlaceList() {
       items.sort((a, b) => (b.major ? 1 : 0) - (a.major ? 1 : 0) || a.name.localeCompare(b.name, 'zh-CN'));
       for (const p of items) {
         const btn = document.createElement('button'); btn.className = 'row'; btn.dataset.name = p.name;
-        const meta = p.dorm ? `${p.bld.length} 栋` : p.bld ? `${Math.round(Math.max(...p.bld.map((i) => BLD[i].h)))} m` : '';
+        const meta = p.dorm ? `${p.dormCount} 栋` : p.bld ? heightLabel(p.bld.map(i => BLD[i])) : '';
         const glyph = elt('span', 'glyph'); glyph.style.setProperty('--c', p.color); glyph.appendChild(svgIcon(p.icon));
         btn.append(glyph, elt('span', 'name', p.name), elt('span', 'meta', meta));
         btn.addEventListener('click', () => { select(p); flyToPlace(p); if (innerWidth <= 760 || innerHeight <= 500) setSidebar(false); });
