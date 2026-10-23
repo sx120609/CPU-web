@@ -1525,5 +1525,259 @@
       "North/south building-number assignment",
       "Current entrances and ground access"
     ]
+  },
+  "trainingNorthAccess": {
+    "checkedOn": "2026-10-23",
+    "status": "unresolved_ground_registration",
+    "currentOsm": {
+      "url": "https://api.openstreetmap.org/api/0.6/map?bbox=118.9131,31.9061,118.9152,31.9072",
+      "file": "training-current-osm.xml",
+      "sha256": "9cf3422e942e5aaa2733e05dcaf386c310bb3de765b2aeaa7a62c42b0f850919",
+      "building": {
+        "way": 553656876,
+        "version": 2,
+        "timestamp": "2021-08-06T11:01:23Z",
+        "tags": {
+          "building": "university",
+          "name": "实训楼"
+        },
+        "noHeightOrFloorCount": true
+      },
+      "path": {
+        "way": 553656864,
+        "version": 2,
+        "timestamp": "2021-08-06T11:01:23Z",
+        "tags": {
+          "highway": "path"
+        },
+        "noWidthOrCoveredTag": true
+      }
+    },
+    "imagery": {
+      "zoom": 19,
+      "tileOrigin": [
+        435323,
+        213069
+      ],
+      "pixelSize": [
+        1024,
+        512
+      ],
+      "requestedBbox": [
+        118.91315,
+        31.90615,
+        118.91515,
+        31.9071
+      ],
+      "service": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+      "retrieved": "2026-10-23",
+      "metadataSample": {
+        "point": [
+          118.91415,
+          31.906625
+        ],
+        "scope": "center point only; not a date guarantee for the whole mosaic",
+        "status": "found",
+        "layerSelection": {
+          "serviceUrl": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=json",
+          "lod": {
+            "level": 19,
+            "resolution": 0.29858214164761665,
+            "scale": 1128.497176
+          },
+          "layer": {
+            "id": 9,
+            "name": "30cm Resolution Metadata",
+            "parentLayerId": -1,
+            "defaultVisibility": true,
+            "subLayerIds": null,
+            "minScale": 1700,
+            "maxScale": 850,
+            "type": "Feature Layer",
+            "geometryType": "esriGeometryPolygon",
+            "supportsDynamicLegends": true
+          }
+        },
+        "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/9/query?where=1%3D1&geometry=118.91415%2C31.906625&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE%2CSRC_ACC%2CSRC_RES%2CSRC_DESC%2CBlockName%2CReleaseName%2CMinMapLevel%2CMaxMapLevel%2CDrawOrder&returnGeometry=false&f=json",
+        "response": {
+          "displayFieldName": "NICE_NAME",
+          "fieldAliases": {
+            "SRC_DATE": "SRC_DATE",
+            "SRC_ACC": "SRC_ACC",
+            "SRC_RES": "SRC_RES",
+            "SRC_DESC": "SRC_DESC",
+            "BlockName": "BlockName",
+            "ReleaseName": "ReleaseName",
+            "MinMapLevel": "MinMapLevel",
+            "MaxMapLevel": "MaxMapLevel",
+            "DrawOrder": "DrawOrder"
+          },
+          "fields": [
+            {
+              "name": "SRC_DATE",
+              "type": "esriFieldTypeInteger",
+              "alias": "SRC_DATE"
+            },
+            {
+              "name": "SRC_ACC",
+              "type": "esriFieldTypeDouble",
+              "alias": "SRC_ACC"
+            },
+            {
+              "name": "SRC_RES",
+              "type": "esriFieldTypeDouble",
+              "alias": "SRC_RES"
+            },
+            {
+              "name": "SRC_DESC",
+              "type": "esriFieldTypeString",
+              "alias": "SRC_DESC",
+              "length": 25
+            },
+            {
+              "name": "BlockName",
+              "type": "esriFieldTypeString",
+              "alias": "BlockName",
+              "length": 100
+            },
+            {
+              "name": "ReleaseName",
+              "type": "esriFieldTypeString",
+              "alias": "ReleaseName",
+              "length": 30
+            },
+            {
+              "name": "MinMapLevel",
+              "type": "esriFieldTypeSmallInteger",
+              "alias": "MinMapLevel"
+            },
+            {
+              "name": "MaxMapLevel",
+              "type": "esriFieldTypeSmallInteger",
+              "alias": "MaxMapLevel"
+            },
+            {
+              "name": "DrawOrder",
+              "type": "esriFieldTypeSmallInteger",
+              "alias": "DrawOrder"
+            }
+          ],
+          "features": [
+            {
+              "attributes": {
+                "SRC_DATE": 20250616,
+                "SRC_ACC": 8.47,
+                "SRC_RES": 0.5,
+                "SRC_DESC": "WV02",
+                "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+                "ReleaseName": "Raster Basemaps 2025.R11",
+                "MinMapLevel": 12,
+                "MaxMapLevel": 19,
+                "DrawOrder": 80
+              }
+            }
+          ]
+        }
+      },
+      "attribution": "Esri, Vantor, Earthstar Geographics, GIS User Community",
+      "tiles": [
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435323",
+          "sha256": "cf6cf1cd0b6484de55e659b7f8f0cdfb8733fd38bce782cee0ac770f147017c8",
+          "localFile": "esri-19-213069-435323-cf6cf1cd0b64.jpg"
+        },
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435324",
+          "sha256": "57acc5a8ce3ceebbee28f5caf2959fee18b011f6d86938089b1984cb0f97d249",
+          "localFile": "esri-19-213069-435324-57acc5a8ce3c.jpg"
+        },
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435325",
+          "sha256": "6d704986c36e7fc74602c5dffc5bc50ec8aa99cebc90dbc2a32d327aa5323e8d",
+          "localFile": "esri-19-213069-435325-6d704986c36e.jpg"
+        },
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435326",
+          "sha256": "4d6e70bd026e53ffa2eb480e636904fbc8036e776a3a348a4dce331492e5c5a2",
+          "localFile": "esri-19-213069-435326-4d6e70bd026e.jpg"
+        },
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435323",
+          "sha256": "aad28bce1b116ae1d67080f74bd08b55f8b295f7789c15dbd042bfcd2295d9b4",
+          "localFile": "esri-19-213070-435323-aad28bce1b11.jpg"
+        },
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435324",
+          "sha256": "e32cfff2dc56a24c8162e7b7a51d576560376cd13770b478bc001dfcc6760fd0",
+          "localFile": "esri-19-213070-435324-e32cfff2dc56.jpg"
+        },
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435325",
+          "sha256": "2da56606b8e23d85242df344ec08d5e90b74a3e2f14dcfcdb5ee6ba267927115",
+          "localFile": "esri-19-213070-435325-2da56606b8e2.jpg"
+        },
+        {
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435326",
+          "sha256": "2ab9345b12d526a5c83326e5f9ca2eb0ef204209c839b41b9ee23ea00e3a786e",
+          "localFile": "esri-19-213070-435326-2ab9345b12d5.jpg"
+        }
+      ]
+    },
+    "overlay": {
+      "file": "training-current-overlay.png",
+      "sha256": "af3b7c91c6ca666618c9e08b8f3588e40dae9c84dc0d581eb78529e196f30de7"
+    },
+    "observations": [
+      "OSM north path runs close to the mapped building boundary; the current API retains the same geometry.",
+      "The georeferenced capture is dated 2025-06-16, with 8.47m published source accuracy at its center.",
+      "The visible roof is displaced relative to the mapped base, with different apparent offsets along the compound. This does not establish a surveyed roof-to-ground correction.",
+      "No covered passage or measured path width was established for this location."
+    ],
+    "schoolEvidence": [
+      {
+        "url": "https://gxy.cpu.edu.cn/ad/57/c12276a240983/page.htm",
+        "publishedOn": "2026-06-04",
+        "supports": "Engineering laboratories and room numbers 107, 210, 412, 502 in the training building; not a complete massing/floor-count survey."
+      },
+      {
+        "url": "https://jjc.cpu.edu.cn/30/41/c494a208961/page.htm",
+        "publishedOn": "2024-07-10",
+        "imageUrl": "https://jjc.cpu.edu.cn/_upload/article/images/44/61/d4c3645e448ba24993340d3fa53b/864491c3-f66e-4075-b1a9-8147bc874b53_d.png",
+        "file": "training-2024-terrace-render.png",
+        "sha256": "0b9a5e670d46b8dcf823bc1adb6789e04a10340c7cb80a49045c2c812c63c5a9",
+        "imageType": "design rendering of a terrace, NOT a site plan or dated as-built photograph",
+        "use": "Not used to place a ground passage or reproduce a current terrace."
+      },
+      {
+        "url": "https://gxy.cpu.edu.cn/c6/df/c12478a181983/page.htm",
+        "publishedOn": "2023-03-30",
+        "supports": "GMP center use and 4800m2 total center area. Its photographs are indoors and do not register the exterior footprint."
+      },
+      {
+        "url": "https://chem.glut.edu.cn/info/1232/10605.htm",
+        "publishedOn": "2024-10-08",
+        "eventWindow": [
+          "2024-09-19",
+          "2024-09-27"
+        ],
+        "imageUrl": "https://chem.glut.edu.cn/__local/3/AA/92/0E13E85E0ABB6B56CCB36A87081_ECD50392_2AD25.jpeg",
+        "file": "training-2024-visit.jpeg",
+        "sha256": "f256f503c3c273b32e922466e018137f483fb38b266395d1f5f404adb851aded",
+        "supports": "Entrance facade and canopy appearance only; image capture date and mapped doorway coordinates not independently established."
+      },
+      {
+        "url": "https://yxy.hbust.edu.cn/info/1150/5850.htm",
+        "publishedOn": "2026-07-14",
+        "eventWindow": [
+          "2026-07-03",
+          "2026-07-09"
+        ],
+        "imageUrl": "https://yxy.hbust.edu.cn/__local/A/A1/2A/FAC1BDA2D0E651EC7C78E586B82_49A270E8_B9029.png",
+        "file": "training-2026-visit.png",
+        "sha256": "c542546ec3cdbe0927a7e2c93304e1fa0fb6c224538c0d0893a7120b4fd5f0ab",
+        "supports": "Recent entrance view consistent with 2024 photograph. Does not expose the north path or establish its width."
+      }
+    ],
+    "decision": "Retain ground geometry pending stronger evidence. Do not narrow the path, translate the building, infer an underpass from collision, or extrude a new height split from roof displacement alone."
   }
 }

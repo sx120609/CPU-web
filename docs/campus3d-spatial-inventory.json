@@ -351,7 +351,11 @@
       "currentHeightVerified": false,
       "currentFacadeVerified": false,
       "entranceVerified": false,
-      "evidenceLinks": []
+      "evidenceLinks": [
+        "https://gxy.cpu.edu.cn/ad/57/c12276a240983/page.htm",
+        "https://www.openstreetmap.org/way/553656876",
+        "https://www.openstreetmap.org/way/553656864"
+      ]
     },
     {
       "key": "osm-way-553656877",

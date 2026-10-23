@@ -274,13 +274,20 @@
       "after": "碰撞网格、树木和单车完成后再生成行人；保留原道路与楼体，只在可通行区段生成连续往返轨迹，并为横向摆动留净空。出生点、避让目标和经过的整段路线检查实体、树干与街道物件；承认桥面，并按避让后的最终位置计算高度。无侧移时复用已验证路线，避免每帧全量重查。",
       "evidence": "可复现审计覆盖109栋建筑与12座桥。含终点的原规则197条路线中46条产生936个墙体接触采样；新205段路线152355个位置采样中墙体、水域、施工区接触均为0，保留417个桥面采样。8项新增回归覆盖实际步行碰撞、运行中的人物更新、薄墙避让、桥面高度、树干与实例化物件。",
       "remaining": "审计几何包含校园建筑与桥梁，未生成全部景观和停车实例；树木、单车等另以回归夹具验证。完整浏览器场景已启动并检查画面，但没有把截图视为每条路线或原生设备的全面验收。受限源轨迹、实际道路边界和入口仍需外部资料核对。"
+    },
+    {
+      "id": "height-aware-label-occlusion",
+      "before": "地标遮挡单独按整栋最大高度和完整平面轮廓判断，H6/H7低连廊上空、安评中心地面通道都会被误判为遮挡。",
+      "after": "地标遮挡与相机共用分层实体判断，保留低连接体上空和地面有顶通道的可见性，继续遮挡真实墙体，且保持地点自身楼体不遮掉自身标签。",
+      "evidence": "新增两项回归先复现旧逻辑错误，再与实际生成三角网格射线对照；高主体、低连廊墙体、上方连接体和邻侧地面墙均保留遮挡。",
+      "remaining": "该变更针对已有分区和通道；全图地标仍使用采样遮挡，其他专用楼体的细窄构件与标签布局仍需继续检查。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "67 passed, 0 failed (65 frontend + 2 server)",
-      "scope": "原59项通过，新增行人路线、运行更新、桥面高度与静态障碍8项。",
+      "result": "69 passed, 0 failed (67 frontend + 2 server)",
+      "scope": "原67项通过，新增低连廊与有顶通道地标遮挡2项；先复现旧逻辑失败，修正后与实际三角网格一致。",
       "limitation": "只证明已列源对应关系和模型实现。未以道路中心线测试替代估算路缘、NPC路径、现场尺寸或完整真机验证。",
       "pedestrianAudit": {
         "command": "node tools/campus3d-pedestrian-audit.mjs",
@@ -322,7 +329,8 @@
         "H6/H7详情显示两栋主体与低连接体，模型高度和来源保留估算说明，南北楼号对应未确认。",
         "前往H6/H7的近景可见两个高主体及低连廊；场景加载30/30，浏览器错误日志无场景脚本错误。",
         "本轮最终版本完整启动30/30；可检索实训楼并进入自由探索，稳定画布可见地面楼前环境。首帧发现的一处车辆更新引用错误已修正，随后无新场景脚本错误。",
-        "图书馆视角下切换行人与车辆，aria-pressed按false→true恢复，画布继续正常绘制；已恢复鸟瞰并保存截图。"
+        "图书馆视角下切换行人与车辆，aria-pressed按false→true恢复，画布继续正常绘制；已恢复鸟瞰并保存截图。",
+        "最新场景加载30/30；实训楼详情显示新的工学院用途、整体近似模型与入口待核对说明，并显示校方、OSM轮廓和北侧步道三个来源链接。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
@@ -355,7 +363,9 @@
         "output/campus3d-audit-20261023/h67-massing-final.png",
         "output/campus3d-audit-20261023/tests-pedestrian-routes.log",
         "output/campus3d-audit-20261023/pedestrians-training-final.png",
-        "output/campus3d-audit-20261023/pedestrians-library-final.png"
+        "output/campus3d-audit-20261023/pedestrians-library-final.png",
+        "output/campus3d-audit-20261023/tests-label-occlusion.log",
+        "output/campus3d-audit-20261023/training-reviewed-scene.png"
       ]
     },
     "serverTypeCheck": {
@@ -370,7 +380,7 @@
     {
       "scope": "建筑与实际对齐",
       "status": "incomplete",
-      "nextEvidence": "H6/H7高低体量已按公开影像与校方照片修正；仍需独立基底配准、实际层高和南北单栋楼号确认。继续核对G11立面/屋面、行政楼及安评中心电梯停站与地下层关系，以及其他建筑。"
+      "nextEvidence": "H6/H7高低体量已按公开影像与校方照片修正；仍需独立基底配准、实际层高和南北单栋楼号确认。继续核对G11立面/屋面、行政楼及安评中心电梯停站与地下层关系，以及其他建筑。 实训楼组团已补2025影像、当前OSM、2024/2026入口照片与校方用途资料；屋顶侧向偏移和楼体分区仍不能可靠配准，保留现有基底和近似高度，不从碰撞反推出新通道。"
     },
     {
       "scope": "道路、水体与景观",
@@ -380,7 +390,7 @@
     {
       "scope": "场景交互",
       "status": "incomplete",
-      "nextEvidence": "施工围挡、通道和出生点已有专项检查，鼠标锁定拒绝已有降级路径并实际测试。仍需核验正常指针锁定、全图导览、测距、其他建筑/桥梁碰撞、骑行驾驶与原生触摸。 行人实际驾车/骑行礼让链路与完整景观中的长时运行仍需补测；H6/H7低连廊附近的地标遮挡判断也应复核是否仍使用统一楼高。"
+      "nextEvidence": "施工围挡、通道和出生点已有专项检查，鼠标锁定拒绝已有降级路径并实际测试。仍需核验正常指针锁定、全图导览、测距、其他建筑/桥梁碰撞、骑行驾驶与原生触摸。 行人实际驾车/骑行礼让链路与完整景观中的长时运行仍需补测。低连廊与有顶通道的地标遮挡已回归；其他细窄构件和标签布局仍需核验。"
     },
     {
       "scope": "跨设备与画面",
@@ -403,8 +413,17 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "2ac1b95cd11eca96bdfa4bfb1ef1c76530195f93",
+  "lastVerifiedParentCommit": "7fd4dda63f26f09c1fac5cb998840ac9a3b8a84d",
   "spatialInventory": "docs/campus3d-spatial-inventory.json",
   "spatialSourceManifest": "docs/campus3d-spatial-sources.json",
-  "pedestrianVerification": "docs/campus3d-pedestrian-verification.json"
+  "pedestrianVerification": "docs/campus3d-pedestrian-verification.json",
+  "investigations": [
+    {
+      "id": "training-north-path",
+      "status": "evidence_collected_no_coordinate_change",
+      "sourceManifest": "docs/campus3d-spatial-sources.json#trainingNorthAccess",
+      "finding": "现有OSM建筑和北侧步道均为2021-08-06版本，未记录高度、层数、步道宽度或covered标签。2025-06-16影像有明显屋顶偏移，中心点来源精度8.47米；2024/2026入口照片未展示北侧道路边界。校方修缮配图是露台效果图，不能作为实景或总平面图。",
+      "decision": "补充实训楼用途、来源链接和近似模型说明；保留几何，继续寻找独立基底与入口定位证据。"
+    }
+  ]
 }
