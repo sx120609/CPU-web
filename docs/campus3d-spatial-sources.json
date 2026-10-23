@@ -1779,5 +1779,896 @@
       }
     ],
     "decision": "Retain ground geometry pending stronger evidence. Do not narrow the path, translate the building, infer an underpass from collision, or extrude a new height split from roof displacement alone."
+  },
+  "sportsGrounds": {
+    "checkedOn": "2026-10-23",
+    "status": "dated_reference_layout_partially_verified",
+    "captures": [
+      {
+        "path": "output/campus3d-audit-20261023/sports-20261023.png",
+        "sha256": "95b6e6fd38fceec9096dd2f9ac069bcc30981840b24c21d2d3d9df760739abee",
+        "georeference": {
+          "path": "output/campus3d-audit-20261023/sports-20261023-georef.json",
+          "sha256": "51a0660ca2f09c0fb64e27481acdb2eee13c68874e1b635bb13fcf48192eecd3"
+        }
+      },
+      {
+        "path": "output/campus3d-audit-20261023/sports-north-20261023.png",
+        "sha256": "cec8d6659262636abefcd494e625d5ac635271a1d1fa7ddbec5aa35198f110d7",
+        "georeference": {
+          "path": "output/campus3d-audit-20261023/sports-north-20261023-georef.json",
+          "sha256": "4c53388f84680375f9aa55e4ba7563bb95f8f3a1a542c51c35c16e76461d6669"
+        }
+      }
+    ],
+    "pointMetadata": {
+      "path": "output/campus3d-audit-20261023/sports-court-metadata.json",
+      "sha256": "3e3382782fed157fac987bdbb03eb85a9e65e27d0909ddf6c40f4a94cea79dbe"
+    },
+    "pointSamples": [
+      {
+        "id": 0,
+        "type": "soccer",
+        "modelPoint": [
+          318.35,
+          446.1
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "type": "tennis",
+        "modelPoint": [
+          144.72483903464874,
+          430.9666261498142
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "tennis",
+        "modelPoint": [
+          165.43490342078928,
+          430.9999756898885
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "tennis",
+        "modelPoint": [
+          186.1449678069298,
+          431.0333252299628
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "tennis",
+        "modelPoint": [
+          206.85503219307031,
+          431.0666747700371
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "tennis",
+        "modelPoint": [
+          227.56509657921083,
+          431.1000243101114
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "tennis",
+        "modelPoint": [
+          248.27516096535135,
+          431.1333738501857
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "basketball",
+        "modelPoint": [
+          290.5,
+          571.5
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "type": "basketball",
+        "modelPoint": [
+          62.19999999999999,
+          -1045.3500000000004
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250616,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.5,
+            "SRC_DESC": "WV02",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 12,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "type": "basketball",
+        "modelPoint": [
+          62.04999999999999,
+          -1059.65
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250616,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.5,
+            "SRC_DESC": "WV02",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 12,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "type": "basketball",
+        "modelPoint": [
+          61.80000000000001,
+          -1088.8000000000002
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250616,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.5,
+            "SRC_DESC": "WV02",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 12,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "type": "basketball",
+        "modelPoint": [
+          61.9,
+          -1073.9500000000003
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250616,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.5,
+            "SRC_DESC": "WV02",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 12,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "type": "basketball",
+        "modelPoint": [
+          61.549688961759166,
+          -1117.844789506679
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250616,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.5,
+            "SRC_DESC": "WV02",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 12,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "type": "basketball",
+        "modelPoint": [
+          61.650304983882975,
+          -1103.4566922886188
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250616,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.5,
+            "SRC_DESC": "WV02",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 12,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "type": "basketball",
+        "modelPoint": [
+          334.55,
+          355.05000000000007
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "type": "basketball",
+        "modelPoint": [
+          353.4451042635144,
+          355.2999242927348
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 16,
+        "type": "basketball",
+        "modelPoint": [
+          371.95000000000005,
+          355.55000000000007
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "type": "basketball",
+        "modelPoint": [
+          344.19999999999993,
+          324.1
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "type": "basketball",
+        "modelPoint": [
+          361.59999999999997,
+          324.25000000000006
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 19,
+        "type": "basketball",
+        "modelPoint": [
+          378.74999999999994,
+          324.4
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "type": "basketball",
+        "modelPoint": [
+          312.96618280827175,
+          387.40018708448866
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 21,
+        "type": "basketball",
+        "modelPoint": [
+          329.84979365235336,
+          387.57194163309424
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "type": "basketball",
+        "modelPoint": [
+          347,
+          387.75
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "type": "basketball",
+        "modelPoint": [
+          364.7723435793415,
+          388.0002496489312
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 24,
+        "type": "basketball",
+        "modelPoint": [
+          300.1000000000001,
+          509.70000000000016
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 25,
+        "type": "basketball",
+        "modelPoint": [
+          317.50000000000006,
+          509.84999999999997
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 26,
+        "type": "basketball",
+        "modelPoint": [
+          334.6499999999999,
+          510.00000000000006
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 27,
+        "type": "basketball",
+        "modelPoint": [
+          290.55007302453424,
+          540.7270702962566
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 28,
+        "type": "basketball",
+        "modelPoint": [
+          307.40000000000003,
+          540.8
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 29,
+        "type": "basketball",
+        "modelPoint": [
+          307.40000000000003,
+          571.5
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 30,
+        "type": "volleyball",
+        "modelPoint": [
+          354.95,
+          269.79999999999995
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 31,
+        "type": "volleyball",
+        "modelPoint": [
+          367.5,
+          269.79999999999995
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 32,
+        "type": "volleyball",
+        "modelPoint": [
+          379.8,
+          269.79999999999995
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 33,
+        "type": "volleyball",
+        "modelPoint": [
+          354.95,
+          294.95
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 34,
+        "type": "volleyball",
+        "modelPoint": [
+          367.5,
+          294.95
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      },
+      {
+        "id": 35,
+        "type": "volleyball",
+        "modelPoint": [
+          379.8,
+          294.95
+        ],
+        "sources": [
+          {
+            "SRC_DATE": 20240112,
+            "SRC_ACC": 5,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+            "ReleaseName": "Maps 2024.R13",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        ]
+      }
+    ],
+    "references": [
+      {
+        "url": "https://cgzx.cpu.edu.cn/cgxxgc/39322.chtml",
+        "title": "江宁校区一期篮球、排球、网球场维修改造项目竞争性磋商公告",
+        "publishedOn": "2023-07-17",
+        "supports": "一期维修范围列10片篮球场、6片排球场、6片网球场；这不是全校球场总数。",
+        "access": "检索索引有正文；直接访问返回网站维护、需校园网或VPN。没有绕过访问限制。"
+      },
+      {
+        "url": "https://ddh11.cpu.edu.cn/7d/f5/c17616a228853/page.htm",
+        "title": "体育部：昂扬奋进新赛道，凝心聚力续华章",
+        "publishedOn": "2025-10-31",
+        "supports": "校方回顾已实施足球场草坪、球场及体育场顶棚拆旧换新等设施改造，配图显示田径场白色顶棚和草坪。不能从回顾文字确定每个项目施工日期或精确尺寸。",
+        "html": {
+          "path": "output/campus3d-audit-20261023/sports-2025-school-review.html",
+          "sha256": "cfe969da22d786ea3217bab6f30a20a26e1f904edcf4f2cce2e758fa52c43588"
+        },
+        "photo": {
+          "path": "output/campus3d-audit-20261023/sports-2025-school-facilities.png",
+          "sha256": "f18344b114cb49de5746cbbcb91f403ec388f403e65bb7df7da7c00739b3ea83"
+        }
+      },
+      {
+        "url": "https://jwc.cpu.edu.cn/8e/e4/c851a233188/page.htm",
+        "title": "2025-2026-2学期课外体育俱乐部通知",
+        "publishedOn": "2026-03-12",
+        "supports": "列出田径场、网球场、室外篮球场和新宿舍区匹克球场等教学地点；没有具体场地坐标。"
+      }
+    ],
+    "volleyballTracing": {
+      "scope": "六个铺装单元，不含东侧三片狭长小场地",
+      "image": "sports-20261023.png",
+      "pixelOrigin": [
+        0,
+        0
+      ],
+      "pixelColumns": [
+        [
+          1344,
+          1395
+        ],
+        [
+          1395,
+          1443
+        ],
+        [
+          1443,
+          1492
+        ]
+      ],
+      "pixelRows": [
+        [
+          382,
+          482
+        ],
+        [
+          482,
+          582
+        ]
+      ],
+      "conversion": "Web Mercator tile pixels → WGS84 → app local coordinates at 31.9035 N,118.9125 E",
+      "date": "2024-01-12",
+      "declaredAccuracyMeters": 5,
+      "coordinatesRoundedMeters": 0.1,
+      "modelLinesMeters": [
+        18,
+        9
+      ],
+      "lineAndNetDimensions": "illustrative; not measured or certified on site"
+    },
+    "findings": [
+      "六片排球场在既有模型中缺失；影像中为两排三列，学校一期工程数量与之相符。",
+      "体育场东北10片、东南7片、北区6片篮球场分散在不同地点；旧模型将23片场地坐标平均为一个导航点。新导航按相邻组团分组并选择实际场地内的锚点。",
+      "田径场南北半圆为蓝色铺装；网球场包括六片场地及蓝色周边铺装，模型原来分别画为绿地和绿色缓冲区。",
+      "逐个球场中心查询发现拼接影像并非同一日期。南部篮球场包含2024-01-12和2025-04-06两个来源；排球场六个中心均为2024-01-12；六片网球场均为2025-04-06；北区六片篮球场均为2025-06-16。"
+    ],
+    "artifacts": [
+      {
+        "path": "output/campus3d-audit-20261023/sports-source-overlay.png",
+        "sha256": "45b1b63b1d5a6aeb872eb7afe9a6ebaa9094fb1ea1e327aed37d210ac12b2dde"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/sports-volleyball-grid.png",
+        "sha256": "660a8a6824068ddd49433199cd03c8cb9391975727f05afd19d8291f765c7af2"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/sports-model-ground.png",
+        "sha256": "85521080682e1ca5e2450e68408b574b0678d47c0603fed8ab74a54a4a3f7355"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/sports-model-courts.json",
+        "sha256": "0a88b2c6c57cf81f67c9b28a803d5ad940a8ea77b08167f451e4510719a26b45"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/sports-grass-mask.json",
+        "sha256": "f8f978ca7da1af9671eee3b8d2ef8445f7ca9ca6a449b23b74324662223265bb"
+      }
+    ],
+    "remaining": [
+      "球场中心元数据不是每个边界像素日期的证明；不得把整幅拼接图统一标成2025影像。",
+      "没有2026实测坐标；场线、球网高度、围网与入口仍是模型示意，不能据旧影像宣布当前通行或开放。",
+      "东侧三片狭长小场地、北侧沙地用途及其设施尚未确认，未擅自标为羽毛球或射箭场。",
+      "2025体育场顶棚拆旧换新已有校方图文，但当前模型直线看台与影像弧形外沿、分跨数量仍有差异，需进一步核对并修正。",
+      "2025年网球场、篮球场维修成交公告有第三方检索线索，尚未取得可独立核验的校方施工图与竣工资料。",
+      "2026课程表支持新宿舍区有匹克球场，尚未可靠配准具体位置。",
+      "球场近距离场线仍依赖低分辨率地面贴图；本轮没有宣称场线细节或全场景视觉验收已完成。"
+    ]
   }
 }

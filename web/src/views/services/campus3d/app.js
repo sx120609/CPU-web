@@ -13,6 +13,7 @@ import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from './constructionSites.js';
 import { RESEARCH_CENTERS, RESEARCH_INFO, CHEMISTRY_COURT, RESEARCH_TEMPORARY_FOOTPRINT, researchBuildings, correctResearchRoads } from './researchCenters.js';
 import { PEDESTRIAN_RADIUS, PEDESTRIAN_WANDER, pointSegmentDistance, segmentDistance, clearRouteSpans } from './pedestrianRoutes.js';
 import { GRADUATE_RESIDENCE, graduateVolumes } from './graduateResidences.js';
+import { sportsPitches, courtFrame, sportsPlaces, SPORTS_SOURCE } from './sportsGrounds.js';
 import { SAFETY_CENTER_PASSAGE, annotateCoveredAccess, splitCoveredGround, groundFootprints, buildingSolidAt, buildingTopAt, passageApproach } from './coveredAccess.js';
 
 export function mountCampus3D(root, opts) {
@@ -209,7 +210,7 @@ function iconFor(p) {
   if (p.water || /河道/.test(n)) return 'waves';
   const rules = [[/图书馆/, 'book'], [/博物馆/, 'columns'], [/行政楼|会议中心|大礼堂/, 'briefcase'], [/门$/, 'flag'], [/教学楼|求.楼|经管文/, 'cap'], [/驿站|文创/, 'box'], [/广场/, 'flag'], [/警务/, 'shield'], [/医务|医学楼/, 'cross'], [/樱花/, 'leaf'], [/旧馆/, 'ball'],
     [/实验楼|科学楼|化学楼|分析楼|理学楼|研发楼|科研楼|安评|同位素|实训|兴药楼|中心$/, 'flask'], [/食堂/, 'fork'], [/苑|公寓/, 'bed'], [/门诊/, 'cross'],
-    [/植物园|温室/, 'leaf'], [/体育场/, 'track'], [/游泳/, 'drop'], [/体育馆|篮球|网球/, 'ball'], [/地铁|站/, 'tram'], [/大道/, 'road']];
+    [/植物园|温室/, 'leaf'], [/篮球|网球|排球|体育馆/, 'ball'], [/体育场/, 'track'], [/游泳/, 'drop'], [/地铁|站/, 'tram'], [/大道/, 'road']];
   for (const [re, k] of rules) if (re.test(n)) return k;
   return 'building';
 }
@@ -420,7 +421,7 @@ const INFO = {
   '一食堂': { d: '学生第一食堂，位于学生公寓区西侧。四层，深灰面砖墙面，窗间饰白色竖向条板。', s: '名称与位置：OpenStreetMap；外观参照二食堂实景照片' },
   '二食堂': { d: '学生第二食堂，四层，深灰面砖墙面配白色窗下板，转角立面有竖排“二食堂”字样；楼前常停满自行车。', s: '名称与位置：OpenStreetMap；外观：实景照片' },
   '体育馆': { d: '校园南部的综合体育馆，银灰色金属拱形屋面，正立面为带菱形桁架的玻璃幕墙。', s: '位置：OpenStreetMap；外观：实景照片' },
-  '体育场': { d: '标准 400 米田径场，跑道为蓝色塑胶，西侧有白色悬挑顶棚看台；东侧另有足球场、篮球场群与六片蓝色网球场。', s: '位置：OpenStreetMap；跑道颜色与看台：卫星影像' },
+  '体育场': { d: '田径场内为足球场，蓝色跑道及南北半圆区环绕草坪，西侧是白色顶棚看台。六片网球场位于田径场北侧，东北侧还有排球场、篮球场与另一片足球场。', s: '位置：OpenStreetMap；地面布局：2025-04-06 公开影像。跑道尺寸、看台高度与结构为模型估算，未完成现状测绘核验。' },
   '游泳馆': { d: '由原室外游泳池改扩建为室内恒温游泳馆，2026 年 7 月 1 日正式开馆。项目公告载明地上 2 层、地下 1 层，建筑高度 14.80 米。馆内的海鲸天悦运动健身中心于 2026 年 9 月 18 日开馆。外形参照基建后勤处项目配图，轮廓仍为旧泳池位置上的近似重建。', s: '学校新闻、基建后勤处项目公告、教育发展基金会；核对日期：2026-10-23。建筑高度为项目公告值，非竣工实测；模型占地不等于项目总建筑面积。', links: NATATORIUM.sources },
   '药用植物园温室': { d: '药用植物园东区的展示温室，园内栽培多种药用植物，是药大最有特色的校园景观之一。', s: '位置：OpenStreetMap；简介：去哪儿网游记' },
   '实训楼': { d: '位于明湖东岸、药用植物园南侧，设有工学院实验室。校方2026年开放周通知列出了楼内的制药工程、生物医学工程和食品科学实验室。当前外形与层高为近似模型，楼体分区和具体入口仍待核对。', s: '用途：工学院2026-06-04通知。轮廓：OSM way 553656876，北侧步道：way 553656864，均为2021-08-06版本；2026-10-23重新查询核对。2025影像尚不能消除屋顶侧向偏移，不据此调整地面边界。', links:[{title:'工学院：2026年科研实验室开放周',url:'https://gxy.cpu.edu.cn/ad/57/c12276a240983/page.htm'},{title:'OSM：实训楼轮廓',url:'https://www.openstreetmap.org/way/553656876'},{title:'OSM：北侧步道',url:'https://www.openstreetmap.org/way/553656864'}], nameConfirmed:true },
@@ -1361,8 +1362,12 @@ function paintGround() {
 
 let STADIUM = null;
 const COURTS = [];
+const SPORTS_PITCHES = sportsPitches(D.pi);
+let COURT_MASK_CANVAS=null;
 let TRACK_FIELD = null;
 function paintSports(g) {
+  COURTS.length=0;
+  COURT_MASK_CANVAS=null;
   const line = (w = 0.12) => { g.strokeStyle = 'rgba(245,245,240,.95)'; g.lineWidth = w; };
   const stad = D.pi.find((o) => o.k === 'stadium');
   if (stad) {
@@ -1370,9 +1375,9 @@ function paintSports(g) {
     for (const q of D.pi) { if (q.s !== 'soccer') continue; const c = pCentroid(q.p), d = Math.hypot(c[0] - 205, c[1] - 525); if (d < bd) { bd = d; best = q; } }
     TRACK_FIELD = best;
   }
-  for (const q of D.pi) {
+  for (const q of SPORTS_PITCHES) {
     if (q.k === 'swimming_pool') continue;
-    const ob = obb(q === TRACK_FIELD ? q.p : q.p);
+    const ob = obb(q.p);
     g.save(); g.translate(ob.cx, ob.cz); g.rotate(ob.ang);
     const L = ob.L, W = ob.W;
     if (q.k === 'stadium') { g.restore(); continue; }
@@ -1381,14 +1386,14 @@ function paintSports(g) {
       const st = 84.39 / 2, r0 = 36.5, r1 = r0 + 8 * 1.22;
       const track = (r) => { g.beginPath(); g.moveTo(-st, -r); g.lineTo(st, -r); g.arc(st, 0, r, -Math.PI / 2, Math.PI / 2); g.lineTo(-st, r); g.arc(-st, 0, r, Math.PI / 2, Math.PI * 1.5); g.closePath(); };
       track(r1 + 1.5); g.fillStyle = '#3f6aa6'; g.fill();
-      track(r0); g.fillStyle = '#5c9a43'; g.fill();
+      track(r0); g.fillStyle = '#6486b8'; g.fill();
       for (let i = 0; i < 12; i++) { g.fillStyle = i % 2 ? '#5c9a43' : '#66a64b'; g.fillRect(-52.5 + i * 8.75, -34, 8.75, 68); }
       line(0.1); for (let k = 0; k <= 8; k++) { track(r0 + k * 1.22); g.stroke(); }
       line(0.14); g.strokeRect(-52.5, -34, 105, 68); g.beginPath(); g.moveTo(0, -34); g.lineTo(0, 34); g.stroke(); g.beginPath(); g.arc(0, 0, 9.15, 0, 7); g.stroke();
       for (const sgn of [-1, 1]) { g.strokeRect(sgn > 0 ? 52.5 - 16.5 : -52.5, -20.15, 16.5, 40.3); g.strokeRect(sgn > 0 ? 52.5 - 5.5 : -52.5, -9.16, 5.5, 18.32); }
       g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(st - 0.1, r0, 0.2, 8 * 1.22);
     } else if (q.s === 'tennis') {
-      g.fillStyle = '#3d7a5a'; g.fillRect(-L / 2, -W / 2, L, W);
+      g.fillStyle = '#6684ad'; g.fillRect(-L / 2, -W / 2, L, W);
       const along = W < 30; const n = along ? Math.max(1, Math.round(L / 36)) : Math.max(1, Math.floor(L / 18.3));
       for (let i = 0; i < n; i++) {
         g.save();
@@ -1399,10 +1404,17 @@ function paintSports(g) {
         g.restore();
         COURTS.push({ type: 'tennis', ob, i, n, along });
       }
+    } else if (q.s === 'volleyball') {
+      g.fillStyle='#b87762';g.fillRect(-L/2,-W/2,L,W);
+      g.fillStyle='#4c9b83';g.fillRect(-9,-4.5,18,9);line(.08);g.strokeRect(-9,-4.5,18,9);
+      g.beginPath();for(const u of [-3,0,3]){g.moveTo(u,-4.5);g.lineTo(u,4.5);}g.stroke();
+      COURTS.push({type:'volleyball',ob});
     } else if (q.s === 'basketball') {
       g.fillStyle = '#a5503f'; g.fillRect(-L / 2, -W / 2, L, W);
       const cl = Math.min(28, L - 2), cw = Math.min(15, W - 2);
-      g.fillStyle = '#3f7d5d'; g.fillRect(-cl / 2, -cw / 2, cl, cw); line(0.08); g.strokeRect(-cl / 2, -cw / 2, cl, cw);
+      g.fillStyle = ob.cz<0?'#6b77a6':'#3f7d5d'; g.fillRect(-cl / 2, -cw / 2, cl, cw);
+      if(ob.cz<0){g.fillStyle='#bf696d';for(const sg of [-1,1])g.fillRect(sg>0?cl/2-5.8:-cl/2,-2.45,5.8,4.9);}
+      line(0.08); g.strokeRect(-cl / 2, -cw / 2, cl, cw);
       g.beginPath(); g.moveTo(0, -cw / 2); g.lineTo(0, cw / 2); g.stroke(); g.beginPath(); g.arc(0, 0, 1.8, 0, 7); g.stroke();
       for (const sg of [-1, 1]) { g.beginPath(); g.arc(sg * (cl / 2 - 1.575), 0, 6.75, sg > 0 ? Math.PI * 0.6 : -Math.PI * 0.4, sg > 0 ? Math.PI * 1.4 : Math.PI * 0.4); g.stroke(); g.strokeRect(sg > 0 ? cl / 2 - 5.8 : -cl / 2, -2.45, 5.8, 4.9); }
       COURTS.push({ type: 'basketball', ob, cl });
@@ -1417,6 +1429,24 @@ function paintSports(g) {
   }
 }
 function tracePolyLocal(g, p, ob) { const c = Math.cos(-ob.ang), s = Math.sin(-ob.ang); const q = p.map(([x, z]) => { const dx = x - ob.cx, dz = z - ob.cz; return [dx * c - dz * s, dx * s + dz * c]; }); tracePoly(g, q); }
+function hardCourtAt(x,z) {
+  return COURTS.some(c=>{
+    if(!['basketball','tennis','volleyball'].includes(c.type))return false;
+    const ob=c.ob,dx=x-ob.cx,dz=z-ob.cz;
+    return Math.abs(dx*ob.ux+dz*ob.uz)<=ob.L/2+.4&&Math.abs(-dx*ob.uz+dz*ob.ux)<=ob.W/2+.4;
+  });
+}
+function courtMaskCanvas() {
+  if(COURT_MASK_CANVAS)return COURT_MASK_CANVAS;
+  const c=mkCanvas(Math.round(REGW),Math.round(REGH)),g=c.getContext('2d');
+  g.translate(-REG.x0,-REG.z0);g.fillStyle=g.strokeStyle='#fff';g.lineWidth=.8;
+  const seen=new Set();
+  for(const court of COURTS){
+    if(court.type==='soccer'||seen.has(court.ob))continue;seen.add(court.ob);
+    const ob=court.ob;g.beginPath();tracePoly(g,rectPoly(ob.cx,ob.cz,ob.L,ob.W,ob.ang));g.fill();g.stroke();
+  }
+  COURT_MASK_CANVAS=c;return c;
+}
 
 let MASK = null;
 function buildMask() {
@@ -1429,7 +1459,7 @@ function buildMask() {
   for (const w of WATERS) { g.beginPath(); for (const o of w.outer) tracePoly(g, o); for (const i of w.inner) tracePoly(g, i); g.fill('evenodd'); g.lineWidth = 2.5; g.stroke(); }
   for (const r of D.r) { traceLine(g, r.p); g.lineWidth = roadW(r) + 2.5; g.stroke(); }
   for (const r of D.pa) { traceLine(g, r.p); g.lineWidth = (PW[r.t] || 2.5) + 1.2; g.stroke(); }
-  for (const q of D.pi) { g.beginPath(); tracePoly(g, q.p); g.fill(); }
+  for (const q of SPORTS_PITCHES) { g.beginPath(); tracePoly(g, q.p); g.fill(); }
   for (const q of D.sq) { g.beginPath(); tracePoly(g, q.p); g.fill(); }
   for(const p of [NE.site,NE.beds,NE.wenzhengYard]){g.beginPath();tracePoly(g,p);g.fill();}
   for (const l of D.lu) if (l.k === 'parking' || l.k === 'railway') { g.beginPath(); tracePoly(g, l.p); g.fill(); }
@@ -2577,8 +2607,9 @@ function buildSports() {
         addCyl('metal', x, 0, z, 0.1, 3.3, 6);
         const [hx, hz] = P(s * (c.cl / 2 - 0.3), 0); addBox('white', hx, 2.95, hz, 0.1, 1.8, 1.05, ob.ang + Math.PI / 2, 'white');
       }
-    } else if (c.type === 'tennis' && c.i === 0) {
-      addFenceRect(rectPoly(ob.cx, ob.cz, ob.L, ob.W, ob.ang), 3.6);
+    } else if (c.type === 'tennis' || c.type === 'volleyball') {
+      if(c.type==='tennis'&&c.i===0)addFenceRect(rectPoly(ob.cx, ob.cz, ob.L, ob.W, ob.ang), 3.6);
+      buildCourtNet(c);
     } else if (c.type === 'soccer') {
       for (const s of [-1, 1]) {
         const [x, z] = P(s * (ob.L / 2 - 1.5), 0); addBox('white', x, 2.2, z, 0.14, 7.3, 0.12, ob.ang + Math.PI / 2, 'white');
@@ -2586,6 +2617,17 @@ function buildSports() {
       }
     }
   }
+}
+function buildCourtNet(court) {
+  const f=courtFrame(court),tennis=court.type==='tennis',half=tennis?6.4:5,top=tennis?1.07:2.43,low=tennis ? .08 : 1.43;
+  const P=(v,y)=>[f.x-f.uz*v,y,f.z+f.ux*v],height=v=>top-(tennis ? .156 : 0)*(1-(v/half)**2);
+  for(const side of [-1,1]){const p=P(side*half,0);addCyl('metal',p[0],0,p[2],.055,top+.08,6);}
+  for(let v=-half;v<half;v+=.4){
+    const end=Math.min(half,v+.4);addBeam('white',P(v,height(v)),P(end,height(end)),.035);
+    addBeam('dark',P(v,low),P(v,height(v)),.012);
+  }
+  for(let y=low;y<top-.16;y+=.25)addBeam('dark',P(-half,y),P(half,y),.012);
+  const a=P(-half,0),b=P(half,0);recWall(a[0],a[2],b[0],b[2],low,top);
 }
 const FENCE_RECTS = [];
 function addFenceRect(p, h) { FENCE_RECTS.push({ p, h }); }
@@ -3324,6 +3366,9 @@ function buildGrass() {
 function grassMaskBuild() {
   const W = Math.round(REGW), H = Math.round(REGH), c = mkCanvas(W, H), g = c.getContext('2d', { willReadFrequently: true });
   g.drawImage(GROUND.canvas, 0, 0, W, H);
+  // Green rubber/acrylic paint is not vegetation. White mask pixels fail the
+  // grass-color test, while transparent surroundings retain the original lawn.
+  g.drawImage(courtMaskCanvas(),0,0,W,H);
   const d = g.getImageData(0, 0, W, H).data, m = new Uint8Array(W * H);
   for (let i = 0, o = 0; i < W * H; i++, o += 4) { const r = d[o], gg = d[o + 1], b = d[o + 2]; m[i] = gg > r * 1.06 && gg > b * 1.12 ? 1 : 0; }
   return { m, W, H };
@@ -4286,6 +4331,7 @@ function buildGround() {
   tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true;
   const geo = new THREE.PlaneGeometry(REGW, REGH); geo.rotateX(-Math.PI / 2); geo.translate(REG.x0 + REGW / 2, 0, REG.z0 + REGH / 2);
   const det = canvasTex(noiseCanvas(256, 16, 3, 33, 0, 255), false);
+  const courtMask=canvasTex(courtMaskCanvas(),false,false);CLEANUP.push(()=>courtMask.dispose());
   const near = (() => {
     // r: grass blades, g: fine grain for paving/asphalt, b: pebbles and stains
     const c = mkCanvas(512, 512), g = c.getContext('2d'), N = 512;
@@ -4307,27 +4353,30 @@ function buildGround() {
   groundMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0 });
   groundMat.customProgramCacheKey = () => 'ground';
   groundMat.onBeforeCompile = (sh) => {
-    sh.uniforms.uDetail = { value: det }; sh.uniforms.uNear = { value: near }; sh.uniforms.uCam = { value: camera.position }; sh.uniforms.uGrass = SEASON_U.uGrass; sh.uniforms.uGrassAmt = SEASON_U.uGrassAmt;
+    sh.uniforms.uDetail = { value: det }; sh.uniforms.uNear = { value: near }; sh.uniforms.uCourtMask={value:courtMask};sh.uniforms.uCam = { value: camera.position }; sh.uniforms.uGrass = SEASON_U.uGrass; sh.uniforms.uGrassAmt = SEASON_U.uGrassAmt;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; uniform sampler2D uDetail; uniform sampler2D uNear; uniform vec3 uCam; uniform vec3 uGrass; uniform float uGrassAmt;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; uniform sampler2D uDetail; uniform sampler2D uNear; uniform sampler2D uCourtMask; uniform vec3 uCam; uniform vec3 uGrass; uniform float uGrassAmt;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         float dd = distance(uCam, vWP); float kk = 1.0 - smoothstep(25.0, 260.0, dd);
         float det = texture2D(uDetail, vWP.xz * 0.23).r * 0.55 + texture2D(uDetail, vWP.xz * 0.047).r * 0.45;
         diffuseColor.rgb *= mix(1.0, 0.74 + det * 0.52, kk);
-        float gmx = max(diffuseColor.r, diffuseColor.b); float gr = clamp((diffuseColor.g - gmx) * 9.0, 0.0, 1.0);
+        vec2 courtUv=(vWP.xz-vec2(${REG.x0.toFixed(1)},${REG.z0.toFixed(1)}))/vec2(${REGW.toFixed(1)},${REGH.toFixed(1)});
+        float courtBounds=step(0.0,courtUv.x)*step(courtUv.x,1.0)*step(0.0,courtUv.y)*step(courtUv.y,1.0);
+        float hardCourt=texture2D(uCourtMask,vec2(courtUv.x,1.0-courtUv.y)).r*courtBounds;
+        float gmx = max(diffuseColor.r, diffuseColor.b); float gr = clamp((diffuseColor.g - gmx) * 9.0, 0.0, 1.0)*(1.0-hardCourt);
         float glum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
         diffuseColor.rgb = mix(diffuseColor.rgb, uGrass * (0.42 + glum * 1.5), gr * uGrassAmt);
         diffuseColor.rgb *= mix(1.0, 0.66, smoothstep(0.42, 0.8, dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))));
         float kn = 1.0 - smoothstep(6.0, 70.0, dd);
         if (kn > 0.0) {
           vec3 nb = texture2D(uNear, vWP.xz * 0.55).rgb, nf = texture2D(uNear, vWP.xz * 1.9).rgb;
-          float gm = max(gr, step(gmx + 0.02, diffuseColor.g) * 0.6);
+          float gm = max(gr, step(gmx + 0.02, diffuseColor.g) * 0.6)*(1.0-hardCourt);
           float blade = (nb.r - 0.5) * 0.55 + (nf.r - 0.5) * 0.35;
           float grain = (nf.g - 0.5) * 0.22 + (nb.b - 0.5) * 0.14;
           float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
           // light paving: 0.6 m slabs with thin joints
           vec2 sl = fract(vWP.xz / 0.6); vec2 jd = min(sl, 1.0 - sl); float joint = 1.0 - smoothstep(0.0, 0.035, min(jd.x, jd.y));
-          float pave = smoothstep(0.32, 0.45, lum) * (1.0 - gm) * (1.0 - smoothstep(18.0, 40.0, dd));
+          float pave = smoothstep(0.32, 0.45, lum) * (1.0 - gm) * (1.0 - smoothstep(18.0, 40.0, dd))*(1.0-hardCourt);
           diffuseColor.rgb *= 1.0 + kn * (gm * blade + (1.0 - gm) * grain);
           diffuseColor.rgb *= 1.0 - pave * joint * 0.18;
         }`);
@@ -4537,9 +4586,8 @@ function buildPlaces() {
   PLACES.push({ name: '正门', cat: 'gate', x: GATE.x, z: GATE.z, h: 6, major: true, sub: '龙眠大道 639 号', desc: '面向龙眠大道的主入口，门外即南京地铁 1 号线终点站“中国药科大学”站。校名石墙刻官方书法“中国药科大学”，墙后七根灯柱高低错落；两条车道夹着中轴，三座方框圆洞景墙“连中三元”沿中轴通向镜湖与图书馆。', src: '闸机与大门位置：OpenStreetMap；外观：去哪儿网实拍、“学习强国”图片' });
   const garden = D.g.filter((q) => q.k === 'grass' || q.k === 'meadow').map((q) => ({ q, c: pCentroid(q.p) })).filter(({ c }) => c[0] > 150 && c[1] < -600)[0];
   PLACES.push({ name: '药用植物园', cat: 'scenic', x: garden ? garden.c[0] : 320, z: garden ? garden.c[1] : -720, h: 4, major: true, sub: '校园北部，分东、西两区', desc: '药大最具特色的校园景观，栽培多种药用植物，东区有展示温室与管理用房，园内水塘曲径相连。', src: '位置：OpenStreetMap；简介：去哪儿网游记' });
-  if (STADIUM) PLACES.push({ name: '体育场', cat: 'sport', x: STADIUM.cx, z: STADIUM.cz, h: 6, major: true, sub: '400 米田径场', desc: INFO['体育场'].d, src: INFO['体育场'].s });
-  const tennis = COURTS.find((c) => c.type === 'tennis'); if (tennis) PLACES.push({ name: '网球场', cat: 'sport', x: tennis.ob.cx, z: tennis.ob.cz, h: 3, sub: '六片硬地球场' });
-  const bb = COURTS.filter((c) => c.type === 'basketball'); if (bb.length) { const x = bb.reduce((a, c) => a + c.ob.cx, 0) / bb.length, z = bb.reduce((a, c) => a + c.ob.cz, 0) / bb.length; PLACES.push({ name: '篮球场', cat: 'sport', x, z, h: 3, sub: `${bb.length} 片室外球场` }); }
+  if (STADIUM) PLACES.push({ name: '体育场', cat: 'sport', x: STADIUM.cx, z: STADIUM.cz, h: 6, major: true, sub: '田径场 · 足球场 · 西看台', desc: INFO['体育场'].d, src: INFO['体育场'].s, links:SPORTS_SOURCE.links });
+  PLACES.push(...sportsPlaces(COURTS));
   PLACES.push({ name: '龙眠大道', cat: 'transit', x: -520, z: 330, h: 4, sub: '地铁 1 号线高架沿路而行' });
   PLACES.push({ name: GRADUATE_PHASE_FIVE.name, cat: 'life', x: GRADUATE_PHASE_FIVE.center[0], z: GRADUATE_PHASE_FIVE.center[1], h: 4, major: true, sub: '北门西侧 · 通知参考范围', referenceArea: GRADUATE_PHASE_FIVE.referenceArea, viewFrom: GRADUATE_PHASE_FIVE.viewFrom });
   mapNames();
@@ -4622,7 +4670,7 @@ function select(p) {
   if (bs.some((b) => /inferred/.test(b.src))) src += info?.nameConfirmed ? '三维位置与外形为近似重建。' : '。名称与位置为推断，以学校公布为准。';
   else if (bs.some((b) => b.src === 'sat')) src += '。OpenStreetMap 未收录，按卫星影像补建。';
   $('#infoSrc').textContent = src;
-  for (const link of info?.links || []) {
+  for (const link of p.links || info?.links || []) {
     const a = elt('a', '', link.title); a.href = link.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
     $('#infoSrc').append(document.createElement('br'), a);
   }
@@ -5954,7 +6002,7 @@ function walkAudioWake() {
 function walkAudioClose() { if (AUD) AUD.C.close().catch(() => { }); AUD = null; }
 function surfaceHard() {
   const W = WALK;
-  if (W.y > 0.05 || onBridge(W.x, W.z)) return true;
+  if (W.y > 0.05 || onBridge(W.x, W.z) || hardCourtAt(W.x,W.z)) return true;
   try {
     GROUND_CTX ||= GROUND.canvas.getContext('2d');
     const px = Math.floor((W.x - REG.x0) / REGW * GROUND.canvas.width), py = Math.floor((W.z - REG.z0) / REGH * GROUND.canvas.height);

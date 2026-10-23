@@ -9,6 +9,7 @@ import * as research from '../web/src/views/services/campus3d/researchCenters.js
 import * as graduate from '../web/src/views/services/campus3d/graduateResidences.js';
 import * as access from '../web/src/views/services/campus3d/coveredAccess.js';
 import { GRADUATE5_FIT_REPORT } from '../web/src/views/services/campus3d/graduate5Registration.js';
+import { sportsPitches } from '../web/src/views/services/campus3d/sportsGrounds.js';
 
 const root=new URL('../',import.meta.url), base=new URL('web/src/views/services/campus3d/',root);
 const app=readFileSync(new URL('app.js',base),'utf8');
@@ -64,12 +65,12 @@ model.D.r.forEach((r,ri)=>{
 const inventory={
   schemaVersion:1,checkedOn:'2026-10-23',status:'in_progress',
   scope:'All model buildings and source roads, plus footpaths, waters and sports areas. No category is marked complete by unit-test success.',
-  counts:{modelBuildings:named.length,roads:roads.length,footpaths:model.D.pa.length,waters:model.D.w.length,sports:model.D.pi.length},
+  counts:{modelBuildings:named.length,roads:roads.length,footpaths:model.D.pa.length,waters:model.D.w.length,sports:sportsPitches(model.D.pi).length},
   limitations:['Building records are preprocessing metadata; bespoke rendered heights and geometry are not measured here.','OSM snapshot date is unknown; links identify ways, not proof of current accuracy.','2025 imagery cannot prove 2026 construction or access status.','Intersection candidates are diagnostic leads, not confirmed wall collisions.'],
   buildings:named,roads,
   footpaths:model.D.pa.map((p,i)=>({key:`footpath-${i}`,name:p.n||null,vertices:p.p.length,currentAccessVerified:false})),
   waters:model.D.w.map((w,i)=>({key:`water-${i}`,name:w.n||null,outerRings:w.o.length,innerRings:w.i.length,currentShorelineVerified:false})),
-  sports:model.D.pi.map((p,i)=>({key:`sport-${i}`,name:p.n||null,type:p.s||p.k,currentLayoutVerified:false})),
+  sports:sportsPitches(model.D.pi).map((p,i)=>({key:p.id||`sport-${i}`,name:p.n||null,type:p.s||p.k,spatialEvidence:p.spatialSource||'OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources',currentLayoutVerified:false})),
   graduatePhaseFive:{referenceOnly:true,fitReport:GRADUATE5_FIT_REPORT,buildingHeightAndFenceNotModeled:true},
   intersectionCandidates,
   nextPriorities:['Validate independent 2026 observations of major facades and entrance positions.','Resolve the northern-road registration discrepancy before modeling a phase-five fence.','Inspect every road/footprint intersection candidate using dated imagery or rendered geometry.','Review the remaining undated generic buildings, water boundaries, bridges and sports dimensions.'],

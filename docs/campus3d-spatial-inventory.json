@@ -8,7 +8,7 @@
     "roads": 174,
     "footpaths": 67,
     "waters": 14,
-    "sports": 29
+    "sports": 35
   },
   "limitations": [
     "Building records are preprocessing metadata; bespoke rendered heights and geometry are not measured here.",
@@ -5033,174 +5033,245 @@
       "key": "sport-0",
       "name": null,
       "type": "soccer",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-1",
       "name": null,
       "type": "soccer",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-2",
       "name": "体育场",
       "type": "stadium",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-3",
       "name": "游泳池",
       "type": "swimming_pool",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-4",
       "name": null,
       "type": "tennis",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-5",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-6",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-7",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-8",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-9",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-10",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-11",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-12",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-13",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-14",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-15",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-16",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-17",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-18",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-19",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-20",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-21",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-22",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-23",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-24",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-25",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-26",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-27",
       "name": null,
       "type": "basketball",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
       "currentLayoutVerified": false
     },
     {
       "key": "sport-28",
       "name": null,
       "type": "pitch",
+      "spatialEvidence": "OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "volleyball-1",
+      "name": null,
+      "type": "volleyball",
+      "spatialEvidence": "2024-01-12 ground imagery; approximate paving bays",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "volleyball-2",
+      "name": null,
+      "type": "volleyball",
+      "spatialEvidence": "2024-01-12 ground imagery; approximate paving bays",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "volleyball-3",
+      "name": null,
+      "type": "volleyball",
+      "spatialEvidence": "2024-01-12 ground imagery; approximate paving bays",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "volleyball-4",
+      "name": null,
+      "type": "volleyball",
+      "spatialEvidence": "2024-01-12 ground imagery; approximate paving bays",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "volleyball-5",
+      "name": null,
+      "type": "volleyball",
+      "spatialEvidence": "2024-01-12 ground imagery; approximate paving bays",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "volleyball-6",
+      "name": null,
+      "type": "volleyball",
+      "spatialEvidence": "2024-01-12 ground imagery; approximate paving bays",
       "currentLayoutVerified": false
     }
   ],

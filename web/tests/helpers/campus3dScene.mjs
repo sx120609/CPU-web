@@ -11,6 +11,7 @@ import * as research from '../../src/views/services/campus3d/researchCenters.js'
 import * as graduate from '../../src/views/services/campus3d/graduateResidences.js';
 import * as access from '../../src/views/services/campus3d/coveredAccess.js';
 import * as pedestrians from '../../src/views/services/campus3d/pedestrianRoutes.js';
+import * as sports from '../../src/views/services/campus3d/sportsGrounds.js';
 
 export function sceneContext({variables:extraVariables=[],omitFunctions:extraOmitted=[],globals={}}={}) {
   const base=new URL('../../src/views/services/campus3d/',import.meta.url);
@@ -23,7 +24,7 @@ export function sceneContext({variables:extraVariables=[],omitFunctions:extraOmi
     'BGRID','PGRID','segDist','COLLISION_INFO','TGRID','trunkR','onBridge','inRegion','walkable',
     'WATER_Y','frozen','isWet','canStand','pedBlocked','_m4','LIFE','PEOPLE','PED_GRID',...extraVariables]);
   const omitted=new Set(['addSign','textCanvas','roofClutter','academicRoof',...extraOmitted]);
-  const ctx=vm.createContext({THREE,...metadata,...construction,...research,...graduate,...access,...pedestrians,
+  const ctx=vm.createContext({THREE,...metadata,...construction,...research,...graduate,...access,...pedestrians,...sports,
     opts:{data:JSON.parse(readFileSync(new URL('osm-data.json',base))),outer:JSON.parse(readFileSync(new URL('osm-outer.json',base)))},
     root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
     addSign(){},roofClutter(){},academicRoof(){},
