@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as THREE from 'three';
 import { NATATORIUM, DORM_GROUP_INFO, buildingFacts, buildingListMeta } from '../src/views/services/campus3d/placeMetadata.js';
-import { ACTIVITY_CENTER } from '../src/views/services/campus3d/constructionSites.js';
+import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from '../src/views/services/campus3d/constructionSites.js';
+import * as research from '../src/views/services/campus3d/researchCenters.js';
 
 const base = new URL('../src/views/services/campus3d/', import.meta.url);
 const app = readFileSync(new URL('app.js', base), 'utf8');
@@ -13,7 +14,7 @@ const slice = (from, to) => app.slice(app.indexOf(from), app.indexOf(to));
 // and movement resolver. Only external actors and terrain outside this flat site
 // are absent; no renderer, WebGL, database, or test-only collider is substituted.
 const ctx = vm.createContext({
-  THREE, NATATORIUM, ACTIVITY_CENTER, DORM_GROUP_INFO,
+  THREE, NATATORIUM, ACTIVITY_CENTER, GRADUATE_PHASE_FIVE, DORM_GROUP_INFO, ...research,
   opts: {
     data: JSON.parse(readFileSync(new URL('osm-data.json', base), 'utf8')),
     outer: JSON.parse(readFileSync(new URL('osm-outer.json', base), 'utf8')),

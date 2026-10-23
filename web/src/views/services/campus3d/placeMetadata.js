@@ -1,5 +1,6 @@
 // Dimensions from project notices are separate from dimensions estimated by the model.
 // Keep the source, publication date and verification date with each verified fact.
+import { RESEARCH_CENTERS } from './researchCenters.js';
 export const NATATORIUM = Object.freeze({
   height: 14.8,
   floors: 2,
@@ -45,6 +46,8 @@ export function isNatatorium(buildings) {
 }
 
 export function heightLabel(buildings) {
+  const research = buildings.length === 1 && RESEARCH_CENTERS[buildings[0].extra?.researchId];
+  if (research?.publishedHeight) return `${research.publishedHeight} m`;
   return isNatatorium(buildings) ? `${NATATORIUM.height} m` : `约 ${Math.round(Math.max(...buildings.map(b => b.h)))} m`;
 }
 
@@ -75,10 +78,12 @@ export function buildingFacts(place, buildings) {
     ['模型说明', '施工结构与防护通道示意'],
   ];
   const facts = [];
+  const research = buildings.length === 1 && RESEARCH_CENTERS[buildings[0].extra?.researchId];
   if (place.dorm) facts.push(['楼栋', `${dormSummary(buildings).count} 栋`]);
   else if (isNatatorium(buildings)) facts.push(['层数（项目公告）', `地上 ${NATATORIUM.floors} 层 · 地下 ${NATATORIUM.basementFloors} 层`]);
+  else if (research?.basementFloors) facts.push(['层数（学校资料）', `地上 ${research.floors} 层 · 地下 ${research.basementFloors} 层`]);
   else facts.push(['模型层数', buildings[0].cls.special === 'gym' ? '大空间' : `${buildings[0].cls.fl} 层`]);
-  facts.push([isNatatorium(buildings) ? '建筑高度（项目公告）' : '模型高度', heightLabel(buildings)]);
+  facts.push([isNatatorium(buildings) || research?.publishedHeight ? '建筑高度（项目公告）' : '模型高度', heightLabel(buildings)]);
   const area = buildings.reduce((a, b) => a + b.area, 0);
   facts.push(['模型占地', `约 ${Math.round(area).toLocaleString('zh-CN')} m²`]);
   return facts;

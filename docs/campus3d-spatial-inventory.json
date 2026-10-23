@@ -1,0 +1,5434 @@
+{
+  "schemaVersion": 1,
+  "checkedOn": "2026-10-23",
+  "status": "in_progress",
+  "scope": "All model buildings and source roads, plus footpaths, waters and sports areas. No category is marked complete by unit-test success.",
+  "counts": {
+    "modelBuildings": 109,
+    "roads": 174,
+    "footpaths": 67,
+    "waters": 14,
+    "sports": 29
+  },
+  "limitations": [
+    "Building records are preprocessing metadata; bespoke rendered heights and geometry are not measured here.",
+    "OSM snapshot date is unknown; links identify ways, not proof of current accuracy.",
+    "2025 imagery cannot prove 2026 construction or access status.",
+    "Intersection candidates are diagnostic leads, not confirmed wall collisions."
+  ],
+  "buildings": [
+    {
+      "key": "osm-way-548293595",
+      "name": "图书馆",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 548293595,
+      "sourceLink": "https://www.openstreetmap.org/way/548293595",
+      "modelCenter": [
+        -163.24,
+        -50.68
+      ],
+      "modelBounds": [
+        -228.2,
+        -101.1,
+        -102.2,
+        7.4
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": 7,
+      "geometryBuilder": "library",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-548473491",
+      "name": "药学博物馆",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 548473491,
+      "sourceLink": "https://www.openstreetmap.org/way/548473491",
+      "modelCenter": [
+        -238.99,
+        -78.23
+      ],
+      "modelBounds": [
+        -269.2,
+        -105.2,
+        -211.6,
+        -60.1
+      ],
+      "modelFloorCount": 3,
+      "osmFloorCount": 3,
+      "geometryBuilder": "museum",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-548931191",
+      "name": "行政楼",
+      "category": "gate",
+      "footprintSource": "osm",
+      "osmWay": 548931191,
+      "sourceLink": "https://www.openstreetmap.org/way/548931191",
+      "modelCenter": [
+        -496.75,
+        86.1
+      ],
+      "modelBounds": [
+        -534.4,
+        73,
+        -459.1,
+        99.2
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "admin",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-548931192",
+      "name": "会议中心",
+      "category": "gate",
+      "footprintSource": "osm",
+      "osmWay": 548931192,
+      "sourceLink": "https://www.openstreetmap.org/way/548931192",
+      "modelCenter": [
+        -501.32,
+        153.88
+      ],
+      "modelBounds": [
+        -537.6,
+        112.7,
+        -441.7,
+        193.2
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "conference",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-548933247",
+      "name": "体育馆",
+      "category": "sport",
+      "footprintSource": "osm",
+      "osmWay": 548933247,
+      "sourceLink": "https://www.openstreetmap.org/way/548933247",
+      "modelCenter": [
+        -45.85,
+        466.5
+      ],
+      "modelBounds": [
+        -95.7,
+        419.8,
+        2.7,
+        517.2
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "gym",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553455385",
+      "name": "综合门诊楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553455385,
+      "sourceLink": "https://www.openstreetmap.org/way/553455385",
+      "modelCenter": [
+        435.25,
+        46.1
+      ],
+      "modelBounds": [
+        408.8,
+        39,
+        461.7,
+        53.2
+      ],
+      "modelFloorCount": 3,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553455386",
+      "name": "后勤保卫楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553455386,
+      "sourceLink": "https://www.openstreetmap.org/way/553455386",
+      "modelCenter": [
+        445.57,
+        14.7
+      ],
+      "modelBounds": [
+        416.4,
+        7.6,
+        474.7,
+        21.8
+      ],
+      "modelFloorCount": 3,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553455387",
+      "name": "学生第二食堂",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553455387,
+      "sourceLink": "https://www.openstreetmap.org/way/553455387",
+      "modelCenter": [
+        236.28,
+        -14.83
+      ],
+      "modelBounds": [
+        189.4,
+        -54.1,
+        282.7,
+        24.6
+      ],
+      "modelFloorCount": 4,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553455388",
+      "name": "学生第一食堂",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553455388,
+      "sourceLink": "https://www.openstreetmap.org/way/553455388",
+      "modelCenter": [
+        181.64,
+        79.82
+      ],
+      "modelBounds": [
+        128.3,
+        44,
+        233.3,
+        118.2
+      ],
+      "modelFloorCount": 4,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553456691",
+      "name": "植物园管理用房",
+      "category": "scenic",
+      "footprintSource": "osm",
+      "osmWay": 553456691,
+      "sourceLink": "https://www.openstreetmap.org/way/553456691",
+      "modelCenter": [
+        371.37,
+        -602.27
+      ],
+      "modelBounds": [
+        356.3,
+        -617.2,
+        386.4,
+        -587.3
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "gardenService",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553456692",
+      "name": "药用植物园温室",
+      "category": "scenic",
+      "footprintSource": "osm",
+      "osmWay": 553456692,
+      "sourceLink": "https://www.openstreetmap.org/way/553456692",
+      "modelCenter": [
+        394.19,
+        -721.26
+      ],
+      "modelBounds": [
+        371.3,
+        -750.5,
+        412.8,
+        -689.8
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "greenhouse",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656876",
+      "name": "实训楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656876,
+      "sourceLink": "https://www.openstreetmap.org/way/553656876",
+      "modelCenter": [
+        144.9,
+        -328.19
+      ],
+      "modelBounds": [
+        80.4,
+        -343.4,
+        213.5,
+        -312
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656877",
+      "name": "综合研发楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656877,
+      "sourceLink": "https://www.openstreetmap.org/way/553656877",
+      "modelCenter": [
+        120.79,
+        -245.3
+      ],
+      "modelBounds": [
+        39.6,
+        -266.6,
+        187.4,
+        -211.7
+      ],
+      "modelFloorCount": 8,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656878",
+      "name": "药学科学楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656878,
+      "sourceLink": "https://www.openstreetmap.org/way/553656878",
+      "modelCenter": [
+        88.3,
+        -191.49
+      ],
+      "modelBounds": [
+        43.8,
+        -213.9,
+        132.4,
+        -169.1
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656879",
+      "name": "中药科学楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656879,
+      "sourceLink": "https://www.openstreetmap.org/way/553656879",
+      "modelCenter": [
+        67.49,
+        -146.17
+      ],
+      "modelBounds": [
+        27.4,
+        -174.5,
+        105.4,
+        -117.7
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656880",
+      "name": "生命科学楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656880,
+      "sourceLink": "https://www.openstreetmap.org/way/553656880",
+      "modelCenter": [
+        41.14,
+        -104.89
+      ],
+      "modelBounds": [
+        6,
+        -134.4,
+        74.3,
+        -75
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656881",
+      "name": "同位素楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656881,
+      "sourceLink": "https://www.openstreetmap.org/way/553656881",
+      "modelCenter": [
+        -335.96,
+        -337.83
+      ],
+      "modelBounds": [
+        -353.1,
+        -348,
+        -318.8,
+        -327.7
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656882",
+      "name": "库房",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656882,
+      "sourceLink": "https://www.openstreetmap.org/way/553656882",
+      "modelCenter": [
+        -289.45,
+        -444.45
+      ],
+      "modelBounds": [
+        -309.1,
+        -464.8,
+        -269.8,
+        -424.1
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656883",
+      "name": "安评中心",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656883,
+      "sourceLink": "https://www.openstreetmap.org/way/553656883",
+      "modelCenter": [
+        -235.53,
+        -318.87
+      ],
+      "modelBounds": [
+        -267.7,
+        -342.6,
+        -204.7,
+        -293.1
+      ],
+      "modelFloorCount": 4,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656884",
+      "name": "化学楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656884,
+      "sourceLink": "https://www.openstreetmap.org/way/553656884",
+      "modelCenter": [
+        -345.38,
+        -214.91
+      ],
+      "modelBounds": [
+        -388.9,
+        -231.4,
+        -297.9,
+        -198.5
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656885",
+      "name": "分析楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656885,
+      "sourceLink": "https://www.openstreetmap.org/way/553656885",
+      "modelCenter": [
+        -363.25,
+        -162.47
+      ],
+      "modelBounds": [
+        -413.6,
+        -186,
+        -316.9,
+        -137.7
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656886",
+      "name": "理学楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656886,
+      "sourceLink": "https://www.openstreetmap.org/way/553656886",
+      "modelCenter": [
+        -374.68,
+        -120.51
+      ],
+      "modelBounds": [
+        -430.8,
+        -132.2,
+        -321,
+        -108.7
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656887",
+      "name": "经管文楼",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656887,
+      "sourceLink": "https://www.openstreetmap.org/way/553656887",
+      "modelCenter": [
+        -393.58,
+        -73.89
+      ],
+      "modelBounds": [
+        -445.5,
+        -87.8,
+        -332.1,
+        -53.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656892",
+      "name": "求真楼 / 教学楼C",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656892,
+      "sourceLink": "https://www.openstreetmap.org/way/553656892",
+      "modelCenter": [
+        -79.31,
+        100.21
+      ],
+      "modelBounds": [
+        -105.98,
+        74.45,
+        -52.64,
+        125.97
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656893",
+      "name": "求新楼 / 教学楼D",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656893,
+      "sourceLink": "https://www.openstreetmap.org/way/553656893",
+      "modelCenter": [
+        -57.47,
+        51.6
+      ],
+      "modelBounds": [
+        -120,
+        0.6,
+        1.2,
+        99.9
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656894",
+      "name": "求同楼 / 教学楼E",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656894,
+      "sourceLink": "https://www.openstreetmap.org/way/553656894",
+      "modelCenter": [
+        -19.39,
+        -13.24
+      ],
+      "modelBounds": [
+        -71.8,
+        -60.1,
+        33,
+        33.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656895",
+      "name": "求实楼 / 教学楼B",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656895,
+      "sourceLink": "https://www.openstreetmap.org/way/553656895",
+      "modelCenter": [
+        -115.34,
+        142.23
+      ],
+      "modelBounds": [
+        -173.2,
+        81.8,
+        -59.1,
+        191.7
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553656896",
+      "name": "求知楼 / 教学楼A",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553656896,
+      "sourceLink": "https://www.openstreetmap.org/way/553656896",
+      "modelCenter": [
+        -161.35,
+        205.55
+      ],
+      "modelBounds": [
+        -215.3,
+        156.9,
+        -107.4,
+        254.2
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917104",
+      "name": "文思苑9号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917104,
+      "sourceLink": "https://www.openstreetmap.org/way/553917104",
+      "modelCenter": [
+        377.14,
+        -324.54
+      ],
+      "modelBounds": [
+        348.3,
+        -337.8,
+        410,
+        -303.3
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917109",
+      "name": "文思苑10号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917109,
+      "sourceLink": "https://www.openstreetmap.org/way/553917109",
+      "modelCenter": [
+        467.42,
+        -324.29
+      ],
+      "modelBounds": [
+        431.4,
+        -337.3,
+        505.5,
+        -302.3
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917112",
+      "name": "文思苑5号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917112,
+      "sourceLink": "https://www.openstreetmap.org/way/553917112",
+      "modelCenter": [
+        350.2,
+        -283.31
+      ],
+      "modelBounds": [
+        320.6,
+        -295.1,
+        383.7,
+        -263
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917117",
+      "name": "文思苑6号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917117,
+      "sourceLink": "https://www.openstreetmap.org/way/553917117",
+      "modelCenter": [
+        409.19,
+        -286.78
+      ],
+      "modelBounds": [
+        391.8,
+        -295,
+        428.2,
+        -278.4
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917122",
+      "name": "文思苑7号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917122,
+      "sourceLink": "https://www.openstreetmap.org/way/553917122",
+      "modelCenter": [
+        458.88,
+        -280.48
+      ],
+      "modelBounds": [
+        441.1,
+        -288.7,
+        478.5,
+        -272
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917125",
+      "name": "文思苑8号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917125,
+      "sourceLink": "https://www.openstreetmap.org/way/553917125",
+      "modelCenter": [
+        516.37,
+        -275.48
+      ],
+      "modelBounds": [
+        486.6,
+        -288.5,
+        540.2,
+        -253.9
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917130",
+      "name": "文思苑4号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917130,
+      "sourceLink": "https://www.openstreetmap.org/way/553917130",
+      "modelCenter": [
+        507.05,
+        -225.65
+      ],
+      "modelBounds": [
+        489.2,
+        -240.3,
+        524.8,
+        -201
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917133",
+      "name": "文思苑3号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917133,
+      "sourceLink": "https://www.openstreetmap.org/way/553917133",
+      "modelCenter": [
+        458.86,
+        -228.79
+      ],
+      "modelBounds": [
+        442.4,
+        -236.8,
+        477.1,
+        -220.5
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917137",
+      "name": "文思苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917137,
+      "sourceLink": "https://www.openstreetmap.org/way/553917137",
+      "modelCenter": [
+        399.51,
+        -244.15
+      ],
+      "modelBounds": [
+        373.9,
+        -253.3,
+        427.3,
+        -234.8
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917142",
+      "name": "文思苑1号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917142,
+      "sourceLink": "https://www.openstreetmap.org/way/553917142",
+      "modelCenter": [
+        466.08,
+        -193.84
+      ],
+      "modelBounds": [
+        440.4,
+        -203.5,
+        494.4,
+        -184
+      ],
+      "modelFloorCount": 7,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917146",
+      "name": "文枢苑5号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917146,
+      "sourceLink": "https://www.openstreetmap.org/way/553917146",
+      "modelCenter": [
+        323.2,
+        -179.35
+      ],
+      "modelBounds": [
+        280.5,
+        -189.4,
+        359.3,
+        -167.4
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917151",
+      "name": "文枢苑4号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917151,
+      "sourceLink": "https://www.openstreetmap.org/way/553917151",
+      "modelCenter": [
+        279.66,
+        -147.64
+      ],
+      "modelBounds": [
+        265.6,
+        -167.8,
+        297.7,
+        -136.3
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917155",
+      "name": "文枢苑6号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917155,
+      "sourceLink": "https://www.openstreetmap.org/way/553917155",
+      "modelCenter": [
+        335.46,
+        -136.53
+      ],
+      "modelBounds": [
+        314,
+        -150.3,
+        358.3,
+        -121.9
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917159",
+      "name": "文枢苑3号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917159,
+      "sourceLink": "https://www.openstreetmap.org/way/553917159",
+      "modelCenter": [
+        261.24,
+        -109.04
+      ],
+      "modelBounds": [
+        247.1,
+        -129.7,
+        278.7,
+        -96.8
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917163",
+      "name": "文枢苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917163,
+      "sourceLink": "https://www.openstreetmap.org/way/553917163",
+      "modelCenter": [
+        262.85,
+        -66.93
+      ],
+      "modelBounds": [
+        228.2,
+        -92.4,
+        304.2,
+        -51.7
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917168",
+      "name": "文枢苑1号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917168,
+      "sourceLink": "https://www.openstreetmap.org/way/553917168",
+      "modelCenter": [
+        311.1,
+        -98.86
+      ],
+      "modelBounds": [
+        297,
+        -108.1,
+        325.7,
+        -89.5
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917172",
+      "name": "文昌苑5号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917172,
+      "sourceLink": "https://www.openstreetmap.org/way/553917172",
+      "modelCenter": [
+        366.66,
+        -29.49
+      ],
+      "modelBounds": [
+        326.6,
+        -46.3,
+        403.9,
+        -16.1
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917177",
+      "name": "文昌苑6号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917177,
+      "sourceLink": "https://www.openstreetmap.org/way/553917177",
+      "modelCenter": [
+        354.27,
+        -70.73
+      ],
+      "modelBounds": [
+        329.3,
+        -79.6,
+        379,
+        -61.7
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917181",
+      "name": "文昌苑4号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917181,
+      "sourceLink": "https://www.openstreetmap.org/way/553917181",
+      "modelCenter": [
+        409.08,
+        -69.58
+      ],
+      "modelBounds": [
+        393.3,
+        -86.4,
+        424.1,
+        -57.6
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917184",
+      "name": "文昌苑1号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917184,
+      "sourceLink": "https://www.openstreetmap.org/way/553917184",
+      "modelCenter": [
+        383.55,
+        -114.33
+      ],
+      "modelBounds": [
+        366.6,
+        -124.1,
+        399.9,
+        -104.3
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917189",
+      "name": "文昌苑3号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917189,
+      "sourceLink": "https://www.openstreetmap.org/way/553917189",
+      "modelCenter": [
+        430.66,
+        -109.63
+      ],
+      "modelBounds": [
+        415.1,
+        -126,
+        445.2,
+        -98
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917192",
+      "name": "文昌苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 553917192,
+      "sourceLink": "https://www.openstreetmap.org/way/553917192",
+      "modelCenter": [
+        420.31,
+        -148.15
+      ],
+      "modelBounds": [
+        379.2,
+        -160.5,
+        461.1,
+        -135.2
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-553917306",
+      "name": "(未命名)",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 553917306,
+      "sourceLink": "https://www.openstreetmap.org/way/553917306",
+      "modelCenter": [
+        120.32,
+        -435.52
+      ],
+      "modelBounds": [
+        105.1,
+        -440.9,
+        135.5,
+        -430.1
+      ],
+      "modelFloorCount": 3,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190433",
+      "name": "(未命名)",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190433,
+      "sourceLink": "https://www.openstreetmap.org/way/554190433",
+      "modelCenter": [
+        300.66,
+        108.89
+      ],
+      "modelBounds": [
+        256.4,
+        89.5,
+        333.9,
+        134.9
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190434",
+      "name": "文萃苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190434,
+      "sourceLink": "https://www.openstreetmap.org/way/554190434",
+      "modelCenter": [
+        307.01,
+        156.45
+      ],
+      "modelBounds": [
+        283.9,
+        142.5,
+        332.3,
+        168.8
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190435",
+      "name": "文萃苑1号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190435,
+      "sourceLink": "https://www.openstreetmap.org/way/554190435",
+      "modelCenter": [
+        254.87,
+        165.04
+      ],
+      "modelBounds": [
+        231.7,
+        151.5,
+        278.8,
+        176.9
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190436",
+      "name": "文萃苑6号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190436,
+      "sourceLink": "https://www.openstreetmap.org/way/554190436",
+      "modelCenter": [
+        241.28,
+        200.99
+      ],
+      "modelBounds": [
+        216.8,
+        187.3,
+        266.6,
+        213
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190437",
+      "name": "文萃苑3号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190437,
+      "sourceLink": "https://www.openstreetmap.org/way/554190437",
+      "modelCenter": [
+        307.81,
+        192.67
+      ],
+      "modelBounds": [
+        290.9,
+        176.1,
+        323.4,
+        204.5
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190438",
+      "name": "文萃苑4号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190438,
+      "sourceLink": "https://www.openstreetmap.org/way/554190438",
+      "modelCenter": [
+        286.96,
+        235.79
+      ],
+      "modelBounds": [
+        256.2,
+        215.7,
+        317.4,
+        250.5
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190440",
+      "name": "文萃苑5号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190440,
+      "sourceLink": "https://www.openstreetmap.org/way/554190440",
+      "modelCenter": [
+        225.87,
+        237.7
+      ],
+      "modelBounds": [
+        202.5,
+        222.5,
+        249.6,
+        249.4
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190443",
+      "name": "文轩苑8号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190443,
+      "sourceLink": "https://www.openstreetmap.org/way/554190443",
+      "modelCenter": [
+        191.91,
+        151.97
+      ],
+      "modelBounds": [
+        174.1,
+        138,
+        208.5,
+        167.5
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190446",
+      "name": "文轩苑7号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190446,
+      "sourceLink": "https://www.openstreetmap.org/way/554190446",
+      "modelCenter": [
+        158.63,
+        130.58
+      ],
+      "modelBounds": [
+        144.7,
+        119.2,
+        172.8,
+        140
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190449",
+      "name": "文轩苑6号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190449,
+      "sourceLink": "https://www.openstreetmap.org/way/554190449",
+      "modelCenter": [
+        118.98,
+        113.04
+      ],
+      "modelBounds": [
+        90.4,
+        99.1,
+        146.8,
+        130.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190452",
+      "name": "文轩苑5号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190452,
+      "sourceLink": "https://www.openstreetmap.org/way/554190452",
+      "modelCenter": [
+        101.52,
+        149.03
+      ],
+      "modelBounds": [
+        61.7,
+        135.1,
+        136.3,
+        165.9
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190456",
+      "name": "文轩苑4号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190456,
+      "sourceLink": "https://www.openstreetmap.org/way/554190456",
+      "modelCenter": [
+        87.06,
+        188.78
+      ],
+      "modelBounds": [
+        72,
+        177.3,
+        104,
+        198.9
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190458",
+      "name": "文轩苑3号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190458,
+      "sourceLink": "https://www.openstreetmap.org/way/554190458",
+      "modelCenter": [
+        116.03,
+        202.33
+      ],
+      "modelBounds": [
+        101.5,
+        190.6,
+        131.8,
+        212.3
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190461",
+      "name": "文轩苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190461,
+      "sourceLink": "https://www.openstreetmap.org/way/554190461",
+      "modelCenter": [
+        154.09,
+        218.82
+      ],
+      "modelBounds": [
+        129.8,
+        200.1,
+        176.1,
+        230.5
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190462",
+      "name": "文轩苑1号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190462,
+      "sourceLink": "https://www.openstreetmap.org/way/554190462",
+      "modelCenter": [
+        170.15,
+        187.87
+      ],
+      "modelBounds": [
+        143.6,
+        173.9,
+        193.4,
+        204.2
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190463",
+      "name": "文菁苑6号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190463,
+      "sourceLink": "https://www.openstreetmap.org/way/554190463",
+      "modelCenter": [
+        44.06,
+        224.39
+      ],
+      "modelBounds": [
+        27.6,
+        212.5,
+        61,
+        234.5
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190464",
+      "name": "文菁苑7号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190464,
+      "sourceLink": "https://www.openstreetmap.org/way/554190464",
+      "modelCenter": [
+        72.95,
+        242.69
+      ],
+      "modelBounds": [
+        56.7,
+        231.1,
+        89.9,
+        252.2
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190465",
+      "name": "文菁苑8号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190465,
+      "sourceLink": "https://www.openstreetmap.org/way/554190465",
+      "modelCenter": [
+        102.85,
+        262.17
+      ],
+      "modelBounds": [
+        85.5,
+        250.5,
+        119,
+        271.5
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190466",
+      "name": "文菁苑9号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190466,
+      "sourceLink": "https://www.openstreetmap.org/way/554190466",
+      "modelCenter": [
+        94.26,
+        308.61
+      ],
+      "modelBounds": [
+        67.4,
+        292.3,
+        118.4,
+        327.8
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190467",
+      "name": "(未命名)",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190467,
+      "sourceLink": "https://www.openstreetmap.org/way/554190467",
+      "modelCenter": [
+        117.28,
+        282.87
+      ],
+      "modelBounds": [
+        108.8,
+        253.1,
+        122.2,
+        306.3
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190468",
+      "name": "文菁苑1号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190468,
+      "sourceLink": "https://www.openstreetmap.org/way/554190468",
+      "modelCenter": [
+        80.06,
+        348.02
+      ],
+      "modelBounds": [
+        52.3,
+        333.7,
+        104.1,
+        365.2
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190469",
+      "name": "文菁苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190469,
+      "sourceLink": "https://www.openstreetmap.org/way/554190469",
+      "modelCenter": [
+        29.21,
+        343.53
+      ],
+      "modelBounds": [
+        12.7,
+        331.2,
+        44.2,
+        353.1
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190470",
+      "name": "文菁苑3号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190470,
+      "sourceLink": "https://www.openstreetmap.org/way/554190470",
+      "modelCenter": [
+        -4.84,
+        325.68
+      ],
+      "modelBounds": [
+        -25.3,
+        300.3,
+        15.9,
+        341
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190471",
+      "name": "文菁苑4号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190471,
+      "sourceLink": "https://www.openstreetmap.org/way/554190471",
+      "modelCenter": [
+        19.47,
+        292.83
+      ],
+      "modelBounds": [
+        -10,
+        265.1,
+        49.3,
+        311.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190473",
+      "name": "文菁苑5号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190473,
+      "sourceLink": "https://www.openstreetmap.org/way/554190473",
+      "modelCenter": [
+        24.5,
+        254.47
+      ],
+      "modelBounds": [
+        3.6,
+        229.4,
+        46.8,
+        269.3
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190474",
+      "name": "文澜苑5号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190474,
+      "sourceLink": "https://www.openstreetmap.org/way/554190474",
+      "modelCenter": [
+        233.6,
+        358.45
+      ],
+      "modelBounds": [
+        200.5,
+        344.9,
+        268.9,
+        373.8
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190475",
+      "name": "文澜苑6号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190475,
+      "sourceLink": "https://www.openstreetmap.org/way/554190475",
+      "modelCenter": [
+        159.94,
+        365.43
+      ],
+      "modelBounds": [
+        127.4,
+        351.3,
+        195.8,
+        377.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190476",
+      "name": "文澜苑1号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190476,
+      "sourceLink": "https://www.openstreetmap.org/way/554190476",
+      "modelCenter": [
+        173.09,
+        328.48
+      ],
+      "modelBounds": [
+        141.8,
+        312.8,
+        205.8,
+        340.2
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190477",
+      "name": "文澜苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190477,
+      "sourceLink": "https://www.openstreetmap.org/way/554190477",
+      "modelCenter": [
+        180.1,
+        294.6
+      ],
+      "modelBounds": [
+        155.2,
+        283.1,
+        203.6,
+        304.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190478",
+      "name": "文澜苑2号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190478,
+      "sourceLink": "https://www.openstreetmap.org/way/554190478",
+      "modelCenter": [
+        223.22,
+        280.74
+      ],
+      "modelBounds": [
+        201.5,
+        268.1,
+        243.5,
+        291.3
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190479",
+      "name": "文澜苑3号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190479,
+      "sourceLink": "https://www.openstreetmap.org/way/554190479",
+      "modelCenter": [
+        275.19,
+        286.2
+      ],
+      "modelBounds": [
+        247.7,
+        269.7,
+        302.4,
+        301.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190480",
+      "name": "文澜苑4号楼",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190480,
+      "sourceLink": "https://www.openstreetmap.org/way/554190480",
+      "modelCenter": [
+        268.19,
+        323.02
+      ],
+      "modelBounds": [
+        241.2,
+        306.1,
+        294.8,
+        338.6
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-554190481",
+      "name": "(未命名)",
+      "category": "life",
+      "footprintSource": "osm",
+      "osmWay": 554190481,
+      "sourceLink": "https://www.openstreetmap.org/way/554190481",
+      "modelCenter": [
+        -35.03,
+        388.82
+      ],
+      "modelBounds": [
+        -57.1,
+        367.2,
+        -5.8,
+        402.3
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-857774704",
+      "name": "中国药科大学",
+      "category": "transit",
+      "footprintSource": "osm",
+      "osmWay": 857774704,
+      "sourceLink": "https://www.openstreetmap.org/way/857774704",
+      "modelCenter": [
+        -333.37,
+        399.15
+      ],
+      "modelBounds": [
+        -399.2,
+        350.2,
+        -267.5,
+        448.2
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "station",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-860286968",
+      "name": "(未命名)",
+      "category": "transit",
+      "footprintSource": "osm",
+      "osmWay": 860286968,
+      "sourceLink": "https://www.openstreetmap.org/way/860286968",
+      "modelCenter": [
+        -433.58,
+        433.09
+      ],
+      "modelBounds": [
+        -582,
+        318.2,
+        -285.4,
+        549
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-860286969",
+      "name": "(未命名)",
+      "category": "transit",
+      "footprintSource": "osm",
+      "osmWay": 860286969,
+      "sourceLink": "https://www.openstreetmap.org/way/860286969",
+      "modelCenter": [
+        -453.48,
+        513.49
+      ],
+      "modelBounds": [
+        -608.9,
+        387.5,
+        -299.3,
+        635.5
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-1237624131",
+      "name": "(未命名)",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 1237624131,
+      "sourceLink": "https://www.openstreetmap.org/way/1237624131",
+      "modelCenter": [
+        -424.5,
+        -1087.75
+      ],
+      "modelBounds": [
+        -458.1,
+        -1104.5,
+        -390.9,
+        -1071
+      ],
+      "modelFloorCount": 3,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "osm-way-1237624132",
+      "name": "(未命名)",
+      "category": "teach",
+      "footprintSource": "osm",
+      "osmWay": 1237624132,
+      "sourceLink": "https://www.openstreetmap.org/way/1237624132",
+      "modelCenter": [
+        -432.2,
+        -1036.9
+      ],
+      "modelBounds": [
+        -469.6,
+        -1051.5,
+        -394.8,
+        -1022.3
+      ],
+      "modelFloorCount": 3,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-89",
+      "name": "学院实验楼",
+      "category": "teach",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        -170,
+        -595
+      ],
+      "modelBounds": [
+        -265,
+        -702.5,
+        -75,
+        -487.5
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "xueyuan",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-90",
+      "name": "新建科研楼 A",
+      "category": "teach",
+      "footprintSource": "photo+sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        -204.87,
+        -434.6
+      ],
+      "modelBounds": [
+        -245.69,
+        -461.64,
+        -155.96,
+        -414.06
+      ],
+      "modelFloorCount": 5,
+      "osmFloorCount": null,
+      "geometryBuilder": "researchCenter",
+      "spatialEvidence": "2025-06-16 georeferenced roof + dated school evidence",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": [
+        "https://www.cpu.edu.cn/_t768/8e/05/c10408a232965/page.htm",
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/identify?geometry=118.91%2C31.907&geometryType=esriGeometryPoint&sr=4326&layers=all&tolerance=1&mapExtent=118.9078%2C31.9064%2C118.9113%2C31.9085&imageDisplay=1600%2C1200%2C96&returnGeometry=false&f=pjson"
+      ]
+    },
+    {
+      "key": "supplement-91",
+      "name": "新建科研楼 B",
+      "category": "teach",
+      "footprintSource": "sat-inferred",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        -230.53,
+        -376.49
+      ],
+      "modelBounds": [
+        -271.04,
+        -386.61,
+        -190.43,
+        -366.22
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "2025-06-16 georeferenced roof + dated school evidence",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": [
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/identify?geometry=118.91%2C31.907&geometryType=esriGeometryPoint&sr=4326&layers=all&tolerance=1&mapExtent=118.9078%2C31.9064%2C118.9113%2C31.9085&imageDisplay=1600%2C1200%2C96&returnGeometry=false&f=pjson"
+      ]
+    },
+    {
+      "key": "supplement-92",
+      "name": "新建科研楼 C",
+      "category": "teach",
+      "footprintSource": "photo+sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        -339.85,
+        -374.89
+      ],
+      "modelBounds": [
+        -377.39,
+        -386.87,
+        -299.43,
+        -357
+      ],
+      "modelFloorCount": 6,
+      "osmFloorCount": null,
+      "geometryBuilder": "researchCenter",
+      "spatialEvidence": "2025-06-16 georeferenced roof + dated school evidence",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": [
+        "https://www.cpu.edu.cn/_t768/8e/05/c10408a232965/page.htm",
+        "https://jjc.cpu.edu.cn/71/8a/c499a225674/page.htm",
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/identify?geometry=118.91%2C31.907&geometryType=esriGeometryPoint&sr=4326&layers=all&tolerance=1&mapExtent=118.9078%2C31.9064%2C118.9113%2C31.9085&imageDisplay=1600%2C1200%2C96&returnGeometry=false&f=pjson"
+      ]
+    },
+    {
+      "key": "supplement-93",
+      "name": "科研区临时设施（2025影像）",
+      "category": "transit",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        -136.8,
+        -422.96
+      ],
+      "modelBounds": [
+        -157.99,
+        -451.07,
+        -118.45,
+        -398.2
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": [
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/identify?geometry=118.91%2C31.907&geometryType=esriGeometryPoint&sr=4326&layers=all&tolerance=1&mapExtent=118.9078%2C31.9064%2C118.9113%2C31.9085&imageDisplay=1600%2C1200%2C96&returnGeometry=false&f=pjson"
+      ]
+    },
+    {
+      "key": "supplement-94",
+      "name": "文德苑",
+      "category": "life",
+      "footprintSource": "photo+sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        415.29,
+        -358.9
+      ],
+      "modelBounds": [
+        370.55,
+        -378.06,
+        448.5,
+        -342.5
+      ],
+      "modelFloorCount": 9,
+      "osmFloorCount": null,
+      "geometryBuilder": "wende",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-95",
+      "name": "文正苑6、7号楼",
+      "category": "life",
+      "footprintSource": "sat-inferred",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        561.64,
+        -343.41
+      ],
+      "modelBounds": [
+        514.57,
+        -386.03,
+        627.07,
+        -304.77
+      ],
+      "modelFloorCount": 8,
+      "osmFloorCount": null,
+      "geometryBuilder": "graduate",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-96",
+      "name": "文华苑1号楼",
+      "category": "life",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        531.6,
+        -135.2
+      ],
+      "modelBounds": [
+        491.1,
+        -146.05,
+        572.1,
+        -124.35
+      ],
+      "modelFloorCount": 8,
+      "osmFloorCount": null,
+      "geometryBuilder": "hdorm",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-97",
+      "name": "文华苑2号楼",
+      "category": "life",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        496.2,
+        -81.1
+      ],
+      "modelBounds": [
+        460.7,
+        -91.2,
+        531.7,
+        -71
+      ],
+      "modelFloorCount": 8,
+      "osmFloorCount": null,
+      "geometryBuilder": "hdorm",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-98",
+      "name": "文华苑3号楼",
+      "category": "life",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        465.7,
+        -27
+      ],
+      "modelBounds": [
+        430.2,
+        -37.05,
+        501.2,
+        -16.95
+      ],
+      "modelFloorCount": 8,
+      "osmFloorCount": null,
+      "geometryBuilder": "hdorm",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-99",
+      "name": "文正苑4号楼",
+      "category": "life",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        569.4,
+        -186.2
+      ],
+      "modelBounds": [
+        532.4,
+        -196.95,
+        606.4,
+        -175.45
+      ],
+      "modelFloorCount": 8,
+      "osmFloorCount": null,
+      "geometryBuilder": "hdorm",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-100",
+      "name": "文正苑5号楼",
+      "category": "life",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        615.3,
+        -242
+      ],
+      "modelBounds": [
+        576,
+        -254.35,
+        654.6,
+        -229.65
+      ],
+      "modelFloorCount": 8,
+      "osmFloorCount": null,
+      "geometryBuilder": "hdorm",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-101",
+      "name": "大学生活动中心",
+      "category": "life",
+      "footprintSource": "notice+map",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        334.1,
+        32.66
+      ],
+      "modelBounds": [
+        271,
+        -14,
+        395,
+        76
+      ],
+      "modelFloorCount": 3,
+      "osmFloorCount": null,
+      "geometryBuilder": "activityConstruction",
+      "spatialEvidence": "dated construction notice, schematic geometry",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": [
+        "https://jjc.cpu.edu.cn/507/list.htm",
+        "https://jjc.cpu.edu.cn/68/1e/c494a223262/page.htm",
+        "https://jjc.cpu.edu.cn/b3/13/c494a242451/page.htm",
+        "https://jjc.cpu.edu.cn/bb/0f/c494a244495/page.htm"
+      ]
+    },
+    {
+      "key": "supplement-102",
+      "name": "(未命名)",
+      "category": "transit",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        566,
+        -499
+      ],
+      "modelBounds": [
+        549.5,
+        -502.5,
+        582.5,
+        -495.5
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-103",
+      "name": "(未命名)",
+      "category": "transit",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        566,
+        -480
+      ],
+      "modelBounds": [
+        549.5,
+        -483.5,
+        582.5,
+        -476.5
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-104",
+      "name": "(未命名)",
+      "category": "transit",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        566,
+        -460
+      ],
+      "modelBounds": [
+        549.5,
+        -463.5,
+        582.5,
+        -456.5
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-105",
+      "name": "(未命名)",
+      "category": "transit",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        566,
+        -442
+      ],
+      "modelBounds": [
+        549.5,
+        -445.5,
+        582.5,
+        -438.5
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-106",
+      "name": "(未命名)",
+      "category": "scenic",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        -383,
+        -35
+      ],
+      "modelBounds": [
+        -390.05,
+        -40.96,
+        -375.95,
+        -29.04
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-107",
+      "name": "(未命名)",
+      "category": "scenic",
+      "footprintSource": "sat",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        450,
+        -880
+      ],
+      "modelBounds": [
+        435.3,
+        -891.28,
+        464.7,
+        -868.72
+      ],
+      "modelFloorCount": 1,
+      "osmFloorCount": null,
+      "geometryBuilder": "generic",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": []
+    },
+    {
+      "key": "supplement-108",
+      "name": "游泳馆",
+      "category": "sport",
+      "footprintSource": "osm+",
+      "osmWay": null,
+      "sourceLink": null,
+      "modelCenter": [
+        396.6,
+        173.7
+      ],
+      "modelBounds": [
+        372.2,
+        138.74,
+        421,
+        208.66
+      ],
+      "modelFloorCount": 2,
+      "osmFloorCount": null,
+      "geometryBuilder": "natatorium",
+      "spatialEvidence": "requires dated reference check",
+      "currentFootprintVerified": false,
+      "currentHeightVerified": false,
+      "currentFacadeVerified": false,
+      "entranceVerified": false,
+      "evidenceLinks": [
+        "https://jjc.cpu.edu.cn/71/8b/c499a225675/page.htm",
+        "https://www.cpu.edu.cn/b1/34/c11509a241972/page.htm",
+        "https://jjh.cpu.edu.cn/article/17511"
+      ]
+    }
+  ],
+  "roads": [
+    {
+      "key": "road-0",
+      "name": "长深高速",
+      "type": "motorway",
+      "vertices": 8,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-1",
+      "name": "长深高速",
+      "type": "motorway",
+      "vertices": 8,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-2",
+      "name": "(未命名)",
+      "type": "tertiary",
+      "vertices": 19,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-3",
+      "name": "福英路",
+      "type": "secondary",
+      "vertices": 17,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-4",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 12,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-5",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-6",
+      "name": "以仁路",
+      "type": "unclassified",
+      "vertices": 9,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-7",
+      "name": "济群路",
+      "type": "unclassified",
+      "vertices": 13,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-8",
+      "name": "以诚路",
+      "type": "service",
+      "vertices": 11,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-9",
+      "name": "药苑路",
+      "type": "unclassified",
+      "vertices": 10,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-10",
+      "name": "玉树路",
+      "type": "tertiary",
+      "vertices": 8,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-11",
+      "name": "博文路",
+      "type": "unclassified",
+      "vertices": 17,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-12",
+      "name": "药苑路",
+      "type": "unclassified",
+      "vertices": 9,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-13",
+      "name": "博爱路",
+      "type": "unclassified",
+      "vertices": 14,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-14",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-15",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-16",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-17",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-18",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-19",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 5,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-20",
+      "name": "文博路",
+      "type": "living_street",
+      "vertices": 17,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-21",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 17,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-22",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 22,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-23",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 11,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-24",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-25",
+      "name": "龙眠大道",
+      "type": "primary",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-26",
+      "name": "龙眠大道",
+      "type": "primary",
+      "vertices": 39,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-27",
+      "name": "龙眠大道",
+      "type": "primary",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-28",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 8,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-29",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-30",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-31",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-32",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-33",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-34",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 5,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-35",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-36",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 9,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-37",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-38",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-39",
+      "name": "龙眠大道",
+      "type": "primary",
+      "vertices": 39,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-40",
+      "name": "修文路",
+      "type": "tertiary",
+      "vertices": 15,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-41",
+      "name": "博观路",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-42",
+      "name": "以仁路",
+      "type": "unclassified",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-43",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 21,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-44",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 21,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-45",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 20,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-46",
+      "name": "以仁路",
+      "type": "unclassified",
+      "vertices": 11,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-47",
+      "name": "以仁路",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-48",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 20,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-49",
+      "name": "以仁路",
+      "type": "unclassified",
+      "vertices": 5,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-50",
+      "name": "精业路",
+      "type": "unclassified",
+      "vertices": 8,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-51",
+      "name": "博爱路",
+      "type": "unclassified",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-52",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-53",
+      "name": "博爱路",
+      "type": "unclassified",
+      "vertices": 14,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-54",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-55",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-56",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 13,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-57",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-58",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-59",
+      "name": "精业路",
+      "type": "unclassified",
+      "vertices": 14,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-60",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 20,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-61",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 14,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-62",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 5,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-63",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-64",
+      "name": "博思路",
+      "type": "service",
+      "vertices": 36,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-65",
+      "name": "博雅路",
+      "type": "service",
+      "vertices": 32,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-66",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-67",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-68",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-69",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-70",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-71",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-72",
+      "name": "博学路",
+      "type": "service",
+      "vertices": 8,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-73",
+      "name": "精业路",
+      "type": "unclassified",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-74",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 5,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-75",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-76",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 9,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-77",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-78",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-79",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 5,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-80",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-81",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-82",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-83",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-84",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-85",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-86",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-87",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-88",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-89",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-90",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-91",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-92",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-93",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-94",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-95",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-96",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 12,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-97",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-98",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 14,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-99",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-100",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-101",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 10,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-102",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-103",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-104",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-105",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-106",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-107",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-108",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-109",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 12,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-110",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-111",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-112",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-113",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-114",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-115",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 10,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-116",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-117",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-118",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-119",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-120",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 11,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-121",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-122",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 19,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-123",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-124",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 24,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-125",
+      "name": "福英路",
+      "type": "secondary",
+      "vertices": 22,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-126",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 5,
+      "spatialSource": "research-imagery-2025-06-16",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-127",
+      "name": "以仁路",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-128",
+      "name": "以仁路",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-129",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-130",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-131",
+      "name": "博爱路",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-132",
+      "name": "博爱路",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-133",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-134",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-135",
+      "name": "博爱路",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-136",
+      "name": "博爱路",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-137",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-138",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-139",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 9,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-140",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-141",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-142",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-143",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-144",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-145",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-146",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 6,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-147",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-148",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-149",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 12,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-150",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-151",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-152",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 7,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-153",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-154",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 8,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-155",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 9,
+      "spatialSource": "research-imagery-2025-06-16",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-156",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 5,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-157",
+      "name": "玉树路",
+      "type": "tertiary",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-158",
+      "name": "玉树路",
+      "type": "tertiary",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-159",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-160",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-161",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-162",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 3,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-163",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-164",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-165",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-166",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 14,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-167",
+      "name": "(未命名)",
+      "type": "service",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-168",
+      "name": "格致路",
+      "type": "secondary",
+      "vertices": 21,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-169",
+      "name": "龙眠大道",
+      "type": "primary",
+      "vertices": 24,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-170",
+      "name": "龙眠大道",
+      "type": "primary",
+      "vertices": 23,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-171",
+      "name": "(未命名)",
+      "type": "unclassified",
+      "vertices": 2,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-172",
+      "name": "修文路",
+      "type": "tertiary",
+      "vertices": 10,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    },
+    {
+      "key": "road-173",
+      "name": "(未命名)",
+      "type": "residential",
+      "vertices": 4,
+      "spatialSource": "OSM snapshot; date not recorded",
+      "currentAccessVerified": false
+    }
+  ],
+  "footpaths": [
+    {
+      "key": "footpath-0",
+      "name": null,
+      "vertices": 4,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-1",
+      "name": null,
+      "vertices": 45,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-2",
+      "name": null,
+      "vertices": 9,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-3",
+      "name": null,
+      "vertices": 11,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-4",
+      "name": null,
+      "vertices": 9,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-5",
+      "name": null,
+      "vertices": 35,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-6",
+      "name": null,
+      "vertices": 21,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-7",
+      "name": null,
+      "vertices": 20,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-8",
+      "name": null,
+      "vertices": 20,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-9",
+      "name": null,
+      "vertices": 20,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-10",
+      "name": null,
+      "vertices": 6,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-11",
+      "name": null,
+      "vertices": 21,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-12",
+      "name": null,
+      "vertices": 75,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-13",
+      "name": null,
+      "vertices": 20,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-14",
+      "name": null,
+      "vertices": 20,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-15",
+      "name": null,
+      "vertices": 14,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-16",
+      "name": null,
+      "vertices": 7,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-17",
+      "name": null,
+      "vertices": 3,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-18",
+      "name": null,
+      "vertices": 7,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-19",
+      "name": null,
+      "vertices": 5,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-20",
+      "name": null,
+      "vertices": 5,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-21",
+      "name": null,
+      "vertices": 15,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-22",
+      "name": null,
+      "vertices": 7,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-23",
+      "name": null,
+      "vertices": 11,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-24",
+      "name": null,
+      "vertices": 16,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-25",
+      "name": null,
+      "vertices": 12,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-26",
+      "name": null,
+      "vertices": 14,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-27",
+      "name": null,
+      "vertices": 4,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-28",
+      "name": null,
+      "vertices": 4,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-29",
+      "name": null,
+      "vertices": 4,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-30",
+      "name": null,
+      "vertices": 7,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-31",
+      "name": null,
+      "vertices": 14,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-32",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-33",
+      "name": null,
+      "vertices": 23,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-34",
+      "name": null,
+      "vertices": 48,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-35",
+      "name": null,
+      "vertices": 14,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-36",
+      "name": null,
+      "vertices": 9,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-37",
+      "name": null,
+      "vertices": 9,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-38",
+      "name": null,
+      "vertices": 49,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-39",
+      "name": null,
+      "vertices": 5,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-40",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-41",
+      "name": null,
+      "vertices": 4,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-42",
+      "name": null,
+      "vertices": 5,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-43",
+      "name": null,
+      "vertices": 15,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-44",
+      "name": null,
+      "vertices": 12,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-45",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-46",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-47",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-48",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-49",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-50",
+      "name": null,
+      "vertices": 3,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-51",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-52",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-53",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-54",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-55",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-56",
+      "name": null,
+      "vertices": 5,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-57",
+      "name": null,
+      "vertices": 4,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-58",
+      "name": null,
+      "vertices": 6,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-59",
+      "name": null,
+      "vertices": 11,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-60",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-61",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-62",
+      "name": null,
+      "vertices": 9,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-63",
+      "name": null,
+      "vertices": 3,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-64",
+      "name": null,
+      "vertices": 2,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-65",
+      "name": null,
+      "vertices": 3,
+      "currentAccessVerified": false
+    },
+    {
+      "key": "footpath-66",
+      "name": "二食堂东侧防护通道",
+      "vertices": 2,
+      "currentAccessVerified": false
+    }
+  ],
+  "waters": [
+    {
+      "key": "water-0",
+      "name": "明湖",
+      "outerRings": 1,
+      "innerRings": 1,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-1",
+      "name": "镜湖",
+      "outerRings": 1,
+      "innerRings": 3,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-2",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-3",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-4",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-5",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-6",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-7",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-8",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-9",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-10",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-11",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-12",
+      "name": null,
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    },
+    {
+      "key": "water-13",
+      "name": "东北林地水塘",
+      "outerRings": 1,
+      "innerRings": 0,
+      "currentShorelineVerified": false
+    }
+  ],
+  "sports": [
+    {
+      "key": "sport-0",
+      "name": null,
+      "type": "soccer",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-1",
+      "name": null,
+      "type": "soccer",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-2",
+      "name": "体育场",
+      "type": "stadium",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-3",
+      "name": "游泳池",
+      "type": "swimming_pool",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-4",
+      "name": null,
+      "type": "tennis",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-5",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-6",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-7",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-8",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-9",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-10",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-11",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-12",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-13",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-14",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-15",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-16",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-17",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-18",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-19",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-20",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-21",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-22",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-23",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-24",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-25",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-26",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-27",
+      "name": null,
+      "type": "basketball",
+      "currentLayoutVerified": false
+    },
+    {
+      "key": "sport-28",
+      "name": null,
+      "type": "pitch",
+      "currentLayoutVerified": false
+    }
+  ],
+  "graduatePhaseFive": {
+    "referenceOnly": true,
+    "fitReport": {
+      "coefficients": [
+        [
+          0.5493592013994092,
+          -0.002220295115306692
+        ],
+        [
+          0.007779547399379194,
+          0.5655294918634566
+        ],
+        [
+          -122.08935234398288,
+          -991.569558527211
+        ]
+      ],
+      "fittingRmsMeters": 1.0582654163618324,
+      "checks": [
+        {
+          "id": "J3",
+          "errorMeters": 2.505317962693502
+        },
+        {
+          "id": "J7",
+          "errorMeters": 3.49707774513461
+        },
+        {
+          "id": "J9",
+          "errorMeters": 2.442221363517875
+        },
+        {
+          "id": "north-road-center",
+          "errorMeters": 13.316086605768
+        }
+      ],
+      "interpretation": "Footpath checks are about 2–4 m; the northern road check differs by about 13 m. The outline is only a notice reference area, never a physical barrier."
+    },
+    "buildingHeightAndFenceNotModeled": true
+  },
+  "intersectionCandidates": [
+    {
+      "road": "road-8",
+      "roadName": "以诚路",
+      "building": "osm-way-548293595",
+      "buildingName": "图书馆",
+      "sampledContacts": 116,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-13",
+      "roadName": "博爱路",
+      "building": "supplement-95",
+      "buildingName": "文正苑6、7号楼",
+      "sampledContacts": 11,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-56",
+      "roadName": "(未命名)",
+      "building": "osm-way-553656883",
+      "buildingName": "安评中心",
+      "sampledContacts": 33,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-56",
+      "roadName": "(未命名)",
+      "building": "supplement-92",
+      "buildingName": "新建科研楼 C",
+      "sampledContacts": 1,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-56",
+      "roadName": "(未命名)",
+      "building": "osm-way-553656881",
+      "buildingName": "同位素楼",
+      "sampledContacts": 20,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-57",
+      "roadName": "(未命名)",
+      "building": "osm-way-553656883",
+      "buildingName": "安评中心",
+      "sampledContacts": 2,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-58",
+      "roadName": "(未命名)",
+      "building": "osm-way-548293595",
+      "buildingName": "图书馆",
+      "sampledContacts": 1,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-61",
+      "roadName": "(未命名)",
+      "building": "supplement-94",
+      "buildingName": "文德苑",
+      "sampledContacts": 17,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-69",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917306",
+      "buildingName": "(未命名)",
+      "sampledContacts": 11,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-70",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190434",
+      "buildingName": "文萃苑2号楼",
+      "sampledContacts": 14,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-76",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917155",
+      "buildingName": "文枢苑6号楼",
+      "sampledContacts": 1,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-77",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917155",
+      "buildingName": "文枢苑6号楼",
+      "sampledContacts": 3,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-77",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917168",
+      "buildingName": "文枢苑1号楼",
+      "sampledContacts": 2,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-79",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917189",
+      "buildingName": "文昌苑3号楼",
+      "sampledContacts": 2,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-80",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917192",
+      "buildingName": "文昌苑2号楼",
+      "sampledContacts": 1,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-83",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917177",
+      "buildingName": "文昌苑6号楼",
+      "sampledContacts": 1,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-87",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917163",
+      "buildingName": "文枢苑2号楼",
+      "sampledContacts": 15,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-88",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917117",
+      "buildingName": "文思苑6号楼",
+      "sampledContacts": 3,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-88",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917112",
+      "buildingName": "文思苑5号楼",
+      "sampledContacts": 53,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-89",
+      "roadName": "(未命名)",
+      "building": "supplement-94",
+      "buildingName": "文德苑",
+      "sampledContacts": 9,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-92",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917137",
+      "buildingName": "文思苑2号楼",
+      "sampledContacts": 53,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-94",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917130",
+      "buildingName": "文思苑4号楼",
+      "sampledContacts": 27,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-95",
+      "roadName": "(未命名)",
+      "building": "osm-way-553917133",
+      "buildingName": "文思苑3号楼",
+      "sampledContacts": 2,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-103",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190436",
+      "buildingName": "文萃苑6号楼",
+      "sampledContacts": 16,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-104",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190440",
+      "buildingName": "文萃苑5号楼",
+      "sampledContacts": 23,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-105",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190475",
+      "buildingName": "文澜苑6号楼",
+      "sampledContacts": 18,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-105",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190474",
+      "buildingName": "文澜苑5号楼",
+      "sampledContacts": 7,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-106",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190475",
+      "buildingName": "文澜苑6号楼",
+      "sampledContacts": 15,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-107",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190476",
+      "buildingName": "文澜苑1号楼",
+      "sampledContacts": 24,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-109",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190468",
+      "buildingName": "文菁苑1号楼",
+      "sampledContacts": 8,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-110",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190473",
+      "buildingName": "文菁苑5号楼",
+      "sampledContacts": 6,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-112",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190468",
+      "buildingName": "文菁苑1号楼",
+      "sampledContacts": 8,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-113",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190470",
+      "buildingName": "文菁苑3号楼",
+      "sampledContacts": 11,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-119",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190456",
+      "buildingName": "文轩苑4号楼",
+      "sampledContacts": 7,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-121",
+      "roadName": "(未命名)",
+      "building": "osm-way-554190452",
+      "buildingName": "文轩苑5号楼",
+      "sampledContacts": 15,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-144",
+      "roadName": "(未命名)",
+      "building": "osm-way-553656883",
+      "buildingName": "安评中心",
+      "sampledContacts": 22,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-145",
+      "roadName": "(未命名)",
+      "building": "osm-way-553656883",
+      "buildingName": "安评中心",
+      "sampledContacts": 1,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-163",
+      "roadName": "(未命名)",
+      "building": "supplement-94",
+      "buildingName": "文德苑",
+      "sampledContacts": 7,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-165",
+      "roadName": "(未命名)",
+      "building": "osm-way-553455387",
+      "buildingName": "学生第二食堂",
+      "sampledContacts": 23,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-169",
+      "roadName": "龙眠大道",
+      "building": "osm-way-857774704",
+      "buildingName": "中国药科大学",
+      "sampledContacts": 144,
+      "status": "needs rendered/source inspection"
+    },
+    {
+      "road": "road-170",
+      "roadName": "龙眠大道",
+      "building": "osm-way-857774704",
+      "buildingName": "中国药科大学",
+      "sampledContacts": 288,
+      "status": "needs rendered/source inspection"
+    }
+  ],
+  "nextPriorities": [
+    "Validate independent 2026 observations of major facades and entrance positions.",
+    "Resolve the northern-road registration discrepancy before modeling a phase-five fence.",
+    "Inspect every road/footprint intersection candidate using dated imagery or rendered geometry.",
+    "Review the remaining undated generic buildings, water boundaries, bridges and sports dimensions."
+  ]
+}

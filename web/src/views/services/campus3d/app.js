@@ -9,7 +9,8 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { NATATORIUM, DORM_LETTER, DORM_GROUP_INFO, dormSummary, buildingListMeta, buildingFacts, geometrySource } from './placeMetadata.js';
-import { ACTIVITY_CENTER } from './constructionSites.js';
+import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from './constructionSites.js';
+import { RESEARCH_CENTERS, RESEARCH_INFO, CHEMISTRY_COURT, RESEARCH_TEMPORARY_FOOTPRINT, researchBuildings, correctResearchRoads } from './researchCenters.js';
 
 export function mountCampus3D(root, opts) {
 let DISPOSED = false, RAF = 0;
@@ -18,6 +19,7 @@ const on = (target, type, fn, options) => { target.addEventListener(type, fn, op
 
 const D = JSON.parse(JSON.stringify(opts.data));
 const O = JSON.parse(JSON.stringify(opts.outer));
+D.r = correctResearchRoads(D.r);
 D.pa.push({ t: 'footway', p: ACTIVITY_CENTER.passage, n: '二食堂东侧防护通道' });
 // OSM still contains service roads from the pre-Double-A layout. The photographed
 // east forecourt is pedestrian paving; retain only its northern access segment.
@@ -307,11 +309,8 @@ for (const b of D.b) {
 }
 const EXTRA = [
   { name: '学院实验楼', special: 'xueyuan', cat: 'teach', p: rectPoly(-170, -595, 190, 215, 0), src: 'sat', fl: 5 },
-  { name: '新建科研楼 A', p: [[-292, -497], [-252, -497], [-252, -420], [-292, -420]], st: 'labw', fl: 6, src: 'sat-inferred', cat: 'teach', group: 'newlab' },
-  { name: '新建科研楼 A', p: [[-252, -452], [-180, -505], [-163, -484], [-238, -428], [-252, -428]], st: 'labw', fl: 6, src: 'sat-inferred', cat: 'teach', group: 'newlab', nolabel: 1 },
-  { name: '新建科研楼 B', p: [[-298, -412], [-202, -412], [-202, -376], [-298, -376]], st: 'glassGrey', fl: 6, src: 'sat-inferred', cat: 'teach', group: 'newlab' },
-  { name: '新建科研楼 C', p: [[-404, -420], [-308, -420], [-308, -380], [-404, -380]], st: 'whiteGreen', fl: 6, src: 'sat-inferred', cat: 'teach', group: 'newlab' },
-  { name: '', p: [[-160, -446], [-137, -446], [-137, -400], [-160, -400]], st: 'plain', fl: 2, src: 'sat', cat: 'teach' },
+  ...researchBuildings(),
+  { name: '科研区临时设施（2025影像）', p: RESEARCH_TEMPORARY_FOOTPRINT, st: 'shed', fl: 1, h: 3.2, src: 'sat', cat: 'transit' },
   { name: '文德苑', p: WENDE.footprint, special: 'wende', st: 'wende', fl: 9, h: WENDE.H, src: 'photo+sat', cat: 'life' },
   { name: '文正苑6、7号楼', p:NE.wenzheng67,special:'graduate',st:'beigeBand',fl:8,h:25.6,src:'sat-inferred',cat:'life' },
   { name: '文华苑1号楼', p: rectPoly(531.6, -135.2, 81, 21.7, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
@@ -410,15 +409,14 @@ const TEACH_TREES = [];
 
 const INFO = {
   ...DORM_GROUP_INFO,
+  ...RESEARCH_INFO,
   '大学生活动中心': { d: '科学艺术中心，位于二食堂东侧。基建后勤处将其列为在建工程；2026 年 9 月 22 日通知安排三层楼面混凝土浇筑。二食堂东侧设有施工防护通道，公告预计留置至 2027 年 3 月。场景按这些资料显示施工围挡、结构楼板和防护通道；施工进度与通行以现场指引为准。', s: '基建后勤处在建项目清单、施工区域附图与施工通知；核对日期：2026-10-23。围挡范围按附图对齐周边道路；结构轮廓、层高和通道尺寸为示意，不能作为竣工外观或当前测量值。', links: ACTIVITY_CENTER.sources },
+  [GRADUATE_PHASE_FIVE.name]: { d: GRADUATE_PHASE_FIVE.description, s: '施工通知附图与 OSM 步道交点配准。独立步道检查差约 2–4 米，北侧道路检查差约 13 米；不据此生成围挡或建筑碰撞。资料核对：2026-10-23。', links: GRADUATE_PHASE_FIVE.sources },
   '图书馆': { d: '江宁校区的中心建筑，正对中心广场与镜湖。主楼地上 7 层，前部为两层白色柱廊裙房与宽阔台阶，立面为灰色石材配白色边框与横向带窗。江宁校区馆面积约 2.3 万平方米，二层设借阅室与学术报告厅。', s: '层数：OpenStreetMap；面积与楼层功能：百度百科“中国药科大学图书馆”；立面：公开照片' },
   '药学博物馆': { d: '紧邻图书馆西侧的三层展馆，一面深灰石墙竖向镌刻馆名，主体为玻璃幕墙与悬挑灰色框架。馆内陈列药材标本、制药器具与药学史料。', s: '层数：OpenStreetMap；外观：百度百科配图' },
   '行政楼': { d: '位于正门内西侧，镜湖西岸。深炭灰墙板、端墙和檐口配蓝色窗带，南侧连接大礼堂与学术报告厅。', s: '位置：OpenStreetMap；外观：校园航拍与公开实景照片' },
   '会议中心': { d: '行政楼南侧，经北面的玻璃中庭与行政楼相连。中部高起的方形浅色体量是大礼堂观众厅；西南两层楼沿一道大弧线展开，底层退进为玻璃，上方挑出白色檐口；东侧朝广场是一排锯齿形玻璃门厅，东南角伸出三角形入口雨棚。体量与位置按卫星影像建模。', s: '位置：OpenStreetMap；外观：校园全景照片' },
   '学院实验楼': { d: '位于校园西北角，东临明湖，北依药用植物园西区，因两翼平面呈“A”形，常被称作“双 A 楼”。由美国 HDR 公司方案设计、南京大学建筑设计研究院完成施工图；建筑面积约 36991 平方米，地上 5 层、地下 1 层。东侧科研办公室呈弧形面向明湖，白色水平遮阳带与玻璃幕墙层层叠退；中庭有螺旋原木雕塑与竖琴形天窗。二期大楼于 2021 年 2 月通过竣工验收。', s: '搜狐《匠心独具｜探秘中国药科大学江宁校区学院实验楼》；学校基建处“已建项目”；外观：学校官网航拍' },
-  '新建科研楼 A': { d: '明湖西侧近年落成的白色带状立面科研楼。学校基建处列出的近年竣工项目包括：学院实验楼二期（2021）、药学动物中心（2023）、临床药学研究中心与药物再评价中心（2025）、创新药物成药性评价中心（2025），本楼为其中之一，具体对应关系为推断。', s: '形体：卫星影像；项目清单：学校基建处“已建项目”' },
-  '新建科研楼 B': { d: '灰色玻璃幕墙配白色横向框线、屋顶设备密集的科研楼，形态与基建处公布的药学动物中心照片接近（推断）。', s: '形体：卫星影像；参考：学校基建处“已建项目”照片' },
-  '新建科研楼 C': { d: '白色横带配青绿色玻璃的六层科研楼，形态与基建处公布的临床药学研究中心照片接近（推断）。', s: '形体：卫星影像；参考：学校基建处“已建项目”照片' },
   '文德苑': {d:'研究生公寓四期，位于文思苑北侧。9 层弧形板楼，西端斜向西南，东端接一段南北向短翼；米色窗间墙与深棕窗带横向相间，楼前是一圈向南凸出的单层裙房和入口。',s:'学校基建处与校友会发布的实景照片；z18/z19 卫星图。层高为照片估算，非测绘数据。'},
   '一食堂': { d: '学生第一食堂，位于学生公寓区西侧。四层，深灰面砖墙面，窗间饰白色竖向条板。', s: '名称与位置：OpenStreetMap；外观参照二食堂实景照片' },
   '二食堂': { d: '学生第二食堂，四层，深灰面砖墙面配白色窗下板，转角立面有竖排“二食堂”字样；楼前常停满自行车。', s: '名称与位置：OpenStreetMap；外观：实景照片' },
@@ -1586,6 +1584,30 @@ function buildGeneric(b, idx) {
     addBox('trim:white', e.mx + e.nx * 2.2, 4.6, e.mz + e.nz * 2.2, 16, 4.4, 0.4, a);
     for (const u of [-6.5, 6.5]) addCyl('metal', e.mx + e.dx * u + e.nx * 3.8, 0, e.mz + e.dz * u + e.nz * 3.8, 0.18, 4.6, 8);
   }
+}
+function buildResearchCenter(b) {
+  const p = b.p, floors = b.cls.fl, parapet = 0.8;
+  const top = b.cls.h ? b.cls.h - parapet : floors * b.cls.fh;
+  const fh = top / floors, band = Math.min(1.1, fh * 0.24);
+  // The school photos show continuous blue glazing and broad white horizontal
+  // panels. The facade bay spacing remains an estimate, not a measured elevation.
+  addWalls('museumGlass', p, 0, top);
+  const frame = insetPoly(p, -0.12);
+  addWalls('trim:white', frame, 0, 0.85);
+  for (let floor = 1; floor <= floors; floor++) {
+    const y = floor * fh;
+    addWalls('trim:white', frame, y - band, y);
+    for (let i = 0; i < p.length; i++) {
+      const e = edgeOutward(p, i), a = Math.atan2(e.dz, e.dx);
+      for (let d = 1.2; d < e.len; d += 2.4) addBox('trim:grey', e.a[0] + e.dx*d + e.nx*0.04, y-fh, e.a[1] + e.dz*d + e.nz*0.04, 0.07, 0.12, fh-band, a);
+    }
+  }
+  addCap('roof:light', p, top); addParapet('trim:white', p, top, parapet, 0.35);
+  if (b.extra.researchId === 'chemistry') {
+    NO_TREE.push(CHEMISTRY_COURT);
+    addCap('garden', CHEMISTRY_COURT, 0.04);
+  }
+  b.h = top + parapet;
 }
 // Main entrance on the face nearest a road.
 const NO_TREE = [];
@@ -4305,6 +4327,7 @@ function buildBuildings() {
     else if (sp === 'hdorm') buildHighDorm(b);
     else if (sp === 'construction') buildConstruction(b);
     else if (sp === 'activityConstruction') buildActivityCenter(b);
+    else if (sp === 'researchCenter') buildResearchCenter(b);
     else if (sp === 'gardenService') buildGardenService(b);
     else buildGeneric(b, idx);
   });
@@ -4416,6 +4439,7 @@ function buildPlaces() {
   const tennis = COURTS.find((c) => c.type === 'tennis'); if (tennis) PLACES.push({ name: '网球场', cat: 'sport', x: tennis.ob.cx, z: tennis.ob.cz, h: 3, sub: '六片硬地球场' });
   const bb = COURTS.filter((c) => c.type === 'basketball'); if (bb.length) { const x = bb.reduce((a, c) => a + c.ob.cx, 0) / bb.length, z = bb.reduce((a, c) => a + c.ob.cz, 0) / bb.length; PLACES.push({ name: '篮球场', cat: 'sport', x, z, h: 3, sub: `${bb.length} 片室外球场` }); }
   PLACES.push({ name: '龙眠大道', cat: 'transit', x: -520, z: 330, h: 4, sub: '地铁 1 号线高架沿路而行' });
+  PLACES.push({ name: GRADUATE_PHASE_FIVE.name, cat: 'life', x: GRADUATE_PHASE_FIVE.center[0], z: GRADUATE_PHASE_FIVE.center[1], h: 4, major: true, sub: '北门西侧 · 通知参考范围', referenceArea: GRADUATE_PHASE_FIVE.referenceArea, viewFrom: GRADUATE_PHASE_FIVE.viewFrom });
   mapNames();
   for (const p of PLACES) {
     p.icon = iconFor(p); p.color = placeColor(p);
@@ -4504,7 +4528,14 @@ function select(p) {
 }
 let HL = null;
 function highlight(p) {
-  if (HL) { scene.remove(HL); HL.traverse((o) => o.geometry?.dispose()); const k = NO_AO.indexOf(HL); if (k >= 0) NO_AO.splice(k, 1); HL = null; }
+  if (HL) { scene.remove(HL); const materials=new Set(); HL.traverse((o) => { o.geometry?.dispose(); if(o.material)materials.add(o.material); }); for(const m of materials)m.dispose(); const k = NO_AO.indexOf(HL); if (k >= 0) NO_AO.splice(k, 1); HL = null; }
+  if (p.referenceArea) {
+    const points = p.referenceArea.concat([p.referenceArea[0]]).map(([x,z])=>new THREE.Vector3(x,0.45,z));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineDashedMaterial({ color:0xf0a536, dashSize:4, gapSize:3, depthTest:false, transparent:true, opacity:0.9 }));
+    line.computeLineDistances(); line.renderOrder=20;
+    HL=new THREE.Group(); HL.add(line); HL.material=line.material; HL.userData.t0=performance.now(); HL.userData.reference=true; scene.add(HL); NO_AO.push(HL);
+    return;
+  }
   if (!p.bld) return;
   const own = new Set(p.bld), pos = [], line = [];
   for (const m of PICKABLE) {
@@ -4552,7 +4583,8 @@ function flyTo(pos, tgt, dur = 1.8, done) {
   tween = { t: 0, dur, p0: camera.position.clone(), t0: controls.target.clone(), p1: pos.clone(), t1: tgt.clone(), done };
 }
 function viewFor(p) {
-  const r = p.bld ? Math.max(...p.bld.map((i) => Math.hypot(BLD[i].bb[2] - BLD[i].bb[0], BLD[i].bb[3] - BLD[i].bb[1]))) : 120;
+  const areaBox = p.referenceArea ? pBox(p.referenceArea) : null;
+  const r = areaBox ? Math.hypot(areaBox[2]-areaBox[0],areaBox[3]-areaBox[1]) : p.bld ? Math.max(...p.bld.map((i) => Math.hypot(BLD[i].bb[2] - BLD[i].bb[0], BLD[i].bb[3] - BLD[i].bb[1]))) : 120;
   const spread = p.dorm ? 160 : 0, h = p.h || 10;
   const dist = clamp(r * 1.5 + h * 1.6 + spread + 40, 70, 650);
   const dir = camera.position.clone().sub(controls.target); dir.y = 0; if (dir.lengthSq() < 1) dir.set(-1, 0, 1); dir.normalize();
@@ -4931,6 +4963,7 @@ function sightOK(x, z, fx, fz, dist) {
 // Where to stand to look at a place: in front of its main face, backed off until the wall is comfortably far away
 // and nothing (wall, bush, post, water) is in the way of the first steps.
 function placeFront(p) {
+  if (p.viewFrom) { const [x,z]=walkSpot(...p.viewFrom); return { x,z,yaw:Math.atan2(x-p.x,z-p.z) }; }
   let x, z, nx, nz;
   const e = p.bld ? edgeFacing(BLD[p.bld[0]].p, BLD[p.bld[0]].c[0] - 100, BLD[p.bld[0]].c[1] + 100, 6) : null;
   if (e) { x = e.mx; z = e.mz; nx = e.nx; nz = e.nz; }
@@ -6278,7 +6311,7 @@ function loop(now) {
   updatePeople(dt, now / 1000); updateCars(dt); updateTrains(dt); updateChunks(); updateGrass(); updateNet(dt);
   TRAINS.forEach((T) => T.cars.forEach((c) => { if (c.userData.hide) c.visible = false; }));
   updateParticles(dt); updateTreeLOD(); updateTreeFade(dt);
-  if (HL) HL.material.opacity = 0.16 + 0.08 * Math.sin((now - HL.userData.t0) * 0.004);
+  if (HL && !HL.userData.reference) HL.material.opacity = 0.16 + 0.08 * Math.sin((now - HL.userData.t0) * 0.004);
   updateShadowCam();
   updateViewOffset(dt);
   const submitStart = performance.now();

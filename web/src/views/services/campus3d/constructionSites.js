@@ -1,4 +1,18 @@
 // Dated construction evidence, not a prediction of the finished building or a live site survey.
+import { GRADUATE5_REFERENCE_AREA } from './graduate5Registration.js';
+
+export const GRADUATE_PHASE_FIVE = Object.freeze({
+  name: '研究生公寓五期（在建）',
+  referenceArea: GRADUATE5_REFERENCE_AREA,
+  center: GRADUATE5_REFERENCE_AREA.reduce((a,p)=>[a[0]+p[0]/4,a[1]+p[1]/4],[0,0]),
+  viewFrom: [143, -751],
+  description: '位于北门西侧林地的独立建设项目。学校 2025 年试桩通知附图标出了施工区域，2026 年在建项目清单仍列有该项目。招标规划为地上 19 层、地下 1 层，约 59.80 米；这些不是当前施工高度。选中后的地面虚线仅表示通知附图的参考范围，现状结构与围挡边界尚待核实。',
+  sources: [
+    { title:'施工区域通知附图（2025-04-30）',url:'https://jjc.cpu.edu.cn/61/db/c494a221659/page.htm' },
+    { title:'学校在建项目清单',url:'https://jjc.cpu.edu.cn/507/list.htm' },
+    { title:'五期项目规划参数（2025-08-07）',url:'https://njggzy.nanjing.gov.cn/njweb/fjsz/068001/068001001/20250807/4108c9c9-35a7-42f5-b5d6-654d35a37e5e.html' },
+  ],
+});
 // The May 2025 site plan puts this parcel between No. 2 canteen and Bo'ai Road.
 // Its four corners are aligned to the surrounding OSM road junctions, with a setback
 // to keep the existing carriageways and footways outside the illustrated hoarding.

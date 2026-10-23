@@ -89,6 +89,23 @@
       "title": "研究生公寓五期项目监理招标公告",
       "publishedOn": "2025-08-07",
       "supports": "项目规划地上19层、地下1层，高度约59.80米。属于规划工程参数，不是2026-10已建现状，也不适用于文正苑H6/H7。"
+    },
+    {
+      "url": "https://www.cpu.edu.cn/_t768/8e/05/c10408a232965/page.htm",
+      "title": "部分楼宇命名征集及楼宇介绍",
+      "publishedOn": "2026-03-05",
+      "supports": "新化学楼（成药性评价中心）地上5层、地下1层，总建筑面积16050.51平方米；临床中心地上6层、地下1层。图3和图5标为实景，图1仅作位置背景，未当作实拍航片。"
+    },
+    {
+      "url": "https://jjc.cpu.edu.cn/71/8a/c499a225674/page.htm",
+      "title": "临床药学研究中心与药物再评价中心项目消防咨询公告",
+      "publishedOn": "2025-07-08",
+      "supports": "地上6层、地下1层，公告建筑高度29.85米，地上面积10259.41平方米；不是竣工测绘。"
+    },
+    {
+      "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+      "title": "Esri World Imagery及分辨率元数据",
+      "supports": "在三栋科研楼的位置分别查询到WV02影像拍摄日2025-06-16、源分辨率0.5米、定位精度8.47米。源瓦片与SHA-256、查询坐标和返回元数据见空间来源清单。"
     }
   ],
   "fixed": [
@@ -156,14 +173,41 @@
       "before": "HTTP测试复现玩家超过12秒未更新后已不出现在附近列表，却仍被计入在线人数；旧凭据可以同步并复活。",
       "after": "每次sync先按同一时间点清理过期玩家，再验证会话并统计人数。",
       "evidence": "实际HTTP测试覆盖12秒边界、12秒加1毫秒与旧凭据404；实际本地测试游客进程突然停止后浏览器人数2→1且远端标签消失。"
+    },
+    {
+      "id": "research-georeferenced-plan",
+      "before": "成药性评价中心由两个猜测轮廓组成、按6层生成，其中一块与OSM库房轮廓重叠约904平方米；相邻科研楼平面位置也未使用可追溯配准。",
+      "after": "依据有全球瓦片坐标和拍摄日期的影像重绘三栋科研楼；区分屋顶顶面与可见立面投影，并记录估算平移。新化学楼改为5层U形庭院，临床中心改为6层并采用公告29.85米高度及照片支持的圆角/横带外观。",
+      "evidence": "校方2026-03-05实景资料+2025-06-16影像；保留像素顶点、屋顶到地面位移参考对、元数据和源图哈希。模型楼面面积与公布建筑面积作独立尺度检查；实际网格射线确认庭院露天。",
+      "remaining": "屋顶到地面偏移、窗格间距和圆角半径仍是估算；雕像和庭院植物尚未逐项重建；动物中心身份/层数仍需独立确认。"
+    },
+    {
+      "id": "research-access-roads",
+      "before": "旧服务道路穿过新化学楼庭院和建筑体量，东侧通道也与补建轮廓冲突。",
+      "after": "保留北侧连接，截断过时的穿楼段，东侧通道按影像可见地面道路修正。没有为通过检测而整体平移博文路。",
+      "evidence": "校正段的中心线及两侧车道边缘不穿入周边模型；全路网中心线不穿入三栋科研楼。",
+      "remaining": "临床中心南侧一段未改动服务道路的估算边缘仍与近似基底有1个采样接触，中心线不相交；路宽与基底边界需更强资料，不按测试结果擅自缩路或移楼。"
+    },
+    {
+      "id": "graduate5-reference-registration",
+      "before": "五期项目已知是北部独立工地，但没有可复核的位置配准或地图入口。",
+      "after": "使用6个步道控制点作仿射配准、保留4个独立检查点。增设五期在建地标和仅在选中时出现的参考虚线，明确规划19层/59.8米不是当前高度，不生成虚构楼体或围挡碰撞。",
+      "evidence": "拟合RMS约1米；3个独立步道检查约2–4米；北侧道路检查约13米。输入像素、场景坐标、系数和检查误差均保留。浏览器验证地标、说明和虚线渲染。",
+      "remaining": "北侧道路误差未消除，通知红框也不是测绘边界；现场结构、实际围挡和出入口仍待查。"
+    },
+    {
+      "id": "spatial-inventory",
+      "after": "可重跑清单覆盖109个建筑模型、174条道路、67条步道、14组水体、29个运动设施；不把测试通过视为现状核实。记录41组平面交叉候选供后续逐项检查。",
+      "evidence": "node tools/campus3d-spatial-inventory.mjs；清单及空间来源清单已纳入版本控制。",
+      "remaining": "候选包含高架车站与地面道路的合理投影重叠，并非41个已确认缺陷。其余外观、高度、入口、水岸等字段仍按未核实保留。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "33 passed, 0 failed (31 frontend + 2 server)",
-      "scope": "原有元数据/施工/指针锁定21项；加入/同步代次、重连、迟到回调、独占与共享资源释放10项；真实HTTP游客与过期边界2项。",
-      "limitation": "异步回归使用可控API响应与真实Three对象，不等同于高延迟真实网络、登录账号和GPU内存压力验证。"
+      "result": "44 passed, 0 failed (42 frontend + 2 server)",
+      "scope": "原有33项；新增科研楼位置/源影像日期与误差/楼层/面积尺度/露天庭院/道路/网格8项，仿射配准与独立检查3项。",
+      "limitation": "只证明代码、几何一致性和已列来源对应关系；不证明全图当前实景一致。未改动道路的宽度接触候选保留在清单，未以中心线检查掩盖边界误差。"
     },
     "typeCheck": {
       "command": "npm run type-check --prefix web",
@@ -185,7 +229,10 @@
         "挂载实际campus3dPresenceRouter到临时本地游客适配器；浏览器经Vue请求封装与Vite代理join/sync成功，在线提示为2人，远端标签与3D角色可见。",
         "退出探索后标签0且在线提示隐藏，本地另一游客同步看到人数降为1；再次进入建立新游客会话，人数回2且只有一个远端角色。",
         "突然终止本地测试游客进程（不发送leave），超过服务端过期窗口后浏览器人数回1且标签为0。",
-        "H6/H7详情显示文正苑·经纬社区及学工处来源，不再将已确认的苑名标作推断。"
+        "H6/H7详情显示文正苑·经纬社区及学工处来源，不再将已确认的苑名标作推断。",
+        "新化学楼显示地上5层、模型占地约2736平方米；临床中心显示地上6层、公告29.85米，模型占地约1723平方米。",
+        "实际画布显示U形楼、邻楼及周边道路；场景30/30，无场景脚本错误。",
+        "研究生公寓五期可检索，详情区分规划参数与现状，仅绘制参考虚线，无实体楼或围挡。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
@@ -200,7 +247,10 @@
         "output/campus3d-audit-20261023/activity-walk.png",
         "output/campus3d-audit-20261023/graduate5-site.png",
         "output/campus3d-audit-20261023/graduate5-project.jpg",
-        "output/campus3d-audit-20261023/presence-avatar.png"
+        "output/campus3d-audit-20261023/presence-avatar.png",
+        "output/campus3d-audit-20261023/research-centers-final.png",
+        "output/campus3d-audit-20261023/graduate5-reference-final.png",
+        "output/campus3d-audit-20261023/tests-spatial-final.log"
       ]
     },
     "serverTypeCheck": {
@@ -215,12 +265,12 @@
     {
       "scope": "建筑与实际对齐",
       "status": "incomplete",
-      "nextEvidence": "五期试桩附图已明确为北部林地独立项目，不是H6/H7；需对红框做可复核坐标配准、核实当前结构进度并补建。文正苑H4-H7苑名已由学工处证实，轮廓/高度仍待实景复核。其他建筑逐项核验继续。"
+      "nextEvidence": "新化学楼/临床中心已按校方实景与有日期影像改善，仍为近似模型。需继续核实实际基底、窗格/入口、庭院雕像与植物、动物中心身份和层数、库房庭院，以及图书馆、食堂、教学楼等其余建筑。五期只有通知参考范围，实际结构及围挡未核实。"
     },
     {
       "scope": "道路、水体与景观",
       "status": "incomplete",
-      "nextEvidence": "复核路口、校门、桥梁、湖岸、岛屿、球场尺寸和围栏；分清历史通知与当前施工状态。北门19点关闭的现有说明尚缺当前有效依据。"
+      "nextEvidence": "按空间清单逐项区分高架与地面、轮廓与实际网格。优先核对图书馆旁以诚路、文思苑5/2号楼附近道路、临床中心南侧估算路宽接触和安评中心周边。继续核对校门、桥梁、水岸、岛屿、球场尺寸及当前通行。"
     },
     {
       "scope": "场景交互",
@@ -248,5 +298,7 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "11732d827b6ee3cc4ad9fca07ee08f4bc9245eb4"
+  "lastVerifiedParentCommit": "5fedb261b2f0a3ee1a8324188b5ed4684d550f68",
+  "spatialInventory": "docs/campus3d-spatial-inventory.json",
+  "spatialSourceManifest": "docs/campus3d-spatial-sources.json"
 }
