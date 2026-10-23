@@ -267,14 +267,30 @@
       "before": "研究影像下载工具固定查询60cm metadata层，可能给zoom19图像引用其他分辨率来源日期。",
       "after": "按服务公布的LOD比例尺及元数据层可见比例尺选择图层，并核对返回记录的MinMapLevel/MaxMapLevel。记录选层依据，明确中心点采样范围；查询错误或范围不符时失败，不填写拍摄日期。 同名捕获不覆盖，元数据成功后才保存拼接图，避免新图配旧元数据。",
       "evidence": "实请求zoom18选中layer10、zoom19选中layer9；对既有3个研究楼点及2个宿舍影像中心复核，日期和精度值仍一致。 离线核对LOD18/19/20选层并验证已有图像/元数据不能被同名覆盖。"
+    },
+    {
+      "id": "pedestrian-static-and-swept-clearance",
+      "before": "行人直接使用步道和道路外偏线，附加左右0.7米摆动；基础轨迹不检验墙体，避车只检查目的点，并把桥下的水域当作桥面不可走。",
+      "after": "碰撞网格、树木和单车完成后再生成行人；保留原道路与楼体，只在可通行区段生成连续往返轨迹，并为横向摆动留净空。出生点、避让目标和经过的整段路线检查实体、树干与街道物件；承认桥面，并按避让后的最终位置计算高度。无侧移时复用已验证路线，避免每帧全量重查。",
+      "evidence": "可复现审计覆盖109栋建筑与12座桥。含终点的原规则197条路线中46条产生936个墙体接触采样；新205段路线152355个位置采样中墙体、水域、施工区接触均为0，保留417个桥面采样。8项新增回归覆盖实际步行碰撞、运行中的人物更新、薄墙避让、桥面高度、树干与实例化物件。",
+      "remaining": "审计几何包含校园建筑与桥梁，未生成全部景观和停车实例；树木、单车等另以回归夹具验证。完整浏览器场景已启动并检查画面，但没有把截图视为每条路线或原生设备的全面验收。受限源轨迹、实际道路边界和入口仍需外部资料核对。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "59 passed, 0 failed (57 frontend + 2 server)",
-      "scope": "原55项全部通过，新增H6/H7分区面积与楼号、真实渲染屋面和相机、上空视线、来源说明4项。",
-      "limitation": "只证明已列源对应关系和模型实现。未以道路中心线测试替代估算路缘、NPC路径、现场尺寸或完整真机验证。"
+      "result": "67 passed, 0 failed (65 frontend + 2 server)",
+      "scope": "原59项通过，新增行人路线、运行更新、桥面高度与静态障碍8项。",
+      "limitation": "只证明已列源对应关系和模型实现。未以道路中心线测试替代估算路缘、NPC路径、现场尺寸或完整真机验证。",
+      "pedestrianAudit": {
+        "command": "node tools/campus3d-pedestrian-audit.mjs",
+        "report": "docs/campus3d-pedestrian-verification.json",
+        "samples": 152355,
+        "wallContacts": 0,
+        "waterContacts": 0,
+        "siteContacts": 0,
+        "limitedTo": "shipped building and bridge geometry; not a survey or full-device certificate"
+      }
     },
     "typeCheck": {
       "command": "npm run type-check --prefix web",
@@ -304,7 +320,9 @@
         "G11搜索返回文德苑，显示独立轮廓、近似模型与7层7站设备资料的区别。",
         "图书馆俯视画布中以诚路位于东南侧铺装带，已保存前后源坐标叠加与最终画布。",
         "H6/H7详情显示两栋主体与低连接体，模型高度和来源保留估算说明，南北楼号对应未确认。",
-        "前往H6/H7的近景可见两个高主体及低连廊；场景加载30/30，浏览器错误日志无场景脚本错误。"
+        "前往H6/H7的近景可见两个高主体及低连廊；场景加载30/30，浏览器错误日志无场景脚本错误。",
+        "本轮最终版本完整启动30/30；可检索实训楼并进入自由探索，稳定画布可见地面楼前环境。首帧发现的一处车辆更新引用错误已修正，随后无新场景脚本错误。",
+        "图书馆视角下切换行人与车辆，aria-pressed按false→true恢复，画布继续正常绘制；已恢复鸟瞰并保存截图。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
@@ -334,7 +352,10 @@
         "output/campus3d-audit-20261023/h67-massing-near.png",
         "output/campus3d-audit-20261023/tests-graduate-massing.log",
         "output/campus3d-audit-20261023/metadata-z19-recheck.json",
-        "output/campus3d-audit-20261023/h67-massing-final.png"
+        "output/campus3d-audit-20261023/h67-massing-final.png",
+        "output/campus3d-audit-20261023/tests-pedestrian-routes.log",
+        "output/campus3d-audit-20261023/pedestrians-training-final.png",
+        "output/campus3d-audit-20261023/pedestrians-library-final.png"
       ]
     },
     "serverTypeCheck": {
@@ -354,12 +375,12 @@
     {
       "scope": "道路、水体与景观",
       "status": "incomplete",
-      "nextEvidence": "图书馆以诚路中心线和安评中心有顶连接已修正。仍需核对34组估算路缘接触、2组高架站体的实际支柱/地面净空、文思苑G5/G2附近路宽与楼体、NPC按路侧偏移后的轨迹，以及湖岸/桥梁/球场和现状通行。不得只为清空检测结果挪动楼体。"
+      "nextEvidence": "已补NPC路侧偏移、桥面及连续避让检查；51条源轨迹的受限区段仍需核对实际道路/步道与楼体位置，不能将NPC截断视为地图实景对齐。继续核对34组估算路缘接触、2组高架站体实际支柱/净空、文思苑G5/G2路宽、湖岸、桥梁、球场及现状通行。"
     },
     {
       "scope": "场景交互",
       "status": "incomplete",
-      "nextEvidence": "施工围挡、通道和出生点已有专项检查，鼠标锁定拒绝已有降级路径并实际测试。仍需核验正常指针锁定、全图导览、测距、其他建筑/桥梁碰撞、骑行驾驶与原生触摸。"
+      "nextEvidence": "施工围挡、通道和出生点已有专项检查，鼠标锁定拒绝已有降级路径并实际测试。仍需核验正常指针锁定、全图导览、测距、其他建筑/桥梁碰撞、骑行驾驶与原生触摸。 行人实际驾车/骑行礼让链路与完整景观中的长时运行仍需补测；H6/H7低连廊附近的地标遮挡判断也应复核是否仍使用统一楼高。"
     },
     {
       "scope": "跨设备与画面",
@@ -382,7 +403,8 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "783c1e30ac4e1f76468a1faea9431e956f005bb5",
+  "lastVerifiedParentCommit": "2ac1b95cd11eca96bdfa4bfb1ef1c76530195f93",
   "spatialInventory": "docs/campus3d-spatial-inventory.json",
-  "spatialSourceManifest": "docs/campus3d-spatial-sources.json"
+  "spatialSourceManifest": "docs/campus3d-spatial-sources.json",
+  "pedestrianVerification": "docs/campus3d-pedestrian-verification.json"
 }

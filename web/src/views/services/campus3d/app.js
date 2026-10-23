@@ -11,6 +11,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { NATATORIUM, DORM_LETTER, DORM_GROUP_INFO, dormSummary, buildingListMeta, buildingFacts, geometrySource } from './placeMetadata.js';
 import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from './constructionSites.js';
 import { RESEARCH_CENTERS, RESEARCH_INFO, CHEMISTRY_COURT, RESEARCH_TEMPORARY_FOOTPRINT, researchBuildings, correctResearchRoads } from './researchCenters.js';
+import { PEDESTRIAN_RADIUS, PEDESTRIAN_WANDER, pointSegmentDistance, segmentDistance, clearRouteSpans } from './pedestrianRoutes.js';
 import { GRADUATE_RESIDENCE, graduateVolumes } from './graduateResidences.js';
 import { SAFETY_CENTER_PASSAGE, annotateCoveredAccess, splitCoveredGround, groundFootprints, buildingSolidAt, buildingTopAt, passageApproach } from './coveredAccess.js';
 
@@ -3601,20 +3602,74 @@ function updateChunks() {
   }
 }
 let PEOPLE = null;
-function buildPeople() {
+function pedestrianCandidates() {
   const routes = [];
-  for (const r of D.pa) if (inCampus(r.p[0][0], r.p[0][1]) && r.p.length > 1) routes.push({ p: r.p, off: 0 });
-  for (const r of D.r) if (inCampus(r.p[0][0], r.p[0][1]) && r.p.length > 1 && r.t !== 'service') { const w = roadW(r); routes.push({ p: offsetLine(r.p, w / 2 + 0.6), off: 0 }); routes.push({ p: offsetLine(r.p, -w / 2 - 0.6), off: 0 }); }
-  routes.forEach((r) => { r.cum = cumLen(r.p); r.L = r.cum[r.cum.length - 1]; r.br = BRIDGES.filter((b) => r.p.some((q) => Math.hypot(q[0] - b.p[0][0], q[1] - b.p[0][1]) < 120)); });
-  const valid = routes.filter((r) => r.L > 20);
+  D.pa.forEach((r,i)=>{if(r.p.length>1&&inCampus(...r.p[0]))routes.push({p:r.p,id:`footpath-${i}`,name:r.n});});
+  D.r.forEach((r,i)=>{if(r.p.length>1&&inCampus(...r.p[0])&&r.t!=='service'){
+    const w=roadW(r);for(const side of [1,-1])routes.push({p:offsetLine(r.p,side*(w/2+.6)),id:`road-${i}-side-${side}`,name:r.n});
+  }});
+  return routes;
+}
+function pedestrianGridItems(grid,a,b,radius=0) {
+  const found=new Set();
+  if(!grid)return found;
+  for(let i=Math.floor((Math.min(a[0],b[0])-radius)/grid.c);i<=Math.floor((Math.max(a[0],b[0])+radius)/grid.c);i++)
+    for(let j=Math.floor((Math.min(a[1],b[1])-radius)/grid.c);j<=Math.floor((Math.max(a[1],b[1])+radius)/grid.c);j++)
+      for(const k of grid.m.get(grid.k(i,j))||[])found.add(k);
+  return found;
+}
+function pedestrianSegmentClear(a,b,radius=PEDESTRIAN_RADIUS) {
+  if(!WGRID)return false;
+  const length=Math.hypot(b[0]-a[0],b[1]-a[1]),steps=Math.max(1,Math.ceil(length/.3));
+  let low=Infinity,high=-Infinity;
+  for(let i=0;i<=steps;i++){
+    const x=a[0]+(b[0]-a[0])*i/steps,z=a[1]+(b[1]-a[1])*i/steps,y=groundAt(x,z);
+    low=Math.min(low,y);high=Math.max(high,y);
+    for(const [dx,dz] of [[0,0],[radius,0],[-radius,0],[0,radius],[0,-radius],[radius*.707,radius*.707],[-radius*.707,radius*.707],[radius*.707,-radius*.707],[-radius*.707,-radius*.707]]){
+      const px=x+dx,pz=z+dz;
+      if(!inRegion(px,pz)||(inWater(px,pz)&&!onBridge(px,pz))||pip(px,pz,ACTIVITY_CENTER.site))return false;
+    }
+  }
+  // Prevent initial spawns within enclosed model footprints. Bespoke A-labs
+  // use their actual pods; the station is elevated and checked by its posts.
+  for(const k of pedestrianGridItems(BGRID,a,b,radius)){
+    const building=BLD[k];if(building.cls.special==='station')continue;
+    const polygons=building.cls.special==='xueyuan'?XY_PODS.map(q=>q.p).concat(XY_LINKS):groundFootprints(building);
+    for(const p of polygons){
+      if(pip(...a,p)||pip(...b,p))return false;
+      for(let i=0;i<p.length;i++)if(segmentDistance(a,b,p[i],p[(i+1)%p.length])<radius)return false;
+    }
+  }
+  for(const k of pedestrianGridItems(WGRID,a,b,radius)){
+    if(k>=0){const w=WSEG[k];if(w[4]>high+1.75||w[5]<=low+STEP_UP)continue;
+      if(segmentDistance(a,b,[w[0],w[1]],[w[2],w[3]])<radius)return false;
+    }else{const c=WCYL[~k];if(c[3]>high+1.75||c[4]<=low+STEP_UP)continue;
+      if(pointSegmentDistance([c[0],c[1]],a,b)<c[2]+radius)return false;
+    }
+  }
+  for(const k of pedestrianGridItems(TGRID,a,b,radius)){
+    const p=k<0?LAMP_POS[~k]:[TREES[k].x,TREES[k].z];
+    const r=k<0 ? .12 : trunkR(TREES[k]);
+    if(pointSegmentDistance(p,a,b)<r+radius)return false;
+  }
+  for(const k of pedestrianGridItems(PGRID,a,b,radius)){
+    const prop=PROPS[k];if(!prop.inst||prop.top<=low+STEP_UP)continue;
+    if(pip(...a,prop.p)||pip(...b,prop.p))return false;
+    for(let i=0;i<prop.p.length;i++)if(segmentDistance(a,b,prop.p[i],prop.p[(i+1)%prop.p.length])<radius)return false;
+  }
+  return true;
+}
+function buildPeople() {
+  if(!TGRID)trunkGrid();
+  const valid=pedestrianCandidates().flatMap(r=>clearRouteSpans(r,pedestrianSegmentClear,cumLen,sampleAt));
   const N = QP.people, list = [];
-  for (let i = 0; i < N; i++) {
-    const r = pick(valid); list.push({ r, s: rr(0, r.L), dir: rand() < 0.5 ? 1 : -1, v: rr(1.0, 1.5), lat: rr(-0.7, 0.7), ph: rand() * 6, sc: rr(0.92, 1.08) });
+  for (let i = 0; i < N && valid.length; i++) {
+    const r = pick(valid); list.push({ r, s: rr(0, r.L), dir: rand() < 0.5 ? 1 : -1, v: rr(1.0, 1.5), lat: rr(-PEDESTRIAN_WANDER, PEDESTRIAN_WANDER), ph: rand() * 6, sc: rr(0.92, 1.08) });
   }
   const standSpots = [];
   const lib = byName(/^图书馆$/);
   if (lib && lib.front) for (let i = 0; i < 16; i++) standSpots.push([lib.front.x + rr(-35, 35), lib.front.z + rr(-35, 35)]);
-  for (const [x, z] of standSpots) if (!inWater(x, z)) list.push({ stand: true, x, z, a: rand() * 6.28, ph: rand() * 6, sc: rr(0.92, 1.08) });
+  for (const [x, z] of standSpots) if (pedestrianSegmentClear([x,z],[x,z])) list.push({ stand: true, x, z, a: rand() * 6.28, ph: rand() * 6, sc: rr(0.92, 1.08) });
   // three meshes sharing each walker's matrix: top (shirt colour), bottom (trousers colour), skin (face, neck, hands)
   const shirtP = [], pantsP = [], skinP = [];
   const add = (arr, g, x, y, z, shade = 1, limb = 0) => { g.translate(x, y, z); arr.push([g, shade, limb]); };
@@ -3668,7 +3723,7 @@ function buildPeople() {
   list.forEach((p, i) => { p.c = [new THREE.Color(pick(shirts)), new THREE.Color(pick(pantsCols)), new THREE.Color(pick(skins))]; bm.setColorAt(i, p.c[0]); pmesh.setColorAt(i, p.c[1]); hm.setColorAt(i, p.c[2]); });
   bm.castShadow = pmesh.castShadow = hm.castShadow = QUALITY === 'high'; bm.frustumCulled = pmesh.frustumCulled = hm.frustumCulled = false;
   bm.layers.set(1); pmesh.layers.set(1); hm.layers.set(1); scene.add(bm, pmesh, hm); LIFE.push(bm, pmesh, hm);
-  PEOPLE = { list, bm, hm, pants: pmesh, aPh, aSt };
+  PEOPLE = { list, routes:valid, bm, hm, pants: pmesh, aPh, aSt };
 }
 // Pedestrians are solid (walkResolve reads PED_GRID), and they look after themselves: a car or bike heading for someone
 // makes them stop, turn to it and step off its line until it has passed; parked cars on their path are walked round.
@@ -3682,7 +3737,7 @@ function vehicleThreat() {
   const sp = Math.hypot(vx, vz), ux = sp > 0.5 ? vx / sp : Math.cos(a), uz = sp > 0.5 ? vz / sp : Math.sin(a);
   return { x, z, ux, uz, sp, len, half };
 }
-const pedBlocked = (x, z) => inWater(x, z) || camBlocked(x, 0.6, z);
+const pedBlocked = (x, z, fromX=x, fromZ=z) => !pedestrianSegmentClear([fromX,fromZ],[x,z]);
 // People and cars are instanced campus-wide with culling off (their bounds change every frame), so the GPU used to draw
 // every one in range in each pass, those behind the camera too. Only the ones inside a view frustum widened by 40
 // degrees are packed now; that margin and a test at the tip of each shadow keep shadows and lake reflections that
@@ -3708,14 +3763,17 @@ function updatePeople(dt, t) {
   let j = 0;
   list.forEach((p, i) => {
     let x, z, a, y = 0;
+    const previousS=p.s;
     p.wait = Math.max(0, (p.wait || 0) - dt); p.ox ||= 0; p.oz ||= 0; p.tx ||= 0; p.tz ||= 0;
+    const hadOffset=Math.abs(p.ox)+Math.abs(p.oz)>1e-6;
     if (p.stand) { x = p.x; z = p.z; a = p.a + Math.sin(t * 0.3 + p.ph) * 0.3; y = p.gy ??= groundAt(x, z); }
     else {
       if (p.wait <= 0) { p.s += p.v * p.dir * dt; if (p.s > p.r.L) { p.s = p.r.L; p.dir = -1; } else if (p.s < 0) { p.s = 0; p.dir = 1; } }
       const q = sampleAt(p.r.p, p.r.cum, p.s); x = q.x - q.dz * p.lat; z = q.z + q.dx * p.lat; a = Math.atan2(q.dx * p.dir, q.dz * p.dir);
       y = groundAt(x, z);
     }
-    if (Math.abs(x - cp.x) > R || Math.abs(z - cp.z) > R) return;
+    if (Math.abs(x - cp.x) > R || Math.abs(z - cp.z) > R) {p.ox=p.oz=p.tx=p.tz=0;p.cx=p.cz=undefined;return;}
+    const baseX=x,baseZ=z;
     // where to stand aside to: off the line of the vehicle being driven, or round a parked car
     let threat = false, tx = 0, tz = 0;
     if (V) {
@@ -3725,7 +3783,7 @@ function updatePeople(dt, t) {
         if (ahead > -V.len - 0.6 && ahead < V.len + 0.6 + V.sp * 1.5 && Math.abs(side) < wide) {
           const sg = side >= 0 ? 1 : -1, clear = V.half + (moving ? 1.35 : 0.7);
           tx = -V.uz * sg * (clear - Math.abs(side)); tz = V.ux * sg * (clear - Math.abs(side));
-          if (pedBlocked(x + tx, z + tz)) { tx = V.uz * sg * (clear + Math.abs(side)); tz = -V.ux * sg * (clear + Math.abs(side)); if (pedBlocked(x + tx, z + tz)) tx = tz = 0; }
+          if (pedBlocked(x + tx, z + tz, x, z)) { tx = V.uz * sg * (clear + Math.abs(side)); tz = -V.ux * sg * (clear + Math.abs(side)); if (pedBlocked(x + tx, z + tz, x, z)) tx = tz = 0; }
           threat = moving;
           if (moving) { a = Math.atan2(V.x - x, V.z - z); p.wait = 1.1; }
         }
@@ -3737,13 +3795,27 @@ function updatePeople(dt, t) {
         const e = CARS.parkedM[k].elements, dx = x - e[12], dz = z - e[14];
         if (Math.abs(dx) > 3.4 || Math.abs(dz) > 3.4) continue;
         const ca = e[0], sa = e[2], lx = dx * ca + dz * sa, lz = -dx * sa + dz * ca;
-        if (Math.abs(lx) < 2.75 && Math.abs(lz) < 1.35) { const sg = lz >= 0 ? 1 : -1, d = 1.4 - Math.abs(lz); tx = -sa * sg * d; tz = ca * sg * d; if (pedBlocked(x + tx, z + tz)) tx = tz = 0; break; }
+        if (Math.abs(lx) < 2.75 && Math.abs(lz) < 1.35) { const sg = lz >= 0 ? 1 : -1, d = 1.4 - Math.abs(lz); tx = -sa * sg * d; tz = ca * sg * d; if (pedBlocked(x + tx, z + tz, x, z)) tx = tz = 0; break; }
       }
     }
     if (tx || tz || p.wait <= 0) { p.tx = tx; p.tz = tz; }
-    const dxo = p.tx - p.ox, dzo = p.tz - p.oz, dl = Math.hypot(dxo, dzo), stepping = dl > 0.04;
+    const dxo = p.tx - p.ox, dzo = p.tz - p.oz, dl = Math.hypot(dxo, dzo);
+    let stepping = dl > 0.04;
     if (stepping) { const k2 = Math.min(1, step / dl); p.ox += dxo * k2; p.oz += dzo * k2; }
     x += p.ox; z += p.oz;
+    // Check the swept movement, including the interpolated dodge. Clear end
+    // points alone do not prove that the person did not cross a thin wall.
+    const from=[p.cx??baseX,p.cz??baseZ];
+    if((hadOffset||stepping||tx||tz)&&!pedestrianSegmentClear(from,[x,z])){
+      if(pedestrianSegmentClear(from,[baseX,baseZ])){x=baseX;z=baseZ;p.ox=p.oz=p.tx=p.tz=0;}
+      else{
+        x=from[0];z=from[1];p.s=previousS;p.wait=.3;
+        if(!p.stand){p.dir*=-1;const q=sampleAt(p.r.p,p.r.cum,p.s);p.ox=x-(q.x-q.dz*p.lat);p.oz=z-(q.z+q.dx*p.lat);}
+        p.tx=p.tz=0;
+      }
+    }
+    y=groundAt(x,z);
+    stepping=stepping&&Math.hypot(x-from[0],z-from[1])>1e-5;
     const walking = !p.stand && p.wait <= 0, stride = walking ? p.v : stepping ? 1.3 : 0;
     if (stride) y += Math.abs(Math.sin(t * 7 * stride + p.ph)) * 0.035;
     p.cx = x; p.cz = z; p.cy = y; G.add(i, [x - 1.3, z - 1.3, x + 1.3, z + 1.3]);
@@ -6326,8 +6398,8 @@ async function boot() {
       ['布置体育设施',()=>{buildSports();buildCourtFences();}],['构建远景',buildHills],['合并建筑与贴图',flushBuffers],['生成水面',buildWater],
       ['布置校园树木',placeTrees],['布置周边树木',placeOuterTrees],['布置北侧林地苗圃',placeNorthTrees],
       ['铺设地表与树荫',()=>{clearTreesFromBuildings();paintTreeShade();buildGround();}],['生成树木模型',()=>{buildTrees();buildGrass();}],
-      ['布置绿篱与路灯',()=>{buildHedges();buildLamps();}],['布置单车与行人',()=>{buildBikes();buildPeople();}],
-      ['布置车辆与列车',()=>{buildCars();buildTrains();}],['准备地标与小地图',()=>{initGrid();buildPlaces();buildPlaceList();buildMinimap();}],
+      ['布置绿篱与路灯',()=>{buildHedges();buildLamps();}],['布置单车',buildBikes],
+      ['布置车辆与列车',()=>{buildCars();buildTrains();}],['准备行人与地标',()=>{initGrid();buildPeople();buildPlaces();buildPlaceList();buildMinimap();}],
       ['设置四季与光照',()=>{buildParticles();applySeason();tuneEnv();}],
       ['准备画面效果',()=>{initComposer();updateTreeLOD(true);updateShadowCam();}],
       ['上传场景贴图',uploadSceneTextures],

@@ -1,0 +1,1133 @@
+{
+  "checkedOn": "2026-10-23",
+  "status": "partially_verified",
+  "scope": {
+    "buildings": 109,
+    "bridges": 12,
+    "samplingStep": 0.5,
+    "lateralOffsets": [
+      -0.7,
+      0,
+      0.7
+    ],
+    "includesEndpoints": true
+  },
+  "limitations": [
+    "Headless comparison builds campus buildings and bridges; full landscape, trees, bicycles and parked cars are not generated here.",
+    "Dedicated regression fixtures cover tree trunks, instanced props, thin-wall dodges and bridge height updates.",
+    "The browser verifies full-scene startup and rendered activity, not every runtime route or device.",
+    "Clipped spans are simulation constraints. Source roads, building outlines, physical entrances and current access still require external verification."
+  ],
+  "before": {
+    "routeCount": 197,
+    "samples": 159081,
+    "radius": 0.28,
+    "wallContacts": 936,
+    "waterContacts": 0,
+    "siteContacts": 0,
+    "bridgeSamples": 640,
+    "affected": [
+      {
+        "id": "footpath-1",
+        "name": null,
+        "wall": 11,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -385.5814879002909,
+            -40.66822081779047
+          ],
+          [
+            -386.0037421895157,
+            -40.40044980511131
+          ]
+        ]
+      },
+      {
+        "id": "footpath-24",
+        "name": null,
+        "wall": 199,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            213.34812897631826,
+            -342.81517099748174
+          ],
+          [
+            212.8481814780247,
+            -342.822416613399
+          ]
+        ]
+      },
+      {
+        "id": "footpath-45",
+        "name": null,
+        "wall": 5,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -61.067675146256086,
+            -31.11673965514851
+          ],
+          [
+            -61.45252384321438,
+            -30.532024784079283
+          ]
+        ]
+      },
+      {
+        "id": "footpath-46",
+        "name": null,
+        "wall": 6,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            14.95298443754835,
+            16.195653546372707
+          ],
+          [
+            15.323409442228424,
+            15.601696211282242
+          ]
+        ]
+      },
+      {
+        "id": "footpath-47",
+        "name": null,
+        "wall": 25,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -3.09687019863008,
+            50.1970205240342
+          ],
+          [
+            -2.678991714684608,
+            50.47157028756611
+          ]
+        ]
+      },
+      {
+        "id": "footpath-49",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -66.55039171007314,
+            118.20599145993324
+          ],
+          [
+            -66.2,
+            117.6
+          ]
+        ]
+      },
+      {
+        "id": "footpath-50",
+        "name": null,
+        "wall": 29,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -98.5020048978946,
+            66.87279489062162
+          ],
+          [
+            -99.09799296907545,
+            66.50564612103342
+          ]
+        ]
+      },
+      {
+        "id": "footpath-52",
+        "name": null,
+        "wall": 6,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -199.09072788385106,
+            180.16770919912966
+          ],
+          [
+            -199.46249949050653,
+            180.76082459471874
+          ]
+        ]
+      },
+      {
+        "id": "footpath-53",
+        "name": null,
+        "wall": 6,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -126.32891027222469,
+            235.12384308610038
+          ],
+          [
+            -125.92953252423894,
+            234.54895404079352
+          ]
+        ]
+      },
+      {
+        "id": "footpath-54",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -54.06069606722502,
+            99.04936012557175
+          ],
+          [
+            -53.697586858447124,
+            98.45090235554893
+          ]
+        ]
+      },
+      {
+        "id": "footpath-55",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -71.17060027226698,
+            125.33907327302113
+          ],
+          [
+            -70.78282164099683,
+            124.75629738716941
+          ]
+        ]
+      },
+      {
+        "id": "road-13-side--1",
+        "name": "博爱路",
+        "wall": 26,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            514.4786609711606,
+            -358.0842897747681
+          ],
+          [
+            514.7267184833802,
+            -357.6501613713764
+          ]
+        ]
+      },
+      {
+        "id": "road-76-side-1",
+        "name": null,
+        "wall": 17,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            346.31849984579225,
+            -126.00645914755285
+          ],
+          [
+            345.81850286247135,
+            -126.00472229118927
+          ]
+        ]
+      },
+      {
+        "id": "road-76-side--1",
+        "name": null,
+        "wall": 2,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            367.43717697167665,
+            -119.53494840043545
+          ],
+          [
+            366.9371782076419,
+            -119.53383666136932
+          ]
+        ]
+      },
+      {
+        "id": "road-77-side-1",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            278.5819918013467,
+            -96.98474466050189
+          ],
+          [
+            278.2297510067669,
+            -96.62988352902396
+          ]
+        ]
+      },
+      {
+        "id": "road-77-side--1",
+        "name": null,
+        "wall": 21,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            317.7463156759138,
+            -146.77268636696968
+          ],
+          [
+            317.4488256000336,
+            -146.37081617057189
+          ]
+        ]
+      },
+      {
+        "id": "road-78-side-1",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            289.56371948155225,
+            -150.4751026084397
+          ],
+          [
+            290.4162386597172,
+            -150.36016327287064
+          ]
+        ]
+      },
+      {
+        "id": "road-79-side-1",
+        "name": null,
+        "wall": 4,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            399.7236746700926,
+            -107.20115797310729
+          ],
+          [
+            399.3806462044458,
+            -106.83738404364559
+          ]
+        ]
+      },
+      {
+        "id": "road-79-side--1",
+        "name": null,
+        "wall": 10,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            418.1686113441631,
+            -114.16420724846661
+          ],
+          [
+            417.8094333210421,
+            -113.8163694303575
+          ]
+        ]
+      },
+      {
+        "id": "road-80-side--1",
+        "name": null,
+        "wall": 30,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            379.3739436469292,
+            -143.68783487292933
+          ],
+          [
+            379.3372414072748,
+            -142.9887977168322
+          ]
+        ]
+      },
+      {
+        "id": "road-83-side-1",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            356.1331703310278,
+            -40.22827339884407
+          ],
+          [
+            356.6701776949465,
+            -39.77924879918711
+          ]
+        ]
+      },
+      {
+        "id": "road-83-side--1",
+        "name": null,
+        "wall": 10,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            376.1836788359561,
+            -62.29091754565833
+          ],
+          [
+            376.53269634666134,
+            -62.64894935600637
+          ]
+        ]
+      },
+      {
+        "id": "road-86-side-1",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            275.23947209108536,
+            -112.18135409225462
+          ],
+          [
+            276.0745660951146,
+            -111.97491280657184
+          ]
+        ]
+      },
+      {
+        "id": "road-87-side--1",
+        "name": null,
+        "wall": 12,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            244.80126047777165,
+            -87.8804165692532
+          ],
+          [
+            244.84229871677866,
+            -88.37872958628085
+          ]
+        ]
+      },
+      {
+        "id": "road-90-side-1",
+        "name": null,
+        "wall": 13,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            428.02000580793924,
+            -294.65199206506446
+          ],
+          [
+            427.3200293136709,
+            -294.6462555616162
+          ]
+        ]
+      },
+      {
+        "id": "road-92-side--1",
+        "name": null,
+        "wall": 9,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            427.3485704577043,
+            -249.75447422319476
+          ],
+          [
+            427.3569957732792,
+            -250.45442351711358
+          ]
+        ]
+      },
+      {
+        "id": "road-93-side--1",
+        "name": null,
+        "wall": 2,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            442.3935918485956,
+            -221.20119166977952
+          ],
+          [
+            442.7685664669621,
+            -220.87044397805533
+          ]
+        ]
+      },
+      {
+        "id": "road-94-side-1",
+        "name": null,
+        "wall": 23,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            489.1342811368674,
+            -239.19829006750805
+          ],
+          [
+            489.141983134769,
+            -238.49833244077033
+          ]
+        ]
+      },
+      {
+        "id": "road-95-side--1",
+        "name": null,
+        "wall": 15,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            475.74868219566486,
+            -231.49583544128419
+          ],
+          [
+            476.44848386728574,
+            -231.47917349672178
+          ]
+        ]
+      },
+      {
+        "id": "road-103-side-1",
+        "name": null,
+        "wall": 36,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            220.55056822942274,
+            187.27361872098223
+          ],
+          [
+            220.5523930813157,
+            187.97361634234645
+          ]
+        ]
+      },
+      {
+        "id": "road-104-side--1",
+        "name": null,
+        "wall": 8,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            247.10000000000002,
+            249.60000000000002
+          ],
+          [
+            247.8,
+            249.60000000000002
+          ]
+        ]
+      },
+      {
+        "id": "road-105-side-1",
+        "name": null,
+        "wall": 43,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            200.7514253736396,
+            373.7323942824501
+          ],
+          [
+            201.45138525585375,
+            373.73988849960443
+          ]
+        ]
+      },
+      {
+        "id": "road-105-side--1",
+        "name": null,
+        "wall": 12,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            193.53577897696334,
+            375.1552249393216
+          ],
+          [
+            194.2357388591775,
+            375.16271915647593
+          ]
+        ]
+      },
+      {
+        "id": "road-106-side-1",
+        "name": null,
+        "wall": 26,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            131.04041150484986,
+            352.0593797019539
+          ],
+          [
+            131.02641504485237,
+            352.75923975875634
+          ]
+        ]
+      },
+      {
+        "id": "road-107-side-1",
+        "name": null,
+        "wall": 25,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            171.796964247903,
+            320.30289887208716
+          ],
+          [
+            172.29643255282733,
+            320.3259512553914
+          ]
+        ]
+      },
+      {
+        "id": "road-109-side-1",
+        "name": null,
+        "wall": 22,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            52.393594539112435,
+            355.239994565269
+          ],
+          [
+            53.09353617872899,
+            355.2490334330568
+          ]
+        ]
+      },
+      {
+        "id": "road-110-side--1",
+        "name": null,
+        "wall": 6,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            31.06836626536316,
+            250.14632562478184
+          ],
+          [
+            31.073609563958314,
+            249.44634526232883
+          ]
+        ]
+      },
+      {
+        "id": "road-112-side-1",
+        "name": null,
+        "wall": 5,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            94.3963454548196,
+            328.1257490899021
+          ],
+          [
+            93.89645336388051,
+            328.1153617217787
+          ]
+        ]
+      },
+      {
+        "id": "road-112-side--1",
+        "name": null,
+        "wall": 48,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            100.21638781436619,
+            336.84854147153555
+          ],
+          [
+            99.71649572342709,
+            336.83815410341214
+          ]
+        ]
+      },
+      {
+        "id": "road-113-side--1",
+        "name": null,
+        "wall": 3,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            15.745117838767145,
+            324.3412238914889
+          ],
+          [
+            15.754555183221228,
+            323.64128751114447
+          ]
+        ]
+      },
+      {
+        "id": "road-114-side--1",
+        "name": null,
+        "wall": 47,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            48.45336656531337,
+            286.9341733675571
+          ],
+          [
+            48.461016381695586,
+            286.2342151685842
+          ]
+        ]
+      },
+      {
+        "id": "road-119-side-1",
+        "name": null,
+        "wall": 30,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            71.87816463244566,
+            179.99601415353672
+          ],
+          [
+            72.35094453621139,
+            179.8332899617419
+          ]
+        ]
+      },
+      {
+        "id": "road-120-side--1",
+        "name": null,
+        "wall": 11,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            134.00701908228794,
+            155.6204889117228
+          ],
+          [
+            134.80104300977985,
+            155.19821305371687
+          ]
+        ]
+      },
+      {
+        "id": "road-121-side--1",
+        "name": null,
+        "wall": 20,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            133.91331136037124,
+            155.88042649693685
+          ],
+          [
+            133.9251249525839,
+            155.38056607738054
+          ]
+        ]
+      },
+      {
+        "id": "road-132-side--1",
+        "name": "博爱路",
+        "wall": 2,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            -72.92014982665148,
+            337.29693438510634
+          ],
+          [
+            -73.35464227234016,
+            337.04951507575583
+          ]
+        ]
+      },
+      {
+        "id": "road-163-side-1",
+        "name": null,
+        "wall": 90,
+        "water": 0,
+        "site": 0,
+        "examples": [
+          [
+            431.5560455074442,
+            -337.1842303806281
+          ],
+          [
+            432.0560200752394,
+            -337.1791874094832
+          ]
+        ]
+      }
+    ]
+  },
+  "after": {
+    "routeCount": 205,
+    "samples": 152355,
+    "radius": 0.3,
+    "wallContacts": 0,
+    "waterContacts": 0,
+    "siteContacts": 0,
+    "bridgeSamples": 417,
+    "affected": []
+  },
+  "retainedLength": 25237.761297339388,
+  "restrictedSources": [
+    {
+      "id": "footpath-1",
+      "name": null,
+      "originalLength": 275.69751101780474,
+      "retainedLength": 270.4475110178043
+    },
+    {
+      "id": "footpath-12",
+      "name": null,
+      "originalLength": 394.31852885636215,
+      "retainedLength": 393.56852885636226
+    },
+    {
+      "id": "footpath-24",
+      "name": null,
+      "originalLength": 207.1618971435272,
+      "retainedLength": 100.87006058573542
+    },
+    {
+      "id": "footpath-26",
+      "name": null,
+      "originalLength": 60.57595781951549,
+      "retainedLength": 60.000000000000036
+    },
+    {
+      "id": "footpath-31",
+      "name": null,
+      "originalLength": 32.39915209926481,
+      "retainedLength": 30.749999999999986
+    },
+    {
+      "id": "footpath-45",
+      "name": null,
+      "originalLength": 32.92202909906981,
+      "retainedLength": 31.500000000000025
+    },
+    {
+      "id": "footpath-46",
+      "name": null,
+      "originalLength": 32.881149614938955,
+      "retainedLength": 31.49999999999998
+    },
+    {
+      "id": "footpath-47",
+      "name": null,
+      "originalLength": 152.79561512032993,
+      "retainedLength": 122.24999999999994
+    },
+    {
+      "id": "footpath-49",
+      "name": null,
+      "originalLength": 41.35371809160575,
+      "retainedLength": 39.75000000000002
+    },
+    {
+      "id": "footpath-50",
+      "name": null,
+      "originalLength": 47.04445912991716,
+      "retainedLength": 0
+    },
+    {
+      "id": "footpath-52",
+      "name": null,
+      "originalLength": 32.573762447712426,
+      "retainedLength": 30.749999999999975
+    },
+    {
+      "id": "footpath-53",
+      "name": null,
+      "originalLength": 39.0858030491891,
+      "retainedLength": 37.49999999999999
+    },
+    {
+      "id": "footpath-54",
+      "name": null,
+      "originalLength": 62.46054754803228,
+      "retainedLength": 38.249999999999986
+    },
+    {
+      "id": "footpath-55",
+      "name": null,
+      "originalLength": 63.18037670036482,
+      "retainedLength": 41.24999999999999
+    },
+    {
+      "id": "road-13-side--1",
+      "name": "博爱路",
+      "originalLength": 663.9762267791137,
+      "retainedLength": 641.4762267791147
+    },
+    {
+      "id": "road-76-side-1",
+      "name": null,
+      "originalLength": 205.7263757455469,
+      "retainedLength": 162.22637574554682
+    },
+    {
+      "id": "road-76-side--1",
+      "name": null,
+      "originalLength": 204.35562842747174,
+      "retainedLength": 202.10562842747163
+    },
+    {
+      "id": "road-77-side-1",
+      "name": null,
+      "originalLength": 151.35464971423346,
+      "retainedLength": 148.3546497142334
+    },
+    {
+      "id": "road-77-side--1",
+      "name": null,
+      "originalLength": 145.72045250869007,
+      "retainedLength": 132.2204525086901
+    },
+    {
+      "id": "road-78-side-1",
+      "name": null,
+      "originalLength": 32.362130272971854,
+      "retainedLength": 30.862130272971836
+    },
+    {
+      "id": "road-79-side-1",
+      "name": null,
+      "originalLength": 116.97579079741416,
+      "retainedLength": 113.97579079741404
+    },
+    {
+      "id": "road-79-side--1",
+      "name": null,
+      "originalLength": 127.52177057123225,
+      "retainedLength": 120.77177057123242
+    },
+    {
+      "id": "road-80-side--1",
+      "name": null,
+      "originalLength": 61.15124140306048,
+      "retainedLength": 30.401241403060506
+    },
+    {
+      "id": "road-83-side-1",
+      "name": null,
+      "originalLength": 43.81982823673624,
+      "retainedLength": 42.31982823673625
+    },
+    {
+      "id": "road-83-side--1",
+      "name": null,
+      "originalLength": 44.01955131517283,
+      "retainedLength": 32.999999999999986
+    },
+    {
+      "id": "road-86-side-1",
+      "name": null,
+      "originalLength": 33.815284702286355,
+      "retainedLength": 31.56528470228635
+    },
+    {
+      "id": "road-87-side--1",
+      "name": null,
+      "originalLength": 51.11452490744952,
+      "retainedLength": 34.6145249074495
+    },
+    {
+      "id": "road-90-side-1",
+      "name": null,
+      "originalLength": 166.9114325359207,
+      "retainedLength": 156.4114325359208
+    },
+    {
+      "id": "road-92-side--1",
+      "name": null,
+      "originalLength": 108.00782379068657,
+      "retainedLength": 48.75782379068656
+    },
+    {
+      "id": "road-93-side--1",
+      "name": null,
+      "originalLength": 66.66090374653061,
+      "retainedLength": 54.660903746530614
+    },
+    {
+      "id": "road-94-side-1",
+      "name": null,
+      "originalLength": 107.67950732094037,
+      "retainedLength": 55.499999999999964
+    },
+    {
+      "id": "road-95-side--1",
+      "name": null,
+      "originalLength": 33.60952246016,
+      "retainedLength": 21.750000000000007
+    },
+    {
+      "id": "road-103-side-1",
+      "name": null,
+      "originalLength": 145.8012854940514,
+      "retainedLength": 118.80128549405136
+    },
+    {
+      "id": "road-104-side--1",
+      "name": null,
+      "originalLength": 40.70000000000002,
+      "retainedLength": 0
+    },
+    {
+      "id": "road-105-side-1",
+      "name": null,
+      "originalLength": 46.70267658282552,
+      "retainedLength": 22.5
+    },
+    {
+      "id": "road-105-side--1",
+      "name": null,
+      "originalLength": 46.70267658282552,
+      "retainedLength": 21
+    },
+    {
+      "id": "road-106-side-1",
+      "name": null,
+      "originalLength": 183.77264219919383,
+      "retainedLength": 129.7726421991941
+    },
+    {
+      "id": "road-107-side-1",
+      "name": null,
+      "originalLength": 45.54843575799283,
+      "retainedLength": 0
+    },
+    {
+      "id": "road-109-side-1",
+      "name": null,
+      "originalLength": 153.7782403448058,
+      "retainedLength": 143.27824034480568
+    },
+    {
+      "id": "road-110-side--1",
+      "name": null,
+      "originalLength": 26.70074905316329,
+      "retainedLength": 0
+    },
+    {
+      "id": "road-112-side-1",
+      "name": null,
+      "originalLength": 77.01662158261682,
+      "retainedLength": 71.7666215826168
+    },
+    {
+      "id": "road-112-side--1",
+      "name": null,
+      "originalLength": 77.01662158261682,
+      "retainedLength": 25.499999999999996
+    },
+    {
+      "id": "road-113-side--1",
+      "name": null,
+      "originalLength": 44.504044759999054,
+      "retainedLength": 32.24999999999999
+    },
+    {
+      "id": "road-114-side--1",
+      "name": null,
+      "originalLength": 36.60218572708467,
+      "retainedLength": 0
+    },
+    {
+      "id": "road-119-side-1",
+      "name": null,
+      "originalLength": 107.64836365730507,
+      "retainedLength": 58.499999999999986
+    },
+    {
+      "id": "road-119-side--1",
+      "name": null,
+      "originalLength": 120.74327033136568,
+      "retainedLength": 120
+    },
+    {
+      "id": "road-120-side--1",
+      "name": null,
+      "originalLength": 93.10403294445467,
+      "retainedLength": 85.60403294445463
+    },
+    {
+      "id": "road-121-side--1",
+      "name": null,
+      "originalLength": 51.56848731065014,
+      "retainedLength": 30.750000000000036
+    },
+    {
+      "id": "road-132-side-1",
+      "name": "博爱路",
+      "originalLength": 33.142118218363784,
+      "retainedLength": 0
+    },
+    {
+      "id": "road-132-side--1",
+      "name": "博爱路",
+      "originalLength": 33.142118218363784,
+      "retainedLength": 0
+    },
+    {
+      "id": "road-163-side-1",
+      "name": null,
+      "originalLength": 69.40353016958142,
+      "retainedLength": 0
+    }
+  ]
+}
