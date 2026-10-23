@@ -3734,7 +3734,7 @@ function vehicleThreat() {
   if (DRIVE.on) { ({ x, z, vx, vz, a } = DRIVE); len = 2.35; half = 0.95; }
   else if (RIDE.on) { x = RIDE.x; z = RIDE.z; a = RIDE.a; vx = Math.cos(a) * RIDE.v; vz = Math.sin(a) * RIDE.v; len = 0.95; half = 0.4; }
   else return null;
-  const sp = Math.hypot(vx, vz), ux = sp > 0.5 ? vx / sp : Math.cos(a), uz = sp > 0.5 ? vz / sp : Math.sin(a);
+  const sp = walkMotionPaused() ? 0 : Math.hypot(vx, vz), ux = sp > 0.5 ? vx / sp : Math.cos(a), uz = sp > 0.5 ? vz / sp : Math.sin(a);
   return { x, z, ux, uz, sp, len, half };
 }
 const pedBlocked = (x, z, fromX=x, fromZ=z) => !pedestrianSegmentClear([fromX,fromZ],[x,z]);
@@ -4774,7 +4774,7 @@ const WALK = {
   x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, yaw: 0, pitch: 0, ground: true, air: 0, jumpBuf: 0, crouch: 0, crouchOn: false,
   keys: new Set(), pad: { x: 0, y: 0 }, padRun: false, fov: 72, zoom: 0, zoomOn: false, trans: null, faceYaw: null,
   ph: 0, bobA: 0, stepY: 0, land: 0, landV: 0, roll: 0, kick: 0, sprint: false,
-  locked: false, unlockT: 0, inspect: false, noLock: TOUCH || !('requestPointerLock' in HTMLElement.prototype),
+  locked: false, unlockT: 0, inspect: false, menu: false, noLock: TOUCH || !('requestPointerLock' in HTMLElement.prototype),
   sound: !TOUCH, sens: 0.0022, aim: null, aimOwn: -1, aimT: 0,
 };
 const WALK_R = 0.38, EYE = 1.65, EYE_LOW = 1.05, STEP_UP = 0.5, WALK_FOV = 72;
@@ -5107,7 +5107,11 @@ function walkStep(h, wx, wz, wish) {
     }
   }
 }
+function walkMotionPaused() {
+  return WALK.menu || (!TOUCH && !WALK.locked && !WALK.noLock && !WALK.trans);
+}
 function updateWalk(dt) {
+  if (walkMotionPaused()) return;
   if (DRIVE.on) { updateDrive(dt); return; }
   if (RIDE.on) { updateRide(dt); return; }
   const W = WALK, k = W.keys, live = TOUCH || W.locked || W.noLock;
@@ -5655,10 +5659,11 @@ async function netSync() {
   }
 }
 function netState() {
-  if (DRIVE.on) return [DRIVE.x, DRIVE.y, DRIVE.z, angDiff(DRIVE.a, 0), 2, nearestPal(DRIVE.bodyMat.color), DRIVE.v];
-  if (RIDE.on) return [RIDE.x, RIDE.y + RIDE.hop, RIDE.z, angDiff(RIDE.a, 0), 3, nearestPal(RIDE.frameMat.color), RIDE.v];
+  const paused=walkMotionPaused();
+  if (DRIVE.on) return [DRIVE.x, DRIVE.y, DRIVE.z, angDiff(DRIVE.a, 0), 2, nearestPal(DRIVE.bodyMat.color), paused?0:DRIVE.v];
+  if (RIDE.on) return [RIDE.x, RIDE.y + RIDE.hop, RIDE.z, angDiff(RIDE.a, 0), 3, nearestPal(RIDE.frameMat.color), paused?0:RIDE.v];
   const W = WALK;
-  return [W.x, W.y, W.z, Math.atan2(-Math.cos(W.yaw), -Math.sin(W.yaw)), W.swim ? 1 : 0, NET.shirt, Math.hypot(W.vx, W.vz)];
+  return [W.x, W.y, W.z, Math.atan2(-Math.cos(W.yaw), -Math.sin(W.yaw)), W.swim ? 1 : 0, NET.shirt, paused?0:Math.hypot(W.vx, W.vz)];
 }
 function netReceive(r) {
   if (DISPOSED || !NET.on || mode !== 'walk') return;
@@ -5767,7 +5772,7 @@ const LOCK_EL = renderer.domElement;
 const isLocked = () => LOCK_EL.getRootNode().pointerLockElement === LOCK_EL;
 let lockAttempt = 0, lockPending = false;
 function walkDragFallback() {
-  if (DISPOSED || mode !== 'walk' || WALK.noLock || isLocked()) return;
+  if (DISPOSED || mode !== 'walk' || WALK.menu || WALK.noLock || isLocked()) return;
   WALK.noLock = true; WALK.locked = false; WALK.keys.clear(); WALK.zoomOn = false;
   LOCK_EL.focus({ preventScroll: true });
   walkHud();
@@ -5775,9 +5780,9 @@ function walkDragFallback() {
 }
 async function walkLock() {
   walkAudioWake();
-  if (DISPOSED || WALK.noLock || mode !== 'walk' || isLocked() || lockPending) return;
+  if (DISPOSED || WALK.menu || WALK.noLock || mode !== 'walk' || isLocked() || lockPending) return;
   const attempt = ++lockAttempt;
-  const current = () => attempt === lockAttempt && !DISPOSED && mode === 'walk';
+  const current = () => attempt === lockAttempt && !DISPOSED && mode === 'walk' && !WALK.menu;
   lockPending = true;
   try {
     try { await LOCK_EL.requestPointerLock({ unadjustedMovement: true }); }
@@ -5786,7 +5791,7 @@ async function walkLock() {
       try { await LOCK_EL.requestPointerLock(); }
       catch (_) { if (current()) walkDragFallback(); }
     }
-    if ((DISPOSED || mode !== 'walk') && isLocked()) document.exitPointerLock();
+    if ((DISPOSED || mode !== 'walk' || WALK.menu) && isLocked()) document.exitPointerLock();
   } finally {
     if (attempt === lockAttempt) lockPending = false;
   }
@@ -5794,7 +5799,7 @@ async function walkLock() {
 function walkUnlock() { lockAttempt++; lockPending = false; if (isLocked()) document.exitPointerLock(); }
 function walkLockChange() {
   const l = isLocked();
-  if (l && (DISPOSED || mode !== 'walk')) { document.exitPointerLock(); return; }
+  if (l && (DISPOSED || mode !== 'walk' || WALK.menu)) { document.exitPointerLock(); return; }
   if (WALK.locked && !l) WALK.unlockT = performance.now();
   WALK.locked = l;
   $('#app').classList.toggle('locked', l && mode === 'walk');
@@ -5814,13 +5819,46 @@ function walkHud() {
   const on = mode === 'walk';
   const veh = DRIVE.on || RIDE.on;
   $('#speedo').hidden = !(on && veh); $('#carExit').hidden = !(on && veh && TOUCH); $('#walkCrouch').hidden = on && veh;
+  if(on&&veh&&walkMotionPaused())$('#speedo b').textContent='0';
   $('#drvGas').hidden = $('#drvBrake').hidden = true;
   $('#vehView').hidden = !(on && veh && TOUCH);
-  $('#xhair').hidden = !on || veh || (!TOUCH && !WALK.noLock && !WALK.locked);
-  $('#walkPause').hidden = !on || WALK.noLock || WALK.locked;
+  $('#xhair').hidden = !on || WALK.menu || veh || (!TOUCH && !WALK.noLock && !WALK.locked);
+  $('#walkPause').hidden = !on || WALK.menu || WALK.noLock || WALK.locked;
   $('#walkPause').classList.toggle('mini', WALK.inspect);
-  $('#walkbtns').hidden = !(on && TOUCH); $('#walkpad').hidden = !(on && TOUCH);
+  $('#walkbtns').hidden = !(on && TOUCH && !WALK.menu); $('#walkpad').hidden = !(on && TOUCH && !WALK.menu);
+  $('#walkSettings').hidden = !on || WALK.locked;
+  $('#walkSettings').setAttribute('aria-expanded', String(WALK.menu));
+  $('#walkSound').setAttribute('aria-pressed', String(WALK.sound));
+  $('#walkSound').textContent = WALK.sound ? '音效 开' : '音效 关';
   if (!on || $('#xhair').hidden) { WALK.aimOwn = -1; WALK.aim = null; $('#xhair').classList.remove('on'); $('#xhint').hidden = true; }
+}
+function resetWalkInput() {
+  WALK.keys.clear(); WALK.jumpBuf=0; WALK.zoomOn=false;
+  DRIVE.gas=DRIVE.brake=false;
+  for(const id of WALK_PTR.keys()){try{LOCK_EL.releasePointerCapture(id);}catch(_){}}
+  WALK_PTR.clear(); stickEnd();
+}
+function openWalkSettings() {
+  if(mode!=='walk'||WALK.menu)return;
+  WALK.menu=true; walkUnlock(); resetWalkInput(); netHud(); walkHud();
+  $('#walkSettingsPanel').showModal();
+}
+function closeWalkSettings(resume=false) {
+  WALK.menu=false;
+  const panel=$('#walkSettingsPanel');if(panel.open)panel.close();
+  resetWalkInput();walkHud();
+  if(resume&&mode==='walk'){
+    if(WALK.inspect&&!$('#info').hidden)$('#infoClose').click();
+    WALK.inspect=false;walkHud();LOCK_EL.focus({preventScroll:true});walkLock();
+  }
+}
+function keepWalkSettingsFocus(e) {
+  if(e.key!=='Tab')return;
+  const panel=e.currentTarget,buttons=[...panel.querySelectorAll('button:not([disabled]):not([hidden])')];
+  const first=buttons[0],last=buttons[buttons.length-1],active=panel.getRootNode().activeElement;
+  if(!first)return;
+  if(e.shiftKey&&active===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&active===last){e.preventDefault();first.focus();}
 }
 // ---- footsteps (synthesized, no audio files) ----
 let AUD = null, GROUND_CTX = null;
@@ -5890,7 +5928,7 @@ function walkSound(kind, k = 1) {
 }
 // ---- input ----
 LOCK_EL.addEventListener('mousemove', (e) => {
-  if (mode !== 'walk' || !WALK.locked || WALK.trans) return;
+  if (mode !== 'walk' || WALK.menu || !WALK.locked || WALK.trans) return;
   const mx = e.movementX || 0, my = e.movementY || 0;
   if (Math.abs(mx) > 400 || Math.abs(my) > 400) return; // some browsers send one bogus jump right after locking
   const k = WALK.sens * camera.fov / WALK_FOV;
@@ -5921,7 +5959,7 @@ function stickEnd() {
   pad.style.left = pad.style.top = pad.style.bottom = ''; pad.classList.remove('on', 'run'); $('#walknub').style.transform = '';
 }
 LOCK_EL.addEventListener('pointerdown', (e) => {
-  if (mode !== 'walk') return;
+  if (mode !== 'walk' || WALK.menu) return;
   if (e.pointerType === 'mouse' && !WALK.noLock) {
     if (!WALK.locked) { walkLock(); return; }
     if (e.button === 0) walkInspect(); else if (e.button === 2) WALK.zoomOn = true;
@@ -5935,7 +5973,7 @@ LOCK_EL.addEventListener('pointerdown', (e) => {
   try { LOCK_EL.setPointerCapture(e.pointerId); } catch (_) { }
 });
 LOCK_EL.addEventListener('pointermove', (e) => {
-  if (mode !== 'walk') return;
+  if (mode !== 'walk' || WALK.menu) return;
   const p = WALK_PTR.get(e.pointerId); if (!p) return;
   if (p.stick) { stickAt(e.clientX, e.clientY); return; }
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
@@ -5956,16 +5994,17 @@ function walkPointerEnd(e) {
 LOCK_EL.addEventListener('pointerup', walkPointerEnd);
 LOCK_EL.addEventListener('pointercancel', walkPointerEnd);
 LOCK_EL.addEventListener('wheel', (e) => {
-  if (mode !== 'walk') return;
+  if (mode !== 'walk' || WALK.menu) return;
   e.preventDefault();
   WALK.fov = clamp(WALK.fov * (1 + clamp(e.deltaY, -200, 200) * 0.0011), 40, 90);
 }, { passive: false });
 const keyTarget = (e) => (e.composedPath ? e.composedPath()[0] : e.target);
 on(window, 'keydown', (e) => {
-  if (mode !== 'walk') return;
+  if (mode !== 'walk' || WALK.menu) return;
   const t = keyTarget(e); if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
   // With pointer lock the browser's own Esc releases the mouse and pauses; Esc again leaves exploration.
   if (e.code === 'Escape') { if (!WALK.locked && performance.now() - WALK.unlockT > 400) setMode('orbit'); return; }
+  if (t && (/^(BUTTON|SUMMARY|A)$/.test(t.tagName) || t.isContentEditable)) return;
   const live = WALK.locked || WALK.noLock;
   if (e.code === 'KeyE' || e.code === 'KeyF') { if (live && !e.repeat) walkInspect(); return; }
   if (RIDE.on && e.code === 'KeyV' && !e.repeat) { RIDE.cam = RIDE.cam === 'fp' ? 'chase' : 'fp'; RIDE.camYaw = 0; RIDE.camW = RIDE.a + Math.PI; RIDE.camPitch = RIDE.cam === 'fp' ? -0.14 : 0.24; RIDE.lookT = 9; return; }
@@ -5994,10 +6033,20 @@ $('#walkCrouch').addEventListener('click', (e) => { WALK.crouchOn = !WALK.crouch
 $('#xhint').addEventListener('click', () => walkInspect());
 $('#walkResume').addEventListener('click', () => walkLock());
 $('#walkExit').addEventListener('click', () => setMode('orbit'));
+$('#walkSettings').addEventListener('click', openWalkSettings);
+$('#walkSettingsPause').addEventListener('click', openWalkSettings);
+$('#walkSettingsDone').addEventListener('click', () => closeWalkSettings(true));
+$('#walkSettingsExit').addEventListener('click', () => {
+  setMode('orbit');
+  LOCK_EL.focus({preventScroll:true});
+});
+$('#walkSettingsPanel').addEventListener('cancel', e => {e.preventDefault();closeWalkSettings(true);});
+$('#walkSettingsPanel').addEventListener('keydown', keepWalkSettingsFocus);
+CLEANUP.push(()=>{const panel=$('#walkSettingsPanel');if(panel?.open)panel.close();});
 $('#walkNet').addEventListener('click', () => { NET.hidden = !NET.hidden; netHud(); toast(NET.hidden ? '已隐身：别人看不到你，你仍能看到别人' : '联机可见：附近的同学能看到你', 2200); });
 $('#walkSound').addEventListener('click', (e) => {
   WALK.sound = !WALK.sound; if (WALK.sound) walkAudioWake();
-  e.currentTarget.setAttribute('aria-pressed', String(WALK.sound)); e.currentTarget.textContent = WALK.sound ? '脚步声 开' : '脚步声 关';
+  e.currentTarget.setAttribute('aria-pressed', String(WALK.sound)); e.currentTarget.textContent = WALK.sound ? '音效 开' : '音效 关';
 });
 let TOUR = null;
 function tourStops() {
@@ -6053,6 +6102,7 @@ function setMode(m, at) {
   }
   controls.enabled = true;
   if (prev === 'walk') {
+    closeWalkSettings(false);
     netStop();
     if (DRIVE.on) exitCar(); if (RIDE.on) exitBike(); setUnderwater(false);
     walkUnlock(); $('#app').classList.remove('walking', 'locked');

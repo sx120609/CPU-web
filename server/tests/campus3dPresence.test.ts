@@ -36,8 +36,13 @@ test("三维校园联机：游客加入、互相看见、隐身与离开", async
     assert.ok(!JSON.stringify(seen).includes(b.sid) && !JSON.stringify(seen).includes(b.key), "others never see a session id or key");
 
     // hidden players keep receiving but are not shown
-    await post(`${base}/sync`, { sid: b.sid, key: b.key, s: [10, 0, 20, 1.2, 0, 3, 1.4], h: true });
+    const hidden = (await post(`${base}/sync`, { sid: b.sid, key: b.key, s: [10, 0, 20, 1.2, 0, 3, 0], h: true })).body.data;
+    assert.equal(hidden.p[0][0], a.pid, "hidden player still receives the visible peer");
     assert.equal((await post(`${base}/sync`, { sid: a.sid, key: a.key, s: [0, 0, 0, 0, 0, 1, 0] })).body.data.p.length, 0);
+    await post(`${base}/sync`, { sid: b.sid, key: b.key, s: [10, 0, 20, 1.2, 0, 3, 0], h: false });
+    const visibleAgain = (await post(`${base}/sync`, { sid: a.sid, key: a.key, s: [0, 0, 0, 0, 0, 1, 0] })).body.data;
+    assert.equal(visibleAgain.p[0][0], b.pid, "visibility returns with the same player identity");
+    assert.equal(visibleAgain.p[0][8], 0, "paused peer is represented as stationary");
 
     // a wrong key is refused, bad numbers are rejected
     assert.equal((await post(`${base}/sync`, { sid: b.sid, key: "0".repeat(32), s: [0, 0, 0, 0, 0, 0, 0] })).status, 404);

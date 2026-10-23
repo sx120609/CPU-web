@@ -111,3 +111,18 @@ test('an older request cannot release the lock of a newly entered exploration se
   assert.equal(h.root.pointerLockElement, h.canvas);
   assert.equal(h.state.exits, 0);
 });
+
+test('opening settings invalidates pending requests without enabling fallback or stealing focus',async()=>{
+  const raw=deferred(),h=harness(()=>raw.promise);
+  const pending=h.lock();h.ctx.WALK.menu=true;h.unlock();
+  raw.reject(new Error('late denial'));await pending;h.error();
+  assert.equal(h.state.requests.length,1);assert.equal(h.state.focus,0);
+  assert.equal(h.ctx.WALK.noLock,false);
+});
+
+test('a late pointer-lock success is released while the settings dialog is open',async()=>{
+  const raw=deferred(),h=harness(()=>raw.promise);
+  const pending=h.lock();h.ctx.WALK.menu=true;h.unlock();
+  h.root.pointerLockElement=h.canvas;raw.resolve();await pending;
+  assert.equal(h.root.pointerLockElement,null);assert.equal(h.state.exits,1);
+});

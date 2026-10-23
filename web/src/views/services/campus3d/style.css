@@ -240,8 +240,22 @@ button:active { filter: brightness(.94); }
 .walkpause .keys span { display: flex; align-items: center; gap: 8px; }
 .walkpause .actions { display: flex; gap: 8px; }
 .walkpause.mini { top: auto; bottom: calc(92px + var(--safe-b, env(safe-area-inset-bottom, 0px))); transform: translateX(-50%); width: auto; padding: 6px; border-radius: 16px; }
-.walkpause.mini h3, .walkpause.mini .keys, .walkpause.mini #walkSound, .walkpause.mini #walkExit { display: none; }
+.walkpause.mini h3, .walkpause.mini .keys, .walkpause.mini #walkExit { display: none; }
 .walkpause.mini #walkResume { padding: 0 22px; }
+#walkSettings { min-width: 44px; min-height: 44px; }
+#walkSettings[hidden] { display: none; }
+.walksettings { box-sizing: border-box; position: fixed; inset: 0; margin: auto; width: min(420px, calc(100% - 32px));
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - var(--safe-b, env(safe-area-inset-bottom, 0px)));
+  overflow: auto; padding: 24px; border: 1px solid var(--sep); border-radius: 22px; color: var(--label); background: var(--material-strong); }
+.walksettings::backdrop { background: rgba(0, 0, 0, .32); }
+.walksettings h2 { margin: 0 0 10px; font-size: 20px; }
+.walksettings p { margin: 0 0 20px; color: var(--label); font-size: 16px; line-height: 1.5; }
+.walksettings .settings-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; }
+.walksettings .settings-toggles:has([hidden]) { grid-template-columns: 1fr; }
+.walksettings [hidden] { display: none; }
+.walksettings .actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.walksettings .pill { min-height: 44px; }
+.walksettings .pill.primary { background: color-mix(in srgb, var(--accent) 80%, black); }
 .netchip { position: absolute; z-index: 6; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(18px + var(--safe-b, env(safe-area-inset-bottom, 0px)));
   display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; font: 600 13px/1 var(--font); color: var(--label); pointer-events: none; }
 .netchip[hidden] { display: none; }

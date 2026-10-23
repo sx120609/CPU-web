@@ -281,13 +281,20 @@
       "after": "地标遮挡与相机共用分层实体判断，保留低连接体上空和地面有顶通道的可见性，继续遮挡真实墙体，且保持地点自身楼体不遮掉自身标签。",
       "evidence": "新增两项回归先复现旧逻辑错误，再与实际生成三角网格射线对照；高主体、低连廊墙体、上方连接体和邻侧地面墙均保留遮挡。",
       "remaining": "该变更针对已有分区和通道；全图地标仍使用采样遮挡，其他专用楼体的细窄构件与标签布局仍需继续检查。"
+    },
+    {
+      "id": "exploration-settings-access-and-pause",
+      "before": "鼠标锁定降级及触屏模式一直隐藏旧暂停面板，隐身和音效没有可访问入口；普通鼠标解锁后车辆仍可按残余速度移动；按钮上的空格键可能被游戏输入吞掉。",
+      "after": "增加探索设置入口，复用原隐身/音效控件并放入原生对话框；打开时清除按键、踏板、跳跃和触摸捕获，暂停步行、骑行与驾驶更新。正常鼠标解锁也暂停运动。暂停时联机速度与行人避让速度为0。补Shadow DOM内Tab首尾循环、Esc继续、退出返回地图焦点；触屏初始音效状态同步显示。",
+      "evidence": "新增8项设置控制回归、2项迟到鼠标锁定回调回归、1项实际客户端sync载荷回归。现有真实HTTP路由测试补充隐身继续收取其他玩家、恢复可见保持同一身份、静止速度传播。浏览器核验入口、四按钮状态、Tab/Shift+Tab循环、Esc与退出焦点、375×667及844×390尺寸。",
+      "remaining": "本轮未把设置测试当成完整驾驶/骑行礼让验收；正常指针锁定的真实浏览器、原生触摸、登录/CSRF、弱网和真实双浏览器链路仍需测试。整页截图接口不可用，不能宣称完整视觉验收。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "69 passed, 0 failed (67 frontend + 2 server)",
-      "scope": "原67项通过，新增低连廊与有顶通道地标遮挡2项；先复现旧逻辑失败，修正后与实际三角网格一致。",
+      "result": "80 passed, 0 failed (78 frontend + 2 server)",
+      "scope": "原69项通过；新增设置状态/输入/暂停/焦点8项、锁定迟到回调2项、sync载荷1项。真实服务器游客隐身测试补充接收与恢复可见断言。",
       "limitation": "只证明已列源对应关系和模型实现。未以道路中心线测试替代估算路缘、NPC路径、现场尺寸或完整真机验证。",
       "pedestrianAudit": {
         "command": "node tools/campus3d-pedestrian-audit.mjs",
@@ -330,14 +337,18 @@
         "前往H6/H7的近景可见两个高主体及低连廊；场景加载30/30，浏览器错误日志无场景脚本错误。",
         "本轮最终版本完整启动30/30；可检索实训楼并进入自由探索，稳定画布可见地面楼前环境。首帧发现的一处车辆更新引用错误已修正，随后无新场景脚本错误。",
         "图书馆视角下切换行人与车辆，aria-pressed按false→true恢复，画布继续正常绘制；已恢复鸟瞰并保存截图。",
-        "最新场景加载30/30；实训楼详情显示新的工学院用途、整体近似模型与入口待核对说明，并显示校方、OSM轮廓和北侧步道三个来源链接。"
+        "最新场景加载30/30；实训楼详情显示新的工学院用途、整体近似模型与入口待核对说明，并显示校方、OSM轮廓和北侧步道三个来源链接。",
+        "降级拖动模式可打开探索设置原生dialog，初始焦点为继续探索；Tab按继续→联机可见→音效→退出→继续循环，首项Shift+Tab回继续。",
+        "浏览器中隐身及音效的文字与aria-pressed同步切换，已恢复初始可见/音效开启状态。Esc关闭设置且保持探索，退出探索关闭设置并返回鸟瞰，两种操作均将焦点送回canvas。",
+        "375×667竖屏面板337×247，四按钮均138.5×44；844×390横屏面板420×245，四按钮均180×44；scrollWidth=clientWidth，无横向溢出，横屏也无垂直内容溢出。默认视口已恢复。",
+        "最新界面版本标题为h2，场景30/30启动，运行错误日志为空。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
         "手机仅测试视口布局，未模拟触摸指针，未测试原生设备或WebKit。",
         "本轮仅挂载真实游客presence路由，其他站点API返回503，未启用数据库、后台作业或登录账号；不能据此声称整个生产后端或CSRF/登录联机已验收。临时服务和测试游客进程已停止。",
-        "鼠标锁定降级模式的暂停面板一直隐藏，当前隐身/音效按钮仍仅位于该面板内；后续应补可访问的设置入口。",
-        "本轮通道完整穿越由实际碰撞函数和三角网格测试验证；浏览器已验证入口视图，未把短时键盘输入截图认定为完整穿越验收。"
+        "本轮通道完整穿越由实际碰撞函数和三角网格测试验证；浏览器已验证入口视图，未把短时键盘输入截图认定为完整穿越验收。",
+        "本轮设置面板的整页截图再次返回Unable to capture screenshot；只记录真实DOM尺寸、原生modal状态和键盘焦点，不把这些等同完整视觉截图验收。浅/深主题文字及主要按钮对比度按源码token和背景最坏情况计算，未宣称真机暗色视觉检查。"
       ],
       "artifacts": [
         "output/campus3d-audit-20261023/activity-site.png",
@@ -365,7 +376,10 @@
         "output/campus3d-audit-20261023/pedestrians-training-final.png",
         "output/campus3d-audit-20261023/pedestrians-library-final.png",
         "output/campus3d-audit-20261023/tests-label-occlusion.log",
-        "output/campus3d-audit-20261023/training-reviewed-scene.png"
+        "output/campus3d-audit-20261023/training-reviewed-scene.png",
+        "output/campus3d-audit-20261023/tests-exploration-settings.log",
+        "output/campus3d-audit-20261023/exploration-settings-browser.json",
+        "output/campus3d-audit-20261023/exploration-settings-contrast.json"
       ]
     },
     "serverTypeCheck": {
@@ -390,7 +404,7 @@
     {
       "scope": "场景交互",
       "status": "incomplete",
-      "nextEvidence": "施工围挡、通道和出生点已有专项检查，鼠标锁定拒绝已有降级路径并实际测试。仍需核验正常指针锁定、全图导览、测距、其他建筑/桥梁碰撞、骑行驾驶与原生触摸。 行人实际驾车/骑行礼让链路与完整景观中的长时运行仍需补测。低连廊与有顶通道的地标遮挡已回归；其他细窄构件和标签布局仍需核验。"
+      "nextEvidence": "设置入口、模式暂停、迟到锁定、焦点循环、视口布局及隐身/音效控制已核验；继续完整驾驶/骑行与行人礼让、正常指针锁定真浏览器、全图导览、测距、桥梁与其他建筑碰撞及原生触摸验证。"
     },
     {
       "scope": "跨设备与画面",
@@ -400,7 +414,7 @@
     {
       "scope": "联机与资源生命周期",
       "status": "partially_verified",
-      "nextEvidence": "会话代次、迟到回调、网络头像资源释放和12秒过期已修复并回归，真实本地游客join/sync/leave/突然断线链路已测。仍需登录/CSRF、隐身设置可访问性、真实双浏览器、弱网与全场景GPU释放/上下文恢复验证。"
+      "nextEvidence": "设置可访问性、隐身sync载荷和游客HTTP隐藏/恢复可见已补测。仍需登录/CSRF、真实双浏览器、弱网，以及全场景GPU释放和上下文恢复验证；不能用当前分段回归替代这些链路。"
     },
     {
       "scope": "生成源维护",
@@ -413,7 +427,7 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "7fd4dda63f26f09c1fac5cb998840ac9a3b8a84d",
+  "lastVerifiedParentCommit": "048333a518728dabd6e9aa9c998811158e673222",
   "spatialInventory": "docs/campus3d-spatial-inventory.json",
   "spatialSourceManifest": "docs/campus3d-spatial-sources.json",
   "pedestrianVerification": "docs/campus3d-pedestrian-verification.json",

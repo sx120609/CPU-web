@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import * as THREE from 'three';
 
 const app = readFileSync(new URL('../src/views/services/campus3d/app.js', import.meta.url), 'utf8');
-const code = app.slice(app.indexOf('const PRESENCE_API ='), app.indexOf('// ---- aiming and inspecting buildings'));
+const code = app.slice(app.indexOf('function walkMotionPaused('),app.indexOf('function updateWalk(')) + app.slice(app.indexOf('const PRESENCE_API ='), app.indexOf('// ---- aiming and inspecting buildings'));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 const session = id => ({ sid: id, key: `key-${id}`, name: `name-${id}` });
@@ -19,10 +19,10 @@ function harness(overrides = {}) {
   class Tag extends THREE.Object3D { constructor(element) { super(); this.element = element; } }
   const scene = new THREE.Scene(), elements = new Map();
   const ctx = vm.createContext({
-    opts: { presence }, THREE, CSS2DObject: Tag, scene, mode: 'walk', DISPOSED: false,
+    opts: { presence }, THREE, CSS2DObject: Tag, scene, mode: 'walk', DISPOSED: false, TOUCH: false,
     performance: { now: () => state.now },
     document: { createElement: () => ({ style: {}, remove: () => state.nodesRemoved++ }) },
-    camera: { position: new THREE.Vector3() }, DRIVE: { on: false }, RIDE: { on: false }, WALK: { x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0 },
+    camera: { position: new THREE.Vector3() }, DRIVE: { on: false }, RIDE: { on: false }, WALK: { noLock:true,x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0 },
     _c2: new THREE.Color(), angDiff: (a,b) => Math.atan2(Math.sin(a-b),Math.cos(a-b)), clamp: (v,a,b) => Math.max(a,Math.min(b,v)), toast() {},
     // Geometry production is independent of lifetime ownership. Use small real
     // Three geometries, then execute the actual avatar construction and disposal.
@@ -45,6 +45,18 @@ test('joining then leaving before the response releases the orphan session', asy
   assert.equal(h.api.NET.on, false);
   assert.equal(h.api.NET.busy, false);
   assert.equal(h.state.leaves[0]?.sid, 'old');
+});
+
+test('settings visibility and paused motion are included in the next real sync payload',async()=>{
+  const payloads=[];
+  const h=harness({sync:async body=>{payloads.push(body);return {n:1,p:[]};}});
+  await h.api.netStart();h.ctx.WALK.vx=4;h.ctx.WALK.menu=true;h.api.NET.hidden=true;
+  h.api.updateNet(.3);await tick();
+  assert.equal(payloads[0].h,true);assert.equal(payloads[0].s[6],0);
+  h.ctx.WALK.menu=false;h.api.NET.hidden=false;
+  h.api.updateNet(.3);await tick();
+  assert.equal(payloads[1].h,false);assert.equal(payloads[1].s[6],4);
+  assert.equal(payloads[1].sid,payloads[0].sid,'changing visibility does not create another session');
 });
 
 test('a stale join cannot adopt the next exploration or clear its pending state', async () => {
