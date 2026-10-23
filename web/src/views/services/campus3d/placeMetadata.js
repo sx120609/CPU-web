@@ -39,6 +39,10 @@ export function heightLabel(buildings) {
   return isNatatorium(buildings) ? `${NATATORIUM.height} m` : `约 ${Math.round(Math.max(...buildings.map(b => b.h)))} m`;
 }
 
+export function buildingListMeta(buildings) {
+  return buildings.some(b => b.cls.special === 'activityConstruction') ? '在建' : heightLabel(buildings);
+}
+
 export function geometrySource(buildings) {
   if (!buildings.length) return '校园地图位置示意';
   const sources = new Set();
@@ -48,6 +52,7 @@ export function geometrySource(buildings) {
     else if (b.src === 'photo+sat') sources.add('公开照片与卫星影像近似重建');
     else if (b.src?.startsWith('sat')) sources.add('卫星影像近似重建');
     else if (b.src?.startsWith('map')) sources.add('校园地图换算');
+    else if (b.src === 'notice+map') sources.add('学校施工附图对齐（示意）');
     else sources.add('模型估算');
   }
   return `轮廓：${[...sources].join('、')}`;
@@ -55,6 +60,11 @@ export function geometrySource(buildings) {
 
 export function buildingFacts(place, buildings) {
   if (!buildings.length) return [];
+  if (buildings[0].cls.special === 'activityConstruction') return [
+    ['项目状态', '在建（2026-10 核对）'],
+    ['公告进度', '三层楼面浇筑（2026-09）'],
+    ['模型说明', '施工结构与防护通道示意'],
+  ];
   const facts = [];
   if (place.dorm) facts.push(['楼栋', `${dormSummary(buildings).count} 栋`]);
   else if (isNatatorium(buildings)) facts.push(['层数（项目公告）', `地上 ${NATATORIUM.floors} 层 · 地下 ${NATATORIUM.basementFloors} 层`]);

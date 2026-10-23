@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as THREE from 'three';
 import { NATATORIUM, DORM_LETTER, dormSummary, heightLabel, buildingFacts, geometrySource } from '../src/views/services/campus3d/placeMetadata.js';
+import { ACTIVITY_CENTER } from '../src/views/services/campus3d/constructionSites.js';
 
 const base = new URL('../src/views/services/campus3d/', import.meta.url);
 const app = readFileSync(new URL('app.js', base), 'utf8');
@@ -12,7 +13,7 @@ const outer = JSON.parse(readFileSync(new URL('osm-outer.json', base), 'utf8'));
 // Run the shipped model's data preparation, including its supplementary buildings.
 // This catches disagreements between actual OSM polygons, additions, and displayed units.
 const model = vm.runInNewContext(app.slice(app.indexOf('const D ='), app.indexOf("const stage =")) + '\n({ BLD, obb, edgeOutward, edgeFacing })', {
-  opts: { data, outer }, root: { querySelector() {} }, matchMedia: () => ({ matches: false }), navigator: { hardwareConcurrency: 8 }, NATATORIUM, THREE,
+  opts: { data, outer }, root: { querySelector() {} }, matchMedia: () => ({ matches: false }), navigator: { hardwareConcurrency: 8 }, NATATORIUM, ACTIVITY_CENTER, THREE,
 });
 
 test('real dorm polygons count unique numbered buildings, including shared footprints', () => {

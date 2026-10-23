@@ -8,7 +8,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { NATATORIUM, DORM_LETTER, dormSummary, heightLabel, buildingFacts, geometrySource } from './placeMetadata.js';
+import { NATATORIUM, DORM_LETTER, dormSummary, buildingListMeta, buildingFacts, geometrySource } from './placeMetadata.js';
+import { ACTIVITY_CENTER } from './constructionSites.js';
 
 export function mountCampus3D(root, opts) {
 let DISPOSED = false, RAF = 0;
@@ -17,6 +18,7 @@ const on = (target, type, fn, options) => { target.addEventListener(type, fn, op
 
 const D = JSON.parse(JSON.stringify(opts.data));
 const O = JSON.parse(JSON.stringify(opts.outer));
+D.pa.push({ t: 'footway', p: ACTIVITY_CENTER.passage, n: '二食堂东侧防护通道' });
 // OSM still contains service roads from the pre-Double-A layout. The photographed
 // east forecourt is pedestrian paving; retain only its northern access segment.
 D.r = D.r.flatMap(r => {
@@ -316,7 +318,7 @@ const EXTRA = [
   { name: '文华苑3号楼', p: rectPoly(465.7, -27, 71, 20.1, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
   { name: '文正苑4号楼', p: rectPoly(569.4, -186.2, 74, 21.5, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
   { name: '文正苑5号楼', p: rectPoly(615.3, -242, 78.6, 24.7, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
-  { name: '活动中心', p: rectPoly(337, 28, 58, 36, 0), st: 'whiteGreen', fl: 3, src: 'map-inferred', cat: 'life' },
+  { name: ACTIVITY_CENTER.name, p: ACTIVITY_CENTER.site, special: 'activityConstruction', fl: 3, h: ACTIVITY_CENTER.modelHeight, src: 'notice+map', cat: 'life' },
   ...[-499,-480,-460,-442].map((z,i)=>({name:'',p:rectPoly(566,z,33,7,0),st:'shed',fl:1,h:3.2,roof:i%2?'roof:light':'roof:metalBlue',src:'sat',cat:'transit',nolabel:1})),
   {name:'',p:rectPoly(-383,-35,12,8.5,0.33),st:'plain',fl:1,h:3.6,hip:1,roof:'villaRoof',src:'sat',cat:'scenic',nolabel:1},
   {name:'',p:rectPoly(450,-880,26,16,-0.28),st:'plain',fl:1,h:4,roof:'roof:metalBlue',src:'sat',cat:'scenic',nolabel:1},
@@ -406,6 +408,7 @@ if (TEACH_FORE) {
 const TEACH_TREES = [];
 
 const INFO = {
+  '大学生活动中心': { d: '科学艺术中心，位于二食堂东侧。基建后勤处将其列为在建工程；2026 年 9 月 22 日通知安排三层楼面混凝土浇筑。二食堂东侧设有施工防护通道，公告预计留置至 2027 年 3 月。场景按这些资料显示施工围挡、结构楼板和防护通道；施工进度与通行以现场指引为准。', s: '基建后勤处在建项目清单、施工区域附图与施工通知；核对日期：2026-10-23。围挡范围按附图对齐周边道路；结构轮廓、层高和通道尺寸为示意，不能作为竣工外观或当前测量值。', links: ACTIVITY_CENTER.sources },
   '图书馆': { d: '江宁校区的中心建筑，正对中心广场与镜湖。主楼地上 7 层，前部为两层白色柱廊裙房与宽阔台阶，立面为灰色石材配白色边框与横向带窗。江宁校区馆面积约 2.3 万平方米，二层设借阅室与学术报告厅。', s: '层数：OpenStreetMap；面积与楼层功能：百度百科“中国药科大学图书馆”；立面：公开照片' },
   '药学博物馆': { d: '紧邻图书馆西侧的三层展馆，一面深灰石墙竖向镌刻馆名，主体为玻璃幕墙与悬挑灰色框架。馆内陈列药材标本、制药器具与药学史料。', s: '层数：OpenStreetMap；外观：百度百科配图' },
   '行政楼': { d: '位于正门内西侧，镜湖西岸。深炭灰墙板、端墙和檐口配蓝色窗带，南侧连接大礼堂与学术报告厅。', s: '位置：OpenStreetMap；外观：校园航拍与公开实景照片' },
@@ -1328,6 +1331,8 @@ function paintGround() {
     g.strokeStyle = '#8c8877'; g.lineWidth = 2.6; g.stroke(); g.fillStyle = '#243837'; g.fill('evenodd');
   }
   for (const b of BLD) { if (b.cls.special === 'station' || b.extra?.special === 'xueyuan') continue; for (const p of b.parts || [b.p]) fillPoly(g, p, '#6c6e70'); }
+  fillPoly(g, ACTIVITY_CENTER.site, '#b5a189');
+  traceLine(g, ACTIVITY_CENTER.passage); g.lineWidth = ACTIVITY_CENTER.passageWidth; g.strokeStyle = '#c9c4b9'; g.stroke();
   for (const pod of XY_PODS) fillPoly(g, pod.p, '#6c6e70');
   for (const l of XY_LINKS) fillPoly(g, l, '#6c6e70');
   for (const r of D.rl) {
@@ -1798,6 +1803,39 @@ function buildGardenService(b){
   addWalls('f:plain',b.p,0,5.8);addCap('roof:light',b.p,5.8);addParapet('trim:white',b.p,5.8,.45,.25);
   const ob=obb(b.p),p=rectPoly(ob.cx-ob.ux*3,ob.cz-ob.uz*3,7,9,ob.ang);
   addPrism('trim:white',p,5.8,6.35);addCap('poolBlue',insetPoly(p,.4),6.36);b.h=6.5;
+}
+function buildActivityCenter(b) {
+  const site = ACTIVITY_CENTER.site, shell = ACTIVITY_CENTER.shell;
+  const levels = ACTIVITY_CENTER.slabs, slabThickness = 0.28;
+  for (const y of levels) {
+    addPrism('concrete', shell, y, y + slabThickness);
+    addCap('concrete', shell, y, true);
+  }
+  const bb = pBox(shell);
+  for (let x = bb[0] + 2; x < bb[2] - 1; x += 7) for (let z = bb[1] + 2; z < bb[3] - 1; z += 7) {
+    if (!pip(x, z, insetPoly(shell, 1))) continue;
+    addBox('concrete', x, levels[0] + slabThickness, z, 0.5, 0.5, levels[2] - levels[0] - slabThickness);
+    addBox('metal', x, levels[2] + slabThickness, z, 0.08, 0.08, ACTIVITY_CENTER.modelHeight - levels[2] - slabThickness);
+  }
+  // Continuous panels participate in the same wall collision extraction as other geometry.
+  // No opening is invented in a boundary for which the source does not identify a site gate.
+  for (let i = 0; i < site.length; i++) {
+    const e = edgeOutward(site, i), a = Math.atan2(e.dz, e.dx);
+    addBox('siteFence', e.mx, 0, e.mz, e.len, 0.18, 2.3, a);
+    for (let d = 0; d < e.len; d += 3) addBox('metal', e.a[0] + e.dx * d, 0, e.a[1] + e.dz * d, 0.12, 0.12, 2.45, a);
+  }
+  const front = edgeFacing(site, 235, -10, 8);
+  if (front) addSign('施工区域', front.mx + front.nx * 0.15, 1.3, front.mz + front.nz * 0.15, front.nx, front.nz, 0.55, { color: '#ffffff', metal: 0 });
+  const path = ACTIVITY_CENTER.passage, half = ACTIVITY_CENTER.passageWidth / 2;
+  addRibbon('roof:metalBlue', path, ACTIVITY_CENTER.passageWidth, 3.25, 3.43);
+  for (const side of [-1, 1]) {
+    const edge = offsetLine(path, side * (half - 0.15)), c = cumLen(edge), len = c[c.length - 1], bays = Math.ceil(len / 4);
+    for (let i = 0; i <= bays; i++) {
+      const q = sampleAt(edge, c, i * len / bays);
+      addBeam('metal', [q.x, 0, q.z], [q.x, 3.25, q.z], 0.12);
+    }
+  }
+  b.h = ACTIVITY_CENTER.modelHeight;
 }
 function buildNortheastSite(){
   OWNER=-1;
@@ -2843,7 +2881,9 @@ function addTree(type, x, z, s = 1) {
   // The photographed Double-A forecourt is open lawn, not a wooded parcel.
   if (x > -130 && x < 65 && z > -658 && z < -455) return;
   if(type!=='shrub' && x>-300 && x<-150 && z>-30 && z<90) s*=0.68;
-  if(pip(x,z,NE.site)||pip(x,z,NE.beds)||pip(x,z,NE.phase5Yard))return;
+  if(pip(x,z,NE.site)||pip(x,z,NE.beds)||pip(x,z,NE.phase5Yard)||pip(x,z,ACTIVITY_CENTER.site))return;
+  const ap = ACTIVITY_CENTER.passage;
+  if (segDist(x, z, [...ap[0], ...ap[1]]) < ACTIVITY_CENTER.passageWidth / 2 + 1) return;
   if (NO_TREE.some((q) => pip(x, z, q))) return;
   for (const ob of ACADEMIC_COURTS) {
     const u = (x - ob.cx) * ob.ux + (z - ob.cz) * ob.uz, v = -(x - ob.cx) * ob.uz + (z - ob.cz) * ob.ux;
@@ -3488,13 +3528,14 @@ function buildBikes() {
   const geo = mergeColored(parts);
   const spots = [];
   for (const b of BLD) {
-    if (!/食堂|求|楼|苑|图书馆/.test(b.name) || b.cls.special === 'station') continue;
+    if (!/食堂|求|楼|苑|图书馆/.test(b.name) || b.cls.special === 'station' || b.cls.special === 'activityConstruction') continue;
     if (b.parts) continue;
     const e = edgeFacing(b.p, b.c[0] + 20, b.c[1] + 40, 20); if (!e) continue;
     const n = Math.min(28, Math.floor(e.len * 0.9 / 1.1)) * (/食堂|图书馆/.test(b.name) ? 1 : 0.4);
     for (let k = 0; k < n; k++) {
       const t = 0.08 + 0.84 * k / n, x = e.a[0] + (e.b[0] - e.a[0]) * t + e.nx * 4.2, z = e.a[1] + (e.b[1] - e.a[1]) * t + e.nz * 4.2;
-      if (!inWater(x, z) && !bushAt(x, z) && !NO_TREE.some((q) => pip(x, z, q))) spots.push([x, z, Math.atan2(e.nz, e.nx) + rr(-0.12, 0.12) + Math.PI * 0.08]);
+      const ap = ACTIVITY_CENTER.passage, passage = segDist(x, z, [...ap[0], ...ap[1]]) < ACTIVITY_CENTER.passageWidth / 2 + 0.8;
+      if (!passage && !pip(x, z, ACTIVITY_CENTER.site) && !inWater(x, z) && !bushAt(x, z) && !NO_TREE.some((q) => pip(x, z, q))) spots.push([x, z, Math.atan2(e.nz, e.nx) + rr(-0.12, 0.12) + Math.PI * 0.08]);
     }
   }
   BIKE_SPOTS = spots;
@@ -4261,6 +4302,7 @@ function buildBuildings() {
     else if (sp === 'wende') buildWende(b);
     else if (sp === 'hdorm') buildHighDorm(b);
     else if (sp === 'construction') buildConstruction(b);
+    else if (sp === 'activityConstruction') buildActivityCenter(b);
     else if (sp === 'gardenService') buildGardenService(b);
     else buildGeneric(b, idx);
   });
@@ -4353,7 +4395,7 @@ function buildPlaces() {
     if (!label || seen.has(label)) return; seen.add(label);
     const cat = b.cls.cat || 'teach';
     const major = /图书馆|行政楼|学院实验楼|体育馆|药学博物馆|食堂|教学楼|游泳馆/.test(label);
-    PLACES.push({ name: label, cat, bld: [i], x: b.c[0], z: b.c[1], h: b.h, major, inferred: /inferred/.test(b.src || ''), sub: b.cls.special === 'natatorium' ? '室内恒温泳池 · 海鲸天悦运动健身中心' : undefined });
+    PLACES.push({ name: label, cat, bld: [i], x: b.c[0], z: b.c[1], h: b.h, major, inferred: /inferred/.test(b.src || ''), sub: b.cls.special === 'activityConstruction' ? '科学艺术中心 · 在建项目' : b.cls.special === 'natatorium' ? '室内恒温泳池 · 海鲸天悦运动健身中心' : undefined });
   });
   BLD.forEach((b, i) => { if (b.extra?.nolabel && b.name) { const p = PLACES.find((q) => q.name === b.name); if (p) p.bld.push(i); } });
   for (const [g, idx] of Object.entries(dormGroups)) {
@@ -4488,7 +4530,7 @@ function buildPlaceList() {
       items.sort((a, b) => (b.major ? 1 : 0) - (a.major ? 1 : 0) || a.name.localeCompare(b.name, 'zh-CN'));
       for (const p of items) {
         const btn = document.createElement('button'); btn.className = 'row'; btn.dataset.name = p.name;
-        const meta = p.dorm ? `${p.dormCount} 栋` : p.bld ? heightLabel(p.bld.map(i => BLD[i])) : '';
+        const meta = p.dorm ? `${p.dormCount} 栋` : p.bld ? buildingListMeta(p.bld.map(i => BLD[i])) : '';
         const glyph = elt('span', 'glyph'); glyph.style.setProperty('--c', p.color); glyph.appendChild(svgIcon(p.icon));
         btn.append(glyph, elt('span', 'name', p.name), elt('span', 'meta', meta));
         btn.addEventListener('click', () => { select(p); flyToPlace(p); if (innerWidth <= 760 || innerHeight <= 500) setSidebar(false); });
@@ -5592,16 +5634,36 @@ function walkPick(e) {
 // ---- pointer lock ----
 const LOCK_EL = renderer.domElement;
 const isLocked = () => LOCK_EL.getRootNode().pointerLockElement === LOCK_EL;
-function walkLock() {
-  walkAudioWake();
-  if (WALK.noLock || mode !== 'walk' || isLocked()) return;
-  let p = null;
-  try { p = LOCK_EL.requestPointerLock({ unadjustedMovement: true }); } catch (_) { p = null; }
-  if (p && p.catch) p.catch(() => { try { const r = LOCK_EL.requestPointerLock(); if (r && r.catch) r.catch(() => { }); } catch (_) { } });
+let lockAttempt = 0, lockPending = false;
+function walkDragFallback() {
+  if (DISPOSED || mode !== 'walk' || WALK.noLock || isLocked()) return;
+  WALK.noLock = true; WALK.locked = false; WALK.keys.clear(); WALK.zoomOn = false;
+  LOCK_EL.focus({ preventScroll: true });
+  walkHud();
+  toast('当前浏览器无法锁定鼠标：拖动看四周，WASD 移动，Esc 退出', 5200);
 }
-function walkUnlock() { if (isLocked()) document.exitPointerLock(); }
+async function walkLock() {
+  walkAudioWake();
+  if (DISPOSED || WALK.noLock || mode !== 'walk' || isLocked() || lockPending) return;
+  const attempt = ++lockAttempt;
+  const current = () => attempt === lockAttempt && !DISPOSED && mode === 'walk';
+  lockPending = true;
+  try {
+    try { await LOCK_EL.requestPointerLock({ unadjustedMovement: true }); }
+    catch (_) {
+      if (!current()) return;
+      try { await LOCK_EL.requestPointerLock(); }
+      catch (_) { if (current()) walkDragFallback(); }
+    }
+    if ((DISPOSED || mode !== 'walk') && isLocked()) document.exitPointerLock();
+  } finally {
+    if (attempt === lockAttempt) lockPending = false;
+  }
+}
+function walkUnlock() { lockAttempt++; lockPending = false; if (isLocked()) document.exitPointerLock(); }
 function walkLockChange() {
   const l = isLocked();
+  if (l && (DISPOSED || mode !== 'walk')) { document.exitPointerLock(); return; }
   if (WALK.locked && !l) WALK.unlockT = performance.now();
   WALK.locked = l;
   $('#app').classList.toggle('locked', l && mode === 'walk');
@@ -5612,7 +5674,9 @@ function walkLockChange() {
   else { WALK.keys.clear(); WALK.zoomOn = false; }
   walkHud();
 }
-function walkLockError() { if (mode === 'walk') toast('再点一下画面继续', 1600); }
+// Promise-based requests are handled above, including the raw-input retry.
+// Older implementations return void and report failure through this event only.
+function walkLockError() { if (!lockPending) walkDragFallback(); }
 on(document, 'pointerlockchange', walkLockChange);
 on(document, 'pointerlockerror', walkLockError);
 function walkHud() {
