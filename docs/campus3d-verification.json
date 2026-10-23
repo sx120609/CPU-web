@@ -505,9 +505,11 @@
     }
   ],
   "publication": {
-    "pushed": false,
-    "deployed": false,
-    "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
+    "status": "deployment_requested",
+    "requestedOn": "2026-10-23",
+    "pushed": null,
+    "deployed": null,
+    "note": "用户要求本轮结束后部署预览。实际完成状态须以最终精确SHA的GitHub Linux制品和生产部署回执核对；本记录不提前宣称推送或部署成功。"
   },
   "lastVerifiedParentCommit": "d80baafe9040e0de534273e508361092c32bc97b",
   "spatialInventory": "docs/campus3d-spatial-inventory.json",
@@ -520,6 +522,16 @@
       "sourceManifest": "docs/campus3d-spatial-sources.json#trainingNorthAccess",
       "finding": "现有OSM建筑和北侧步道均为2021-08-06版本，未记录高度、层数、步道宽度或covered标签。2025-06-16影像有明显屋顶偏移，中心点来源精度8.47米；2024/2026入口照片未展示北侧道路边界。校方修缮配图是露台效果图，不能作为实景或总平面图。",
       "decision": "补充实训楼用途、来源链接和近似模型说明；保留几何，继续寻找独立基底与入口定位证据。"
+    },
+    {
+      "id": "new-dorm-pickleball-location",
+      "status": "evidence_collected_registration_pending",
+      "finding": "2025-10-31体育部回顾配图标注匹克球场地新增，2026-03-12教务处课程表列匹克球场（新宿舍区）。H6/H7一带已核验影像仍为2024-01-12，尚不能将新场地照片可靠配准到具体地块。",
+      "decision": "保留待核验，不从新宿舍区这一范围描述推断精确坐标或覆盖旧场地。",
+      "sources": [
+        "https://ddh11.cpu.edu.cn/7d/f5/c17616a228853/page.htm",
+        "https://jwc.cpu.edu.cn/8e/e4/c851a233188/page.htm"
+      ]
     }
   ]
 }
