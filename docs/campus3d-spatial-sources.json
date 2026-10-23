@@ -232,5 +232,636 @@
     "Chemical model height and animal-center floor count remain estimates.",
     "The temporary facilities shown in 2025 imagery may not remain in October 2026.",
     "Published floor areas constrain scale but do not prove identical footprints on every storey."
-  ]
+  ],
+  "roadAndDormChecks": {
+    "retrievedOn": "2026-10-23",
+    "mosaics": [
+      {
+        "name": "library-roads",
+        "zoom": 18,
+        "tileOrigin": [
+          217658,
+          106536
+        ],
+        "pixelSize": [
+          1024,
+          1024
+        ],
+        "requestedBbox": [
+          118.9087,
+          31.9012,
+          118.9124,
+          31.9051
+        ],
+        "service": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+        "retrieved": "2026-10-23",
+        "metadataSample": {
+          "point": [
+            118.91055,
+            31.90315
+          ],
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/10/query?where=1%3D1&geometry=118.91055,31.90315&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE%2CSRC_ACC%2CSRC_RES%2CSRC_DESC%2CBlockName%2CReleaseName&returnGeometry=false&f=json",
+          "response": {
+            "displayFieldName": "NICE_NAME",
+            "fieldAliases": {
+              "SRC_DATE": "SRC_DATE",
+              "SRC_ACC": "SRC_ACC",
+              "SRC_RES": "SRC_RES",
+              "SRC_DESC": "SRC_DESC",
+              "BlockName": "BlockName",
+              "ReleaseName": "ReleaseName"
+            },
+            "fields": [
+              {
+                "name": "SRC_DATE",
+                "type": "esriFieldTypeInteger",
+                "alias": "SRC_DATE"
+              },
+              {
+                "name": "SRC_ACC",
+                "type": "esriFieldTypeDouble",
+                "alias": "SRC_ACC"
+              },
+              {
+                "name": "SRC_RES",
+                "type": "esriFieldTypeDouble",
+                "alias": "SRC_RES"
+              },
+              {
+                "name": "SRC_DESC",
+                "type": "esriFieldTypeString",
+                "alias": "SRC_DESC",
+                "length": 25
+              },
+              {
+                "name": "BlockName",
+                "type": "esriFieldTypeString",
+                "alias": "BlockName",
+                "length": 100
+              },
+              {
+                "name": "ReleaseName",
+                "type": "esriFieldTypeString",
+                "alias": "ReleaseName",
+                "length": 30
+              }
+            ],
+            "features": [
+              {
+                "attributes": {
+                  "SRC_DATE": 20250406,
+                  "SRC_ACC": 8.47,
+                  "SRC_RES": 0.31,
+                  "SRC_DESC": "WV03",
+                  "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+                  "ReleaseName": "Raster Basemaps 2025.R11"
+                }
+              }
+            ]
+          }
+        },
+        "attribution": "Esri, Vantor, Earthstar Geographics, GIS User Community",
+        "tiles": [
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106536/217658",
+            "sha256": "85255d90587b6cce41a99815aedbcbb12861cb22ab1409e6952d0dc326661302"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106536/217659",
+            "sha256": "c2361bd3db3b573a95e4110fca242a00af3ff6608d861660d985dd4d52722522"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106536/217660",
+            "sha256": "872211f0a0df488ea4c880e19f3d874255d2f6bb00d7be08e050b8083058c133"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106536/217661",
+            "sha256": "7910e9857307dbd7b9c603c51f5f0b4fc27470be9907fd33c3c030a0327758d4"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106537/217658",
+            "sha256": "a4a8d118004083000b180e76834a42291e3dbfecc4c6c8c67538e2aef7065cf1"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106537/217659",
+            "sha256": "d4efcabb913c606fdd289f1e0add49eabce7d878c20e23a78afb1c2421f7fa53"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106537/217660",
+            "sha256": "c51684eb8274c71d87e1d878f6229434490be802b0a2e6622f9c6e7b3f4f82dc"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106537/217661",
+            "sha256": "11e5f741cbdcc4eb6781e5f35794d9bea41efe3a055b9f98cdfda731812f4db3"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106538/217658",
+            "sha256": "4dd508e94b4bcd215fe1527a6bc0e6e314a868992678befb8b33796637606362"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106538/217659",
+            "sha256": "29b9b48ec5cbefc1b48c905e6a21aa2ff68f3a75df23a0988a1acf98bc575bea"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106538/217660",
+            "sha256": "dcbabca007c93c7da4c164c6cc43d97862239c5f6bf778ff271ad34e002f796e"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106538/217661",
+            "sha256": "953a4fa70e5762c07ed40f7f5666c39d5eb8ae2b120818bdff05ba809a9d8ff3"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106539/217658",
+            "sha256": "50335c80e9fcd20e37474ac95007960c36c8a22e30ccb26cb2d26b099c938812"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106539/217659",
+            "sha256": "ce6bcbe794f2a80adf96dc83c23d99d7072815fdf2667a8041c936bf26199325"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106539/217660",
+            "sha256": "3d003cde11f1faaa55b0780c8af23b6155250dcc502ee08db37cb9c5151140e0"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/106539/217661",
+            "sha256": "fcf3469fe6d841194f2cf97ac0644bfa84a199252c79d3683957cbe57947079e"
+          }
+        ]
+      },
+      {
+        "name": "wensi-roads",
+        "zoom": 19,
+        "tileOrigin": [
+          435326,
+          213069
+        ],
+        "pixelSize": [
+          1024,
+          1024
+        ],
+        "requestedBbox": [
+          118.9151,
+          31.905,
+          118.9173,
+          31.907
+        ],
+        "service": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+        "retrieved": "2026-10-23",
+        "metadataSample": {
+          "point": [
+            118.9162,
+            31.906
+          ],
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/10/query?where=1%3D1&geometry=118.9162,31.906&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE%2CSRC_ACC%2CSRC_RES%2CSRC_DESC%2CBlockName%2CReleaseName&returnGeometry=false&f=json",
+          "response": {
+            "displayFieldName": "NICE_NAME",
+            "fieldAliases": {
+              "SRC_DATE": "SRC_DATE",
+              "SRC_ACC": "SRC_ACC",
+              "SRC_RES": "SRC_RES",
+              "SRC_DESC": "SRC_DESC",
+              "BlockName": "BlockName",
+              "ReleaseName": "ReleaseName"
+            },
+            "fields": [
+              {
+                "name": "SRC_DATE",
+                "type": "esriFieldTypeInteger",
+                "alias": "SRC_DATE"
+              },
+              {
+                "name": "SRC_ACC",
+                "type": "esriFieldTypeDouble",
+                "alias": "SRC_ACC"
+              },
+              {
+                "name": "SRC_RES",
+                "type": "esriFieldTypeDouble",
+                "alias": "SRC_RES"
+              },
+              {
+                "name": "SRC_DESC",
+                "type": "esriFieldTypeString",
+                "alias": "SRC_DESC",
+                "length": 25
+              },
+              {
+                "name": "BlockName",
+                "type": "esriFieldTypeString",
+                "alias": "BlockName",
+                "length": 100
+              },
+              {
+                "name": "ReleaseName",
+                "type": "esriFieldTypeString",
+                "alias": "ReleaseName",
+                "length": 30
+              }
+            ],
+            "features": [
+              {
+                "attributes": {
+                  "SRC_DATE": 20240112,
+                  "SRC_ACC": 5,
+                  "SRC_RES": 0.31,
+                  "SRC_DESC": "WV03",
+                  "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+                  "ReleaseName": "Maps 2024.R13"
+                }
+              }
+            ]
+          }
+        },
+        "attribution": "Esri, Vantor, Earthstar Geographics, GIS User Community",
+        "tiles": [
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435326",
+            "sha256": "4d6e70bd026e53ffa2eb480e636904fbc8036e776a3a348a4dce331492e5c5a2"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435327",
+            "sha256": "1ac4f0afb988646659ff96f24dac75cf52f62cf55d75424f05315e7630a09776"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435328",
+            "sha256": "03d49dc7148375d39b903ba11ac05af72d9a4fe7290f824561ca6534a9a3fa54"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435329",
+            "sha256": "e09bfc4613ad499d118b1e964f8526de37f840b9bf263433296ecad4eb029138"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435326",
+            "sha256": "2ab9345b12d526a5c83326e5f9ca2eb0ef204209c839b41b9ee23ea00e3a786e"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435327",
+            "sha256": "98d81c046276e57ac539c8fd6fa7ab93d84e67121178f69c7f8fd27a2760e008"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435328",
+            "sha256": "3a099c6f68e59c26a68e215f2ec3cb3c02bf0ff49cd9e5f879457bd351ecdf7e"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435329",
+            "sha256": "a22fbf51be7c83545cb67ad50fe10f001c1e0d760d9c2730f656646e350eb6d0"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435326",
+            "sha256": "2428c0eb27f9647a93d9a4d2c89c9dcc5f8b7fd0f433c35bc1ab64476d7bd8aa"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435327",
+            "sha256": "630ce717c567a917ed118e51125b4b22be08d9adfbfc0ba621418c8338e6bf34"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435328",
+            "sha256": "2f3adc90f1356b34d5e176be97fad23e4820a39ce7a5ccf36ce4da46631656d8"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435329",
+            "sha256": "aacb2b3c9a78c4c89ea16eaaaf10b745a42d64eeac02d30bccca02d002cf74df"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213072/435326",
+            "sha256": "8e5e94f62cd970c18262211dabd11c8dd0c83805c2af513dc4aaa6d81bd80b05"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213072/435327",
+            "sha256": "db83c8f87cc84b8861072034372a7c629082cd0db125061069366918d8ec7d8b"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213072/435328",
+            "sha256": "3789329a8fbbd354482626ef0e3f228abe85b12c6dae45b7a6d00bdad6c86fb5"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213072/435329",
+            "sha256": "243de14eb4a51035d0e138b499651d2ed99893ca718137b48db4b06cfcb33981"
+          }
+        ]
+      },
+      {
+        "name": "h67-roofs",
+        "zoom": 19,
+        "tileOrigin": [
+          435330,
+          213068
+        ],
+        "pixelSize": [
+          1024,
+          1024
+        ],
+        "requestedBbox": [
+          118.9177,
+          31.9058,
+          118.9197,
+          31.9074
+        ],
+        "service": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+        "retrieved": "2026-10-23",
+        "metadataSample": {
+          "point": [
+            118.9187,
+            31.906599999999997
+          ],
+          "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/10/query?where=1%3D1&geometry=118.9187,31.906599999999997&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE%2CSRC_ACC%2CSRC_RES%2CSRC_DESC%2CBlockName%2CReleaseName&returnGeometry=false&f=json",
+          "response": {
+            "displayFieldName": "NICE_NAME",
+            "fieldAliases": {
+              "SRC_DATE": "SRC_DATE",
+              "SRC_ACC": "SRC_ACC",
+              "SRC_RES": "SRC_RES",
+              "SRC_DESC": "SRC_DESC",
+              "BlockName": "BlockName",
+              "ReleaseName": "ReleaseName"
+            },
+            "fields": [
+              {
+                "name": "SRC_DATE",
+                "type": "esriFieldTypeInteger",
+                "alias": "SRC_DATE"
+              },
+              {
+                "name": "SRC_ACC",
+                "type": "esriFieldTypeDouble",
+                "alias": "SRC_ACC"
+              },
+              {
+                "name": "SRC_RES",
+                "type": "esriFieldTypeDouble",
+                "alias": "SRC_RES"
+              },
+              {
+                "name": "SRC_DESC",
+                "type": "esriFieldTypeString",
+                "alias": "SRC_DESC",
+                "length": 25
+              },
+              {
+                "name": "BlockName",
+                "type": "esriFieldTypeString",
+                "alias": "BlockName",
+                "length": 100
+              },
+              {
+                "name": "ReleaseName",
+                "type": "esriFieldTypeString",
+                "alias": "ReleaseName",
+                "length": 30
+              }
+            ],
+            "features": [
+              {
+                "attributes": {
+                  "SRC_DATE": 20240112,
+                  "SRC_ACC": 5,
+                  "SRC_RES": 0.31,
+                  "SRC_DESC": "WV03",
+                  "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+                  "ReleaseName": "Maps 2024.R13"
+                }
+              }
+            ]
+          }
+        },
+        "attribution": "Esri, Vantor, Earthstar Geographics, GIS User Community",
+        "tiles": [
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213068/435330",
+            "sha256": "2029f506e7ed2843cbb448dab91c32ad2f58a1f1eb33839ca02bd6c590ffff3b"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213068/435331",
+            "sha256": "911288b5f3f9fd34a8df605a5078f40a1c7dcfb75ae4dba46367ec9acd899bdc"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213068/435332",
+            "sha256": "330f1d8983624cc39e40d3a8ab88a1dbd213488bad28ceb8901166d7048ced86"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213068/435333",
+            "sha256": "ab441bf349b9da6c780fe85a7752fe074b61ef511fb9d3111eb7a9cc1de5238f"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435330",
+            "sha256": "94d81c8a6da7787d1a3d2ac72d37e2b35ffd85b2584a04fdff2cd823d12bdd2f"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435331",
+            "sha256": "aff46790a908ec5ec5dd97236f14aecc9b28640264eb904350f03a845290bb6a"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435332",
+            "sha256": "5c9fce87b8adcdccfd342da7e6e1993315d9cfa9830ee3865cf406dec6aee53f"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213069/435333",
+            "sha256": "c9b41b18c9050f3e2295207a1f57c7c671c6f423fe12853031956fcfe6a89c57"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435330",
+            "sha256": "37ce6e6b3e99779a0acf3f7b4e09c85f5225e190f8d345aefa885bd428b487c3"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435331",
+            "sha256": "200dd2a202f95cc7d585450f1ac34e0c6512f7d4552acc0b9f0ad78678544134"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435332",
+            "sha256": "6b5dddae0ea9b40c18e0852df87c7c2ca8675777b79f12d2203aa882a2a7566f"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213070/435333",
+            "sha256": "cd7cca2018b6bec353e116866bd93c666e32c2ebc598052037e3b65e5ebbc64c"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435330",
+            "sha256": "d128eb1bc2c63580235e044d573a3421653a19350978a56b18c76794dac28863"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435331",
+            "sha256": "c024577a35e8c4bdc7acf465e3caa68ba49df74025142a7311cda4b41ae124b3"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435332",
+            "sha256": "c93bcf902b133ca0b69f291c61e19ddf6a70a197b3d9796588b19832b712bb4a"
+          },
+          {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/19/213071/435333",
+            "sha256": "f263b5882c39a5643f7c1938f638e65ee6501a8207258fa44d12f3606108208b"
+          }
+        ]
+      }
+    ],
+    "dormDateChecks": [
+      {
+        "point": "118.91624,31.90604",
+        "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/10/query?where=1%3D1&geometry=118.91624,31.90604&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE%2CSRC_ACC%2CSRC_RES%2CSRC_DESC%2CBlockName%2CReleaseName&returnGeometry=false&f=json",
+        "features": [
+          {
+            "attributes": {
+              "SRC_DATE": 20240112,
+              "SRC_ACC": 5,
+              "SRC_RES": 0.31,
+              "SRC_DESC": "WV03",
+              "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+              "ReleaseName": "Maps 2024.R13"
+            }
+          }
+        ]
+      },
+      {
+        "point": "118.91673,31.90569",
+        "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/10/query?where=1%3D1&geometry=118.91673,31.90569&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE%2CSRC_ACC%2CSRC_RES%2CSRC_DESC%2CBlockName%2CReleaseName&returnGeometry=false&f=json",
+        "features": [
+          {
+            "attributes": {
+              "SRC_DATE": 20240112,
+              "SRC_ACC": 5,
+              "SRC_RES": 0.31,
+              "SRC_DESC": "WV03",
+              "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+              "ReleaseName": "Maps 2024.R13"
+            }
+          }
+        ]
+      },
+      {
+        "point": "118.91690,31.90690",
+        "url": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/10/query?where=1%3D1&geometry=118.91690,31.90690&geometryType=esriGeometryPoint&inSR=4326&outFields=SRC_DATE%2CSRC_ACC%2CSRC_RES%2CSRC_DESC%2CBlockName%2CReleaseName&returnGeometry=false&f=json",
+        "features": [
+          {
+            "attributes": {
+              "SRC_DATE": 20240112,
+              "SRC_ACC": 5,
+              "SRC_RES": 0.31,
+              "SRC_DESC": "WV03",
+              "BlockName": "Vivid_Advanced_Nanjing_CN_24Q3",
+              "ReleaseName": "Maps 2024.R13"
+            }
+          }
+        ]
+      }
+    ],
+    "sourceOsm": [
+      {
+        "url": "https://api.openstreetmap.org/api/0.6/map?bbox=118.9091,31.9011,118.9124,31.9052",
+        "sha256": "e9a8dd83ecae15d9c98230a83846d2ff51413be1aae81ea9a719b62d2cc7c79e",
+        "way": 329064945,
+        "version": 5,
+        "timestamp": "2018-01-22T02:25:08Z",
+        "supports": "Source Yicheng centerline is unchanged; no width tag. Width 24 m remains a model estimate."
+      },
+      {
+        "url": "https://api.openstreetmap.org/api/0.6/map?bbox=118.9092,31.9059,118.9105,31.9067",
+        "sha256": "1f299f599ee34c1883b2750a6b81ba6a258765edd8af5cf392e40eb221ea6fe9",
+        "way": 970880295,
+        "version": 1,
+        "timestamp": "2021-08-06T11:07:48Z",
+        "tags": {
+          "highway": "service",
+          "covered": "yes"
+        },
+        "supports": "Covered ground connection at the safety-center middle link; no measured clearance or width."
+      },
+      {
+        "url": "https://api.openstreetmap.org/api/0.6/way/553917100/full",
+        "sha256": "963c08c28448773e83630010556df11baddf042a8602017408c92a901358b08a",
+        "way": 553917100,
+        "version": 1,
+        "timestamp": "2018-01-18T07:31:33Z",
+        "supports": "Existing G11/Wende footprint; this is not the 2024 phase-four project."
+      }
+    ],
+    "identitySources": [
+      {
+        "url": "https://gjc.cpu.edu.cn/79/59/c317a96601/page.htm",
+        "publishedOn": "2023-06-20",
+        "supports": "School labels G11 as Wende Court; no building height/floor count stated."
+      },
+      {
+        "url": "https://jjc.cpu.edu.cn/32/8d/c495a209549/page.htm",
+        "publishedOn": "2024-08-21",
+        "imageSha256": "28bc505d035f0f09b9d3f398345ac3a17dd14b89f2108b51efb29f883ce7c906",
+        "supports": "Phase-four project handover and its photograph. The photograph must not be assumed to depict G11."
+      },
+      {
+        "url": "https://www.cpu.edu.cn/_t858/30/f7/c9617a209143/page.htm",
+        "publishedOn": "2024-07-17",
+        "supports": "School inspection report separately lists phase-four construction and G11 renovation."
+      }
+    ],
+    "caveats": [
+      "Wensi imagery dates to 2024-01-12 with source accuracy 5 m; it is not a current survey.",
+      "G5/G2 edge contacts have not been resolved by moving buildings or narrowing source roads.",
+      "G11 outline is restored to its OSM way; its generic elevation and facade are explicitly unverified.",
+      "H6/H7 imagery shows separate upper blocks and a lower connecting structure; current model needs further verification."
+    ],
+    "currentOsmRoundingChecks": [
+      {
+        "way": "329064945",
+        "maxProjectedRoundingDifferenceMeters": 0.05970633891196096,
+        "sourceVersion": "5",
+        "sourceTimestamp": "2018-01-22T02:25:08Z"
+      },
+      {
+        "way": "553917100",
+        "maxProjectedRoundingDifferenceMeters": 0.06838954694190438,
+        "sourceVersion": "1",
+        "sourceTimestamp": "2018-01-18T07:31:33Z"
+      }
+    ]
+  },
+  "elevatorReference": {
+    "url": "https://cgzx.cpu.edu.cn/cms/contentwh/download.htm?attachmentid=2db5d59a73c94612be63edef668d4280",
+    "document": "2026两校区电梯更换修缮项目，更正版，校方编号DCHGZB031260021",
+    "sha256": "16ed11649a00b94eb4b247de5c88e8c3028b1e3858caa6e31bac29efa889775a",
+    "pdfPage": 33,
+    "printedPage": 31,
+    "visualCheck": "Rendered and inspected the complete procurement table with Poppler.",
+    "rows": [
+      {
+        "building": "行政楼",
+        "unit": 1,
+        "stops": 8,
+        "travelMeters": 25.5
+      },
+      {
+        "building": "行政楼",
+        "unit": 2,
+        "stops": 9,
+        "travelMeters": 30.9
+      },
+      {
+        "building": "行政楼",
+        "unit": 3,
+        "stops": 9,
+        "travelMeters": 30.9
+      },
+      {
+        "building": "安评中心",
+        "unit": 1,
+        "stops": 3,
+        "travelMeters": 9.66
+      },
+      {
+        "building": "安评中心",
+        "unit": 2,
+        "stops": 3,
+        "travelMeters": 9.63
+      },
+      {
+        "building": "留学生公寓G11",
+        "unit": 1,
+        "stops": 7,
+        "travelMeters": 20
+      }
+    ],
+    "limits": [
+      "Elevator stops are not independently verified above-ground building storeys.",
+      "Travel height is not building height.",
+      "The pit-depth header and listed values use inconsistent units; no pit dimensions were imported into the scene."
+    ],
+    "visualPageArtifact": "output/campus3d-audit-20261023/elevator-table-33.png"
+  }
 }

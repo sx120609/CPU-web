@@ -11,6 +11,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { NATATORIUM, DORM_LETTER, DORM_GROUP_INFO, dormSummary, buildingListMeta, buildingFacts, geometrySource } from './placeMetadata.js';
 import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from './constructionSites.js';
 import { RESEARCH_CENTERS, RESEARCH_INFO, CHEMISTRY_COURT, RESEARCH_TEMPORARY_FOOTPRINT, researchBuildings, correctResearchRoads } from './researchCenters.js';
+import { SAFETY_CENTER_PASSAGE, annotateCoveredAccess, splitCoveredGround, groundFootprints, buildingSolidAt, passageApproach } from './coveredAccess.js';
 
 export function mountCampus3D(root, opts) {
 let DISPOSED = false, RAF = 0;
@@ -20,6 +21,7 @@ const on = (target, type, fn, options) => { target.addEventListener(type, fn, op
 const D = JSON.parse(JSON.stringify(opts.data));
 const O = JSON.parse(JSON.stringify(opts.outer));
 D.r = correctResearchRoads(D.r);
+D.r = annotateCoveredAccess(D.r);
 D.pa.push({ t: 'footway', p: ACTIVITY_CENTER.passage, n: '二食堂东侧防护通道' });
 // OSM still contains service roads from the pre-Double-A layout. The photographed
 // east forecourt is pedestrian paving; retain only its northern access segment.
@@ -211,21 +213,11 @@ function iconFor(p) {
 }
 const placeColor = (p) => (p.water || /河道/.test(p.name) ? '#30b0c7' : CATS[p.cat]?.color || '#007aff');
 const CAMPUS = D.campus;
-{ const yc = D.r.find((r) => r.n === '以诚路'); if (yc) { yc.p = [[-278, 245], [-250, 200], [-206, 154], [-194.5, 141], [-186, 114], [-172.4, 60.6], [-160, 20], [-140, 0], [-108, -36], [-89, -58], [-66, -84]]; yc.wide = 24; } }
-// 文德苑（研究生公寓四期，OSM 553917100）：形体按 z18/z19 卫星图的屋面，立面与层数按 r01.jpg / official_graduate.png。
-// 西端斜向西南的弧形板楼接东西向主楼，东端一段南北向短翼（南山墙每层居中一窗），楼前一圈向南凸出的单层弧形裙房。
-const WENDE = (() => {
-  const H = 9 * 3.3, ctr = [], P0 = [375.5, -374], P1 = [388.5, -357.2], P2 = [404, -356.6];
-  for (let i = 0; i <= 10; i++) { const t = i / 10, a = (1 - t) ** 2, m = 2 * t * (1 - t), c = t * t; ctr.push([a * P0[0] + m * P1[0] + c * P2[0], a * P0[1] + m * P1[1] + c * P2[1]]); }
-  ctr.push([420, -356.6], [436.5, -356.6]);
-  const north = offsetLine(ctr, -6.4), south = offsetLine(ctr, 6.4);
-  const slab = north.concat(south.slice().reverse());
-  const wing = [[436.5, -377], [448.5, -377], [448.5, -348.5], [436.5, -348.5]];
-  const arc = []; for (let i = 0; i <= 14; i++) { const x = 436.5 - 36.5 * i / 14; arc.push([x, -350.2 + 7.7 * Math.sin(Math.PI * (x - 400) / 36.5)]); }
-  const podium = arc.concat([[400, -351.4], [436.5, -351.4]]);
-  const footprint = north.concat(wing.slice(0, 3), [[436.5, -348.5]], arc, south.filter((q) => q[0] < 399.9).reverse());
-  return { H, slab, wing, podium, footprint };
-})();
+// The mapped centerline follows the paved strip southeast of the library in the
+// 2025-04-06 imagery. The former hand-drawn bend cut across the square and into
+// the library's ground-floor wall. Keep the source line; width is still an estimate.
+{ const yc = D.r.find((r) => r.n === '以诚路'); if (yc) { yc.wide = 24; yc.spatialSource = 'osm-centerline-checked-imagery-2025-04-06'; } }
+// G11 uses its own mapped footprint. Graduate phase-four photographs describe a separate project.
 const NE = {
   site: [[397,-563],[490,-565],[535,-530],[580,-505],[592,-410],[560,-393],[425,-398],[402,-448]],
   beds: [[380,-620],[429,-635],[472,-597],[420,-565]],
@@ -285,7 +277,7 @@ function classify(b) {
   if (/科学楼|化学楼|分析楼|理学楼|经管文楼/.test(n)) return R({ fl: /经管/.test(n) ? 5 : 6, st: 'lab', towers: 1, trim: 'trim:white', roof: 'roof:mid' });
   if (/综合研发楼/.test(n)) return R({ fl: 8, st: 'lab', trim: 'trim:white', towers: 1 });
   if (/实训楼/.test(n)) return R({ fl: 5, st: 'lab' });
-  if (/安评中心/.test(n)) return R({ fl: 4, st: 'labw', trim: 'trim:white' });
+  if (/安评中心/.test(n)) return R({ fl: 4, st: 'labw', trim: 'trim:white', special: b.id===SAFETY_CENTER_PASSAGE.buildingWay?'coveredLab':undefined });
   if (/同位素楼|库房/.test(n)) return R({ fl: 2, st: 'plain' });
   if (/食堂/.test(n)) return R({ fl: 4, st: 'canteen', trim: 'trim:dark', cat: 'life' });
   if (/文思苑|文德苑/.test(n)) return R({ fl: 7, st: 'dormStripe', trim: 'trim:white', roof: 'roof:dark', cat: 'life' });
@@ -303,7 +295,6 @@ function classify(b) {
 const BLD = [];
 for (const b of D.b) {
   if (b.p.length < 3) continue;
-  if(b.id===553917100) continue;
   const p = pArea(b.p) === 0 ? b.p : b.p;
   BLD.push({ osm: b.id, name: b.n || '', p, cls: classify(b), src: 'osm', type: b.t });
 }
@@ -311,7 +302,6 @@ const EXTRA = [
   { name: '学院实验楼', special: 'xueyuan', cat: 'teach', p: rectPoly(-170, -595, 190, 215, 0), src: 'sat', fl: 5 },
   ...researchBuildings(),
   { name: '科研区临时设施（2025影像）', p: RESEARCH_TEMPORARY_FOOTPRINT, st: 'shed', fl: 1, h: 3.2, src: 'sat', cat: 'transit' },
-  { name: '文德苑', p: WENDE.footprint, special: 'wende', st: 'wende', fl: 9, h: WENDE.H, src: 'photo+sat', cat: 'life' },
   { name: '文正苑6、7号楼', p:NE.wenzheng67,special:'graduate',st:'beigeBand',fl:8,h:25.6,src:'sat-inferred',cat:'life' },
   { name: '文华苑1号楼', p: rectPoly(531.6, -135.2, 81, 21.7, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
   { name: '文华苑2号楼', p: rectPoly(496.2, -81.1, 71, 20.2, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
@@ -346,6 +336,10 @@ for (const b of BLD) {
   const c = b.cls; c.fh = c.fh || (FAC[c.st] ? FAC[c.st].fh : 3.6);
   b.h = c.h || c.fl * c.fh;
   if (/教学楼[ABDE]/.test(b.name)) b.parts = courtyardParts(b.p);
+  if (b.osm===SAFETY_CENTER_PASSAGE.buildingWay) {
+    const ground=splitCoveredGround(b.p,SAFETY_CENTER_PASSAGE.centerline,SAFETY_CENTER_PASSAGE.modelWidth);
+    b.groundParts=ground.groundParts;b.coveredPassage={...SAFETY_CENTER_PASSAGE,opening:ground.opening};
+  }
 }
 // 教学楼 A/B/D/E are courtyard blocks: long wings on the main side walls (their roof grilles show on the
 // satellite tiles), end blocks across both ends and a garden court inside. Where the OSM outline juts past a
@@ -410,6 +404,7 @@ const TEACH_TREES = [];
 const INFO = {
   ...DORM_GROUP_INFO,
   ...RESEARCH_INFO,
+  '安评中心': {d:'新药安全评价研究中心。建筑中央是一段上方有遮盖的通道，结构依据公开地图标注。通道尺寸与当前通行条件未实测。',s:'结构依据：OSM way 970880295，covered=yes（2021-08-06版本，2026-10-23核对）。模型净空和宽度为估算，不是现场限高或通行许可。',links:[{title:'OSM：安评中心有顶通道',url:SAFETY_CENTER_PASSAGE.source},{title:'新药安全评价研究中心',url:'https://apzx.cpu.edu.cn/'}]},
   '大学生活动中心': { d: '科学艺术中心，位于二食堂东侧。基建后勤处将其列为在建工程；2026 年 9 月 22 日通知安排三层楼面混凝土浇筑。二食堂东侧设有施工防护通道，公告预计留置至 2027 年 3 月。场景按这些资料显示施工围挡、结构楼板和防护通道；施工进度与通行以现场指引为准。', s: '基建后勤处在建项目清单、施工区域附图与施工通知；核对日期：2026-10-23。围挡范围按附图对齐周边道路；结构轮廓、层高和通道尺寸为示意，不能作为竣工外观或当前测量值。', links: ACTIVITY_CENTER.sources },
   [GRADUATE_PHASE_FIVE.name]: { d: GRADUATE_PHASE_FIVE.description, s: '施工通知附图与 OSM 步道交点配准。独立步道检查差约 2–4 米，北侧道路检查差约 13 米；不据此生成围挡或建筑碰撞。资料核对：2026-10-23。', links: GRADUATE_PHASE_FIVE.sources },
   '图书馆': { d: '江宁校区的中心建筑，正对中心广场与镜湖。主楼地上 7 层，前部为两层白色柱廊裙房与宽阔台阶，立面为灰色石材配白色边框与横向带窗。江宁校区馆面积约 2.3 万平方米，二层设借阅室与学术报告厅。', s: '层数：OpenStreetMap；面积与楼层功能：百度百科“中国药科大学图书馆”；立面：公开照片' },
@@ -417,7 +412,7 @@ const INFO = {
   '行政楼': { d: '位于正门内西侧，镜湖西岸。深炭灰墙板、端墙和檐口配蓝色窗带，南侧连接大礼堂与学术报告厅。', s: '位置：OpenStreetMap；外观：校园航拍与公开实景照片' },
   '会议中心': { d: '行政楼南侧，经北面的玻璃中庭与行政楼相连。中部高起的方形浅色体量是大礼堂观众厅；西南两层楼沿一道大弧线展开，底层退进为玻璃，上方挑出白色檐口；东侧朝广场是一排锯齿形玻璃门厅，东南角伸出三角形入口雨棚。体量与位置按卫星影像建模。', s: '位置：OpenStreetMap；外观：校园全景照片' },
   '学院实验楼': { d: '位于校园西北角，东临明湖，北依药用植物园西区，因两翼平面呈“A”形，常被称作“双 A 楼”。由美国 HDR 公司方案设计、南京大学建筑设计研究院完成施工图；建筑面积约 36991 平方米，地上 5 层、地下 1 层。东侧科研办公室呈弧形面向明湖，白色水平遮阳带与玻璃幕墙层层叠退；中庭有螺旋原木雕塑与竖琴形天窗。二期大楼于 2021 年 2 月通过竣工验收。', s: '搜狐《匠心独具｜探秘中国药科大学江宁校区学院实验楼》；学校基建处“已建项目”；外观：学校官网航拍' },
-  '文德苑': {d:'研究生公寓四期，位于文思苑北侧。9 层弧形板楼，西端斜向西南，东端接一段南北向短翼；米色窗间墙与深棕窗带横向相间，楼前是一圈向南凸出的单层裙房和入口。',s:'学校基建处与校友会发布的实景照片；z18/z19 卫星图。层高为照片估算，非测绘数据。'},
+  '文德苑': {d:'文德苑（G11）位于文思苑北侧。国际教育学院的公开资料使用“G11（文德苑）”这一楼名。2026年校方电梯采购资料列为7层7站、提升高度20米；提升高度是电梯行程。此处采用独立的OSM轮廓，建筑总高、屋面和立面仍为近似模型。',s:'名称与楼号：国际教育学院公开资料（2023-06-20）；轮廓：OSM way 553917100。研究生公寓四期与G11不是同一项目，四期交付照片不作为此楼外观依据。',links:[{title:'国际教育学院：G11（文德苑）',url:'https://gjc.cpu.edu.cn/79/59/c317a96601/page.htm'},{title:'OSM：文德苑独立轮廓',url:'https://www.openstreetmap.org/way/553917100'},{title:'学校2024建设检查：四期建设与G11修缮',url:'https://www.cpu.edu.cn/_t858/30/f7/c9617a209143/page.htm'},{title:'2026电梯采购资料（印刷第31页）',url:'https://cgzx.cpu.edu.cn/cms/contentwh/download.htm?attachmentid=2db5d59a73c94612be63edef668d4280'}],nameConfirmed:true},
   '一食堂': { d: '学生第一食堂，位于学生公寓区西侧。四层，深灰面砖墙面，窗间饰白色竖向条板。', s: '名称与位置：OpenStreetMap；外观参照二食堂实景照片' },
   '二食堂': { d: '学生第二食堂，四层，深灰面砖墙面配白色窗下板，转角立面有竖排“二食堂”字样；楼前常停满自行车。', s: '名称与位置：OpenStreetMap；外观：实景照片' },
   '体育馆': { d: '校园南部的综合体育馆，银灰色金属拱形屋面，正立面为带菱形桁架的玻璃幕墙。', s: '位置：OpenStreetMap；外观：实景照片' },
@@ -429,7 +424,7 @@ const INFO = {
 };
 const TEACH_DESC = '教学楼 A–E（求知、求实、求真、求新、求同）沿镜湖东侧一字排开，是公共课与考试的主要场所，也是全国硕士研究生招生考试中国药科大学考点的考场所在地。居中的求真楼面朝湖边大道，白色柱廊前立着雕像、摆着红色花箱；求实楼与求新楼的长翼在两侧夹出前院，端部楼梯塔高出屋面，三层连廊把它们和求真楼连在一起。求知、求实、求新、求同四栋各自围合一个内院。灰色立面、白色楼层线。';
 const LAB_DESC = '沿校内河道西岸排列的学院科研楼，深浅灰色面砖墙面，楼梯间塔楼高出屋面，顶部为白色玻璃“灯笼”，倒映在河道中。';
-const DORM_DESC = '学生公寓按“文”字组团命名：文萃、文轩、文菁、文澜、文枢、文昌、文思、文德等苑。不同组团采用米白、砖色或灰色墙面，配白色窗框和生活阳台；北部文思苑为白色与深蓝相间立面，文德苑（研究生公寓）为米色与深棕横带。';
+const DORM_DESC = '学生公寓按“文”字组团命名：文萃、文轩、文菁、文澜、文枢、文昌、文思、文德等苑。不同组团采用米白、砖色或灰色墙面，配白色窗框和生活阳台；北部文思苑为白色与深蓝相间立面。具体层数与立面仍需逐栋核实。';
 
 const stage = $('#stage');
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
@@ -813,7 +808,7 @@ function drawFacade(name, cx) {
     case 'glassGrey': wall(g, '#e5e6e3', 0, 400); cell((x, y) => { win(cx, x + 2, y + 8, 60, 54, { c1: '#353f48', c2: '#6c7883', mull: '#c3c8cb', mn: 3 }, L); }); break;
     case 'plain': wall(g, '#c3beb3', 0); cell((x, y) => win(cx, x + 18, y + 14, 28, 32, { frame: '#ebe9e3', fw: 2, c1: '#36404a', c2: '#5d6a74', mull: '#ebe9e3', mn: 2 }, L)); break;
     case 'beigeBand': wall(g, '#b6977a', 0, 900); cell((x, y) => { g.fillStyle = '#ddcdb0'; g.fillRect(x, y, 64, 20); win(cx, x + 6, y + 27, 52, 30, { c1: '#3a4651', c2: '#6f7f8c', mull: '#e6e0d4', mn: 3 }, L); }); break;
-    // 文德苑：每层一条米色窗间墙，下面是深棕窗带；窗间每隔几跨夹白色空调百叶或木纹板（r01.jpg）
+    // Legacy graduate-apartment facade palette; not evidence for G11 identity or appearance.
     case 'wende': case 'wendeSolid': wall(g, '#4a403a', 0, 900); cell((x, y, b) => {
       g.fillStyle = '#d6c4a2'; g.fillRect(x, y, 64, 21); speckle(g, x, y, 64, 21, 24, 0.04); cx.hh.fillStyle = '#c4c4c4'; cx.hh.fillRect(x, y, 64, 21);
       g.fillStyle = '#342c27'; g.fillRect(x, y + 21, 64, 2);
@@ -1273,7 +1268,7 @@ function paintGround() {
   paintSports(g);
   paintNortheast(g);
   g.strokeStyle = '#b3aea3'; g.lineWidth = 7;
-  for (const b of BLD) { if (b.cls.special === 'station' || b.extra?.special === 'xueyuan') continue; for (const p of b.parts || [b.p]) { g.beginPath(); tracePoly(g, p); g.stroke(); g.fillStyle = '#b3aea3'; g.fill(); } }
+  for (const b of BLD) { if (b.cls.special === 'station' || b.extra?.special === 'xueyuan') continue; for (const p of groundFootprints(b)) { g.beginPath(); tracePoly(g, p); g.stroke(); g.fillStyle = '#b3aea3'; g.fill(); } }
   for (const pod of XY_PODS) { g.beginPath(); tracePoly(g, pod.p); g.lineWidth = 8; g.stroke(); }
   { const blue = [[-150, -401], [-104, -419], [-46, -441], [-2, -458], [8, -500], [14, -538], [44, -588], [86, -616], [128, -640], [160, -662]];
     traceLine(g, blue); g.strokeStyle = '#e9ebe6'; g.lineWidth = 4.2; g.stroke(); traceLine(g, blue); g.strokeStyle = '#3d6cab'; g.lineWidth = 3.2; g.stroke(); }
@@ -1330,7 +1325,7 @@ function paintGround() {
     g.beginPath(); for (const o of w.outer) tracePoly(g, o); for (const i of w.inner) tracePoly(g, i);
     g.strokeStyle = '#8c8877'; g.lineWidth = 2.6; g.stroke(); g.fillStyle = '#243837'; g.fill('evenodd');
   }
-  for (const b of BLD) { if (b.cls.special === 'station' || b.extra?.special === 'xueyuan') continue; for (const p of b.parts || [b.p]) fillPoly(g, p, '#6c6e70'); }
+  for (const b of BLD) { if (b.cls.special === 'station' || b.extra?.special === 'xueyuan') continue; for (const p of groundFootprints(b)) fillPoly(g, p, '#6c6e70'); }
   fillPoly(g, ACTIVITY_CENTER.site, '#b5a189');
   traceLine(g, ACTIVITY_CENTER.passage); g.lineWidth = ACTIVITY_CENTER.passageWidth; g.strokeStyle = '#c9c4b9'; g.stroke();
   for (const pod of XY_PODS) fillPoly(g, pod.p, '#6c6e70');
@@ -1424,7 +1419,7 @@ function buildMask() {
   const c = mkCanvas(REGW, REGH), g = c.getContext('2d');
   g.setTransform(1, 0, 0, 1, -REG.x0, -REG.z0); g.lineJoin = g.lineCap = 'round';
   g.fillStyle = g.strokeStyle = '#fff';
-  for (const b of BLD) { if (b.extra?.special === 'xueyuan') continue; for (const p of b.parts || [b.p]) { g.beginPath(); tracePoly(g, p); g.fill(); g.lineWidth = 5; g.stroke(); } }
+  for (const b of BLD) { if (b.extra?.special === 'xueyuan') continue; for (const p of groundFootprints(b)) { g.beginPath(); tracePoly(g, p); g.fill(); g.lineWidth = 5; g.stroke(); } }
   for (const pod of XY_PODS) { g.beginPath(); tracePoly(g, pod.p); g.fill(); g.lineWidth = 6; g.stroke(); }
   for (const l of XY_LINKS) { g.beginPath(); tracePoly(g, l); g.fill(); g.lineWidth = 5; g.stroke(); }
   for (const w of WATERS) { g.beginPath(); for (const o of w.outer) tracePoly(g, o); for (const i of w.inner) tracePoly(g, i); g.fill('evenodd'); g.lineWidth = 2.5; g.stroke(); }
@@ -1609,6 +1604,14 @@ function buildResearchCenter(b) {
   }
   b.h = top + parapet;
 }
+function buildCoveredLab(b) {
+  const h=b.h,clearance=b.coveredPassage.modelClearance,key='f:'+b.cls.st;
+  for(const p of b.groundParts){addWalls(key,p,0,clearance,'abs');addWalls('plinth',insetPoly(p,-0.04),0,0.65);}
+  addWalls(key,b.p,clearance,h,'abs');
+  addCap('concrete',b.coveredPassage.opening,clearance,true);
+  addCap(b.cls.roof,b.p,h);addParapet(b.cls.trim,b.p,h,b.cls.ph||1.1);
+  roofClutter(b.p,h,4);academicRoof(b.p,h);
+}
 // Main entrance on the face nearest a road.
 const NO_TREE = [];
 function addEntrance(b) {
@@ -1762,28 +1765,6 @@ function dormDetails(b, h) {
       if (b.cls.st === 'dormBeige') for (const t of [1.1, e.len - 1.1]) addBox('terracotta', e.a[0] + e.dx * t + e.nx * 0.2, 0.6, e.a[1] + e.dz * t + e.nz * 0.2, 1.3, 0.5, h - 0.6, a);
     }
   }
-}
-function buildWende(b) {
-  const { H, slab, wing, podium } = WENDE;
-  const rail = (poly, y) => {
-    const ring = insetPoly(poly, 0.18).concat([insetPoly(poly, 0.18)[0]]), cum = cumLen(ring), L = cum[cum.length - 1];
-    for (let d = 0; d < L; d += 2.4) { const q = sampleAt(ring, cum, d); addBox('equip', q.x, y, q.z, 0.06, 0.06, 1.05, 0); }
-    addWalls('equip', insetPoly(poly, 0.16), y + 1.0, y + 1.06); addWalls('equip', insetPoly(poly, 0.2), y + 1.0, y + 1.06, undefined, true);
-  };
-  for (const p of [slab, wing]) {
-    addWalls('f:wende', p, 0, H); addWalls('plinth', insetPoly(p, -0.04), 0, 0.6);
-    addCap('roof:light', p, H); addParapet('wendeBeige', p, H, 0.9, 0.3); rail(p, H + 0.9);
-  }
-  roofClutter(slab, H, 6); roofClutter(wing, H, 2);
-  // the wing's south gable: bands without the ribbon windows, one window per floor in the middle
-  addBox('f:wendeSolid', 442.5, 0, -348.44, 12.1, 0.12, H, 0);
-  for (let f = 0; f < 9; f++) { addBox('trim:dark', 442.5, f * 3.3 + 1.05, -348.35, 1.9, 0.08, 1.6, 0); addBox('museumGlass', 442.5, f * 3.3 + 1.12, -348.3, 1.6, 0.06, 1.42, 0); }
-  // curved single-storey podium with its entrance canopy, steps and roof units
-  addWalls('f:wendePodium', podium, 0, 5.6); addCap('roof:light', podium, 5.6); addParapet('wendeBeige', podium, 5.6, 0.5, 0.25);
-  addBox('museumGlass', 418.2, 3.55, -341.6, 9.5, 2.8, 0.14, 0); addBox('trim:dark', 418.2, 3.69, -341.6, 9.7, 3.0, 0.06, 0);
-  for (const [z, w] of [[-341.2, 11], [-340.4, 12.5], [-339.6, 14]]) addBox('concrete', 418.2, 0, z, w, 0.8, z === -341.2 ? 0.45 : z === -340.4 ? 0.3 : 0.15, 0);
-  for (const x of [404, 409.5, 427, 432.5]) addBox('trim:white', x, 5.6, -349.6, 2.3, 1.7, 1.9, 0, 'equip');
-  b.h = H + 2;
 }
 function buildGraduate(b) {
   const fl=b.cls.fl||18,h=b.cls.h||fl*3.2;
@@ -4323,11 +4304,11 @@ function buildBuildings() {
     else if (sp === 'natatorium') buildNatatorium(b);
     else if (sp === 'admin') buildAdmin(b);
     else if (sp === 'graduate') buildGraduate(b);
-    else if (sp === 'wende') buildWende(b);
     else if (sp === 'hdorm') buildHighDorm(b);
     else if (sp === 'construction') buildConstruction(b);
     else if (sp === 'activityConstruction') buildActivityCenter(b);
     else if (sp === 'researchCenter') buildResearchCenter(b);
+    else if (sp === 'coveredLab') buildCoveredLab(b);
     else if (sp === 'gardenService') buildGardenService(b);
     else buildGeneric(b, idx);
   });
@@ -4420,7 +4401,7 @@ function buildPlaces() {
     if (!label || seen.has(label)) return; seen.add(label);
     const cat = b.cls.cat || 'teach';
     const major = /图书馆|行政楼|学院实验楼|体育馆|药学博物馆|食堂|教学楼|游泳馆/.test(label);
-    PLACES.push({ name: label, cat, bld: [i], x: b.c[0], z: b.c[1], h: b.h, major, inferred: /inferred/.test(b.src || ''), sub: b.cls.special === 'activityConstruction' ? '科学艺术中心 · 在建项目' : b.cls.special === 'natatorium' ? '室内恒温泳池 · 海鲸天悦运动健身中心' : undefined });
+    PLACES.push({ name: label, cat, bld: [i], x: b.c[0], z: b.c[1], h: b.h, major, inferred: /inferred/.test(b.src || ''), viewFrom:b.coveredPassage?passageApproach(b.coveredPassage):undefined, viewTarget:b.coveredPassage?.centerline[0], sub: b.cls.special === 'activityConstruction' ? '科学艺术中心 · 在建项目' : b.cls.special === 'natatorium' ? '室内恒温泳池 · 海鲸天悦运动健身中心' : undefined });
   });
   BLD.forEach((b, i) => { if (b.extra?.nolabel && b.name) { const p = PLACES.find((q) => q.name === b.name); if (p) p.bld.push(i); } });
   for (const [g, idx] of Object.entries(dormGroups)) {
@@ -4450,7 +4431,7 @@ const MAP_NAMES = {
   学院实验楼: ['兴药楼', '新大楼 · 一期 / 二期（学院实验楼）'], 会议中心: ['大礼堂', '学术报告厅 · 会议中心'], 同位素楼: ['核药中心'],
   '新建科研楼 A': ['成药性评价中心'], '新建科研楼 B': ['动物中心'], '新建科研楼 C': ['临床中心'], 综合门诊楼: ['医务室', '综合门诊楼'],
   理学楼: ['A 理学楼'], 分析楼: ['B 分析楼'], 化学楼: ['C 化学楼'], 生命科学楼: ['D 生命科学楼'], 中药科学楼: ['E 中药科学楼'], 药学科学楼: ['F 药学科学楼'], 综合研发楼: ['G 综合研发楼'],
-  文德苑: ['文德苑', '研究生公寓'],
+  文德苑: ['文德苑', 'G11 · 学生公寓'],
 };
 function mapNames() {
   for (const p of PLACES) {
@@ -4475,6 +4456,7 @@ function mapNames() {
     if (L === 'H' && summary.numbers.length) { const ns = summary.numbers; p.name = `H${Math.min(...ns)}–${Math.max(...ns)} ${p.name}`; }
     else if (L) p.name = `${L} ${p.name}`;
     p.sub = `学生公寓 · ${summary.count} 栋${codes.length ? ` · ${codes.join(' ')}` : ''}`;
+    if(p.dormGroup==='文德苑')p.sub='G11 · '+p.sub;
   }
   const med = BLD.findIndex((b) => !b.name && Math.hypot(b.c[0] - 301, b.c[1] - 114) < 12);
   if (med >= 0) { BLD[med].name = '医学楼'; PLACES.push({ name: '医学楼', cat: 'teach', bld: [med], x: BLD[med].c[0], z: BLD[med].c[1], h: BLD[med].h }); }
@@ -4604,7 +4586,7 @@ function collisionGrids() {
   let backstops = 0;
   for (const b of BLD) {
     if (b.cls.special === 'station') continue;
-    for (const q of b.parts || [b.p]) {
+    for (const q of groundFootprints(b)) {
       const bb = pBox(q), seen = new Set(); let per = 0, got = 0;
       for (let i = 0; i < q.length; i++) { const a = q[i], c = q[(i + 1) % q.length]; per += Math.hypot(c[0] - a[0], c[1] - a[1]); }
       for (let ci = Math.floor((bb[0] - 2) / 10); ci <= Math.floor((bb[2] + 2) / 10); ci++) for (let cj = Math.floor((bb[1] - 2) / 10); cj <= Math.floor((bb[3] + 2) / 10); cj++) {
@@ -4912,7 +4894,7 @@ function wallGap(x, z, r = 20) {
   let m = r;
   for (const b of BLD) {
     if (b.cls.special === 'station' || x < b.bb[0] - r || x > b.bb[2] + r || z < b.bb[1] - r || z > b.bb[3] + r) continue;
-    const ps = b.extra?.special === 'xueyuan' ? XY_PODS.map((q) => q.p).concat(XY_LINKS) : b.parts || [b.p];
+    const ps = b.extra?.special === 'xueyuan' ? XY_PODS.map((q) => q.p).concat(XY_LINKS) : groundFootprints(b);
     for (const q of ps) { if (pip(x, z, q)) return 0; m = Math.min(m, nearestOnPoly(x, z, q)[0]); }
   }
   return m;
@@ -4963,7 +4945,7 @@ function sightOK(x, z, fx, fz, dist) {
 // Where to stand to look at a place: in front of its main face, backed off until the wall is comfortably far away
 // and nothing (wall, bush, post, water) is in the way of the first steps.
 function placeFront(p) {
-  if (p.viewFrom) { const [x,z]=walkSpot(...p.viewFrom); return { x,z,yaw:Math.atan2(x-p.x,z-p.z) }; }
+  if (p.viewFrom) { const [x,z]=walkSpot(...p.viewFrom),[tx,tz]=p.viewTarget||[p.x,p.z]; return { x,z,yaw:Math.atan2(x-tx,z-tz) }; }
   let x, z, nx, nz;
   const e = p.bld ? edgeFacing(BLD[p.bld[0]].p, BLD[p.bld[0]].c[0] - 100, BLD[p.bld[0]].c[1] + 100, 6) : null;
   if (e) { x = e.mx; z = e.mz; nx = e.nx; nz = e.nz; }
@@ -5196,7 +5178,7 @@ function camBlocked(x, y, z) {
   for (const k of BGRID.at(x, z)) {
     const b = BLD[k];
     if (y > b.h + 0.5 || x < b.bb[0] || x > b.bb[2] || z < b.bb[1] || z > b.bb[3]) continue;
-    if ((b.parts || [b.p]).some((q) => pip(x, z, q))) return true;
+    if (buildingSolidAt(b,x,z,y,pip)) return true;
   }
   return false;
 }

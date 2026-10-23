@@ -6,6 +6,7 @@ import * as THREE from '../web/node_modules/three/build/three.module.js';
 import * as metadata from '../web/src/views/services/campus3d/placeMetadata.js';
 import * as construction from '../web/src/views/services/campus3d/constructionSites.js';
 import * as research from '../web/src/views/services/campus3d/researchCenters.js';
+import * as access from '../web/src/views/services/campus3d/coveredAccess.js';
 import { GRADUATE5_FIT_REPORT } from '../web/src/views/services/campus3d/graduate5Registration.js';
 
 const root=new URL('../',import.meta.url), base=new URL('web/src/views/services/campus3d/',root);
@@ -13,7 +14,7 @@ const app=readFileSync(new URL('app.js',base),'utf8');
 const data=JSON.parse(readFileSync(new URL('osm-data.json',base),'utf8'));
 const outer=JSON.parse(readFileSync(new URL('osm-outer.json',base),'utf8'));
 const model=vm.runInNewContext(app.slice(app.indexOf('const D ='),app.indexOf('const stage ='))+'\n({BLD,D,INFO,pip,cumLen,sampleAt})',{
-  THREE,...metadata,...construction,...research,opts:{data,outer},root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
+  THREE,...metadata,...construction,...research,...access,opts:{data,outer},root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
 });
 const round=v=>Math.round(v*100)/100;
 const named = model.BLD.map((b,i)=>({
@@ -24,6 +25,7 @@ const named = model.BLD.map((b,i)=>({
   modelCenter:b.c.map(round), modelBounds:b.bb.map(round),
   modelFloorCount:b.cls.fl, osmFloorCount:data.b.find(q=>q.id===b.osm)?.l||null,
   geometryBuilder:b.cls.special||'generic',
+  coveredConnection:b.coveredPassage?{roadWay:b.coveredPassage.roadWay,groundParts:b.groundParts.length,dimensions:'model estimates, not measured clearance'}:null,
   spatialEvidence:b.extra?.researchId?'2025-06-16 georeferenced roof + dated school evidence':b.cls.special==='activityConstruction'?'dated construction notice, schematic geometry':'requires dated reference check',
   currentFootprintVerified:false, currentHeightVerified:false, currentFacadeVerified:false, entranceVerified:false,
   evidenceLinks:(model.INFO[b.name]?.links||[]).map(s=>s.url),
@@ -41,11 +43,21 @@ model.D.r.forEach((r,ri)=>{
       const x=q.x-q.dz*side,z=q.z+q.dx*side;
       for(let i=0;i<model.BLD.length;i++){
         const b=model.BLD[i];if(b.cls.special==='xueyuan'||x<b.bb[0]||x>b.bb[2]||z<b.bb[1]||z>b.bb[3])continue;
-        if((b.parts||[b.p]).some(p=>model.pip(x,z,p)))found.set(i,(found.get(i)||0)+1);
+        if((b.parts||[b.p]).some(p=>model.pip(x,z,p))){
+          const count=found.get(i)||{centerline:0,edge:0,groundCenterline:0};
+          if(side===0){count.centerline++;if(access.groundFootprints(b).some(p=>model.pip(x,z,p)))count.groundCenterline++;}else count.edge++;
+          found.set(i,count);
+        }
       }
     }
   }
-  for(const [bi,samples] of found)intersectionCandidates.push({road:roads[ri].key,roadName:roads[ri].name,building:named[bi].key,buildingName:named[bi].name,sampledContacts:samples,status:'needs rendered/source inspection'});
+  for(const [bi,count] of found)intersectionCandidates.push({
+    road:roads[ri].key,roadName:roads[ri].name,building:named[bi].key,buildingName:named[bi].name,
+    sampledContacts:count.centerline+count.edge,centerlineContacts:count.centerline,edgeContacts:count.edge,groundCenterlineContacts:count.groundCenterline,
+    candidateKind:model.BLD[bi].cls.special==='station'?'possible_vertical_separation':model.BLD[bi].coveredPassage&&count.centerline&&!count.groundCenterline?'covered_connection_projection':count.centerline?'centerline_overlap':'estimated_width_edge_overlap',
+    groundMeshEvidence:r.n==='以诚路'&&model.BLD[bi].name==='图书馆'?'web/tests/campus3dLibraryRoad.test.mjs (centerline at 1.3 m; run separately)':model.BLD[bi].coveredPassage?'web/tests/campus3dCoveredAccess.test.mjs (ground passage and upper volume; run separately)':null,
+    status:'needs rendered/source inspection',
+  });
 });
 const inventory={
   schemaVersion:1,checkedOn:'2026-10-23',status:'in_progress',

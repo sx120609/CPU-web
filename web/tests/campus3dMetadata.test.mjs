@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { NATATORIUM, DORM_LETTER, DORM_GROUP_INFO, dormSummary, heightLabel, buildingFacts, geometrySource } from '../src/views/services/campus3d/placeMetadata.js';
 import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from '../src/views/services/campus3d/constructionSites.js';
 import * as research from '../src/views/services/campus3d/researchCenters.js';
+import * as access from '../src/views/services/campus3d/coveredAccess.js';
 
 const base = new URL('../src/views/services/campus3d/', import.meta.url);
 const app = readFileSync(new URL('app.js', base), 'utf8');
@@ -14,7 +15,7 @@ const outer = JSON.parse(readFileSync(new URL('osm-outer.json', base), 'utf8'));
 // Run the shipped model's data preparation, including its supplementary buildings.
 // This catches disagreements between actual OSM polygons, additions, and displayed units.
 const model = vm.runInNewContext(app.slice(app.indexOf('const D ='), app.indexOf("const stage =")) + '\n({ BLD, obb, edgeOutward, edgeFacing })', {
-  opts: { data, outer }, root: { querySelector() {} }, matchMedia: () => ({ matches: false }), navigator: { hardwareConcurrency: 8 }, NATATORIUM, ACTIVITY_CENTER, GRADUATE_PHASE_FIVE, DORM_GROUP_INFO, THREE, ...research,
+  opts: { data, outer }, root: { querySelector() {} }, matchMedia: () => ({ matches: false }), navigator: { hardwareConcurrency: 8 }, NATATORIUM, ACTIVITY_CENTER, GRADUATE_PHASE_FIVE, DORM_GROUP_INFO, THREE, ...research, ...access,
 });
 
 test('real dorm polygons count unique numbered buildings, including shared footprints', () => {
@@ -37,6 +38,15 @@ test('duplicate parts and ordering do not change dorm identity', () => {
   assert.equal(dormSummary(parts.slice().reverse()).count, 2);
   assert.equal(dormSummary([{ name: '文正苑6、7号楼' }]).count, 2);
   assert.deepEqual(dormSummary([]), { count: 0, numbers: [], codes: [] });
+});
+
+test('G11 uses its own mapped outline rather than a graduate phase-four photo model',()=>{
+  const mapped=data.b.find(b=>b.id===553917100);
+  const buildings=Array.from(model.BLD).filter(b=>b.name==='文德苑');
+  assert.equal(buildings.length,1);
+  assert.equal(buildings[0].osm,mapped.id);
+  assert.deepEqual(JSON.parse(JSON.stringify(buildings[0].p)),mapped.p);
+  assert.equal(buildings[0].src,'osm');
 });
 
 test('natatorium roof and parapet use the announced 14.8 m height, not the former 16.6 m', () => {
