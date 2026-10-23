@@ -23,6 +23,8 @@ export function parentRoute(path: string, fallback = '/home'): string {
   if (path === '/vip' || path === '/sponsor' || path === '/admin') return '/profile';
   if (path.startsWith('/u/') || path.startsWith('/post')) return '/forum';
   if (path === '/register') return '/login';
+  // 宿舍课表从原生课表打开，返回回到原生课表（路由守卫把 /schedule 交给原生）。
+  if (path === '/dorm-schedule') return '/schedule';
   return localReturnPath(fallback) || '/home';
 }
 

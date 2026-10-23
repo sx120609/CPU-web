@@ -2,7 +2,9 @@ export function hasVisibleWebOverlay(doc: Document = document): boolean {
   return Array.from(doc.querySelectorAll<HTMLElement>('.el-overlay, .el-image-viewer__wrapper, .v-modal, [aria-modal="true"]'))
     .some(element => {
       const style = getComputedStyle(element);
-      return element.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      // 铺在页面里的弹窗（宿舍课表页）是页面本身，不算盖住整屏的网页弹窗。
+      return !element.closest('[data-cpu-inline-dialog]')
+        && element.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden'
         && style.opacity !== '0' && element.getAttribute('aria-hidden') !== 'true';
     });
 }

@@ -1,27 +1,26 @@
 {
   "schemaVersion": 1,
-  "versionCode": 1004,
-  "versionName": "1.3.0",
+  "versionCode": 1005,
+  "versionName": "1.3.1",
   "packageName": "cn.lizmt.cpuweb.next",
-  "fileName": "CPU-Web-Android-NEXT-V1004.apk",
-  "size": 9091530,
-  "sha256": "afa15b7c729a94372dcc7f69ed65b17e209099b135c0b3a48f6fef2e7ef834d0",
+  "fileName": "CPU-Web-Android-NEXT-V1005.apk",
+  "size": 9124298,
+  "sha256": "fd1032b4a0bd535c1884d8831f508930cd239639db4646e050fb7d19bca68977",
   "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
-  "sourceCommit": "6810993209a7a9cad7af28671d296162bdda8ff6",
-  "buildRun": 39249019612,
+  "sourceCommit": "61df060bcb05db02530745fe83a9bde73c97549d",
+  "buildRun": 39810581157,
   "notes": [
-    "拾间AI 能直接替你发帖、回帖、点赞、私信、发失物招领：内容它来写，发出去之前先给你看，也可以改一改再发。",
-    "拾间AI 能看论坛：帖子、回复、热榜、失物招领、课程点评都能读来回答；打开“我的消息和私信”后还能帮你看消息。",
-    "不再自动跳转页面：需要打开的页面显示成按钮，看完回答再点。",
-    "收不到提醒？在提醒设置里打开“微信和 QQ 也提醒”，到点时拾间的服务器会发一条到你绑定的微信和 QQ；“提醒检查”能直接打开你这款手机的自启动设置。"
+    "新增宿舍课表：用宿舍码邀请室友，查看共同空闲时间和未来一周的早八名单。",
+    "宿舍课表同步本机课程和自定义上下课时间；没有同步的室友会单独提示。",
+    "改进课表同步、账号切换保护，以及手机上的按钮、文字与深色显示。"
   ],
   "patches": [
     {
-      "fromVersionCode": 1003,
-      "fromSha256": "61232338ced1a90432414c505d0dc562062e7b52b23f72ea020ae980465e84c9",
-      "fileName": "CPU-Web-Android-NEXT-V1003-V1004.cpupatch",
-      "size": 841681,
-      "sha256": "bcb4f04f8713422e6c0db13e21d8797da424b05cfb7761a60499f6af9dba4497"
+      "fromVersionCode": 1004,
+      "fromSha256": "afa15b7c729a94372dcc7f69ed65b17e209099b135c0b3a48f6fef2e7ef834d0",
+      "fileName": "CPU-Web-Android-NEXT-V1004-V1005.cpupatch",
+      "size": 752202,
+      "sha256": "0e9fc9c81e8695682b59449eea61b2b3ede7e876f244854bbb77436b9f000bf8"
     }
   ]
 }

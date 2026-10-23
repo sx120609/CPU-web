@@ -102,6 +102,7 @@ model User {
   harmonyClientInstalls        HarmonyClientInstall[]
   scheduleSharesOwned          ScheduleShare[]              @relation("ScheduleShareOwner")
   coupleMembership             CoupleMember?
+  dormMembership               DormMember?
   toolPermissions              ToolPermission[]
   createdQuestionnaires        Questionnaire[]               @relation("QuestionnaireCreatedBy")
   questionnaireResponses       QuestionnaireResponse[]
@@ -804,6 +805,50 @@ model CoupleScheduleSnapshot {
   changedAt   DateTime @default(now())
 
   member CoupleMember @relation(fields: [userId], references: [userId], onDelete: Cascade)
+}
+
+// 宿舍课表：一条关系最多 DORM_MEMBER_LIMIT 名成员。邀请码可以被多人重复使用，
+// 所以它和情侣课表完全独立建表：同一个账号可以同时有一条情侣关系和一条宿舍关系。
+// DormMember.userId 同样是主键，保证每个账号同时只在一个宿舍里。解散、退宿或移出
+// 成员时删除成员行，课表快照随之级联删除。
+model DormLink {
+  id              Int       @id @default(autoincrement())
+  name            String? // 宿舍名，例如“江宁 3-402”，只有创建者能改
+  inviteCode      String?   @unique
+  inviteExpiresAt DateTime?
+  memberLimit     Int       @default(6)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  members DormMember[]
+}
+
+// role 为 "owner" 的成员就是创建者。舍长身份只存在成员行上，不额外存外键，
+// 成员被删（含注销账号）时不会留下指向不存在用户的悬空所有者。
+model DormMember {
+  userId   Int      @id
+  linkId   Int
+  role     String // owner / member
+  color    String? // 自己选的颜色（DORM_COLORS 之一）；没选过时按加入顺序自动分配
+  joinedAt DateTime @default(now())
+
+  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  link     DormLink              @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  snapshot DormScheduleSnapshot?
+
+  @@index([linkId, joinedAt])
+}
+
+// 宿舍成员最近一次在课表页加载成功后自动上传的当前学期快照（含自定义修改）。
+model DormScheduleSnapshot {
+  userId      Int      @id
+  semester    String
+  payload     String
+  contentHash String
+  syncedAt    DateTime @default(now())
+  changedAt   DateTime @default(now())
+
+  member DormMember @relation(fields: [userId], references: [userId], onDelete: Cascade)
 }
 
 // iOS Live Activity 的远程更新注册。APNs token 使用服务端加密信封保存，

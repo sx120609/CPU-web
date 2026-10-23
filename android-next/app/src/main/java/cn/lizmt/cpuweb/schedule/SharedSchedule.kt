@@ -263,9 +263,11 @@ data class SharedSchedule(
          * Web share page reads: periods are `{id, name, start, end}` there. Only
          * what a reader needs to draw the timetable goes out; the publisher's
          * list of terms and the identities that tie a course to their account
-         * stay behind. The bridge adds the site nickname.
+         * stay behind. The bridge adds the site nickname. With [clockTimes] a
+         * course's own start and end ("HH:MM") go too, for readers that work
+         * out who is free when (the dorm timetable).
          */
-        fun publishBody(snapshot: ScheduleSnapshot?): JSONObject {
+        fun publishBody(snapshot: ScheduleSnapshot?, clockTimes: Boolean = false): JSONObject {
             val data = snapshot?.data
             val semester = data?.currentSemester?.trim().orEmpty()
             if (snapshot == null || data == null || !snapshot.completeSemester || !snapshot.authenticated || semester.isEmpty()) {
@@ -284,6 +286,10 @@ data class SharedSchedule(
                         (course.sourceNote ?: course.slotNote)?.let { put("slotNote", it) }
                         course.startSlot?.let { put("startSlot", it) }
                         course.endSlot?.let { put("endSlot", it) }
+                        course.customTime?.takeIf { clockTimes }?.let { (start, end) ->
+                            put("customStartTime", start)
+                            put("customEndTime", end)
+                        }
                     })
                 }
                 if (courses.length() > 0) cells.put(JSONObject().put("day", cell.day).put("bigSlot", cell.bigSlot).put("courses", courses))

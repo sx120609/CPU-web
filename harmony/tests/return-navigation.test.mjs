@@ -75,6 +75,8 @@ test('direct entries across route families have valid parents and unsafe from pa
     ['/services/tools/questionnaires/q','/services/tools'], ['/services/tools/grade-checks/g','/services/tools/grade_check'],
     ['/services/tools/filestore','/services/tools/file_collect'], ['/services/tools/filestore/submit/f','/services/tools/filestore'],
     ['/services/tools/filestore/status/f','/services/tools/filestore'], ['/register','/login'],
+    // Opened from the native timetable: back goes to it (the router hands /schedule to the shell).
+    ['/dorm-schedule','/schedule'],
   ];
   for (const [path, expected] of cases) {
     assert.equal(parentRoute(path), expected);

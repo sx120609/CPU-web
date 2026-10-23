@@ -79,8 +79,16 @@ final class NativeShellCoordinator: ObservableObject {
             scheduleStore?.receivePrefetchedSnapshot(snapshot)
         }
         webSession.onBridgeReady = { [weak self] in
+            Task { await NativeAgendaService.shared.refresh(force: true) }
             guard let self, self.selectedTab == .schedule else { return }
             self.requestScheduleLoad(force: false, refreshCached: true)
+        }
+        // 日程 travel through the same page; editing one opens the Web page in the services tab.
+        NativeAgendaService.shared.connect(to: scheduleStore) { [weak self] path in
+            self?.openWeb(path: path, tab: .services)
+        }
+        webSession.onAgendaChanged = {
+            Task { await NativeAgendaService.shared.refresh(force: true) }
         }
         webSession.onFailure = { [weak scheduleStore] message in
             scheduleStore?.reportBridgeFailure(message)
@@ -168,6 +176,7 @@ final class NativeShellCoordinator: ObservableObject {
                     self.scheduleLoginGate()
                 } else {
                     scheduleStore?.handleAuthChanged(account: "")
+                    NativeAgendaService.shared.clear()
                     self.accountKey = ""
                     self.applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
                 }
@@ -182,6 +191,7 @@ final class NativeShellCoordinator: ObservableObject {
         accountKey = normalized
         scheduleStore?.handleAuthChanged(account: normalized)
         if accountChanged, #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
+        if accountChanged { Task { await NativeAgendaService.shared.refresh(force: true) } }
         // Only a login that follows the gate moves the shell to the home tab.
         // The launch report keeps the existing default tab (the timetable).
         applyAuthenticated(navigateToHome: requiresLogin)
@@ -246,9 +256,23 @@ final class NativeShellCoordinator: ObservableObject {
         applyLoginGate(navigateToLogin: true)
     }
 
+    /// The dorm timetable is the site page `/dorm-schedule`, under 服务. It is
+    /// handed this term's timetable first, so its 立即同步 can upload what the
+    /// grid shows; its close button comes back to the timetable.
+    func openDormSchedule(page: String = DormRules.page) {
+        guard !requiresLogin else { return }
+        Task { await NativeDormService.shared.offer() }
+        openWeb(path: page, tab: .services)
+    }
+
     private func handleNavigate(path: String, source: String, webSession: HybridWebViewStore?) {
         guard !requiresLogin else { return }
         guard selectedTab != .schedule, source == selectedTab.rawValue else { return }
+        // A dorm invite link opened inside the app keeps its code on the dorm page.
+        if let page = DormRules.pagePath(path) {
+            openDormSchedule(page: page)
+            return
+        }
         if let destination = ShellTab.from(path: path) {
             setSelectedTab(destination)
             webSession?.activate(tab: destination)

@@ -33,6 +33,7 @@
 | 教务页壳 | `/jwxt` `/schedule` | 页面可公开访问 | 真正拉取课表、成绩、考试等数据时需要学校 SSO 授权得到 `jwxtToken` |
 | 校园服务导航 | `/services` | 公开 | 聚合校内外常用入口与说明 |
 | 校园小工具入口 | `/services/tools` `/services/tools/:slug` | 公开 | 具体工具是否要求登录由工具配置决定 |
+| 三维校园 | `/services/tools/yaoda-can-fly/campus-3d` | 公开 | 联机时游客显示随机名，登录后显示站内昵称 |
 | 药苑之声 | `/voicehub/` | 排期与歌曲公开，投稿/投票/后台需登录 | 复用本站会话，无需在 VoiceHub 二次注册或登录 |
 | 问卷填写 / 文件提交 | `/services/tools/questionnaires/:slug` `/services/tools/filestore/submit/:slug` | 通常公开 | 支持按工具设置切换是否要求登录 |
 | 成绩核对查询 | `/services/tools/grade-checks/:slug` | 默认需登录 | 登录后只看自己的学号记录 |
@@ -47,8 +48,10 @@
 - 社区风控：支持文本 AI 审核、图片审核、人工复核、编辑相似度拦截、用户信誉与匿名额度控制。
 - 教务系统：支持学校统一认证登录、课表、成绩、期中成绩、考试、培养方案、教务应用聚合。
 - 课表增强：支持周/日视图、PWA 离线打开、本地背景定制、客户端云同步编辑、iOS Scriptable / Android 小组件。
+- 宿舍课表：宿舍码多人加入后汇总室友的课表快照，按天给出「全宿舍都有空」的时间块，并列出未来一周谁有早八。详见 [宿舍课表](docs/dorm-schedule.md)。
 - 校园服务：聚合教务、就业、图书馆、心理、信息化等常用入口，并内置宿舍电费查询代理。
 - 校园小工具：当前内置药苑之声、需求反馈、在线问卷、成绩表核对、文件收集。
+- 三维校园：非官方的江宁校区三维模型，可鸟瞰、导览、切换四季与昼夜；自由探索时能步行、游泳、开车、骑车，并看到同时在逛的其他人。详见 [三维校园](docs/campus-3d.md)。
 - 药苑之声：完整保留 VoiceHub 的点歌、投票、播出排期、重播申请、评论、通知、歌词播放器和广播站管理后台；原账号系统已替换为本站会话桥接。
 - 文件收集：Vue 正式工作台与 Express API 集成在主站，任务、提交、模板与文件记录统一写入 PostgreSQL。
 - 支付与赞助：支持易支付配置、赞助下单、订单状态管理、鸣谢墙展示、过期订单自动关闭。
@@ -66,6 +69,7 @@
 | 鉴权与安全 | JWT、bcryptjs、学校统一认证会话、Zod |
 | 辅助子系统 | Filestore 文件收集、Android WebView、HarmonyOS ArkUI Web 容器 |
 | 药苑之声 | Nuxt 4、Nitro、Drizzle ORM、独立 PostgreSQL、WebSocket 音乐状态同步 |
+| 三维校园 | three.js 0.160（WebGL2、EffectComposer 后处理）、Shadow DOM 隔离 |
 
 ## 目录结构
 
@@ -705,6 +709,7 @@ GitHub Actions 是正式生产制品的权威构建来源，本地构建只用�
 - `web/public/sw.js` 当前只重点缓存 `/schedule` 相关静态资源，不是整站离线。
 - 论坛、二手交流板块、课程点评、宿舍电费、赞助等能力都受站点功能开关控制。
 - 学校 SSO 的教务 token 与站内 JWT 是两套独立会话。
+- `web/src/views/services/campus3d/` 下的场景代码、界面、样式、图片和 OSM 数据由独立的建模工程导出生成，不要手改；联机位置只存在内存里，接口见 [三维校园](docs/campus-3d.md#联机)。
 - 课表编辑上云要求 Android / iOS / Harmony / 桌面端容器环境，部分客户端能力只在对应容器内可用。
 - Windows 下如果 Prisma 的 DLL 被占用，`prisma generate` 或 `server` 构建可能失败；先停止正在运行的 Node 后端进程再试。
 - 根目录 `npm test` 运行 `server/tests` 与 `web/tests` 中除需要 PostgreSQL 或 `web/dist` 的少数文件外的全部 Node.js 测试，CI 在 Node.js 24 上执行同一命令（部分引用 `server/src` 的 Web 测试在 Node 22 上会因 tsx 的 CommonJS/ESM 互操作失败）；此外日常校验依赖后端构建、前端类型检查与前端构建。
