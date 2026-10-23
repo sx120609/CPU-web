@@ -288,13 +288,34 @@
       "after": "增加探索设置入口，复用原隐身/音效控件并放入原生对话框；打开时清除按键、踏板、跳跃和触摸捕获，暂停步行、骑行与驾驶更新。正常鼠标解锁也暂停运动。暂停时联机速度与行人避让速度为0。补Shadow DOM内Tab首尾循环、Esc继续、退出返回地图焦点；触屏初始音效状态同步显示。",
       "evidence": "新增8项设置控制回归、2项迟到鼠标锁定回调回归、1项实际客户端sync载荷回归。现有真实HTTP路由测试补充隐身继续收取其他玩家、恢复可见保持同一身份、静止速度传播。浏览器核验入口、四按钮状态、Tab/Shift+Tab循环、Esc与退出焦点、375×667及844×390尺寸。",
       "remaining": "本轮未把设置测试当成完整驾驶/骑行礼让验收；正常指针锁定的真实浏览器、原生触摸、登录/CSRF、弱网和真实双浏览器链路仍需测试。整页截图接口不可用，不能宣称完整视觉验收。"
+    },
+    {
+      "id": "vehicle-reverse-and-collision-lifecycle",
+      "before": "触屏单车朝后拉摇杆只会掉头，无法低速后退；键盘单车刹车跨过零点时直接进入倒退。车辆进入后首帧暂停时网格仍停在旧位置，汽车在桥上停车落到地面；停放单车没有同步的实体碰撞，高速汽车可跨过施工薄围挡。",
+      "after": "单车键盘 S 与触屏朝车后方持续输入均先刹到零，再低速后退，速度上限0.8米/秒；松开后减速到零，保留汽车倒车并更新操作提示。进入即同步车辆网格；停车使用当前地面高度；单车碰撞随取用、重新停车和弃车更新；汽车按速度细分碰撞步长。小地图等重新定位会先停放正在使用的车辆。",
+      "evidence": "实际生成几何与控制器回归覆盖键盘/触屏先停后退、松手停止和围挡前后退脱困；汽车26米/秒冲撞围挡后仍能倒车离开，桥面停车与重新进入、单车碰撞生命周期、角色重新定位均通过。",
+      "remaining": "车辆仍使用两圆近似碰撞包络，未宣称精确车身、所有角落或全图脱困均已验证。触屏回归模拟摇杆输入，原生触摸及完整移动交通交互仍需核验。"
+    },
+    {
+      "id": "pedestrians-around-currently-parked-vehicles",
+      "before": "行人路线未覆盖单车实体；汽车临时横停在路线时旧横向偏移仍出现11帧接触。",
+      "after": "固定路段不因可移动停车实例留下过期缺口；生成行人时避开当前车辆，运行时按车辆方向、长度、宽度提前选侧绕行，并检查连续移动路径。",
+      "evidence": "单车和汽车在路线生成后横停的回归均零接触并越过障碍；包含109栋建筑、12座桥、297辆停放汽车、851辆单车的夹具中，253名行人连续120个0.05秒更新，独立步行碰撞检查零接触。",
+      "remaining": "6秒模拟只覆盖上述固定几何与停放实例，未包含全部景观、长期人群拥堵、移动交通或真实联机链路；不代表道路现实位置已核准。"
+    },
+    {
+      "id": "vehicle-audio-and-exploration-focus",
+      "before": "暂停驾驶后引擎声可能因物理更新停止而残留；静音上车后打开音效未建立引擎声。关闭地点详情后焦点留在隐藏按钮，游戏按键被忽略。",
+      "after": "音效开关和暂停状态直接同步总增益，静音上车后开启音效按需建立并复用引擎声；进入探索、上车/骑车和关闭地点详情后将焦点送回画布。",
+      "evidence": "2项音频回归覆盖暂停时增益及静音上车后首次开启只启动一次音源；浏览器已确认关闭详情和进入车辆后焦点为CANVAS。",
+      "remaining": "音频回归使用模拟音频节点，未以设备录音验证扬声器输出；真实指针锁定及原生设备仍需测试。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "80 passed, 0 failed (78 frontend + 2 server)",
-      "scope": "原69项通过；新增设置状态/输入/暂停/焦点8项、锁定迟到回调2项、sync载荷1项。真实服务器游客隐身测试补充接收与恢复可见断言。",
+      "result": "94 passed, 0 failed (92 frontend + 2 server)",
+      "scope": "原80项通过；新增12项实际车辆/停车避让控制器回归及2项暂停/静音上车音频回归。包含键盘与触屏单车先刹停后倒退和围挡前脱困，汽车倒车保留。",
       "limitation": "只证明已列源对应关系和模型实现。未以道路中心线测试替代估算路缘、NPC路径、现场尺寸或完整真机验证。",
       "pedestrianAudit": {
         "command": "node tools/campus3d-pedestrian-audit.mjs",
@@ -304,6 +325,18 @@
         "waterContacts": 0,
         "siteContacts": 0,
         "limitedTo": "shipped building and bridge geometry; not a survey or full-device certificate"
+      },
+      "parkedVehicleActors": {
+        "report": "output/campus3d-audit-20261023/parked-vehicle-actors-after.json",
+        "buildings": 109,
+        "bridges": 12,
+        "parkedCars": 297,
+        "bicycles": 851,
+        "activeActors": 253,
+        "steps": 120,
+        "stepSeconds": 0.05,
+        "contacts": 0,
+        "limitedTo": "Generated buildings, bridges and parked instances; pedestrian self-collision excluded from the independent contact probe. Not full traffic, all landscaping, or a native-device test."
       }
     },
     "typeCheck": {
@@ -341,14 +374,20 @@
         "降级拖动模式可打开探索设置原生dialog，初始焦点为继续探索；Tab按继续→联机可见→音效→退出→继续循环，首项Shift+Tab回继续。",
         "浏览器中隐身及音效的文字与aria-pressed同步切换，已恢复初始可见/音效开启状态。Esc关闭设置且保持探索，退出探索关闭设置并返回鸟瞰，两种操作均将焦点送回canvas。",
         "375×667竖屏面板337×247，四按钮均138.5×44；844×390横屏面板420×245，四按钮均180×44；scrollWidth=clientWidth，无横向溢出，横屏也无垂直内容溢出。默认视口已恢复。",
-        "最新界面版本标题为h2，场景30/30启动，运行错误日志为空。"
+        "最新界面版本标题为h2，场景30/30启动，运行错误日志为空。",
+        "本轮可通过公开交互进入单车，W加速显示6 km/h，V切换第一人称、E下车后恢复骑车提示；汽车可上车、S倒车显示6 km/h、设置暂停显示0、E下车后恢复上车提示。",
+        "关闭实训楼详情后焦点已从隐藏按钮恢复到CANVAS；进入汽车和单车后也为CANVAS。",
+        "最终修正版本场景加载30/30，采集的脚本错误日志为空；测试音效、减少动效、焦点模拟及视口覆盖均已恢复，页面停在鸟瞰模式。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
         "手机仅测试视口布局，未模拟触摸指针，未测试原生设备或WebKit。",
         "本轮仅挂载真实游客presence路由，其他站点API返回503，未启用数据库、后台作业或登录账号；不能据此声称整个生产后端或CSRF/登录联机已验收。临时服务和测试游客进程已停止。",
         "本轮通道完整穿越由实际碰撞函数和三角网格测试验证；浏览器已验证入口视图，未把短时键盘输入截图认定为完整穿越验收。",
-        "本轮设置面板的整页截图再次返回Unable to capture screenshot；只记录真实DOM尺寸、原生modal状态和键盘焦点，不把这些等同完整视觉截图验收。浅/深主题文字及主要按钮对比度按源码token和背景最坏情况计算，未宣称真机暗色视觉检查。"
+        "本轮设置面板的整页截图再次返回Unable to capture screenshot；只记录真实DOM尺寸、原生modal状态和键盘焦点，不把这些等同完整视觉截图验收。浅/深主题文字及主要按钮对比度按源码token和背景最坏情况计算，未宣称真机暗色视觉检查。",
+        "浏览器汽车前进/转向检查受附近障碍影响，没有证实一条完整无阻驾驶路线；完整控制器加速转向由专项回归覆盖。",
+        "内置浏览器中测得requestAnimationFrame约每秒一次，前台可见状态也如此，不能将这个测试环境节奏当成真实设备性能结论。",
+        "最后的单车先刹停再倒退及触屏逻辑由真实控制器回归验证，未冒称原生触屏操作通过。"
       ],
       "artifacts": [
         "output/campus3d-audit-20261023/activity-site.png",
@@ -379,7 +418,14 @@
         "output/campus3d-audit-20261023/training-reviewed-scene.png",
         "output/campus3d-audit-20261023/tests-exploration-settings.log",
         "output/campus3d-audit-20261023/exploration-settings-browser.json",
-        "output/campus3d-audit-20261023/exploration-settings-contrast.json"
+        "output/campus3d-audit-20261023/exploration-settings-contrast.json",
+        "output/campus3d-audit-20261023/tests-vehicle-final.log",
+        "output/campus3d-audit-20261023/vehicle-browser.json",
+        "output/campus3d-audit-20261023/parked-vehicle-actors-before.json",
+        "output/campus3d-audit-20261023/parked-vehicle-actors-after.json",
+        "output/campus3d-audit-20261023/ride-first-person.png",
+        "output/campus3d-audit-20261023/ride-parked-browser.png",
+        "output/campus3d-audit-20261023/car-seat-browser.png"
       ]
     },
     "serverTypeCheck": {
@@ -404,7 +450,7 @@
     {
       "scope": "场景交互",
       "status": "incomplete",
-      "nextEvidence": "设置入口、模式暂停、迟到锁定、焦点循环、视口布局及隐身/音效控制已核验；继续完整驾驶/骑行与行人礼让、正常指针锁定真浏览器、全图导览、测距、桥梁与其他建筑碰撞及原生触摸验证。"
+      "nextEvidence": "已补车辆进入/停放、桥面高度、单车与汽车倒车脱困、施工薄围挡碰撞、临时停车行人避让、暂停音效与焦点回归。继续完整移动交通/行人礼让、全图角落与车身包络、正常指针锁定真浏览器、全图导览、测距及原生触摸验证。"
     },
     {
       "scope": "跨设备与画面",
@@ -427,7 +473,7 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "048333a518728dabd6e9aa9c998811158e673222",
+  "lastVerifiedParentCommit": "071507d072ada0f3c4b83721ef4455b716f95429",
   "spatialInventory": "docs/campus3d-spatial-inventory.json",
   "spatialSourceManifest": "docs/campus3d-spatial-sources.json",
   "pedestrianVerification": "docs/campus3d-pedestrian-verification.json",

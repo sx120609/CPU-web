@@ -9,7 +9,7 @@ const tree=ts.createSourceFile('app.js',source,ts.ScriptTarget.Latest,true,ts.Sc
 const body=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='mountCampus3D').body;
 const fn=name=>body.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name).getText(tree);
 function harness(touch=false){
-  const elements=new Map(),events=new Map(),focusRoot={activeElement:null},state={unlocks:0,locks:0,focus:0,released:[],driveFrames:0,rideFrames:0,audio:0};
+  const elements=new Map(),events=new Map(),focusRoot={activeElement:null},state={unlocks:0,locks:0,focus:0,released:[],driveFrames:0,rideFrames:0,audio:0,engineWakes:0};
   const get=id=>{
     if(!elements.has(id))elements.set(id,{hidden:true,open:false,textContent:'',attrs:{},listeners:{},
       classList:{toggle(){},remove(){}},setAttribute(k,v){this.attrs[k]=v;},
@@ -23,12 +23,13 @@ function harness(touch=false){
     mode:'walk',DISPOSED:false,TOUCH:touch,CLEANUP:[],
     WALK:{menu:false,noLock:true,locked:false,inspect:false,sound:!touch,keys:new Set(['KeyW']),pad:{x:.7,y:-1},jumpBuf:.15,zoomOn:true,x:1,y:0,z:2,yaw:0,vx:3,vz:4,trans:null},
     DRIVE:{on:false,gas:true,brake:true,x:5,y:0,z:6,vx:9,vz:1,v:9,a:0,bodyMat:{color:{}}},RIDE:{on:false,x:7,y:0,z:8,hop:0,v:4,a:0,frameMat:{color:{}}},
-    NET:{on:true,count:2,hidden:false,shirt:1},PRESENCE_API:{},
+    NET:{on:true,count:2,hidden:false,shirt:1},PRESENCE_API:{},AUD:null,
     WALK_PTR:new Map([[3,{}],[8,{}]]),
     LOCK_EL:{focus(){state.focus++;focusRoot.activeElement=this;},releasePointerCapture:id=>state.released.push(id)},
     $:get,walkUnlock:()=>state.unlocks++,walkLock:()=>state.locks++,
     stickEnd:()=>{ctx.WALK.pad.x=ctx.WALK.pad.y=0;ctx.WALK.padRun=false;},
     walkAudioWake:()=>state.audio++,toast(){},walkSound(){},walkInspect(){},
+    driveSound:()=>{state.engineWakes++;vm.runInContext('walkAudioWake()',ctx);},
     updateDrive:()=>state.driveFrames++,updateRide:()=>state.rideFrames++,
     nearestPal:()=>2,angDiff:(a,b)=>a-b,
     window:{},on:(_target,type,callback)=>events.set(type,callback),performance:{now:()=>2000},
@@ -36,7 +37,7 @@ function harness(touch=false){
   });
   const handlers=source.slice(source.indexOf("$('#walkSettings').addEventListener"),source.indexOf('let TOUR ='));
   const keyboard=source.slice(source.indexOf('const keyTarget ='),source.indexOf("on(window, 'keyup'"));
-  vm.runInContext(['netHud','netState','vehicleThreat','walkMotionPaused','walkHud','resetWalkInput','openWalkSettings','closeWalkSettings','keepWalkSettingsFocus','updateWalk'].map(fn).join('\n')+'\n'+handlers+'\n'+keyboard,ctx);
+  vm.runInContext(['netHud','netState','vehicleThreat','walkMotionPaused','walkHud','syncWalkAudio','resetWalkInput','openWalkSettings','closeWalkSettings','keepWalkSettingsFocus','updateWalk'].map(fn).join('\n')+'\n'+handlers+'\n'+keyboard,ctx);
   return {ctx,state,get,events,run:code=>vm.runInContext(code,ctx)};
 }
 
@@ -93,6 +94,28 @@ test('visibility and audio toggles remain truthful while the settings dialog is 
   h.get('#walkSound').click();assert.equal(h.ctx.WALK.sound,true);
   assert.equal(h.get('#walkSound').attrs['aria-pressed'],'true');assert.equal(h.state.audio,1);
   h.ctx.PRESENCE_API=null;h.run('netHud()');assert.equal(h.get('#walkNet').hidden,true);
+});
+
+test('sound and pause changes control the master audio gain even when driving physics is frozen',()=>{
+  const h=harness(),levels=[];h.ctx.DRIVE.on=true;
+  h.ctx.AUD={C:{state:'running',currentTime:4},out:{gain:{setTargetAtTime:(v)=>levels.push(v)}}};
+  h.run(fn('walkAudioWake'));
+  h.get('#walkSound').click();assert.equal(levels.at(-1),0,'muting must not wait for updateDrive');
+  h.get('#walkSound').click();assert.equal(levels.at(-1),.5);
+  h.run('openWalkSettings()');assert.equal(levels.at(-1),0,'paused engine is silent');
+  h.run('closeWalkSettings(true)');assert.equal(levels.at(-1),.5);
+  h.ctx.WALK.noLock=false;h.ctx.WALK.locked=false;h.run('walkHud()');assert.equal(levels.at(-1),0);
+});
+
+test('enabling effects after entering a muted car starts its engine audio once',()=>{
+  const h=harness();let starts=0;
+  const param=()=>({value:0,setTargetAtTime(){}});
+  const node=()=>({gain:param(),frequency:param(),detune:param(),Q:param(),connect(){},start(){starts++;},stop(){}});
+  const C={state:'running',currentTime:4,sampleRate:128,createOscillator:node,createGain:node,createBiquadFilter:node,createBufferSource:node,createBuffer:(_channels,length)=>({getChannelData:()=>new Float32Array(length)})};
+  h.ctx.AUD={C,out:node()};h.ctx.WALK.sound=false;h.ctx.DRIVE.on=true;h.ctx.DRIVE.snd=null;
+  h.run(fn('walkAudioWake')+'\n'+fn('driveSound'));
+  h.get('#walkSound').click();assert.ok(h.ctx.DRIVE.snd);assert.equal(starts,3);
+  h.get('#walkSound').click();h.get('#walkSound').click();assert.equal(starts,3,'reuse existing oscillators on subsequent unmute');
 });
 
 test('dialog keys and focused controls cannot trigger movement or jumping',()=>{

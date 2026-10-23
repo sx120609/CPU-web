@@ -3514,7 +3514,7 @@ function buildLamps() {
   chunkify(bm, 320, 300);
 }
 
-let BUSH_GRID = null, BIKE_SPOTS = [], BIKE_CHUNKS = [];
+let BUSH_GRID = null, BIKE_SPOTS = [], BIKE_CHUNKS = [], BIKE_PROPS = [];
 function bushAt(x, z) {
   if (!BUSH_GRID) { BUSH_GRID = new Grid(8); TREES.forEach((t, i) => { const r = SPECIES[t.type].rx * t.s * (t.type === 'shrub' ? 0.8 : 0.12) + 0.9; BUSH_GRID.add(i, [t.x - r, t.z - r, t.x + r, t.z + r]); }); }
   return BUSH_GRID.at(x, z).some((i) => { const t = TREES[i], r = SPECIES[t.type].rx * t.s * (t.type === 'shrub' ? 0.8 : 0.12) + 0.9; return Math.hypot(t.x - x, t.z - z) < r; });
@@ -3550,12 +3550,22 @@ function buildBikes() {
     }
   }
   BIKE_SPOTS = spots;
+  BIKE_PROPS=spots.map(([x,z,a],bikeIndex)=>{
+    const base=groundAt(x,z),prop={p:rectPoly(x,z,1.8,.75,a),base,top:base+1.1,c:[x,z],inst:true,bikeIndex};
+    PROPS.push(prop);return prop;
+  });
   const bm = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.2 }), spots.length);
   const cols = ['#f2c200', '#1f8fe0', '#2fb35a', '#f2c200', '#1f8fe0'];
   const lean = new THREE.Euler(0, 0, 0, 'YXZ');
-  spots.forEach(([x, z, a], i) => { lean.set(-0.11, -a, 0); _q.setFromEuler(lean); _m4.compose(_v.set(x, 0, z), _q, _s.set(1, 1, 1)); bm.setMatrixAt(i, _m4); bm.setColorAt(i, _c.set(pick(cols))); });
+  spots.forEach(([x, z, a], i) => { lean.set(-0.11, -a, 0); _q.setFromEuler(lean); _m4.compose(_v.set(x, groundAt(x,z), z), _q, _s.set(1, 1, 1)); bm.setMatrixAt(i, _m4); bm.setColorAt(i, _c.set(pick(cols))); });
   bm.castShadow = false; bm.layers.set(1); scene.add(bm);
   BIKE_CHUNKS = chunkify(bm, 260, 240, true);
+}
+function syncParkedBike(k,active) {
+  const prop=BIKE_PROPS[k];if(!prop)return;
+  prop.inst=active;
+  if(active){const [x,z,a]=BIKE_SPOTS[k],base=groundAt(x,z);Object.assign(prop,{p:rectPoly(x,z,1.8,.75,a),base,top:base+1.1,c:[x,z]});}
+  rebuildPropGrid();
 }
 function mergeColored(parts) {
   const pos = [], nor = [], col = [], limbs = [];
@@ -3618,7 +3628,19 @@ function pedestrianGridItems(grid,a,b,radius=0) {
       for(const k of grid.m.get(grid.k(i,j))||[])found.add(k);
   return found;
 }
-function pedestrianSegmentClear(a,b,radius=PEDESTRIAN_RADIUS) {
+function pedestrianParkedVehicles(a,b,radius) {
+  const found=[];
+  for(const k of pedestrianGridItems(PGRID,a,b,radius)){
+    const q=PROPS[k];if(q.inst&&q.bikeIndex!=null){const angle=BIKE_SPOTS[q.bikeIndex][2];found.push({id:'bike-'+q.bikeIndex,x:q.c[0],z:q.c[1],a:angle,halfL:.9,halfW:.375,p:q.p,base:q.base,top:q.top});}
+  }
+  const x0=Math.min(a[0],b[0])-radius-3,x1=Math.max(a[0],b[0])+radius+3,z0=Math.min(a[1],b[1])-radius-3,z1=Math.max(a[1],b[1])+radius+3;
+  (CARS?.parkedM||[]).forEach((m,k)=>{
+    if(k===CARS.taken)return;const e=m.elements,x=e[12],z=e[14];if(x<x0||x>x1||z<z0||z>z1)return;
+    const angle=Math.atan2(e[2],e[0]);found.push({id:'car-'+k,x,z,a:angle,halfL:2.3,halfW:.92,p:rectPoly(x,z,4.6,1.84,angle),base:e[13],top:e[13]+1.6});
+  });
+  return found;
+}
+function pedestrianSegmentClear(a,b,radius=PEDESTRIAN_RADIUS,includeParked=true) {
   if(!WGRID)return false;
   const length=Math.hypot(b[0]-a[0],b[1]-a[1]),steps=Math.max(1,Math.ceil(length/.3));
   let low=Infinity,high=-Infinity;
@@ -3653,18 +3675,27 @@ function pedestrianSegmentClear(a,b,radius=PEDESTRIAN_RADIUS) {
     if(pointSegmentDistance(p,a,b)<r+radius)return false;
   }
   for(const k of pedestrianGridItems(PGRID,a,b,radius)){
-    const prop=PROPS[k];if(!prop.inst||prop.top<=low+STEP_UP)continue;
+    const prop=PROPS[k];if(!prop.inst||prop.bikeIndex!=null||prop.top<=low+STEP_UP||(prop.base??0)>high+1.75)continue;
     if(pip(...a,prop.p)||pip(...b,prop.p))return false;
     for(let i=0;i<prop.p.length;i++)if(segmentDistance(a,b,prop.p[i],prop.p[(i+1)%prop.p.length])<radius)return false;
+  }
+  if(includeParked)for(const vehicle of pedestrianParkedVehicles(a,b,radius)){
+    if(vehicle.base>high+1.75||vehicle.top<=low+STEP_UP)continue;
+    if(pip(...a,vehicle.p)||pip(...b,vehicle.p))return false;
+    for(let i=0;i<vehicle.p.length;i++)if(segmentDistance(a,b,vehicle.p[i],vehicle.p[(i+1)%vehicle.p.length])<radius)return false;
   }
   return true;
 }
 function buildPeople() {
   if(!TGRID)trunkGrid();
-  const valid=pedestrianCandidates().flatMap(r=>clearRouteSpans(r,pedestrianSegmentClear,cumLen,sampleAt));
+  // Routes describe fixed geometry. Movable parked vehicles are checked when
+  // spawning and during movement, so moving one does not leave a stale route gap.
+  const valid=pedestrianCandidates().flatMap(r=>clearRouteSpans(r,(a,b,radius)=>pedestrianSegmentClear(a,b,radius,false),cumLen,sampleAt));
   const N = QP.people, list = [];
-  for (let i = 0; i < N && valid.length; i++) {
-    const r = pick(valid); list.push({ r, s: rr(0, r.L), dir: rand() < 0.5 ? 1 : -1, v: rr(1.0, 1.5), lat: rr(-PEDESTRIAN_WANDER, PEDESTRIAN_WANDER), ph: rand() * 6, sc: rr(0.92, 1.08) });
+  for (let attempt = 0; list.length < N && attempt < N*12 && valid.length; attempt++) {
+    const r=pick(valid),p={r,s:rr(0,r.L),dir:rand()<.5?1:-1,v:rr(1,1.5),lat:rr(-PEDESTRIAN_WANDER,PEDESTRIAN_WANDER),ph:rand()*6,sc:rr(.92,1.08)};
+    const q=sampleAt(r.p,r.cum,p.s),point=[q.x-q.dz*p.lat,q.z+q.dx*p.lat];
+    if(pedestrianSegmentClear(point,point))list.push(p);
   }
   const standSpots = [];
   const lib = byName(/^图书馆$/);
@@ -3755,6 +3786,26 @@ function lifeSeen(x, y, z, r, h) {
   if (L.fr.intersectsSphere(L.s.set(L.s.center.set(x, y + h / 2, z), r))) return true;
   return L.fr.intersectsSphere(L.s.set(L.s.center.set(x + L.tx * h, y, z + L.tz * h), r));
 }
+function pedestrianParkedDodge(p,x,z,a,canDodge) {
+  const fx=Math.sin(a),fz=Math.cos(a),nx=fz,nz=-fx;
+  const vehicles=pedestrianParkedVehicles([x,z],[x+fx*3,z+fz*3],1.1);
+  if(!vehicles.length){p.parkAvoidId=null;return {nearby:false};}
+  if(canDodge)for(const q of vehicles.sort((u,v)=>Math.hypot(u.x-x,u.z-z)-Math.hypot(v.x-x,v.z-z))){
+    const ca=Math.cos(q.a),sa=Math.sin(q.a),dx=q.x-x,dz=q.z-z,along=dx*fx+dz*fz,side=dx*nx+dz*nz;
+    const alongHalf=Math.abs(ca*fx+sa*fz)*q.halfL+Math.abs(-sa*fx+ca*fz)*q.halfW;
+    const sideHalf=Math.abs(ca*nx+sa*nz)*q.halfL+Math.abs(-sa*nx+ca*nz)*q.halfW;
+    const clear=sideHalf+PEDESTRIAN_RADIUS+.25;
+    if(along< -alongHalf-.6||along>alongHalf+2||Math.abs(side)>clear)continue;
+    const preferred=p.parkAvoidId===q.id?p.parkAvoidSide:(side>=0?-1:1);
+    for(const sign of [preferred,-preferred]){
+      const offset=side+sign*clear,tx=nx*offset,tz=nz*offset;
+      if(!pedBlocked(x+tx,z+tz,p.cx??x,p.cz??z)){
+        p.parkAvoidId=q.id;p.parkAvoidSide=sign;return {nearby:true,tx,tz};
+      }
+    }
+  }
+  return {nearby:true};
+}
 function updatePeople(dt, t) {
   if (!PEOPLE || !PEOPLE.bm.visible) { PED_GRID = null; return; }
   lifeView();
@@ -3789,15 +3840,8 @@ function updatePeople(dt, t) {
         }
       }
     }
-    if (!threat && !p.stand && CARS) {
-      for (let k = 0; k < CARS.parkedM.length; k++) {
-        if (k === CARS.taken) continue;
-        const e = CARS.parkedM[k].elements, dx = x - e[12], dz = z - e[14];
-        if (Math.abs(dx) > 3.4 || Math.abs(dz) > 3.4) continue;
-        const ca = e[0], sa = e[2], lx = dx * ca + dz * sa, lz = -dx * sa + dz * ca;
-        if (Math.abs(lx) < 2.75 && Math.abs(lz) < 1.35) { const sg = lz >= 0 ? 1 : -1, d = 1.4 - Math.abs(lz); tx = -sa * sg * d; tz = ca * sg * d; if (pedBlocked(x + tx, z + tz, x, z)) tx = tz = 0; break; }
-      }
-    }
+    const parked=pedestrianParkedDodge(p,x,z,a,!threat&&!p.stand&&!tx&&!tz);
+    if(parked.tx!=null){tx=parked.tx;tz=parked.tz;}
     if (tx || tz || p.wait <= 0) { p.tx = tx; p.tz = tz; }
     const dxo = p.tx - p.ox, dzo = p.tz - p.oz, dl = Math.hypot(dxo, dzo);
     let stepping = dl > 0.04;
@@ -3806,7 +3850,7 @@ function updatePeople(dt, t) {
     // Check the swept movement, including the interpolated dodge. Clear end
     // points alone do not prove that the person did not cross a thin wall.
     const from=[p.cx??baseX,p.cz??baseZ];
-    if((hadOffset||stepping||tx||tz)&&!pedestrianSegmentClear(from,[x,z])){
+    if((hadOffset||stepping||tx||tz||parked.nearby)&&!pedestrianSegmentClear(from,[x,z])){
       if(pedestrianSegmentClear(from,[baseX,baseZ])){x=baseX;z=baseZ;p.ox=p.oz=p.tx=p.tz=0;}
       else{
         x=from[0];z=from[1];p.s=previousS;p.wait=.3;
@@ -4756,7 +4800,11 @@ function initGrid() {
   BLD.forEach((b, i) => BGRID.add(i, b.bb));
   collisionGrids();
   pickIndex();
-  PROPS.forEach((q, i) => { q.bb = pBox(q.p); q.skip = groundAt(q.c[0], q.c[1]) > 0.02; if (!q.skip) PGRID.add(i, q.bb); });
+  rebuildPropGrid();
+}
+function rebuildPropGrid() {
+  PGRID.m.clear();
+  PROPS.forEach((q,i)=>{q.bb=pBox(q.p);q.skip=q.bikeIndex==null&&groundAt(...q.c)>.02;if(!q.skip&&q.inst!==false)PGRID.add(i,q.bb);});
 }
 function camFloor(x, z) {
   let top = groundAt(x, z);
@@ -4784,7 +4832,7 @@ function walkPolys(x, z, feet = groundAt(x, z)) {
   const out = [];
   for (const k of PGRID.at(x, z)) {
     const q = PROPS[k];
-    if (!q.inst || q.top <= feet + STEP_UP || x < q.bb[0] - 2 || x > q.bb[2] + 2 || z < q.bb[1] - 2 || z > q.bb[3] + 2) continue;
+    if (!q.inst || q.top <= feet + STEP_UP || (q.base??0)>feet+1.7 || x < q.bb[0] - 2 || x > q.bb[2] + 2 || z < q.bb[1] - 2 || z > q.bb[3] + 2) continue;
     out.push(q.p);
   }
   return out;
@@ -4943,11 +4991,14 @@ function walkSpot(x, z) {
 const walkForward = () => [-Math.sin(WALK.yaw), -Math.cos(WALK.yaw)];
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 function enterWalk(x, z, yaw, o = {}) {
+  if(DRIVE.on)exitCar();
+  if(RIDE.on)exitBike();
   [x, z] = walkSpot(x, z);
   const from = camera.position.clone(), q0 = camera.quaternion.clone(), fov0 = camera.fov, y = groundAt(x, z);
   Object.assign(WALK, { x, z, y, yaw, pitch: o.pitch ?? -0.04, vx: 0, vz: 0, vy: 0, ground: true, air: 0, jumpBuf: 0, faceYaw: null, stepY: 0, land: 0, landV: 0, roll: 0, swim: false });
   const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(WALK.pitch, yaw, 0, 'YXZ'));
   WALK.trans = o.instant || REDUCED_MOTION.matches ? null : { t: 0, dur: o.dur || 1.5, p0: from, q0, q1, fov0, lift: Math.min(90, from.distanceTo(new THREE.Vector3(x, y + EYE, z)) * 0.25) };
+  LOCK_EL.focus({preventScroll:true});
 }
 // Drop the walker where the view was centred, stepping back toward the camera until the way ahead is open.
 function walkEntry() {
@@ -5224,15 +5275,18 @@ function enterCar(k) {
   DRIVE.y = groundAt(DRIVE.x, DRIVE.z);
   DRIVE.bodyMat.color.copy(CARS.carCols[CARS.movers.length + k]);
   CARS.taken = k; root.visible = true;
+  root.position.set(DRIVE.x,DRIVE.y,DRIVE.z);root.rotation.set(0,-DRIVE.a,0,'YXZ');
+  DRIVE.wheels.forEach(w=>w.rotation.y=0);if(DRIVE.sw)DRIVE.sw.rotation.z=0;
+  VEH_FOCUS.set(DRIVE.x,DRIVE.y+1,DRIVE.z);
   WALK.vx = WALK.vz = WALK.vy = 0; WALK.trans = null; setUnderwater(false);
-  driveSound(true); walkHud();
-  toast(TOUCH ? '摇杆往哪推，车就往哪开 · 往回拉刹车倒车 · ^ 手刹' : 'W/S 油门刹车 · A/D 转向 · 空格手刹 · Shift 加速 · V 视角 · E 下车', 4200);
+  driveSound(true); walkHud(); LOCK_EL.focus({preventScroll:true});
+  toast(TOUCH ? '摇杆往哪推，车就往哪开 · 往回拉刹车倒车 · ^ 手刹' : 'W 油门 · S 刹车/倒车 · A/D 转向 · 空格手刹 · Shift 加速 · V 视角 · E 下车', 4200);
 }
 function exitCar() {
   if (!DRIVE.on) return;
   const D = DRIVE, c = Math.cos(D.a), sn = Math.sin(D.a);
   _e.set(0, -D.a, 0); _q.setFromEuler(_e);
-  CARS.parkedM[D.k] = new THREE.Matrix4().compose(new THREE.Vector3(D.x, 0, D.z), _q.clone(), new THREE.Vector3(1, 1, 1));
+  CARS.parkedM[D.k] = new THREE.Matrix4().compose(new THREE.Vector3(D.x, groundAt(D.x,D.z), D.z), _q.clone(), new THREE.Vector3(1, 1, 1));
   CARS.taken = -1; D.on = false; D.root.visible = false; driveSound(false);
   // step out on the driver's (left) side, facing the way the car points
   const [px, pz] = walkSpot(D.x + sn * 2.1, D.z - c * 2.1);
@@ -5293,7 +5347,7 @@ function vehicleLook(S, dx, dy, k) {
   S.lookT = 0;
 }
 // Touch steering for vehicles: the stick points where to go on screen; the vehicle turns towards that heading and goes
-// as hard as the stick is pushed. Pointing behind brakes, then (for the car) reverses; letting go slows to a stop.
+// as hard as the stick is pushed. Pointing behind brakes, then reverses; letting go slows to a stop.
 function stickDrive(a, vl, canReverse) {
   const px = WALK.pad.x, py = WALK.pad.y, mag = Math.min(1, Math.hypot(px, py));
   if (mag < 0.15) return [vl > 0.4 ? -0.3 : vl < -0.4 ? 0.3 : 0, 0];
@@ -5307,8 +5361,8 @@ function stickDrive(a, vl, canReverse) {
   }
   return [mag * (1 - smooth(0.9, 2.0, Math.abs(diff)) * 0.6), clamp(-diff * 2, -1, 1)];
 }
-function updateDrive(dt) {
-  const D = DRIVE, k = WALK.keys, pad = WALK.pad, live = TOUCH || WALK.locked || WALK.noLock, h = Math.min(dt, 0.05);
+function advanceDrive(h) {
+  const D = DRIVE, k = WALK.keys, pad = WALK.pad, live = TOUCH || WALK.locked || WALK.noLock;
   const gas = live && (k.has('KeyW') || k.has('ArrowUp') || D.gas), brk = live && (k.has('KeyS') || k.has('ArrowDown') || D.brake);
   let thr = (gas ? 1 : 0) - (brk ? 1 : 0);
   let st = live ? clamp((k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (TOUCH ? 0 : pad.x), -1, 1) : 0;
@@ -5358,6 +5412,15 @@ function updateDrive(dt) {
   vl = D.vx * ca + D.vz * sa; vt = -D.vx * sa + D.vz * ca; D.v = vl;
   const sp = Math.hypot(D.vx, D.vz);
   D.spin -= vl * h / 0.33;
+  return {vl,vt,ca,sa,thr,sp};
+}
+function updateDrive(dt) {
+  const D=DRIVE,h=Math.min(dt,.05);
+  // Bound each body probe's travel well below its radius, including yaw.
+  // Resolve physics in small steps; update the camera, mesh and audio once.
+  const n=Math.max(1,Math.ceil((Math.hypot(D.vx,D.vz)+Math.abs(D.r)*1.3)*h/.2));
+  let frame;for(let i=0;i<n;i++)frame=advanceDrive(h/n);
+  const {vl,vt,ca,sa,thr,sp}=frame;
   const r = D.root; r.position.set(D.x, D.y, D.z);
   r.rotation.set(D.roll, -D.a, D.pitch, 'YXZ');
   D.wheels.forEach((w, i) => w.rotation.set(0, i < 2 ? D.steer : 0, D.spin, 'YXZ'));
@@ -5481,8 +5544,12 @@ function enterBike(k) {
   Object.assign(RIDE, { on: true, k, x, z, a, y: groundAt(x, z), v: 0, steer: 0, lean: 0, hop: 0, hopV: 0, cam: 'chase', camW: a + Math.PI, camYaw: 0, camPitch: 0.24, lookT: 0 });
   RIDE.frameMat.color.copy(col); RIDE.shirt.color.set(pick(['#f2f1ec', '#2f3b4c', '#7b8ea3', '#c48f8f', '#4a5a4c', '#d7b46a', '#9a3d3d']));
   RIDE.root.visible = true; WALK.vx = WALK.vz = WALK.vy = 0; WALK.trans = null; setUnderwater(false);
-  walkAudioWake(); walkHud();
-  toast(TOUCH ? '摇杆往哪推就往哪骑，推出圈外加速 · ^ 小跳' : 'W 蹬车 · S 刹车 · A/D 转向 · Shift 加速 · 空格小跳 · B 车铃 · V 视角 · E 下车', 4200);
+  syncParkedBike(k,false);
+  RIDE.root.position.set(RIDE.x,RIDE.y,RIDE.z);RIDE.root.rotation.set(0,-RIDE.a,0,'YXZ');
+  RIDE.head.visible=true;RIDE.steerG.quaternion.setFromAxisAngle(RIDE.axis,0);poseRider();
+  VEH_FOCUS.set(RIDE.x,RIDE.y+1.1,RIDE.z);
+  walkAudioWake(); walkHud(); LOCK_EL.focus({preventScroll:true});
+  toast(TOUCH ? '摇杆转向 · 朝车后方拉住：先刹停，再低速后退 · 推出圈外加速 · ^ 小跳' : 'W 蹬车 · S 刹停后继续按住可后退 · A/D 转向 · Shift 加速 · 空格小跳 · B 车铃 · V 视角 · E 下车', 5200);
 }
 function exitBike(o = {}) {
   if (!RIDE.on) return;
@@ -5492,6 +5559,7 @@ function exitBike(o = {}) {
     _m4.compose(_v.set(R.x, groundAt(R.x, R.z), R.z), _q, _s.set(1, 1, 1)); c.setMatrixAt(j, _m4); c.instanceMatrix.needsUpdate = true; c.computeBoundingSphere();
     BIKE_SPOTS[R.k] = [R.x, R.z, R.a];
   } else { BIKE_SPOTS[R.k] = [1e9, 1e9, 0]; }
+  syncParkedBike(R.k,Boolean(c&&!o.swim));
   R.on = false; R.root.visible = false;
   if (o.swim) {
     Object.assign(WALK, { x: R.x + c0 * 1.2, z: R.z + s0 * 1.2, y: 0, yaw: Math.atan2(-c0, -s0), vx: c0 * R.v * 0.5, vz: s0 * R.v * 0.5, vy: 1.5, ground: false, swim: false });
@@ -5505,11 +5573,12 @@ function updateRide(dt) {
   const R = RIDE, k = WALK.keys, pad = WALK.pad, live = TOUCH || WALK.locked || WALK.noLock, h = Math.min(dt, 0.05);
   let thr = live ? clamp((k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (TOUCH ? 0 : pad.y), -1, 1) : 0;
   let st = live ? clamp((k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (TOUCH ? 0 : pad.x), -1, 1) : 0;
-  if (TOUCH) [thr, st] = stickDrive(R.a, R.v, false);
+  if (TOUCH) [thr, st] = stickDrive(R.a, R.v, true);
   const fast = live && (k.has('ShiftLeft') || k.has('ShiftRight') || WALK.padRun), max = fast ? 8.5 : 5.6;
   if (thr > 0.05) R.v += (2.9 * (1 - Math.max(0, R.v) / max) + 0.2) * thr * h;
-  else if (thr < -0.05) R.v = R.v > 0.2 ? R.v - 6 * -thr * h : Math.max(-0.8, R.v - 1.5 * h);
-  R.v -= R.v * 0.06 * h + Math.sign(R.v) * Math.min(Math.abs(R.v), 0.18 * h);
+  // Stop forward motion first; continued input backs the bike out of tight spots.
+  else if (thr < -0.05) R.v = R.v > 0 ? Math.max(0, R.v - 6 * -thr * h) : Math.max(-0.8, R.v - 1.5 * -thr * h);
+  R.v -= Math.sign(R.v) * Math.min(Math.abs(R.v), (0.18 + Math.abs(R.v) * 0.06) * h);
   const tgt = st * (0.62 - 0.44 * Math.min(1, Math.abs(R.v) / 7));
   R.steer += (tgt - R.steer) * Math.min(1, h * 7);
   R.a -= R.v / 1.05 * Math.tan(R.steer) * h;
@@ -5830,6 +5899,7 @@ function walkHud() {
   $('#walkSettings').setAttribute('aria-expanded', String(WALK.menu));
   $('#walkSound').setAttribute('aria-pressed', String(WALK.sound));
   $('#walkSound').textContent = WALK.sound ? '音效 开' : '音效 关';
+  syncWalkAudio();
   if (!on || $('#xhair').hidden) { WALK.aimOwn = -1; WALK.aim = null; $('#xhair').classList.remove('on'); $('#xhint').hidden = true; }
 }
 function resetWalkInput() {
@@ -5862,6 +5932,11 @@ function keepWalkSettingsFocus(e) {
 }
 // ---- footsteps (synthesized, no audio files) ----
 let AUD = null, GROUND_CTX = null;
+function syncWalkAudio() {
+  if(!AUD)return;
+  const enabled=WALK.sound&&mode==='walk'&&!walkMotionPaused();
+  AUD.out.gain.setTargetAtTime(enabled ? .5 : 0,AUD.C.currentTime,.02);
+}
 function walkAudioWake() {
   if (AUD === false || !WALK.sound) return;
   if (!AUD) {
@@ -5869,11 +5944,12 @@ function walkAudioWake() {
       const C = new (window.AudioContext || window.webkitAudioContext)();
       const n = Math.floor(C.sampleRate * 0.3), buf = C.createBuffer(1, n, C.sampleRate), d = buf.getChannelData(0);
       let b = 0; for (let i = 0; i < n; i++) { b = b * 0.55 + (Math.random() * 2 - 1) * 0.45; d[i] = b * Math.pow(1 - i / n, 3); }
-      const out = C.createGain(); out.gain.value = 0.5; out.connect(C.destination);
+      const out = C.createGain(); out.gain.value = 0; out.connect(C.destination);
       AUD = { C, buf, out };
     } catch (_) { AUD = false; return; }
   }
   if (AUD.C.state === 'suspended') AUD.C.resume().catch(() => { });
+  syncWalkAudio();
 }
 function walkAudioClose() { if (AUD) AUD.C.close().catch(() => { }); AUD = null; }
 function surfaceHard() {
@@ -6045,7 +6121,8 @@ $('#walkSettingsPanel').addEventListener('keydown', keepWalkSettingsFocus);
 CLEANUP.push(()=>{const panel=$('#walkSettingsPanel');if(panel?.open)panel.close();});
 $('#walkNet').addEventListener('click', () => { NET.hidden = !NET.hidden; netHud(); toast(NET.hidden ? '已隐身：别人看不到你，你仍能看到别人' : '联机可见：附近的同学能看到你', 2200); });
 $('#walkSound').addEventListener('click', (e) => {
-  WALK.sound = !WALK.sound; if (WALK.sound) walkAudioWake();
+  WALK.sound = !WALK.sound;
+  if(WALK.sound){if(DRIVE.on)driveSound(true);else walkAudioWake();}else syncWalkAudio();
   e.currentTarget.setAttribute('aria-pressed', String(WALK.sound)); e.currentTarget.textContent = WALK.sound ? '音效 开' : '音效 关';
 });
 let TOUR = null;
@@ -6282,7 +6359,12 @@ function rotateTip() {
 }
 function setSidebar(open) { $('#sidebar').dataset.open = String(open); $('#m-menu').setAttribute('aria-pressed', String(open)); }
 $('#m-menu').addEventListener('click', () => setSidebar($('#sidebar').dataset.open !== 'true'));
-$('#infoClose').addEventListener('click', () => { $('#info').hidden = true; selected = null; highlight({}); LABELS.forEach((L) => L.el.classList.remove('sel')); root.querySelectorAll('.row').forEach((el) => el.setAttribute('aria-current', 'false')); });
+$('#infoClose').addEventListener('click', () => {
+  $('#info').hidden = true; selected = null; highlight({});
+  LABELS.forEach(L=>L.el.classList.remove('sel'));root.querySelectorAll('.row').forEach(el=>el.setAttribute('aria-current','false'));
+  if(mode==='walk'){WALK.inspect=false;walkHud();}
+  LOCK_EL.focus({preventScroll:true});
+});
 $('#infoFly').addEventListener('click', () => selected && flyToPlace(selected));
 // Scrubbing takes the clock over: the running clock used to rewrite the slider under the finger every 120 ms
 // (the thumb jumped back and forth) and wrapped 22:30 back to 5:00 (the thumb snapped to the left end).
