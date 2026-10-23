@@ -11,7 +11,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { NATATORIUM, DORM_LETTER, DORM_GROUP_INFO, dormSummary, buildingListMeta, buildingFacts, geometrySource } from './placeMetadata.js';
 import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from './constructionSites.js';
 import { RESEARCH_CENTERS, RESEARCH_INFO, CHEMISTRY_COURT, RESEARCH_TEMPORARY_FOOTPRINT, researchBuildings, correctResearchRoads } from './researchCenters.js';
-import { SAFETY_CENTER_PASSAGE, annotateCoveredAccess, splitCoveredGround, groundFootprints, buildingSolidAt, passageApproach } from './coveredAccess.js';
+import { GRADUATE_RESIDENCE, graduateVolumes } from './graduateResidences.js';
+import { SAFETY_CENTER_PASSAGE, annotateCoveredAccess, splitCoveredGround, groundFootprints, buildingSolidAt, buildingTopAt, passageApproach } from './coveredAccess.js';
 
 export function mountCampus3D(root, opts) {
 let DISPOSED = false, RAF = 0;
@@ -335,6 +336,7 @@ for (const b of BLD) {
 for (const b of BLD) {
   const c = b.cls; c.fh = c.fh || (FAC[c.st] ? FAC[c.st].fh : 3.6);
   b.h = c.h || c.fl * c.fh;
+  if (c.special === 'graduate') { b.volumes=graduateVolumes(b.p);b.h=Math.max(...b.volumes.map(v=>v.maxY)); }
   if (/教学楼[ABDE]/.test(b.name)) b.parts = courtyardParts(b.p);
   if (b.osm===SAFETY_CENTER_PASSAGE.buildingWay) {
     const ground=splitCoveredGround(b.p,SAFETY_CENTER_PASSAGE.centerline,SAFETY_CENTER_PASSAGE.modelWidth);
@@ -404,6 +406,7 @@ const TEACH_TREES = [];
 const INFO = {
   ...DORM_GROUP_INFO,
   ...RESEARCH_INFO,
+  [GRADUATE_RESIDENCE.name]: {d:'文正苑 H6、H7 组团。卫星影像可辨认两栋主体及较低的连接体，与校方研究生公寓四期交付照片的高低关系相符。尚未确认南北单栋与楼号的对应。',s:'体量关系：2024-01-12影像及2024-08校方实景照片。保留近似地面轮廓；主体层数、高度、连接体分界与高度均为模型估算，屋顶侧向偏移未作为基底坐标。核对：2026-10-23。',links:GRADUATE_RESIDENCE.sources,nameConfirmed:true},
   '安评中心': {d:'新药安全评价研究中心。建筑中央是一段上方有遮盖的通道，结构依据公开地图标注。通道尺寸与当前通行条件未实测。',s:'结构依据：OSM way 970880295，covered=yes（2021-08-06版本，2026-10-23核对）。模型净空和宽度为估算，不是现场限高或通行许可。',links:[{title:'OSM：安评中心有顶通道',url:SAFETY_CENTER_PASSAGE.source},{title:'新药安全评价研究中心',url:'https://apzx.cpu.edu.cn/'}]},
   '大学生活动中心': { d: '科学艺术中心，位于二食堂东侧。基建后勤处将其列为在建工程；2026 年 9 月 22 日通知安排三层楼面混凝土浇筑。二食堂东侧设有施工防护通道，公告预计留置至 2027 年 3 月。场景按这些资料显示施工围挡、结构楼板和防护通道；施工进度与通行以现场指引为准。', s: '基建后勤处在建项目清单、施工区域附图与施工通知；核对日期：2026-10-23。围挡范围按附图对齐周边道路；结构轮廓、层高和通道尺寸为示意，不能作为竣工外观或当前测量值。', links: ACTIVITY_CENTER.sources },
   [GRADUATE_PHASE_FIVE.name]: { d: GRADUATE_PHASE_FIVE.description, s: '施工通知附图与 OSM 步道交点配准。独立步道检查差约 2–4 米，北侧道路检查差约 13 米；不据此生成围挡或建筑碰撞。资料核对：2026-10-23。', links: GRADUATE_PHASE_FIVE.sources },
@@ -1767,15 +1770,17 @@ function dormDetails(b, h) {
   }
 }
 function buildGraduate(b) {
-  const fl=b.cls.fl||18,h=b.cls.h||fl*3.2;
-  addWalls('f:beigeBand',b.p,0,h);addWalls('plinth',b.p,0,.65);
-  for(let f=1;f<=fl;f++)addWalls('stoneWarm',insetPoly(b.p,-.18),f*3.2-.25,f*3.2);
-  addCap('roof:light',b.p,h);addParapet('stoneWarm',b.p,h,.9,.3);roofClutter(b.p,h,7);
-  const e=edgeFacing(b.p,b.c[0],b.c[1]+80,25)||edgeFacing(b.p,b.c[0],b.c[1]+80,6);
-  if(e){const a=Math.atan2(e.dz,e.dx);
-  addBox('f:glassGrey',e.mx+e.nx*.2,0,e.mz+e.nz*.2,8,.4,4.2,a);
-  addBox('stoneWarm',e.mx+e.nx*2,4.1,e.mz+e.nz*2,10,4.2,.35,a);}
-  b.h=h+.9;
+  // Two high end blocks and a low link. The envelope and heights remain estimates.
+  for (const v of b.volumes) {
+    const low=v.role==='link';
+    addWalls(low?'f:glassGrey':'f:beigeBand',v.p,0,v.roof);
+    addWalls('plinth',v.p,0,.65);
+    if(low)addWalls('stoneWarm',insetPoly(v.p,-.18),v.roof-.7,v.roof);
+    else for(let f=1;f<=b.cls.fl;f++)addWalls('stoneWarm',insetPoly(v.p,-.18),f*3.2-.25,f*3.2);
+    addCap('roof:light',v.p,v.roof);
+    addParapet('stoneWarm',v.p,v.roof,v.parapet,.3);
+  }
+  b.h=Math.max(...b.volumes.map(v=>v.maxY));
 }
 function buildHighDorm(b) {
   const fl = b.cls.fl || 8, h = fl * 3.15, ob = obb(b.p), sg = ob.ux >= 0 ? 1 : -1;
@@ -4685,7 +4690,7 @@ function camFloor(x, z) {
   let top = groundAt(x, z);
   for (const [ox, oz] of [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) {
     const px = x + ox, pz = z + oz;
-    for (const k of BGRID.at(px, pz)) { const b = BLD[k]; if (b.h > top && px >= b.bb[0] && px <= b.bb[2] && pz >= b.bb[1] && pz <= b.bb[3] && (b.parts || [b.p]).some((q) => pip(px, pz, q))) top = b.h; }
+    for (const k of BGRID.at(px, pz)) { const b = BLD[k]; if (b.h > top && px >= b.bb[0] && px <= b.bb[2] && pz >= b.bb[1] && pz <= b.bb[3]) top = Math.max(top,buildingTopAt(b,px,pz,pip)); }
   }
   return top + 1.8;
 }

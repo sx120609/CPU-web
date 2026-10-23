@@ -254,13 +254,26 @@
       "after": "交叉候选区分道路中心线、估算路宽边缘、已知有顶连接和可能高架分层；目前38组为34边缘接触、2有顶连接投影、2可能高架投影。",
       "evidence": "空间清单由当前预处理数据重建；附地面网格测试引用，不再把平面重叠统一称为缺陷。",
       "remaining": "这些分类不是全路网实地通过结论，边缘、车站支柱、NPC路侧路径与现状通行仍需继续核验。"
+    },
+    {
+      "id": "h67-high-low-massing",
+      "before": "H6/H7整条弯曲体量被统一拉高为八层，低连接体上方也被相机当作高楼。",
+      "after": "保留近似地面轮廓，分为南北两个高主体和低连接体；网格、相机占用及俯视相机最低高度使用相同的分区高度。详情单独标明体量依据、估算尺寸和未确认的单栋楼号。",
+      "evidence": "2024-01-12分辨率匹配的Esri影像及2024-08校方四期交付照片；4项新增回归检验面积、楼号、实际三角网格屋面、连廊上空和相机高度；浏览器近景已检查。",
+      "remaining": "主体及连廊分界、层数和高度均为模型参数。未取得可靠屋顶到基底偏移，不据此移动建筑或宣称实际轮廓验收。"
+    },
+    {
+      "id": "imagery-resolution-metadata",
+      "before": "研究影像下载工具固定查询60cm metadata层，可能给zoom19图像引用其他分辨率来源日期。",
+      "after": "按服务公布的LOD比例尺及元数据层可见比例尺选择图层，并核对返回记录的MinMapLevel/MaxMapLevel。记录选层依据，明确中心点采样范围；查询错误或范围不符时失败，不填写拍摄日期。 同名捕获不覆盖，元数据成功后才保存拼接图，避免新图配旧元数据。",
+      "evidence": "实请求zoom18选中layer10、zoom19选中layer9；对既有3个研究楼点及2个宿舍影像中心复核，日期和精度值仍一致。 离线核对LOD18/19/20选层并验证已有图像/元数据不能被同名覆盖。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "55 passed, 0 failed (53 frontend + 2 server)",
-      "scope": "原有44项；新增图书馆真实地面网格道路3项、有顶通道结构与碰撞7项、G11独立轮廓1项。",
+      "result": "59 passed, 0 failed (57 frontend + 2 server)",
+      "scope": "原55项全部通过，新增H6/H7分区面积与楼号、真实渲染屋面和相机、上空视线、来源说明4项。",
       "limitation": "只证明已列源对应关系和模型实现。未以道路中心线测试替代估算路缘、NPC路径、现场尺寸或完整真机验证。"
     },
     "typeCheck": {
@@ -289,7 +302,9 @@
         "研究生公寓五期可检索，详情区分规划参数与现状，仅绘制参考虚线，无实体楼或围挡。",
         "场景30/30加载，安评中心可见贯穿开口和顶棚，实地看看对准西侧入口。",
         "G11搜索返回文德苑，显示独立轮廓、近似模型与7层7站设备资料的区别。",
-        "图书馆俯视画布中以诚路位于东南侧铺装带，已保存前后源坐标叠加与最终画布。"
+        "图书馆俯视画布中以诚路位于东南侧铺装带，已保存前后源坐标叠加与最终画布。",
+        "H6/H7详情显示两栋主体与低连接体，模型高度和来源保留估算说明，南北楼号对应未确认。",
+        "前往H6/H7的近景可见两个高主体及低连廊；场景加载30/30，浏览器错误日志无场景脚本错误。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
@@ -315,7 +330,11 @@
         "output/campus3d-audit-20261023/library-roads-alignment.png",
         "output/campus3d-audit-20261023/wensi-roads-alignment.png",
         "output/campus3d-audit-20261023/elevator-table-33.png",
-        "output/campus3d-audit-20261023/tests-road-access-final.log"
+        "output/campus3d-audit-20261023/tests-road-access-final.log",
+        "output/campus3d-audit-20261023/h67-massing-near.png",
+        "output/campus3d-audit-20261023/tests-graduate-massing.log",
+        "output/campus3d-audit-20261023/metadata-z19-recheck.json",
+        "output/campus3d-audit-20261023/h67-massing-final.png"
       ]
     },
     "serverTypeCheck": {
@@ -330,7 +349,7 @@
     {
       "scope": "建筑与实际对齐",
       "status": "incomplete",
-      "nextEvidence": "G11身份与独立轮廓已纠正；继续核对其立面/屋面，辨别电梯停站与真实楼层。H6/H7影像显示两个高体量及较低连接体，现有等高弯曲整体仍需修正，并核对四期项目与楼号的对应。继续核查行政楼、安评中心的电梯停站/地下层关系及其他建筑。"
+      "nextEvidence": "H6/H7高低体量已按公开影像与校方照片修正；仍需独立基底配准、实际层高和南北单栋楼号确认。继续核对G11立面/屋面、行政楼及安评中心电梯停站与地下层关系，以及其他建筑。"
     },
     {
       "scope": "道路、水体与景观",
@@ -363,7 +382,7 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "0967947c5c89122968b5920d445e020f3d762ee7",
+  "lastVerifiedParentCommit": "783c1e30ac4e1f76468a1faea9431e956f005bb5",
   "spatialInventory": "docs/campus3d-spatial-inventory.json",
   "spatialSourceManifest": "docs/campus3d-spatial-sources.json"
 }

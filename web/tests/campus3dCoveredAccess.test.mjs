@@ -6,13 +6,14 @@ import * as THREE from 'three';
 import * as metadata from '../src/views/services/campus3d/placeMetadata.js';
 import * as construction from '../src/views/services/campus3d/constructionSites.js';
 import * as research from '../src/views/services/campus3d/researchCenters.js';
+import * as graduate from '../src/views/services/campus3d/graduateResidences.js';
 import * as access from '../src/views/services/campus3d/coveredAccess.js';
 
 const base=new URL('../src/views/services/campus3d/',import.meta.url),app=readFileSync(new URL('app.js',base),'utf8');
 const slice=(a,b)=>app.slice(app.indexOf(a),app.indexOf(b));
 const fn=name=>{const s=app.indexOf(`function ${name}(`),e=app.indexOf('\nfunction ',s+1);return app.slice(s,e);};
 const ctx=vm.createContext({
-  THREE,...metadata,...construction,...research,...access,
+  THREE,...metadata,...construction,...research,...access,...graduate,
   opts:{data:JSON.parse(readFileSync(new URL('osm-data.json',base),'utf8')),outer:JSON.parse(readFileSync(new URL('osm-outer.json',base),'utf8'))},
   root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
   roofClutter(){},academicRoof(){},groundAt:()=>0,

@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import * as metadata from '../src/views/services/campus3d/placeMetadata.js';
 import * as construction from '../src/views/services/campus3d/constructionSites.js';
 import * as research from '../src/views/services/campus3d/researchCenters.js';
+import * as graduate from '../src/views/services/campus3d/graduateResidences.js';
 import * as access from '../src/views/services/campus3d/coveredAccess.js';
 
 const base=new URL('../src/views/services/campus3d/',import.meta.url);
@@ -14,7 +15,7 @@ const data=JSON.parse(readFileSync(new URL('osm-data.json',base),'utf8'));
 const outer=JSON.parse(readFileSync(new URL('osm-outer.json',base),'utf8'));
 const fn=name=>{const s=source.indexOf(`function ${name}(`),e=source.indexOf('\nfunction ',s+1);return source.slice(s,e);};
 const ctx=vm.createContext({
-  THREE,...metadata,...construction,...research,...access,opts:{data,outer},root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
+  THREE,...metadata,...construction,...research,...access,...graduate,opts:{data,outer},root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
   MAT:{stoneWarm:{},'roof:light':{}},plainMat:()=>({}),baseAO:x=>x,
   // Roof clutter and lettering do not affect eye-level wall crossings; ground
   // walls, portico, terraces, columns, flags and rock geometry execute unchanged.

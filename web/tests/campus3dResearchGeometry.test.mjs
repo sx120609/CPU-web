@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { NATATORIUM, DORM_GROUP_INFO, buildingFacts } from '../src/views/services/campus3d/placeMetadata.js';
 import { ACTIVITY_CENTER, GRADUATE_PHASE_FIVE } from '../src/views/services/campus3d/constructionSites.js';
 import * as research from '../src/views/services/campus3d/researchCenters.js';
+import * as graduate from '../src/views/services/campus3d/graduateResidences.js';
 import * as access from '../src/views/services/campus3d/coveredAccess.js';
 
 const base = new URL('../src/views/services/campus3d/', import.meta.url);
@@ -14,7 +15,7 @@ const data = JSON.parse(readFileSync(new URL('osm-data.json', base), 'utf8'));
 const outer = JSON.parse(readFileSync(new URL('osm-outer.json', base), 'utf8'));
 const slice = (a, b) => app.slice(app.indexOf(a), app.indexOf(b));
 const ctx = vm.createContext({
-  THREE, NATATORIUM, DORM_GROUP_INFO, ACTIVITY_CENTER, GRADUATE_PHASE_FIVE, ...research, ...access,
+  THREE, NATATORIUM, DORM_GROUP_INFO, ACTIVITY_CENTER, GRADUATE_PHASE_FIVE, ...research, ...access,...graduate,
   opts: { data, outer }, root: { querySelector() {} }, matchMedia: () => ({ matches: false }), navigator: { hardwareConcurrency: 8 }, NO_TREE: [],
 });
 vm.runInContext([

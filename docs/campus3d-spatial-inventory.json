@@ -2720,13 +2720,37 @@
       "modelFloorCount": 8,
       "osmFloorCount": null,
       "geometryBuilder": "graduate",
+      "modelVolumes": [
+        {
+          "role": "north",
+          "roof": 25.6,
+          "top": 26.5,
+          "dimensionsVerified": false
+        },
+        {
+          "role": "link",
+          "roof": 4.5,
+          "top": 5.05,
+          "dimensionsVerified": false
+        },
+        {
+          "role": "south",
+          "roof": 25.6,
+          "top": 26.5,
+          "dimensionsVerified": false
+        }
+      ],
       "coveredConnection": null,
-      "spatialEvidence": "requires dated reference check",
+      "spatialEvidence": "2024-01-12 imagery + 2024-08 school photograph support high/low relationship; existing approximate ground envelope retained",
       "currentFootprintVerified": false,
       "currentHeightVerified": false,
       "currentFacadeVerified": false,
       "entranceVerified": false,
-      "evidenceLinks": []
+      "evidenceLinks": [
+        "https://xgc.cpu.edu.cn/81/3f/c18000a229695/page.htm",
+        "https://www.cpu.edu.cn/32/b3/c4132a209587/page.htm",
+        "https://www.arcgis.com/apps/mapviewer/index.html?basemap=satellite&center=118.9187,31.9066&level=19"
+      ]
     },
     {
       "key": "supplement-96",

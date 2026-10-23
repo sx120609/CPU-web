@@ -36,6 +36,12 @@ export function passageApproach(passage,distance=12) {
   return [b[0]+dx/l*distance,b[1]+dz/l*distance];
 }
 export function buildingSolidAt(b,x,z,y,pointInPolygon) {
+  if(b.volumes)return b.volumes.some(v=>y>=v.minY&&y<=v.maxY&&pointInPolygon(x,z,v.p));
   const polygons=b.coveredPassage&&y<b.coveredPassage.modelClearance?groundFootprints(b):b.parts||[b.p];
   return polygons.some(p=>pointInPolygon(x,z,p));
+}
+
+export function buildingTopAt(b,x,z,pointInPolygon) {
+  if(b.volumes)return Math.max(0,...b.volumes.filter(v=>pointInPolygon(x,z,v.p)).map(v=>v.maxY));
+  return (b.parts||[b.p]).some(p=>pointInPolygon(x,z,p))?b.h:0;
 }

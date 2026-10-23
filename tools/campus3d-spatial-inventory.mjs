@@ -6,6 +6,7 @@ import * as THREE from '../web/node_modules/three/build/three.module.js';
 import * as metadata from '../web/src/views/services/campus3d/placeMetadata.js';
 import * as construction from '../web/src/views/services/campus3d/constructionSites.js';
 import * as research from '../web/src/views/services/campus3d/researchCenters.js';
+import * as graduate from '../web/src/views/services/campus3d/graduateResidences.js';
 import * as access from '../web/src/views/services/campus3d/coveredAccess.js';
 import { GRADUATE5_FIT_REPORT } from '../web/src/views/services/campus3d/graduate5Registration.js';
 
@@ -14,7 +15,7 @@ const app=readFileSync(new URL('app.js',base),'utf8');
 const data=JSON.parse(readFileSync(new URL('osm-data.json',base),'utf8'));
 const outer=JSON.parse(readFileSync(new URL('osm-outer.json',base),'utf8'));
 const model=vm.runInNewContext(app.slice(app.indexOf('const D ='),app.indexOf('const stage ='))+'\n({BLD,D,INFO,pip,cumLen,sampleAt})',{
-  THREE,...metadata,...construction,...research,...access,opts:{data,outer},root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
+  THREE,...metadata,...construction,...research,...access,...graduate,opts:{data,outer},root:{querySelector(){}},matchMedia:()=>({matches:false}),navigator:{hardwareConcurrency:8},
 });
 const round=v=>Math.round(v*100)/100;
 const named = model.BLD.map((b,i)=>({
@@ -25,8 +26,9 @@ const named = model.BLD.map((b,i)=>({
   modelCenter:b.c.map(round), modelBounds:b.bb.map(round),
   modelFloorCount:b.cls.fl, osmFloorCount:data.b.find(q=>q.id===b.osm)?.l||null,
   geometryBuilder:b.cls.special||'generic',
+  modelVolumes:b.volumes?.map(v=>({role:v.role,roof:v.roof,top:v.maxY,dimensionsVerified:false})),
   coveredConnection:b.coveredPassage?{roadWay:b.coveredPassage.roadWay,groundParts:b.groundParts.length,dimensions:'model estimates, not measured clearance'}:null,
-  spatialEvidence:b.extra?.researchId?'2025-06-16 georeferenced roof + dated school evidence':b.cls.special==='activityConstruction'?'dated construction notice, schematic geometry':'requires dated reference check',
+  spatialEvidence:b.extra?.researchId?'2025-06-16 georeferenced roof + dated school evidence':b.cls.special==='activityConstruction'?'dated construction notice, schematic geometry':b.cls.special==='graduate'?'2024-01-12 imagery + 2024-08 school photograph support high/low relationship; existing approximate ground envelope retained':'requires dated reference check',
   currentFootprintVerified:false, currentHeightVerified:false, currentFacadeVerified:false, entranceVerified:false,
   evidenceLinks:(model.INFO[b.name]?.links||[]).map(s=>s.url),
 }));
