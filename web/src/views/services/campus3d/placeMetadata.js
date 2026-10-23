@@ -15,6 +15,15 @@ export const NATATORIUM = Object.freeze({
 
 export const DORM_LETTER = Object.freeze({ 文轩苑: 'A', 文菁苑: 'B', 文萃苑: 'C', 文澜苑: 'D', 文枢苑: 'E', 文昌苑: 'F', 文思苑: 'G', 文华苑: 'H', 文正苑: 'H' });
 
+export const DORM_GROUP_INFO = Object.freeze({
+  文正苑: {
+    d: '文正苑·经纬社区包括 H4 至 H7 组团。学校学工处的社区活动资料明确使用这一苑名和楼号范围。',
+    s: '名称与楼号范围：学校学工处（2025-11-18）；轮廓：卫星影像近似重建。核对日期：2026-10-23。',
+    nameConfirmed: true,
+    links: [{ title: '学工处：文正苑·经纬社区（H4–H7）', url: 'https://xgc.cpu.edu.cn/81/3f/c18000a229695/page.htm' }],
+  },
+});
+
 // One numbered building may have multiple OSM polygons (D2); a single model may
 // contain multiple numbered buildings (H6/H7). Neither polygon count is a count of dorms.
 export function dormSummary(buildings) {

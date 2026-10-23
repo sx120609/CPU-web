@@ -8,7 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { NATATORIUM, DORM_LETTER, dormSummary, buildingListMeta, buildingFacts, geometrySource } from './placeMetadata.js';
+import { NATATORIUM, DORM_LETTER, DORM_GROUP_INFO, dormSummary, buildingListMeta, buildingFacts, geometrySource } from './placeMetadata.js';
 import { ACTIVITY_CENTER } from './constructionSites.js';
 
 export function mountCampus3D(root, opts) {
@@ -228,10 +228,11 @@ const NE = {
   site: [[397,-563],[490,-565],[535,-530],[580,-505],[592,-410],[560,-393],[425,-398],[402,-448]],
   beds: [[380,-620],[429,-635],[472,-597],[420,-565]],
   phase4: [[395,-400],[474,-399],[490,-385],[494,-346],[477,-346],[475,-377],[468,-383],[395,-383],[380,-396],[388,-409]],
-  phase5: (()=>{const c=new THREE.CatmullRomCurve3([[586,-375],[530,-375],[523,-357],[542,-336],[565,-316],[627,-314]].map(p=>new THREE.Vector3(p[0],0,p[1])),false,'centripetal');const line=c.getPoints(48).map(p=>[p.x,p.z]);return offsetLine(line,8.2).concat(offsetLine(line,-8.2).reverse());})(),
+  // Existing H6/H7; the graduate phase-five project is a separate northern site.
+  wenzheng67: (()=>{const c=new THREE.CatmullRomCurve3([[586,-375],[530,-375],[523,-357],[542,-336],[565,-316],[627,-314]].map(p=>new THREE.Vector3(p[0],0,p[1])),false,'centripetal');const line=c.getPoints(48).map(p=>[p.x,p.z]);return offsetLine(line,8.2).concat(offsetLine(line,-8.2).reverse());})(),
   pond: [[473,-846],[507,-858],[541,-852],[548,-835],[537,-807],[511,-795],[482,-809],[467,-828]],
   parking: [rectPoly(624,-445,48,65,0),rectPoly(620,-386,60,24,0)],
-  phase5Yard:[[512,-402],[645,-403],[652,-288],[565,-288],[510,-341]],
+  wenzhengYard:[[512,-402],[645,-403],[652,-288],[565,-288],[510,-341]],
   reserves:[
     [[-120,-1160],[650,-1160],[735,-970],[310,-900],[-120,-943]],
     [[410,-936],[580,-1030],[1020,-650],[770,-470],[610,-646]],
@@ -312,7 +313,7 @@ const EXTRA = [
   { name: '新建科研楼 C', p: [[-404, -420], [-308, -420], [-308, -380], [-404, -380]], st: 'whiteGreen', fl: 6, src: 'sat-inferred', cat: 'teach', group: 'newlab' },
   { name: '', p: [[-160, -446], [-137, -446], [-137, -400], [-160, -400]], st: 'plain', fl: 2, src: 'sat', cat: 'teach' },
   { name: '文德苑', p: WENDE.footprint, special: 'wende', st: 'wende', fl: 9, h: WENDE.H, src: 'photo+sat', cat: 'life' },
-  { name: '文正苑6、7号楼', p:NE.phase5,special:'graduate',st:'beigeBand',fl:8,h:25.6,src:'sat-inferred',cat:'life' },
+  { name: '文正苑6、7号楼', p:NE.wenzheng67,special:'graduate',st:'beigeBand',fl:8,h:25.6,src:'sat-inferred',cat:'life' },
   { name: '文华苑1号楼', p: rectPoly(531.6, -135.2, 81, 21.7, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
   { name: '文华苑2号楼', p: rectPoly(496.2, -81.1, 71, 20.2, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
   { name: '文华苑3号楼', p: rectPoly(465.7, -27, 71, 20.1, 0), special: 'hdorm', st: 'beigeBand', fl: 8, h: 25.2, src: 'sat', cat: 'life' },
@@ -408,6 +409,7 @@ if (TEACH_FORE) {
 const TEACH_TREES = [];
 
 const INFO = {
+  ...DORM_GROUP_INFO,
   '大学生活动中心': { d: '科学艺术中心，位于二食堂东侧。基建后勤处将其列为在建工程；2026 年 9 月 22 日通知安排三层楼面混凝土浇筑。二食堂东侧设有施工防护通道，公告预计留置至 2027 年 3 月。场景按这些资料显示施工围挡、结构楼板和防护通道；施工进度与通行以现场指引为准。', s: '基建后勤处在建项目清单、施工区域附图与施工通知；核对日期：2026-10-23。围挡范围按附图对齐周边道路；结构轮廓、层高和通道尺寸为示意，不能作为竣工外观或当前测量值。', links: ACTIVITY_CENTER.sources },
   '图书馆': { d: '江宁校区的中心建筑，正对中心广场与镜湖。主楼地上 7 层，前部为两层白色柱廊裙房与宽阔台阶，立面为灰色石材配白色边框与横向带窗。江宁校区馆面积约 2.3 万平方米，二层设借阅室与学术报告厅。', s: '层数：OpenStreetMap；面积与楼层功能：百度百科“中国药科大学图书馆”；立面：公开照片' },
   '药学博物馆': { d: '紧邻图书馆西侧的三层展馆，一面深灰石墙竖向镌刻馆名，主体为玻璃幕墙与悬挑灰色框架。馆内陈列药材标本、制药器具与药学史料。', s: '层数：OpenStreetMap；外观：百度百科配图' },
@@ -1219,7 +1221,7 @@ function paintNortheast(g,site=true) {
   for(const p of NE.reserves)paintParcel(g,p,'wood');
   for(const p of NE.patches) paintParcel(g,p.p,p.kind);
   if(!site) return;
-  fillPoly(g,NE.phase5Yard,'#c4bfb4');
+  fillPoly(g,NE.wenzhengYard,'#c4bfb4');
   fillPoly(g,NE.site,'#ab9476');
   const nets=[[[423,-512],[479,-526],[514,-502],[508,-463],[437,-458]],[[424,-451],[493,-459],[521,-433],[505,-403],[432,-410]],[[514,-506],[547,-511],[554,-462],[530,-453]]];
   for(const p of nets){g.save();g.beginPath();tracePoly(g,p);g.clip();g.fillStyle='#587668';g.fill();const bb=pBox(p);g.lineWidth=.26;g.strokeStyle='rgba(186,199,159,.45)';for(let x=bb[0]-80;x<bb[2]+80;x+=2){g.beginPath();g.moveTo(x,bb[1]);g.lineTo(x+70,bb[3]);g.stroke();}g.restore();}
@@ -1432,7 +1434,7 @@ function buildMask() {
   for (const r of D.pa) { traceLine(g, r.p); g.lineWidth = (PW[r.t] || 2.5) + 1.2; g.stroke(); }
   for (const q of D.pi) { g.beginPath(); tracePoly(g, q.p); g.fill(); }
   for (const q of D.sq) { g.beginPath(); tracePoly(g, q.p); g.fill(); }
-  for(const p of [NE.site,NE.beds,NE.phase5Yard]){g.beginPath();tracePoly(g,p);g.fill();}
+  for(const p of [NE.site,NE.beds,NE.wenzhengYard]){g.beginPath();tracePoly(g,p);g.fill();}
   for (const l of D.lu) if (l.k === 'parking' || l.k === 'railway') { g.beginPath(); tracePoly(g, l.p); g.fill(); }
   for (const p of OUT_BLD) { g.beginPath(); tracePoly(g, p); g.fill(); g.lineWidth = 4; g.stroke(); }
   g.beginPath(); tracePoly(g, PLAZAS.gate); g.fill(); g.beginPath(); tracePoly(g, PLAZAS.xueyuan); g.fill();
@@ -2881,7 +2883,7 @@ function addTree(type, x, z, s = 1) {
   // The photographed Double-A forecourt is open lawn, not a wooded parcel.
   if (x > -130 && x < 65 && z > -658 && z < -455) return;
   if(type!=='shrub' && x>-300 && x<-150 && z>-30 && z<90) s*=0.68;
-  if(pip(x,z,NE.site)||pip(x,z,NE.beds)||pip(x,z,NE.phase5Yard)||pip(x,z,ACTIVITY_CENTER.site))return;
+  if(pip(x,z,NE.site)||pip(x,z,NE.beds)||pip(x,z,NE.wenzhengYard)||pip(x,z,ACTIVITY_CENTER.site))return;
   const ap = ACTIVITY_CENTER.passage;
   if (segDist(x, z, [...ap[0], ...ap[1]]) < ACTIVITY_CENTER.passageWidth / 2 + 1) return;
   if (NO_TREE.some((q) => pip(x, z, q))) return;
@@ -4439,10 +4441,11 @@ function mapNames() {
   });
   for (const [code, u] of Object.entries(groups)) {
     const bs = u.idx.map((i) => BLD[i]), x = bs.reduce((a, b) => a + b.c[0], 0) / bs.length, z = bs.reduce((a, b) => a + b.c[1], 0) / bs.length;
-    PLACES.push({ name: code, cat: 'life', bld: u.idx, x, z, h: Math.max(...bs.map((b) => b.h)), unit: true, sub: `${u.g} ${u.n} 号楼 · 学生公寓` });
+    PLACES.push({ name: code, cat: 'life', bld: u.idx, x, z, h: Math.max(...bs.map((b) => b.h)), unit: true, dormGroup: u.g, sub: `${u.g} ${u.n} 号楼 · 学生公寓` });
   }
   for (const p of PLACES) {
     if (!p.dorm) continue;
+    p.dormGroup ||= p.name;
     const L = DORM_LETTER[p.name], summary = dormSummary(p.bld.map(i => BLD[i])), codes = summary.codes;
     p.dormCount = summary.count;
     if (L === 'H' && summary.numbers.length) { const ns = summary.numbers; p.name = `H${Math.min(...ns)}–${Math.max(...ns)} ${p.name}`; }
@@ -4475,7 +4478,7 @@ function select(p) {
   $('#info').hidden = false;
   $('#infoName').textContent = p.name;
   const bs = p.bld ? p.bld.map((i) => BLD[i]) : [];
-  const info = INFO[p.name] || INFO[bs[0]?.name] || null;
+  const info = INFO[p.name] || INFO[bs[0]?.name] || INFO[p.dormGroup] || null;
   let sub = p.sub || '';
   if (!sub && bs[0]) { const raw = bs[0].name; sub = raw && raw !== p.name && !/^学生第/.test(raw) ? raw.split(' / ')[1] || '' : ''; }
   const parts = [CATS[p.cat]?.name]; if (sub) parts.push(sub); if (p.inferred) parts.push('位置为推断');
@@ -4489,7 +4492,7 @@ function select(p) {
   const cell = (k, v, wide) => { const d = elt('div'); if (wide) d.style.gridColumn = 'span 2'; d.append(elt('span', '', k), elt('b', '', v)); return d; };
   $('#infoFacts').replaceChildren(...facts.map(([k, v], i) => cell(k, v, facts.length % 2 && i === facts.length - 1)), cell('参考坐标（WGS84）', `约 ${lat.toFixed(5)}° N, ${lon.toFixed(5)}° E`, true));
   let src = p.src || info?.s || geometrySource(bs);
-  if (bs.some((b) => /inferred/.test(b.src))) src += '。名称与位置为推断，以学校公布为准。';
+  if (bs.some((b) => /inferred/.test(b.src))) src += info?.nameConfirmed ? '三维位置与外形为近似重建。' : '。名称与位置为推断，以学校公布为准。';
   else if (bs.some((b) => b.src === 'sat')) src += '。OpenStreetMap 未收录，按卫星影像补建。';
   $('#infoSrc').textContent = src;
   for (const link of info?.links || []) {
@@ -5465,7 +5468,7 @@ function updateRide(dt) {
 // others but stops showing you to them.
 const PRESENCE_API = opts.presence || null;
 const NET_PAL = ['#f1f1ef', '#1c1d20', '#9aa0a6', '#c9ccd0', '#2c4a7a', '#8c2a2a', '#4a4f55', '#e8e2d2', '#2f6d4f', '#c48f2a', '#7b8ea3', '#d7b46a'];
-const NET = { on: false, busy: false, inflight: false, sid: null, key: null, name: '', t: 0, fail: 0, retry: 0, hidden: false, count: 0, shirt: 0, others: new Map(), greeted: false };
+const NET = { generation: 0, on: false, busy: false, inflight: false, sid: null, key: null, name: '', t: 0, fail: 0, retry: 0, hidden: false, count: 0, shirt: 0, others: new Map(), greeted: false };
 let NET_GEO = null;
 const nearestPal = (col) => { let bi = 0, bd = 1e9; NET_PAL.forEach((h, i) => { _c2.set(h); const d = (_c2.r - col.r) ** 2 + (_c2.g - col.g) ** 2 + (_c2.b - col.b) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; };
 function netGeo() {
@@ -5506,21 +5509,58 @@ function makeAvatar(name) {
   scene.add(root);
   return { root, body, limbs, car, carMat, bike, frameMat, tag, el, shirt, ph: Math.random() * 6, samples: [], x: 0, y: 0, z: 0, a: 0, m: 0, v: 0, last: 0 };
 }
-function netDrop(pid) { const o = NET.others.get(pid); if (!o) return; o.tag.removeFromParent(); o.el.remove(); scene.remove(o.root); NET.others.delete(pid); }
+function netDrop(pid) {
+  const o = NET.others.get(pid); if (!o) return;
+  NET.others.delete(pid); o.tag.removeFromParent(); o.el.remove(); scene.remove(o.root);
+  // The geometry, skin and trim are shared; only these three materials belong to this avatar.
+  o.shirt.dispose(); o.carMat.dispose(); o.frameMat.dispose();
+}
 function netClear() { for (const pid of [...NET.others.keys()]) netDrop(pid); }
-function netStart() {
-  if (!PRESENCE_API || NET.on || NET.busy) return;
+function netDisposeAssets() {
+  if (!NET_GEO) return;
+  const resources = new Set([...Object.values(NET_GEO), ...Object.values(NET_GEO.car)]);
+  NET_GEO = null;
+  for (const value of resources) if (typeof value?.dispose === 'function') value.dispose();
+}
+function netLeave(session) {
+  if (!PRESENCE_API || !session?.sid || !session?.key) return;
+  try { Promise.resolve(PRESENCE_API.leave({ sid: session.sid, key: session.key })).catch(() => {}); } catch (_) {}
+}
+const netCurrent = generation => !DISPOSED && mode === 'walk' && NET.generation === generation;
+async function netStart() {
+  if (DISPOSED || mode !== 'walk' || !PRESENCE_API || NET.on || NET.busy) return;
+  const generation = ++NET.generation;
   NET.busy = true;
-  PRESENCE_API.join().then((r) => {
+  try {
+    const r = await PRESENCE_API.join();
+    if (!netCurrent(generation)) { netLeave(r); return; }
     NET.busy = false;
-    if (mode !== 'walk' || !r || !r.sid) return;
-    Object.assign(NET, { on: true, sid: r.sid, key: r.key, name: r.name, fail: 0, t: 1, shirt: Math.floor(Math.random() * NET_PAL.length), greeted: false });
+    if (!r?.sid || !r?.key) { NET.retry = performance.now() + 20000; return; }
+    Object.assign(NET, { on: true, sid: r.sid, key: r.key, name: r.name, fail: 0, retry: 0, t: 1, shirt: Math.floor(Math.random() * NET_PAL.length), greeted: false });
     netHud();
-  }).catch(() => { NET.busy = false; NET.retry = performance.now() + 20000; });
+  } catch (_) {
+    if (netCurrent(generation)) { NET.busy = false; NET.retry = performance.now() + 20000; }
+  }
 }
 function netStop() {
-  if (NET.on && PRESENCE_API) { try { PRESENCE_API.leave({ sid: NET.sid, key: NET.key }); } catch (_) { } }
-  NET.on = false; NET.sid = NET.key = null; netClear(); netHud();
+  netLeave(NET);
+  NET.generation++;
+  Object.assign(NET, { on: false, busy: false, inflight: false, sid: null, key: null, count: 0, fail: 0, retry: 0, t: 0 });
+  netClear(); netHud();
+}
+async function netSync() {
+  const generation = NET.generation, sid = NET.sid, key = NET.key;
+  NET.inflight = true;
+  try {
+    const r = await PRESENCE_API.sync({ sid, key, s: netState().map((v, i) => (i === 4 || i === 5 ? v : Math.round(v * 100) / 100)), h: NET.hidden });
+    if (!netCurrent(generation) || !NET.on || NET.sid !== sid) return;
+    NET.inflight = false; NET.fail = 0;
+    if (r) netReceive(r);
+  } catch (_) {
+    if (!netCurrent(generation) || !NET.on || NET.sid !== sid) return;
+    NET.inflight = false;
+    if (++NET.fail >= 4) { netStop(); NET.retry = performance.now() + 6000; }
+  }
 }
 function netState() {
   if (DRIVE.on) return [DRIVE.x, DRIVE.y, DRIVE.z, angDiff(DRIVE.a, 0), 2, nearestPal(DRIVE.bodyMat.color), DRIVE.v];
@@ -5529,6 +5569,7 @@ function netState() {
   return [W.x, W.y, W.z, Math.atan2(-Math.cos(W.yaw), -Math.sin(W.yaw)), W.swim ? 1 : 0, NET.shirt, Math.hypot(W.vx, W.vz)];
 }
 function netReceive(r) {
+  if (DISPOSED || !NET.on || mode !== 'walk') return;
   const now = performance.now();
   NET.count = r.n || 0;
   for (const e of r.p || []) {
@@ -5543,21 +5584,19 @@ function netReceive(r) {
   netHud();
 }
 function netHud() {
+  if (DISPOSED) return;
   const show = mode === 'walk' && NET.on;
   $('#netChip').hidden = !show; $('#netCount').textContent = String(Math.max(1, NET.count));
   $('#walkNet').hidden = !PRESENCE_API; $('#walkNet').textContent = NET.hidden ? '已隐身' : '联机可见';
   $('#walkNet').setAttribute('aria-pressed', String(!NET.hidden));
 }
 function updateNet(dt) {
-  if (!PRESENCE_API) return;
-  if (mode !== 'walk') { if (NET.on) netStop(); return; }
+  if (DISPOSED || !PRESENCE_API) return;
+  if (mode !== 'walk') { if (NET.on || NET.busy || NET.inflight) netStop(); return; }
   if (!NET.on) { if (!NET.busy && performance.now() > NET.retry) netStart(); return; }
   NET.t += dt;
   if (NET.t >= 0.25 && !NET.inflight) {
-    NET.t = 0; NET.inflight = true;
-    PRESENCE_API.sync({ sid: NET.sid, key: NET.key, s: netState().map((v, i) => (i === 4 || i === 5 ? v : Math.round(v * 100) / 100)), h: NET.hidden })
-      .then((r) => { NET.inflight = false; NET.fail = 0; if (NET.on && r) netReceive(r); })
-      .catch(() => { NET.inflight = false; if (++NET.fail >= 4) { NET.on = false; NET.retry = performance.now() + 6000; netClear(); netHud(); } });
+    NET.t = 0; void netSync();
   }
   // draw everyone 300 ms in the past, interpolated between the two updates around that moment
   const tr = performance.now() - 300, cp = camera.position;
@@ -5922,6 +5961,7 @@ function setMode(m, at) {
   }
   controls.enabled = true;
   if (prev === 'walk') {
+    netStop();
     if (DRIVE.on) exitCar(); if (RIDE.on) exitBike(); setUnderwater(false);
     walkUnlock(); $('#app').classList.remove('walking', 'locked');
     WALK.keys.clear(); WALK.inspect = false; WALK.zoomOn = false; WALK.crouchOn = false;
@@ -6295,7 +6335,8 @@ return function dispose() {
   DISPOSED = true;
   cancelAnimationFrame(RAF);
   for (const fn of CLEANUP.splice(0)) { try { fn(); } catch (_) { } }
-  try { walkUnlock(); walkAudioClose(); netStop(); } catch (_) { }
+  try { walkUnlock(); walkAudioClose(); } catch (_) { }
+  try { netStop(); netDisposeAssets(); } catch (_) { }
   try { controls.enabled = false; } catch (_) { }
   try {
     scene.traverse((o) => {

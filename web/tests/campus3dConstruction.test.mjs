@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as THREE from 'three';
-import { NATATORIUM, buildingFacts, buildingListMeta } from '../src/views/services/campus3d/placeMetadata.js';
+import { NATATORIUM, DORM_GROUP_INFO, buildingFacts, buildingListMeta } from '../src/views/services/campus3d/placeMetadata.js';
 import { ACTIVITY_CENTER } from '../src/views/services/campus3d/constructionSites.js';
 
 const base = new URL('../src/views/services/campus3d/', import.meta.url);
@@ -13,7 +13,7 @@ const slice = (from, to) => app.slice(app.indexOf(from), app.indexOf(to));
 // and movement resolver. Only external actors and terrain outside this flat site
 // are absent; no renderer, WebGL, database, or test-only collider is substituted.
 const ctx = vm.createContext({
-  THREE, NATATORIUM, ACTIVITY_CENTER,
+  THREE, NATATORIUM, ACTIVITY_CENTER, DORM_GROUP_INFO,
   opts: {
     data: JSON.parse(readFileSync(new URL('osm-data.json', base), 'utf8')),
     outer: JSON.parse(readFileSync(new URL('osm-outer.json', base), 'utf8')),

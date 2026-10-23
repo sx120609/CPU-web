@@ -71,6 +71,24 @@
       "title": "关于江宁校区北门暂时封闭的通告",
       "publishedOn": "2025-06-20",
       "supports": "北门道路施工日期为2025-06-23至2025-09-07，临时开放时间表中的7:00–19:00针对东南门货运车辆，不能当作2026年北门永久时间表。"
+    },
+    {
+      "url": "https://xgc.cpu.edu.cn/81/3f/c18000a229695/page.htm",
+      "title": "11月学生社区活动上新",
+      "publishedOn": "2025-11-18",
+      "supports": "学工处明确将文正苑·经纬社区标为H4-H7组团。证明苑名和楼号范围，不证明各楼的模型轮廓或高度。"
+    },
+    {
+      "url": "https://jjc.cpu.edu.cn/61/db/c494a221659/page.htm",
+      "title": "研究生公寓五期项目试桩施工通告",
+      "publishedOn": "2025-04-30",
+      "supports": "施工附图圈定校区北部林地、北侧道路以南的独立地块，不在现有H6/H7位置。图中红框尚需可靠坐标配准，不能直接当测绘边界。"
+    },
+    {
+      "url": "https://njggzy.nanjing.gov.cn/njweb/fjsz/068001/068001001/20250807/4108c9c9-35a7-42f5-b5d6-654d35a37e5e.html",
+      "title": "研究生公寓五期项目监理招标公告",
+      "publishedOn": "2025-08-07",
+      "supports": "项目规划地上19层、地下1层，高度约59.80米。属于规划工程参数，不是2026-10已建现状，也不适用于文正苑H6/H7。"
     }
   ],
   "fixed": [
@@ -112,19 +130,45 @@
       "after": "先尝试原始鼠标输入与普通锁定，均失败后切换已有拖动视角控制并聚焦画布；同步异常、Promise拒绝、旧版error事件和离开页面后的迟到结果均处理。",
       "evidence": "8项异步回归覆盖失败、重试、Esc暂停、离开与重新进入；内置浏览器实际显示降级说明，拖动视角和W移动改变画布，Esc后鸟瞰aria-pressed=true。",
       "remaining": "未验证支持正常指针锁定的实体桌面浏览器及原生壳；正常锁定/退出路径目前为模拟API行为检查。"
+    },
+    {
+      "id": "wenzheng-identity",
+      "before": "H6/H7对应的内部几何变量名为phase5，易与研究生公寓五期项目混淆；详情只给通用宿舍说明，名称仍被一概标为推断。",
+      "after": "以学工处资料确认文正苑H4-H7，组团和单栋详情均附官方链接；几何变量改名wenzheng67，保留现有宿舍几何，不套用五期19层规划。",
+      "evidence": "学工处网页、五期试桩附图、项目招标公告；元数据回归及浏览器H6/H7详情。",
+      "remaining": "五期北侧施工地块仍需准确配准与最新施工进度资料；H6/H7具体外观与层数仍属估算。"
+    },
+    {
+      "id": "presence-generation",
+      "before": "可控异步测试复现旧join在离开后重新启用联机，旧sync在重入后污染新会话，旧失败重设新会话重试状态。",
+      "after": "每次加入/退出使用独立代次；过期回调不能改新状态；迟到的加入结果主动leave；退出模式时同步清理；四次同步失败释放旧会话再重试。",
+      "evidence": "campus3dPresenceLifecycle.test.mjs：10项回归修复前失败、修复后通过；实际本地presence路由与浏览器退出/重入验证。"
+    },
+    {
+      "id": "presence-resource-lifetime",
+      "before": "移除远端角色不释放其3个独占材质；离开整页后网络共享几何与材质缓存也没有统一释放。",
+      "after": "单个角色移除只释放独占材质，不销毁其他角色共享的资源；整页销毁再释放网络缓存。",
+      "evidence": "实际Three材质/几何的dispose事件计数，检查单角色释放、共享资源保留、整页只释放一次；浏览器退出后远端标签为0。",
+      "remaining": "尚未用GPU内存采样证明整个地图所有资源的长期稳定性。"
+    },
+    {
+      "id": "presence-expiry-count",
+      "before": "HTTP测试复现玩家超过12秒未更新后已不出现在附近列表，却仍被计入在线人数；旧凭据可以同步并复活。",
+      "after": "每次sync先按同一时间点清理过期玩家，再验证会话并统计人数。",
+      "evidence": "实际HTTP测试覆盖12秒边界、12秒加1毫秒与旧凭据404；实际本地测试游客进程突然停止后浏览器人数2→1且远端标签消失。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "22 passed, 0 failed (21 frontend + 1 server)",
-      "scope": "真实模型数据与宿舍统计7项；施工顶点/道路范围/碰撞/防护通道/出生点6项；指针锁定异步流程8项；实际HTTP游客presence加入/可见/隐身/凭证校验/离开1项。",
-      "limitation": "施工碰撞测试执行实际GB与碰撞函数，但地面按局部平地处理，未模拟其他行人车辆、原生设备或生产登录。"
+      "result": "33 passed, 0 failed (31 frontend + 2 server)",
+      "scope": "原有元数据/施工/指针锁定21项；加入/同步代次、重连、迟到回调、独占与共享资源释放10项；真实HTTP游客与过期边界2项。",
+      "limitation": "异步回归使用可控API响应与真实Three对象，不等同于高延迟真实网络、登录账号和GPU内存压力验证。"
     },
     "typeCheck": {
       "command": "npm run type-check --prefix web",
-      "result": "passed after construction and pointer-lock changes",
-      "limitation": "JS文件的运行行为由专门测试及浏览器验证；vue-tsc本身不覆盖JS逻辑。"
+      "result": "passed",
+      "limitation": "Vue类型检查不覆盖JS逻辑；JS逻辑另有单元与浏览器检查。"
     },
     "browser": {
       "environment": "本地Vite，127.0.0.1:5186，Codex内置Chromium",
@@ -137,26 +181,41 @@
         "390×844竖屏、844×390横屏：详情未横向溢出，选中后列表自动收起；已恢复默认视口。",
         "科学艺术中心可检索到大学生活动中心，在建状态、公告进度、模型说明与四个学校来源链接正确。",
         "施工围挡和结构实际绘制，食堂东侧可见防护通道；canvas截图已保存。",
-        "实地看看将视角置于围挡外街道；鼠标锁定失败后不再陷入暂停界面，实际拖动和W按键改变场景视角/位置，Esc返回鸟瞰。"
+        "实地看看将视角置于围挡外街道；鼠标锁定失败后不再陷入暂停界面，实际拖动和W按键改变场景视角/位置，Esc返回鸟瞰。",
+        "挂载实际campus3dPresenceRouter到临时本地游客适配器；浏览器经Vue请求封装与Vite代理join/sync成功，在线提示为2人，远端标签与3D角色可见。",
+        "退出探索后标签0且在线提示隐藏，本地另一游客同步看到人数降为1；再次进入建立新游客会话，人数回2且只有一个远端角色。",
+        "突然终止本地测试游客进程（不发送leave），超过服务端过期窗口后浏览器人数回1且标签为0。",
+        "H6/H7详情显示文正苑·经纬社区及学工处来源，不再将已确认的苑名标作推断。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
-        "本地未启动后端，站点初始化请求返回500；地图数据在客户端可独立加载。联机presence、登录和生产API未验证。",
-        "手机仅测试视口布局，未模拟触摸指针，未测试原生设备或WebKit。"
+        "手机仅测试视口布局，未模拟触摸指针，未测试原生设备或WebKit。",
+        "本轮仅挂载真实游客presence路由，其他站点API返回503，未启用数据库、后台作业或登录账号；不能据此声称整个生产后端或CSRF/登录联机已验收。临时服务和测试游客进程已停止。",
+        "鼠标锁定降级模式的暂停面板一直隐藏，当前隐身/音效按钮仍仅位于该面板内；后续应补可访问的设置入口。"
       ],
       "artifacts": [
         "output/campus3d-audit-20261023/activity-site.png",
         "output/campus3d-audit-20261023/activity-safety-plan.jpg",
         "output/campus3d-audit-20261023/activity-notice.html",
-        "output/campus3d-audit-20261023/activity-walk.png"
+        "output/campus3d-audit-20261023/activity-walk.png",
+        "output/campus3d-audit-20261023/graduate5-site.png",
+        "output/campus3d-audit-20261023/graduate5-project.jpg",
+        "output/campus3d-audit-20261023/presence-avatar.png"
       ]
+    },
+    "serverTypeCheck": {
+      "command": "node server/node_modules/typescript/bin/tsc --noEmit -p server/tsconfig.json",
+      "result": "failed",
+      "evidence": "GreedyNailongAttempt、WorkshopWork等模型在此工作树schema存在，但共享生成的PrismaClient类型缺少相应成员；出现greedyNailong/workshop等路由的大量类型错误。",
+      "environment": "server/node_modules是指向CPU-web/server/node_modules的junction，属于主工作树共享依赖。",
+      "action": "未改动共享Prisma生成物以免影响其他工作树；服务端全量类型检查不能报告通过。本轮presence路由的真实HTTP回归已通过。"
     }
   },
   "remainingRequirements": [
     {
       "scope": "建筑与实际对齐",
       "status": "incomplete",
-      "nextEvidence": "活动中心已改为有日期依据的施工示意，仍需最新实景/测绘校准实际结构和入口；研究生公寓五期仍在官方在建清单中，现模型H6/H7的身份及完工外观需重点复核。继续逐栋核对西北科研楼、食堂、图书馆、教学楼等。"
+      "nextEvidence": "五期试桩附图已明确为北部林地独立项目，不是H6/H7；需对红框做可复核坐标配准、核实当前结构进度并补建。文正苑H4-H7苑名已由学工处证实，轮廓/高度仍待实景复核。其他建筑逐项核验继续。"
     },
     {
       "scope": "道路、水体与景观",
@@ -175,8 +234,8 @@
     },
     {
       "scope": "联机与资源生命周期",
-      "status": "not_verified",
-      "nextEvidence": "游客presence HTTP回归通过，浏览器未连接完整后端。代码检查发现netStart/updateNet的迟到响应缺少会话代次校验，netDrop仅移除对象而未释放独占材质；后续先用可控异步测试复现并修复，再验证真实多用户与进出页面的释放。"
+      "status": "partially_verified",
+      "nextEvidence": "会话代次、迟到回调、网络头像资源释放和12秒过期已修复并回归，真实本地游客join/sync/leave/突然断线链路已测。仍需登录/CSRF、隐身设置可访问性、真实双浏览器、弱网与全场景GPU释放/上下文恢复验证。"
     },
     {
       "scope": "生成源维护",
@@ -189,5 +248,5 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "19f3087132bb1ae787df1316be6c28faaf1bb998"
+  "lastVerifiedParentCommit": "11732d827b6ee3cc4ad9fca07ee08f4bc9245eb4"
 }

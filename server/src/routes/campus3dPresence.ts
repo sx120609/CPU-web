@@ -86,13 +86,15 @@ campus3dPresenceRouter.post("/join", authOptional, async (req, res, next) => {
 campus3dPresenceRouter.post("/sync", validate(syncSchema), (req, res, next) => {
   try {
     const body = req.body as z.infer<typeof syncSchema>;
+    const now = Date.now();
+    // Presence and its count have the same expiry boundary. Sweep before lookup
+    // so an expired credential cannot revive an abandoned session by syncing.
+    sweep(now);
     const me = findPlayer(body.sid, body.key);
     if (!me) throw Errors.notFound("联机已断开，请重新进入");
-    const now = Date.now();
     me.state = body.s.map((v, i) => (i === 4 || i === 5 ? v : Math.round(v * 100) / 100));
     me.hidden = Boolean(body.h);
     me.lastSync = now;
-    if (Math.random() < 0.05) sweep(now);
     const [x, , z] = me.state;
     const near: Array<[number, Player]> = [];
     for (const p of players.values()) {
