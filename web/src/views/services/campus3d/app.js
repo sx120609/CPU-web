@@ -14,6 +14,7 @@ import { RESEARCH_CENTERS, RESEARCH_INFO, CHEMISTRY_COURT, RESEARCH_TEMPORARY_FO
 import { PEDESTRIAN_RADIUS, PEDESTRIAN_WANDER, pointSegmentDistance, segmentDistance, clearRouteSpans } from './pedestrianRoutes.js';
 import { GRADUATE_RESIDENCE, graduateVolumes } from './graduateResidences.js';
 import { sportsPitches, courtFrame, sportsPlaces, SPORTS_SOURCE } from './sportsGrounds.js';
+import { STADIUM_STAND, stadiumStandLayout } from './stadiumStand.js';
 import { SAFETY_CENTER_PASSAGE, annotateCoveredAccess, splitCoveredGround, groundFootprints, buildingSolidAt, buildingTopAt, passageApproach } from './coveredAccess.js';
 
 export function mountCampus3D(root, opts) {
@@ -421,7 +422,7 @@ const INFO = {
   '一食堂': { d: '学生第一食堂，位于学生公寓区西侧。四层，深灰面砖墙面，窗间饰白色竖向条板。', s: '名称与位置：OpenStreetMap；外观参照二食堂实景照片' },
   '二食堂': { d: '学生第二食堂，四层，深灰面砖墙面配白色窗下板，转角立面有竖排“二食堂”字样；楼前常停满自行车。', s: '名称与位置：OpenStreetMap；外观：实景照片' },
   '体育馆': { d: '校园南部的综合体育馆，银灰色金属拱形屋面，正立面为带菱形桁架的玻璃幕墙。', s: '位置：OpenStreetMap；外观：实景照片' },
-  '体育场': { d: '田径场内为足球场，蓝色跑道及南北半圆区环绕草坪，西侧是白色顶棚看台。六片网球场位于田径场北侧，东北侧还有排球场、篮球场与另一片足球场。', s: '位置：OpenStreetMap；地面布局：2025-04-06 公开影像。跑道尺寸、看台高度与结构为模型估算，未完成现状测绘核验。' },
+  '体育场': { d: '田径场内为足球场，蓝色跑道及南北半圆区环绕草坪。西侧看台外沿弯曲、两端收窄，白色顶棚分为连续拱形单元，中央为红色座席和主席台。六片网球场位于田径场北侧，东北侧还有排球场、篮球场与另一片足球场。', s: '位置：OpenStreetMap；地面及看台轮廓：2025-04-06 影像；看台外观：2025、2026 年学校活动照片。影像中可辨识15段顶棚；高度、座席排数、柱网及隐藏结构为近似重建，未完成现状测绘核验。' },
   '游泳馆': { d: '由原室外游泳池改扩建为室内恒温游泳馆，2026 年 7 月 1 日正式开馆。项目公告载明地上 2 层、地下 1 层，建筑高度 14.80 米。馆内的海鲸天悦运动健身中心于 2026 年 9 月 18 日开馆。外形参照基建后勤处项目配图，轮廓仍为旧泳池位置上的近似重建。', s: '学校新闻、基建后勤处项目公告、教育发展基金会；核对日期：2026-10-23。建筑高度为项目公告值，非竣工实测；模型占地不等于项目总建筑面积。', links: NATATORIUM.sources },
   '药用植物园温室': { d: '药用植物园东区的展示温室，园内栽培多种药用植物，是药大最有特色的校园景观之一。', s: '位置：OpenStreetMap；简介：去哪儿网游记' },
   '实训楼': { d: '位于明湖东岸、药用植物园南侧，设有工学院实验室。校方2026年开放周通知列出了楼内的制药工程、生物医学工程和食品科学实验室。当前外形与层高为近似模型，楼体分区和具体入口仍待核对。', s: '用途：工学院2026-06-04通知。轮廓：OSM way 553656876，北侧步道：way 553656864，均为2021-08-06版本；2026-10-23重新查询核对。2025影像尚不能消除屋顶侧向偏移，不据此调整地面边界。', links:[{title:'工学院：2026年科研实验室开放周',url:'https://gxy.cpu.edu.cn/ad/57/c12276a240983/page.htm'},{title:'OSM：实训楼轮廓',url:'https://www.openstreetmap.org/way/553656876'},{title:'OSM：北侧步道',url:'https://www.openstreetmap.org/way/553656864'}], nameConfirmed:true },
@@ -1384,6 +1385,8 @@ function paintSports(g) {
     if (q === TRACK_FIELD) {
       STADIUM = ob;
       const st = 84.39 / 2, r0 = 36.5, r1 = r0 + 8 * 1.22;
+      // The dated image shows a paved apron between the west stand and track.
+      g.fillStyle='#b48372';g.fillRect(-STADIUM_STAND.bodyHalfLength,r1+.5,STADIUM_STAND.bodyHalfLength*2,STADIUM_STAND.frontOffset-r1-.5);
       const track = (r) => { g.beginPath(); g.moveTo(-st, -r); g.lineTo(st, -r); g.arc(st, 0, r, -Math.PI / 2, Math.PI / 2); g.lineTo(-st, r); g.arc(-st, 0, r, Math.PI / 2, Math.PI * 1.5); g.closePath(); };
       track(r1 + 1.5); g.fillStyle = '#3f6aa6'; g.fill();
       track(r0); g.fillStyle = '#6486b8'; g.fill();
@@ -2543,52 +2546,9 @@ function buildFence() {
 function buildSports() {
   OWNER = -1;
   if (STADIUM) {
-    const ob = STADIUM, perp = [-ob.uz, ob.ux], west = perp[0] < 0 ? 1 : -1, r1 = 36.5 + 8 * 1.22;
+    const ob = STADIUM, perp = [-ob.uz, ob.ux], west = perp[0] < 0 ? 1 : -1;
     const P = (u, v) => [ob.cx + ob.ux * u + perp[0] * v * west, ob.cz + ob.uz * u + perp[1] * v * west];
-    const d0 = r1 + 3.5, rows = 24, U = 74;
-    { const [x, z] = P(0, d0 - 0.6); addBox('concrete', x, 0, z, U * 2, 1.2, 1.4, ob.ang, 'concrete'); }
-    for (let k = 0; k < rows; k++) {
-      const v = d0 + 0.6 + k * 0.85, top = 1.4 + k * 0.48;
-      for (let u0 = -U; u0 < U; u0 += 12) {
-        const mid = u0 + 6, red = Math.abs(mid) < 16, aisle = false;
-        const key = red ? 'seatRed' : 'seatBlue';
-        const [x, z] = P(mid, v); addBox('concrete', x, 0, z, 11.2, 0.86, top, ob.ang, 'concrete');
-        for (let seat = 0; seat < 20; seat++) { const [sx, sz] = P(u0 + 0.55 + seat * 0.54, v); addBox(key, sx, top, sz, 0.45, 0.42, 0.18, ob.ang); addBox(key, sx, top + 0.18, sz, 0.45, 0.1, 0.35, ob.ang); }
-        void aisle;
-      }
-      if (k % 8 === 7) { const [x, z] = P(0, v + 0.43); addBox('concrete', x, top, z, U * 2, 0.4, 0.5, ob.ang, 'concrete'); }
-    }
-    const back = d0 + rows * 0.85 + 1.2;
-    const topY = 1.4 + rows * 0.48;
-    addPrism('f:stoneGrey', [P(-U - 2, back), P(U + 2, back), P(U + 2, back + 4), P(-U - 2, back + 4)], 0, topY + 2.5, 'roof:light');
-    for (const sg of [-1, 1]) { const [x, z] = P(sg * (U + 0.6), (d0 + back) / 2); addBox('concrete', x, 0, z, back - d0, 1.2, topY + 0.6, ob.ang + Math.PI / 2, 'concrete'); }
-    { const [sx, sz] = P(0, d0 + 8.6); addSign('精业济群', sx, 6.3, sz, -perp[0] * west, -perp[1] * west, 1.9, { color: '#ffffff', bg: '#c41a20', fs: 110, gap: 0.6, metal: 0, rough: 0.6 }); }
-    const bays = 8, bw = (U * 2 + 4) / bays, yb = 27, yf = 19.5, arch = 4.2, depth = rows * 0.85 + 9;
-    const vb = back + 2, vf = vb - depth;
-    const rib = (s, t) => { const v = lerp(vb, vf, t), y = lerp(yb, yf, t) + Math.sin(Math.PI * t) * 2.4; return [v, y]; };
-    const M = buf('membrane'); M.cur = -1;
-    for (let i = 0; i < bays; i++) {
-      const u0 = -U - 2 + i * bw;
-      const NS = 10, NT = 10;
-      const pt = (si, ti) => { const sN = si / NS, tN = ti / NT, u = u0 + sN * bw; const [v, y] = rib(sN, tN); const [x, z] = P(u, v); return [x, y + Math.sin(Math.PI * sN) * arch * (0.35 + 0.65 * tN), z, sN, tN]; };
-      for (let si = 0; si < NS; si++) for (let ti = 0; ti < NT; ti++) M.quadO(pt(si, ti), pt(si + 1, ti), pt(si + 1, ti + 1), pt(si, ti + 1), 0, 1, 0);
-    }
-    for (let i = 0; i <= bays; i++) {
-      const u = -U - 2 + i * bw, pts = [];
-      for (let k = 0; k <= 12; k++) { const t = k / 12, [v, y] = rib(0, t); pts.push([...P(u, v), y]); }
-      for (let k = 0; k < 12; k++) { const a = pts[k], b2 = pts[k + 1]; addBeam('white', [a[0], a[2] - 0.15, a[1]], [b2[0], b2[2] - 0.15, b2[1]], 0.24); addBeam('white', [a[0], a[2] - 0.95, a[1]], [b2[0], b2[2] - 0.95, b2[1]], 0.18); addBeam('metal', [a[0], a[2] - 0.95, a[1]], [b2[0], b2[2] - 0.15, b2[1]], 0.1); }
-      const [cx2, cz2] = P(u, vb); addCyl('white', cx2, 0, cz2, 0.55, yb - 0.5, 10);
-      const [fx, fz] = P(u, vb - depth * 0.55); addCyl('white', fx, 1.4 + rows * 0.48, fz, 0.32, lerp(yb, yf, 0.55) + 1.6 - (1.4 + rows * 0.48), 8);
-    }
-    for (let i = 0; i < bays; i++) for (const t of [0, 0.5, 1]) {
-      const [v, y] = rib(0, t); const u0 = -U - 2 + i * bw;
-      for (let j = 0; j < 12; j++) {
-        const a = j / 12, c = (j + 1) / 12, p0 = P(u0 + a * bw, v), p1 = P(u0 + c * bw, v);
-        const y0 = y + Math.sin(Math.PI * a) * arch * (0.35 + 0.65 * t) - 0.15, y1 = y + Math.sin(Math.PI * c) * arch * (0.35 + 0.65 * t) - 0.15;
-        addBeam('white', [p0[0], y0, p0[1]], [p1[0], y1, p1[1]], 0.13);
-        addBeam('white', [p0[0], y0 - 0.7, p0[1]], [p1[0], y1, p1[1]], 0.08);
-      }
-    }
+    buildStadiumStand(ob);
     for (const s2 of [-1, 1]) {
       const [gx, gz] = P(s2 * 52.5, 0), gp = [-ob.uz, ob.ux];
       for (const v of [-3.66, 3.66]) addCyl('white', gx + gp[0] * v, 0, gz + gp[1] * v, 0.07, 2.44, 6);
@@ -2616,6 +2576,53 @@ function buildSports() {
         for (const v of [-3.6, 3.6]) { const [px, pz] = P(s * (ob.L / 2 - 1.5), v); addCyl('white', px, 0, pz, 0.07, 2.3, 6); }
       }
     }
+  }
+}
+function buildStadiumStand(ob) {
+  const q=STADIUM_STAND,l=stadiumStandLayout(ob),P=l.point;
+  // A tapered stand, not a rectangular block extending across both end aprons.
+  addPrism('concrete',l.footprint,0,q.modelBaseHeight,'concrete');
+  PROPS.push({p:l.footprint,c:pCentroid(l.footprint),base:0,top:q.modelBaseHeight,inst:true});
+  for(let k=0;k<q.modelRows;k++){
+    const v=q.frontOffset+1+k*q.modelRowDepth,half=l.rowHalfLength(v+q.modelRowDepth/2),top=q.modelBaseHeight+k*q.modelRowRise;
+    addPrism('concrete',[P(-half,v-.5),P(half,v-.5),P(half,v+.5),P(-half,v+.5)],q.modelBaseHeight,top+.08,'concrete');
+    for(let u=-half+.6;u<half-.6;u+=.56){
+      const aisle=Math.abs(Math.abs(u)-37)<3.4||Math.abs(Math.abs(u)-18)<1.1;
+      if(aisle||(Math.abs(u)<6.5&&k<9))continue;
+      const [x,z]=P(u,v),key=Math.abs(u)<18?'seatRed':'seatBlue';
+      addBox(key,x,top+.1,z,.44,.42,.16,ob.ang);addBox(key,x,top+.26,z,.44,.1,.35,ob.ang);
+    }
+  }
+  // Front glazing is a facade detail, not a claim that every panel is an entrance.
+  for(let u=-66;u<=66;u+=8){
+    const [x,z]=P(u,q.frontOffset-.025);addBox('dark',x,.5,z,6.8,.05,2.2,ob.ang);
+    for(const du of [-3.4,0,3.4]){const p=P(u+du,q.frontOffset-.07);addCyl('metal',p[0],.5,p[1],.035,2.2,4);}
+  }
+  const booth=[P(-6.3,q.frontOffset+1),P(6.3,q.frontOffset+1),P(6.3,q.frontOffset+9),P(-6.3,q.frontOffset+9)];
+  addPrism('f:stoneGrey',booth,q.modelBaseHeight,6.4,'roof:light');
+  {const [x,z]=P(0,q.frontOffset+.96);addBox('dark',x,q.modelBaseHeight+.6,z,5.4,.06,1.5,ob.ang);}
+  const roof=buf('seatRed'),A=P(-6.5,q.frontOffset+.6),B=P(6.5,q.frontOffset+.6),C=P(6.5,q.frontOffset+9.3),D2=P(-6.5,q.frontOffset+9.3);
+  roof.quadO([A[0],6.45,A[1]],[B[0],6.45,B[1]],[C[0],7.3,C[1]],[D2[0],7.3,D2[1]],0,1,0);
+  {const [x,z]=P(0,q.frontOffset+.5);addSign('精业济群',x,6.1,z,ob.uz*l.west,-ob.ux*l.west,.7,{color:'#ffffff',bg:'#c41a20',fs:110,gap:.3});}
+  for(let u=-66;u<=66;u+=4){const a=P(u,q.frontOffset-.1);addCyl('metal',a[0],q.modelBaseHeight,a[1],.035,.9,4);}
+  {const a=P(-66,q.frontOffset-.1),b=P(66,q.frontOffset-.1);addBeam('metal',[a[0],q.modelBaseHeight+.9,a[1]],[b[0],q.modelBaseHeight+.9,b[1]],.045);}
+  const membrane=buf('membrane');membrane.cur=-1;
+  for(let bay=0;bay<q.bays;bay++){
+    for(let si=0;si<8;si++)for(let ti=0;ti<10;ti++)membrane.quadO(l.roof(bay,si/8,ti/10),l.roof(bay,(si+1)/8,ti/10),l.roof(bay,(si+1)/8,(ti+1)/10),l.roof(bay,si/8,(ti+1)/10),0,1,0);
+    for(const t of [0,.5,1])for(let j=0;j<12;j++){
+      const a=l.roof(bay,j/12,t),b=l.roof(bay,(j+1)/12,t);
+      addBeam('white',a,b,.1);addBeam('white',[a[0],a[1]-.55,a[2]],[b[0],b[1]-.55,b[2]],.07);addBeam('white',[a[0],a[1]-.55,a[2]],b,.05);
+    }
+  }
+  for(let i=0;i<=q.bays;i++){
+    const bay=Math.min(i,q.bays-1),s=i===q.bays?1:0;
+    for(let k=0;k<12;k++){
+      const a=l.roof(bay,s,k/12),b=l.roof(bay,s,(k+1)/12);
+      addBeam('white',a,b,.18);addBeam('white',[a[0],a[1]-.8,a[2]],[b[0],b[1]-.8,b[2]],.12);addBeam('white',[a[0],a[1]-.8,a[2]],b,.07);
+    }
+    const rear=l.roof(bay,s,0),brace=l.roof(bay,s,.35);
+    addCyl('concrete',rear[0],0,rear[2],.38,rear[1]-.6,8);
+    addBeam('white',[rear[0],rear[1]-3,rear[2]],[brace[0],brace[1]-.5,brace[2]],.22);
   }
 }
 function buildCourtNet(court) {
@@ -4586,7 +4593,7 @@ function buildPlaces() {
   PLACES.push({ name: '正门', cat: 'gate', x: GATE.x, z: GATE.z, h: 6, major: true, sub: '龙眠大道 639 号', desc: '面向龙眠大道的主入口，门外即南京地铁 1 号线终点站“中国药科大学”站。校名石墙刻官方书法“中国药科大学”，墙后七根灯柱高低错落；两条车道夹着中轴，三座方框圆洞景墙“连中三元”沿中轴通向镜湖与图书馆。', src: '闸机与大门位置：OpenStreetMap；外观：去哪儿网实拍、“学习强国”图片' });
   const garden = D.g.filter((q) => q.k === 'grass' || q.k === 'meadow').map((q) => ({ q, c: pCentroid(q.p) })).filter(({ c }) => c[0] > 150 && c[1] < -600)[0];
   PLACES.push({ name: '药用植物园', cat: 'scenic', x: garden ? garden.c[0] : 320, z: garden ? garden.c[1] : -720, h: 4, major: true, sub: '校园北部，分东、西两区', desc: '药大最具特色的校园景观，栽培多种药用植物，东区有展示温室与管理用房，园内水塘曲径相连。', src: '位置：OpenStreetMap；简介：去哪儿网游记' });
-  if (STADIUM) PLACES.push({ name: '体育场', cat: 'sport', x: STADIUM.cx, z: STADIUM.cz, h: 6, major: true, sub: '田径场 · 足球场 · 西看台', desc: INFO['体育场'].d, src: INFO['体育场'].s, links:SPORTS_SOURCE.links });
+  if (STADIUM) PLACES.push({ name: '体育场', cat: 'sport', x: STADIUM.cx, z: STADIUM.cz, h: 6, major: true, sub: '田径场 · 足球场 · 西看台', desc: INFO['体育场'].d, src: INFO['体育场'].s, links:[...STADIUM_STAND.links,...SPORTS_SOURCE.links] });
   PLACES.push(...sportsPlaces(COURTS));
   PLACES.push({ name: '龙眠大道', cat: 'transit', x: -520, z: 330, h: 4, sub: '地铁 1 号线高架沿路而行' });
   PLACES.push({ name: GRADUATE_PHASE_FIVE.name, cat: 'life', x: GRADUATE_PHASE_FIVE.center[0], z: GRADUATE_PHASE_FIVE.center[1], h: 4, major: true, sub: '北门西侧 · 通知参考范围', referenceArea: GRADUATE_PHASE_FIVE.referenceArea, viewFrom: GRADUATE_PHASE_FIVE.viewFrom });

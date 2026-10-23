@@ -2665,10 +2665,511 @@
       "球场中心元数据不是每个边界像素日期的证明；不得把整幅拼接图统一标成2025影像。",
       "没有2026实测坐标；场线、球网高度、围网与入口仍是模型示意，不能据旧影像宣布当前通行或开放。",
       "东侧三片狭长小场地、北侧沙地用途及其设施尚未确认，未擅自标为羽毛球或射箭场。",
-      "2025体育场顶棚拆旧换新已有校方图文，但当前模型直线看台与影像弧形外沿、分跨数量仍有差异，需进一步核对并修正。",
       "2025年网球场、篮球场维修成交公告有第三方检索线索，尚未取得可独立核验的校方施工图与竣工资料。",
       "2026课程表支持新宿舍区有匹克球场，尚未可靠配准具体位置。",
-      "球场近距离场线仍依赖低分辨率地面贴图；本轮没有宣称场线细节或全场景视觉验收已完成。"
+      "球场近距离场线仍依赖低分辨率地面贴图；本轮没有宣称场线细节或全场景视觉验收已完成。",
+      "看台弧形轮廓和15段顶棚已补影像、2025/2026学校照片并修正；精确基底、高度、座席排数与入口仍待核验，详见stadiumStand。"
+    ]
+  },
+  "stadiumStand": {
+    "checkedOn": "2026-10-23",
+    "status": "projected_shape_and_visible_features_partially_verified",
+    "imagery": {
+      "capture": "sports-20261023.png",
+      "georeference": "sports-20261023-georef.json",
+      "sourceDate": "2025-04-06",
+      "declaredAccuracyMeters": 8.47,
+      "declaredResolutionMeters": 0.31,
+      "sampleScope": "15 separate canopy-bay center samples; not a pixelwise guarantee",
+      "metadata": {
+        "path": "output/campus3d-audit-20261023/stadium-roof-metadata.json",
+        "sha256": "b3c3395926c5de7072a2e3f1772a3b336350214f0712f4b49a265f82b5c9882c"
+      },
+      "pointSamples": [
+        {
+          "bay": 1,
+          "modelPoint": [
+            142.48222222222222,
+            495.04999999999995
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 2,
+          "modelPoint": [
+            139.94,
+            503.04999999999995
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 3,
+          "modelPoint": [
+            137.7888888888889,
+            511.04999999999995
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 4,
+          "modelPoint": [
+            136.0288888888889,
+            519.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 5,
+          "modelPoint": [
+            134.66000000000003,
+            527.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 6,
+          "modelPoint": [
+            133.6822222222222,
+            535.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 7,
+          "modelPoint": [
+            133.09555555555556,
+            543.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 8,
+          "modelPoint": [
+            132.9,
+            551.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 9,
+          "modelPoint": [
+            133.09555555555556,
+            559.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 10,
+          "modelPoint": [
+            133.6822222222222,
+            567.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 11,
+          "modelPoint": [
+            134.66000000000003,
+            575.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 12,
+          "modelPoint": [
+            136.0288888888889,
+            583.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 13,
+          "modelPoint": [
+            137.7888888888889,
+            591.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 14,
+          "modelPoint": [
+            139.94,
+            599.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        },
+        {
+          "bay": 15,
+          "modelPoint": [
+            142.48222222222222,
+            607.05
+          ],
+          "source": {
+            "SRC_DATE": 20250406,
+            "SRC_ACC": 8.47,
+            "SRC_RES": 0.31,
+            "SRC_DESC": "WV03",
+            "BlockName": "DYNAMIC_ESRI_Nanjing_25Q3",
+            "ReleaseName": "Raster Basemaps 2025.R11",
+            "MinMapLevel": 19,
+            "MaxMapLevel": 19,
+            "DrawOrder": 80
+          }
+        }
+      ]
+    },
+    "schoolReferences": [
+      {
+        "url": "https://jjh.cpu.edu.cn/article/17192",
+        "title": "我校举行第五届体育文化节开幕式暨趣味运动会决赛",
+        "publishedOn": "2026-03-30",
+        "eventDate": "2026-03-29",
+        "supports": "照片可见连续弧形顶棚、后排支承、中央红色座席与写有精业济群的主席台。没有测量尺寸。",
+        "html": {
+          "path": "output/campus3d-audit-20261023/stadium-2026-school.html",
+          "sha256": "38d5bddec80dbe05568ff0383705bfac216bcac7a37c53b34772dc83db30c0eb"
+        },
+        "images": [
+          {
+            "url": "https://xyh.cpu.edu.cn/upload/static/2026/03/30/be4e85731fe543a2a1258c69555a8540.png",
+            "file": "stadium-2026-school-0.png",
+            "size": [
+              1266,
+              712
+            ],
+            "path": "output/campus3d-audit-20261023/stadium-2026-school-0.png",
+            "sha256": "a11459f6fb49a7304d6ca867242fe8d067667c72c93363dbc94b3f748eda5209"
+          },
+          {
+            "url": "https://xyh.cpu.edu.cn/upload/static/2026/03/30/b3c27e1374c44083b630572829494eb7.jpg",
+            "file": "stadium-2026-school-1.jpg",
+            "size": [
+              1268,
+              951
+            ],
+            "path": "output/campus3d-audit-20261023/stadium-2026-school-1.jpg",
+            "sha256": "42675fda5929e44461ac4de6e7026966aef713497ad4903766020b7ece3203cb"
+          },
+          {
+            "url": "https://xyh.cpu.edu.cn/upload/static/2026/03/30/aa6451a3946141ba847d243e90c72e17.jpg",
+            "file": "stadium-2026-school-2.jpg",
+            "size": [
+              1265,
+              843
+            ],
+            "path": "output/campus3d-audit-20261023/stadium-2026-school-2.jpg",
+            "sha256": "03b9597a246635a0c8884b90837ce23f014e59e1ab7bd6f737b542ef54433737"
+          }
+        ]
+      },
+      {
+        "url": "https://wywy.cpu.edu.cn/7f/64/c6015a229220/page.htm",
+        "title": "外国语学院运动会合辑",
+        "publishedOn": "2025-11-07",
+        "eventYear": 2025,
+        "supports": "正面照片展示连续拱形单元、中央主席台及红蓝分区座席，左右有较宽的浅色通道区。",
+        "photo": {
+          "path": "output/campus3d-audit-20261023/stadium-2025-faculty.jpg",
+          "sha256": "77104555a40d3472491069839a1e736ae94c01125c0c044829bdaaf5275c169b"
+        }
+      },
+      {
+        "url": "https://www.cpu.edu.cn/7c/94/c4132a228500/page.htm",
+        "title": "我校2025年田径运动会开幕",
+        "publishedOn": "2025-10-24",
+        "eventDate": "2025-10-24",
+        "supports": "田径场草坪与蓝色跑道、半圆区；两个航拍视角没有完整展示顶棚，不用它们推断顶棚分跨或高度。",
+        "html": {
+          "path": "output/campus3d-audit-20261023/stadium-2025-meet.html",
+          "sha256": "b41fea840e71d3c411af36a13297c1e798f829bcf77a49316aaf463e68227109"
+        }
+      }
+    ],
+    "canopyObservation": {
+      "count": 15,
+      "basis": "逐段检查影像中白色膜单元，已保存带序号裁切图；不是承包商发布的结构数量。",
+      "inspection": {
+        "path": "output/campus3d-audit-20261023/stadium-roof-bay-count.png",
+        "sha256": "a87c24b082c7a2316c0c4ec819512962c851ca62837db94717b71d81f2edc43b"
+      },
+      "pixelMidRows": [
+        1327,
+        1359,
+        1390,
+        1422,
+        1454,
+        1486,
+        1518,
+        1549,
+        1581,
+        1613,
+        1644,
+        1676,
+        1708,
+        1740,
+        1772
+      ],
+      "pixelRearAndFrontEdges": [
+        [
+          510,
+          548
+        ],
+        [
+          492,
+          543
+        ],
+        [
+          480,
+          538
+        ],
+        [
+          471,
+          534
+        ],
+        [
+          464,
+          531
+        ],
+        [
+          459,
+          530
+        ],
+        [
+          455,
+          528
+        ],
+        [
+          454,
+          527
+        ],
+        [
+          455,
+          529
+        ],
+        [
+          459,
+          531
+        ],
+        [
+          466,
+          533
+        ],
+        [
+          473,
+          537
+        ],
+        [
+          480,
+          541
+        ],
+        [
+          492,
+          544
+        ],
+        [
+          511,
+          548
+        ]
+      ],
+      "coordinateSystem": "Pixels in the saved sports-20261023.png mosaic, zero-based top-left origin."
+    },
+    "modelChanges": {
+      "oldRoof": "8 bays; straight 152 m by 29.4 m rectangle, extending toward the track and beyond the observed canopy ends.",
+      "newRoof": "15 bays along a 120 m long curved outline, tapering in depth toward both ends; projected silhouette fitted to the saved image.",
+      "body": "Replace rectangular base with a tapered curved envelope; retain a solid base, front glazing, central booth, red/blue seating and rear supports.",
+      "elevations": "Model rear/front canopy bases are 17/18.5 m with 1.7 m bay rise; base is 3.2 m, 24 rows use 0.35 m rise and 1.05 m depth. These are illustration parameters chosen for photo proportions, not observed dimensions.",
+      "sourceModule": "web/src/views/services/campus3d/stadiumStand.js",
+      "frontApron": "The image shows a paved strip between stand and track; paint the estimated strip instead of leaving procedurally generated grass."
+    },
+    "verification": {
+      "generatedGeometryProfile": {
+        "path": "output/campus3d-audit-20261023/stadium-model-profile.json",
+        "sha256": "abc29c58584a70eab9a20a56802c8e9f8e58ee48e86008d2ef78fbfb4248e160"
+      },
+      "vertices": 321531,
+      "nearbySourceRouteSamples": [
+        {
+          "kind": "r",
+          "index": 18,
+          "samples": 48,
+          "contacts": 0,
+          "examples": []
+        }
+      ],
+      "regressions": "web/tests/campus3dStadiumStand.test.mjs",
+      "apronCanvasSamples": {
+        "path": "output/campus3d-audit-20261023/stadium-apron-pixels.json",
+        "sha256": "ed27e8bc13d7992afe37de3e3dd3e3630cf036ebd876287570047adfd7bf06f9",
+        "scope": "Three real Canvas2D samples on the rendered apron; colors prove implementation only."
+      }
+    },
+    "comparisons": [
+      {
+        "path": "output/campus3d-audit-20261023/stadium-old-overlay.png",
+        "sha256": "d35e4e54bde8e0821ae28ca0c8c049ff19f0bac3f785ae1b39ccc33b7794f0dc"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/stadium-new-overlay.png",
+        "sha256": "40beae30fd3b361f8883d254552b0ac1a2786e0b4c21776c5a8eee1dc48524dd"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/stadium-canopy-preview.png",
+        "sha256": "71a393108a163149d05da95d936d3855d27f12a3dff6be8072cb472418885a29"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/stadium-stand-ground-final.png",
+        "sha256": "c1e29efda9878e6679c2c316f8b053761e3781206e93151285ff888996542b01"
+      },
+      {
+        "path": "output/campus3d-audit-20261023/stadium-stand-final.png",
+        "sha256": "69b0f9989a77a2d1722a7cccacfd8658419a8cc80f82baf09017641137ae57f7"
+      }
+    ],
+    "remaining": [
+      "Roof image positions include possible relief displacement; fitting that silhouette does not independently register the ground foundation.",
+      "Actual heights, row count, column spacing, internal rooms, entrances and accessible routes remain unverified. Glazing is decorative, not a traversable entrance declaration.",
+      "The March 2026 photograph confirms visible features then; it is not proof that the entire stadium is unchanged in October 2026.",
+      "Supplier page https://jsbkmjg.com/news/4_114 was found but could not be fetched. Its indexed 3000 m² claim is not used as a measured canopy area."
     ]
   }
 }

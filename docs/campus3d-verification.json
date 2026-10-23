@@ -315,14 +315,21 @@
       "before": "六片排球场缺失，六片网球场没有球网；田径场南北半圆和网球场周边铺装画成绿色。23片篮球场跨南北区域平均为一个导航点。 地面检查又发现程序按绿色像素把硬地球场当成草坪，生成草叶并套用季节草色。",
       "after": "按带日期地面影像补六片排球场及近似场线/球网，修正蓝色铺装和北区篮球场配色；23片篮球场拆为6、10、7片三组，每组导航点落在真实模型场地内。网球场补六张球网；来源逐组标明影像日期和近似性质。 增加硬地球场掩膜，草叶生成、季节草色和近景草纹理不再覆盖球场，脚步声也按硬地判定。",
       "evidence": "新增6项回归覆盖球场数量/位置、三组导航点、球网方向和碰撞、重复绘制不累加及混合影像日期。实际Canvas2D绘制存档，浏览器场景30/30加载、搜索与详情显示三组数量及六片排球场。 原生Canvas2D执行实际草叶掩膜函数：35个硬地球场中心均不生成草叶，旁边草坪仍保留草叶；最终浏览器地面画面已确认草叶消失，球网可见且无采集到的脚本错误。",
-      "remaining": "排球位置基于2024影像，其他场地区域基于2024/2025影像，不能确认2026现状。看台弧形外沿与分跨、围网入口、小场地和匹克球位置待核验。 低分辨率地面贴图在近距离下场线仍较模糊，后续需检查细节表现。"
+      "remaining": "排球位置基于2024影像，其他场地区域基于2024/2025影像，不能确认2026现状。看台实际基底与高度、围网入口、小场地和匹克球位置待核验。 低分辨率地面贴图在近距离下场线仍较模糊，后续需检查细节表现。"
+    },
+    {
+      "id": "stadium-curved-stand-and-fifteen-canopy-bays",
+      "before": "看台和顶棚均按直线矩形生成，顶棚仅8段，约152×29.4米，过长并过于靠近跑道。前部铺装缺失，旧馆附近地面显示为草地。",
+      "after": "按影像可辨识的15段顶棚重建弯曲、两端收窄的投影轮廓；看台底座也改为收窄体量，补中央红色主席台、红蓝座席、后侧支承和前立面。跑道旁补铺装带。底座登记为实体，重新定位会避开楼体内部。",
+      "evidence": "逐段数15个膜单元，逐个中心查询日期均为2025-04-06；2025-11学院照片和2026-03-29校方活动照片支持连续拱形、中央主席台及座席分区。新增5项回归覆盖轮廓、实际顶棚三角网格、支柱与前侧行走带、详情说明及内部落点脱困。",
+      "remaining": "顶棚影像含高度视差，不能把轮廓贴合当作独立基底配准。高度、排数、座席尺寸、支柱、房间和出入口仍为估算；没有把三月照片当作十月完整现状证明。"
     }
   ],
   "verification": {
     "automated": {
       "command": "node tools/run-node-tests.mjs campus3d",
-      "result": "100 passed, 0 failed (98 frontend + 2 server)",
-      "scope": "原94项通过，新增6项体育场地数量、分组导航、球网碰撞、重复绘制、影像日期与硬地判定回归。",
+      "result": "105 passed, 0 failed (103 frontend + 2 server)",
+      "scope": "原100项通过；新增5项看台轮廓、网格射线、步行/柱体碰撞、来源说明和内部目标重新定位回归。",
       "limitation": "只证明已列源对应关系和模型实现。未以道路中心线测试替代估算路缘、NPC路径、现场尺寸或完整真机验证。",
       "pedestrianAudit": {
         "command": "node tools/campus3d-pedestrian-audit.mjs",
@@ -387,7 +394,10 @@
         "最终修正版本场景加载30/30，采集的脚本错误日志为空；测试音效、减少动效、焦点模拟及视口覆盖均已恢复，页面停在鸟瞰模式。",
         "体育场地修正版加载30/30，浏览器采集脚本错误日志为空。搜索篮球返回北区、体育场东北侧、体育场东南侧三个结果，详情分别为6、10、7片。",
         "排球场可检索并前往，详情显示6片、2024-01-12影像及约5米来源精度；展开资料来源显示学校采购公告、体育部回顾和影像服务三个链接。Canvas近景可见两排三列场地和球网。",
-        "排球场地面视角先复现绿色铺装生成草叶，修正后再次进入相同场地，硬地保持干净、球网正常显示；最后返回体育场鸟瞰，蓝色半圆区和六片蓝色网球场可见。"
+        "排球场地面视角先复现绿色铺装生成草叶，修正后再次进入相同场地，硬地保持干净、球网正常显示；最后返回体育场鸟瞰，蓝色半圆区和六片蓝色网球场可见。",
+        "看台修正版场景30/30加载，体育场详情显示15段、2025/2026照片及估算范围，并含基金会2026活动与外国语学院照片链接。实际Canvas可见弯曲收窄的15段顶棚和中央红色主席台。",
+        "公开搜索旧馆→实地看看可落在看台外侧，地面视角显示前立面及后排顶棚支承，采集的场景脚本错误为空。",
+        "补画看台前铺装后，再次从旧馆进入相同地面视角，原草地改为连续铺装；顶棚和前立面正常显示，采集的脚本错误为空。已退出探索，恢复体育场鸟瞰。"
       ],
       "limitations": [
         "整页截图接口失败；CDP无表面截图得到黑色，改为读取已绘制canvas核验场景，不能据此声称整页视觉验收。",
@@ -443,7 +453,15 @@
         "output/campus3d-audit-20261023/sports-grass-mask.json",
         "output/campus3d-audit-20261023/volleyball-ground-scene.png",
         "output/campus3d-audit-20261023/volleyball-ground-final.png",
-        "output/campus3d-audit-20261023/stadium-sports-final.png"
+        "output/campus3d-audit-20261023/stadium-sports-final.png",
+        "output/campus3d-audit-20261023/tests-stadium-final.log",
+        "output/campus3d-audit-20261023/stadium-canopy-preview.png",
+        "output/campus3d-audit-20261023/stadium-old-overlay.png",
+        "output/campus3d-audit-20261023/stadium-new-overlay.png",
+        "output/campus3d-audit-20261023/stadium-stand-walk.png",
+        "output/campus3d-audit-20261023/stadium-apron-pixels.json",
+        "output/campus3d-audit-20261023/stadium-stand-ground-final.png",
+        "output/campus3d-audit-20261023/stadium-stand-final.png"
       ]
     },
     "serverTypeCheck": {
@@ -463,7 +481,7 @@
     {
       "scope": "道路、水体与景观",
       "status": "incomplete",
-      "nextEvidence": "已补NPC路侧偏移、桥面及连续避让检查；51条源轨迹的受限区段仍需核对实际道路/步道与楼体位置，不能将NPC截断视为地图实景对齐。继续核对34组估算路缘接触、2组高架站体实际支柱/净空、文思苑G5/G2路宽、湖岸、桥梁、球场及现状通行。 体育场地已补六片排球场、球网与分组定位；继续核对看台弧形外沿及分跨、围网实际入口、三片狭长小场地和新宿舍区匹克球位置。详见sportsGrounds来源记录。"
+      "nextEvidence": "已补NPC路侧偏移、桥面及连续避让检查；51条源轨迹的受限区段仍需核对实际道路/步道与楼体位置，不能将NPC截断视为地图实景对齐。继续核对34组估算路缘接触、2组高架站体实际支柱/净空、文思苑G5/G2路宽、湖岸、桥梁、球场及现状通行。 体育场地已补六片排球场、球网与分组定位；看台弧形外沿与15段顶棚已按带日期影像修正，仍需独立基底与高度资料；继续核对围网实际入口、三片狭长小场地和新宿舍区匹克球位置。详见sportsGrounds来源记录。"
     },
     {
       "scope": "场景交互",
@@ -491,7 +509,7 @@
     "deployed": false,
     "note": "本轮为本地优化与核验。未触发生产推送/部署；以后推送main仍需按AGENTS.md验证精确SHA的Linux deployment artifact。"
   },
-  "lastVerifiedParentCommit": "af03007b899cdb838185b1d36043c76a336e735c",
+  "lastVerifiedParentCommit": "d80baafe9040e0de534273e508361092c32bc97b",
   "spatialInventory": "docs/campus3d-spatial-inventory.json",
   "spatialSourceManifest": "docs/campus3d-spatial-sources.json",
   "pedestrianVerification": "docs/campus3d-pedestrian-verification.json",

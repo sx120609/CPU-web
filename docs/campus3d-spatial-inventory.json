@@ -5275,6 +5275,39 @@
       "currentLayoutVerified": false
     }
   ],
+  "stadiumStand": {
+    "bays": 15,
+    "roofHalfLength": 60,
+    "bodyHalfLength": 74,
+    "frontOffset": 58.3,
+    "bodyDepth": 33.5,
+    "roofRearOffset": 90,
+    "roofFrontOffset": 70.5,
+    "rearCurve": 16,
+    "frontCurve": 6,
+    "modelBaseHeight": 3.2,
+    "modelRows": 24,
+    "modelRowDepth": 1.05,
+    "modelRowRise": 0.35,
+    "modelRoofRear": 17,
+    "modelRoofFront": 18.5,
+    "modelBayRise": 1.7,
+    "imageryDate": "2025-04-06",
+    "photoDate": "2026-03-29",
+    "links": [
+      {
+        "title": "学校：第五届体育文化节现场照片（2026-03-29）",
+        "url": "https://jjh.cpu.edu.cn/article/17192"
+      },
+      {
+        "title": "外国语学院：运动会看台照片（2025-11-07）",
+        "url": "https://wywy.cpu.edu.cn/7f/64/c6015a229220/page.htm"
+      }
+    ],
+    "sourceManifest": "docs/campus3d-spatial-sources.json#stadiumStand",
+    "currentDimensionsVerified": false,
+    "scope": "Projected silhouette and visible front treatment; elevations, rows and hidden structure are estimates, not measurements."
+  },
   "graduatePhaseFive": {
     "referenceOnly": true,
     "fitReport": {

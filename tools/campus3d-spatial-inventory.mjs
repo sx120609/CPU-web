@@ -10,6 +10,7 @@ import * as graduate from '../web/src/views/services/campus3d/graduateResidences
 import * as access from '../web/src/views/services/campus3d/coveredAccess.js';
 import { GRADUATE5_FIT_REPORT } from '../web/src/views/services/campus3d/graduate5Registration.js';
 import { sportsPitches } from '../web/src/views/services/campus3d/sportsGrounds.js';
+import { STADIUM_STAND } from '../web/src/views/services/campus3d/stadiumStand.js';
 
 const root=new URL('../',import.meta.url), base=new URL('web/src/views/services/campus3d/',root);
 const app=readFileSync(new URL('app.js',base),'utf8');
@@ -71,6 +72,7 @@ const inventory={
   footpaths:model.D.pa.map((p,i)=>({key:`footpath-${i}`,name:p.n||null,vertices:p.p.length,currentAccessVerified:false})),
   waters:model.D.w.map((w,i)=>({key:`water-${i}`,name:w.n||null,outerRings:w.o.length,innerRings:w.i.length,currentShorelineVerified:false})),
   sports:sportsPitches(model.D.pi).map((p,i)=>({key:p.id||`sport-${i}`,name:p.n||null,type:p.s||p.k,spatialEvidence:p.spatialSource||'OSM snapshot; partial 2024/2025 imagery comparison recorded in spatial sources',currentLayoutVerified:false})),
+  stadiumStand:{...STADIUM_STAND,sourceManifest:'docs/campus3d-spatial-sources.json#stadiumStand',currentDimensionsVerified:false,scope:'Projected silhouette and visible front treatment; elevations, rows and hidden structure are estimates, not measurements.'},
   graduatePhaseFive:{referenceOnly:true,fitReport:GRADUATE5_FIT_REPORT,buildingHeightAndFenceNotModeled:true},
   intersectionCandidates,
   nextPriorities:['Validate independent 2026 observations of major facades and entrance positions.','Resolve the northern-road registration discrepancy before modeling a phase-five fence.','Inspect every road/footprint intersection candidate using dated imagery or rendered geometry.','Review the remaining undated generic buildings, water boundaries, bridges and sports dimensions.'],
