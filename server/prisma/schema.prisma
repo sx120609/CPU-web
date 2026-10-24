@@ -183,6 +183,8 @@ model User {
   yaodaMinesAchievements       YaodaMinesAchievement[]
   blocksOwned                 UserBlock[] @relation("BlockOwner")
   blocksReceived              UserBlock[] @relation("BlockTarget")
+  treeholeStaff               TreeholeStaff?
+  treeholeVisitorSessions     TreeholeSession[] @relation("TreeholeVisitorSessions")
 
   @@index([nicknameReviewStatus, nicknameReviewedAt])
   @@index([profileReviewStatus, updatedAt])
@@ -2996,4 +2998,293 @@ model WorkshopPlacement {
   version   WorkshopVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([versionId])
+}
+
+// ===== 艾绒树洞：艾绒朋辈心理社的匿名倾诉模块（规则见 docs/treehole.md） =====
+// 洞主和核心管理员是树洞自己的身份，与站点 role 无关；站点管理员只能任免人员，看不到会话内容。
+model TreeholeStaff {
+  id                    Int       @id @default(autoincrement())
+  userId                Int       @unique
+  isHost                Boolean   @default(false)
+  isAdmin               Boolean   @default(false)
+  hostCode              String?   @unique // 两位洞主编号，例如 "01"；宣泄室虚拟 ID 取它做前缀
+  intro                 String    @default("")
+  enabled               Boolean   @default(true)
+  presenceOverride      String? // online / offline；手动上下线，优先于排班
+  presenceOverrideUntil DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shifts   TreeholeShift[]
+  sessions TreeholeSession[]
+}
+
+model TreeholeShift {
+  id          Int      @id @default(autoincrement())
+  staffId     Int
+  weekday     Int // 1 = 周一 … 7 = 周日（北京时间）
+  startMinute Int // 当天第几分钟，北京时间
+  endMinute   Int
+  createdAt   DateTime @default(now())
+
+  staff TreeholeStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@index([weekday])
+}
+
+model TreeholeConsent {
+  userId   Int      @id
+  version  String
+  agreedAt DateTime @default(now())
+}
+
+model TreeholeSession {
+  id                Int       @id @default(autoincrement())
+  visitorId         Int
+  hostId            Int // TreeholeStaff.id
+  mode              String // async 留言 / live 实时
+  alias             String // 本次会话的来访者虚拟 ID，结束后作废
+  status            String    @default("active") // active / ended
+  tag               String    @default("normal") // normal / focus / crisis
+  contact           String? // 来访者自愿留下的联系方式
+  contactAt         DateTime?
+  endedAt           DateTime?
+  endedBy           String? // visitor / admin
+  visitorReadId     Int       @default(0)
+  hostReadId        Int       @default(0)
+  visitorSeenAt     DateTime?
+  hostSeenAt        DateTime?
+  visitorNotifiedAt DateTime?
+  hostNotifiedAt    DateTime?
+  lastMessageAt     DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  visitor  User                @relation("TreeholeVisitorSessions", fields: [visitorId], references: [id], onDelete: Restrict)
+  host     TreeholeStaff       @relation(fields: [hostId], references: [id], onDelete: Restrict)
+  messages TreeholeMessage[]
+  crisis   TreeholeCrisisCase?
+
+  @@index([visitorId, lastMessageAt])
+  @@index([hostId, status, lastMessageAt])
+  @@index([tag, createdAt])
+  @@index([createdAt])
+}
+
+model TreeholeMessage {
+  id        Int      @id @default(autoincrement())
+  sessionId Int
+  sender    String // visitor / host / system
+  kind      String   @default("text") // text / image / room-invite / notice
+  content   String   @default("")
+  imageId   Int?
+  roomId    Int? // room-invite 卡片指向的宣泄室
+  createdAt DateTime @default(now())
+
+  session TreeholeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, id])
+  @@index([imageId])
+}
+
+// 树洞图片只存在服务器私有目录（runtime/treehole-images），按会话和宣泄室成员身份鉴权读取。
+model TreeholeImage {
+  id         Int       @id @default(autoincrement())
+  uploaderId Int
+  storageKey String    @unique
+  mimeType   String
+  width      Int
+  height     Int
+  byteSize   Int
+  attachedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([uploaderId, createdAt])
+}
+
+model TreeholeCrisisCase {
+  id           Int       @id @default(autoincrement())
+  sessionId    Int       @unique
+  reporterId   Int // TreeholeStaff.id
+  crisisType   String
+  urgency      String // normal / high / urgent
+  currentState String
+  hostRecord   String
+  status       String    @default("open") // open / following / closed
+  closedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  session TreeholeSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  notes   TreeholeCaseNote[]
+  reveals TreeholeRevealRequest[]
+
+  @@index([status, createdAt])
+}
+
+model TreeholeCaseNote {
+  id        Int      @id @default(autoincrement())
+  caseId    Int
+  authorId  Int // TreeholeStaff.id
+  content   String
+  createdAt DateTime @default(now())
+
+  crisisCase TreeholeCrisisCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+}
+
+// 实名溯源：需要两名不同的核心管理员同意；管理员提交时本人算一票。
+model TreeholeRevealRequest {
+  id           Int       @id @default(autoincrement())
+  caseId       Int
+  requesterId  Int // TreeholeStaff.id
+  reason       String
+  status       String    @default("pending") // pending / approved / rejected
+  decidedAt    DateTime?
+  rejectedById Int?
+  rejectReason String?
+  createdAt    DateTime  @default(now())
+
+  crisisCase TreeholeCrisisCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  approvals  TreeholeRevealApproval[]
+
+  @@index([caseId])
+  @@index([status, createdAt])
+}
+
+model TreeholeRevealApproval {
+  id        Int      @id @default(autoincrement())
+  requestId Int
+  staffId   Int
+  createdAt DateTime @default(now())
+
+  request TreeholeRevealRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, staffId])
+}
+
+model TreeholeRoom {
+  id            Int       @id @default(autoincrement())
+  name          String
+  category      String // praise 夸夸 / vent 倾诉 / cry 哭哭 / relax 解压 / other
+  intro         String    @default("")
+  status        String    @default("active") // active / closed
+  closedAt      DateTime?
+  closedById    Int? // 关闭人的 userId
+  closeReason   String?
+  lastMessageAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  members      TreeholeRoomMember[]
+  messages     TreeholeRoomMessage[]
+  applications TreeholeRoomApplication[]
+  proposal     TreeholeRoomProposal?
+
+  @@index([status, lastMessageAt])
+}
+
+// 新建宣泄室要至少三名洞主联名；第三人签名时自动建群，签名的洞主都成为群管理员。
+model TreeholeRoomProposal {
+  id         Int      @id @default(autoincrement())
+  name       String
+  category   String
+  intro      String   @default("")
+  proposerId Int // TreeholeStaff.id
+  status     String   @default("pending") // pending / created / cancelled
+  roomId     Int?     @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  room       TreeholeRoom?                   @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  signatures TreeholeRoomProposalSignature[]
+
+  @@index([status, createdAt])
+}
+
+model TreeholeRoomProposalSignature {
+  id         Int      @id @default(autoincrement())
+  proposalId Int
+  staffId    Int
+  createdAt  DateTime @default(now())
+
+  proposal TreeholeRoomProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, staffId])
+}
+
+model TreeholeRoomMember {
+  id              Int       @id @default(autoincrement())
+  roomId          Int
+  userId          Int
+  role            String // host（群管理员）/ visitor
+  staffId         Int?
+  seq             Int? // 来访者进群次序编号；同一宣泄室在群成员不重复，退群后空出的号优先复用
+  alias           String // 群内虚拟 ID：推荐洞主编号 + 次序编号，例如 0167
+  recommendedById Int? // 推荐进群的洞主（TreeholeStaff.id）
+  sessionId       Int? // 来访者从哪次一对一会话被推荐进群
+  status          String    @default("active") // active / left / removed
+  readId          Int       @default(0)
+  joinedAt        DateTime  @default(now())
+  leftAt          DateTime?
+
+  room TreeholeRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, status])
+  @@index([userId, status])
+}
+
+model TreeholeRoomApplication {
+  id              Int       @id @default(autoincrement())
+  roomId          Int
+  visitorId       Int
+  sessionId       Int
+  recommendedById Int // TreeholeStaff.id
+  note            String    @default("")
+  status          String    @default("pending") // pending / approved / rejected / cancelled
+  reviewerId      Int? // TreeholeStaff.id
+  reviewedAt      DateTime?
+  rejectReason    String?
+  createdAt       DateTime  @default(now())
+
+  room TreeholeRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, status])
+  @@index([visitorId, status])
+}
+
+model TreeholeRoomMessage {
+  id           Int       @id @default(autoincrement())
+  roomId       Int
+  memberId     Int
+  kind         String    @default("text") // text / image / notice
+  content      String    @default("")
+  imageId      Int?
+  recalledAt   DateTime?
+  recalledById Int? // userId
+  createdAt    DateTime  @default(now())
+
+  room TreeholeRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, id])
+  @@index([memberId])
+  @@index([imageId])
+}
+
+// 树洞的后台查阅、溯源、人员和群管理操作都记在这里，永久保留。
+model TreeholeAuditLog {
+  id          Int      @id @default(autoincrement())
+  actorUserId Int
+  actorLabel  String
+  action      String
+  targetType  String
+  targetId    Int?
+  detail      String   @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
 }

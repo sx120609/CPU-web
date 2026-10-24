@@ -47,6 +47,7 @@ import { appClientRouter } from "./appClients";
 import { coupleRouter } from "./couple";
 import { dormRouter } from "./dorm";
 import { nextSyncRouter } from "./nextSync";
+import { treeholeRouter } from "./treehole";
 
 export const router = Router();
 export const apiAdmissionPaths: string[] = [];
@@ -102,6 +103,7 @@ mount("/direct-messages", authRequired, directMessageRouter);
 mount("/couple", authRequired, coupleRouter);
 mount("/dorm", authRequired, dormRouter);
 mount("/next-sync", authRequired, nextSyncRouter);
+mount("/treehole", authRequired, treeholeRouter);
 mount("/forum-reports", authRequired, forumReportRouter);
 mount("/account-verification", authRequired, accountVerificationRouter);
 mount("/uploads", authOptional, uploadRouter);

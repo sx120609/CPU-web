@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, MapLocation, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Monitor, OfficeBuilding, Phone, Tools, Trophy } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, ChatLineRound, MapLocation, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Monitor, OfficeBuilding, Phone, Tools, Trophy } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda" | "treehole";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -186,6 +186,21 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "lost_found",
     accent: "#123f91",
     iconComponent: Compass,
+  },
+  {
+    slug: "treehole",
+    name: "艾绒树洞",
+    summary: "匿名找朋辈志愿者倾诉，留言或实时聊天都可以",
+    description: "艾绒朋辈心理社的匿名倾听陪伴。不属于专业心理咨询，遇到危机会引导联系学校心理发展中心。",
+    icon: "chat",
+    status: "ready",
+    category: "心理陪伴",
+    routeName: "treehole",
+    componentKey: "treehole",
+    accent: "#7c5cbf",
+    iconComponent: ChatLineRound,
+    badge: "全程匿名",
+    badgeType: "primary",
   },
   {
     slug: "voicehub",

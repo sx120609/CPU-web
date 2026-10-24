@@ -37,6 +37,7 @@ import {
   ArrowRight,
   Bell,
   ChatDotRound,
+  ChatLineRound,
   Location,
   Message,
   Notification,
@@ -94,6 +95,7 @@ function categoryLabel(category?: string | null) {
   if (category === "service-tool") return "小工具";
   if (category === "lost-found") return "失物招领";
   if (category === "direct-message") return "私聊";
+  if (category === "treehole") return "艾绒树洞";
   return category || "消息";
 }
 
@@ -105,6 +107,7 @@ function categoryIcon(category?: string | null) {
   if (category === "service-tool") return Tools;
   if (category === "lost-found") return Location;
   if (category === "direct-message") return Message;
+  if (category === "treehole") return ChatLineRound;
   return Bell;
 }
 </script>

@@ -112,6 +112,11 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   await tx.userBlock.deleteMany({ where: { OR: [{ ownerId: userId }, { targetId: userId }] } });
   await deleteCoupleDataForUser(tx, userId);
   await deleteDormDataForUser(tx, userId);
+  // 树洞会话按社团规定长期留存；账号匿名化后已无法关联到本人。这里只解除在任身份和群成员关系。
+  await tx.treeholeStaff.updateMany({ where: { userId }, data: { enabled: false, isAdmin: false, isHost: false, presenceOverride: null, presenceOverrideUntil: null } });
+  await tx.treeholeConsent.deleteMany({ where: { userId } });
+  await tx.treeholeRoomMember.updateMany({ where: { userId, status: "active" }, data: { status: "left", leftAt: new Date() } });
+  await tx.treeholeRoomApplication.updateMany({ where: { visitorId: userId, status: "pending" }, data: { status: "cancelled" } });
   await tx.forumReport.deleteMany({ where: { OR: [{ reporterId: userId }, { targetAuthorId: userId }] } });
   await tx.questionnaireResponse.deleteMany({ where: { respondentId: userId } });
   await tx.questionnaire.deleteMany({ where: { createdById: userId, isSystem: false } });

@@ -98,6 +98,8 @@ function stableParams(params?: Record<string, unknown>) {
 function defaultGetCacheTtl(url: string) {
   // 登录握手、教务会话、支付和一次性凭据有独立状态机，不能由通用响应缓存接管。
   if (/^\/(auth|jwxt|oauth|payments|storage|uploads|course-bot)(\/|$)/.test(url)) return 0;
+  // 树洞对话不能落进 sessionStorage 里的响应缓存。
+  if (/^\/treehole(\/|$)/.test(url)) return 0;
   if (/^\/(site|boards|services)(\/|$)/.test(url)) return 60_000;
   // 其余 GET 统一短时 fresh、长时 stale；数据变化后会被写请求标成 stale 并后台刷新。
   return 15_000;
