@@ -44,7 +44,7 @@ const WECHAT_SCHEDULE_QUICK_COMMANDS = [
   { id: "SHIJIAN_QUERY_NEXT_WEEK", content: "下周课表" },
   { id: "SHIJIAN_QUERY_WEEK_AFTER_NEXT", content: "下下周课表" },
 ];
-const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "direct-message", "like", "system", "forum-report", "service-tool", "lost-found", "market", "school-feed"];
+const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "direct-message", "like", "system", "forum-report", "service-tool", "lost-found", "market", "school-feed", "treehole"];
 const NOTIFY_CATEGORY_OPTIONS = new Set(DEFAULT_NOTIFY_CATEGORIES);
 const MAX_WECHAT_TEXT_LENGTH = 1800;
 const WECHAT_AES_KEY_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -1324,6 +1324,7 @@ export function wechatNotificationPriority(notification: { category?: string | n
   if (/submission-(?:published|blocked|review)|ai-(?:blocked|recovered)|review-(?:outage|failed)/.test(type)) return 100;
   if (type === "direct-message" || notification.category === "direct-message") return 90;
   if (/payment|sponsor|order/.test(type)) return 85;
+  if (notification.category === "treehole") return 85;
   if (notification.category === "reply" || notification.category === "mention" || notification.category === "lost-found") return 75;
   if (notification.category === "system" || notification.category === "service-tool") return 65;
   if (notification.category === "school-feed") return 40;
@@ -1366,6 +1367,7 @@ function wechatWorkOrderType(notification: { category?: string | null; payload?:
   if (notification.category === "service-tool") return "校园服务";
   if (notification.category === "market") return "校园商城";
   if (notification.category === "school-feed") return "校园公告";
+  if (notification.category === "treehole") return "艾绒树洞";
   return "系统通知";
 }
 

@@ -316,7 +316,7 @@ const QQBOT_INBOUND_CLAIM_TTL_MS = 10 * 60_000;
 const QQBOT_ASSISTANT_HISTORY_MAX_MESSAGES = 8;
 
 const CONFIG_ID = 1;
-const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
+const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed", "treehole"];
 const LEGACY_PERSONAL_NOTIFY_CORE = ["reply", "mention", "like", "system"];
 const REQUIRED_PERSONAL_NOTIFY_CATEGORIES = ["service-tool", "lost-found", "school-feed"];
 const GROUP_NOTIFY_CATEGORY_OPTIONS = ["system", "school-feed"] as const;

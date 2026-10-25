@@ -212,6 +212,7 @@ const categoryOptions = [
   { value: "lost-found", label: "失物招领" },
   { value: "market", label: "校园商城" },
   { value: "school-feed", label: "校园公告" },
+  { value: "treehole", label: "艾绒树洞" },
 ];
 
 const menuPreview = [

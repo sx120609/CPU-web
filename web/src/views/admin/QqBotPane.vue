@@ -97,6 +97,7 @@
               <el-checkbox label="service-tool">小工具提醒（含药苑之声点歌）</el-checkbox>
               <el-checkbox label="lost-found">失物招领</el-checkbox>
               <el-checkbox label="school-feed">校园公告</el-checkbox>
+              <el-checkbox label="treehole">艾绒树洞（只提醒有新消息，不含内容）</el-checkbox>
             </el-checkbox-group>
           </el-form-item>
           <el-form-item label="超级管理员">
@@ -526,7 +527,7 @@ const form = reactive({
   allowGroupPost: false,
   notificationEnabled: true,
   qrCodeSendingEnabled: false,
-  notifyCategories: ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"] as string[],
+  notifyCategories: ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed", "treehole"] as string[],
   superAdminQqIds: [] as string[],
 });
 

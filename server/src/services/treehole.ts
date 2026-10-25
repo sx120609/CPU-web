@@ -213,7 +213,7 @@ type NotifyInput = {
   extra?: Record<string, unknown>;
 };
 
-/** 树洞提醒只写去向和事件，不带任何对话内容；分类 treehole 不在 QQ、微信的转发名单里，只留在站内。 */
+/** 树洞提醒只写去向和事件，不带任何对话内容；QQ 私聊和微信服务号会原样转发这几句话。 */
 export async function notifyTreehole(
   userIds: Iterable<number>,
   input: NotifyInput,

@@ -15,6 +15,7 @@ import { attachVoiceHubGateway, voiceHubProxyConfig } from "./services/voiceHubP
 import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
 import { startAccountDeletionWorker } from "./services/accountDeletion";
 import { drainTopicViews } from "./services/topicViewCounter";
+import { backfillTreeholeNotifyCategories } from "./services/treeholeNotifyChannels";
 
 async function start() {
   const managedRelease = Boolean(process.env.CPU_WEB_RELEASE_SHA);
@@ -38,6 +39,10 @@ async function start() {
   if (createdColleges.length) {
     console.log(`🕷️  已补充学院通知源: ${createdColleges.map((college) => college.name).join("、")}`);
   }
+  // 补不上只是树洞提醒暂时不转发到 QQ／微信，不影响启动，下次启动再试。
+  await backfillTreeholeNotifyCategories().catch((e) => {
+    console.warn("backfillTreeholeNotifyCategories failed:", e?.message);
+  });
   // 首页摘要依赖功能开关和全局置顶的内存快照。必须在开始接收请求前完成加载，
   // 否则重启后的首个请求会把空置顶列表写进共享首页缓存。
   await loadFeatures().catch((e) => {

@@ -76,7 +76,9 @@
 
 ## 通知
 
-树洞通知只走药大拾间的站内消息（分类 `treehole`，网页和各端 App 的消息中心都能看到），不转发到 QQ 和微信：第三方聊天软件里出现“树洞有新回复”本身就会暴露对方在使用树洞。通知只写事件和去向，不带对话内容。
+树洞通知进药大拾间的站内消息（分类 `treehole`），并和其他通知一样转发到用户绑定的 QQ 私聊和微信服务号（用户可在消息设置里关闭 QQ／微信转发）。通知只写事件和去向，不带对话内容。QQ 群通知只允许系统和公告两类，树洞通知不会发进任何群。
+
+上线时服务启动会把 `treehole` 一次性加进 QQ 私聊和微信服务号的转发分类（标记在 `SiteSetting` 的 `treehole.notifyChannelsBackfilled`）。之后管理员在后台“QQ 机器人”“微信服务号”里取消勾选“艾绒树洞”即可停止转发，重启不会再加回去。
 
 | 收件人 | 事件 |
 | --- | --- |
@@ -90,5 +92,6 @@
 
 - 数据表：`server/prisma/schema.prisma` 里以 `Treehole` 开头的模型。
 - 规则：`server/src/services/treeholePolicy.ts`（在岗、虚拟 ID、次序编号、联系方式拦截、溯源票数、提醒节流、会话隔离），单测在 `server/tests/treeholePolicy.test.ts`。
+- QQ／微信转发分类的一次性补齐：`server/src/services/treeholeNotifyChannels.ts`，在 `server/src/index.ts` 启动时调用。
 - 接口：`server/src/routes/treehole.ts`（首页、一对一会话、图片、洞主工作台）、`treeholeRooms.ts`（宣泄室）、`treeholeAdmin.ts`（后台），挂在 `/api/treehole`。
 - 网页：`web/src/views/treehole/`，路由 `/treehole`、`/treehole/new`、`/treehole/session/:id`、`/treehole/room/:id`、`/treehole/host`、`/treehole/admin`。
