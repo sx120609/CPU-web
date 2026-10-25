@@ -28,7 +28,7 @@
       </div>
     </section>
 
-    <section v-if="selected" class="th-group th-case-detail">
+    <section v-if="selected" ref="detailSection" class="th-group th-case-detail">
       <div class="th-group-head">
         <div>
           <h2 class="th-h2">工单 #{{ selected.id }} · {{ selected.session.alias }}</h2>
@@ -106,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { treeholeApi, type TreeholeCaseDetail, type TreeholeCaseSummary, type TreeholeIdentity } from "@/api/treehole";
@@ -124,6 +124,7 @@ const revealReason = ref("");
 const saving = ref(false);
 const identity = ref<TreeholeIdentity | null>(null);
 const identityFor = ref<number | null>(null);
+const detailSection = ref<HTMLElement | null>(null);
 
 const canRequestReveal = computed(() => Boolean(selected.value && !selected.value.reveals.some((reveal) => reveal.status === "pending" || reveal.status === "approved")));
 
@@ -143,6 +144,11 @@ async function open(id: number) {
   identity.value = null;
   identityFor.value = null;
   selected.value = await treeholeApi.adminCase(id);
+  // 窄屏上详情排在列表下面，点开后滚过去。
+  if (window.innerWidth < 860) {
+    await nextTick();
+    detailSection.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 async function apply(task: Promise<TreeholeCaseDetail>) {

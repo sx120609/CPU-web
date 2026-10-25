@@ -67,16 +67,22 @@
         <section v-else-if="me.canStart && me.eligible" class="th-start">
           <button type="button" class="th-start-card" @click="router.push({ path: '/treehole/new', query: { mode: 'async' } })">
             <span class="th-start-icon" data-hue="brand"><el-icon><EditPen /></el-icon></span>
-            <strong>留言倾诉</strong>
-            <span>写下想说的话，可以配图。小艾绒会在值班时间回复你，对话会一直保留到你主动结束。</span>
+            <span class="th-start-copy">
+              <strong>留言倾诉</strong>
+              <span>写下想说的话，可以配图。小艾绒会在值班时间回复你，对话会一直保留到你主动结束。</span>
+            </span>
+            <el-icon class="th-start-arrow" aria-hidden="true"><ArrowRight /></el-icon>
           </button>
           <button type="button" class="th-start-card" @click="router.push({ path: '/treehole/new', query: { mode: 'live' } })">
             <span class="th-start-icon" data-hue="violet"><el-icon><ChatDotRound /></el-icon></span>
-            <strong>实时聊天</strong>
-            <span>
-              从正在值班的小艾绒里选一位，马上开始一对一聊天。
-              <template v-if="onlineCount !== null">现在有 {{ onlineCount }} 位在岗。</template>
+            <span class="th-start-copy">
+              <strong>
+                实时聊天
+                <em v-if="onlineCount !== null" class="th-chip" :class="onlineCount ? 'is-ok' : ''">{{ onlineCount ? `${onlineCount} 位在岗` : "暂无在岗" }}</em>
+              </strong>
+              <span>从正在值班的小艾绒里选一位，马上开始一对一聊天。</span>
             </span>
+            <el-icon class="th-start-arrow" aria-hidden="true"><ArrowRight /></el-icon>
           </button>
         </section>
 
@@ -147,7 +153,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { ChatDotRound, EditPen } from "@element-plus/icons-vue";
+import { ArrowRight, ChatDotRound, EditPen } from "@element-plus/icons-vue";
 import { treeholeApi, type TreeholeMe } from "@/api/treehole";
 import { errorText, timeText } from "./shared";
 import "./treehole.css";
@@ -221,10 +227,10 @@ onMounted(load);
 }
 .th-start-card {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 16px;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
   border: 1px solid var(--cpu-border-soft);
   border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
@@ -232,14 +238,19 @@ onMounted(load);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .th-start-card:hover { border-color: var(--cpu-primary); }
-.th-start-card strong { font-size: var(--cpu-fs-l); }
-.th-start-card > span:last-child { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
+.th-start-card:active { background: var(--cpu-surface-soft); }
+.th-start-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.th-start-copy strong { display: flex; align-items: center; gap: 8px; font-size: var(--cpu-fs-l); }
+.th-start-copy > span { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
+.th-start-arrow { flex: none; color: var(--cpu-text-muted); }
 .th-start-icon {
   display: inline-flex;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
+  flex: none;
   align-items: center;
   justify-content: center;
   border-radius: var(--cpu-radius-m);

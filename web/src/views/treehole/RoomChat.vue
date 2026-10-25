@@ -8,15 +8,14 @@
         <strong>{{ detail?.room.name || "宣泄室" }}<em v-if="detail" class="th-chip is-brand">{{ detail.room.categoryLabel }}</em></strong>
         <span v-if="detail">{{ detail.visitorCount }} 位同学 · {{ detail.hostCount }} 位小艾绒<template v-if="detail.me"> · 我是 {{ detail.me.alias }}</template></span>
       </div>
-      <el-badge v-if="detail?.canModerate && pendingCount" :value="pendingCount" class="th-room-badge">
-        <el-button text size="small" @click="openApplications">入群申请</el-button>
-      </el-badge>
       <el-dropdown v-if="detail" trigger="click" @command="onCommand">
-        <el-button text aria-label="更多操作"><el-icon><MoreFilled /></el-icon></el-button>
+        <el-badge :value="pendingCount" :hidden="!detail.canModerate || !pendingCount" class="th-room-badge">
+          <el-button text :aria-label="pendingCount && detail.canModerate ? `更多操作，${pendingCount} 条入群申请待审核` : '更多操作'"><el-icon><MoreFilled /></el-icon></el-button>
+        </el-badge>
         <template #dropdown>
           <el-dropdown-menu>
             <template v-if="detail.canModerate">
-              <el-dropdown-item command="applications">入群申请</el-dropdown-item>
+              <el-dropdown-item command="applications">入群申请{{ pendingCount ? `（${pendingCount}）` : "" }}</el-dropdown-item>
               <el-dropdown-item command="members">成员管理</el-dropdown-item>
               <el-dropdown-item v-if="detail.room.status === 'active'" command="close">关闭宣泄室</el-dropdown-item>
             </template>
@@ -28,39 +27,49 @@
     </header>
 
     <div v-if="detail" class="th-help th-room-rules" role="note">
-      <p>这里只显示虚拟 ID。请互相温柔以待，不要打听身份、交换联系方式或互加好友。</p>
-      <p v-if="detail.room.intro">{{ detail.room.intro }}</p>
+      <button type="button" class="th-help-summary" :aria-expanded="rulesExpanded" @click="rulesExpanded = !rulesExpanded">
+        <span class="th-rules-line">只显示虚拟 ID · 不打听身份、不交换联系方式</span>
+        <em>{{ rulesExpanded ? "收起" : "群规" }}</em>
+      </button>
+      <template v-if="rulesExpanded">
+        <p>这里只显示虚拟 ID。请互相温柔以待，不要打听身份、交换联系方式或互加好友。</p>
+        <p v-if="detail.room.intro">{{ detail.room.intro }}</p>
+      </template>
     </div>
 
-    <div ref="body" class="th-chat-body" aria-live="polite">
+    <div ref="body" class="th-chat-body" aria-live="polite" @scroll.passive="scroller.onScroll">
       <div v-if="loading" class="th-empty">加载中…</div>
       <div v-else-if="error" class="th-empty"><p>{{ error }}</p><el-button @click="router.push('/treehole')">回到树洞</el-button></div>
       <template v-else>
         <el-button v-if="hasMore" class="th-chat-more" text size="small" :loading="loadingOlder" @click="loadOlder">查看更早的消息</el-button>
         <div v-if="!messages.length" class="th-system">还没有人说话，可以先打个招呼。</div>
-        <template v-for="message in messages" :key="message.id">
+        <template v-for="{ message, day, showAuthor, showTime } in lines" :key="message.id">
+          <div v-if="day" class="th-day">{{ day }}</div>
           <div v-if="message.kind === 'notice'" class="th-system">{{ message.content }}</div>
-          <div v-else class="th-msg" :class="{ 'is-mine': message.mine }">
-            <span v-if="!message.mine" class="th-msg-author" :class="{ 'is-host': message.isHost }">{{ message.alias }}{{ message.isHost ? "（管理员）" : "" }}</span>
+          <div v-else class="th-msg" :class="{ 'is-mine': message.mine, 'is-grouped': !showAuthor, 'is-selected': selectedId === message.id }">
+            <span v-if="!message.mine && showAuthor" class="th-msg-author" :class="{ 'is-host': message.isHost }">{{ message.alias }}{{ message.isHost ? "（管理员）" : "" }}</span>
             <div v-if="message.recalled && !message.content && !message.image" class="th-bubble is-recalled">消息已被管理员撤回</div>
-            <div v-else-if="message.image" class="th-bubble th-bubble-image" :class="{ 'is-recalled': message.recalled }">
+            <div v-else-if="message.image" class="th-bubble th-bubble-image" :class="{ 'is-recalled': message.recalled }" @click="select(message)">
               <TreeholeImage :image="message.image" :mine="message.mine" />
               <div v-if="message.content" class="th-bubble-caption">{{ message.content }}</div>
             </div>
-            <div v-else class="th-bubble" :class="{ 'is-recalled': message.recalled }">{{ message.content }}</div>
-            <div class="th-msg-tools">
-              <span class="th-msg-time">{{ timeText(message.createdAt) }}<template v-if="message.recalled && message.content"> · 已撤回</template></span>
-              <el-button v-if="detail?.canModerate && !message.recalled && !message.mine" text size="small" class="th-recall" @click="recall(message.id)">撤回</el-button>
+            <div v-else class="th-bubble" :class="{ 'is-recalled': message.recalled }" @click="select(message)">{{ message.content }}</div>
+            <div v-if="showTime || selectedId === message.id || (message.recalled && message.content)" class="th-msg-tools">
+              <span class="th-msg-time">{{ clockText(message.createdAt) }}<template v-if="message.recalled && message.content"> · 已撤回</template></span>
+              <el-button v-if="selectedId === message.id" text size="small" type="danger" class="th-recall" @click="recall(message.id)">撤回这条</el-button>
             </div>
           </div>
         </template>
       </template>
     </div>
+    <button v-if="scroller.unseen.value" type="button" class="th-jump" @click="scroller.toBottom(true)">
+      <el-icon aria-hidden="true"><ArrowDown /></el-icon>{{ scroller.unseen.value }} 条新消息
+    </button>
 
     <footer v-if="detail" class="th-chat-foot">
       <div v-if="detail.room.status !== 'active'" class="th-chat-closed">宣泄室已关闭{{ detail.room.closeReason ? `：${detail.room.closeReason}` : "" }}</div>
       <div v-else-if="!detail.me" class="th-chat-closed">你正在以核心管理员身份查阅，查阅已记入操作日志。</div>
-      <Composer v-else :send="send" :max-length="1000" placeholder="在这里说出来，大家都在" />
+      <Composer v-else :send="send" :draft-key="`room-${detail.room.id}`" :max-length="1000" placeholder="在这里说出来，大家都在" @focus="onComposerFocus" />
     </footer>
 
     <el-drawer v-model="applicationsOpen" title="入群申请" size="min(100vw, 420px)" append-to-body>
@@ -110,10 +119,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, MoreFilled } from "@element-plus/icons-vue";
+import { ArrowDown, ArrowLeft, MoreFilled } from "@element-plus/icons-vue";
 import {
   treeholeApi,
   type TreeholeRoomApplication,
@@ -123,7 +132,7 @@ import {
 } from "@/api/treehole";
 import Composer from "./Composer.vue";
 import TreeholeImage from "./TreeholeImage.vue";
-import { errorText, timeText, usePolling } from "./shared";
+import { chatLines, clockText, errorText, timeText, useChatScroll, usePolling } from "./shared";
 import "./treehole.css";
 
 const route = useRoute();
@@ -143,28 +152,43 @@ const applications = ref<TreeholeRoomApplication[]>([]);
 const pendingCount = ref(0);
 const membersOpen = ref(false);
 const members = ref<TreeholeRoomMember[]>([]);
+const rulesExpanded = ref(typeof window !== "undefined" && window.innerWidth >= 640);
+// 群管理员点一下消息才出现“撤回”，不在每条消息下面都摆一个按钮。
+const selectedId = ref<number | null>(null);
 
 const lastId = computed(() => messages.value.reduce((max, message) => Math.max(max, message.id), 0));
 // 群管理员（洞主）之间不能互相移出，核心管理员可以。
 const canRemoveHosts = computed(() => Boolean(detail.value?.isCoreAdmin));
 
-function isNearBottom() {
-  const el = body.value;
-  return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-}
+const scroller = useChatScroll(body);
+const scrollToBottom = () => scroller.toBottom();
+const lines = computed(() => chatLines(messages.value, (message) => (message.kind === "notice" ? "notice" : String(message.memberId))));
 
-async function scrollToBottom() {
-  await nextTick();
-  if (body.value) body.value.scrollTop = body.value.scrollHeight;
-}
-
+/** 合并消息，返回其中新增的条数。 */
 function mergeMessages(incoming: TreeholeRoomMessage[]) {
-  if (!incoming.length) return false;
+  if (!incoming.length) return 0;
   const byId = new Map(messages.value.map((message) => [message.id, message]));
-  for (const message of incoming) byId.set(message.id, message);
+  let added = 0;
+  for (const message of incoming) {
+    if (!byId.has(message.id)) added += 1;
+    byId.set(message.id, message);
+  }
   messages.value = [...byId.values()].sort((a, b) => a.id - b.id);
-  return true;
+  return added;
 }
+
+function select(message: TreeholeRoomMessage) {
+  if (!detail.value?.canModerate || message.mine || message.recalled) return;
+  selectedId.value = selectedId.value === message.id ? null : message.id;
+}
+
+// 键盘弹起时先等可视区域缩小，再贴底。
+function onComposerFocus() {
+  if (scroller.nearBottom()) window.setTimeout(() => void scroller.toBottom(), 300);
+}
+
+let stopResizeTracking: () => void = () => undefined;
+onBeforeUnmount(() => stopResizeTracking());
 
 async function load() {
   loading.value = true;
@@ -176,6 +200,8 @@ async function load() {
     hasMore.value = result.hasMore;
     loading.value = false;
     await scrollToBottom();
+    stopResizeTracking();
+    stopResizeTracking = scroller.keepBottomOnResize();
     if (result.canModerate) await refreshPending();
     if (route.query.panel === "applications" && result.canModerate) await openApplications();
   } catch (cause) {
@@ -193,7 +219,7 @@ async function refreshPending() {
 let pollCount = 0;
 async function poll() {
   if (!detail.value || loading.value) return;
-  const stick = isNearBottom();
+  const settle = scroller.beforeIncoming();
   const result = await treeholeApi.roomMessages(roomId.value, { after: lastId.value });
   detail.value.room = result.room;
   if (!result.memberActive && detail.value.me) {
@@ -204,7 +230,7 @@ async function poll() {
     const recalled = new Set(result.recalledIds);
     messages.value = messages.value.map((message) => (recalled.has(message.id) ? { ...message, recalled: true, content: "", image: null } : message));
   }
-  if (mergeMessages(result.messages) && stick) await scrollToBottom();
+  await settle(mergeMessages(result.messages));
   pollCount += 1;
   if (detail.value.canModerate && pollCount % 5 === 0) await refreshPending();
 }
@@ -313,6 +339,7 @@ async function recall(messageId: number) {
   }).then(() => true, () => false);
   if (!confirmed) return;
   await treeholeApi.recallRoomMessage(roomId.value, messageId);
+  selectedId.value = null;
   messages.value = messages.value.map((message) => (message.id === messageId ? { ...message, recalled: true, content: "", image: null } : message));
 }
 
@@ -340,7 +367,7 @@ onMounted(load);
   color: var(--cpu-text-secondary);
   font-size: var(--cpu-fs-xs);
 }
-.th-room-rules p + p { margin-top: 4px; }
+.th-room-rules p { margin-top: 6px; }
 .th-room-badge :deep(.el-badge__content) { top: 6px; }
 .th-recall { height: auto; padding: 0; font-size: var(--cpu-fs-xs); }
 .th-drawer-rows { margin-top: 12px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-m); overflow: hidden; }

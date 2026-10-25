@@ -22,7 +22,7 @@
     </div>
     <div v-if="!staff.length" class="th-empty"><p>还没有任何人员。</p></div>
     <div v-else class="th-table-wrap">
-      <table class="th-table">
+      <table class="th-table th-staff-table">
         <thead>
           <tr><th>账号</th><th>身份</th><th>编号</th><th>状态</th><th>排班</th><th></th></tr>
         </thead>
@@ -191,4 +191,22 @@ onMounted(load);
 .th-shift-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .th-shift-day { width: 90px; }
 .th-shift-time { width: 110px; }
+
+/* 手机上表格改成一人一张卡片 */
+@media (max-width: 640px) {
+  .th-appoint-name { width: 100%; }
+  .th-staff-table thead { display: none; }
+  .th-staff-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--cpu-border-soft);
+  }
+  .th-staff-table tbody tr:first-child { border-top: 0; }
+  .th-staff-table td { padding: 0; border: 0; white-space: normal; }
+  .th-staff-table td.is-wrap { grid-column: 1 / -1; min-width: 0; }
+  .th-staff-table td:nth-child(3)::before { content: "编号 "; color: var(--cpu-text-muted); }
+  .th-staff-table td:last-child { grid-column: 1 / -1; }
+}
 </style>

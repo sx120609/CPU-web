@@ -6,7 +6,7 @@
       'keyboard-geometry-open': keyboardGeometryOpen,
       'layout-root--full-width': fullWidthContent && !hideChrome,
       'layout-root--full-height': fullHeightContent && !hideChrome,
-      'layout-root--assistant': route.name === 'search',
+      'layout-root--assistant': route.name === 'search' || chatPage,
       'layout-root--native-shell': useFlutterShell,
       'layout-root--ios-next': useIosNextShell,
       'layout-root--tabbar-fallback': showWebTabbar,
@@ -17,7 +17,7 @@
     :style="layoutStyle"
   >
     <!-- Native shells supply their own navigation; detail pages own theirs. -->
-    <header v-if="!hideChrome && !useNativeShell && !mobileTopicChrome && !immersivePage" class="topbar">
+    <header v-if="!hideChrome && !useNativeShell && !mobileTopicChrome && !mobileChatChrome && !immersivePage" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
           <img
@@ -166,6 +166,7 @@
         'main--full-width': fullWidthContent && !hideChrome,
         'main--full-height': fullHeightContent && !hideChrome,
         'main--mobile-topic': mobileTopicChrome,
+        'main--mobile-chat': mobileChatChrome,
       }"
     >
       <IosAppRecommendation v-if="route.name === 'home'" style="--ios-app-recommendation-max-width: 1120px" />
@@ -475,6 +476,8 @@ const hideChrome = computed(() => Boolean(route.meta?.hideChrome)
 const immersivePage = computed(() => Boolean(route.meta?.immersive));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent));
+// 聊天页（meta.chatPage）自带顶栏和输入框：手机上不显示站点顶栏和底部标签栏，悬浮按钮也不显示。
+const chatPage = computed(() => Boolean(route.meta?.chatPage));
 const useFlutterShell = computed(() => isFlutterNativeShell());
 const useIosNextShell = computed(() => isIosNextNativeShell());
 const useNativeShell = computed(() => useFlutterShell.value || useIosNextShell.value);
@@ -484,6 +487,7 @@ const useIosRouteTransition = isLikelyIosDevice();
 const showFloatingActions = computed(() => (
   !hideChrome.value
   && !useNativeShell.value
+  && !chatPage.value
   && route.path !== "/search"
   && route.path !== "/messages"
   && route.name !== "service-campus-3d"
@@ -498,7 +502,8 @@ const mobileForumRouteNames = new Set(["home", ...desktopForumRouteNames]);
 // Pages, the router and this shell share one classifier, so the phone tree always gets phone chrome.
 const useMobileForumLayout = computed(() => ff.value.compact);
 const mobileTopicChrome = computed(() => useMobileForumLayout.value && route.name === "topic");
-const showWebTabbar = computed(() => ff.value.compact && !useNativeShell.value && !mobileTopicChrome.value);
+const mobileChatChrome = computed(() => ff.value.compact && chatPage.value);
+const showWebTabbar = computed(() => ff.value.compact && !useNativeShell.value && !mobileTopicChrome.value && !mobileChatChrome.value);
 const showForumPostFab = computed(() => {
   const routeName = String(route.name || "");
   return !hideChrome.value
@@ -2125,6 +2130,13 @@ html[data-theme="dark"] .assistant-widget {
 
   .layout-root--full-height.keyboard-open .main--full-height {
     padding-bottom: var(--liquid-tabbar-reserve);
+  }
+
+  // 聊天页没有底部标签栏，输入框自己留安全区。
+  .layout-root--full-height .main--full-height.main--mobile-chat {
+    width: 100%;
+    margin: 0;
+    padding: 0;
   }
 
   .main--full-width {

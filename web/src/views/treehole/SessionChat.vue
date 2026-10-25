@@ -49,18 +49,19 @@
       <p>你正以核心管理员身份查阅这段对话，查阅已记入操作日志。<router-link v-if="session.crisis" :to="`/treehole/admin?tab=cases&case=${session.crisis.id}`">查看高危工单</router-link></p>
     </div>
 
-    <div ref="body" class="th-chat-body" aria-live="polite">
+    <div ref="body" class="th-chat-body" aria-live="polite" @scroll.passive="scroller.onScroll">
       <div v-if="loading" class="th-empty">加载中…</div>
       <div v-else-if="error" class="th-empty"><p>{{ error }}</p><el-button @click="load">重试</el-button></div>
       <template v-else>
         <el-button v-if="hasMore" class="th-chat-more" text size="small" :loading="loadingOlder" @click="loadOlder">查看更早的消息</el-button>
-        <div v-if="session && session.role === 'visitor'" class="th-system">
+        <div v-if="session && session.role === 'visitor' && !hasMore" class="th-system">
           {{ session.mode === "live" ? "实时聊天" : "留言倾诉" }} · 你在这次对话里的虚拟 ID 是 {{ session.alias }}
         </div>
-        <template v-for="message in messages" :key="message.id">
+        <template v-for="{ message, day, showAuthor, showTime } in lines" :key="message.id">
+          <div v-if="day" class="th-day">{{ day }}</div>
           <div v-if="message.kind === 'notice' || message.sender === 'system'" class="th-system">{{ message.content }}</div>
-          <div v-else class="th-msg" :class="{ 'is-mine': message.mine }">
-            <span v-if="!message.mine" class="th-msg-author" :class="{ 'is-host': message.sender === 'host' }">{{ authorName(message.sender) }}</span>
+          <div v-else class="th-msg" :class="{ 'is-mine': message.mine, 'is-grouped': !showAuthor }">
+            <span v-if="!message.mine && showAuthor" class="th-msg-author" :class="{ 'is-host': message.sender === 'host' }">{{ authorName(message.sender) }}</span>
             <div v-if="message.kind === 'room-invite' && message.room" class="th-invite">
               <div class="th-invite-title">
                 <el-icon aria-hidden="true"><ChatLineRound /></el-icon>{{ message.room.name }}
@@ -82,11 +83,14 @@
               <div v-if="message.content" class="th-bubble-caption">{{ message.content }}</div>
             </div>
             <div v-else class="th-bubble">{{ message.content }}</div>
-            <span class="th-msg-time">{{ timeText(message.createdAt) }}</span>
+            <span v-if="showTime" class="th-msg-time">{{ clockText(message.createdAt) }}</span>
           </div>
         </template>
       </template>
     </div>
+    <button v-if="scroller.unseen.value" type="button" class="th-jump" @click="scroller.toBottom(true)">
+      <el-icon aria-hidden="true"><ArrowDown /></el-icon>{{ scroller.unseen.value }} 条新消息
+    </button>
 
     <footer v-if="session" class="th-chat-foot">
       <div v-if="session.status !== 'active'" class="th-chat-closed">这次倾诉已经结束{{ session.endedAt ? `（${timeText(session.endedAt)}）` : "" }}。</div>
@@ -94,7 +98,7 @@
       <template v-else>
         <div v-if="session.role === 'visitor' && !session.host.available" class="th-chat-closed">这位洞主暂时无法接待。你可以结束本次倾诉，再重新选择洞主。</div>
         <div v-else-if="session.role === 'visitor' && !session.host.online" class="th-composer-hint">小艾绒暂时不在岗，{{ nextShiftText(session.host.nextShiftAt) }}，留言会在值班时被看到。</div>
-        <Composer :send="send" :placeholder="session.role === 'host' ? '温和地回应…' : '说说你的感受…'" />
+        <Composer :send="send" :draft-key="`session-${session.id}`" :placeholder="session.role === 'host' ? '温和地回应…' : '说说你的感受…'" @focus="onComposerFocus" />
       </template>
     </footer>
 
@@ -115,10 +119,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, ChatLineRound, MoreFilled } from "@element-plus/icons-vue";
+import { ArrowDown, ArrowLeft, ChatLineRound, MoreFilled } from "@element-plus/icons-vue";
 import {
   treeholeApi,
   type TreeholeCrisisInput,
@@ -129,7 +133,7 @@ import {
 import Composer from "./Composer.vue";
 import CrisisDialog from "./CrisisDialog.vue";
 import TreeholeImage from "./TreeholeImage.vue";
-import { errorText, nextShiftText, tagLabel, tagTone, timeText, usePolling } from "./shared";
+import { chatLines, clockText, errorText, nextShiftText, tagLabel, tagTone, timeText, useChatScroll, usePolling } from "./shared";
 import "./treehole.css";
 
 const route = useRoute();
@@ -187,23 +191,30 @@ function authorName(sender: string) {
   return "";
 }
 
-function isNearBottom() {
-  const el = body.value;
-  return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-}
+const scroller = useChatScroll(body);
+const scrollToBottom = () => scroller.toBottom();
+const lines = computed(() => chatLines(messages.value, (message) => (message.kind === "notice" ? "system" : message.sender)));
 
-async function scrollToBottom() {
-  await nextTick();
-  if (body.value) body.value.scrollTop = body.value.scrollHeight;
-}
-
+/** 合并消息，返回其中新增的条数（已有的只更新内容，例如邀请卡片的申请状态）。 */
 function mergeMessages(incoming: TreeholeMessage[]) {
-  if (!incoming.length) return false;
+  if (!incoming.length) return 0;
   const byId = new Map(messages.value.map((message) => [message.id, message]));
-  for (const message of incoming) byId.set(message.id, message);
+  let added = 0;
+  for (const message of incoming) {
+    if (!byId.has(message.id)) added += 1;
+    byId.set(message.id, message);
+  }
   messages.value = [...byId.values()].sort((a, b) => a.id - b.id);
-  return true;
+  return added;
 }
+
+// 键盘弹起时先等可视区域缩小，再贴底，避免最后几条被输入框挡住。
+function onComposerFocus() {
+  if (scroller.nearBottom()) window.setTimeout(() => void scroller.toBottom(), 300);
+}
+
+let stopResizeTracking: () => void = () => undefined;
+onBeforeUnmount(() => stopResizeTracking());
 
 async function load() {
   loading.value = true;
@@ -216,6 +227,8 @@ async function load() {
     inviteRooms.value = detail.inviteRooms ?? [];
     loading.value = false;
     await scrollToBottom();
+    stopResizeTracking();
+    stopResizeTracking = scroller.keepBottomOnResize();
   } catch (cause) {
     error.value = errorText(cause, "会话不存在或你没有权限查看");
     loading.value = false;
@@ -224,11 +237,10 @@ async function load() {
 
 async function poll() {
   if (!session.value || loading.value) return;
-  const stick = isNearBottom();
+  const settle = scroller.beforeIncoming();
   const result = await treeholeApi.sessionMessages(sessionId.value, { after: lastId.value });
   session.value = result.session;
-  // 来访者在别处收到的邀请卡片状态（申请中、已通过）要跟着刷新。
-  if (mergeMessages(result.messages) && stick) await scrollToBottom();
+  await settle(mergeMessages(result.messages));
 }
 
 usePolling(poll, () => {
@@ -348,21 +360,6 @@ onMounted(load);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
 }
-.th-help-summary {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.th-help-summary em { flex: none; font-style: normal; font-weight: 600; }
 .th-help-guide { margin-top: 6px !important; }
 .th-help-emergency { margin-top: 6px !important; font-weight: 600; }
 .th-composer-hint {

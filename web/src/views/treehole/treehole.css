@@ -76,7 +76,7 @@
   gap: 8px 12px;
   margin-bottom: 12px;
 }
-.th-group--flush > .th-group-head { margin: 0; padding: 14px 16px 10px; }
+.th-group--flush > .th-group-head { margin: 0; padding: 14px 16px 2px; }
 .th-h2 {
   margin: 0;
   font-size: var(--cpu-fs-l);
@@ -281,6 +281,7 @@ button.th-row {
 
 /* ---- 聊天 ---- */
 .th-chat {
+  position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -291,12 +292,25 @@ button.th-row {
   color: var(--cpu-text);
   font-size: var(--cpu-fs-m);
 }
+/* 聊天页铺满高度（fullWidthContent），但宽屏上内容仍居中 880px；要压过布局里给整页子元素的 max-width: none */
+.layout-root .main > .th-chat.th-chat {
+  max-width: 880px;
+  margin-inline: auto;
+}
+/* 宽屏上聊天区居中，两侧加细线和页面区分开 */
+@media (min-width: 900px) {
+  .th-chat {
+    border-right: 1px solid var(--cpu-border-soft);
+    border-left: 1px solid var(--cpu-border-soft);
+  }
+}
 .th-chat-head {
   display: flex;
   flex: none;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  /* 手机上站点顶栏不显示，聊天顶栏自己避开刘海 */
+  padding: calc(8px + var(--cpu-safe-area-inset-top, 0px)) 12px 8px;
   border-bottom: 1px solid var(--cpu-border-soft);
   background: var(--cpu-card);
 }
@@ -370,6 +384,33 @@ button.th-row {
 .th-bubble-image { padding: 4px; }
 .th-bubble-image .th-bubble-caption { padding: 4px 8px 2px; }
 .th-msg-time { color: var(--cpu-text-muted); font-size: 11px; }
+/* 同一人连续发的几条挨得更紧 */
+.th-msg.is-grouped { margin-top: -6px; }
+.th-msg.is-selected .th-bubble { box-shadow: 0 0 0 2px var(--cpu-danger); }
+.th-day {
+  align-self: center;
+  margin: 6px 0 2px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
+}
+.th-jump {
+  position: absolute;
+  right: 16px;
+  bottom: calc(76px + max(env(safe-area-inset-bottom, 0px), var(--cpu-ios-bottom-clearance, 0px), var(--cpu-harmony-bottom-clearance, 0px)));
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-primary);
+  color: var(--cpu-on-primary);
+  box-shadow: var(--cpu-shadow-float);
+  font: inherit;
+  font-size: var(--cpu-fs-s);
+  cursor: pointer;
+}
 .th-msg-tools { display: flex; gap: 6px; align-items: center; }
 .th-system {
   align-self: center;
@@ -383,7 +424,8 @@ button.th-row {
 }
 .th-chat-foot {
   flex: none;
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  /* 和私信一样避开 iOS／鸿蒙原生壳叠在网页底部的标签栏 */
+  padding: 8px 12px calc(8px + max(env(safe-area-inset-bottom, 0px), var(--cpu-ios-bottom-clearance, 0px), var(--cpu-harmony-bottom-clearance, 0px)));
   border-top: 1px solid var(--cpu-border-soft);
   background: var(--cpu-card);
 }
@@ -405,6 +447,23 @@ button.th-row {
   font-size: var(--cpu-fs-s);
 }
 .th-help p { margin: 0; }
+.th-help-summary {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.th-help-summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-help-summary em { flex: none; font-style: normal; font-weight: 600; }
 .th-help ul { margin: 6px 0 0; padding-left: 18px; }
 .th-help strong { font-weight: 600; }
 

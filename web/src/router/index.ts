@@ -191,8 +191,8 @@ export const router = createRouter({
         // 艾绒树洞：全部要登录；聊天页自己管满屏布局和输入框。
         { path: "treehole", name: "treehole", component: () => import("@/views/treehole/Index.vue"), meta: { title: "艾绒树洞" } },
         { path: "treehole/new", name: "treehole-new", component: () => import("@/views/treehole/NewSession.vue"), meta: { title: "开始倾诉" } },
-        { path: "treehole/session/:id", name: "treehole-session", component: () => import("@/views/treehole/SessionChat.vue"), meta: { title: "艾绒树洞", fullHeightContent: true } },
-        { path: "treehole/room/:id", name: "treehole-room", component: () => import("@/views/treehole/RoomChat.vue"), meta: { title: "宣泄室", fullHeightContent: true } },
+        { path: "treehole/session/:id", name: "treehole-session", component: () => import("@/views/treehole/SessionChat.vue"), meta: { title: "艾绒树洞", fullHeightContent: true, fullWidthContent: true, chatPage: true } },
+        { path: "treehole/room/:id", name: "treehole-room", component: () => import("@/views/treehole/RoomChat.vue"), meta: { title: "宣泄室", fullHeightContent: true, fullWidthContent: true, chatPage: true } },
         { path: "treehole/host", name: "treehole-host", component: () => import("@/views/treehole/HostConsole.vue"), meta: { title: "洞主工作台" } },
         { path: "treehole/admin", name: "treehole-admin", component: () => import("@/views/treehole/AdminConsole.vue"), meta: { title: "树洞后台" } },
         { path: "coursereview", name: "coursereview", component: () => import("@/views/coursereview/Index.vue"), meta: { title: "课程点评", public: true } },

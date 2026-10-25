@@ -8,9 +8,7 @@
         <h1>{{ mode === "live" ? "实时聊天" : "留言倾诉" }}</h1>
         <p v-if="mode === 'live'">选一位正在值班的小艾绒，马上开始一对一聊天。</p>
         <p v-else>选一位小艾绒，或交给系统安排。洞主会在值班时间回复你。</p>
-      </div>
-      <div class="th-actions">
-        <el-button text @click="switchMode">{{ mode === "live" ? "改用留言倾诉" : "改用实时聊天" }}</el-button>
+        <button type="button" class="th-switch-mode" @click="switchMode">{{ mode === "live" ? "改用留言倾诉" : "改用实时聊天" }} ›</button>
       </div>
     </header>
 
@@ -33,7 +31,7 @@
             role="radio"
             :aria-checked="selectedId === null"
             :class="{ 'is-selected': selectedId === null }"
-            @click="selectedId = null"
+            @click="pick(null)"
           >
             <span class="th-host-avatar" data-hue="brand">艾</span>
             <div class="th-row-copy">
@@ -49,7 +47,7 @@
             role="radio"
             :aria-checked="selectedId === host.id"
             :class="{ 'is-selected': selectedId === host.id }"
-            @click="selectedId = host.id"
+            @click="pick(host.id)"
           >
             <span class="th-host-avatar" data-hue="violet">{{ host.code }}</span>
             <div class="th-row-copy">
@@ -63,11 +61,11 @@
         </div>
       </section>
 
-      <section v-if="visibleHosts.length || mode === 'async'" class="th-group">
+      <section v-if="visibleHosts.length || mode === 'async'" ref="composerSection" class="th-group">
         <h2 class="th-h2">想说的话</h2>
         <p class="th-sub">可以从任何地方说起。这次对话的虚拟 ID 会在发送后生成，结束后作废。</p>
         <div class="th-new-composer">
-          <Composer :send="start" placeholder="此刻的心情、发生的事，或者只是想找人说说话…" />
+          <Composer :send="start" draft-key="new-session" placeholder="说说此刻的心情…" />
         </div>
       </section>
     </template>
@@ -88,6 +86,13 @@ const router = useRouter();
 const hosts = ref<TreeholeHost[]>([]);
 const loading = ref(true);
 const selectedId = ref<number | null>(null);
+const composerSection = ref<HTMLElement | null>(null);
+
+// 手机上选好洞主，把写话的框带到眼前。
+function pick(id: number | null) {
+  selectedId.value = id;
+  if (window.innerWidth < 640) composerSection.value?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
 
 const mode = computed<TreeholeMode>(() => (route.query.mode === "live" ? "live" : "async"));
 const visibleHosts = computed(() => (mode.value === "live" ? hosts.value.filter((host) => host.online) : hosts.value));
@@ -121,6 +126,16 @@ onMounted(load);
 </script>
 
 <style scoped>
+.th-switch-mode {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cpu-hue-brand-ink);
+  font: inherit;
+  font-size: var(--cpu-fs-s);
+  cursor: pointer;
+}
 .th-host { gap: 12px; }
 .th-host.is-selected { background: var(--cpu-primary-soft); }
 .th-host.is-selected:hover { background: var(--cpu-primary-soft); }

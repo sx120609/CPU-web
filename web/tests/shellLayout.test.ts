@@ -48,7 +48,8 @@ test("the shell uses the shared classifier instead of its own orientation and to
   }
   assert.match(script, /const ff = useFormFactor\(\);/u);
   assert.match(script, /const useMobileForumLayout = computed\(\(\) => ff\.value\.compact\);/u);
-  assert.match(script, /const showWebTabbar = computed\(\(\) => ff\.value\.compact && !useNativeShell\.value && !mobileTopicChrome\.value\);/u);
+  assert.match(script, /const showWebTabbar = computed\(\(\) => ff\.value\.compact && !useNativeShell\.value && !mobileTopicChrome\.value && !mobileChatChrome\.value\);/u);
+  assert.match(script, /const mobileChatChrome = computed\(\(\) => ff\.value\.compact && chatPage\.value\);/u);
   assert.match(layout, /'layout-root--tabbar-fallback': showWebTabbar/u);
   assert.match(layout, /<MobileTabbar\s+v-if="showWebTabbar"/u);
 });
