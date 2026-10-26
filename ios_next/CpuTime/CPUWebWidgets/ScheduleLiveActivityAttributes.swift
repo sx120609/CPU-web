@@ -342,3 +342,16 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         return components.url ?? URL(string: "cputime-next://schedule")!
     }
 }
+
+@available(iOS 16.1, *)
+extension ScheduleLiveActivityAttributes {
+    /// The longest text a countdown over `interval` shows, in zeros: "00:00"
+    /// below 100 minutes, "000:00" from there (a two-period class starts at
+    /// "100:00", a four-period afternoon at about "215:00"). The widgets lay
+    /// the timer over this text: a timer takes all the width it is offered,
+    /// and the fixed widths it had cut the longer values short.
+    public static func countdownTemplate(_ interval: ClosedRange<Date>) -> String {
+        let minutes = max(0, Int(interval.upperBound.timeIntervalSince(interval.lowerBound) / 60))
+        return String(repeating: "0", count: max(2, String(minutes).count)) + ":00"
+    }
+}

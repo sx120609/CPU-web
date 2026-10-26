@@ -89,7 +89,7 @@ private struct ScheduleLiveActivityWidget: Widget {
                     }
                 }
             } compactLeading: {
-                ScheduleLiveActivityLogo(size: 21)
+                ScheduleLiveActivityLogo(size: 24)
                     .overlay(alignment: .bottomTrailing) {
                         // The partner has a class around this one.
                         if let companion = state.companion {
@@ -102,11 +102,10 @@ private struct ScheduleLiveActivityWidget: Widget {
                     .accessibilityLabel(state.companion == nil ? "药大拾间课表" : "药大拾间课表，\(state.islandTitle)")
             } compactTrailing: {
                 ScheduleLiveActivityTimer(state: state)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(ScheduleLiveActivityPalette.accent)
-                    .frame(width: 46, alignment: .trailing)
             } minimal: {
-                ScheduleLiveActivityLogo(size: 21)
+                ScheduleLiveActivityLogo(size: 24)
                     .accessibilityLabel("药大拾间课表")
             }
             // Keep the system's side and bottom insets clear of the capsule corners.
@@ -321,19 +320,9 @@ private struct ScheduleLiveActivityPairRow: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Group {
-                        if let timer = entry.timer {
-                            Text(timerInterval: timer, countsDown: true, showsHours: false)
-                        } else {
-                            Text("—")
-                        }
-                    }
-                    .font(.system(size: compact ? 12 : 15, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(tint)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 48, alignment: .trailing)
+                    ScheduleLiveActivityTimer(interval: entry.timer)
+                        .font(.system(size: compact ? 13 : 15, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(tint)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(entry.tag)
@@ -465,15 +454,10 @@ private struct ScheduleLiveActivityCountdown: View {
                 .font(.system(size: compact ? 10 : 11, weight: .medium))
                 .foregroundStyle(ScheduleLiveActivityPalette.accent)
             ScheduleLiveActivityTimer(state: state, alignment: centered ? .center : .trailing)
-                .font(.system(size: compact ? 19 : 25, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(size: compact ? 22 : 25, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(ScheduleLiveActivityPalette.accent)
         }
-        // A timer Text intentionally consumes flexible width. Constraining
-        // its column prevents it from stealing the title's width or centring
-        // the digits in an unrelated part of the activity.
-        .multilineTextAlignment(centered ? .center : .trailing)
-        .frame(width: compact ? nil : 88, alignment: centered ? .center : .trailing)
-        .frame(maxWidth: compact ? 69 : nil, alignment: centered ? .center : .trailing)
+        .fixedSize()
         .accessibilityElement(children: .combine)
     }
 }
@@ -548,7 +532,6 @@ private struct ScheduleLiveActivityWatchCard: View {
                 ScheduleLiveActivityTimer(state: state)
                     .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                    .frame(width: 46, alignment: .trailing)
             }
             Text([state.location.isEmpty ? state.teacher : state.location, state.periodLabel ?? ""]
                 .filter { !$0.isEmpty }.joined(separator: " · "))
@@ -609,26 +592,40 @@ private struct ScheduleLiveActivityProgress: View {
     }
 }
 
+/// A countdown as wide as the longest value it will show. A timer Text takes
+/// all the width it is offered, so it is laid over a hidden text of that
+/// length (`countdownTemplate`) instead of being given a fixed width, which
+/// cut "100:00" and longer short.
 @available(iOS 16.1, *)
 private struct ScheduleLiveActivityTimer: View {
-    let state: ScheduleLiveActivityAttributes.ContentState
-    var alignment: TextAlignment = .trailing
+    /// Nil while there is nothing to count down to.
+    let interval: ClosedRange<Date>?
+    var alignment: Alignment = .trailing
 
-    var body: some View {
+    init(interval: ClosedRange<Date>?, alignment: Alignment = .trailing) {
+        self.interval = interval
+        self.alignment = alignment
+    }
+
+    init(state: ScheduleLiveActivityAttributes.ContentState, alignment: Alignment = .trailing) {
         let end = state.phase == .inProgress ? state.endDate : state.startDate
         // Use the content's stable origin, not Date.now. A stale render must
         // never create a reversed ClosedRange after the deadline has passed.
-        if state.phase == .idle {
-            Text("—")
+        self.init(interval: state.phase == .idle ? nil : min(state.updatedAt, end)...end, alignment: alignment)
+    }
+
+    var body: some View {
+        if let interval {
+            Text(ScheduleLiveActivityAttributes.countdownTemplate(interval))
+                .hidden()
+                .overlay(alignment: alignment) {
+                    Text(timerInterval: interval, countsDown: true, showsHours: false)
+                        .multilineTextAlignment(alignment == .center ? .center : .trailing)
+                }
+                .lineLimit(1)
+                .fixedSize()
         } else {
-        Text(
-            timerInterval: min(state.updatedAt, end)...end,
-            countsDown: true,
-            showsHours: false
-        )
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-            .multilineTextAlignment(alignment)
+            Text("—")
         }
     }
 }

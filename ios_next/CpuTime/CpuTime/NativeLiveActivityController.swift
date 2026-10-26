@@ -697,7 +697,14 @@ final class NativeLiveActivityController: ObservableObject {
         status = .waiting
 
         let start = now().addingTimeInterval(-20 * 60)
-        let end = now().addingTimeInterval(55 * 60)
+        var remaining: TimeInterval = 55 * 60
+#if DEBUG
+        // `CPU_DEBUG_LIVE_MINUTES=215` leaves that long, as a four-period afternoon does.
+        if let minutes = ProcessInfo.processInfo.environment["CPU_DEBUG_LIVE_MINUTES"].flatMap(Double.init), minutes > 0 {
+            remaining = minutes * 60
+        }
+#endif
+        let end = now().addingTimeInterval(remaining)
         var state = ScheduleLiveActivityAttributes.ContentState(
             phase: .inProgress,
             courseName: "药理学实验",

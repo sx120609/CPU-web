@@ -286,6 +286,12 @@ struct NativeLiveActivityChecks {
         ranked.reset()
         await settle()
         print("Display priority, cared-timetable and partner merging passed")
+        // The countdown's column is as wide as its longest value.
+        let at = Date(timeIntervalSince1970: 1_800_000_000)
+        func template(_ seconds: TimeInterval) -> String { ScheduleLiveActivityAttributes.countdownTemplate(at...at.addingTimeInterval(seconds)) }
+        precondition(template(0) == "00:00" && template(15 * 60) == "00:00" && template(5_999) == "00:00")
+        precondition(template(100 * 60) == "000:00", "a two-period class starts at 100:00")
+        precondition(template(215 * 60) == "000:00" && template(1_000 * 60) == "0000:00")
         print("Upgrade cache recovery: invalid timezone, duplicate/invalid periods and missing App Group passed")
         print("Live Activity v2 timeline, identity, conflict, reservation, dismissal and privacy checks passed")
     }
