@@ -151,8 +151,8 @@ export struct NativeScheduleBody {
       Row({ space: this.metrics().gap }) {
         Stack({ alignContent: Alignment.TopStart }) {
           Column() { ForEach(this.view.slots(), (slot: number) => { this.slotAxis(slot, false) }) }.width('100%')
-          if (this.weekNowY(this.metrics().weekRow, this.metrics().gap) >= 0) {
-            this.nowBadge(this.metrics().axis, this.weekNowY(this.metrics().weekRow, this.metrics().gap))
+          if (this.nowMarkY('week', 0) >= 0) {
+            this.nowBadge('week')
           }
         }.width(this.metrics().axis)
         ForEach(this.view.weekColumns(), (day: number) => {
@@ -209,9 +209,9 @@ export struct NativeScheduleBody {
                 .accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
                 .onClick(() => this.openTile(block, day))
             })
-            this.agendaColumn(day, this.metrics().weekRow, this.metrics().gap, this.weekColumn())
-            if (this.view.shownIsToday(day) && this.weekNowY(this.metrics().weekRow, this.metrics().gap) >= 0) {
-              this.nowLine(this.weekColumn(), this.weekNowY(this.metrics().weekRow, this.metrics().gap))
+            this.agendaColumn(day, false)
+            if (this.view.shownIsToday(day) && this.nowMarkY('week', day) >= 0) {
+              this.nowLine('week', day)
             }
           }.height(this.weekStride() * this.view.slotCount() - this.metrics().gap).layoutWeight(1)
         }, (day: number) => String(day))
@@ -236,8 +236,8 @@ export struct NativeScheduleBody {
     Row({ space: this.metrics().dayGap }) {
       Stack({ alignContent: Alignment.TopStart }) {
         Column() { ForEach(this.view.slots(), (slot: number) => { this.slotAxis(slot, true) }) }.width('100%')
-        if (this.dayNowY(this.metrics().dayRow, this.metrics().dayGap) >= 0) {
-          this.nowBadge(this.metrics().dayAxis, this.dayNowY(this.metrics().dayRow, this.metrics().dayGap))
+        if (this.nowMarkY('day', 0) >= 0) {
+          this.nowBadge('day')
         }
       }.width(this.metrics().dayAxis)
       Stack({ alignContent: Alignment.TopStart }) {
@@ -275,8 +275,8 @@ export struct NativeScheduleBody {
             .position({ x: block.lane * this.dayColumn() / block.lanes + 1, y: (block.startSlot - 1) * this.dayStride() + 1 })
             .accessibilityText(this.courseAccessibility(block, this.view.selectedDay)).onClick(() => this.openTile(block, this.view.selectedDay))
         })
-        if (this.dayNowY(this.metrics().dayRow, this.metrics().dayGap) >= 0) {
-          this.nowLine(this.dayColumn(), this.dayNowY(this.metrics().dayRow, this.metrics().dayGap))
+        if (this.nowMarkY('day', 0) >= 0) {
+          this.nowLine('day', 0)
         }
       }.layoutWeight(1).height(this.dayStride() * this.view.slotCount() - this.metrics().dayGap)
     }.width('100%').alignItems(VerticalAlign.Top)
@@ -294,9 +294,11 @@ export struct NativeScheduleBody {
   }
 
   // The day's timed items over one week column, at their clock time; beside a class they keep to the right.
+  // The geometry is read here rather than passed in: a builder's arguments are taken once, so a passed row
+  // height would keep the first layout's value after the grid settles or resizes.
   @Builder
-  private agendaColumn(day: number, rowHeight: number, gap: number, width: number) {
-    ForEach(this.agendaChipsFor(day, rowHeight, gap), (chip: NativeAgendaChip) => {
+  private agendaColumn(day: number, styled: boolean) {
+    ForEach(this.agendaChipsFor(day, styled), (chip: NativeAgendaChip) => {
       Button() {
         Column() {
           Text((chip.entry.done ? '✓ ' : '') + chip.entry.item.title).fontSize(9).fontWeight(600).fontColor(this.themeText())
@@ -305,8 +307,8 @@ export struct NativeScheduleBody {
         }.width('100%').height('100%').alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Start)
           .padding({ left: 3, right: 3, top: 2, bottom: 2 })
       }.type(ButtonType.Normal).padding(0).clip(true)
-        .width(chip.beside ? width * 0.44 : width - 2).height(chip.height)
-        .position({ x: chip.beside ? width * 0.56 - 1 : 1, y: chip.y })
+        .width(chip.beside ? this.agendaWidth(styled) * 0.44 : this.agendaWidth(styled) - 2).height(chip.height)
+        .position({ x: chip.beside ? this.agendaWidth(styled) * 0.56 - 1 : 1, y: chip.y })
         .borderRadius(6).backgroundColor(scheduleThemeTint(this.store.palette, this.store.dark ? 0.32 : 0.18))
         .border({ width: 1, color: scheduleAlpha(this.themeText(), 0.6), radius: 6 })
         .opacity(chip.entry.done ? 0.55 : 1)
@@ -349,12 +351,17 @@ export struct NativeScheduleBody {
       .border({ width: 0.6, color: scheduleCellBorder(this.store.dark), radius: 14 })
   }
 
-  private agendaChipsFor(day: number, rowHeight: number, gap: number): NativeAgendaChip[] {
+  private agendaChipsFor(day: number, styled: boolean): NativeAgendaChip[] {
     if (!this.store.agendaItems.length) return [];
     const slots = this.view.slots();
     const courses = this.placed(day).map((block: PlacedCourseBlock) => [block.startSlot, block.endSlot]);
     return agendaChips(this.store.agendaItems, this.view.shownRawDate(day),
-      slots.map((slot: number) => this.view.slotStart(slot)), slots.map((slot: number) => this.view.slotEnd(slot)), rowHeight, gap, courses);
+      slots.map((slot: number) => this.view.slotStart(slot)), slots.map((slot: number) => this.view.slotEnd(slot)),
+      styled ? this.cellRow(false) : this.metrics().weekRow, styled ? STYLED_SLOT_GAP : this.metrics().gap, courses);
+  }
+
+  private agendaWidth(styled: boolean): number {
+    return styled ? this.columnWidth(false) : this.weekColumn();
   }
 
   private agendaDayEntries(): NativeAgendaOccurrence[] {
@@ -364,22 +371,50 @@ export struct NativeScheduleBody {
 
   // ---- "Now" ----
 
-  // The current time in a theme-colour capsule on the period axis.
+  // The current time in a theme-colour capsule on the period axis of `grid` (see nowMarkY). Like the agenda
+  // chips, the marks read their position here: passed in, it would stay where the grid first put it while
+  // the clock in the capsule moved on, so a page opened in class kept the mark in that period all day.
   @Builder
-  private nowBadge(width: number, y: number) {
+  private nowBadge(grid: string) {
     Text(scheduleClockLabel(this.store.nowMinutes)).fontSize(10).fontWeight(600).fontColor('#FFFFFF').maxLines(1)
       .height(16).padding({ left: 4, right: 4 }).borderRadius(8).backgroundColor(scheduleThemeFill(this.store.palette))
-      .position({ x: 0, y: y - 8 }).width(width).textAlign(TextAlign.Center)
+      .position({ x: 0, y: this.nowMarkY(grid, 0) - 8 }).width(this.nowBadgeWidth(grid)).textAlign(TextAlign.Center)
       .hitTestBehavior(HitTestMode.None).accessibilityLevel('no')
   }
 
   // A theme-colour line across today's column with a dot at its leading end.
   @Builder
-  private nowLine(width: number, y: number) {
+  private nowLine(grid: string, day: number) {
     Row() {
       Circle().width(7).height(7).fill(scheduleThemeFill(this.store.palette)).margin({ left: -3.5 })
       Column().height(1.5).layoutWeight(1).backgroundColor(this.themeText())
-    }.width(width).height(7).position({ x: 0, y: y - 3.5 }).hitTestBehavior(HitTestMode.None).accessibilityLevel('no')
+    }.width(this.nowLineWidth(grid)).height(7).position({ x: 0, y: this.nowMarkY(grid, day) - 3.5 })
+      .hitTestBehavior(HitTestMode.None).accessibilityLevel('no')
+  }
+
+  // Where "now" sits down a grid: week and day are the classic views, styledWeek and styledDay the styled
+  // views' period axes, and column and dayColumn one column of a styled week or of the styled day; -1 hides it.
+  private nowMarkY(grid: string, day: number): number {
+    if (grid === 'week') return this.weekNowY(this.metrics().weekRow, this.metrics().gap);
+    if (grid === 'day') return this.dayNowY(this.metrics().dayRow, this.metrics().dayGap);
+    if (grid === 'styledWeek') {
+      const y = this.weekNowY(this.styledRow(), STYLED_SLOT_GAP);
+      return y < 0 ? -1 : STYLED_HEADER + y;
+    }
+    if (grid === 'styledDay') return this.dayNowY(this.cellRow(true), STYLED_SLOT_GAP);
+    return this.columnNowY(day, grid === 'dayColumn');
+  }
+
+  private nowBadgeWidth(grid: string): number {
+    if (grid === 'week') return this.metrics().axis;
+    if (grid === 'day') return this.metrics().dayAxis;
+    return grid === 'styledWeek' ? this.styledAxis() : 48;
+  }
+
+  private nowLineWidth(grid: string): number {
+    if (grid === 'week') return this.weekColumn();
+    if (grid === 'day') return this.dayColumn();
+    return this.columnWidth(grid === 'dayColumn');
   }
 
   private nowY(rowHeight: number, gap: number): number {
@@ -448,8 +483,8 @@ export struct NativeScheduleBody {
         }.width(this.styledAxis())
         ForEach(this.view.weekColumns(), (day: number) => { this.styledColumn(day, false) }, (day: number) => String(day))
       }.alignItems(VerticalAlign.Top)
-      if (this.weekNowY(this.styledRow(), STYLED_SLOT_GAP) >= 0) {
-        this.nowBadge(this.styledAxis(), STYLED_HEADER + this.weekNowY(this.styledRow(), STYLED_SLOT_GAP))
+      if (this.nowMarkY('styledWeek', 0) >= 0) {
+        this.nowBadge('styledWeek')
       }
     }.width('100%')
   }
@@ -504,13 +539,13 @@ export struct NativeScheduleBody {
           ForEach(this.view.slots(), (slot: number) => { this.styledCell(day, slot, dayRow) })
         }.width('100%')
         // Only the grid style runs the "now" line beneath its course tiles.
-        if (this.store.visualStyle === 'grid' && this.columnNowY(day, dayRow) >= 0) {
-          this.nowLine(this.columnWidth(dayRow), this.columnNowY(day, dayRow))
+        if (this.store.visualStyle === 'grid' && this.nowMarkY(dayRow ? 'dayColumn' : 'column', day) >= 0) {
+          this.nowLine(dayRow ? 'dayColumn' : 'column', day)
         }
         ForEach(this.tiles(day, dayRow), (block: PlacedCourseBlock) => { this.styledTile(block, day, dayRow) })
-        if (!dayRow) this.agendaColumn(day, this.cellRow(false), STYLED_SLOT_GAP, this.columnWidth(false))
-        if (this.store.visualStyle !== 'grid' && this.columnNowY(day, dayRow) >= 0) {
-          this.nowLine(this.columnWidth(dayRow), this.columnNowY(day, dayRow))
+        if (!dayRow) this.agendaColumn(day, true)
+        if (this.store.visualStyle !== 'grid' && this.nowMarkY(dayRow ? 'dayColumn' : 'column', day) >= 0) {
+          this.nowLine(dayRow ? 'dayColumn' : 'column', day)
         }
       }.width('100%').height(this.columnHeight(dayRow))
     }.width(this.columnWidth(dayRow)).backgroundColor(dayRow ? Color.Transparent : this.columnBackground(day))
@@ -778,8 +813,8 @@ export struct NativeScheduleBody {
                 .margin({ bottom: slot < this.view.slotCount() ? STYLED_SLOT_GAP : 0 })
             })
           }.width('100%')
-          if (this.dayNowY(this.cellRow(true), STYLED_SLOT_GAP) >= 0) {
-            this.nowBadge(48, this.dayNowY(this.cellRow(true), STYLED_SLOT_GAP))
+          if (this.nowMarkY('styledDay', 0) >= 0) {
+            this.nowBadge('styledDay')
           }
         }.width(48)
         this.styledColumn(this.view.selectedDay, true)
