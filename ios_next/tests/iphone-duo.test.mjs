@@ -82,3 +82,14 @@ test('a partly folded Duo leaves the fold out of the week and month grids', asyn
     assert.equal(month.match(/ScheduleFoldRow\(count:/g)?.length, 2, `${file}: weekday labels and day rows`);
   }
 });
+
+test('the Duo’s upright Dynamic Island gets a countdown that fits it', async () => {
+  // Closed or open, the Duo stands the island upright in the status column,
+  // about 24 points across: "214:37" on one line was cut to "14:3".
+  const widgets = await read('ios_next/CpuTime/CPUWebWidgets/ScheduleWidgets.swift');
+  assert.match(widgets, /compactTrailing: \{\s*ScheduleLiveActivityCompactTimer\(state: state\)/);
+  assert.match(widgets, /@Environment\(\\\.isDynamicIslandLimitedInWidth\) private var limited/);
+  // No fixed width is left on a countdown; each is laid over its longest value.
+  assert.doesNotMatch(widgets, /Text\(timerInterval:[^\n]*\n[^\n]*\n?[^\n]*\.frame\(width: \d+/);
+  assert.match(widgets, /countdownTemplate\(interval\)\)\s*\.hidden\(\)/);
+});

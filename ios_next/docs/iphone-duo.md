@@ -35,6 +35,12 @@ the Duo simulator. They depend on the SDK the app is built with.
   (`TabView`, `NavigationStack`, sheets) move. The app's `TabView` does;
   `NativeTopBar` is drawn by the app and stays a horizontal bar at the top.
 - Safe-area insets are asymmetric: the status column is a trailing inset.
+- The Dynamic Island stands upright at the top of the status column, closed
+  and open: about 37 points across, with the compact leading view above the
+  compact trailing one, each about 24 points wide. iOS 27 tells a Live
+  Activity so through `EnvironmentValues.isDynamicIslandLimitedInWidth`
+  (compact leading, compact trailing and minimal). The expanded island opens
+  as a card at the top trailing corner, as wide as on an iPhone.
 - A partly folded device reports a 40-point division over the fold through
   `GeometryProxy.reservedRegions(kind: .division)` and
   `UIView.reservedRegions(kind:)` (27.1 SDK only). The SDK also has
@@ -64,6 +70,14 @@ All but the last also apply to iPad and to iPhone landscape.
   height. The value is held while the keyboard is up, because SwiftUI lifts the
   page above the keyboard and that would read as the tab bar moving away.
   Pushed pages (`data-cpu-page-navigation`) still get 0.
+- **The Live Activity's countdown fits the upright island.** One line of
+  "214:37" was cut to 「14:3」 there. Where the island is limited in width the
+  compact countdown is two lines, minutes above and ":ss" below, each the same
+  live timer cut down to its part (`ScheduleLiveActivityNarrowAwareTimer`),
+  so it still ticks without updates from the app. Everywhere else every
+  countdown is laid over a hidden text as long as its longest value
+  (`countdownTemplate`) instead of a fixed width, which also cut "100:00" and
+  longer short on iPhones (compact island, paired rows, lock screen).
 - **Week and month grids step over the fold.** Partly folded with the fold
   running down the open display (the book pose), a day column across the fold
   would put its centred course names on the crease. The week grid becomes two
@@ -111,8 +125,18 @@ xcrun simctl io <iPhone Duo> screenshot --display=resizable open.png
 ```
 
 Debug builds also accept `CPU_DEBUG_FOLD=455-495`, a stand-in fold over that
-span of the window in points (the open display's middle 40 points), and
-`CPU_DEBUG_SCHEDULE_VIEW=day` or `month` to open that view.
+span of the window in points (the open display's middle 40 points),
+`CPU_DEBUG_SCHEDULE_VIEW=day` or `month` to open that view, and, with
+`CPU_DEBUG_SCHEDULE_ACTION=live-activity`, `CPU_DEBUG_LIVE_MINUTES=215` for a
+demo class with that many minutes left. Bring another app forward
+(`simctl launch … com.apple.Preferences`) to see the compact island.
+
+Device Hub's controls cannot be driven by computer use (its clicks are
+refused) or AppleScript (no menu bar to script), so the poses, a long press
+on the island and locking were done by hand, with the screenshots taken by
+`simctl`. The bottom bar holds rotate and three poses: Closed, Open and
+Partially Open. Partially Open alone is the laptop pose (inner display
+upright, fold across it); rotated it is the book pose.
 
 Checked on 2026-10-22, iOS 27.1 runtime, sample timetable, default text size:
 
@@ -129,10 +153,24 @@ Checked on 2026-10-22, iOS 27.1 runtime, sample timetable, default text size:
   classic and table is laid out as before.
 - iPhone 17 Pro, iOS 26.5: week and month views unchanged.
 
-Not checked yet: the real hinge (book and partly folded poses through Device
-Hub), the inner display's own bars, sheets and the keyboard on the Duo, and
-the web pages' foot clearance on the 27.1 runtime (it needs a signed-in
-account).
+Checked on 2026-10-26 with Device Hub's poses (sample timetable, sample 日程,
+Sunday first):
+
+- Open: 951×669, the status column and the tab bar down the trailing edge,
+  the week grid across the whole width.
+- Partially Open (laptop): 669×951 upright, the tab bar at the foot; the grid
+  stays whole, as intended for a fold across the view.
+- Book (Partially Open, rotated): the real `reservedRegions(kind: .division)`
+  splits the week grid at x 455–495, Sunday–Wednesday and Thursday–Saturday,
+  and the grid-style month view Monday–Thursday and Friday–Sunday.
+- Live Activity, demo class 215 and 95 minutes: the compact island shows
+  「214 / :48」 and 「94 / :49」 in full, closed, open and in the book pose; the
+  expanded card shows 「93:22」 with the course, time, room, teacher and
+  progress; the lock screen card shows 「214:20」 open and 「213:43」 closed.
+
+Not checked yet: sheets and the keyboard on the Duo, the paired (couple) rows
+in the expanded island, and the web pages' foot clearance on the 27.1
+runtime (it needs a signed-in account).
 
 ## Checking it without the Duo simulator
 
@@ -167,14 +205,11 @@ size:
 
 ## Still to do
 
-1. In Device Hub, go through closed turned, open, open turned, book and partly
-   folded with the pose buttons: the tab bar as a trailing strip, the week and
-   month grids stepping over the real fold (and back when the phone is
-   opened flat), `NativeTopBar`, sheets, the keyboard, the page clearance, and
-   a screen left open while the phone unfolds. The simulator cannot show the
-   camera, StandBy or most extensions, so widgets and Live Activities need a
-   device.
+1. In Device Hub: sheets, the keyboard and the page clearance in each pose,
+   closed turned, and a screen left open while the phone unfolds. The
+   simulator cannot show the camera, StandBy or most extensions, so widgets
+   need a device.
 2. App Store Connect accepts iPhone Duo screenshots: outer display 1398×2034,
    inner display 2007×2853 (portrait), taken from the Duo simulator.
-3. Ship a version built with Xcode 27.1; until then a Duo shows the
-   phone-sized window.
+3. 4.16 (74), built with Xcode 27.1, is approved: a Duo gets the whole
+   screen. The Live Activity fix above ships with 4.17.

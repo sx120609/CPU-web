@@ -101,9 +101,7 @@ private struct ScheduleLiveActivityWidget: Widget {
                     }
                     .accessibilityLabel(state.companion == nil ? "药大拾间课表" : "药大拾间课表，\(state.islandTitle)")
             } compactTrailing: {
-                ScheduleLiveActivityTimer(state: state)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(ScheduleLiveActivityPalette.accent)
+                ScheduleLiveActivityCompactTimer(state: state)
             } minimal: {
                 ScheduleLiveActivityLogo(size: 24)
                     .accessibilityLabel("药大拾间课表")
@@ -589,6 +587,79 @@ private struct ScheduleLiveActivityProgress: View {
             .frame(height: 4)
             .accessibilityLabel("本节课程进度")
         }
+    }
+}
+
+/// The countdown of the compact island. Where the island is limited in width
+/// (iOS 27: the iPhone Duo's closed display stands it upright in the status
+/// column, about 27 points across) "214:37" cannot fit on one line at any
+/// readable size, so the minutes go above and the seconds below.
+@available(iOS 16.1, *)
+private struct ScheduleLiveActivityCompactTimer: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+
+    var body: some View {
+        if #available(iOS 27.0, *) {
+            ScheduleLiveActivityNarrowAwareTimer(state: state)
+        } else {
+            wide
+        }
+    }
+
+    fileprivate var wide: some View {
+        ScheduleLiveActivityTimer(state: state)
+            .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(ScheduleLiveActivityPalette.accent)
+    }
+}
+
+@available(iOS 27.0, *)
+private struct ScheduleLiveActivityNarrowAwareTimer: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+    @Environment(\.isDynamicIslandLimitedInWidth) private var limited
+
+    var body: some View {
+        let end = state.phase == .inProgress ? state.endDate : state.startDate
+        if limited, state.phase != .idle {
+            let interval = min(state.updatedAt, end)...end
+            let template = ScheduleLiveActivityAttributes.countdownTemplate(interval)
+            // A timer only formats as a whole "m:ss", so each line shows the
+            // same live timer, cut down to its minutes or to ":ss". No
+            // update from the app is needed while it counts.
+            let minutes = String(template.prefix { $0 != ":" })
+            // The slot is about as wide as the 24-point logo above it.
+            let large = minutes.count < 3
+            VStack(spacing: -2) {
+                part(interval, template: template, shown: minutes, alignment: .leading)
+                    .font(.system(size: large ? 14 : 12, weight: .bold, design: .rounded).monospacedDigit())
+                part(interval, template: template, shown: ":00", alignment: .trailing)
+                    .font(.system(size: large ? 11 : 10, weight: .semibold, design: .rounded).monospacedDigit())
+            }
+            .foregroundStyle(ScheduleLiveActivityPalette.accent)
+            .accessibilityRepresentation {
+                Text(timerInterval: interval, countsDown: true, showsHours: false)
+            }
+        } else {
+            ScheduleLiveActivityCompactTimer(state: state).wide
+        }
+    }
+
+    /// The part of the live countdown that `shown` covers: the whole timer is
+    /// laid over `template` ("000:00"), which is pinned to the leading edge
+    /// for the minutes or to the trailing edge for ":ss", and cut to `shown`.
+    private func part(_ interval: ClosedRange<Date>, template: String, shown: String, alignment: Alignment) -> some View {
+        Text(shown)
+            .hidden()
+            .overlay(alignment: alignment) {
+                Text(template)
+                    .hidden()
+                    .overlay(alignment: .trailing) {
+                        Text(timerInterval: interval, countsDown: true, showsHours: false)
+                    }
+                    .fixedSize()
+            }
+            .clipped()
+            .lineLimit(1)
     }
 }
 
