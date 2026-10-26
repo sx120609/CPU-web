@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "versionCode": 60,
-  "versionName": "4.0.19",
+  "versionCode": 61,
+  "versionName": "4.0.20",
   "packageName": "cn.lizmt.cpuweb",
-  "fileName": "CPU-Web-Android-V60.apk",
-  "size": 12552654,
-  "sha256": "4d0781baf49883549484f3b8f70132d3f8082c5cec4f779c44ed317362990614",
+  "fileName": "CPU-Web-Android-V61.apk",
+  "size": 12601806,
+  "sha256": "74933de47da50ef103e2950f1eee74ddbaf3abcd1d7172db4cf83117a8aba519",
   "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
-  "sourceCommit": "61df060bcb05db02530745fe83a9bde73c97549d",
-  "buildRun": 39810581152
+  "sourceCommit": "5a0125a560cf6f6db3ecf457809f713dd13606b6",
+  "buildRun": 40280947887
 }
