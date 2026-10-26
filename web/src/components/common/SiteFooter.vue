@@ -16,7 +16,7 @@
           <h2>使用</h2>
           <router-link to="/services">校园服务</router-link>
           <router-link to="/schedule">课表</router-link>
-          <router-link to="/download">客户端下载</router-link>
+          <router-link v-if="!hidesClientDownloads()" to="/download">客户端下载</router-link>
         </nav>
 
         <nav class="footer-col" aria-label="关于与条款">
@@ -53,6 +53,7 @@
 
 <script setup lang="ts">
 import { useSiteStore } from "@/stores/site";
+import { hidesClientDownloads } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, USER_QQ_GROUP_JOIN_URL } from "@/utils/userGroup";
 import { APP_FILING_NUMBER, APP_FILING_URL } from "../../../../shared/appFiling";
 

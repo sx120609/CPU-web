@@ -393,7 +393,7 @@ import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { iosRouteTransitionEnabled } from "@/router";
 import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
-import { canOfferDesktopClient, isAndroidNativeApp, isCampusAssistantDestination, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
+import { canOfferDesktopClient, hidesClientDownloads, isAndroidNativeApp, isCampusAssistantDestination, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
 import { useFormFactor } from "@/utils/formFactor";
 import {
   assumesKeyboardOnFocus,
@@ -626,7 +626,7 @@ const drawerItems = computed(() => {
   items.push({ id: "system-messages", to: "/messages", label: "消息", icon: Message });
   if (auth.isLoggedIn && !hidesNativeCommerce()) items.push({ id: "system-vip", to: "/vip", label: "VIP 中心", icon: StarFilled });
   if (auth.canAccessModuleAdmin) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
-  if (!items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
+  if (!hidesClientDownloads() && !items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
   for (const item of site.topNavigation.filter((candidate) => candidate.to !== "/download" && candidate.showInDrawer && navigationItemVisible(candidate))) {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
@@ -638,6 +638,7 @@ function navigationItemVisible(item: TopNavigationItem) {
   if (auth.forumHidden && (isForumDestination(item.to) || item.requireForumAccess
     || ["forum", "market", "coursereview"].includes(item.feature || ""))) return false;
   if (!item.enabled) return false;
+  if (hidesClientDownloads() && /^\/downloads?(?:[/?#]|$)/.test(item.to)) return false;
   if (isCampusAssistantDestination(item.to) && !assistantEntryVisible.value) return false;
   if (/^\/(?:forum|market|coursereview)(?:[/?#]|$)/.test(item.to) && !auth.canAccessForum) return false;
   if (item.feature && !site.features[item.feature]) return false;

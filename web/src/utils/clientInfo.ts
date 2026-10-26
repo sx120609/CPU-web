@@ -138,6 +138,14 @@ export function hidesNativeCommerce(ua = navigator.userAgent) {
   return isIosNativeApp(ua) || isHarmonyNativeApp(ua);
 }
 
+/**
+ * 鸿蒙 App 里不出现“客户端下载”：AppGallery 审核（2026-10-23，3.0.9）不允许应用内引导下载安卓版、iOS 版
+ * 或跳到其他应用市场。入口都隐藏，下载页本身在路由里改回校园服务。
+ */
+export function hidesClientDownloads(ua = navigator.userAgent) {
+  return isHarmonyNativeApp(ua);
+}
+
 export function isIosOrHarmonyNativeApp(ua = navigator.userAgent) {
   return isIosNativeApp(ua) || isHarmonyNativeApp(ua);
 }

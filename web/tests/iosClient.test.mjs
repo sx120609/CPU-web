@@ -144,3 +144,10 @@ test("native shells that draw their own chrome are recognised by UA token", () =
   assert.equal(client(`${iphone} CPUWebFlutterApp/1`).nativeShellOwnsChrome(), true);
   assert.equal(client(iphone).nativeShellOwnsChrome(), false);
 });
+
+test("only the HarmonyOS app hides the client download entries (AppGallery review)", () => {
+  assert.equal(client("Mozilla/5.0 (Phone; OpenHarmony 5.0) CPUWebHarmonyApp/30 CPUTimeNative/1", { touch: 10 }).hidesClientDownloads(), true);
+  assert.equal(client(`${iphone} CPUWebIOSApp/77 CPUTimeNative/1`, { touch: 5 }).hidesClientDownloads(), false);
+  assert.equal(client("Mozilla/5.0 (Linux; Android 15) CPUWebScheduleApp/61 CPUTimeNative/1").hidesClientDownloads(), false);
+  assert.equal(client(iphone, { touch: 5 }).hidesClientDownloads(), false);
+});

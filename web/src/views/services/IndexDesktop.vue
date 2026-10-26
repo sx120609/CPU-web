@@ -22,7 +22,7 @@
         <span><b>宿舍电费查询</b><small>站内查询本宿舍剩余电量、剩余金额与抄表时间</small></span>
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
       </button>
-      <button data-cpu-button="surface" type="button" class="svc-d-shortcut" style="--tone: #2563eb" @click="$router.push('/download')">
+      <button v-if="!hidesClientDownloads()" data-cpu-button="surface" type="button" class="svc-d-shortcut" style="--tone: #2563eb" @click="$router.push('/download')">
         <span class="pk-tile" aria-hidden="true"><AppIcon :name="clientShortcut.icon" /></span>
         <span><b>{{ clientShortcut.title }}</b><small>{{ clientShortcut.sub }}</small></span>
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
@@ -109,7 +109,7 @@ import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import ToolCardDesktop from "./components/ToolCardDesktop.vue";
-import { canOfferDesktopClient } from "@/utils/clientInfo";
+import { canOfferDesktopClient, hidesClientDownloads } from "@/utils/clientInfo";
 import { publicServiceLinks, useInjectedServicesPage } from "./servicesPage";
 import "@/styles/page-kit.css";
 

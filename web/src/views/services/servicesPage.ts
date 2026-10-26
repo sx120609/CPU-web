@@ -7,7 +7,7 @@ import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
-import { shouldHideNativeMiniGames } from "@/utils/clientInfo";
+import { hidesClientDownloads, shouldHideNativeMiniGames } from "@/utils/clientInfo";
 import { detectVenueLaunchMode, openVenueReservationWithoutReferrer } from "@/utils/venueReservation";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
 
@@ -130,7 +130,7 @@ export function useServicesPage() {
     [() => route.query.open, () => site.features.electric],
     ([quickOpen, electricEnabled]) => {
       if (quickOpen === "electric" && electricEnabled) electricOpen.value = true;
-      if (quickOpen === "network" || quickOpen === "desktop") void router.push("/download");
+      if ((quickOpen === "network" || quickOpen === "desktop") && !hidesClientDownloads()) void router.push("/download");
     },
     { immediate: true },
   );

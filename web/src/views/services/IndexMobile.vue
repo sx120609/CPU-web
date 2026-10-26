@@ -149,6 +149,7 @@ import AppIcon from "@/components/common/AppIcon.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServiceMobilePane from "@/components/jwxt/IServiceMobilePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
+import { hidesClientDownloads } from "@/utils/clientInfo";
 import ToolRowMobile from "./components/ToolRowMobile.vue";
 import { publicServiceLinks, useInjectedServicesPage } from "./servicesPage";
 
@@ -183,14 +184,14 @@ const shortcuts = computed(() => [
     sub: "剩余电量与金额",
     open: () => { electricOpen.value = true; },
   }] : []),
-  {
+  ...(hidesClientDownloads() ? [] : [{
     key: "download",
     icon: "download",
     tone: "#2563eb",
     title: "客户端下载",
     sub: "桌面端与手机端",
     open: () => { void router.push("/download"); },
-  },
+  }]),
 ]);
 
 const matchedShortcuts = computed(() => shortcuts.value.filter((item) => matches(item.title, item.sub)));

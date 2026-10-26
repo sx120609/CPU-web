@@ -8,6 +8,7 @@ import type { FeatureKey } from "@/api/site";
 import { boardApi } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import {
+  hidesClientDownloads,
   hidesNativeCommerce,
   isLikelyIosDevice,
   isNativeForumIntranetOnlyAccount,
@@ -302,6 +303,9 @@ export const router = createRouter({
 installForumListLayoutSync(router, forumListRouteOptions);
 
 router.beforeEach(async (to) => {
+  if (hidesClientDownloads() && /^\/downloads?(\/|$)/.test(to.path)) {
+    return { path: "/services", replace: true };
+  }
   if (hidesNativeCommerce() && /^\/(vip|sponsor|sponsor-wall)(\/|$)/.test(to.path)) {
     return { path: "/profile", replace: true };
   }
