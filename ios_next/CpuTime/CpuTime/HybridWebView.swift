@@ -338,6 +338,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     var onBridgeReady: (() -> Void)?
     /// The page's 日程 changed (`CPUTimeNative.agendaChanged`, see web/src/utils/nativeAgendaBridge.ts).
     var onAgendaChanged: (() -> Void)?
+    /// An /agenda link asked for one 日程, a new one or the list (`CPUTimeNative.openAgenda`, JSON).
+    var onOpenAgenda: ((String) -> Void)?
     var onFailure: ((String) -> Void)?
 
     private var webView: WKWebView?
@@ -1352,6 +1354,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             directUnreadNotificationCount = Self.nonNegativeInt(body["directUnreadCount"])
         case "agendaChanged":
             onAgendaChanged?()
+        case "openAgenda":
+            onOpenAgenda?(body["request"] as? String ?? "")
         case "networkError":
             serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或切换流量后重试。"
         default:
@@ -1723,6 +1727,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             directUnreadCount: Math.max(0, Number(directUnreadCount) || 0)
           });
           bridge.agendaChanged = () => post({type: 'agendaChanged'});
+          bridge.openAgenda = request => post({type: 'openAgenda', request: String(request || '')});
           window.CPUTimeNative = bridge;
           // Keep native login usable while an older deployed Web bundle is
           // still being rolled out. Newer bundles replace these methods with

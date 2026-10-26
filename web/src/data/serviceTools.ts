@@ -22,21 +22,6 @@ export interface ServiceTool {
 
 export const serviceTools: ServiceTool[] = [
   {
-    slug: "agenda",
-    name: "日程",
-    summary: "记下课表以外的安排和待办，到点提醒，也显示在课表里",
-    description: "一句话就能记下，例如「周五 14:00 组会 @药学楼」。网页、手机 App 和药大拾间 NEXT 同步。",
-    icon: "calendar",
-    status: "ready",
-    category: "效率",
-    routeName: "agenda",
-    componentKey: "agenda",
-    accent: "#0f766e",
-    iconComponent: Calendar,
-    badge: "多端同步",
-    badgeType: "success",
-  },
-  {
     slug: "workshop",
     name: "创意工坊",
     summary: "发现同学制作的小游戏和实用工具，也可以分享自己的作品",

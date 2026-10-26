@@ -127,6 +127,8 @@ class WebSession(
     var onSchedulePrefetched: ((String) -> Unit)? = null
     /** The page saved a change to the user's 日程. */
     var onAgendaChanged: (() -> Unit)? = null
+    /** A page asked for one 日程, a new one or the list (`CPUTimeNative.openAgenda`, JSON from the Web router). */
+    var onOpenAgenda: ((String) -> Unit)? = null
     var onBridgeLost: ((String) -> Unit)? = null
     var onAppearanceReported: ((mode: String) -> Unit)? = null
     /** The renderer process died; true for a crash, false when the system reclaimed it. */
@@ -282,6 +284,7 @@ class WebSession(
             "appearance" -> if (bridgeReady) onAppearanceReported?.invoke(payload.optString("mode", "system"))
             "schedulePrefetched" -> payload.optJSONObject("snapshot")?.let { onSchedulePrefetched?.invoke(it.toString()) }
             "agendaChanged" -> onAgendaChanged?.invoke()
+            "openAgenda" -> onOpenAgenda?.invoke(payload.optString("request"))
             "header" -> payload.optJSONObject("state")?.let { state ->
                 val next = WebHeaderState(
                     path = state.optString("path", "/home"),

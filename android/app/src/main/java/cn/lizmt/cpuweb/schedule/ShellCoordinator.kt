@@ -182,6 +182,11 @@ class ShellCoordinator(
         onOpenDorm?.invoke(page) ?: openWeb(page, ShellTab.Services, replace = true)
     }
 
+    /** Brings the native timetable to the front as it was left (日程 open over it). */
+    fun showSchedule() {
+        if (!requiresLogin) selectedTab = ShellTab.Schedule
+    }
+
     /** A widget or notification asked for the timetable. */
     fun openSchedule(semester: String?, week: String?) {
         if (requiresLogin) return

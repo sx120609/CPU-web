@@ -90,6 +90,11 @@ struct NativeAgendaChecks {
         precondition(try! JSONDecoder().decode(NativeAgendaItem.self, from: Data(#"{"id":"abcdef123456"}"#.utf8)).sanitized == nil)
         let encoded = String(decoding: try! JSONEncoder().encode(decoded), as: UTF8.self)
         precondition(encoded.contains(#""repeat":"weekly""#) && !encoded.contains("repeatRule"))
+        // Still to do: past to-dos left unticked (oldest first), then the undated ones in the order added.
+        let todos = [item("undated02", "b", createdAt: 2), item("undated01", "a", createdAt: 1),
+                     item("late0002", "c", date: "2026-10-24"), item("late0001", "d", date: "2026-10-20"),
+                     item("timed001", "e", date: "2026-10-20", start: "09:00"), item("today001", "f", date: "2026-10-26")]
+        precondition(NativeAgendaRules.openTodos(todos, today: "2026-10-26").map(\.id) == ["late0001", "late0002", "undated01", "undated02"])
         print("NativeAgendaChecks passed")
     }
 }

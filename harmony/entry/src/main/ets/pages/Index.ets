@@ -41,11 +41,20 @@ import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeSch
   scheduleNormalizedTextSize } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
 import { NativeAgendaModel } from '../schedule/NativeAgenda';
+import { NativeAgendaEditor, NativeAgendaEditorModel } from '../schedule/NativeAgendaEditor';
 import { syncAgendaReminders } from '../schedule/NativeAgendaReminders';
 import { NativeAgendaItem } from '../schedule/NativeScheduleStore';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
 import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidgetPreview, saveScheduleWidgetTheme, refreshAllScheduleForms, clearScheduleWidgetAccount, readScheduleWidgetSettings, saveLocalScheduleSnapshot } from '../common/ScheduleWidgetService';
+
+// What an /agenda link asks for (web/src/router/index.ts): one item, a new one, or the list.
+interface AgendaOpenRequest {
+  item?: string;
+  date?: string;
+  start?: string;
+  new?: boolean;
+}
 
 interface NativeLoginPending {
   resolve: (response: NativeLoginResponse) => void;
@@ -86,6 +95,8 @@ struct Index {
   @State private editorModel: NativeCourseEditorModel = new NativeCourseEditorModel();
   // 日程 come through the site's bridge and are drawn on scheduleStore; see NativeAgenda.ets.
   private agendaModel?: NativeAgendaModel;
+  // 日程 are added, edited and listed in a panel over the timetable.
+  @State private agendaEditor: NativeAgendaEditorModel = new NativeAgendaEditorModel();
   @State private scheduleStyleVisible: boolean = false;
   @State private sharingModel: NativeScheduleSharingModel = new NativeScheduleSharingModel();
   @State private coupleModel: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
@@ -317,6 +328,7 @@ struct Index {
       onEditorResult: (id: string, payload: string) => this.editorModel.accept(id, payload),
       onAgendaResult: (id: string, payload: string) => this.agendaModel?.accept(id, payload),
       onAgendaChanged: () => this.agendaModel?.refresh(true),
+      onOpenAgenda: (request: string) => this.openAgendaRequest(request),
       onNativeLoginResult: (id: string, payload: string) => this.acceptNativeLoginResult(id, payload),
       onWebTaskResult: (id: string, payload: string) => this.acceptWebTaskResult(id, payload)
     });
@@ -353,7 +365,8 @@ struct Index {
       'webOverlayChanged',
       'editorResult',
       'agendaResult',
-      'agendaChanged'
+      'agendaChanged',
+      'openAgenda'
     ];
   }
 
@@ -490,6 +503,7 @@ struct Index {
           bridge.schedulePrefetched = value => host.schedulePrefetched(JSON.stringify(value));
           bridge.scheduleWeekPrefetched = value => host.scheduleWeekPrefetched(JSON.stringify(value));
           bridge.agendaChanged = () => host.agendaChanged();
+          bridge.openAgenda = request => host.openAgenda(String(request || ''));
           bridge.loadSchedule = options => window.CPUTimeNativeScheduleFetch?.(
             options?.semester, options?.week, Boolean(options?.force)
           );
@@ -1070,13 +1084,33 @@ struct Index {
     }, (items: NativeAgendaItem[]) => {
       if (context) syncAgendaReminders(context, items);
     });
-    this.scheduleStore.agendaOpen = (id: string, _date: string) => this.selectTab(3, `/agenda?item=${encodeURIComponent(id)}`);
+    this.agendaEditor.attach(model);
+    this.scheduleStore.agendaOpen = (id: string, _date: string) => this.openAgendaItem(id);
+    this.scheduleStore.agendaNew = (date: string, start: string) => this.agendaEditor.openNew(date, start);
+    this.scheduleStore.agendaList = () => this.agendaEditor.openList();
     this.scheduleStore.agendaToggle = (id: string, date: string, done: boolean) => model.toggle(id, date, done);
     if (!context) return;
     void preferences.getPreferences(context, { name: 'native_agenda' }).then(async (prefs) => {
       saved = prefs;
       model.restore(String(await prefs.get('items', '')));
     }).catch(() => undefined);
+  }
+
+  /** One 日程 in the editor over the timetable; one not loaded yet opens 日程与待办 instead. */
+  private openAgendaItem(id: string): void {
+    const item = this.scheduleStore.agendaItems.find((entry: NativeAgendaItem) => entry.id === id);
+    if (item) this.agendaEditor.openItem(item);
+    else this.agendaEditor.openList();
+  }
+
+  /** `CPUTimeNative.openAgenda`: an /agenda link (a notification, a message) opens over the timetable. */
+  private openAgendaRequest(raw: string): void {
+    let request: AgendaOpenRequest | undefined;
+    try { request = JSON.parse(raw) as AgendaOpenRequest; } catch (_) { request = undefined; }
+    this.selectTab(2);
+    if (request?.item) this.openAgendaItem(request.item);
+    else if (request?.new) this.agendaEditor.openNew(request.date ?? '', request.start ?? '');
+    else this.agendaEditor.openList();
   }
 
   private selectTab(index: number, destination?: string): void {
@@ -1308,6 +1342,7 @@ struct Index {
               couple: this.coupleModel,
               onCouple: () => this.coupleModel.open(),
               onDorm: () => this.openDormSchedule(),
+              onAgenda: () => this.agendaEditor.openList(),
               bottomClearance: this.bottomContentClearance(),
               onLogin: () => {
                 this.selectTab(1);
@@ -1650,13 +1685,14 @@ struct Index {
     .width('100%')
     .height('100%')
     .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible || this.sharingModel.visible
-      || this.coupleModel.sheetVisible, this.nativePanelSheet(), {
+      || this.coupleModel.sheetVisible || this.agendaEditor.visible, this.nativePanelSheet(), {
       height: SheetSize.LARGE, showClose: true, dragBar: true,
-      onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy) action.dismiss(); },
+      onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy && !this.agendaEditor.busy) action.dismiss(); },
       onDisappear: () => {
         this.editorModel.cancel(); this.scheduleStyleVisible = false; this.widgetPanelVisible = false; this.widgetPreviewRevision += 1;
         this.sharingModel.close();
         this.coupleModel.close();
+        this.agendaEditor.close();
       }
     })
   }
@@ -1681,6 +1717,8 @@ struct Index {
       this.widgetSettingsPanel()
     } else if (this.editorModel.visible) {
       NativeCourseEditor({ model: this.editorModel })
+    } else if (this.agendaEditor.visible) {
+      NativeAgendaEditor({ model: this.agendaEditor, store: this.scheduleStore })
     } else if (this.sharingModel.visible) {
       NativeScheduleSharing({
         model: this.sharingModel,

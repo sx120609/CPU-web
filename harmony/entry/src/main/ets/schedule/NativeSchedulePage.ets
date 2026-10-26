@@ -36,6 +36,8 @@ export struct NativeSchedulePage {
   onCouple: () => void = () => undefined;
   // 宿舍课表是网页页面，返回回到这里。
   onDorm: () => void = () => undefined;
+  // 日程与待办, over the user's own timetable.
+  onAgenda?: () => void;
   // Closes a read-only shared timetable.
   onClose: () => void = () => undefined;
   // Pins "now" (minutes since midnight) for acceptance screenshots; -1 follows the clock.
@@ -214,6 +216,7 @@ export struct NativeSchedulePage {
           .bindMenu([
             { value: '刷新课表', enabled: this.store.status !== 'loading', action: () => this.store.load(true) },
             { value: '添加与恢复课程', enabled: this.store.source !== 'graduate', action: () => this.onTools() },
+            { value: '日程与待办', enabled: !!this.onAgenda, action: () => this.onAgenda?.() },
             { value: '课表风格、配色与背景', action: () => this.onStyle() },
             { value: '桌面与锁屏服务卡片', action: () => this.onWidgets() },
             { value: '分享所选周课表', action: () => this.onShare() },

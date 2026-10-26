@@ -36,7 +36,7 @@ UA 追加 `CPUWebScheduleApp/<versionCode> CPUWebScheduleAppVersion/<versionName
 - `app/src/main/assets/NativeShellBootstrap.js`：页面开始时注入（仅本站来源），隐藏网页栏、创建 `window.CPUTimeNative` 并上报路由、登录状态与外观。消息优先经按来源限定、只接收主框架的 `WebMessageListener` 送达 Kotlin；旧版 WebView 回退到 JavaScript 接口。
 - `app/src/main/assets/NativeWebCompatibility.js`：由 `android/bridge/*.ts` 生成，页面加载完成后执行。线上网页尚未提供课表桥时，用现有 Pinia 状态和同源 Cookie 安装兼容桥，并提供原生登录、顶栏状态、返回导航、弹层检测与课程编辑（`CPUAndroidEditor`）。
 - 原有 `CPUAndroid` 桥（应用内更新、小组件、图片保存）保留，仅对本站页面开放。
-- 日程读网页的 `CPUTimeNativeAgenda`（`web/src/utils/nativeAgendaBridge.ts`，`list` / `toggle` / `open`）；列表变化时网页调用 `CPUTimeNative.agendaChanged()`，App 重新读取。线上网页还没有这个桥时保留上次读到的。
+- 日程经网页的 `CPUTimeNativeAgenda`（`web/src/utils/nativeAgendaBridge.ts`，`list` / `toggle` / `save` / `remove` / `relay` / `parse`）读写，在课表里原生编辑（`ScheduleAgendaSheets.kt`）：点日程打开编辑器，点空着的节次可选「添加日程」或「添加课程」，「更多 → 日程与待办」列出待办、接下来一周和「微信和 QQ 也提醒」。列表变化时网页调用 `CPUTimeNative.agendaChanged()`，App 重新读取；站内的 `/agenda` 链接经 `CPUTimeNative.openAgenda` 在课表上打开。线上网页还没有这个桥时保留上次读到的。
 
 修改 `android/bridge`、共享课表桥或网页主题后，在仓库根目录运行：
 
@@ -74,7 +74,7 @@ adb shell am start -n cn.lizmt.cpuweb/cn.lizmt.cpuweb.schedule.MainActivity --ez
 | `--ei debugDay 4` | 选中星期几（1–7） |
 | `--es debugNow 09:00` | 固定“现在”，查看正在上、下一节等状态 |
 | `--es debugPriority 体育（羽毛球）` | 设置优先显示的课程，多个用逗号分隔，靠前的在上 |
-| `--es debugSheet sharing` | 启动后打开弹窗：`visual`（课表风格）、`display`（显示设置）、`style`（配色与背景）、`sharing`（共享课表）、`couple`（情侣课表） |
+| `--es debugSheet sharing` | 启动后打开弹窗：`visual`（课表风格）、`display`（显示设置）、`style`（配色与背景）、`sharing`（共享课表）、`couple`（情侣课表）、`agenda`（日程与待办）、`agendaNew`（新建日程） |
 | `--es debugCouple active` | 情侣课表的假接口状态：`active`（已绑定，TA 的课表和自己的有重合、有撞课、有各自的课）、`pending`（邀请码等待接受），不传为未绑定 |
 | `--ez debugOverlapNotice true` | 示例课表里周三有两门课排在同一时段；带上它才弹「同一时间排了两门课」的提示（每处只弹一次，清数据后再看） |
 | `--es debugCoupleColors teal,amber` | 情侣课表里两人的颜色：先是自己的，再是 TA 的（`blue`、`pink`、`purple`、`teal`、`green`、`amber`、`orange`） |

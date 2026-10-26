@@ -44,6 +44,8 @@ object DebugScheduleFixture {
         "style" -> ScheduleSheet.Style
         "sharing" -> ScheduleSheet.Sharing
         "couple" -> ScheduleSheet.Couple
+        "agenda" -> ScheduleSheet.AgendaList
+        "agendaNew" -> ScheduleSheet.AgendaEdit(newAgendaDraft(java.time.LocalDate.now().toString(), "14:00"))
         else -> null
     }
 

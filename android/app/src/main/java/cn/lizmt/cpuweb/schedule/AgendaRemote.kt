@@ -20,7 +20,8 @@ import java.time.LocalDate
  * The user's 日程 in the official app. The items live on the site
  * (`/api/next-sync`, the same records as the Web page and 药大拾间 NEXT) and
  * come through the page's bridge `CPUTimeNativeAgenda`, so this app needs no
- * sign-in of its own; editing happens on the Web page at `/agenda`.
+ * sign-in of its own. They are read, added, edited and ticked off in the
+ * timetable itself ([AgendaEditorSheet], [AgendaListSheet]).
  *
  * A copy is kept in `files/agenda-cache.json` for the timetable while the page
  * loads and for the reminders, which fire with the app closed.
@@ -35,6 +36,9 @@ class AgendaRemote(
         private set
     /** The site answers for a signed-in account; false before the first answer and when signed out. */
     var available by mutableStateOf(false)
+        private set
+    /** 微信和 QQ 也提醒, as the site last said. */
+    var relay by mutableStateOf(false)
         private set
     private var account = readCache(context).first
     private var loading: Job? = null
@@ -79,14 +83,62 @@ class AgendaRemote(
         }
     }
 
+    /**
+     * Adds [item] (an empty id makes a new one) or saves the edits to it, through the page.
+     * Returns the item as the site stored it, or why it was not stored.
+     */
+    suspend fun save(item: AgendaItem): Result<AgendaItem> {
+        if (frozen) {
+            val now = System.currentTimeMillis()
+            val stored = AgendaCodec.normalize(item.copy(id = item.id.ifEmpty { AgendaCodec.newId() },
+                createdAt = item.createdAt.takeIf { it > 0 } ?: now, updatedAt = now))
+                ?: return Result.failure(IllegalArgumentException("先写个标题"))
+            items = items.filter { it.id != stored.id } + stored
+            return Result.success(stored)
+        }
+        val data = AgendaCodec.toJson(item).apply { if (item.id.isEmpty()) remove("id") }
+        val reply = reply(request(JSONObject().put("action", "save").put("data", data)))
+            ?: return Result.failure(IllegalStateException(UNREACHABLE))
+        val saved = reply.optJSONObject("saved")?.let(AgendaCodec::fromJson)
+            ?: return Result.failure(IllegalStateException(reply.optString("error").ifEmpty { UNREACHABLE }))
+        return Result.success(saved)
+    }
+
+    /** Deletes an item (every day of a repeating one), through the page. */
+    suspend fun remove(id: String): Result<Unit> {
+        if (frozen) {
+            items = items.filter { it.id != id }
+            return Result.success(Unit)
+        }
+        val reply = reply(request(JSONObject().put("action", "remove").put("id", id)))
+            ?: return Result.failure(IllegalStateException(UNREACHABLE))
+        return if (items.any { it.id == id }) Result.failure(IllegalStateException(reply.optString("error").ifEmpty { UNREACHABLE }))
+        else Result.success(Unit)
+    }
+
+    /** 微信和 QQ 也提醒: shown at once, then saved through the page. */
+    fun updateRelay(on: Boolean) {
+        relay = on
+        if (frozen) return
+        scope.launch { accept(request(JSONObject().put("action", "relay").put("on", on))) }
+    }
+
     /** Forgets the copy (signed out or another account). */
     fun clear() {
         if (frozen) return
         items = emptyList()
         available = false
+        relay = false
         account = ""
         writeCache(context, "", emptyList())
         AgendaReminders.sync(context, emptyList())
+    }
+
+    /** Takes in a reply that answers for an account; null when the page could not say. */
+    private fun reply(raw: String?): JSONObject? {
+        accept(raw)
+        val reply = raw?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return null
+        return reply.takeIf { !it.optBoolean("missing", false) && it.optBoolean("authenticated", false) }
     }
 
     private fun accept(raw: String?) {
@@ -97,6 +149,7 @@ class AgendaRemote(
             clear()
             return
         }
+        relay = reply.optBoolean("relay", false)
         val array = reply.optJSONArray("items") ?: JSONArray()
         val next = (0 until array.length()).mapNotNull { index -> array.optJSONObject(index)?.let(AgendaCodec::fromJson) }
             .take(AgendaCodec.MAX_ITEMS)
@@ -109,6 +162,7 @@ class AgendaRemote(
 
     companion object {
         private const val FILE = "agenda-cache.json"
+        private const val UNREACHABLE = "没能保存，请检查网络后再试"
 
         /** The account and items last read, for the timetable at start and for the reminder receivers. */
         fun readCache(context: Context): Pair<String, List<AgendaItem>> {

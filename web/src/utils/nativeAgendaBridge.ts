@@ -4,7 +4,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useAgendaStore } from "@/stores/agenda";
 import { isNativeScheduleShell } from "@/utils/clientInfo";
 import { nativeScheduleAccountKey } from "@/utils/iosNextScheduleBridge";
-import type { AgendaItem } from "@/utils/agenda";
+import { parseAgendaText, type AgendaItem } from "@/utils/agenda";
 
 /**
  * 原生 App 的课表里画日程用的入口：`window.CPUTimeNativeAgenda(request)`。
@@ -12,8 +12,13 @@ import type { AgendaItem } from "@/utils/agenda";
  * - `{ action: "list", refresh?: boolean }`：同步一次（`refresh: false` 只读本机副本）后返回
  *   `{ authenticated, account, items, relay }`。`items` 是规整过的日程，规则见 shared/agenda.ts。
  * - `{ action: "toggle", id, date, done }`：勾掉或取消勾掉一次，返回同样的结果。
- * - `{ action: "open", item?, date?, start? }`：打开网页的日程页（有 item 时直接编辑那一条，
- *   没有时新建，带上日期和开始时间）。
+ * - `{ action: "save", data }`：新建（`data.id` 为空）或改一条，同步后返回同样的结果并带上
+ *   `saved`（规整后的那一条；存不了时为 null，`error` 说原因）。原生的日程编辑器用它。
+ * - `{ action: "remove", id }`：删掉一条（重复的整条删掉）。
+ * - `{ action: "relay", on }`：打开或关掉「微信和 QQ 也提醒」。
+ * - `{ action: "parse", text }`：把一句话读成日程的各项（不用登录），返回 `{ parsed }`。
+ * - `{ action: "open", item?, date?, start? }`：旧版原生用的，打开网页的日程（有 item 时直接编辑
+ *   那一条，没有时新建，带上日期和开始时间）。
  *
  * 页面的登录状态还没恢复时先等它（最多 8 秒），等不到就返回 `{ missing: true }`，和没有这个桥的
  * 旧网页一样，原生保留已显示的日程。
@@ -29,6 +34,9 @@ type AgendaRequest = {
   done?: boolean;
   item?: string;
   start?: string;
+  data?: Partial<AgendaItem>;
+  on?: boolean;
+  text?: string;
 };
 
 type AgendaReply = {
@@ -37,6 +45,7 @@ type AgendaReply = {
   items: AgendaItem[];
   relay: boolean;
   error?: string;
+  saved?: AgendaItem | null;
 };
 
 export function installNativeAgendaBridge(router: Router) {
@@ -75,12 +84,27 @@ export function installNativeAgendaBridge(router: Router) {
 
   host.CPUTimeNativeAgenda = async (request: AgendaRequest = {}) => {
     try {
+      if (request.action === "parse") return { parsed: parseAgendaText(String(request.text ?? "").slice(0, 120)) };
       // 原生收到 missing 时保留已显示的日程，不会当成退出登录清空。
       if (!(await authSettled())) return { missing: true };
       if (!auth.isLoggedIn || !agenda.attach()) return reply();
       switch (request.action) {
         case "toggle":
           if (request.id && typeof request.date === "string") agenda.setDone(request.id, request.date, request.done !== false);
+          await agenda.sync();
+          return reply();
+        case "save": {
+          const data = request.data && typeof request.data === "object" ? request.data : null;
+          const saved = data && typeof data.title === "string" ? agenda.save({ ...data, title: data.title }) : null;
+          if (saved) await agenda.sync();
+          return { ...reply(), saved, ...(saved ? {} : { error: agenda.error || "先写个标题" }) };
+        }
+        case "remove":
+          if (request.id) agenda.remove(request.id);
+          await agenda.sync();
+          return reply();
+        case "relay":
+          agenda.setRelay(request.on === true);
           await agenda.sync();
           return reply();
         case "open": {

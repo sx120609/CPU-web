@@ -1,5 +1,6 @@
 import { NativeCourseBlock, NativeScheduleStore } from './NativeScheduleStore';
-import { agendaChips, agendaHeaderDot, agendaOn, NativeAgendaChip, NativeAgendaOccurrence } from './NativeAgenda';
+import { promptAction } from '@kit.ArkUI';
+import { agendaChips, agendaDayNumber, agendaHeaderDot, agendaOn, NativeAgendaChip, NativeAgendaOccurrence } from './NativeAgenda';
 import { scheduleCardTone } from './ScheduleVisuals';
 import { scheduleAccent, scheduleCell, scheduleCellBorder, scheduleGridMetrics, ScheduleGridMetrics,
   scheduleSecondaryText, scheduleSurface, scheduleText, scheduleTint } from './ScheduleLayout';
@@ -1259,9 +1260,23 @@ export struct NativeScheduleBody {
 
   private addAt(day: number, slot: number): void {
     // The leading Sunday belongs to the week before; a course added here would land in this week.
-    if (!this.store.canEdit() || this.view.leadsWeek(day)) return;
+    const course = this.store.canEdit() && !this.view.leadsWeek(day);
+    // A 日程 goes on the day itself, at the period's start; on the user's own timetable only.
+    const date = this.view.shownRawDate(day);
+    if (this.store.agendaAvailable && this.store.agendaNew && agendaDayNumber(date) >= 0) {
+      const title = `${scheduleWeekday(day)} · 第${slot}节`;
+      const agenda: promptAction.Button = { text: '添加日程', color: '#0F766E' };
+      const options: promptAction.ActionMenuOptions = course
+        ? { title: title, buttons: [agenda, { text: '添加课程', color: '#0F766E' }] } : { title: title, buttons: [agenda] };
+      promptAction.showActionMenu(options)
+        .then((result: promptAction.ActionMenuSuccessResponse) => {
+          if (result.index === 0) this.store.agendaNew?.(date, this.view.slotStart(slot));
+          else if (course) this.onAddSlot(this.view.shownSlot(day).day, slot);
+        }).catch(() => undefined);
+      return;
+    }
     // On a make-up day the new course belongs to the weekday being made up.
-    this.onAddSlot(this.view.shownSlot(day).day, slot);
+    if (course) this.onAddSlot(this.view.shownSlot(day).day, slot);
   }
 
   private startsSession(slot: number): boolean {

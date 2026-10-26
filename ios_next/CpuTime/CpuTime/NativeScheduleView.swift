@@ -33,6 +33,8 @@ struct NativeScheduleView: View {
     @State private var stylePickerPresented = false
     @State private var sharingPresented = false
     @State private var couplePresented = false
+    /// An empty period tapped on the user's own timetable: a 日程 at its start, or a course in it.
+    @State private var addChoice: ScheduleAddChoice?
     /// Two of the user's own courses in one period, to be pointed out once.
     @State private var overlapNotice: ScheduleOverlapNotice?
     /// The minute the partner's status line was last worked out for.
@@ -416,10 +418,29 @@ struct NativeScheduleView: View {
             NativeCoupleSheet(partnerNow: { coupleNowText(now: $0, short: false) ?? "" })
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: isReadOnly ? .constant(nil) : $agendaService.presentation) { presentation in
+            NativeAgendaSheet(presentation: presentation)
+                .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(addChoice?.title ?? "",
+                            isPresented: Binding(get: { addChoice != nil }, set: { if !$0 { addChoice = nil } }),
+                            titleVisibility: .visible, presenting: addChoice) { choice in
+            Button("添加日程") { agendaService.openNew(date: choice.date, start: choice.start) }
+            Button("添加课程") { courseEditorPresentation = .add(choice.course) }
+            Button("取消", role: .cancel) {}
+        }
     }
 
     /// Somebody else's shared timetable: everything that would change it is off.
     private var isReadOnly: Bool { store.isReadOnly }
+
+    /// Lets the tools sheet finish closing before a 日程 sheet opens over the timetable.
+    private func presentAgendaAfterTools(_ present: @escaping () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            present()
+        }
+    }
 
     /// The user's 日程 on their own timetable; somebody else's shared timetable draws none.
     private var agendaContext: ScheduleAgendaContext? {
@@ -845,7 +866,11 @@ struct NativeScheduleView: View {
                             scheduleToolsPresented = false
                             let date = viewMode == .day
                                 ? rawDayDate(selectedDay, week: weekNumber(store.selectedWeek), result: result) : nil
-                            agendaService.openNew(date: date ?? NativeAgendaRules.today())
+                            presentAgendaAfterTools { agendaService.openNew(date: date ?? NativeAgendaRules.today()) }
+                        }
+                        scheduleToolRow("日程与待办", systemImage: "checklist") {
+                            scheduleToolsPresented = false
+                            presentAgendaAfterTools { agendaService.openList() }
                         }
                     }
                 }
@@ -1218,7 +1243,8 @@ struct NativeScheduleView: View {
                 let dayWeek = columnWeek(day.day, week: week, days: days)
                 guard dayWeek == week || hasCalendarWeek(dayWeek) else { return }
                 let effective = effectiveSlot(day: day.day, week: dayWeek, result: result)
-                presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
+                presentAddCourse(day: effective.day, week: effective.week, startSlot: slot,
+                                 date: rawDayDate(day.day, week: dayWeek, result: result))
             }
         )
     }
@@ -1593,7 +1619,8 @@ struct NativeScheduleView: View {
                 onCourseSelected: { block in selectCourse(block, day: page.day, week: week, result: result) },
                 onEmptySlot: { slot in
                     let effective = effectiveSlot(day: page.day, week: week, result: result)
-                    presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
+                    presentAddCourse(day: effective.day, week: effective.week, startSlot: slot,
+                                     date: rawDayDate(page.day, week: week, result: result))
                 }
             )
         }
@@ -1659,7 +1686,8 @@ struct NativeScheduleView: View {
                 onCourseSelected: { block in selectCourse(block, day: day, week: week, result: result) },
                 onEmptySlot: { slot in
                     let effective = effectiveSlot(day: day, week: week, result: result)
-                    presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
+                    presentAddCourse(day: effective.day, week: effective.week, startSlot: slot,
+                                     date: rawDayDate(day, week: week, result: result))
                 }
             )
         }
@@ -1905,7 +1933,8 @@ struct NativeScheduleView: View {
                     },
                     onEmptySlot: { slot in
                         guard dayWeek == week || hasCalendarWeek(dayWeek) else { return }
-                        presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
+                        presentAddCourse(day: effective.day, week: effective.week, startSlot: slot,
+                                         date: rawDayDate(day, week: dayWeek, result: result))
                     },
                     offWeekBlocks: days.count > 1 && showsNow
                         ? offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown + clashes) : [],
@@ -2304,7 +2333,9 @@ struct NativeScheduleView: View {
         }
     }
 
-    private func presentAddCourse(day: Int, week: Int?, startSlot: Int) {
+    /// An empty period tapped (or 添加课程). With the day's `date` on the user's own timetable it asks
+    /// whether to add a 日程 there or a course.
+    private func presentAddCourse(day: Int, week: Int?, startSlot: Int, date: String? = nil) {
         // A course card and the slot grid are siblings in the same ZStack. On
         // older SwiftUI releases a delayed empty-slot callback can arrive
         // after the course callback; never let it replace an editor that is
@@ -2320,7 +2351,12 @@ struct NativeScheduleView: View {
         Task { @MainActor in
             await Task.yield()
             guard courseEditorPresentation == nil else { return }
-            courseEditorPresentation = .add(context)
+            if let date, agendaService.available, NativeAgendaRules.dayNumber(date) != nil {
+                let slot = ScheduleSlot.all.first { $0.number == context.startSlot }
+                addChoice = ScheduleAddChoice(course: context, date: date, start: slot?.start ?? "")
+            } else {
+                courseEditorPresentation = .add(context)
+            }
         }
     }
 
@@ -2895,6 +2931,20 @@ private struct AddCourseContext: Identifiable {
     let day: Int
     let week: Int
     let startSlot: Int
+}
+
+/// An empty period tapped: add a 日程 at its start on `date`, or a course in it.
+private struct ScheduleAddChoice {
+    let course: AddCourseContext
+    let date: String
+    let start: String
+
+    /// 「周三 · 第3节」.
+    var title: String {
+        let names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        let weekday = NativeAgendaRules.weekday(date).map { names[$0 - 1] } ?? ""
+        return "\(weekday) · 第\(course.startSlot)节"
+    }
 }
 
 private enum CourseEditorPresentation: Identifiable {

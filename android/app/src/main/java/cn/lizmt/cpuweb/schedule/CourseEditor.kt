@@ -542,7 +542,7 @@ private fun EditorChip(label: String, selected: Boolean, description: String, en
 /** A start or end time; a tap opens the clock to pick it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TimeField(label: String, value: String, enabled: Boolean, modifier: Modifier, onPick: (String) -> Unit) {
+internal fun TimeField(label: String, value: String, enabled: Boolean, modifier: Modifier, onPick: (String) -> Unit) {
     var picking by remember { mutableStateOf(false) }
     Column(
         modifier.clip(RoundedCornerShape(8.dp))

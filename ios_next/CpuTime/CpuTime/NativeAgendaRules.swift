@@ -7,7 +7,7 @@ import Foundation
 // timetable's chips (web/src/views/agenda/agendaChips.ts).
 
 /// One item as the bridge sends it. Anything missing or malformed falls back to empty.
-struct NativeAgendaItem: Codable, Equatable, Identifiable, Sendable {
+struct NativeAgendaItem: Codable, Hashable, Identifiable, Sendable {
     var id: String
     var kind: String
     var title: String
@@ -182,6 +182,15 @@ enum NativeAgendaRules {
         guard value.count == 5, parts.count == 2, let hours = Int(parts[0]), let minutes = Int(parts[1]),
               (0...23).contains(hours), (0...59).contains(minutes) else { return nil }
         return hours * 60 + minutes
+    }
+
+    /// What is still to do: past to-dos left unticked (oldest first), then the ones without a day,
+    /// in the order they were added (Web `agendaOpen`).
+    static func openTodos(_ items: [NativeAgendaItem], today: String) -> [NativeAgendaItem] {
+        let candidates = items.filter { !$0.repeats && !$0.done }
+        let base = dayNumber(today) ?? 0
+        let overdue = candidates.filter { $0.start.isEmpty && (dayNumber($0.date).map { $0 < base } ?? false) }.sorted { $0.date < $1.date }
+        return overdue + candidates.filter { $0.date.isEmpty }.sorted { $0.createdAt < $1.createdAt }
     }
 
     /// Today in China time.

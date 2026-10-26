@@ -241,6 +241,12 @@ export class NativeScheduleStore {
   agendaItems: NativeAgendaItem[] = [];
   agendaOpen?: (id: string, date: string) => void;
   agendaToggle?: (id: string, date: string, done: boolean) => void;
+  // 新建一条日程（date 为空是不设日期的待办）和打开「日程与待办」；站点答复过已登录时 agendaAvailable 为真。
+  agendaNew?: (date: string, start: string) => void;
+  agendaList?: () => void;
+  agendaAvailable: boolean = false;
+  // 微信和 QQ 也提醒。
+  agendaRelay: boolean = false;
   // 只读：别人共享的课表。不加载也不保存个人修改，不写卡片和本地缓存。
   readOnly: boolean = false;
   // 课表风格（ScheduleStyle.ets），与配色、深浅色互不影响。

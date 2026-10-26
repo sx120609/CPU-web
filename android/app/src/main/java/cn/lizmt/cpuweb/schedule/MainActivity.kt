@@ -56,9 +56,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     lateinit var sharing: ScheduleSharing
     lateinit var couple: ScheduleCouple
     lateinit var agenda: AgendaRemote
-    /** A 日程 page asked for before the shell signed in (a notification tapped at launch). */
-    private var pendingAgendaPath: String? = null
-        private set
+    /** What the timetable opens next: a 日程, a new one or 日程与待办; it clears the request when it shows it. */
+    var agendaRequest by mutableStateOf<AgendaRequest?>(null)
     private lateinit var clientStats: ClientStats
     private var reportsClientStats = false
     private lateinit var legacyBridge: CpuAndroidBridge
@@ -142,6 +141,15 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         shell.onOpenDorm = { page -> openDormSchedule(page) }
         agenda =AgendaRemote(this, lifecycleScope) { web.agenda(it) }
         web.onAgendaChanged = { agenda.refresh(force = true) }
+        web.onOpenAgenda = { raw ->
+            val json = runCatching { org.json.JSONObject(raw) }.getOrNull()
+            val id = json?.optString("item").orEmpty()
+            when {
+                id.isNotEmpty() -> openAgenda(id, json?.optString("date"))
+                json?.optBoolean("new") == true -> openAgenda(null, json.optString("date"), json.optString("start"))
+                else -> openAgendaList()
+            }
+        }
         // 日程 with a reminder ahead: ask once for the notification permission (Android 13+).
         lifecycleScope.launch {
             snapshotFlow { agenda.items }.collectLatest { items ->
@@ -161,10 +169,6 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     return@collectLatest
                 }
                 agenda.refresh(force = true)
-                pendingAgendaPath?.let { path ->
-                    pendingAgendaPath = null
-                    shell.openWeb(path, ShellTab.Services)
-                }
             }
         }
         clientStats = ClientStats(this, lifecycleScope) {
@@ -259,10 +263,19 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         handleLaunchIntent(intent)
     }
 
-    /** Opens the Web 日程 page at one item, or a new one on [date] (`yyyy-MM-dd`) when [id] is null. */
-    fun openAgenda(id: String?, date: String?) {
-        val path = if (id != null) "/agenda?item=${Uri.encode(id)}" else "/agenda?new=1" + (date?.let { "&date=$it" } ?: "")
-        if (web.authState.ready && web.authState.authenticated) shell.openWeb(path, ShellTab.Services) else pendingAgendaPath = path
+    /**
+     * Opens one 日程 in the timetable's editor, or a new one on [date] (`yyyy-MM-dd`, empty for
+     * none) at [start] when [id] is null. 日程 live in the timetable, so it comes to the front.
+     */
+    fun openAgenda(id: String?, date: String?, start: String = "") {
+        agendaRequest = AgendaRequest(id = id.orEmpty(), date = date.orEmpty().takeIf { it.length == 10 }.orEmpty(), start = start)
+        shell.showSchedule()
+    }
+
+    /** 日程与待办 over the timetable. */
+    fun openAgendaList() {
+        agendaRequest = AgendaRequest(list = true)
+        shell.showSchedule()
     }
 
     /**

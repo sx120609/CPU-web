@@ -3,8 +3,44 @@ import Foundation
 import UserNotifications
 
 // 日程 in the iOS app: the items come from the site's bridge `CPUTimeNativeAgenda`
-// (web/src/utils/nativeAgendaBridge.ts), the same records as the Web page /agenda and
-// 药大拾间 NEXT. The rules are in NativeAgendaRules.swift; editing happens on the Web page.
+// (web/src/utils/nativeAgendaBridge.ts), the same records as the Web timetable, Android,
+// HarmonyOS and 药大拾间 NEXT. The rules are in NativeAgendaRules.swift; they are added,
+// edited and listed in sheets over the timetable (ScheduleAgendaSheets.swift).
+
+/// What the timetable shows over itself for 日程: one item, a new one, or 日程与待办.
+enum NativeAgendaPresentation: Identifiable, Equatable {
+    case edit(NativeAgendaItem)
+    /// A new item on `date` (empty for none) at `start`.
+    case create(date: String, start: String)
+    case list
+
+    var id: String {
+        switch self {
+        case .edit(let item): return "edit:\(item.id)"
+        case .create(let date, let start): return "create:\(date):\(start)"
+        case .list: return "list"
+        }
+    }
+}
+
+/// What a sentence such as 「周五 14:00 组会 @药学楼」 says, read by the page (`parseAgendaText`).
+struct NativeAgendaDraft: Decodable, Equatable {
+    var title: String
+    var date: String
+    var start: String
+    var end: String
+    var location: String
+    var remind: Int
+    var repeatRule: String
+
+    enum CodingKeys: String, CodingKey {
+        case title, date, start, end, location, remind
+        case repeatRule = "repeat"
+    }
+
+    /// Says more than a title: a day, a time, a repeat, a reminder or a place.
+    var saysMore: Bool { !date.isEmpty || !start.isEmpty || remind >= 0 || repeatRule != "none" || !location.isEmpty }
+}
 
 /// The user's 日程 for the timetable. Requests go through the signed-in page (see
 /// `NativeScheduleStore.agenda`), so the app needs no sign-in of its own. A copy is kept in
@@ -17,11 +53,16 @@ final class NativeAgendaService: ObservableObject {
     @Published private(set) var items: [NativeAgendaItem]
     /// The site answered for a signed-in account.
     @Published private(set) var available = false
+    /// 微信和 QQ 也提醒, as the site last said.
+    @Published private(set) var relay = false
+    /// The sheet the timetable shows over itself.
+    @Published var presentation: NativeAgendaPresentation?
 
     private weak var store: NativeScheduleStore?
-    private var opener: ((String) -> Void)?
-    /// A notification tapped before the shell could open the page.
-    private var pendingPath: String?
+    /// Brings the timetable tab to the front, for a reminder or a Web link.
+    private var showSchedule: (() -> Void)?
+    /// A notification tapped before the items were read.
+    private var pendingItem: String?
     private var loading = false
     private var reloadAfterLoading = false
     private var lastLoaded: Date?
@@ -34,6 +75,13 @@ final class NativeAgendaService: ObservableObject {
         let authenticated: Bool?
         let missing: Bool?
         let items: [Lossy]?
+        let relay: Bool?
+        let saved: Lossy?
+        let error: String?
+    }
+
+    private struct ParseReply: Decodable {
+        let parsed: NativeAgendaDraft?
     }
 
     private struct Cache: Codable {
@@ -45,10 +93,10 @@ final class NativeAgendaService: ObservableObject {
     }
 
     /// Ties the service to the timetable store, whose web view carries the session, and to the
-    /// shell, which opens a Web page in the services tab.
-    func connect(to store: NativeScheduleStore, open: @escaping (String) -> Void) {
+    /// shell, which brings the timetable to the front.
+    func connect(to store: NativeScheduleStore, show: @escaping () -> Void) {
         self.store = store
-        opener = open
+        showSchedule = show
     }
 
     /// Everything on a day, for the day view.
@@ -103,24 +151,96 @@ final class NativeAgendaService: ObservableObject {
         Task { accept(await store.agenda(request)) }
     }
 
-    /// Opens an item on the Web page for editing.
+    /// Opens an item in the editor over the timetable.
     func open(_ entry: NativeAgendaOccurrence) {
-        openPath("/agenda?item=\(Self.query(entry.item.id))&date=\(Self.query(entry.date))")
+        presentation = .edit(entry.item)
     }
 
-    /// Opens the Web page on a new item, on `date` when given.
+    /// A new item, on `date` (none when it is not a date) at `start`.
     func openNew(date: String?, start: String? = nil) {
-        var path = "/agenda?new=1"
-        if let date, NativeAgendaRules.dayNumber(date) != nil { path += "&date=\(date)" }
-        if let start, NativeAgendaRules.minutes(start) != nil { path += "&start=\(Self.query(start))" }
-        openPath(path)
+        let day = date.flatMap { NativeAgendaRules.dayNumber($0) != nil ? $0 : nil } ?? ""
+        let time = start.flatMap { NativeAgendaRules.minutes($0) != nil ? $0 : nil } ?? ""
+        presentation = .create(date: day, start: day.isEmpty ? "" : time)
     }
 
-    /// A tapped reminder: opens its item once the shell can.
+    /// 日程与待办.
+    func openList() {
+        presentation = .list
+    }
+
+    /// A tapped reminder: opens its item over the timetable, once it is read.
     func openFromNotification(id: String, date: String) {
         guard !id.isEmpty else { return }
-        pendingPath = "/agenda?item=\(Self.query(id))" + (date.isEmpty ? "" : "&date=\(Self.query(date))")
-        if available { flushPendingPath() }
+        showSchedule?()
+        pendingItem = id
+        flushPendingItem()
+    }
+
+    /// An /agenda link inside the site (`CPUTimeNative.openAgenda`, JSON from the Web router).
+    func openRequest(_ raw: String) {
+        struct Request: Decodable {
+            let item: String?
+            let date: String?
+            let start: String?
+            let new: Bool?
+        }
+        let request = raw.data(using: .utf8).flatMap { try? JSONDecoder().decode(Request.self, from: $0) }
+        showSchedule?()
+        if let id = request?.item, !id.isEmpty {
+            pendingItem = id
+            flushPendingItem()
+        } else if request?.new == true {
+            openNew(date: request?.date, start: request?.start)
+        } else {
+            openList()
+        }
+    }
+
+    /// Adds `item` (an empty id makes a new one) or saves the edits to it, through the page.
+    /// Returns nil once it is stored, else why not.
+    func save(_ item: NativeAgendaItem) async -> String? {
+#if DEBUG
+        if debugPinned {
+            var stored = item
+            if stored.id.isEmpty { stored.id = "debug\(Int(Date().timeIntervalSince1970))" }
+            items = items.filter { $0.id != stored.id } + [stored]
+            return nil
+        }
+#endif
+        var data = item
+        data.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !data.title.isEmpty else { return "先写个标题" }
+        guard let body = try? JSONEncoder().encode(data),
+              var payload = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return Self.unreachable }
+        if item.id.isEmpty { payload.removeValue(forKey: "id") }
+        guard let reply = await request(["action": "save", "data": payload]) else { return Self.unreachable }
+        return reply.saved?.value?.sanitized == nil ? (reply.error ?? Self.unreachable) : nil
+    }
+
+    /// Deletes an item (every day of a repeating one). Returns nil once it is gone, else why not.
+    func remove(id: String) async -> String? {
+#if DEBUG
+        if debugPinned {
+            items = items.filter { $0.id != id }
+            return nil
+        }
+#endif
+        guard let reply = await request(["action": "remove", "id": id]) else { return Self.unreachable }
+        return items.contains { $0.id == id } ? (reply.error ?? Self.unreachable) : nil
+    }
+
+    /// 微信和 QQ 也提醒: shown at once, then saved through the page.
+    func setRelay(_ on: Bool) {
+        relay = on
+        Task { _ = await request(["action": "relay", "on": on]) }
+    }
+
+    /// Reads a sentence into the fields of an item; nil when the page cannot.
+    func parse(_ text: String) async -> NativeAgendaDraft? {
+        guard let store, let body = try? JSONSerialization.data(withJSONObject: ["action": "parse", "text": text]),
+              let request = String(data: body, encoding: .utf8),
+              let raw = await store.agenda(request), let data = raw.data(using: .utf8) else { return nil }
+        return (try? JSONDecoder().decode(ParseReply.self, from: data))?.parsed
     }
 
     /// Forgets the copy: signed out.
@@ -129,21 +249,31 @@ final class NativeAgendaService: ObservableObject {
         if debugPinned { return }
 #endif
         available = false
-        pendingPath = nil
+        relay = false
+        pendingItem = nil
         if !items.isEmpty { items = [] }
         Self.writeCache([])
         NativeAgendaReminders.sync([])
     }
 
-    private func openPath(_ path: String) {
-        opener?(path)
+    private func flushPendingItem() {
+        guard let id = pendingItem, let item = items.first(where: { $0.id == id }) else { return }
+        pendingItem = nil
+        presentation = .edit(item)
     }
 
-    private func flushPendingPath() {
-        guard let path = pendingPath, let opener else { return }
-        pendingPath = nil
-        opener(path)
+    /// One request through the page; the reply when it answered for an account, else nil.
+    private func request(_ payload: [String: Any]) async -> Reply? {
+        guard let store, let body = try? JSONSerialization.data(withJSONObject: payload),
+              let request = String(data: body, encoding: .utf8) else { return nil }
+        let raw = await store.agenda(request)
+        accept(raw)
+        guard let raw, let data = raw.data(using: .utf8), let reply = try? JSONDecoder().decode(Reply.self, from: data),
+              reply.missing != true, reply.authenticated == true else { return nil }
+        return reply
     }
+
+    private static let unreachable = "没能保存，请检查网络后再试"
 
     private func accept(_ raw: String?) {
         guard let raw, let data = raw.data(using: .utf8), let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return }
@@ -153,17 +283,14 @@ final class NativeAgendaService: ObservableObject {
             clear()
             return
         }
+        relay = reply.relay == true
         var seen = Set<String>()
         let next = (reply.items ?? []).compactMap { $0.value?.sanitized }.filter { seen.insert($0.id).inserted }
         available = true
         if next != items { items = next }
         Self.writeCache(next)
         NativeAgendaReminders.sync(next)
-        flushPendingPath()
-    }
-
-    private static func query(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        flushPendingItem()
     }
 
     private static var cacheURL: URL? {

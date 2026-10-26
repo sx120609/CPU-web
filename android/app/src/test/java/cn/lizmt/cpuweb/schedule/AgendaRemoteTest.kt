@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -68,5 +69,59 @@ class AgendaRemoteTest {
         assertTrue(remote.items.isEmpty())
         assertEquals("" to emptyList<Any>(), AgendaRemote.readCache(context))
         assertEquals(0, alarms.scheduledAlarms.size)
+    }
+
+    @Test
+    fun theTimetableAddsEditsAndDeletesThroughThePage() = runTest {
+        val sent = mutableListOf<JSONObject>()
+        var answer: String? = null
+        val remote = AgendaRemote(context, scope) { request -> sent += request; answer }
+        val day = LocalDate.now().plusDays(2).toString()
+        val stored = item("meeting00001", "组会", day, "15:00")
+
+        // A new item goes without an id; the page's stored copy comes back and the list follows the page.
+        answer = JSONObject().put("authenticated", true).put("account", "u1").put("relay", true)
+            .put("items", JSONArray().put(stored)).put("saved", stored).toString()
+        val saved = remote.save(newAgendaDraft(day, "15:00").copy(title = "组会"))
+        val request = sent.last()
+        assertEquals("save", request.getString("action"))
+        assertFalse(request.getJSONObject("data").has("id"))
+        assertEquals("15:00", request.getJSONObject("data").getString("start"))
+        assertEquals("meeting00001", saved.getOrThrow().id)
+        assertEquals(listOf("meeting00001"), remote.items.map { it.id })
+        assertTrue(remote.relay)
+
+        // Not stored: the page says why, and nothing is shown as saved.
+        answer = JSONObject().put("authenticated", true).put("account", "u1").put("items", JSONArray().put(stored))
+            .put("saved", JSONObject.NULL).put("error", "日程最多 600 条").toString()
+        assertEquals("日程最多 600 条", remote.save(saved.getOrThrow().copy(title = "组会改")).exceptionOrNull()?.message)
+        // The page could not answer: the edit is not lost silently either.
+        answer = null
+        assertTrue(remote.save(saved.getOrThrow()).isFailure)
+
+        // Deleting succeeds once the page's list no longer has it.
+        answer = JSONObject().put("authenticated", true).put("account", "u1").put("items", JSONArray()).toString()
+        assertTrue(remote.remove("meeting00001").isSuccess)
+        assertEquals(listOf("remove", "meeting00001"), listOf(sent.last().getString("action"), sent.last().getString("id")))
+        assertTrue(remote.items.isEmpty())
+
+        // 微信和 QQ 也提醒 shows the change at once.
+        remote.updateRelay(false)
+        assertFalse(remote.relay)
+        assertEquals(false, sent.last().getBoolean("on"))
+    }
+
+    @Test
+    fun openToDosArePastUntickedOnesThenUndatedOnes() {
+        val today = LocalDate.of(2026, 10, 26)
+        fun todo(id: String, date: String, start: String = "", done: Boolean = false, createdAt: Long = 0) =
+            cn.lizmt.cpuweb.schedule.agenda.AgendaItem(id, cn.lizmt.cpuweb.schedule.agenda.AgendaKind.Todo, id, date, start,
+                done = done, createdAt = createdAt)
+        val items = listOf(
+            todo("undated02", "", createdAt = 2), todo("undated01", "", createdAt = 1), todo("late0002", "2026-10-24"),
+            todo("late0001", "2026-10-20"), todo("timed001", "2026-10-20", "09:00"), todo("done0001", "2026-10-20", done = true),
+            todo("today001", "2026-10-26"),
+        )
+        assertEquals(listOf("late0001", "late0002", "undated01", "undated02"), openTodos(items, today).map { it.id })
     }
 }

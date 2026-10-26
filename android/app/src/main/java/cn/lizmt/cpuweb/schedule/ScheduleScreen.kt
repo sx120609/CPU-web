@@ -95,6 +95,12 @@ sealed interface ScheduleSheet {
     data object Appearance : ScheduleSheet
     data object Sharing : ScheduleSheet
     data object Couple : ScheduleSheet
+    /** One 日程 in the editor; an empty id is a new one. */
+    data class AgendaEdit(val draft: cn.lizmt.cpuweb.schedule.agenda.AgendaItem) : ScheduleSheet
+    /** 日程与待办. */
+    data object AgendaList : ScheduleSheet
+    /** An empty period tapped: add a 日程 at its start (on [date]) or a course in it. */
+    data class AddChoice(val day: Int, val slot: Int, val date: String) : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -122,7 +128,7 @@ private class ScheduleBodyContext(
 @Composable
 fun NativeScheduleScreen(activity: MainActivity) {
     val store = activity.schedule
-    // The user's own 日程 show in their own timetable, not in a shared one; they are edited on the Web page.
+    // The user's own 日程 show in their own timetable, not in a shared one, and are edited right there.
     val agendaLayer = remember(activity) {
         ScheduleAgendaLayer(activity.agenda::on, onOpen = { activity.openAgenda(it.id, null) }, onToggle = { activity.agenda.toggle(it) })
     }
@@ -221,6 +227,21 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     }
 
     // The couple timetable belongs to the user's own grid; a shared timetable shows one person only.
+    // 日程 asked for elsewhere (a reminder, a Web link, the list) open over the user's own grid.
+    if (!store.readOnly) {
+        val request = activity.agendaRequest
+        LaunchedEffect(request) {
+            val asked = request ?: return@LaunchedEffect
+            activity.agendaRequest = null
+            sheet = when {
+                asked.list -> ScheduleSheet.AgendaList
+                asked.id.isNotEmpty() -> activity.agenda.items.firstOrNull { it.id == asked.id }?.let { ScheduleSheet.AgendaEdit(it) }
+                    ?: ScheduleSheet.AgendaList
+                else -> ScheduleSheet.AgendaEdit(newAgendaDraft(asked.date, asked.start))
+            }
+        }
+    }
+
     val couple = activity.couple.takeIf { !store.readOnly }
     val partnerStore = couple?.partnerStore
     val layer = remember(couple?.status, couple?.visible, partnerStore, partnerStore?.result) { couple?.layer() }
@@ -268,7 +289,12 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         onLogin = { activity.openAcademicAuthorization() },
         onCourse = ::openCourse,
         onOffWeek = { sheet = ScheduleSheet.QuickLook(it.block, offWeek = true) },
-        onAddSlot = { day, slot -> if (store.canEdit) openEditor(null, day, slot) },
+        onAddSlot = { day, slot ->
+            // A 日程 can go into any day with a date; a course only into the user's own undergraduate timetable.
+            val date = store.calendarWeek(store.selectedWeek)?.days?.getOrNull(day - 1)?.takeIf { it.length == 10 }
+            if (!store.readOnly && activity.agenda.available && date != null) sheet = ScheduleSheet.AddChoice(day, slot, date)
+            else if (store.canEdit) openEditor(null, day, slot)
+        },
     )
     val styleScope = ScheduleStyleScope(
         style = style.visualStyle, dark = colors.dark, palette = style.palette, primary = colors.text, secondary = colors.secondary,
@@ -294,10 +320,12 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                     actions = listOfNotNull(
                         ("刷新课表" to { store.load(true) }).takeIf { !store.readOnly },
                         ("添加课程" to { openEditor(null) }).takeIf { store.canEdit },
-                        // 日程 are edited on the Web page; a new one starts on the day shown.
+                        // A new 日程 starts on the day shown.
                         ("添加日程" to {
-                            activity.openAgenda(null, store.calendarWeek(store.selectedWeek)?.days?.getOrNull(store.selectedDay - 1)?.takeIf { it.length == 10 })
+                            sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(
+                                store.calendarWeek(store.selectedWeek)?.days?.getOrNull(store.selectedDay - 1)?.takeIf { it.length == 10 }.orEmpty()))
                         }).takeIf { !store.readOnly && activity.agenda.available },
+                        ("日程与待办" to { sheet = ScheduleSheet.AgendaList }).takeIf { !store.readOnly },
                         "课表风格" to { sheet = ScheduleSheet.VisualStyle },
                         "显示设置" to { sheet = ScheduleSheet.Display },
                         ("课表配色与背景" to { sheet = ScheduleSheet.Style }).takeIf { !store.readOnly },
@@ -388,6 +416,24 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         ScheduleSheet.Appearance -> AppearanceSheet(activity.appearance, onDismiss = { sheet = null })
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
         ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
+        is ScheduleSheet.AgendaEdit -> AgendaEditorSheet(activity.agenda, current.draft, onDismiss = { sheet = null })
+        ScheduleSheet.AgendaList -> AgendaListSheet(
+            activity.agenda,
+            onEdit = { sheet = ScheduleSheet.AgendaEdit(it) },
+            onNew = { sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(it)) },
+            onDismiss = { sheet = null },
+        )
+        is ScheduleSheet.AddChoice -> {
+            val period = store.periodTime(current.slot)
+            val day = cn.lizmt.cpuweb.schedule.agenda.AgendaItem.parseDate(current.date)
+            AddSlotChoiceDialog(
+                label = (day?.let { agendaDayLabel(it, weekday = true) } ?: "") + " · 第${current.slot}节",
+                canAddCourse = store.canEdit,
+                onAgenda = { sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(current.date, period.startTime)) },
+                onCourse = { openEditor(null, current.day, current.slot) },
+                onDismiss = { sheet = null },
+            )
+        }
     }
     if (sheet == ScheduleSheet.Editor && !editor.visible) {
         LaunchedEffect(Unit) { sheet = null }

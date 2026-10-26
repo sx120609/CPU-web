@@ -94,3 +94,50 @@ test('the model shows replies on the store, ticks at once and clears when signed
   model.restore(JSON.stringify([item({ title: '存档' })]));
   assert.equal(store.agendaItems[0].title, '存档');
 });
+
+test('the timetable saves, deletes and reads sentences through the page', () => {
+  const store = { agendaItems: [], agendaAvailable: false, agendaRelay: false };
+  const sent = [];
+  const model = new NativeAgendaModel(store);
+  model.attach((id, payload) => sent.push({ id, payload: JSON.parse(payload) }), () => undefined, () => undefined);
+  const stored = item({ id: 'meeting00001', title: '组会', date: '2026-10-28', start: '15:00' });
+
+  // A new item: the page's stored copy is handed back and its list shown.
+  let outcome;
+  model.save(item({ id: '', title: '组会', date: '2026-10-28', start: '15:00' }), (error, saved) => { outcome = { error, saved }; });
+  assert.equal(sent[0].payload.action, 'save');
+  assert.equal(sent[0].payload.data.id, '');
+  model.accept(sent[0].id, JSON.stringify({ authenticated: true, relay: true, items: [stored], saved: stored }));
+  assert.equal(outcome.error, '');
+  assert.equal(outcome.saved.id, 'meeting00001');
+  assert.equal(store.agendaItems.length, 1);
+  assert.equal(store.agendaAvailable, true);
+  assert.equal(store.agendaRelay, true);
+
+  // Not stored: the page's reason, or that it could not be reached.
+  model.save(stored, (error) => { outcome = error; });
+  model.accept(sent[1].id, JSON.stringify({ authenticated: true, items: [stored], saved: null, error: '日程最多 600 条' }));
+  assert.equal(outcome, '日程最多 600 条');
+  model.save(stored, (error) => { outcome = error; });
+  model.accept(sent[2].id, '{"missing":true}');
+  assert.equal(outcome, '没能保存，请检查网络后再试');
+
+  // Deleted once the page's list no longer has it.
+  model.remove('meeting00001', (error) => { outcome = error; });
+  assert.deepEqual({ ...sent[3].payload }, { action: 'remove', id: 'meeting00001' });
+  model.accept(sent[3].id, JSON.stringify({ authenticated: true, items: [] }));
+  assert.equal(outcome, '');
+  assert.equal(store.agendaItems.length, 0);
+
+  // A sentence is read without an account, and its answer never touches the list.
+  model.parse('明天 15:00 组会', (draft) => { outcome = draft; });
+  assert.deepEqual({ ...sent[4].payload }, { action: 'parse', text: '明天 15:00 组会' });
+  model.accept(sent[4].id, JSON.stringify({ parsed: { title: '组会', date: '2026-10-27', start: '15:00', end: '', location: '', remind: -1, repeat: 'none' } }));
+  assert.equal(outcome.title, '组会');
+  assert.equal(store.agendaAvailable, true);
+
+  // 微信和 QQ 也提醒 shows at once.
+  model.setRelay(false);
+  assert.equal(store.agendaRelay, false);
+  assert.deepEqual({ ...sent[5].payload }, { action: 'relay', on: false });
+});

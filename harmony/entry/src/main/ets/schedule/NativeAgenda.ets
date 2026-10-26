@@ -2,7 +2,8 @@ import { NativeAgendaItem, NativeScheduleStore } from './NativeScheduleStore';
 
 // 日程 in the HarmonyOS app: the items come from the site's bridge `CPUTimeNativeAgenda`
 // (web/src/utils/nativeAgendaBridge.ts), the same records as the Web page and 药大拾间 NEXT.
-// The rules below follow server/src/shared/agenda.ts. Editing happens on the Web page at /agenda.
+// The rules below follow server/src/shared/agenda.ts. They are added, edited and ticked off in the
+// timetable itself (NativeAgendaEditor.ets); every change goes through the page.
 
 export interface NativeAgendaOccurrence {
   item: NativeAgendaItem;
@@ -25,14 +26,50 @@ interface AgendaToggleRequest {
   done: boolean;
 }
 
-interface AgendaReply {
+/** What a sentence such as 「周五 14:00 组会 @药学楼」 says, read by the page (`parseAgendaText`). */
+export interface NativeAgendaDraft {
+  title: string;
+  date: string;
+  start: string;
+  end: string;
+  location: string;
+  remind: number;
+  repeat: string;
+}
+
+interface AgendaSaveRequest {
+  action: string;
+  data: NativeAgendaItem;
+}
+
+interface AgendaRemoveRequest {
+  action: string;
+  id: string;
+}
+
+interface AgendaRelayRequest {
+  action: string;
+  on: boolean;
+}
+
+interface AgendaParseRequest {
+  action: string;
+  text: string;
+}
+
+export interface AgendaReply {
   authenticated?: boolean;
   missing?: boolean;
   account?: string;
   items?: NativeAgendaItem[];
+  relay?: boolean;
+  saved?: NativeAgendaItem | null;
+  error?: string;
+  parsed?: NativeAgendaDraft;
 }
 
 const DAY_MS = 86400000;
+const AGENDA_UNREACHABLE = '没能保存，请检查网络后再试';
 const CHINA_OFFSET_MS = 8 * 3600000;
 /** An item without an end takes this long on the grid, so it can be read and tapped. */
 const UNTIMED_SPAN_MINUTES = 45;
@@ -219,6 +256,10 @@ export class NativeAgendaModel {
   private persist?: (raw: string) => void;
   private remind?: (items: NativeAgendaItem[]) => void;
   private pending: Set<string> = new Set<string>();
+  // Requests whose caller waits for the answer (saving, deleting, reading a sentence).
+  private callbacks: Map<string, (reply: AgendaReply | undefined) => void> = new Map<string, (reply: AgendaReply | undefined) => void>();
+  // Sentences are read without an account; their answers never touch the list.
+  private parsing: Set<string> = new Set<string>();
   private sequence: number = 0;
   private lastLoaded: number = 0;
   /** The site answered for a signed-in account. */
@@ -262,20 +303,70 @@ export class NativeAgendaModel {
     this.send(JSON.stringify(request));
   }
 
+  /**
+   * Adds `item` (an empty id makes a new one) or saves the edits to it, through the page. `done` gets
+   * the item as the site stored it, or an empty one and why it was not stored.
+   */
+  save(item: NativeAgendaItem, done: (error: string, saved?: NativeAgendaItem) => void): void {
+    const request: AgendaSaveRequest = { action: 'save', data: item };
+    this.send(JSON.stringify(request), (reply: AgendaReply | undefined) => {
+      const saved = reply?.saved ? agendaSanitize(reply.saved) : null;
+      if (saved) done('', saved);
+      else done(reply?.error || AGENDA_UNREACHABLE);
+    });
+  }
+
+  /** Deletes an item (every day of a repeating one); `done` gets an empty string once it is gone. */
+  remove(id: string, done: (error: string) => void): void {
+    const request: AgendaRemoveRequest = { action: 'remove', id: id };
+    this.send(JSON.stringify(request), (reply: AgendaReply | undefined) => {
+      const gone = !!reply && reply.authenticated === true
+        && !this.store.agendaItems.some((item: NativeAgendaItem) => item.id === id);
+      done(gone ? '' : reply?.error || AGENDA_UNREACHABLE);
+    });
+  }
+
+  /** 微信和 QQ 也提醒: shown at once, then saved through the page. */
+  setRelay(on: boolean): void {
+    this.store.agendaRelay = on;
+    const request: AgendaRelayRequest = { action: 'relay', on: on };
+    this.send(JSON.stringify(request));
+  }
+
+  /** Reads a sentence into the fields of an item; `done` gets nothing when the page cannot. */
+  parse(text: string, done: (draft?: NativeAgendaDraft) => void): void {
+    const request: AgendaParseRequest = { action: 'parse', text: text };
+    const id = this.send(JSON.stringify(request), (reply: AgendaReply | undefined) => done(reply?.parsed));
+    if (id) this.parsing.add(id);
+  }
+
   accept(id: string, raw: string): void {
     if (!this.pending.has(id)) return;
     this.pending.delete(id);
+    const callback = this.callbacks.get(id);
+    this.callbacks.delete(id);
     let reply: AgendaReply | undefined;
     try { reply = JSON.parse(raw) as AgendaReply; } catch (_) { reply = undefined; }
+    if (this.parsing.delete(id)) {
+      callback?.(reply);
+      return;
+    }
+    this.take(reply);
+    callback?.(reply);
+  }
+
+  private take(reply: AgendaReply | undefined): void {
     // An older site without the bridge, or no answer: keep what is shown.
     if (!reply || reply.missing) return;
     if (!reply.authenticated) {
       this.clear();
       return;
     }
+    this.store.agendaRelay = reply.relay === true;
     const items = (reply.items ?? []).map((item: NativeAgendaItem) => agendaSanitize(item))
       .filter((item: NativeAgendaItem | null) => item !== null) as NativeAgendaItem[];
     this.available = true;
+    this.store.agendaAvailable = true;
     this.store.agendaItems = items;
     this.persist?.(JSON.stringify(items));
     this.remind?.(items);
@@ -283,16 +374,23 @@ export class NativeAgendaModel {
 
   clear(): void {
     this.available = false;
+    this.store.agendaAvailable = false;
+    this.store.agendaRelay = false;
     this.store.agendaItems = [];
     this.persist?.('');
     this.remind?.([]);
   }
 
-  private send(payload: string): void {
-    if (!this.requester) return;
+  private send(payload: string, callback?: (reply: AgendaReply | undefined) => void): string {
+    if (!this.requester) {
+      callback?.(undefined);
+      return '';
+    }
     const id = `agenda-${Date.now()}-${++this.sequence}`;
     this.pending.add(id);
+    if (callback) this.callbacks.set(id, callback);
     this.requester(id, payload);
+    return id;
   }
 
   private parseItems(raw: string): NativeAgendaItem[] {

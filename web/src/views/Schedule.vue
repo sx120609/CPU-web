@@ -92,7 +92,7 @@
                   <el-icon><Plus /></el-icon>
                   <span>添加课程</span>
                 </button>
-                <button v-if="auth.isLoggedIn" type="button" @click="runMoreAction(() => router.push('/agenda'))">
+                <button v-if="auth.isLoggedIn" type="button" @click="runMoreAction(() => { agendaPanelOpen = true; })">
                   <el-icon><Calendar /></el-icon>
                   <span>日程</span>
                 </button>
@@ -952,6 +952,13 @@
       :sync-version="dormSyncVersion"
     />
 
+    <AgendaPanel
+      :open="agendaPanelOpen"
+      @close="agendaPanelOpen = false"
+      @login="router.push({ path: '/login', query: { redirect: route.fullPath } })"
+      @edit="openAgendaItem"
+      @create="(date) => openNewAgendaOn(date)"
+    />
     <AgendaEditor :open="agendaEditorOpen" :draft="agendaEditorDraft" @close="agendaEditorOpen = false" />
 
     <CourseQuickLook
@@ -1207,6 +1214,7 @@ import CourseQuickLook from "@/views/schedule/CourseQuickLook.vue";
 import AgendaDayStrip from "@/views/agenda/AgendaDayStrip.vue";
 import AgendaEditor, { type AgendaEditorDraft } from "@/views/agenda/AgendaEditor.vue";
 import AgendaGridLayer from "@/views/agenda/AgendaGridLayer.vue";
+import AgendaPanel from "@/views/agenda/AgendaPanel.vue";
 import { agendaChips, agendaHeaderDot } from "@/views/agenda/agendaChips";
 import { useAgendaStore } from "@/stores/agenda";
 import { agendaOn, type AgendaItem } from "@/utils/agenda";
@@ -2188,6 +2196,22 @@ onMounted(() => {
     void (async () => {
       if (!auth.user && auth.token) await auth.fetchMe().catch(() => undefined);
       if (!disposed) openCoupleDialog(code);
+    })();
+  }
+  // 旧的 /agenda 链接和提醒通知带 agenda=1 打开「日程与待办」，item / new 直接打开编辑器。
+  if (route.query.agenda === "1") {
+    const { agenda: _agenda, item, new: isNew, date, start, ...rest } = route.query;
+    void router.replace({ query: rest });
+    void (async () => {
+      if (!auth.user && auth.token) await auth.fetchMe().catch(() => undefined);
+      if (disposed) return;
+      if (agenda.attach()) await agenda.sync();
+      if (disposed) return;
+      const found = typeof item === "string" && item ? agenda.find(item) : null;
+      const day = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(date) ? date : "";
+      if (found) openAgendaItem(found);
+      else if (isNew) openNewAgendaOn(day, typeof start === "string" && /^\d{2}:\d{2}$/u.test(start) ? start : "");
+      else agendaPanelOpen.value = true;
     })();
   }
   // 宿舍邀请链接会带 dorm=1 打开宿舍课表弹窗。
@@ -4304,6 +4328,7 @@ function onStyledSlotClick(day: number, slot: number, targetWeek: string) {
 const agenda = useAgendaStore();
 const agendaEditorOpen = ref(false);
 const agendaEditorDraft = ref<AgendaEditorDraft | null>(null);
+const agendaPanelOpen = ref(false);
 // 日程只画在自己的课表上；研究生调试数据里没有。
 const agendaItemsShown = computed<AgendaItem[]>(() => (
   auth.isLoggedIn && scheduleSource.value !== "graduate-debug" && agenda.ready ? agenda.items : []
@@ -4338,7 +4363,12 @@ function openNewAgendaAt(weekValue: string | number, day: number, slot: number) 
   if (!auth.isLoggedIn) return;
   const date = normalizeCalendarWeekDays(weekInfoFor(String(weekValue || week.value))?.days ?? [])[day - 1] ?? "";
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(date)) return;
-  agendaEditorDraft.value = { date, start: smallSlots.find((item) => item.no === slot)?.start ?? "" };
+  openNewAgendaOn(date, smallSlots.find((item) => item.no === slot)?.start ?? "");
+}
+
+/** 新建一条：date 为空时是不设日期的待办。 */
+function openNewAgendaOn(date: string, start = "") {
+  agendaEditorDraft.value = { date, start };
   agendaEditorOpen.value = true;
 }
 

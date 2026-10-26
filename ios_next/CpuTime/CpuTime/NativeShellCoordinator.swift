@@ -83,12 +83,16 @@ final class NativeShellCoordinator: ObservableObject {
             guard let self, self.selectedTab == .schedule else { return }
             self.requestScheduleLoad(force: false, refreshCached: true)
         }
-        // 日程 travel through the same page; editing one opens the Web page in the services tab.
-        NativeAgendaService.shared.connect(to: scheduleStore) { [weak self] path in
-            self?.openWeb(path: path, tab: .services)
+        // 日程 travel through the same page and are edited over the timetable, which a reminder or
+        // an /agenda link brings to the front.
+        NativeAgendaService.shared.connect(to: scheduleStore) { [weak self] in
+            self?.userSelected(.schedule)
         }
         webSession.onAgendaChanged = {
             Task { await NativeAgendaService.shared.refresh(force: true) }
+        }
+        webSession.onOpenAgenda = { request in
+            NativeAgendaService.shared.openRequest(request)
         }
         webSession.onFailure = { [weak scheduleStore] message in
             scheduleStore?.reportBridgeFailure(message)

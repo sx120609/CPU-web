@@ -116,6 +116,9 @@ put('entry/src/main/ets/pages/ScheduleAcceptance.ets', `
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleStore, NativeScheduleRequest } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
+import { agendaDateOf, agendaDayNumber, AgendaReply, NativeAgendaDraft, NativeAgendaModel } from '../schedule/NativeAgenda';
+import { agendaToday, NativeAgendaEditor, NativeAgendaEditorModel } from '../schedule/NativeAgendaEditor';
+import { NativeAgendaItem } from '../schedule/NativeScheduleStore';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiData, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
 import { CoupleApiData, CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
@@ -129,12 +132,18 @@ import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import window from '@ohos.window';
 
 interface QaEditorReply { session?: string; hidden?: string[]; priority?: Record<string, number>; saved?: boolean; }
+interface QaAgendaRequest { action?: string; id?: string; date?: string; done?: boolean; on?: boolean; text?: string; data?: NativeAgendaItem; }
 
 @Entry
 @Component
 struct ScheduleAcceptance {
   @State private store: NativeScheduleStore = new NativeScheduleStore();
   @State private editor: NativeCourseEditorModel = new NativeCourseEditorModel();
+  // 日程 talk to a stand-in for the page's CPUTimeNativeAgenda, seeded around today.
+  @State private agendaEditor: NativeAgendaEditorModel = new NativeAgendaEditorModel();
+  private agenda?: NativeAgendaModel;
+  private agendaItems: NativeAgendaItem[] = [];
+  private agendaRelay: boolean = false;
   @State private sharing: NativeScheduleSharingModel = new NativeScheduleSharingModel();
   @State private sharedStore: NativeScheduleStore = new NativeScheduleStore();
   @State private sharedVisible: boolean = false;
@@ -196,6 +205,9 @@ struct ScheduleAcceptance {
       if (this.panel === 'add') this.openEditor();
       if (this.panel === 'sharing') this.sharing.open();
       if (this.panel === 'couple') this.couple.open();
+      if (this.panel === 'agenda') setTimeout(() => this.agendaEditor.openList(), 400);
+      if (this.panel === 'agendaNew') setTimeout(() => this.agendaEditor.openNew(agendaToday(), '14:00'), 400);
+      if (this.panel === 'agendaEdit') setTimeout(() => { if (this.agendaItems.length) this.agendaEditor.openItem(this.agendaItems[0]); }, 400);
     } else {
       this.store.viewMode = this.mode;
       this.store.result = undefined;
@@ -231,6 +243,7 @@ struct ScheduleAcceptance {
       const saved: QaEditorReply = { saved: true };
       setTimeout(() => this.editor.accept(id, JSON.stringify(request.action === 'open' ? opened : saved)), 60);
     }, () => undefined);
+    this.attachAgenda();
     this.sharing.attach((request: ShareApiRequest) => this.shareApi(request), () => undefined);
     this.couple.attach((request: CoupleApiRequest) => this.coupleApi(request), () => undefined);
     const picked = this.coupleColors.split(',');
@@ -259,6 +272,61 @@ struct ScheduleAcceptance {
     if (data.partner && data.status === 'active') data.partner.color = this.coupleTheirs;
     const reply: CoupleApiReply = { ok: true, status: 200, data };
     return reply;
+  }
+  private attachAgenda(): void {
+    const today = agendaDayNumber(agendaToday());
+    const item = (id: string, title: string, offset: number, start: string, end: string, location: string): NativeAgendaItem => ({
+      id: id, title: title, date: offset < -100 ? '' : agendaDateOf(today + offset), start: start, end: end, location: location, note: '',
+      remind: start ? 15 : -1, repeat: 'none', until: '', done: false, doneDates: [], createdAt: 1 });
+    this.agendaItems = [item('qaagenda0001', '有机化学实验报告', 0, '15:00', '16:30', '实验楼 B204'), item('qaagenda0002', '交药理学作业', 0, '', '', ''),
+      item('qaagenda0003', '体检', 1, '', '', '校医院'), item('qaagenda0004', '英语答疑', 2, '10:00', '10:40', '文科楼'),
+      item('qaagenda0005', '还图书馆的书', -3, '', '', ''), item('qaagenda0006', '买实验服', -1000, '', '', '')];
+    const model = new NativeAgendaModel(this.store);
+    this.agenda = model;
+    model.attach((id: string, payload: string) => {
+      setTimeout(() => model.accept(id, this.agendaApi(JSON.parse(payload) as QaAgendaRequest)), 120);
+    }, () => undefined, () => undefined);
+    this.agendaEditor.attach(model);
+    this.store.agendaOpen = (id: string) => {
+      const found = this.store.agendaItems.find((entry: NativeAgendaItem) => entry.id === id);
+      if (found) this.agendaEditor.openItem(found); else this.agendaEditor.openList();
+    };
+    this.store.agendaNew = (date: string, start: string) => this.agendaEditor.openNew(date, start);
+    this.store.agendaList = () => this.agendaEditor.openList();
+    this.store.agendaToggle = (id: string, date: string, done: boolean) => model.toggle(id, date, done);
+    model.refresh(true);
+  }
+  private agendaApi(request: QaAgendaRequest): string {
+    if (request.action === 'parse') {
+      // A rough stand-in for the page's parseAgendaText: 明天, HH:MM and @place.
+      let text = request.text ?? '';
+      const draft: NativeAgendaDraft = { title: '', date: '', start: '', end: '', location: '', remind: -1, repeat: 'none' };
+      if (text.indexOf('明天') >= 0) { draft.date = agendaDateOf(agendaDayNumber(agendaToday()) + 1); text = text.replace('明天', ''); }
+      const time = /(\d{1,2}):(\d{2})/.exec(text);
+      if (time) { draft.start = (time[1].length === 1 ? '0' : '') + time[1] + ':' + time[2]; text = text.replace(time[0], ''); if (!draft.date) draft.date = agendaToday(); }
+      const place = /@(\S+)/.exec(text);
+      if (place) { draft.location = place[1]; text = text.replace(place[0], ''); }
+      draft.title = text.trim();
+      const parsed: AgendaReply = { parsed: draft };
+      return JSON.stringify(parsed);
+    }
+    if (request.action === 'save' && request.data) {
+      const saved = request.data;
+      if (!saved.id) { saved.id = 'qanew' + Date.now(); saved.createdAt = Date.now(); }
+      this.agendaItems = this.agendaItems.filter((entry: NativeAgendaItem) => entry.id !== saved.id).concat([saved]);
+      const reply: AgendaReply = { authenticated: true, account: 'qa', items: this.agendaItems, relay: this.agendaRelay, saved: saved };
+      return JSON.stringify(reply);
+    }
+    if (request.action === 'remove') this.agendaItems = this.agendaItems.filter((entry: NativeAgendaItem) => entry.id !== request.id);
+    if (request.action === 'relay') this.agendaRelay = request.on === true;
+    if (request.action === 'toggle') {
+      this.agendaItems = this.agendaItems.map((entry: NativeAgendaItem) => {
+        if (entry.id === request.id) entry.done = request.done === true;
+        return entry;
+      });
+    }
+    const reply: AgendaReply = { authenticated: true, account: 'qa', items: this.agendaItems, relay: this.agendaRelay };
+    return JSON.stringify(reply);
   }
   // The editor and the sharing page talk to stand-ins for the Web bridge and the share server.
   private openEditor(block?: NativeCourseBlock, day?: number, slot?: number): void {
@@ -309,6 +377,8 @@ struct ScheduleAcceptance {
   private panelSheet() {
     if (this.editor.visible) {
       NativeCourseEditor({ model: this.editor })
+    } else if (this.agendaEditor.visible) {
+      NativeAgendaEditor({ model: this.agendaEditor, store: this.store })
     } else if (this.couple.sheetVisible) {
       NativeScheduleCouple({ model: this.couple, dark: this.store.dark, nowMinutes: this.store.nowMinutes })
     } else {
@@ -329,7 +399,7 @@ struct ScheduleAcceptance {
         onStyle: () => this.cycleStyle(), onAppearance: () => this.toggleAppearance(), onWidgets: () => this.cycleTheme(),
         onEdit: (block: NativeCourseBlock) => this.openEditor(block), onTools: () => this.openEditor(),
         onAddSlot: (day: number, slot: number) => this.openEditor(undefined, day, slot),
-        onSharing: () => this.sharing.open() })
+        onSharing: () => this.sharing.open(), onAgenda: () => this.agendaEditor.openList() })
         .padding({ top: this.topPadding() })
       NativeTabBar({ selected: 2, dark: this.store.dark })
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
@@ -340,8 +410,9 @@ struct ScheduleAcceptance {
         }.width('100%').height('100%').padding({ top: this.topPadding() }).backgroundColor(scheduleSurface(this.store.dark))
       }
     }.width('100%').height('100%').backgroundColor(scheduleSurface(this.store.dark))
-      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible, this.panelSheet(), { height: SheetSize.LARGE, showClose: true, dragBar: true,
-        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); } })
+      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible || this.agendaEditor.visible, this.panelSheet(),
+        { height: SheetSize.LARGE, showClose: true, dragBar: true,
+        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); this.agendaEditor.close(); } })
   }
 }
 `);

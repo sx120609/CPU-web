@@ -500,6 +500,10 @@ export class HarmonyJavaScriptProxy {
     this.nativeScheduleHost.agendaChanged();
   }
 
+  openAgenda(request: string): void {
+    this.nativeScheduleHost.openAgenda(request);
+  }
+
   navigationReady(revision: number): void { this.nativeScheduleHost.navigationReady(revision); }
   headerChanged(payload: string): void { this.nativeScheduleHost.headerChanged(payload); }
 

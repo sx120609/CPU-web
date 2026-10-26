@@ -199,8 +199,25 @@ export const router = createRouter({
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
         { path: "services", name: "services", component: loadServicesView, meta: { title: "校园服务", public: true } },
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
-        // 页面自己提示登录：原生 App 从课表直接打开它时，不要先被带去登录页。
-        { path: "agenda", name: "agenda", component: () => import("@/views/Agenda.vue"), meta: { title: "日程", public: true } },
+        // 日程在课表里：旧链接和提醒通知打开课表的「日程与待办」，原生 App 交给原生课表
+        // （`CPUTimeNative.openAgenda`）。只有还在用网页编辑日程的旧版原生 App 留在这个页面
+        // （页面自己提示登录，不要先被带去登录页）。
+        {
+          path: "agenda",
+          name: "agenda",
+          component: () => import("@/views/Agenda.vue"),
+          beforeEnter: (to) => {
+            if (!isNativeScheduleShell()) return { name: "schedule", query: { ...to.query, agenda: "1" } };
+            const shell = (window as any).CPUTimeNative;
+            if (typeof shell?.openAgenda !== "function") return true;
+            const text = (value: unknown) => (typeof value === "string" ? value : "");
+            shell.openAgenda(JSON.stringify({
+              item: text(to.query.item), date: text(to.query.date), start: text(to.query.start), new: Boolean(to.query.new),
+            }));
+            return false;
+          },
+          meta: { title: "日程", public: true },
+        },
         { path: "workshop", name: "workshop", component: () => import("@/views/workshop/Index.vue"), meta: { title: "创意工坊", public: true } },
         { path: "workshop/develop", name: "workshop-develop", component: () => import("@/views/workshop/Develop.vue"), meta: { title: "工坊开发指南", public: true } },
         { path: "workshop/mine", name: "workshop-manage", component: () => import("@/views/workshop/Manage.vue"), meta: { title: "我的作品" } },
