@@ -43,6 +43,11 @@ test('commerce is hidden in iOS and Harmony shells but retained in ordinary brow
   for (const ua of ['Chrome', 'CPUWebScheduleApp/38', 'iPhone Safari', 'HarmonyOS HuaweiBrowser']) {
     assert.equal(api.hidesNativeCommerce(ua), false);
   }
+  // AppGallery (3.0.9): no 客户端下载 leading to the Android or iOS build inside the Harmony app only.
+  assert.equal(api.hidesClientDownloads('CPUWebHarmonyApp/30 CPUTimeNative/1'), true);
+  for (const ua of ['CPUWebIOSApp/1 CPUTimeNative/1', 'CPUWebScheduleApp/61 CPUTimeNative/1', 'Chrome', 'HarmonyOS HuaweiBrowser']) {
+    assert.equal(api.hidesClientDownloads(ua), false);
+  }
 });
 
 test('iOS and Harmony Web shells apply the account-specific forum and game policy', () => {
@@ -87,7 +92,7 @@ function loadMainRouteGuard({ user = null, hideGame = false, hideAssistant = fal
     router: { beforeEach: (callback) => { guard = callback; } },
     window: { location: { replace() {} } }, document: {},
     applyRouteTitle: () => {},
-    hidesNativeCommerce: () => false, isNativeScheduleShell: () => false,
+    hidesNativeCommerce: () => false, hidesClientDownloads: () => false, isNativeScheduleShell: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, user, token: user ? 'session' : '', canAccessForum: true }),
     useSiteStore: () => ({ loaded: true, features: {} }),

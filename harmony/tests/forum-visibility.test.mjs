@@ -57,7 +57,7 @@ test('Harmony direct entries leave no title or intranet toast while service noti
   load(source.slice(source.indexOf('router.beforeEach(')).replaceAll('import.meta.env.DEV', 'false'), {
     router: { beforeEach: callback => { guard = callback; } }, window: {}, document: doc,
     applyRouteTitle: to => { if (to.meta.title) doc.title = `${to.meta.title} · 药大拾间`; },
-    hidesNativeCommerce: () => false, isNativeScheduleShell: () => false,
+    hidesNativeCommerce: () => false, hidesClientDownloads: () => false, isNativeScheduleShell: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, forumHidden: true, token: 'session', user: { username: '2020240384' } }),
     useSiteStore: () => ({ loaded: true, features: {} }),
