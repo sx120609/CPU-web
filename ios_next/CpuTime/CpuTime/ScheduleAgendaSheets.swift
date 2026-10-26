@@ -10,14 +10,21 @@ struct NativeAgendaSheet: View {
     let presentation: NativeAgendaPresentation
 
     var body: some View {
-        switch presentation {
-        case .edit(let item):
-            NavigationStack { NativeAgendaEditor(draft: item) }
-        case .create(let date, let start):
-            NavigationStack { NativeAgendaEditor(draft: NativeAgendaItem(id: "", title: "", date: date, start: start)) }
-        case .list:
-            NativeAgendaListView()
+        Group {
+            switch presentation {
+            case .edit(let item):
+                NavigationStack { NativeAgendaEditor(draft: item) }
+            case .create(let date, let start):
+                NavigationStack { NativeAgendaEditor(draft: NativeAgendaItem(id: "", title: "", date: date, start: start)) }
+            case .list:
+                NativeAgendaListView()
+            }
         }
+        // The app has no Chinese localization, so pickers would otherwise read
+        // "Oct 28, 2026"; and the items' days and times are China time
+        // (`AgendaText.calendar`), whatever zone the phone is set to.
+        .environment(\.locale, Locale(identifier: "zh_CN"))
+        .environment(\.timeZone, AgendaText.china)
     }
 }
 

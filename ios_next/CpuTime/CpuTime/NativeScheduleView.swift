@@ -260,6 +260,29 @@ struct NativeScheduleView: View {
                         if action == "sharing" { sharingPresented = true } else { viewedShare = sample }
                     case "style-picker":
                         stylePickerPresented = true
+                    // With `CPU_DEBUG_AGENDA=1`: `agenda-edit` opens a sample 日程 in its editor,
+                    // `agenda-add` taps the first empty period of the week, `agenda-new` picks
+                    // 添加日程 there, and `agenda-list` opens 日程与待办.
+                    case "agenda-edit":
+                        if let item = agendaService.items.first(where: { !$0.start.isEmpty && !$0.repeats }) ?? agendaService.items.first {
+                            agendaService.presentation = .edit(item)
+                        }
+                    case "agenda-add", "agenda-new":
+                        let week = weekNumber(store.selectedWeek)
+                        if let (day, slot) = (1...5).lazy.compactMap({ day -> (Int, Int)? in
+                            let taken = blocks(for: day, week: week, result: result)
+                            return (1...ScheduleSlot.all.count).first { slot in
+                                !taken.contains { $0.startSlot <= slot && slot <= $0.endSlot }
+                            }.map { (day, $0) }
+                        }).first, let date = rawDayDate(day, week: week, result: result) {
+                            if action == "agenda-add" {
+                                presentAddCourse(day: day, week: week, startSlot: slot, date: date)
+                            } else {
+                                agendaService.openNew(date: date, start: ScheduleSlot.all.first { $0.number == slot }?.start)
+                            }
+                        }
+                    case "agenda-list":
+                        agendaService.openList()
                     case "live-activity":
                         // The demo class from the device settings, for a lock screen or Dynamic Island shot.
                         NativeLiveActivityController.shared.startPreview()
