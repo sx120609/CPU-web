@@ -1,10 +1,21 @@
-# iOS 4.17 (76)
+# iOS 4.17 (77)
 
-Submitted for App Store review on 2026-10-26 from Chrome (App Store Connect): 正在等待审核, released automatically to all users once approved, ratings kept. 「此版本的新增内容」, as the user confirmed it:
+Submitted for App Store review on 2026-10-27 from Chrome (App Store Connect): 正在等待审核, released automatically to all users once approved, ratings kept. It replaces 4.17 (76), which had been submitted on 2026-10-26 and was removed from review (被开发者拒绝) before 77 was attached. 「此版本的新增内容」, as the user chose it:
 
+> 日程可以直接在课表里添加、修改和删除：点日程块编辑，点空着的节次可选「添加日程」，「更多 → 日程与待办」查看待办和接下来一周。
 > 修复灵动岛倒计时在长课程（超过 100 分钟）时显示不全的问题；在 iPhone Duo 上，灵动岛的倒计时改为分钟和秒分两行显示。
 
-Build 76 was archived with Xcode 27.1 (iOS 27.1 SDK) from `53584564` and uploaded from the command line (`xcodebuild -exportArchive` with `destination: upload`, automatic signing, the Xcode account signed in). All four targets use version 4.17, build 76. Export compliance was answered 「不属于上述的任意一种算法」: the app only hashes with SHA-256 (CryptoKit) and uses the system's HTTPS.
+Build 77 was archived with Xcode 27.1 (iOS 27.1 SDK) from `42823ff1` and uploaded by the user from Xcode's Organizer. All four targets use version 4.17, build 77. Export compliance was answered 「不属于上述的任意一种算法」: the app only hashes with SHA-256 (CryptoKit) and uses the system's HTTPS. The Linux deployment artifact runs for `42823ff1` and `3fdd8c09` failed in web and HarmonyOS tests broken by `e43f018e` (a missing `hidesClientDownloads` stub); `61aceab8`, which contains them unchanged, passed with its artifact.
+
+## What changed since 4.17 (76)
+
+日程 are edited inside the timetable (`15bd2b30`, written without a Swift toolchain): a native editor over the timetable for a tapped 日程, 添加日程 or 添加课程 for a tapped empty period, and 日程与待办 under 更多, instead of the Web page /agenda. It compiled unchanged with Xcode 27.1. In the simulator the editor's dates read "Oct 28, 2026", since the app has no Chinese localization; the sheets now use zh_CN and China time (`66f6e85e`).
+
+Checked in the iOS 26.5 simulator with `CPU_DEBUG_MOCK_SCHEDULE=1 CPU_DEBUG_AGENDA=1` and the new `CPU_DEBUG_SCHEDULE_ACTION` values `agenda-edit`, `agenda-add`, `agenda-new` and `agenda-list`: the 编辑日程 form, the 「周一 · 第4节」 choice of 添加日程／添加课程, the 新建日程 form with the day and 10:50 filled in, 日程与待办 (待办, today and the coming days), and the "now" line inside period 2 at 09:00 and between periods 4 and 5 at 12:20 (`CPU_DEBUG_SCHEDULE_NOW`). `check-agenda.sh`, the other check scripts and the iOS Node suite (69/69) passed. Not exercised: saving and deleting by tapping (the simulator could not be driven with taps in this setup), the site bridge's `save`, `remove`, `relay` and `parse` against a signed-in account, and a physical device.
+
+## 4.17 (76)
+
+Submitted on 2026-10-26 with 「修复灵动岛倒计时在长课程（超过 100 分钟）时显示不全的问题；在 iPhone Duo 上，灵动岛的倒计时改为分钟和秒分两行显示。」, archived from `53584564` and uploaded from the command line (`xcodebuild -exportArchive` with `destination: upload`, automatic signing, the Xcode account signed in). Removed from review on 2026-10-27 for 77.
 
 ## What changed since 4.16 (74)
 
