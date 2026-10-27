@@ -6,7 +6,7 @@ import { createServer, request } from 'node:http'
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment, selectPrunableReleases } from './blue-green-core.mjs'
+import { atomicWrite, cutover, memoryHeadroomMb, probe, replaceConfig, replaceUpstream, runtimeEnvironment, selectPrunableReleases } from './blue-green-core.mjs'
 import { hasSchemaChanges, linkSharedDirectory, collectWorkshopPackages, SHARED_SERVER_DIRECTORIES, configSnapshots, restoreConfigs, findProxyConfig, resolveProxyConfigs, publishWebAssets, pruneReleases, verifyWeb } from './blue-green.mjs'
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)))
@@ -15,6 +15,13 @@ const tick = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 test('PM2 runtime cannot inherit a held deployment lock or a one-time migration authorization', () => {
   assert.deepEqual(runtimeEnvironment({ PATH: '/bin', DATABASE_URL: 'retained', DEPLOY_ALLOW_SCHEMA_EXPAND: '1', DEPLOY_FORCE_ALL: '1', CPU_WEB_UPDATE_LOCKED: '1', CPU_WEB_UPDATE_REEXEC: '1', CPU_WEB_ADMIN_DEPLOY: '1' }), { PATH: '/bin', DATABASE_URL: 'retained' })
+})
+
+test('memory headroom counts available memory and free swap, and is unknown without MemAvailable', () => {
+  const meminfo = 'MemTotal:        7801000 kB\nMemFree:          160000 kB\nMemAvailable:     884736 kB\nSwapTotal:       2097152 kB\nSwapFree:        1048576 kB\n'
+  assert.equal(memoryHeadroomMb(meminfo), 1888)
+  assert.equal(memoryHeadroomMb(meminfo.replace(/^Swap.*\n/gm, '')), 864)
+  assert.equal(memoryHeadroomMb('MemTotal:        7801000 kB\n'), null)
 })
 
 test('update uses the verified-artifact coordinator and never records success after its failure', { skip: process.platform === 'win32' }, () => {

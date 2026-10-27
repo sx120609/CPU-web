@@ -4,6 +4,15 @@ export function runtimeEnvironment(environment) {
   return Object.fromEntries(Object.entries(environment).filter(([key]) => !/^DEPLOY_|^CPU_WEB_UPDATE_|^CPU_WEB_ADMIN_DEPLOY$/.test(key)))
 }
 
+// MemAvailable plus free swap, in MiB; null when /proc/meminfo has no MemAvailable.
+export function memoryHeadroomMb(meminfo) {
+  const field = name => Number(meminfo.match(new RegExp(`^${name}:\\s+(\\d+) kB$`, 'm'))?.[1])
+  const available = field('MemAvailable')
+  if (!Number.isFinite(available)) return null
+  const swapFree = field('SwapFree')
+  return Math.floor((available + (Number.isFinite(swapFree) ? swapFree : 0)) / 1024)
+}
+
 export async function atomicWrite(file, contents, mode = 0o600) {
   const temporary = `${file}.tmp-${process.pid}`
   await writeFile(temporary, contents, { mode })

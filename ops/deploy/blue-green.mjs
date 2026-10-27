@@ -6,7 +6,7 @@ import { access, cp, glob, lstat, mkdir, readFile, readdir, readlink, realpath, 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
-import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment, selectPrunableReleases } from './blue-green-core.mjs'
+import { atomicWrite, cutover, memoryHeadroomMb, probe, replaceConfig, replaceUpstream, runtimeEnvironment, selectPrunableReleases } from './blue-green-core.mjs'
 import { readGateway, assertSameGateway, waitForUpstreamIdle, awaitGatewayMigration } from './agent-gateway.mjs'
 import { prepareQqBotHandoff, verifyQqBotHandoff } from './qqbot-handoff.mjs'
 
@@ -405,6 +405,16 @@ export async function deploy() {
   } else await probe(`http://127.0.0.1:${previous.port}/api/${previous.commit ? 'ready' : 'health'}`, { commit: previous.commit })
   const serverChanged = !previous.id || touches(/^(server\/|desktop\/assets\/userscripts\/|ops\/deploy\/|deploy\.sh$)/)
   const voiceChanged = !previous.id || touches(/^voicehub\//)
+  if (serverChanged || voiceChanged) {
+    // npm ci and a second instance run beside the live release; without room the host
+    // thrashes and every service stops answering (2026-10-21, 2026-10-27).
+    const minimum = integer(process.env.DEPLOY_MIN_MEMORY_MB, 1536, 0, 1048576)
+    const headroom = memoryHeadroomMb(await readFile('/proc/meminfo', 'utf8'))
+    if (headroom !== null && headroom < minimum) {
+      throw new Error(`Only ${headroom} MiB of available memory and swap; backend deployment needs ${minimum} MiB. No running process was changed`)
+    }
+    log(`Memory headroom ${headroom ?? 'unknown'} MiB (minimum ${minimum} MiB)`)
+  }
   const initialGatewayMigration = process.env.DEPLOY_AGENT_GATEWAY_BOOTSTRAP === '1'
   if (initialGatewayMigration && previous.gateway) throw new Error('Gateway bootstrap is only allowed for the initial legacy migration')
   // Legacy in-process Agent sockets cannot be transferred to another process.
