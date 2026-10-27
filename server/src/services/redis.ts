@@ -221,6 +221,47 @@ export async function countRedisKeysByPrefix(prefix: string) {
   }
 }
 
+/** 逐批遍历前缀下的键，交给 visit 处理；Redis 不可用时返回 false。 */
+export async function scanRedisKeysByPrefix(prefix: string, visit: (keys: string[]) => Promise<void>, count = 500) {
+  const client = await getCommandClient();
+  if (!client) return false;
+  let cursor = "0";
+  do {
+    const [nextCursor, keys] = await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", count);
+    cursor = nextCursor;
+    if (keys.length) await visit(keys);
+  } while (cursor !== "0");
+  return true;
+}
+
+/** 批量读取剩余毫秒数和值；键已不存在时为 null。 */
+export async function readRedisStringsWithTtl(keys: string[]) {
+  const client = await getCommandClient();
+  if (!client || !keys.length) return [];
+  const pipeline = client.pipeline();
+  for (const key of keys) pipeline.pttl(key).get(key);
+  const replies = (await pipeline.exec()) ?? [];
+  return keys.map((key, index) => {
+    const [ttlError, ttl] = replies[index * 2] ?? [];
+    const [valueError, value] = replies[index * 2 + 1] ?? [];
+    if (ttlError || valueError || typeof value !== "string" || typeof ttl !== "number" || ttl === -2) return null;
+    return { key, ttlMs: ttl, value };
+  });
+}
+
+/** 只缩短、不延长：PTTL 已不超过 ttlMs 的键保持原样。 */
+export async function capRedisKeyTtls(keys: string[], ttlMs: number) {
+  const client = await getCommandClient();
+  if (!client || !keys.length) return 0;
+  const replies = (await client.eval(
+    "local n = 0; for i, key in ipairs(KEYS) do local t = redis.call('pttl', key); if t == -1 or t > tonumber(ARGV[1]) then redis.call('pexpire', key, ARGV[1]); n = n + 1 end end; return n",
+    keys.length,
+    ...keys,
+    String(ttlMs),
+  )) as number;
+  return Number(replies);
+}
+
 export async function deleteRedisSubjectCacheEntries(subjectHash: string) {
   if (!/^[a-f0-9]{24}$/.test(subjectHash)) throw new Error("Invalid subject cache hash");
   const client = await getCommandClient();

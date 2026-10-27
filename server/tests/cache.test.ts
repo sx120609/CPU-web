@@ -128,3 +128,18 @@ test("claimOnce lets only the first caller handle an event until the claim expir
   await wait(30);
   assert.equal(await claimOnce("test-claim:event-1", 20), true);
 });
+
+test("durable session trim keeps hot copies short, evicts copies idle for over a week and leaves expiring ones alone", async () => {
+  const { DURABLE_REDIS_TTL_MS, planDurableTrim } = await import("../src/services/cache");
+  const day = 24 * 60 * 60 * 1000;
+  const full = 365 * day;
+  const entries = [
+    { key: "active", ttlMs: full - day, value: "" },
+    { key: "dormant", ttlMs: full - 30 * day, value: "" },
+    { key: "expiring", ttlMs: DURABLE_REDIS_TTL_MS - day, value: "" },
+    { key: "no-expiry", ttlMs: -1, value: "" },
+  ];
+  assert.deepEqual(planDurableTrim(entries, full), { cap: ["active", "no-expiry"], evict: ["dormant"] });
+  // Without a known full lifetime nothing is evicted.
+  assert.deepEqual(planDurableTrim(entries, null), { cap: ["active", "dormant", "no-expiry"], evict: [] });
+});

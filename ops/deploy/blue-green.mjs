@@ -411,7 +411,7 @@ export async function deploy() {
     const minimum = integer(process.env.DEPLOY_MIN_MEMORY_MB, 1536, 0, 1048576)
     const headroom = memoryHeadroomMb(await readFile('/proc/meminfo', 'utf8'))
     if (headroom !== null && headroom < minimum) {
-      throw new Error(`Only ${headroom} MiB of available memory and swap; backend deployment needs ${minimum} MiB. No running process was changed`)
+      throw new Error(`Only ${headroom} MiB of memory is available; backend deployment needs ${minimum} MiB. No running process was changed`)
     }
     log(`Memory headroom ${headroom ?? 'unknown'} MiB (minimum ${minimum} MiB)`)
   }

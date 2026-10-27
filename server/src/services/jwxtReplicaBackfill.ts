@@ -23,12 +23,13 @@ export function startJwxtReplicaBackfill(recipients: () => AgentReplicaRecipient
       if (!process.env.DATABASE_URL || targets.length < 2 || !targets.some(target => state(target.agentId).replicaBackfill && state(target.agentId).ready)) return;
       const rows = await prisma.runtimeSession.findMany({
         where: { key: { startsWith: prefix, ...(cursor ? { gt: cursor } : {}) }, expiresAt: { gt: new Date() } },
-        orderBy: { key: "asc" }, take: 50, select: { key: true, expiresAt: true },
+        orderBy: { key: "asc" }, take: 50, select: { key: true, expiresAt: true, value: true },
       });
       for (const row of rows) {
         if (stopped) break;
         cursor = row.key;
-        const stored = await readJwxtSessionReplicaKey(row.key);
+        // Read the row itself: going through the hot cache would pull every dormant replica back into Redis.
+        const stored = await readJwxtSessionReplicaKey(row.key, row.value);
         if (!stored || targets.every(target => stored.replicas.some(replica => replica.recipientAgentId === target.agentId))) continue;
         const source = stored.replicas.find(replica => {
           const s = state(replica.recipientAgentId);

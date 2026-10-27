@@ -30,9 +30,10 @@ async function readStoredReplica(token: string): Promise<StoredReplica | null> {
   return readJwxtSessionReplicaKey(jwxtSessionReplicaKey(token));
 }
 
-export async function readJwxtSessionReplicaKey(key: string): Promise<StoredReplica | null> {
+/** stored: a value already read from the durable store, so a sweep does not refill Redis. */
+export async function readJwxtSessionReplicaKey(key: string, stored?: string): Promise<StoredReplica | null> {
   if (!key.startsWith(`${REPLICA_PREFIX}:`)) return null;
-  const raw = await getEphemeralValue(key);
+  const raw = stored ?? await getEphemeralValue(key);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as StoredReplica;

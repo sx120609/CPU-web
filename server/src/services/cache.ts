@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   buildRedisKey,
+  capRedisKeyTtls,
   compareAndDeleteRedisKey,
   compareAndExpireRedisKey,
   countRedisKeysByPrefix,
@@ -9,10 +10,13 @@ import {
   expireRedisKey,
   incrementRedisKey,
   readRedisString,
+  readRedisStringsWithTtl,
+  scanRedisKeysByPrefix,
   trySetRedisLock,
   writeRedisString,
 } from "./redis";
 import { prisma } from "../prisma";
+import { config } from "../config";
 
 export type CacheDomain =
   | "site"
@@ -66,10 +70,18 @@ const DURABLE_EPHEMERAL_PREFIXES = [
   buildRedisKey("jwxt", "user-session") + ":",
 ];
 const SESSION_REVOCATION_KEY_PREFIX = buildRedisKey("auth", "browser-session-revoked") + ":";
+// 会话在数据库里保存完整有效期；Redis 只留最近活跃的热副本，冷会话下次访问时从数据库恢复。
+// 全部放在 Redis 时教务会话一年累积到 60 多万个键、近 4 GB 内存（2026-10-27）。
+export const DURABLE_REDIS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 let durableStoreUnavailableLogged = false;
 
 function isDurableEphemeralKey(key: string) {
   return DURABLE_EPHEMERAL_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+/** 数据库里有副本时才缩短 Redis 的过期时间；否则 Redis 是唯一存储，保留完整有效期。 */
+function redisTtlFor(ttlMs: number, durableStored: boolean) {
+  return durableStored ? Math.min(ttlMs, DURABLE_REDIS_TTL_MS) : ttlMs;
 }
 
 function hasDatabaseStore() {
@@ -130,12 +142,12 @@ async function deleteDurableEphemeralValue(key: string) {
 async function touchDurableEphemeralValue(key: string, ttlMs: number) {
   if (!hasDatabaseStore()) return false;
   try {
-    await prisma.runtimeSession.updateMany({
+    const result = await prisma.runtimeSession.updateMany({
       where: { key },
       data: { expiresAt: new Date(Date.now() + Math.max(1, ttlMs)) },
     });
     durableStoreUnavailableLogged = false;
-    return true;
+    return result.count > 0;
   } catch (error) {
     logDurableStoreIssue(error);
     return false;
@@ -451,10 +463,10 @@ export async function claimOnce(name: string, ttlMs: number) {
 }
 
 export async function setEphemeralValue(key: string, value: string, ttlMs: number) {
-  const stored = await writeRedisString(key, value, ttlMs);
   const durableStored = isDurableEphemeralKey(key)
     ? await writeDurableEphemeralValue(key, value, ttlMs)
     : false;
+  const stored = await writeRedisString(key, value, redisTtlFor(ttlMs, durableStored));
   if (!stored && !durableStored) writeLocalValue(key, value, ttlMs);
 }
 
@@ -491,7 +503,7 @@ export async function getEphemeralValue(key: string) {
     if (durable) {
       // Redis 被清空或短暂不可用时，用数据库中的加密副本恢复热缓存。
       if (shared.available) {
-        void writeRedisString(key, durable.value, Math.max(1, durable.expiresAt.getTime() - Date.now()));
+        void writeRedisString(key, durable.value, redisTtlFor(Math.max(1, durable.expiresAt.getTime() - Date.now()), true));
       }
       return durable.value;
     }
@@ -507,10 +519,16 @@ export async function deleteEphemeralValue(key: string) {
 }
 
 export async function touchEphemeralValue(key: string, ttlMs: number) {
-  const extended = await expireRedisKey(key, ttlMs);
-  const durableExtended = isDurableEphemeralKey(key)
-    ? await touchDurableEphemeralValue(key, ttlMs)
-    : false;
+  let durableExtended = false;
+  if (isDurableEphemeralKey(key)) {
+    durableExtended = await touchDurableEphemeralValue(key, ttlMs);
+    if (!durableExtended) {
+      // 数据库加入会话存储（2026-08-14）之前写入的会话只在 Redis 里，续期时补一份。
+      const shared = await readRedisString(key);
+      if (shared.value !== null) durableExtended = await writeDurableEphemeralValue(key, shared.value, ttlMs);
+    }
+  }
+  const extended = await expireRedisKey(key, redisTtlFor(ttlMs, durableExtended));
   if (!extended && !durableExtended) {
     const cached = localStoreFor(key).get(key);
     if (cached) cached.expiresAt = Date.now() + ttlMs;
@@ -538,6 +556,96 @@ export async function countEphemeralKeys(prefix: string) {
     total += 1;
   }
   return total;
+}
+
+const DURABLE_TRIM_MARKER = buildRedisKey("durable-redis-trim", "v1");
+
+type DurableTrimEntry = { key: string; ttlMs: number; value: string };
+
+/** 按“完整有效期 − 剩余 TTL”推算闲置时长：会话每次续期都会把 TTL 重置成完整有效期。 */
+export function planDurableTrim(entries: DurableTrimEntry[], fullTtlMs: number | null) {
+  const cap: string[] = [];
+  const evict: string[] = [];
+  for (const entry of entries) {
+    if (entry.ttlMs !== -1 && entry.ttlMs <= DURABLE_REDIS_TTL_MS) continue;
+    const idle = fullTtlMs === null || entry.ttlMs === -1 ? 0 : fullTtlMs - entry.ttlMs;
+    (idle > DURABLE_REDIS_TTL_MS ? evict : cap).push(entry.key);
+  }
+  return { cap, evict };
+}
+
+/** 确保数据库副本存在且不早于 Redis 过期；返回已确认有副本的键。 */
+async function ensureDurableCopies(entries: DurableTrimEntry[]) {
+  const now = Date.now();
+  const rows = await prisma.runtimeSession.findMany({
+    where: { key: { in: entries.map((entry) => entry.key) } },
+    select: { key: true, expiresAt: true },
+  });
+  const stored = new Map(rows.map((row) => [row.key, row.expiresAt.getTime()]));
+  const missing = entries.filter((entry) => !stored.has(entry.key) && entry.ttlMs > 0);
+  const created = missing.length
+    ? (await prisma.runtimeSession.createMany({
+      data: missing.map((entry) => ({ key: entry.key, value: entry.value, expiresAt: new Date(now + entry.ttlMs) })),
+      skipDuplicates: true,
+    })).count
+    : 0;
+  for (const entry of entries) {
+    const expiresAt = stored.get(entry.key);
+    if (expiresAt !== undefined && entry.ttlMs > 0 && expiresAt < now + entry.ttlMs) {
+      await prisma.runtimeSession.updateMany({ where: { key: entry.key }, data: { expiresAt: new Date(now + entry.ttlMs) } });
+    }
+  }
+  return { durable: new Set([...stored.keys(), ...missing.map((entry) => entry.key)]), created };
+}
+
+/**
+ * 一次性整理：旧版本把会话按完整有效期放在 Redis 里。补齐数据库副本后，
+ * 7 天以上没活跃的从 Redis 删除，其余缩到 7 天；撤销标记不动。
+ */
+export async function trimDurableRedisCopies() {
+  if (!hasDatabaseStore()) return null;
+  const marker = await readRedisString(DURABLE_TRIM_MARKER);
+  if (!marker.available || marker.value) return null;
+  const targets: Array<[string, number | null]> = [
+    [buildRedisKey("auth", "browser-session") + ":", config.browserSessionAbsoluteMs],
+    [buildRedisKey("jwxt", "session") + ":", config.jwxtSessionIdleMs],
+    [buildRedisKey("jwxt", "agent-session-replica") + ":", config.jwxtSessionIdleMs],
+    // 小组件关联只在登录时写入、不续期，剩余 TTL 反映不了闲置时长，只缩短不删除。
+    [buildRedisKey("jwxt", "user-session") + ":", null],
+  ];
+  const { acquired, result } = await runWithDistributedLock("durable-redis-trim", 60_000, async () => {
+    const totals = { capped: 0, evicted: 0, backfilled: 0 };
+    for (const [prefix, fullTtlMs] of targets) {
+      const scanned = await scanRedisKeysByPrefix(prefix, async (keys) => {
+        const entries = (await readRedisStringsWithTtl(keys)).filter((entry): entry is DurableTrimEntry => entry !== null);
+        const plan = planDurableTrim(entries, fullTtlMs);
+        const pending = new Set([...plan.cap, ...plan.evict]);
+        if (!pending.size) return;
+        const { durable, created } = await ensureDurableCopies(entries.filter((entry) => pending.has(entry.key)));
+        totals.backfilled += created;
+        const evict = plan.evict.filter((key) => durable.has(key));
+        if (evict.length) await deleteRedisKeys(...evict);
+        totals.evicted += evict.length;
+        totals.capped += await capRedisKeyTtls(plan.cap.filter((key) => durable.has(key)), DURABLE_REDIS_TTL_MS);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }, 200);
+      if (!scanned) throw new Error("Redis unavailable during durable session trim");
+    }
+    await writeRedisString(DURABLE_TRIM_MARKER, JSON.stringify({ ...totals, finishedAt: Date.now() }));
+    return totals;
+  });
+  return acquired ? result : null;
+}
+
+export function startDurableRedisTrim() {
+  const timer = setTimeout(() => {
+    trimDurableRedisCopies().then((totals) => {
+      if (totals) console.log(`[session-store] trimmed Redis session copies ${JSON.stringify(totals)}`);
+    }, (error) => {
+      console.warn("[session-store] Redis session trim failed; it will retry on the next start", error);
+    });
+  }, 30_000);
+  timer.unref();
 }
 
 export function jwxtPendingKey(id: string) {

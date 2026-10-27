@@ -55,6 +55,7 @@ import { startAndroidClientStatsPrunePoller } from "./services/androidClientStat
 import { startHarmonyClientStatsPrunePoller } from "./services/harmonyClientStats";
 import { startDesktopInstallReportPrunePoller } from "./services/desktopInstallReports";
 import { startLogRetentionSweeper } from "./services/logRetention";
+import { startDurableRedisTrim } from "./services/cache";
 
 export function startAppWorkers() {
   startForumImageModerationPoller();
@@ -74,6 +75,7 @@ export function startAppWorkers() {
   startHarmonyClientStatsPrunePoller();
   startDesktopInstallReportPrunePoller();
   startLogRetentionSweeper();
+  startDurableRedisTrim();
 }
 
 export function createApp(options: { workers?: boolean } = {}) {
