@@ -31,7 +31,7 @@ import {
 } from "../services/campusAssistantQuota";
 import { detectLoginClient } from "../utils/loginClient";
 import { isCampusAssistantDestination, shouldHideHarmonyAssistant } from "../utils/nativeAssistantAccess";
-import { searchDepartmentContactsWithAi } from "../services/departmentContactSearch";
+import { readCachedDepartmentContactSearch, searchDepartmentContactsWithAi } from "../services/departmentContactSearch";
 import { isDepartmentContactCampus } from "../services/departmentContacts";
 
 export const searchRouter = Router();
@@ -251,9 +251,11 @@ searchRouter.post("/assistant/department-contacts",
     const abort = () => { if (!res.writableEnded) controller.abort(new Error("AI_SEARCH_ABORTED")); };
     req.on("aborted", abort); res.on("close", abort);
     try {
+      const cached = readCachedDepartmentContactSearch(req.body);
+      if (cached) return ok(res, cached);
       reservation = (await consumeCampusAssistantQuota(req.user!.userId)).reservation;
       if (controller.signal.aborted) throw new Error("AI_SEARCH_ABORTED");
-      const result = await searchDepartmentContactsWithAi({ ...req.body, signal: controller.signal,
+      const result = await searchDepartmentContactsWithAi({ ...req.body, signal: controller.signal, cache: true,
         usage: { createdById: req.user!.userId, pointCost: reservation?.source === "points" ? 1 : 0 } });
       if (controller.signal.aborted) throw new Error("AI_SEARCH_ABORTED");
       ok(res, result);

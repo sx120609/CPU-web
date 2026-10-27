@@ -818,6 +818,7 @@ export type AiUsageLogPage = {
   summary: {
     success: number;
     error: number;
+    cancelled: number;
     started: number;
     averageDurationMs: number;
     pointCost: number;

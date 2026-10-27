@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
 import { requestAiJson } from "./topicAiReview";
-import { startAiReviewLog, finishAiReviewLogError, finishAiReviewLogSuccess } from "./aiReviewLog";
+import { startAiReviewLog, finishAiReviewLogCancelled, finishAiReviewLogError, finishAiReviewLogSuccess } from "./aiReviewLog";
 import { normalizeAiJsonApiUrl } from "./aiJsonApi";
 import { detectDepartmentContactCampus, getDepartmentContact, isExactDepartmentContactQuery, queryDepartmentContacts, type ContactQuery } from "./departmentContacts";
 import { executeDepartmentContactToolQueries, type DepartmentContactToolQuery, type DepartmentContactToolContext } from "./departmentContactsAssistant";
@@ -9,8 +9,48 @@ import { executeDepartmentContactToolQueries, type DepartmentContactToolQuery, t
 const planSchema = z.object({ categories: z.array(z.string()).max(2), clarification: z.string().max(160).nullable() }).strict();
 const selectionSchema = z.object({ contactIds: z.array(z.string()).max(8), clarification: z.string().max(160).nullable() }).strict();
 
+type SemanticSearchResult = Awaited<ReturnType<typeof runDepartmentContactAiSearch>>;
+// The page's quick chips send the same few needs over and over, and two model calls take 4-12 s, so people
+// click on and cancel. Answers depend only on the query and the bundled directory, which changes with a deploy.
+const SEMANTIC_CACHE_TTL_MS = 6 * 60 * 60_000;
+const SEMANTIC_CACHE_LIMIT = 300;
+const semanticCache = new Map<string, { expiresAt: number; value: SemanticSearchResult }>();
+function semanticCacheKey(input: ContactQuery) {
+  return JSON.stringify([String(input.q || "").trim().replace(/\s+/gu, " ").toLowerCase(),
+    input.campus || "", input.category || "", Boolean(input.includeSpecial)]);
+}
+
+/** A finished answer for the same query, so the endpoint can return it without a model call or quota. */
+export function readCachedDepartmentContactSearch(input: ContactQuery) {
+  const key = semanticCacheKey(input);
+  const hit = semanticCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  semanticCache.delete(key);
+  return null;
+}
+
+export function clearDepartmentContactSearchCache() { semanticCache.clear(); }
+
 /** Model chooses categories and IDs only. All display facts come from the shared directory. */
 export async function searchDepartmentContactsWithAi(input: ContactQuery & {
+  signal?: AbortSignal; contextMessage?: string; usage?: { createdById?: number; pointCost?: number }; cache?: boolean;
+}) {
+  // Assistant calls pass the chat message as context, which can change the answer; only bare queries are shared.
+  const cacheable = Boolean(input.cache) && !input.contextMessage;
+  if (cacheable) {
+    const hit = readCachedDepartmentContactSearch(input);
+    if (hit) return hit;
+  }
+  const value = await runDepartmentContactAiSearch(input);
+  if (cacheable) {
+    semanticCache.delete(semanticCacheKey(input));
+    semanticCache.set(semanticCacheKey(input), { expiresAt: Date.now() + SEMANTIC_CACHE_TTL_MS, value });
+    while (semanticCache.size > SEMANTIC_CACHE_LIMIT) semanticCache.delete(semanticCache.keys().next().value!);
+  }
+  return value;
+}
+
+async function runDepartmentContactAiSearch(input: ContactQuery & {
   signal?: AbortSignal; contextMessage?: string; usage?: { createdById?: number; pointCost?: number };
 }) {
   const base = queryDepartmentContacts({ ...input, q: "", offset: 0, limit: 50 });
@@ -66,7 +106,9 @@ export async function searchDepartmentContactsWithAi(input: ContactQuery & {
     await finishAiReviewLogSuccess(log?.id, JSON.stringify({ ids: contacts.map((r) => r.id), clarification: output.clarification }));
     return output;
   } catch (error) {
-    await finishAiReviewLogError(log?.id, error instanceof Error ? error.message : String(error));
+    // A newer search or leaving the page aborts the request; that is the user's choice, not a model failure.
+    if (input.signal?.aborted) await finishAiReviewLogCancelled(log?.id, input.signal.reason);
+    else await finishAiReviewLogError(log?.id, error instanceof Error ? error.message : String(error));
     throw error;
   }
 }

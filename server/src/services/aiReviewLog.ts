@@ -83,3 +83,27 @@ export async function finishAiReviewLogError(logId: number | null | undefined, e
     },
   }).catch(() => null);
 }
+
+/**
+ * 用户取消或离开页面的请求记成 status "error"，靠错误文字区分。新代码统一写 REQUEST_ABORTED 前缀，
+ * 其余三种是线上已有记录里的取消写法。后台日志和服务流量统计都不把它们算作失败。
+ */
+const CANCELLED_ERROR_FILTERS = [
+  { errorMessage: { startsWith: "REQUEST_ABORTED" } },
+  { errorMessage: { contains: "AI_SEARCH_ABORTED" } },
+  { errorMessage: { equals: "请求已取消" } },
+  { errorMessage: { contains: "客户端已断开连接" } },
+];
+export const AI_LOG_CANCELLED_WHERE = { status: "error", OR: CANCELLED_ERROR_FILTERS };
+export const AI_LOG_NOT_CANCELLED_WHERE = { OR: [{ errorMessage: null }, { NOT: { OR: CANCELLED_ERROR_FILTERS } }] };
+
+export function isCancelledAiLogError(errorMessage?: string | null) {
+  const message = errorMessage || "";
+  return message.startsWith("REQUEST_ABORTED") || message.includes("AI_SEARCH_ABORTED")
+    || message === "请求已取消" || message.includes("客户端已断开连接");
+}
+
+export async function finishAiReviewLogCancelled(logId: number | null | undefined, reason: unknown) {
+  const detail = reason instanceof Error ? reason.message : String(reason || "");
+  await finishAiReviewLogError(logId, `REQUEST_ABORTED: ${detail || "用户取消了请求"}`);
+}

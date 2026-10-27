@@ -50,6 +50,7 @@ import {
   type FeatureKey,
 } from "../../services/siteSettings";
 import { refreshTopicSubmissionLock } from "../../services/topicAiReview";
+import { AI_LOG_CANCELLED_WHERE, AI_LOG_NOT_CANCELLED_WHERE, isCancelledAiLogError } from "../../services/aiReviewLog";
 import { resetForumReviewRetryDetail } from "../../services/forumSubmission";
 import { scheduleReplySubmissionReview, scheduleTopicSubmissionReview } from "../../services/forumSubmissionReview";
 import { scheduleForumAiAnswer } from "../../services/forumAiAnswer";
@@ -3412,24 +3413,27 @@ adminRouter.get("/ai-usage/logs", adminOnly, async (req, res, next) => {
     const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
     const from = String(req.query.from ?? "").trim();
     const to = String(req.query.to ?? "").trim();
-    const where: any = {};
+    const where: any = { AND: [] };
     if (kind) where.kind = kind;
-    if (status) where.status = status;
+    // 取消的请求在库里是 error，这里单独算“已取消”，不混进失败。
+    if (status === "cancelled") where.AND.push(AI_LOG_CANCELLED_WHERE);
+    else if (status === "error") where.AND.push({ status: "error" }, AI_LOG_NOT_CANCELLED_WHERE);
+    else if (status) where.status = status;
     if (from || to) {
       where.startedAt = {};
       if (from && !Number.isNaN(Date.parse(from))) where.startedAt.gte = new Date(from);
       if (to && !Number.isNaN(Date.parse(to))) where.startedAt.lte = new Date(to);
     }
     if (q) {
-      where.OR = [
+      where.AND.push({ OR: [
         { targetLabel: { contains: q } },
         { requestSummary: { contains: q } },
         { responseSummary: { contains: q } },
         { model: { contains: q } },
         { createdBy: { is: { OR: [{ nickname: { contains: q } }, { username: { contains: q } }] } } },
-      ];
+      ] });
     }
-    const [list, total, success, error, startedCount, aggregate] = await Promise.all([
+    const [list, total, success, error, cancelled, startedCount, aggregate] = await Promise.all([
       prisma.aiReviewLog.findMany({
         where,
         orderBy: { startedAt: "desc" },
@@ -3439,7 +3443,8 @@ adminRouter.get("/ai-usage/logs", adminOnly, async (req, res, next) => {
       }),
       prisma.aiReviewLog.count({ where }),
       prisma.aiReviewLog.count({ where: { ...where, status: "success" } }),
-      prisma.aiReviewLog.count({ where: { ...where, status: "error" } }),
+      prisma.aiReviewLog.count({ where: { ...where, AND: [...where.AND, { status: "error" }, AI_LOG_NOT_CANCELLED_WHERE] } }),
+      prisma.aiReviewLog.count({ where: { ...where, AND: [...where.AND, AI_LOG_CANCELLED_WHERE] } }),
       prisma.aiReviewLog.count({ where: { ...where, status: "started" } }),
       prisma.aiReviewLog.aggregate({ where, _avg: { durationMs: true }, _sum: { pointCost: true } }),
     ]);
@@ -3447,10 +3452,11 @@ adminRouter.get("/ai-usage/logs", adminOnly, async (req, res, next) => {
       page,
       size,
       total,
-      list,
+      list: list.map((row) => (row.status === "error" && isCancelledAiLogError(row.errorMessage) ? { ...row, status: "cancelled" } : row)),
       summary: {
         success,
         error,
+        cancelled,
         started: startedCount,
         averageDurationMs: Math.round(aggregate._avg.durationMs ?? 0),
         pointCost: aggregate._sum.pointCost ?? 0,

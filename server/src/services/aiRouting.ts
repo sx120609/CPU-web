@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { fetchAiModelCatalog } from "./aiModelCatalog";
+import { AI_LOG_NOT_CANCELLED_WHERE } from "./aiReviewLog";
 import {
   AI_SCENE_MODEL_FIELDS,
   AI_SERVICE_SCENES,
@@ -203,7 +204,7 @@ export async function loadAiServiceTraffic(services: AiServiceConfig[]): Promise
   services: AiServiceTraffic[];
 }> {
   const since = new Date(Date.now() - TRAFFIC_WINDOW_MINUTES * 60_000);
-  const notCancelled = { OR: [{ errorMessage: null }, { NOT: { errorMessage: { startsWith: "REQUEST_ABORTED" } } }] };
+  const notCancelled = AI_LOG_NOT_CANCELLED_WHERE;
   const [groups, recentErrors] = await Promise.all([
     prisma.aiReviewLog.groupBy({
       by: ["endpoint", "status"],

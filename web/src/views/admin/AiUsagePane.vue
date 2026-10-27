@@ -12,6 +12,7 @@
       <div class="summary-card"><strong>{{ total }}</strong><span>筛选结果</span></div>
       <div class="summary-card"><strong>{{ summary.success }}</strong><span>成功</span></div>
       <div class="summary-card"><strong>{{ summary.error }}</strong><span>失败</span></div>
+      <div class="summary-card"><strong>{{ summary.cancelled }}</strong><span>用户取消</span></div>
       <div class="summary-card"><strong>{{ formatDuration(summary.averageDurationMs) }}</strong><span>平均耗时</span></div>
       <div class="summary-card"><strong>{{ summary.pointCost }}</strong><span>消耗 AI 点数</span></div>
     </div>
@@ -23,6 +24,7 @@
       <el-select v-model="filters.status" clearable placeholder="全部状态" @change="resetAndLoad">
         <el-option label="成功" value="success" />
         <el-option label="失败" value="error" />
+        <el-option label="已取消" value="cancelled" />
         <el-option label="进行中" value="started" />
       </el-select>
       <el-date-picker
@@ -62,7 +64,7 @@
         </el-table-column>
         <el-table-column label="状态" width="95">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'success' ? 'success' : row.status === 'error' ? 'danger' : 'warning'">
+            <el-tag :type="statusTagType(row.status)">
               {{ statusLabel(row.status) }}
             </el-tag>
           </template>
@@ -103,14 +105,19 @@ const rows = ref<AiReviewLogRow[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const errorMessage = ref("");
-const summary = reactive({ success: 0, error: 0, started: 0, averageDurationMs: 0, pointCost: 0 });
+const summary = reactive({ success: 0, error: 0, cancelled: 0, started: 0, averageDurationMs: 0, pointCost: 0 });
 let requestSeq = 0;
 // 场景清单和服务端写日志用的是同一份；日志里出现了没登记的场景也列出来。
 const sceneOptions = computed(() => aiLogSceneOptions([filters.kind, ...rows.value.map((row) => row.kind)]));
 const sceneLabel = aiLogSceneLabel;
 
 function statusLabel(status: string) {
-  return status === "success" ? "成功" : status === "error" ? "失败" : "进行中";
+  return status === "success" ? "成功" : status === "error" ? "失败" : status === "cancelled" ? "已取消" : "进行中";
+}
+
+// 用户换了查询或离开页面而中止的请求，不是模型或服务出错。
+function statusTagType(status: string) {
+  return status === "success" ? "success" : status === "error" ? "danger" : status === "cancelled" ? "info" : "warning";
 }
 
 function formatDuration(value?: number | null) {
@@ -153,7 +160,7 @@ onMounted(load);
 .usage-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .usage-head h2 { margin: 0; font-size: 20px; }
 .usage-head p { margin: 6px 0 0; color: var(--el-text-color-secondary); }
-.summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .summary-card { padding: 16px; border: 1px solid var(--el-border-color-light); border-radius: 12px; background: var(--el-bg-color); }
 .summary-card strong, .summary-card span { display: block; }
 .summary-card strong { font-size: 24px; line-height: 1.2; color: var(--el-color-primary); }

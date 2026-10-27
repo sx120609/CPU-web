@@ -4,7 +4,8 @@ import { createServer } from "node:http";
 import express from "express";
 import { prisma } from "../src/prisma";
 import { loadFeatures } from "../src/services/siteSettings";
-import { searchDepartmentContactsWithAi } from "../src/services/departmentContactSearch";
+import { clearDepartmentContactSearchCache, readCachedDepartmentContactSearch, searchDepartmentContactsWithAi } from "../src/services/departmentContactSearch";
+import { isCancelledAiLogError } from "../src/services/aiReviewLog";
 import { isDepartmentContactCampus, isExactDepartmentContactQuery, getDepartmentContact, queryDepartmentContacts } from "../src/services/departmentContacts";
 import { readDepartmentContactToolQueries } from "../src/services/departmentContactsAssistant";
 import { searchRouter } from "../src/routes/search";
@@ -109,4 +110,92 @@ test("semantic endpoint shares assistant authentication gate", async () => {
       { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ q: "食堂" }) });
     assert.equal(res.status, 401);
   } finally { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); }
+});
+
+/** Serves synthetic model decisions from `answer` and records every upstream call and AI log update. */
+async function withSyntheticDirectoryModel(answer: (body: any, req: import("node:http").IncomingMessage) => unknown,
+  run: (state: { calls: any[]; logUpdates: any[] }) => Promise<void>) {
+  const state = { calls: [] as any[], logUpdates: [] as any[] };
+  const server = createServer(async (req, res) => {
+    let raw = ""; for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw); state.calls.push(body);
+    const output = await answer(body, req);
+    if (output === undefined || res.destroyed) return;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const endpoint = `http://127.0.0.1:${(server.address() as { port: number }).port}/v1/chat/completions`;
+  const settings = prisma.siteSetting as any, logs = prisma.aiReviewLog as any;
+  const saved = { findMany: settings.findMany, create: logs.create, findUnique: logs.findUnique, update: logs.update };
+  settings.findMany = async () => [{ key: "forum.anonymous.policyVersion", value: "new-user-weekly-v2" }, { key: "ai.review.enabled", value: "on" },
+    { key: "ai.services", value: JSON.stringify([{ id: "directory-fixture", name: "Synthetic directory provider", provider: "openai", apiUrl: endpoint, apiKey: "test-only" }]) },
+    { key: "assistant.serviceId", value: "directory-fixture" }, { key: "assistant.model", value: "configured-assistant-model" }];
+  logs.create = async () => ({ id: 41, startedAt: new Date() });
+  logs.findUnique = async () => ({ startedAt: new Date(Date.now() - 1000) });
+  logs.update = async ({ data }: any) => { state.logUpdates.push(data); return data; };
+  clearDepartmentContactSearchCache();
+  try {
+    await loadFeatures();
+    await run(state);
+  } finally {
+    Object.assign(settings, { findMany: saved.findMany });
+    Object.assign(logs, { create: saved.create, findUnique: saved.findUnique, update: saved.update });
+    clearDepartmentContactSearchCache();
+    server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+// Production 10-17..10-27: every failed 部门联系 AI 搜索 was "AI 审核请求失败：AI_SEARCH_ABORTED", i.e. the
+// page aborted the request when the user clicked the next quick chip or left. They were counted as model failures.
+test("a department search the user abandons is logged as cancelled, not as a failed model call", async () => {
+  const canteen = getDepartmentContact("CPU-0022")!;
+  let upstreamReached!: () => void;
+  const reached = new Promise<void>((resolve) => { upstreamReached = resolve; });
+  await withSyntheticDirectoryModel(async (_body, req) => {
+    upstreamReached();
+    await new Promise((resolve) => req.socket.once("close", resolve));
+    return undefined;
+  }, async ({ logUpdates }) => {
+    const controller = new AbortController();
+    const search = searchDepartmentContactsWithAi({ q: "宿舍报修", category: canteen.category, signal: controller.signal, cache: true });
+    await reached;
+    controller.abort(new Error("AI_SEARCH_ABORTED"));
+    await assert.rejects(search);
+    const finished = logUpdates.at(-1);
+    assert.equal(finished.status, "error");
+    assert.match(finished.errorMessage, /^REQUEST_ABORTED: /);
+    assert.equal(isCancelledAiLogError(finished.errorMessage), true);
+    assert.equal(readCachedDepartmentContactSearch({ q: "宿舍报修", category: canteen.category }), null);
+  });
+  // Rows written before this fix are still recognised; real failures are not.
+  assert.equal(isCancelledAiLogError("AI 审核请求失败：AI_SEARCH_ABORTED"), true);
+  assert.equal(isCancelledAiLogError("请求已取消"), true);
+  for (const message of ["DEPARTMENT_SEARCH_UNKNOWN_REFERENCE", "DEPARTMENT_CONTACT_UNGROUNDED_PHONE", "AI 审核请求失败：503 upstream overloaded", "fetch failed", null]) {
+    assert.equal(isCancelledAiLogError(message), false);
+  }
+});
+
+test("repeated department searches reuse the finished answer without another model call", async () => {
+  const canteen = getDepartmentContact("CPU-0022")!;
+  let selection: unknown = { contactIds: ["CPU-0022"], clarification: null };
+  await withSyntheticDirectoryModel((body) => body.messages[0].content.includes("候选是资料")
+    ? selection : { categories: [canteen.category], clarification: null }, async ({ calls, logUpdates }) => {
+    const first = await searchDepartmentContactsWithAi({ q: "食堂", cache: true });
+    assert.equal(calls.length, 2);
+    assert.equal(logUpdates.at(-1).status, "success");
+    const again = await searchDepartmentContactsWithAi({ q: "  食堂 ", cache: true });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(again, first);
+    assert.deepEqual(readCachedDepartmentContactSearch({ q: "食堂" }), first);
+    // Different scope, an assistant chat context, or an uncached caller all ask the model again.
+    assert.equal(readCachedDepartmentContactSearch({ q: "食堂", campus: "江宁" }), null);
+    await searchDepartmentContactsWithAi({ q: "食堂", cache: true, contextMessage: "上一轮问的是报销" });
+    await searchDepartmentContactsWithAi({ q: "食堂" });
+    assert.equal(calls.length, 6);
+    // Failures are never cached, so a retry gets a fresh model answer.
+    selection = { contactIds: ["CPU-9999"], clarification: null };
+    await assert.rejects(searchDepartmentContactsWithAi({ q: "吃饭找谁", cache: true }), /UNKNOWN_REFERENCE/);
+    assert.equal(readCachedDepartmentContactSearch({ q: "吃饭找谁" }), null);
+  });
 });
