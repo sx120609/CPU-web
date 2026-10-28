@@ -31,18 +31,19 @@ app.whenReady().then(async () => {
   await tabs.openZhihuishuTab(zhihuishuPage());
   const contents = tabs.activeContents();
   const js = source => contents.executeJavaScript(source);
+  await js("document.head.insertAdjacentHTML('beforeend','<style>html{overflow-y:scroll}::-webkit-scrollbar{width:16px}</style>')");
   runner.login(1); await until(() => runner.snapshot(1).loggedIn);
   runner.start(1, ['shared:one'], 1.25);
   await until(() => js("Boolean(document.querySelector('dialog[open]'))"));
   const info = await js(`(() => {
     const d=document.querySelector('dialog');const b=d.getBoundingClientRect();
-    return {text:d.textContent,modal:d.matches(':modal'),centerX:b.x+b.width/2,centerY:b.y+b.height/2,width:innerWidth,height:innerHeight,injected:!!d.querySelector('视频'),focused:d.contains(document.activeElement)};
+    return {text:d.textContent,modal:d.matches(':modal'),centerX:b.x+b.width/2,centerY:b.y+b.height/2,width:document.documentElement.clientWidth,height:document.documentElement.clientHeight,injected:!!d.querySelector('视频'),focused:d.contains(document.activeElement)};
   })()`);
   assert.match(info.text, /测试课程/); assert.match(info.text, /第一章 <视频>/);
   assert.match(info.text, /视频观看界面/); assert.match(info.text, /重新扫码/);
   assert.match(info.text, /不会自动恢复/); assert.equal(info.modal, true);
   assert.equal(info.focused, true); assert.equal(info.injected, false);
-  assert.ok(Math.abs(info.centerX-info.width/2)<2 && Math.abs(info.centerY-info.height/2)<2, 'Dialog must be centered');
+  assert.ok(Math.abs(info.centerX-info.width/2)<2 && Math.abs(info.centerY-info.height/2)<2, 'Dialog must be centered in the viewport excluding its scrollbar: '+JSON.stringify(info));
   let opened;
   contents.setWindowOpenHandler(({url}) => { opened=url; return {action:'deny'}; });
   await js("document.querySelector('dialog a').click()");

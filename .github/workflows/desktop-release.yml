@@ -48,7 +48,7 @@ jobs:
       - name: Unit and policy tests
         run: npm test
 
-      - name: Wisdom Tree desktop IPC smoke test
+      - name: Wisdom Tree desktop IPC and verification smoke tests
         run: npm run test:zhihuishu
 
       - name: Build Windows installer
@@ -109,7 +109,7 @@ jobs:
       - name: Unit and policy tests
         run: npm test
 
-      - name: Wisdom Tree desktop IPC smoke test
+      - name: Wisdom Tree desktop IPC and verification smoke tests
         run: npm run test:zhihuishu
 
       - name: Apple Silicon runtime smoke test
