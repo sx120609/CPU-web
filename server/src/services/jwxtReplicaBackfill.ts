@@ -4,7 +4,7 @@ import { readJwxtSessionReplicaKey, saveJwxtSessionReplicaKey } from "./jwxtSess
 import type { AgentReplicaRecipient } from "./jwxtAgentReplicaCrypto";
 import type { JwxtAgentAction, JwxtAgentInput, JwxtAgentOutput } from "./jwxtAgentProtocol";
 
-type State = { ready: boolean; inFlight: number; maxConcurrent: number; replicaBackfill?: boolean };
+type State = { ready: boolean; inFlight: number; maxConcurrent: number; replicaBackfill?: boolean; jwxtEnabled?: boolean };
 type Request = <A extends JwxtAgentAction>(id: string, action: A, payload: JwxtAgentInput<A>, timeout?: number) => Promise<JwxtAgentOutput<A>>;
 
 /** One gateway owns the bounded sweep. Rewrapping does not import a session or contact school SSO. */
@@ -33,7 +33,8 @@ export function startJwxtReplicaBackfill(recipients: () => AgentReplicaRecipient
         if (!stored || targets.every(target => stored.replicas.some(replica => replica.recipientAgentId === target.agentId))) continue;
         const source = stored.replicas.find(replica => {
           const s = state(replica.recipientAgentId);
-          return s.ready && s.replicaBackfill && s.inFlight < Math.max(1, s.maxConcurrent - 1);
+          // A paused node is connected only for maintenance.
+          return s.ready && s.jwxtEnabled !== false && s.replicaBackfill && s.inFlight < Math.max(1, s.maxConcurrent - 1);
         });
         if (!source) { skipped++; continue; }
         try {

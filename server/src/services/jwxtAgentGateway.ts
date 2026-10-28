@@ -186,10 +186,12 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
 ): Promise<JwxtAgentOutput<A>> {
   if (remoteGateway) return remoteGateway.request(agentId, action, payload, timeoutMs);
   const agent = getJwxtAgentRuntimeConfig().agents.find((item) => item.id === agentId);
-  if (!agent || !agent.enabled) throw new HttpError(503, 5000, `教务 Agent ${agentId} 未配置或已禁用`);
+  // Remote update and its status keep a paused node maintainable; neither touches school data.
+  const maintenance = isAgentMaintenanceAction(action);
+  if (!agent || (!agent.enabled && !maintenance)) throw new HttpError(503, 5000, `教务 Agent ${agentId} 未配置或已禁用`);
   const capability = action === "school-feed.crawl" || action === "school-feed.details" ? "crawl" : "jwxt";
-  if (capability === "jwxt" && !agent.jwxtEnabled) throw Errors.forbidden(`教务 Agent ${agent.name} 未启用教务服务能力`);
-  if (capability === "crawl" && !agent.crawlEnabled) throw Errors.forbidden(`教务 Agent ${agent.name} 未启用公告抓取能力`);
+  if (!maintenance && capability === "jwxt" && !agent.jwxtEnabled) throw Errors.forbidden(`教务 Agent ${agent.name} 未启用教务服务能力`);
+  if (!maintenance && capability === "crawl" && !agent.crawlEnabled) throw Errors.forbidden(`教务 Agent ${agent.name} 未启用公告抓取能力`);
 
   const session = sessions.get(agentId);
   if (!session || session.socket.readyState !== WebSocket.OPEN || !session.ready) {
@@ -302,10 +304,16 @@ function sendAgentWelcome(session: AgentSession) {
       id: agent.id,
       name: agent.name,
       maxConcurrent: agent.maxConcurrent,
-      jwxtEnabled: agent.jwxtEnabled,
-      crawlEnabled: agent.crawlEnabled,
+      // A paused node stays connected for maintenance and takes no work.
+      jwxtEnabled: agent.enabled && agent.jwxtEnabled,
+      crawlEnabled: agent.enabled && agent.crawlEnabled,
     },
   }));
+}
+
+/** Actions a paused (disabled) node still answers: its own update and the update's progress. */
+export function isAgentMaintenanceAction(action: string) {
+  return action === "agent.update" || action === "agent.update-status";
 }
 
 async function handleAgentMessage(session: AgentSession, text: string) {
@@ -400,7 +408,9 @@ function authenticateAgent(request: IncomingMessage) {
   const authorization = String(request.headers.authorization ?? "");
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
   const agent = getJwxtAgentRuntimeConfig().agents.find((item) => item.id === id);
-  if (!agent || !agent.enabled || !safeEqual(token, agent.token)) return null;
+  // A paused (disabled) node still connects, so it can be updated; it is given no work (see
+  // isAgentMaintenanceAction). Refusing it left it retrying with 401 and out of reach of updates.
+  if (!agent || !safeEqual(token, agent.token)) return null;
   return agent;
 }
 
@@ -408,12 +418,13 @@ function reconcileAgentSessions() {
   const configured = new Map(getJwxtAgentRuntimeConfig().agents.map((agent) => [agent.id, agent]));
   for (const [agentId, session] of sessions.entries()) {
     const next = configured.get(agentId);
-    if (!next || !next.enabled || next.token !== session.config.token) {
+    if (!next || next.token !== session.config.token) {
       closeSession(session, 4005, "Agent 配置已变更，请重新连接");
       sessions.delete(agentId);
       continue;
     }
     const shouldRefreshAgent = next.name !== session.config.name
+      || next.enabled !== session.config.enabled
       || next.maxConcurrent !== session.config.maxConcurrent
       || next.jwxtEnabled !== session.config.jwxtEnabled
       || next.crawlEnabled !== session.config.crawlEnabled;
