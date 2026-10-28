@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   applyScheduleEditsToCells,
   courseEditKey,
+  dropCopiesOfRestoredCourses,
   keepScheduleCourseAsCustom,
   normalizeScheduleEditsState,
   scheduleCourseEditLabel,
@@ -12,6 +13,7 @@ import {
 import {
   buildCustomCourseItem,
   createCustomCourseForm,
+  restoreHiddenCourseEdit,
   restoreOriginalCourseEdit,
   saveCustomCourseEdit,
 } from "../src/views/schedule/courseEditor";
@@ -287,11 +289,74 @@ test("saving an official edit still hides its source", () => {
 test("day and week blocks retain orphan status and never merge an edit into an official course", () => {
   const { source, item, helpers, edits } = fixture();
   item.course.location = source.cells[0].courses[0].location;
+  edits.custom.push({ ...structuredClone(item), id: "independent", sourceKey: undefined });
+  const blocks = helpers.weekCourseBlocksFor(1);
+  assert.deepEqual(blocks.map((block) => block.course.customId).sort(), ["edited-course", "independent"]);
+  source.cells = [];
+  assert.equal(helpers.weekCourseBlocksFor(1).find((block) => block.course.customId === item.id)?.course.orphaned, true);
+  assert.equal(helpers.dayCourseBlocksFor(1, 4).find((block) => block.course.customId === item.id)?.course.orphaned, true);
+});
+
+test("an edited copy replaces its original even after the hidden list lost the key", () => {
+  // An older restore dropped the hidden key and kept the copy: the course showed twice, and
+  // deleting the original block also deleted the copy.
+  const { source, item, helpers, edits } = fixture();
+  item.course.location = source.cells[0].courses[0].location;
   edits.hidden = [];
   const blocks = helpers.weekCourseBlocksFor(1);
-  assert.equal(blocks.length, 2);
-  assert.equal(blocks.filter((block) => block.course.customId).length, 1);
-  source.cells = [];
-  assert.equal(helpers.weekCourseBlocksFor(1)[0].course.orphaned, true);
-  assert.equal(helpers.dayCourseBlocksFor(1, 4)[0].course.orphaned, true);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].course.customId, item.id);
+  assert.equal(blocks[0].course.orphaned, false);
+});
+
+test("a teacher's title or the building before the room does not orphan an edit", () => {
+  const { source, edits } = fixture();
+  source.cells[0].courses[0].teacher = "教师 副教授";
+  source.cells[0].courses[0].location = "实验楼";
+  const original = source.cells[0].courses[0];
+  const roomEdits = structuredClone(edits);
+  const roomSource = structuredClone(source);
+  roomSource.cells[0].courses[0].location = "E204";
+  roomEdits.custom[0].sourceKey = courseEditKey(4, 3, { ...original, location: "江宁校区教学楼(E204)" });
+  roomEdits.hidden = [roomEdits.custom[0].sourceKey];
+  for (const [cells, state] of [[source.cells, edits], [roomSource.cells, roomEdits]] as const) {
+    const courses = applyScheduleEditsToCells(cells, state)[0].courses;
+    assert.equal(courses.length, 1);
+    assert.equal(courses[0].orphaned, false);
+    assert.equal(courses[0].location, "用户编辑的地点");
+  }
+});
+
+test("restoring a hidden edited course brings back the original alone", () => {
+  const { source, edits, sourceKey, helpers, resolvers } = fixture();
+  const other: CustomScheduleItem = {
+    id: "independent", day: 1, bigSlot: 1, course: { name: "自习", weeks: "全部周", weekList: [] },
+  };
+  edits.custom.push(other);
+  const restored = restoreHiddenCourseEdit({ ...edits, priority: { 自习: 1 } } as ScheduleEditState, {
+    key: helpers.courseFamilyKey(4, 3, source.cells[0].courses[0]),
+    sources: [source],
+    courseFamilyKey: resolvers.courseFamilyKey,
+  });
+  assert.deepEqual(restored.hidden, []);
+  assert.deepEqual(restored.custom, [other]);
+  assert.deepEqual((restored as ScheduleEditState & { priority?: unknown }).priority, { 自习: 1 });
+  const courses = applyScheduleEditsToCells(source.cells, restored).find((cell) => cell.day === 4)!.courses;
+  assert.equal(courses.length, 1);
+  assert.equal(courses[0].customId, undefined);
+  assert.equal(courseEditKey(4, 3, courses[0]), sourceKey);
+});
+
+test("a save from an older client that restores a hidden course drops the course's edited copy", () => {
+  const { edits, item, sourceKey } = fixture();
+  const other = { ...structuredClone(item), id: "other", sourceKey: "jwxt|1|1|1|2|另一门|||1-16周" };
+  const stored: ScheduleEditState = { hidden: [sourceKey, other.sourceKey], custom: [item, other] };
+  // The old restore: the key is gone from the hidden list, the copy is still there.
+  const saved = dropCopiesOfRestoredCourses({ hidden: [other.sourceKey], custom: [item, other] }, stored);
+  assert.deepEqual(saved.custom.map((entry) => entry.id), ["other"]);
+  // Saves that keep the hidden key, or never had it, are left alone.
+  assert.equal(dropCopiesOfRestoredCourses(stored, stored), stored);
+  const legacy = { hidden: [], custom: [item] };
+  assert.equal(dropCopiesOfRestoredCourses(legacy, { hidden: [] }), legacy);
+  assert.equal(dropCopiesOfRestoredCourses(edits, null), edits);
 });

@@ -4000,6 +4000,8 @@ private struct NativeCourseEditorSheet: View {
             do {
                 var edits = try await store.loadScheduleEdits()
                 edits.hidden.removeAll { $0 == key }
+                // The edited copy goes too; left behind, it sat beside the restored original.
+                edits.custom.removeAll { $0.sourceKey == key }
                 try await store.saveScheduleEdits(edits)
                 hiddenCourses.removeAll { $0.0 == key }
             } catch {

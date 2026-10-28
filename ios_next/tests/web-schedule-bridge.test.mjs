@@ -164,6 +164,22 @@ test('native payload uses real schedule, custom courses and normalized odd weeks
   assert.match(result.data.cells[1].courses[0].nativeId, /^[a-f0-9-]{36}$/);
 });
 
+test('an edited copy reaches the native shell in place of its original, also without a hidden key', async () => {
+  // An older restore left the copy without the hidden key: the course showed twice, side by side.
+  const ctx = setup();
+  const course = { name: '分子生物学', weeks: '1-9周', weekList: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    teacher: '胡文军', location: 'E204', startSlot: 2, endSlot: 4 };
+  ctx.api.schedule = async () => ({ parsed: { ...sample(), cells: [{ day: 3, bigSlot: 1, courses: [course] }] } });
+  const sourceKey = ['jwxt', 3, 1, 2, 4, course.name, course.teacher, course.location, course.weeks].join('|');
+  ctx.api.getScheduleEdits = async () => ({ edits: { hidden: [], custom: [{ id: 'edited', sourceKey, day: 3, bigSlot: 1,
+    course: { ...course } }] } });
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
+  const courses = result.data.cells.flatMap(cell => cell.courses);
+  assert.equal(courses.length, 1);
+  assert.equal(courses[0].customId, 'edited');
+  assert.equal(courses[0].orphaned, false);
+});
+
 test('native payload keeps bracketed parity markers separate for week filtering', async () => {
   const ctx = setup();
   ctx.api.schedule = async () => ({ parsed: {

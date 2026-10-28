@@ -1,6 +1,6 @@
 import { useAuthStore, useJwxtStore } from './adapters';
 import { siteRequest } from './site';
-import { courseEditKey, courseWeeksOverlap, normalizeScheduleEditsState } from '../../web/src/utils/scheduleEdits';
+import { courseEditKey, courseWeeksOverlap, normalizeScheduleEditsState, restoreHiddenScheduleCourses } from '../../web/src/utils/scheduleEdits';
 import { buildCustomCourseItem, saveCustomCourseEdit, deleteCourseEdit, restoreOriginalCourseEdit } from '../../web/src/views/schedule/courseEditor';
 import { buildCourseFamilyKey } from '../../web/src/views/schedule/viewModels';
 import { MAX_SMALL_SLOT } from '../../web/src/views/schedule/slots';
@@ -136,7 +136,8 @@ export function installAndroidEditor() {
       } else if (payload.action === 'delete' && block) next=deleteCourseEdit(current,block,helpers);
       else if (payload.action === 'restore' && block?.course.sourceKey) next=restoreOriginalCourseEdit(current,block,{...helpers,sourceKey:block.course.sourceKey,customId:block.course.customId});
       else if (payload.action === 'restoreHidden' && current.hidden.includes(payload.key)) {
-        next={...current,hidden:current.hidden.filter(key=>key!==payload.key)};
+        // The edited copy of a restored course goes too, or it keeps standing in for the course.
+        next=restoreHiddenScheduleCourses(current,[payload.key]);
       } else throw Error('不支持的课程修改操作');
       // Always sent: a save without the field keeps the stored map, so it could never be cleared.
       await request('PUT',session.semester,{hidden:next.hidden,custom:next.custom,priority});

@@ -7,6 +7,7 @@ import {
   customCourseWeeksText,
   noteFromCourse,
   officialCourseSourceKey,
+  restoreHiddenScheduleCourses,
   type CustomScheduleItem,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
@@ -303,10 +304,7 @@ export function restoreHiddenCourseEdit(
     }
   }
   keysToRestore.add(input.key);
-  return {
-    ...edits,
-    hidden: edits.hidden.filter((item) => !keysToRestore.has(item)),
-  };
+  return restoreHiddenScheduleCourses(edits, keysToRestore);
 }
 
 function setFormWeeksFromCourse(

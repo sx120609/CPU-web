@@ -170,14 +170,17 @@ export function applyScheduleEditsToCells<T extends EditableScheduleCell>(
     key: courseEditKey(cell.day, cell.bigSlot, course),
     day: cell.day,
     range: courseSourceRange(cell.bigSlot, course),
-    identity: courseSourceIdentity(course),
+    course,
   })));
   const byCell = new Map<string, EditableScheduleCourse[]>();
   for (const item of edits.custom) {
     const sourceKey = officialCourseSourceKey(item.sourceKey);
     const matches = sourceKey ? equivalentSourceKeys(sourceKey, sources) : [];
-    // Equivalent formatting and split table cells must hide the same original as the saved key.
-    if (sourceKey && hidden.has(sourceKey)) matches.forEach((key) => hidden.add(key));
+    // An edited copy always stands in for the course it was made from, also when the hidden list
+    // has lost that key: restoring a hidden course used to drop the key and keep the copy, which
+    // put the original and an identical copy side by side. Equivalent formatting and split table
+    // cells hide the same original as the saved key.
+    matches.forEach((key) => hidden.add(key));
     const key = cellKey(item.day, item.bigSlot);
     const list = byCell.get(key) ?? [];
     list.push({
@@ -230,11 +233,67 @@ export function scheduleCourseEditLabel(course: EditableScheduleCourse) {
   return officialCourseSourceKey(course.sourceKey) ? "已编辑" : "自定义";
 }
 
-function courseSourceIdentity(course: EditableScheduleCourse) {
-  const text = (value?: string) => String(value ?? "").normalize("NFKC").replace(/\s+/g, "");
-  return JSON.stringify([
-    text(course.name), text(course.teacher), text(course.location), normalizedCourseWeekList(course),
-  ]);
+/**
+ * Puts hidden official courses back. An edited copy made from one of them goes too: it would
+ * otherwise keep standing in for the course being restored.
+ */
+export function restoreHiddenScheduleCourses<T extends ScheduleEditState>(edits: T, keys: Iterable<string>): T {
+  const restore = new Set(keys);
+  return {
+    ...edits,
+    hidden: edits.hidden.filter((key) => !restore.has(key)),
+    custom: edits.custom.filter((item) => !item.sourceKey || !restore.has(item.sourceKey)),
+  };
+}
+
+/**
+ * Finishes a restore saved by an older client, which dropped the hidden key and kept the edited
+ * copy. A copy whose source was hidden before the save and no longer is goes with it.
+ */
+export function dropCopiesOfRestoredCourses<T extends ScheduleEditState>(
+  incoming: T,
+  stored: Pick<ScheduleEditState, "hidden"> | null | undefined,
+): T {
+  const hidden = new Set(incoming.hidden);
+  const restored = new Set((stored?.hidden ?? []).filter((key) => !hidden.has(key)));
+  if (!restored.size) return incoming;
+  return { ...incoming, custom: incoming.custom.filter((item) => !item.sourceKey || !restored.has(item.sourceKey)) };
+}
+
+/**
+ * Whether a course from the current timetable is the one a saved edit key describes. The
+ * academic system changes formatting between fetches (a title after the teacher's name, the
+ * building before the room, full-width punctuation); that does not make it another course.
+ */
+function sameSourceCourse(left: EditableScheduleCourse, right: EditableScheduleCourse) {
+  const leftWeeks = normalizedCourseWeekList(left);
+  const rightWeeks = normalizedCourseWeekList(right);
+  return identityText(left.name) === identityText(right.name)
+    && teacherIdentity(left.teacher) === teacherIdentity(right.teacher)
+    && locationIdentity(left.location) === locationIdentity(right.location)
+    && leftWeeks.length === rightWeeks.length
+    && leftWeeks.every((week, index) => week === rightWeeks[index]);
+}
+
+function identityText(value?: string) {
+  return String(value ?? "").normalize("NFKC").replace(/[\u200B-\u200D\uFEFF\s]/g, "").toLocaleLowerCase();
+}
+
+function teacherIdentity(value?: string) {
+  return identityText(value)
+    .split(/[、,，;；/&+]+/u)
+    .map((name) => name.replace(
+      /(?:其他正高级|其他副高级|正高级|副高级|副主任医师|主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级|老师)$/u,
+      "",
+    ))
+    .filter(Boolean)
+    .sort()
+    .join("、");
+}
+
+function locationIdentity(value?: string) {
+  const compact = identityText(value).replace(/[.,，。:：;；/\\()[\]{}【】_—–~～-]+/g, "");
+  return compact.match(/(?:^|[^a-z0-9])([a-z]?\d{2,4}[a-z]?)$/)?.[1] ?? compact;
 }
 
 function courseSourceRange(bigSlot: number, course: Pick<EditableScheduleCourse, "startSlot" | "endSlot">) {
@@ -244,7 +303,7 @@ function courseSourceRange(bigSlot: number, course: Pick<EditableScheduleCourse,
 
 function equivalentSourceKeys(
   key: string,
-  sources: Array<{ key: string; day: number; range: { start: number; end: number }; identity: string }>,
+  sources: Array<{ key: string; day: number; range: { start: number; end: number }; course: EditableScheduleCourse }>,
 ) {
   const exact = sources.filter((source) => source.key === key);
   if (exact.length) return exact.map((source) => source.key);
@@ -253,9 +312,8 @@ function equivalentSourceKeys(
   const { day, course: original } = parsed;
   const range = courseSourceRange(parsed.bigSlot, original);
   if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 1 || range.end < range.start) return [];
-  const identity = courseSourceIdentity(original);
   const candidates = sources.filter((source) => (
-    source.day === day && source.identity === identity
+    source.day === day && sameSourceCourse(source.course, original)
     && source.range.start >= range.start && source.range.end <= range.end
   )).sort((a, b) => a.range.start - b.range.start);
   let coveredEnd = range.start - 1;

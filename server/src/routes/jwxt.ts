@@ -16,7 +16,7 @@ import {
   isScheduleWidgetCredentialActive,
   scheduleWidgetFallbackPayload,
 } from "../services/scheduleWidget";
-import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "../shared/scheduleEdits";
+import { applyScheduleEditsToCells, dropCopiesOfRestoredCourses, normalizeScheduleEditsState } from "../shared/scheduleEdits";
 import { normalizeCustomTimeRange } from "../shared/scheduleCustomTime";
 import {
   MAX_SCHEDULE_PRIORITIES,
@@ -980,11 +980,15 @@ jwxtRouter.put(
       ensureEditClient(req);
       const semester = String(req.body.semester || "").trim() || "current";
       const where = { userId_semester: { userId: req.user.userId, semester } };
-      const { priority: incomingPriority, ...state } = normalizeScheduleEdits(req.body.edits);
-      const stored = incomingPriority ? null : await prisma.userScheduleEdit.findUnique({ where, select: { payload: true } });
-      let storedPriority: unknown;
-      try { storedPriority = stored?.payload ? JSON.parse(stored.payload)?.priority : undefined; } catch { storedPriority = undefined; }
-      const priority = resolveSavedSchedulePriority(incomingPriority, storedPriority);
+      const { priority: incomingPriority, ...incoming } = normalizeScheduleEdits(req.body.edits);
+      const stored = await prisma.userScheduleEdit.findUnique({ where, select: { payload: true } });
+      let storedEdits: { hidden?: unknown; priority?: unknown } | undefined;
+      try { storedEdits = stored?.payload ? JSON.parse(stored.payload) : undefined; } catch { storedEdits = undefined; }
+      // Older iOS, Android and HarmonyOS builds restore a hidden course but keep its edited copy.
+      const state = dropCopiesOfRestoredCourses(incoming, {
+        hidden: Array.isArray(storedEdits?.hidden) ? storedEdits.hidden.filter((key): key is string => typeof key === "string") : [],
+      });
+      const priority = resolveSavedSchedulePriority(incomingPriority, storedEdits?.priority);
       const edits = priority ? { ...state, priority } : state;
       await prisma.userScheduleEdit.upsert({
         where,
