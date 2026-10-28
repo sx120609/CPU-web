@@ -89,6 +89,8 @@ class AppUpdater private constructor(private val context: Context) {
     private var job: Job? = null
     private var pendingConfirmation: Intent? = null
     private var activity = WeakReference<Activity>(null)
+    private val backgroundInstall = Runnable { installInBackground {} }
+    private val installingInBackground = java.util.concurrent.atomic.AtomicBoolean(false)
 
     var state by mutableStateOf<UpdateState>(UpdateState.Idle)
         private set
@@ -150,6 +152,35 @@ class AppUpdater private constructor(private val context: Context) {
     internal fun debugShow(sample: UpdateState) {
         if (BuildConfig.DEBUG) state = sample
     }
+
+    /**
+     * Whether the update page should open by itself for the current state: once per version and
+     * reason, when the user has something to decide. An update that will install on its own once
+     * the user leaves needs no word.
+     */
+    fun wantsAttention(): Boolean {
+        val reason = attentionReason() ?: return false
+        return prefs.getString(KEY_PROMPTED, null) != reason
+    }
+
+    fun markPrompted() {
+        attentionReason()?.let { prefs.edit().putString(KEY_PROMPTED, it).apply() }
+    }
+
+    private fun attentionReason(): String? = when (val current = state) {
+        // An update about to download by itself is not news yet.
+        is UpdateState.Available -> if (shouldDownloadAutomatically()) null else "${current.release.versionCode}:available"
+        is UpdateState.Ready -> when {
+            current.needsConfirmation -> "${current.release.versionCode}:confirm"
+            installOnLeave && canInstallSilently -> null
+            else -> "${current.release.versionCode}:ready"
+        }
+        else -> null
+    }
+
+    /** Android 12+ without install permission yet: granting it once makes later updates install by themselves. */
+    val silentAfterPermission: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !canRequestInstalls()
 
     fun dismissJustUpdated() {
         justUpdated = null
@@ -357,12 +388,16 @@ class AppUpdater private constructor(private val context: Context) {
         val versionCode = prefs.getInt(KEY_READY_VERSION, 0)
         val file = File(updatesDirectory(), "V$versionCode.apk")
         if (versionCode <= installedVersion || !file.isFile) return done()
+        // The timer and the alarm may both fire: one install session is enough.
+        if (!installingInBackground.compareAndSet(false, true)) return done()
+        cancelBackgroundInstall()
         scope.launch {
             try {
                 rememberPendingNotes()
                 commitSession(file, silent = true)
             } catch (error: Exception) {
                 Log.w(TAG, "background install", error)
+                installingInBackground.set(false)
             } finally {
                 done()
             }
@@ -419,13 +454,16 @@ class AppUpdater private constructor(private val context: Context) {
             val release = (state as? UpdateState.Installing)?.release ?: (state as? UpdateState.Ready)?.release ?: readyRelease()
             when (status) {
                 PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                    installingInBackground.set(false)
                     pendingConfirmation = confirmation
+                    prefs.edit().putBoolean(KEY_NEEDS_CONFIRMATION, true).apply()
                     if (release != null) state = UpdateState.Ready(release, prefs.getBoolean(KEY_READY_PATCH, false),
                         prefs.getLong(KEY_READY_SAVED, 0), needsConfirmation = true)
                     if (foreground && confirmation != null) launchConfirmation(confirmation)
                 }
                 PackageInstaller.STATUS_SUCCESS -> Unit // The new version takes over; see onPackageReplaced.
                 else -> {
+                    installingInBackground.set(false)
                     pendingConfirmation = null
                     val text = when (status) {
                         PackageInstaller.STATUS_FAILURE_ABORTED -> "已取消安装，可随时继续"
@@ -509,11 +547,15 @@ class AppUpdater private constructor(private val context: Context) {
     // region Background install alarm
 
     private fun scheduleBackgroundInstall() {
+        main.removeCallbacks(backgroundInstall)
+        main.postDelayed(backgroundInstall, BACKGROUND_INSTALL_DELAY_MS)
+        // The alarm covers a process the system ended in the meantime.
         val alarms = context.getSystemService(AlarmManager::class.java) ?: return
         alarms.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + BACKGROUND_INSTALL_DELAY_MS, applyIntent())
     }
 
     private fun cancelBackgroundInstall() {
+        main.removeCallbacks(backgroundInstall)
         context.getSystemService(AlarmManager::class.java)?.cancel(applyIntent())
     }
 
@@ -534,7 +576,8 @@ class AppUpdater private constructor(private val context: Context) {
 
     private fun clearStaged() {
         updatesDirectory().listFiles()?.forEach { it.delete() }
-        prefs.edit().remove(KEY_READY_VERSION).remove(KEY_READY_RELEASE).remove(KEY_READY_PATCH).remove(KEY_READY_SAVED).apply()
+        prefs.edit().remove(KEY_READY_VERSION).remove(KEY_READY_RELEASE).remove(KEY_READY_PATCH).remove(KEY_READY_SAVED)
+            .remove(KEY_NEEDS_CONFIRMATION).apply()
         pendingConfirmation = null
     }
 
@@ -544,7 +587,8 @@ class AppUpdater private constructor(private val context: Context) {
             clearStaged()
             return
         }
-        state = UpdateState.Ready(release, prefs.getBoolean(KEY_READY_PATCH, false), prefs.getLong(KEY_READY_SAVED, 0))
+        state = UpdateState.Ready(release, prefs.getBoolean(KEY_READY_PATCH, false), prefs.getLong(KEY_READY_SAVED, 0),
+            needsConfirmation = prefs.getBoolean(KEY_NEEDS_CONFIRMATION, false))
     }
 
     private fun readyRelease(): ReleaseInfo? {
@@ -628,6 +672,8 @@ class AppUpdater private constructor(private val context: Context) {
         private const val KEY_BASE_SHA = "base_sha"
         private const val KEY_WAITING_PERMISSION = "waiting_permission"
         private const val KEY_LAST_RUN_VERSION = "last_run_version"
+        private const val KEY_PROMPTED = "prompted"
+        private const val KEY_NEEDS_CONFIRMATION = "needs_confirmation"
         private const val NOTIFY_CHANNEL = "updates"
         private const val NOTIFY_ID = 7101
         const val ACTION_STATUS = "cn.lizmt.cpuweb.UPDATE_STATUS"

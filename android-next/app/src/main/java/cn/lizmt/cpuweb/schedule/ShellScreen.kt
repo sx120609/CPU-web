@@ -163,6 +163,14 @@ fun AppRoot(activity: MainActivity) {
         } else if (settled) {
             activity.updates.justUpdated?.let { JustUpdatedSheet(activity, it) }
         }
+        // A new version the user has to act on opens 设置 → 更新 once; one that installs by itself does not.
+        LaunchedEffect(activity.updates.state, settled, activity.customization.introSeen) {
+            val updates = activity.updates
+            if (settled && activity.customization.introSeen && updates.justUpdated == null && updates.wantsAttention()) {
+                updates.markPrompted()
+                activity.openSettings("update")
+            }
+        }
         activity.imagePreview?.let { request ->
             ImagePreviewScreen(request, onSave = { image -> saveImage(activity, image) }) { activity.imagePreview = null }
         }

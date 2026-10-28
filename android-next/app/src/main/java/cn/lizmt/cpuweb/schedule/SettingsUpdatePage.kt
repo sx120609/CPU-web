@@ -45,6 +45,7 @@ internal fun UpdatePage(activity: MainActivity) {
     UpdateStatus(activity)
     Panel("自动更新", footer = buildString {
         append("有增量包时只下载变化的部分；安装包和增量包都从企业盘下载，拾间会校验签名和指纹。")
+        if (updates.silentAfterPermission) append("允许拾间“安装未知应用”后，以后的更新会在你离开拾间后自动装好。")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) append("你的系统低于 Android 12，安装时需要在系统弹窗里确认。")
     }) {
         ToggleRow("自动检查更新", checked = updates.autoCheck) { updates.changeAutoCheck(it) }
