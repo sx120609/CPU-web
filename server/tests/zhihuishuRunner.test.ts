@@ -131,3 +131,24 @@ test("background ownership releases on natural completion and timeout", async t 
   assert.deepEqual(changes, [true, false, true, false]);
   assert.equal(r.snapshot(1).state, "stopped");
 });
+
+
+test("captcha preserves stopped course/video context and stays isolated from other users", async t => {
+  const r = setup(t);
+  r.login(1); await waitFor(() => r.snapshot(1).loggedIn);
+  r.start(1, ["shared:one"], 1.25);
+  await waitFor(() => r.snapshot(1).state === "error");
+  const snapshot = r.snapshot(1);
+  assert.equal(snapshot.loggedIn, false);
+  assert.deepEqual(snapshot.courses, []);
+  assert.equal(snapshot.verification?.courseName, "测试课程");
+  assert.equal(snapshot.verification?.videoTitle, "第一章 <视频>");
+  assert.ok(snapshot.verification?.id);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.deepEqual(r.snapshot(1).verification, snapshot.verification, "polling and worker exit retain one stable event");
+  r.login(2); await waitFor(() => r.snapshot(2).loggedIn);
+  assert.equal(r.snapshot(2).verification, null);
+  r.start(2, ["shared:one"], 0.75);
+  await waitFor(() => r.snapshot(2).state === "error");
+  assert.equal(r.snapshot(2).verification, null, "message keywords alone must not trigger captcha");
+});

@@ -91,10 +91,11 @@
           <p class="runtime-note">关闭页面后任务继续运行，单次最长 2 小时。{{ desktopMode ? '退出客户端会结束会话。' : '服务器重启会结束会话。' }}</p>
         </section>
         <section class="panel logs-panel"><div class="panel-title"><div><h2>活动记录</h2></div><button class="text-button" @click="activeTab = 'history'">本地历史 →</button></div><ol v-if="view?.logs.length" class="logs"><li v-for="log in [...view.logs].reverse().slice(0, 12)" :key="log.id"><time>{{ timeLabel(log.at) }} · {{ logLabel(log.kind) }}</time><span>{{ log.message }}</span></li></ol><p v-else class="muted">连接、任务和练习跳过提示会显示在这里。</p><p class="muted" role="status">{{ storageError || (historyScope ? (desktopMode ? '已收到的活动自动保存到本机客户端' : '已收到的活动自动保存到本地浏览器') : '正在连接本地记录空间…') }}</p></section>
-        <p class="scope-note">当前支持共享课与校内课。遇到验证码时请到智慧树处理，再重新连接。</p>
+        <p class="scope-note">当前支持共享课与校内课。遇到验证码时，请登录智慧树网页版并进入当前课程的视频观看界面完成验证，再重新连接。</p>
       </aside>
     </div>
     </div>
+    <div v-if="view?.verification" class="notice verification-reminder" role="status">当前任务需要在智慧树网页版完成验证码验证。<button type="button" @click="openVerification">查看验证提示</button></div>
     <aside class="live-window" aria-label="实时运行状态">
       <button class="live-window-head" type="button" :aria-expanded="!liveCollapsed" aria-controls="live-window-body" @click="liveCollapsed = !liveCollapsed"><span><i :class="{ running: view?.state === 'running' && !error }"></i>实时状态 · {{ error ? '连接异常' : taskLabel }}</span><span aria-hidden="true">{{ liveCollapsed ? '＋' : '−' }}</span></button>
       <div v-show="!liveCollapsed" id="live-window-body" class="live-window-body">
@@ -106,6 +107,14 @@
         <small>约每 2.5 秒同步 · 百分比为脚本报告</small>
       </div>
     </aside>
+    <dialog ref="verificationDialog" class="verification-dialog" aria-labelledby="verification-title" aria-describedby="verification-description" @close="dismissVerification">
+      <div class="verification-heading"><span aria-hidden="true">!</span><h2 id="verification-title">请完成智慧树验证码验证</h2></div>
+      <p id="verification-description">智慧树要求进行人工验证，本次任务已停止。请到网页版完成以下操作：</p>
+      <dl class="verification-course"><dt>当前课程</dt><dd>{{ view?.verification?.courseName || '未能读取课程名称，请查看智慧树课程列表' }}</dd><dt v-if="view?.verification?.videoTitle">当前视频 / 内容</dt><dd v-if="view?.verification?.videoTitle">{{ view.verification.videoTitle }}</dd></dl>
+      <ol><li>打开智慧树网页版，登录与助手扫码时相同的知到账号。</li><li>进入上方这门课程的<strong>视频观看界面</strong>，按网页提示完成验证码验证；仅登录首页还不够。</li><li>完成后返回助手，重新扫码、选择课程，再点击“开始运行”。</li></ol>
+      <p class="verification-note">助手无法确认网页验证是否完成，任务不会自动恢复。</p>
+      <div class="verification-actions"><button type="button" class="button secondary" @click="verificationDialog?.close()">稍后处理</button><a class="button primary" href="https://www.zhihuishu.com/" target="_blank" rel="noopener noreferrer" autofocus>打开智慧树网页版 ↗</a></div>
+    </dialog>
     <div v-if="confirmStop" class="dialog-backdrop" @click.self="confirmStop = false">
       <section class="stop-dialog" role="dialog" aria-modal="true" aria-labelledby="stop-title" @keydown.esc="confirmStop = false">
         <h2 id="stop-title">停止并断开连接？</h2><p>当前任务会停止，登录会话会清除。已提交的学习记录不会撤回，继续使用需要重新扫码。</p><div><button type="button" class="button secondary" autofocus @click="confirmStop = false">继续使用</button><button type="button" class="button stop" :disabled="busy" @click="disconnect">停止并断开</button></div>
@@ -116,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { zhihuishuApi, type ZhsSnapshot, type ZhsSettings, type ZhsLog } from "@/api/zhihuishu";
 import { historyKey, parseHistory, mergeHistory, saveHistory } from "@/utils/zhihuishuHistory";
 
@@ -129,6 +138,19 @@ const busy = ref(false);
 const query = ref("");
 const selected = ref<string[]>([]);
 const confirmStop = ref(false);
+const verificationDialog = ref<HTMLDialogElement | null>(null);
+let dismissedVerificationId = "";
+function openVerification() {
+  if (view.value?.verification && verificationDialog.value && !verificationDialog.value.open) {
+    confirmStop.value = false;
+    verificationDialog.value.showModal();
+  }
+}
+function dismissVerification() { dismissedVerificationId = view.value?.verification?.id || ""; }
+watch(() => view.value?.verification?.id, id => {
+  if (id && id !== dismissedVerificationId) openVerification();
+  else if (!id) verificationDialog.value?.close();
+}, { flush: "post" });
 const speed = ref(1);
 const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const activeTab = ref('workspace');
@@ -267,6 +289,7 @@ onBeforeUnmount(() => { document.removeEventListener("visibilitychange", refresh
 .connection-content{display:flex;gap:24px;align-items:center}.qr-box{width:136px;height:136px;flex-shrink:0;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;background:#fff}.qr-box img{width:124px;height:124px;object-fit:contain}.qr-empty{text-align:center;color:#a5b5aa}.qr-empty svg{width:45px;height:45px;display:block;margin:0 auto 12px}.qr-empty small{font-size:11px}.connected-mark{font-size:42px;width:75px;height:75px;display:grid;place-items:center;border-radius:50%;color:var(--green);background:var(--tint)}.connection-copy h3{font-size:15px;margin:0 0 8px}.connection-copy p{font-size:12px;line-height:1.8;margin:6px 0}.muted{color:var(--muted);font-size:12px;line-height:1.8}.connection-copy .button{margin-top:10px}
 .button{font:inherit;font-size:12px;border:1px solid transparent;border-radius:8px;padding:10px 16px;cursor:pointer;line-height:1.3;transition:background .15s}.primary{background:var(--green);color:var(--on-primary)}.primary:hover:not(:disabled){background:var(--primary-hover)}.secondary{border-color:var(--line);background:var(--paper);color:var(--ink)}.stop{background:var(--danger-bg);border-color:var(--line);color:var(--danger-ink)}.button:disabled,.text-button:disabled{opacity:.45;cursor:not-allowed}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #8fcab3;outline-offset:3px}.text-button{background:none;border:0;font:inherit;font-size:12px;color:var(--green);cursor:pointer}.course-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px}.course-toolbar>span{font-size:11px;color:var(--muted);white-space:nowrap}.search{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;width:70%;color:var(--muted)}.search input{min-width:0;width:100%;border:0;background:transparent;color:var(--ink);font:inherit;font-size:12px}.empty{padding:35px 8px 45px;text-align:center;color:var(--muted)}.empty-icon{font-size:28px;margin-bottom:12px;color:#a6b9ad}.empty strong{font-size:13px;font-weight:500}.empty p{font-size:12px;line-height:1.8}.course-list{list-style:none;padding:0;margin:0;display:grid;gap:8px;max-height:460px;overflow-y:auto}.course-list li{border:1px solid var(--line);border-radius:9px}.course-list li.selected{background:var(--selected);border-color:var(--line)}.course-list label{display:flex;align-items:center;gap:13px;padding:15px 13px;cursor:pointer}.course-list input{accent-color:var(--green);width:16px;height:16px;flex-shrink:0}.course-icon{width:36px;height:40px;flex-shrink:0;background:var(--soft);color:var(--green);display:grid;place-items:center;font-size:13px;border-radius:6px}.course-info{display:grid;gap:6px;min-width:0}.course-info strong{font-size:13px;line-height:1.6;overflow-wrap:anywhere;font-weight:550}.course-info small{font-size:11px;color:var(--muted)}.course-footer{display:flex;align-items:center;justify-content:space-between;gap:15px;border-top:1px solid var(--line);padding-top:18px;margin-top:20px}.course-footer>span{font-size:11px;color:var(--muted)}
 .task-state{font-size:12px;color:var(--green);margin-bottom:12px}.task-count{display:flex;align-items:baseline;gap:10px;margin-bottom:18px}.task-count strong{font-size:42px;line-height:1;font-weight:550;letter-spacing:-2px}.task-count span{font-size:12px;color:var(--muted)}progress{appearance:none;-webkit-appearance:none;border:0;height:5px;border-radius:6px;overflow:hidden;background:var(--track);width:100%}progress::-webkit-progress-bar{background:var(--track)}progress::-webkit-progress-value{background:var(--green);border-radius:6px}progress::-moz-progress-bar{background:var(--green)}.current-task{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);display:grid;gap:9px}.current-task strong{font-size:13px;line-height:1.7;overflow-wrap:anywhere}.current-task small{font-size:11px;color:var(--muted);line-height:1.7}.video-progress{display:flex;align-items:center;gap:10px;font-size:11px}.runtime-note{font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:15px;margin:20px 0 0;line-height:1.9}.progress-panel .stop{width:100%;margin-top:15px}.log-caption{color:var(--muted);font-size:10px}.logs{list-style:none;margin:0;padding:0;display:grid;gap:16px}.logs li{display:grid;gap:5px;font-size:12px;line-height:1.7}.logs time{font:10px ui-monospace,monospace;color:var(--muted)}.scope-note{font-size:11px;color:var(--muted);line-height:1.9;margin:0 5px}.notice,.course-warning{font-size:12px;line-height:1.8;padding:12px 16px;background:var(--warning-bg);color:var(--warning-ink);border-radius:8px;margin-bottom:18px}.notice.error{background:var(--danger-bg);color:var(--danger-ink)}.notice button{margin-left:12px;font:inherit;color:inherit;background:none;border:0;text-decoration:underline;cursor:pointer}
+.verification-dialog{margin:auto;border:1px solid var(--line);border-radius:16px;background:var(--paper);color:var(--ink);padding:28px;width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow-y:auto;box-sizing:border-box;box-shadow:0 24px 80px #0005}.verification-dialog::backdrop{background:#10251b88;backdrop-filter:blur(3px)}.verification-heading{display:flex;gap:12px;align-items:center}.verification-heading>span{display:grid;place-items:center;width:32px;height:32px;flex-shrink:0;border-radius:50%;background:var(--warning-bg);color:var(--warning-ink);font-weight:700}.verification-dialog h2{font-size:20px;margin:0}.verification-dialog p,.verification-dialog li{font-size:13px;line-height:1.9;color:var(--muted)}.verification-dialog ol{padding-left:22px;display:grid;gap:10px}.verification-dialog strong{color:var(--ink)}.verification-course{background:var(--soft);padding:16px;border-radius:10px;display:grid;gap:8px}.verification-course dt{font-size:11px;color:var(--muted)}.verification-course dd{font-size:14px;line-height:1.7;overflow-wrap:anywhere;margin:0;color:var(--ink)}.verification-dialog .verification-note{font-size:12px}.verification-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:22px}.verification-actions a{text-decoration:none}.verification-reminder{margin:20px 0}
 .dialog-backdrop{position:fixed;inset:0;background:#193a2c66;backdrop-filter:blur(3px);display:grid;place-items:center;z-index:2500;padding:24px}.stop-dialog{background:var(--paper);padding:28px;border-radius:15px;max-width:420px;box-shadow:0 20px 80px #142d2533}.stop-dialog h2{margin:0 0 12px;font-size:20px}.stop-dialog p{font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:24px}.stop-dialog>div{display:flex;justify-content:flex-end;gap:10px}
 @media(max-width:850px){.workspace{grid-template-columns:1fr}.side-column{grid-template-columns:1fr 1fr}.scope-note{grid-column:1/-1}.page-head h1{font-size:28px}.steps li{padding:0 14px}}@media(max-width:540px){.zhs-page{padding:20px 14px 40px}.page-head{margin:24px 0;align-items:flex-start}.page-head p{font-size:12px}.page-head h1{font-size:26px}.steps{padding:14px 10px;gap:5px}.steps li{padding:0 5px;gap:6px}.steps b{width:25px;height:25px;font-size:10px;flex-shrink:0}.steps strong{font-size:11px}.steps small{display:none}.panel{padding:18px}.connection-content{align-items:flex-start;gap:15px}.qr-box{width:108px;height:108px}.qr-box img{width:100px;height:100px}.connection-copy h3{font-size:13px}.connection-copy p{font-size:11px}.side-column{grid-template-columns:1fr}.course-footer{align-items:flex-start}.course-footer>span{max-width:105px;line-height:1.7}.course-footer .button{white-space:nowrap}.panel-title{gap:8px}.panel h2{font-size:15px}}
 </style>

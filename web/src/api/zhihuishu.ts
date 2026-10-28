@@ -2,6 +2,7 @@ import { request } from "./request";
 
 export interface ZhsCourse { key: string; id: string; kind: "shared" | "hike"; name: string }
 export interface ZhsSnapshot {
+  verification: { id: string; courseName: string; videoTitle: string } | null;
   speed: number;
   activity: { message: string; updatedAt: string } | null;
   enabled: boolean;

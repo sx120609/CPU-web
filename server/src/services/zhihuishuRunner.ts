@@ -13,6 +13,7 @@ export const speedSchema = z.number().refine(value => [0.5, 0.75, 1, 1.25, 1.5, 
 export const answerPolicySchema = z.object({ autoAnswer: z.boolean(), autoSubmit: z.boolean() }).strict();
 export type AnswerPolicy = z.infer<typeof answerPolicySchema>;
 export interface ZhsSnapshot {
+  verification: { id: string; courseName: string; videoTitle: string } | null;
   speed: number;
   activity: { message: string; updatedAt: string } | null;
   enabled: boolean; state: ZhsState; loggedIn: boolean; message: string;
@@ -29,7 +30,7 @@ const workerEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("done") }),
   z.object({ type: z.literal("activity"), message: z.string().max(300) }),
   z.object({ type: z.literal("notice"), kind: z.enum(["skipped", "uninspected"]), message: z.string().max(600) }),
-  z.object({ type: z.literal("error"), message: z.string().max(300) }),
+  z.object({ type: z.literal("error"), message: z.string().max(300), code: z.literal("CAPTCHA_REQUIRED").optional(), courseName: z.string().max(300).optional(), videoTitle: z.string().max(300).optional() }),
 ]);
 type Entry = { view: ZhsSnapshot; child: ChildProcessWithoutNullStreams | null; dir: string; timer?: NodeJS.Timeout; killTimer?: NodeJS.Timeout; lastLogin: number; busy: boolean };
 export class ZhsRunnerError extends Error {
@@ -63,7 +64,7 @@ export class ZhihuishuRunner {
     return structuredClone(this.entries.get(userId)?.view ?? this.blank());
   }
   private blank(): ZhsSnapshot {
-    return { speed: 1, activity: null, enabled: this.options.enabled, state: "offline", loggedIn: false, message: this.options.enabled ? "连接智慧树后选择课程" : "在线助手尚未启用，请联系站点管理员", qr: null, courses: [], warnings: [], current: null, completed: 0, total: 0, logs: [] };
+    return { verification: null, speed: 1, activity: null, enabled: this.options.enabled, state: "offline", loggedIn: false, message: this.options.enabled ? "连接智慧树后选择课程" : "在线助手尚未启用，请联系站点管理员", qr: null, courses: [], warnings: [], current: null, completed: 0, total: 0, logs: [] };
   }
   private log(e: Entry, message: string, kind: "info" | "skipped" | "uninspected" = "info") {
     e.view.logs.push({ id: randomUUID(), at: new Date().toISOString(), message, kind });
@@ -146,7 +147,15 @@ export class ZhihuishuRunner {
             e.view.state = "completed"; e.view.message = "任务已结束，请在智慧树核对学习记录"; e.busy = false;
             this.updateRunning();
             this.log(e, e.view.message); this.deadline(e, 30 * 60_000, "会话已过期，请重新扫码"); break;
-          case "error": this.finish(e, "error", event.message); break;
+          case "error":
+            if (event.code === "CAPTCHA_REQUIRED") {
+              e.view.verification = {
+                id: randomUUID(),
+                courseName: e.view.courses.find(c => c.key === e.view.current?.courseKey)?.name || event.courseName || "",
+                videoTitle: event.videoTitle ?? e.view.current?.title ?? "",
+              };
+            }
+            this.finish(e, "error", event.message); break;
         }
       } catch { this.finish(e, "error", "执行组件响应异常，请联系管理员"); }
     });

@@ -33,12 +33,16 @@ class Fucker:
         self._qrlogin(kwargs["qr_callback"])
         print("PRIVATE_COOKIE")
     def getZhidaoList(self):
-        return [{"secret":key, "courseName":key} for key in ["one", "captcha", "hidden-error", "popup", "direct-answer", "direct-submit", "speed", "ai", "pause", "request", "药学🎓"]]
+        return [{"secret":key, "courseName":key} for key in ["one", "captcha", "captcha-query", "captcha-context", "hidden-error", "popup", "direct-answer", "direct-submit", "speed", "ai", "pause", "request", "药学🎓"]]
     def getHikeList(self): return [{"courseId":"skip", "courseName":"校内测试课"}]
     def getZhidaoContext(self, course):
+        if course == "captcha-context": raise CaptchaException("PRIVATE_COOKIE")
         return SimpleNamespace(videos={"video":SimpleNamespace(name="测试视频")})
+    def zhidaoQuery(self, *args, **kwargs): raise CaptchaException("PRIVATE_COOKIE")
     def fuckZhidaoCourse(self, course):
-        try: self.fuckZhidaoVideo(course, "video")
+        try:
+            if course == "captcha-query": self.zhidaoQuery("https://example.invalid")
+            self.fuckZhidaoVideo(course, "video")
         except Exception: pass
     def fuckZhidaoVideo(self, course, video):
         if course == "captcha": raise CaptchaException("PRIVATE_COOKIE")
@@ -114,7 +118,17 @@ class WorkerTests(unittest.TestCase):
         events = self.run_commands([{"action":"login"}, {"action":"run", "courses":[{"key":"shared:captcha"}]}])
         self.assertEqual(events[-1]["type"], "error")
         self.assertIn("验证码", events[-1]["message"])
+        self.assertEqual(events[-1]["code"], "CAPTCHA_REQUIRED")
+        self.assertEqual(events[-1]["courseName"], "captcha")
+        self.assertEqual(events[-1]["videoTitle"], "测试视频")
         self.assertNotIn("done", [e["type"] for e in events])
+
+    def test_captcha_during_course_loading_is_not_swallowed(self):
+        for key in ["captcha-query", "captcha-context"]:
+            events = self.run_commands([{"action": "login"}, {"action": "run", "courses": [{"key": "shared:" + key}]}])
+            self.assertEqual(events[-1]["code"], "CAPTCHA_REQUIRED")
+            self.assertEqual(events[-1]["courseName"], key)
+            self.assertNotIn("done", [e["type"] for e in events])
 
     def test_internal_error_cannot_be_swallowed_as_success(self):
         events = self.run_commands([{"action":"login"}, {"action":"run", "courses":[{"key":"shared:hidden-error"}]}])

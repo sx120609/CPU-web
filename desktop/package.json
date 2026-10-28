@@ -1,6 +1,6 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.3.27",
+  "version": "0.3.28",
   "description": "药大拾间桌面客户端",
   "main": "dist/electron/main.js",
   "private": true,
@@ -20,7 +20,7 @@
     "dist:win": "npm run build && node scripts/prepare-nsis.cjs && electron-builder --win --publish never",
     "dist:mac:arm64": "bash scripts/prepare-macos-icon.sh && npm run build && electron-builder --mac --arm64 --publish never",
     "build:worker": "python scripts/build-zhihuishu-worker.py",
-    "test:zhihuishu": "electron zhihuishu-smoke.cjs && electron zhihuishu-background-smoke.cjs"
+    "test:zhihuishu": "electron zhihuishu-smoke.cjs && electron zhihuishu-background-smoke.cjs && electron zhihuishu-verification-smoke.cjs"
   },
   "build": {
     "appId": "cn.lizmt.cpuweb.desktop",

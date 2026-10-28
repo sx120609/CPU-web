@@ -27,6 +27,10 @@ class OperationFailed(BaseException):
     """Bypass the upstream course loops which otherwise swallow video errors."""
 
 
+class VerificationRequired(OperationFailed):
+    """Carry a verification signal past upstream exception-swallowing loops."""
+
+
 class RedactedLogger:
     failed = False
     def debug(self, *args, **kwargs): pass
@@ -84,6 +88,12 @@ def main():
             self.activity("智慧树接口已返回，继续处理")
             return result
 
+        def zhidaoQuery(self, *args, **kwargs):
+            try:
+                return super().zhidaoQuery(*args, **kwargs)
+            except upstream.CaptchaException:
+                raise VerificationRequired()
+
         def guarded(self, operation, title, *args):
             self.title = str(title)[:300]
             self.last_progress_at = 0
@@ -92,7 +102,7 @@ def main():
             try:
                 return operation(*args)
             except upstream.CaptchaException:
-                raise OperationFailed("智慧树要求验证码，请到官方页面处理后重新连接")
+                raise VerificationRequired()
             except upstream.TimeLimitExceeded:
                 raise OperationFailed("已达到课程运行时限，请核对学习记录后继续")
             except Exception:
@@ -101,6 +111,8 @@ def main():
         def fuckZhidaoVideo(self, course_id, video_id):
             try:
                 video = self.getZhidaoContext(course_id).videos[video_id]
+            except upstream.CaptchaException:
+                raise VerificationRequired()
             except Exception:
                 raise OperationFailed("视频信息读取失败，请刷新课程后重试")
             return self.guarded(super().fuckZhidaoVideo, video.name or "正在处理视频", course_id, video_id)
@@ -245,6 +257,10 @@ def main():
                 emit("done")
             else:
                 raise OperationFailed("会话操作无效，请重新连接")
+        except (VerificationRequired, upstream.CaptchaException):
+            emit("error", code="CAPTCHA_REQUIRED", message="智慧树要求验证码，本次任务已停止；请登录智慧树网页版，进入当前课程的视频观看界面完成验证，再返回助手重新扫码并开始运行。",
+                 courseName=engine.course_name[:300], videoTitle=engine.title[:300] if engine.title != engine.course_name else "")
+            return
         except OperationFailed as error:
             emit("error", message=str(error))
             return
