@@ -65,13 +65,19 @@ export function createAndroidReleaseHandler(
   readRequirement = getAndroidUpdateRequirement,
   next: AndroidRelease | null = publishedAndroidNextRelease,
   access: AndroidNextAccess = androidNextAccess,
+  stable: AndroidRelease = publishedAndroidRelease,
 ): RequestHandler {
-  return async (_req, res, next_) => {
+  return async (req, res, next_) => {
     res.setHeader("Cache-Control", "no-store");
     try {
       const updateRequirement = await readRequirement();
+      // The app's own updater asks with ?from=<installed versionCode> and gets the one patch that applies.
+      const from = Number(req.query?.from);
+      const patch = Number.isSafeInteger(from) && from > 0 ? androidPatchFrom(stable, from) : null;
+      const { patches: _patches, ...release } = stable;
       res.json({ code: 0, data: {
-        ...publishedAndroidRelease, downloadUrl: "/api/site/downloads/android-app",
+        ...release, notes: stable.notes ?? [], downloadUrl: "/api/site/downloads/android-app",
+        patch: patch ? { ...patch, url: `/api/site/downloads/android-patch?from=${patch.fromVersionCode}` } : null,
         // The separate 药大拾间 NEXT app, for the download page's card; invite-only builds are not advertised.
         next: next && access.mode === "public"
           ? { versionCode: next.versionCode, versionName: next.versionName, notes: next.notes ?? [] }
@@ -83,6 +89,25 @@ export function createAndroidReleaseHandler(
 }
 
 export const androidReleaseHandler = createAndroidReleaseHandler();
+
+/** An incremental update of the official app from `?from=<versionCode>`, from the enterprise drive. */
+export function createAndroidPatchHandler(
+  dependencies: DownloadDependencies = defaultDependencies,
+  release: AndroidRelease = publishedAndroidRelease,
+): RequestHandler {
+  return async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const from = Number(req.query?.from);
+    const patch = Number.isSafeInteger(from) ? androidPatchFrom(release, from) : null;
+    if (!patch) {
+      res.status(404).json({ code: 404, data: null, message: "没有适用于该版本的增量包" });
+      return;
+    }
+    await redirectToEnterpriseFile(res, dependencies, patch.fileName, patch.size);
+  };
+}
+
+export const androidPatchHandler = createAndroidPatchHandler();
 
 // region 药大拾间 NEXT
 

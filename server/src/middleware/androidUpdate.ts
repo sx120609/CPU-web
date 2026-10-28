@@ -6,7 +6,7 @@ import { getAndroidUpdateRequirement } from "../services/androidUpdateRequiremen
 // route available, including for old cached web bundles and legacy shells.
 const EXEMPT_PATHS = new Set([
   "/health", "/ready", "/site/features", "/site/config",
-  "/site/downloads/android", "/site/downloads/android-app",
+  "/site/downloads/android", "/site/downloads/android-app", "/site/downloads/android-patch",
   "/site/downloads/android-next", "/site/downloads/android-next-app", "/site/downloads/android-next-patch",
   "/auth/logout", "/security/csp-report",
 ]);

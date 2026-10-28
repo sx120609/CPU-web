@@ -36,6 +36,7 @@ UA 追加 `CPUWebScheduleApp/<versionCode> CPUWebScheduleAppVersion/<versionName
 - `app/src/main/assets/NativeShellBootstrap.js`：页面开始时注入（仅本站来源），隐藏网页栏、创建 `window.CPUTimeNative` 并上报路由、登录状态与外观。消息优先经按来源限定、只接收主框架的 `WebMessageListener` 送达 Kotlin；旧版 WebView 回退到 JavaScript 接口。
 - `app/src/main/assets/NativeWebCompatibility.js`：由 `android/bridge/*.ts` 生成，页面加载完成后执行。线上网页尚未提供课表桥时，用现有 Pinia 状态和同源 Cookie 安装兼容桥，并提供原生登录、顶栏状态、返回导航、弹层检测与课程编辑（`CPUAndroidEditor`）。
 - 原有 `CPUAndroid` 桥（应用内更新、小组件、图片保存）保留，仅对本站页面开放。
+- 应用更新（`AppUpdater.kt`、`update/`、`AppUpdateSheet.kt`，从药大拾间 NEXT 移植）：回到前台时每 6 小时最多检查一次 `/api/site/downloads/android?from=<已装版本>`，有适用的增量包（`.cpupatch`，DEX 不压缩存放才小）就只下载它并用已安装的 APK 合成，否则下载完整包；默认仅 Wi-Fi 自动下载。校验通过后 Android 12 及以上已授权安装时离开 App 约一分半钟自动安装，其余情况打开一次“应用更新”面板，面板里也可以选完整包。网页更新弹窗经 `supportsNativeUpdater` / `openNativeUpdater` 把手动更新交给它，强制更新期间网页弹窗照旧显示。Release 用 R8 只做裁剪（`proguard-rules.pro`：不混淆、不优化，未变的类字节不变）；`-PminifyDebug=true` 让调试版也跑裁剪后的代码。
 - 日程经网页的 `CPUTimeNativeAgenda`（`web/src/utils/nativeAgendaBridge.ts`，`list` / `toggle` / `save` / `remove` / `relay` / `parse`）读写，在课表里原生编辑（`ScheduleAgendaSheets.kt`）：点日程打开编辑器，点空着的节次可选「添加日程」或「添加课程」，「更多 → 日程与待办」列出待办、接下来一周和「微信和 QQ 也提醒」。列表变化时网页调用 `CPUTimeNative.agendaChanged()`，App 重新读取；站内的 `/agenda` 链接经 `CPUTimeNative.openAgenda` 在课表上打开。线上网页还没有这个桥时保留上次读到的。
 
 修改 `android/bridge`、共享课表桥或网页主题后，在仓库根目录运行：

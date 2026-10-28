@@ -25,6 +25,7 @@ import {
   androidNextDownloadHandler,
   androidNextPatchHandler,
   androidNextReleaseHandler,
+  androidPatchHandler,
   androidReleaseHandler,
 } from "./androidDownload";
 import {
@@ -168,6 +169,7 @@ siteRouter.get("/userscripts/weban-helper/source", async (req, res, next) => {
 
 siteRouter.get("/downloads/android-app", androidDownloadHandler);
 siteRouter.get("/downloads/android", androidReleaseHandler);
+siteRouter.get("/downloads/android-patch", androidPatchHandler);
 // 药大拾间 NEXT, the separate test app; its files live on the same enterprise drive.
 siteRouter.get("/downloads/android-next", androidNextReleaseHandler);
 siteRouter.get("/downloads/android-next-app", androidNextDownloadHandler);

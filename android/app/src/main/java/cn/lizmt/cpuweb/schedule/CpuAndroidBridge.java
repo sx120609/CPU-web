@@ -49,6 +49,17 @@ public final class CpuAndroidBridge {
         return true;
     }
 
+    /** The app's own updater (AppUpdater): the Web dialog hands manual updates to it. */
+    @JavascriptInterface
+    public boolean supportsNativeUpdater() {
+        return true;
+    }
+
+    @JavascriptInterface
+    public void openNativeUpdater() {
+        activity.runOnUiThread(activity::openUpdater);
+    }
+
     @JavascriptInterface
     public boolean supportsScheduleWidget() {
         return true;

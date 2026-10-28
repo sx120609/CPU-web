@@ -69,6 +69,9 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     private var exitFullscreen: (() -> Unit)? = null
     var welcomeSeen by mutableStateOf(true)
         private set
+    lateinit var updates: AppUpdater
+    /** The native 应用更新 sheet. */
+    var updateSheetOpen by mutableStateOf(false)
 
     private var fileCallback: ValueCallback<Array<Uri>?>? = null
     private var permissionCallback: ((Boolean) -> Unit)? = null
@@ -116,6 +119,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
             welcomeSeen = true
             preferences.edit().putBoolean(KEY_WELCOME_SEEN, true).apply()
         }
+        updates = AppUpdater.get(this)
         appearance = AppearanceSettings(this)
         style = ScheduleStyleSettings(this)
         widgets = WidgetSettings(this)
@@ -304,6 +308,23 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         val week = intent.getStringExtra(EXTRA_WEEK)?.takeIf { it.toIntOrNull() in 1..64 }
         intent.removeExtra(EXTRA_OPEN_SCHEDULE)
         shell.openSchedule(semester, week)
+    }
+
+    /** Opens 应用更新; checking again unless something is already under way. */
+    fun openUpdater() {
+        updateSheetOpen = true
+        val state = updates.state
+        if (state is UpdateState.Idle || state is UpdateState.UpToDate || state is UpdateState.Failed) updates.check()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        updates.onForeground(this)
+    }
+
+    override fun onStop() {
+        updates.onBackground(this)
+        super.onStop()
     }
 
     override fun onResume() {

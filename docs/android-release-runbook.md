@@ -30,6 +30,7 @@
 - 下载页：<https://cputime.cn/download>。
 - 公开版本接口：<https://cputime.cn/api/site/downloads/android>。
 - 稳定下载入口：<https://cputime.cn/api/site/downloads/android-app>，它跳转至清单指定的企业盘文件。
+- 增量包：`CPU-Web-Android-V<旧>-V<新>.cpupatch`，记录在 `android.json` 的 `patches` 里。App 自带的更新器（`AppUpdater.kt`，从 V62 起）请求 `/api/site/downloads/android?from=<已装 versionCode>` 拿到唯一适用的增量包，再经 `/api/site/downloads/android-patch?from=` 跳转到企业盘；没有适用的增量包或合成失败时下载完整包，用户也可以在“应用更新”面板直接选完整包。
 - 发布后台：<https://cputime.cn/admin?tab=deployment>，使用已有的超级管理员会话。
 - 目前企业盘发布目录在“药大拾间 / Windows”，虽叫 Windows，也存放安卓 APK：<https://bj37249.apps.aliyunfile.com/disk/drive/enterprise/2/6a66c631e82f0fd1befc4d11ae7087bcfda71004>。需要已登录且有权限；目录 URL 不授予访问权。若目录调整，以当前站点分享配置和用户确认的发布目录为准。
 
@@ -152,7 +153,17 @@ $candidatePath = [IO.Path]::GetFullPath((Join-Path $outDir 'candidate.json'))
 [IO.File]::WriteAllText($candidatePath, ($candidate | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 ```
 
-`$versionCode` / `$versionName` 取自实际候选 Gradle 文件。使用无 BOM 的 UTF-8，避免 Windows 文本编码导致 JSON 解析失败。
+`$versionCode` / `$versionName` 取自实际候选 Gradle 文件。使用无 BOM 的 UTF-8，避免 Windows 文本编码导致 JSON 解析失败。候选清单可以另加 `notes`（最多 20 条、每条不超过 200 字），App 的“应用更新”面板和更新后的提示里会显示。
+
+   接着为上一版生成增量包。底版必须是当时发布到企业盘的那个签名 APK（`web/public/downloads/` 里上一版的副本或企业盘原文件），逐字节相同：
+
+   ```powershell
+   node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/buildAndroidDelta.ts --product=stable `
+       "--from=<上一版 APK>" --from-version=<上一版 versionCode> "--to=$apk" `
+       "--candidate=$outDir/candidate.json" "--out=$outDir"
+   ```
+
+   脚本用增量包把底版还原成新 APK 并逐字节比对，通过后写进候选清单的 `patches`；增量包不小于完整包 80% 时不写，那一版只有完整包。把生成的 `CPU-Web-Android-V<旧>-V<新>.cpupatch` 和 APK 上传到同一企业盘目录（上传办法同上），再执行第 4 步。DEX 不压缩存放是从 V62 开始的，V61 及更早的版本做底版时增量包必然过大，跳过即可。
 
 4. 在仓库根目录运行：
 
@@ -291,7 +302,7 @@ node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/andro
 | “有新版”但 Gradle 已经是更高 code | 先找已有候选 CI，满足条件就复用，不要机械加号。 |
 | GitHub 按短 SHA 查不到运行 | `gh run list --commit` 使用完整 SHA。 |
 | Windows 安装共享测试报 FileProvider 找不到临时根路径 | 记录准确失败，检查改动是否涉及安装逻辑；以正式 Ubuntu CI 的同项测试及实际验收判断，不能删除/跳过测试掩盖。 |
-| 企业盘已有新 APK，应用却无更新提示 | 检查正式清单是否提升并部署、公开接口的 code，以及 `web/src/utils/androidUpdatePolicy.ts` 的自动提示开关。NEXT 由自己的更新器检查，每 6 小时最多一次，可在“设置 → 更新”手动检查。 |
+| 企业盘已有新 APK，应用却无更新提示 | 检查正式清单是否提升并部署、公开接口的 code。V62 起正式版和 NEXT 一样由自己的更新器检查（回到前台时每 6 小时最多一次），可在“快捷入口 → 检查更新”手动检查；更早的版本看 `web/src/utils/androidUpdatePolicy.ts` 的自动提示开关。 |
 | NEXT 有增量包却下载了完整安装包 | 增量包只给已装版本号等于底版、且已安装 APK 的 SHA-256 等于 `fromSha256` 的设备；任一步失败都会退回完整包。核对清单的 `fromSha256` 是否取自当时发布到企业盘的文件。 |
 | 同版本反复安装、读取下载失败 | 不把同 code 当升级；保留已有的同版本下载保护。不要为绕过校验而放宽安装验证。 |
 | 文件上传结束，但公共校验失败 | 停止提升/部署，查目录、重名文件、大小、哈希、分享配置；不能忽略验证结果。 |

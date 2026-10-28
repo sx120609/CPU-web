@@ -8,6 +8,7 @@ import {
   createAndroidNextDownloadHandler,
   createAndroidNextPatchHandler,
   createAndroidNextReleaseHandler,
+  createAndroidPatchHandler,
   createAndroidReleaseHandler,
   LEGACY_ANDROID_DOWNLOAD_PATH,
 } from "../src/routes/androidDownload";
@@ -116,6 +117,40 @@ test("药大拾间 NEXT has its own release, APK and patch entries, all on the e
 
   assert.equal((await fetch(`${base}/unpublished`)).status, 404);
   assert.equal((await fetch(`${base}/unpublished-app`, { redirect: "manual" })).status, 404);
+});
+
+test("the official app's updater gets the one patch for its installed version, from the enterprise drive", async (t) => {
+  const sha = "d".repeat(64);
+  const stable = {
+    ...publishedAndroidRelease, versionCode: 63, versionName: "4.0.22", fileName: "CPU-Web-Android-V63.apk", notes: ["增量更新"],
+    patches: [{ fromVersionCode: 62, fromSha256: sha, fileName: "CPU-Web-Android-V62-V63.cpupatch", size: 4321, sha256: sha }],
+  };
+  const patchFile = { ...enterpriseFile, url: "https://data.aliyunfile.com/share/v63.cpupatch?signature=t", name: stable.patches[0].fileName, size: 4321 };
+  const dependencies = { hasShare: () => true, resolveDownload: async (name: string) => name === patchFile.name ? patchFile : enterpriseFile };
+  const requirement = async () => ({
+    minimumVersionCode: 1, startsAt: new Date(0).toISOString(), deadlineAt: new Date(1).toISOString(), message: "更新",
+  });
+  const app = express();
+  app.get("/api/site/downloads/android", createAndroidReleaseHandler(requirement, null, { mode: "invite", inviteCodeSha256: [] }, stable));
+  app.get("/api/site/downloads/android-patch", createAndroidPatchHandler(dependencies, stable));
+  const server = createServer(app);
+  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  const release = (await (await fetch(`${base}/api/site/downloads/android?from=62`)).json()).data;
+  assert.equal(release.versionCode, 63);
+  assert.deepEqual(release.notes, ["增量更新"]);
+  assert.equal(release.patches, undefined);
+  assert.deepEqual(release.patch, { ...stable.patches[0], url: "/api/site/downloads/android-patch?from=62" });
+  // The Web dialog asks without ?from=, and an install older than the patch's base gets none.
+  assert.equal((await (await fetch(`${base}/api/site/downloads/android`)).json()).data.patch, null);
+  assert.equal((await (await fetch(`${base}/api/site/downloads/android?from=61`)).json()).data.patch, null);
+
+  const patch = await fetch(`${base}/api/site/downloads/android-patch?from=62`, { redirect: "manual" });
+  assert.equal(patch.status, 302);
+  assert.equal(patch.headers.get("location"), patchFile.url);
+  assert.equal((await fetch(`${base}/api/site/downloads/android-patch?from=61`, { redirect: "manual" })).status, 404);
 });
 
 test("an invite-only NEXT is hidden from the download page and from anyone without the app or an invitation", async (t) => {

@@ -169,6 +169,16 @@ fun AppRoot(activity: MainActivity) {
         activity.imagePreview?.let { request ->
             ImagePreviewScreen(request, onSave = { image -> saveImage(activity, image) }) { activity.imagePreview = null }
         }
+        val updates = activity.updates
+        // A new version the user has to act on opens 应用更新 once; one that installs by itself does not.
+        LaunchedEffect(updates.state, activity.welcomeSeen, shell.requiresLogin, web.androidUpdateVisible) {
+            if (activity.welcomeSeen && !shell.requiresLogin && !web.androidUpdateVisible && updates.wantsAttention()) {
+                updates.markPrompted()
+                activity.updateSheetOpen = true
+            }
+        }
+        if (activity.updateSheetOpen) AppUpdateSheet(activity) { activity.updateSheetOpen = false }
+        updates.justUpdated?.let { update -> JustUpdatedDialog(update) { updates.dismissJustUpdated() } }
     }
 }
 
@@ -236,6 +246,7 @@ private fun ShellScaffold(activity: MainActivity) {
             onOpen = { path, destination ->
                 quickEntryOpen = false
                 when {
+                    path == UPDATE_ENTRY -> activity.openUpdater()
                     destination == ShellTab.Schedule -> shell.userSelected(ShellTab.Schedule)
                     path != null -> shell.openWeb(path, destination ?: ShellTab.Home)
                 }
@@ -492,6 +503,9 @@ private fun LaunchWaiting() {
 
 private data class QuickEntry(val icon: ImageVector, val title: String, val path: String?, val tab: ShellTab?)
 
+/** The quick entry that opens the native 应用更新 sheet instead of a page. */
+private const val UPDATE_ENTRY = "app:update"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QuickEntrySheet(activity: MainActivity, onDismiss: () -> Unit, onOpen: (String?, ShellTab?) -> Unit) {
@@ -501,7 +515,7 @@ private fun QuickEntrySheet(activity: MainActivity, onDismiss: () -> Unit, onOpe
         add(QuickEntry(Icons.Rounded.Mail, "消息", "/messages", ShellTab.Profile))
         if (web.authState.canAccessAdmin) add(QuickEntry(Icons.Rounded.AdminPanelSettings, "管理后台", "/admin", ShellTab.Profile))
         add(QuickEntry(Icons.Rounded.Download, "客户端下载", "/download", ShellTab.Services))
-        add(QuickEntry(Icons.Rounded.Refresh, "检查更新", "/download?checkUpdate=${System.currentTimeMillis()}", ShellTab.Services))
+        add(QuickEntry(Icons.Rounded.Refresh, "检查更新", UPDATE_ENTRY, null))
         add(QuickEntry(Icons.Rounded.Forum, "校园论坛", "/forum", ShellTab.Home))
         add(QuickEntry(Icons.Rounded.Campaign, "校园公告", "/announcements", ShellTab.Home))
         add(QuickEntry(Icons.Rounded.School, "教务数据", "/jwxt", ShellTab.Academic))
