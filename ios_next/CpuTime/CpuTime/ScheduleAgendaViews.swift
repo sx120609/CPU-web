@@ -54,23 +54,39 @@ struct ScheduleAgendaChipLayer: View {
 
 @available(iOS 17.0, *)
 private struct ScheduleAgendaChip: View {
+    @Environment(\.scheduleStyle) private var style
+    @Environment(\.colorScheme) private var scheme
     let entry: NativeAgendaOccurrence
     let narrow: Bool
 
+    /// Paper and board set their classes in ink; the other styles in the theme colour.
+    private var ink: AnyShapeStyle {
+        style == .paper || style == .board
+            ? AnyShapeStyle(style.inkColor(dark: scheme == .dark)) : AnyShapeStyle(.themeText)
+    }
+
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        // The style's typeface, corners, ink and alignment, as its classes have; the dashed
+        // outline tells an item from a class.
+        let shape = RoundedRectangle(cornerRadius: min(style.layout.cornerRadius, 6), style: .continuous)
+        let centered = style.layout.centered
         Text((entry.done ? "✓ " : "") + entry.item.title)
-            .font(.system(size: narrow ? 10 : 11, weight: .semibold))
+            .font(.system(size: narrow ? 10 : 11, weight: .semibold, design: style.textDesign))
             .strikethrough(entry.done)
-            .foregroundStyle(.themeText)
-            .multilineTextAlignment(.center)
+            .foregroundStyle(ink)
+            .multilineTextAlignment(centered ? .center : .leading)
             .lineLimit(nil)
             .minimumScaleFactor(0.8)
             .padding(.horizontal, narrow ? 1 : 3)
             .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background { shape.fill(ScheduleThemeTintStyle(amount: 0.16)) }
-            .overlay { shape.strokeBorder(.themeText, style: StrokeStyle(lineWidth: 1, dash: [3, 2])) }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: centered ? .top : .topLeading)
+            .background {
+                // The board's classes have no fill, and paper's only a faint wash.
+                if style.layout.course != .departure {
+                    shape.fill(ScheduleThemeTintStyle(amount: style.layout.course == .ink ? 0.08 : 0.16))
+                }
+            }
+            .overlay { shape.strokeBorder(ink, style: StrokeStyle(lineWidth: 1, dash: [3, 2])) }
             .clipShape(shape)
             .opacity(entry.done ? 0.55 : 1)
             .accessibilityElement(children: .ignore)

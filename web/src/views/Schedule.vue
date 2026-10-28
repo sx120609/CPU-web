@@ -555,6 +555,7 @@
                     <AgendaGridLayer
                       v-if="agendaChipsFor(page, day).length"
                       :chips="agendaChipsFor(page, day)"
+                      centered
                       :style="{ gridColumn: `${column + 2} / ${column + 3}`, gridRow: `1 / ${smallSlots.length + 1}` }"
                       @open="openAgendaItem"
                     />

@@ -152,6 +152,8 @@
       <AgendaGridLayer
         v-if="agendaChipsOf(item).length"
         :chips="agendaChipsOf(item)"
+        :centered="layout.centered"
+        :bare="layout.course === 'departure'"
         :style="{ gridColumn: column + 2, gridRow: `${rowBase} / span ${rows.length}` }"
         @open="(entry, date) => emit('agenda', entry, date)"
       />
@@ -832,6 +834,26 @@ const nowPlacement = computed(() => {
   margin-bottom: calc(var(--ss-row-gap) / -2);
   border-top: 0.5px solid var(--ss-cell-border);
   pointer-events: none;
+}
+
+// 日程：和课一样用样式的圆角和颜色（字体本来就继承），素笺、站牌用墨色。
+.ss-week {
+  --agenda-radius: min(var(--ss-radius), 6px);
+  --agenda-ink: var(--ss-theme-text);
+  --agenda-tint: var(--ss-theme-fill);
+  --agenda-surface: var(--ss-panel);
+}
+.ss-paper,
+.ss-board {
+  --agenda-ink: var(--ss-ink);
+}
+.ss-paper {
+  --agenda-tint-share: 8%;
+}
+.ss-classic {
+  --agenda-ink: var(--schedule-accent-strong, var(--ss-theme-text));
+  --agenda-tint: var(--schedule-accent, var(--ss-theme-fill));
+  --agenda-surface: var(--schedule-surface-bg, var(--ss-card));
 }
 
 // 课程

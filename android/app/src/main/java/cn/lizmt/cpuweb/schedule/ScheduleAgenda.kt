@@ -27,9 +27,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -39,6 +47,7 @@ import cn.lizmt.cpuweb.schedule.agenda.AgendaItem
 import cn.lizmt.cpuweb.schedule.agenda.AgendaKind
 import cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence
 import java.time.LocalDate
+import kotlin.math.min
 
 /**
  * The user's own events and to-dos inside the timetable (ported from 药大拾间
@@ -111,21 +120,40 @@ internal fun AgendaColumnChips(date: String, blocks: List<PlacedBlock>, periods:
         val beside = courses.any { (from, to) -> from < top + height && top < to }
         val width = if (beside) columnWidth * 0.44f else columnWidth - 2.dp
         val x = if (beside) columnWidth - width - 1.dp else 1.dp
-        val shape = RoundedCornerShape(6.dp)
+        // The style's typeface, corners, ink and alignment, as its classes have; the dashed
+        // outline tells an item from a class.
+        val style = scope.style
+        val radius = min(style.cornerRadius, 6f).dp
+        val shape = RoundedCornerShape(radius)
+        val ink = if (style == ScheduleVisualStyle.Paper || style == ScheduleVisualStyle.Board) scope.ink else scope.themeText
         Box(
             Modifier.offset(x = x, y = top.dp).width(width).height(height.dp)
                 .alpha(if (occurrence.done) 0.55f else 1f)
                 .clip(shape).background(scope.canvas ?: colors.surface)
-                .background(scope.themeTint(if (scope.dark) 0.32f else 0.18f))
-                .border(1.dp, scope.themeText.copy(alpha = 0.6f), shape)
+                // The board's classes have no fill, and paper's only a faint wash.
+                .background(when (style.course) {
+                    StyleCourse.Departure -> Color.Transparent
+                    StyleCourse.Ink -> scope.themeTint(if (scope.dark) 0.16f else 0.09f)
+                    else -> scope.themeTint(if (scope.dark) 0.32f else 0.18f)
+                })
+                .drawBehind {
+                    val stroke = 1.dp.toPx()
+                    drawRoundRect(
+                        ink.copy(alpha = 0.6f), topLeft = Offset(stroke / 2, stroke / 2), size = Size(size.width - stroke, size.height - stroke),
+                        cornerRadius = CornerRadius((radius.toPx() - stroke / 2).coerceAtLeast(0f)),
+                        style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 2.dp.toPx()))),
+                    )
+                }
                 .clickable { layer.onOpen(item) }
                 .semantics { contentDescription = "日程，${item.title}，${item.start}" + (if (item.end.isNotEmpty()) " 至 ${item.end}" else "") + (if (occurrence.done) "，已完成" else "") }
                 .padding(horizontal = 3.dp, vertical = 2.dp),
+            contentAlignment = if (style.centered) Alignment.TopCenter else Alignment.TopStart,
         ) {
             Text(
                 (if (occurrence.done) "✓ " else "") + item.title,
-                fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold,
-                color = scope.themeText, maxLines = (height / 11f).toInt().coerceAtLeast(1), overflow = TextOverflow.Ellipsis,
+                fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.textFamily,
+                color = ink, textAlign = if (style.centered) TextAlign.Center else TextAlign.Start,
+                maxLines = (height / 11f).toInt().coerceAtLeast(1), overflow = TextOverflow.Ellipsis,
                 textDecoration = if (occurrence.done) TextDecoration.LineThrough else null,
             )
         }

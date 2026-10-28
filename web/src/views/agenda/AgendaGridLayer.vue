@@ -1,6 +1,6 @@
 <template>
   <!-- 课表周视图里一列上的日程。父组件把它放进那一列、跨满全部节次的格子里。 -->
-  <div class="agenda-grid-layer" aria-hidden="false">
+  <div class="agenda-grid-layer" :class="{ centered, bare }" aria-hidden="false">
     <button
       v-for="chip in chips"
       :key="chip.key"
@@ -21,7 +21,8 @@
 import type { AgendaItem } from "@/utils/agenda";
 import type { AgendaChip } from "./agendaChips";
 
-defineProps<{ chips: AgendaChip[] }>();
+// centered：课表样式把课名居中（经典、格子）；bare：样式的课本身没有底色（站牌）。
+defineProps<{ chips: AgendaChip[]; centered?: boolean; bare?: boolean }>();
 
 const emit = defineEmits<{
   (event: "open", item: AgendaItem, date: string): void;
@@ -42,11 +43,12 @@ const emit = defineEmits<{
   min-height: 18px;
   box-sizing: border-box;
   padding: 2px 3px;
-  border: 1px dashed var(--schedule-accent, var(--cpu-primary));
-  border-radius: 6px;
-  background: var(--schedule-surface-bg, var(--cpu-card));
-  background: color-mix(in srgb, var(--schedule-accent, var(--cpu-primary)) 16%, var(--schedule-surface-bg, var(--cpu-card)));
-  color: var(--schedule-accent-strong, var(--cpu-primary-dark));
+  // 字体、圆角、颜色跟着课表样式走（样式周视图给出 --agenda-* 变量），虚线框表明这是日程而不是课。
+  border: 1px dashed var(--agenda-ink, var(--schedule-accent, var(--cpu-primary)));
+  border-radius: var(--agenda-radius, 6px);
+  background: var(--agenda-surface, var(--schedule-surface-bg, var(--cpu-card)));
+  background: color-mix(in srgb, var(--agenda-tint, var(--schedule-accent, var(--cpu-primary))) var(--agenda-tint-share, 16%), var(--agenda-surface, var(--schedule-surface-bg, var(--cpu-card))));
+  color: var(--agenda-ink, var(--schedule-accent-strong, var(--cpu-primary-dark)));
   font: inherit;
   font-size: 10px;
   line-height: 12px;
@@ -64,6 +66,13 @@ const emit = defineEmits<{
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 6;
   word-break: break-all;
+}
+.centered .agenda-grid-chip {
+  justify-content: center;
+  text-align: center;
+}
+.bare .agenda-grid-chip {
+  background: transparent;
 }
 .agenda-grid-chip.beside {
   left: auto;

@@ -302,16 +302,20 @@ export struct NativeScheduleBody {
     ForEach(this.agendaChipsFor(day, styled), (chip: NativeAgendaChip) => {
       Button() {
         Column() {
-          Text((chip.entry.done ? '✓ ' : '') + chip.entry.item.title).fontSize(9).fontWeight(600).fontColor(this.themeText())
+          Text((chip.entry.done ? '✓ ' : '') + chip.entry.item.title).fontSize(9).fontWeight(600).fontColor(this.agendaInk())
+            .fontFamily(scheduleStyleTextFont(this.store.visualStyle))
+            .textAlign(scheduleStyleLayout(this.store.visualStyle).centered ? TextAlign.Center : TextAlign.Start)
             .lineHeight(11).maxLines(Math.max(1, Math.floor((chip.height - 4) / 11))).textOverflow({ overflow: TextOverflow.Ellipsis })
             .decoration({ type: chip.entry.done ? TextDecorationType.LineThrough : TextDecorationType.None })
-        }.width('100%').height('100%').alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Start)
+        }.width('100%').height('100%')
+          .alignItems(scheduleStyleLayout(this.store.visualStyle).centered ? HorizontalAlign.Center : HorizontalAlign.Start)
+          .justifyContent(FlexAlign.Start)
           .padding({ left: 3, right: 3, top: 2, bottom: 2 })
       }.type(ButtonType.Normal).padding(0).clip(true)
         .width(chip.beside ? this.agendaWidth(styled) * 0.44 : this.agendaWidth(styled) - 2).height(chip.height)
         .position({ x: chip.beside ? this.agendaWidth(styled) * 0.56 - 1 : 1, y: chip.y })
-        .borderRadius(6).backgroundColor(scheduleThemeTint(this.store.palette, this.store.dark ? 0.32 : 0.18))
-        .border({ width: 1, color: scheduleAlpha(this.themeText(), 0.6), radius: 6 })
+        .borderRadius(this.agendaRadius()).backgroundColor(this.agendaFill())
+        .border({ width: 1, color: scheduleAlpha(this.agendaInk(), 0.6), radius: this.agendaRadius(), style: BorderStyle.Dashed })
         .opacity(chip.entry.done ? 0.55 : 1)
         .accessibilityText('日程，' + chip.entry.item.title + '，' + chip.entry.item.start + (chip.entry.item.end ? ' 至 ' + chip.entry.item.end : '') + (chip.entry.done ? '，已完成' : ''))
         .onClick(() => this.store.agendaOpen?.(chip.entry.item.id, chip.entry.date))
@@ -1572,6 +1576,19 @@ export struct NativeScheduleBody {
     return '#00000000';
   }
   private ink(): string { return scheduleStyleInk(this.store.visualStyle, this.store.dark); }
+  // A 日程 item on the grid takes the style's typeface, corners and ink, as its classes do; the dashed
+  // outline tells it from a class.
+  private agendaInk(): string {
+    return this.store.visualStyle === 'paper' || this.store.visualStyle === 'board' ? this.ink() : this.themeText();
+  }
+  private agendaRadius(): number { return Math.min(scheduleStyleLayout(this.store.visualStyle).cornerRadius, 6); }
+  private agendaFill(): string {
+    // The board's classes have no fill, and paper's only a faint wash.
+    const course = scheduleStyleLayout(this.store.visualStyle).course;
+    if (course === 'departure') return '#00000000';
+    if (course === 'ink') return scheduleThemeTint(this.store.palette, this.store.dark ? 0.16 : 0.09);
+    return scheduleThemeTint(this.store.palette, this.store.dark ? 0.32 : 0.18);
+  }
   private themeText(): string { return scheduleThemeText(this.store.palette, this.store.dark); }
   private styleAccent(): string { return scheduleStyleAccent(this.store.visualStyle, this.store.dark, this.themeText()); }
   private restAccent(): string { return this.styleAccent(); }
