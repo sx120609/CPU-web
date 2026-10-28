@@ -78,6 +78,14 @@ class ShellCoordinator(
 
     private suspend fun resolveInitialAuth() {
         if (isAuthResolved) return
+        // No session cookie at all (a fresh install, or signed out): there is no session to restore,
+        // so the login gate shows at once. The page keeps loading underneath; sending it to the login
+        // page now would reload it halfway through its first start and keep the login button waiting.
+        if (!web.hasSessionCookie()) {
+            clearAccount()
+            applyLoginGate(navigateToLogin = false)
+            return
+        }
         val state = web.waitForAuthState(sessionRestoreWindowMs)
         if (isAuthResolved) return
         if (state != null) {

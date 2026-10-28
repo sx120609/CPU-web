@@ -235,12 +235,14 @@ struct NativeTabSelectionChecks {
         precondition(guestShell.isAuthResolved && guestShell.requiresLogin)
         precondition(guestShell.selectedTab == .profile)
         precondition(guestWeb.activeTab == .profile)
-        precondition(guestWeb.destinations.last == NativeShellCoordinator.loginGatePath)
+        precondition(!guestWeb.destinations.contains(NativeShellCoordinator.loginGatePath),
+                     "A cold start keeps loading the page instead of restarting it on the login page")
         precondition(guestWeb.blocksInternalNavigation && !guestWeb.backForwardNavigationGesturesEnabled)
         let guestBounces = guestWeb.destinations.count
         guestWeb.onRoute?("/home", "profile")
         precondition(guestShell.requiresLogin, "A guest's non-auth route must stay gated")
         precondition(guestWeb.destinations.count == guestBounces + 1)
+        precondition(guestWeb.destinations.last == NativeShellCoordinator.loginGatePath)
         precondition(!guestShell.hasAuthenticatedSession)
 
         // A signed-in visitor whose Web login page redirects itself home (its

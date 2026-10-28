@@ -17,6 +17,7 @@ import {
   isIosNativeApp,
   isLikelyAndroidDevice,
   isLikelyIosDevice,
+  isNativeScheduleShell,
 } from "./utils/clientInfo";
 import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 import { installUnifiedImageLoading } from "./utils/imageLoading";
@@ -380,19 +381,25 @@ function installJwxtSessionBootstrapTriggers() {
 function scheduleEducationViewPreload() {
   // 教务页组件较大；首屏路由就绪后的下一帧立即预取，避免用户点击底栏后才开始下载解析。
   // 各页面按路由单独分包，需等当前页面的 chunk 加载完成再预取，避免与首屏抢带宽。
-  window.requestAnimationFrame(() => {
-    void preloadEducationViews();
-  });
+  // App 壳里课表是原生画的，首屏出来那一刻最怕主线程被解析大块脚本占住（首次启动没有编译缓存），
+  // 教务页也放到空闲时再取。
+  const nativeShell = isNativeScheduleShell();
+  if (!nativeShell) {
+    window.requestAnimationFrame(() => {
+      void preloadEducationViews();
+    });
+  }
   const run = () => {
+    if (nativeShell) void preloadEducationViews();
     void preloadPrimaryViews();
   };
   const requestIdleCallback = (window as Window & {
     requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
   }).requestIdleCallback;
   if (typeof requestIdleCallback === "function") {
-    requestIdleCallback(run, { timeout: 1000 });
+    requestIdleCallback(run, { timeout: nativeShell ? 3000 : 1000 });
   } else {
-    globalThis.setTimeout(run, 200);
+    globalThis.setTimeout(run, nativeShell ? 1500 : 200);
   }
 }
 

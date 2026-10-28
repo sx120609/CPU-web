@@ -52,7 +52,8 @@ export function preloadPrimaryViews() {
 let educationViewsPreload: Promise<unknown> | null = null;
 export function preloadEducationViews() {
   if (!educationViewsPreload) {
-    educationViewsPreload = Promise.allSettled([loadJwxtView(), loadScheduleView()]);
+    // The app shells draw the timetable themselves: its large page would only compete with the first screen.
+    educationViewsPreload = Promise.allSettled(isNativeScheduleShell() ? [loadJwxtView()] : [loadJwxtView(), loadScheduleView()]);
   }
   return educationViewsPreload;
 }

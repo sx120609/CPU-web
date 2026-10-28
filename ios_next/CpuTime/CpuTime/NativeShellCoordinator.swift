@@ -15,6 +15,9 @@ final class NativeShellCoordinator: ObservableObject {
 
     /// The Web login page the gate always lands on.
     static let loginGatePath = "/login?redirect=/home"
+    /// Set once this install has seen a signed-in account; until then a cold start without a
+    /// session cookie is a first launch and goes straight to the login gate.
+    static let signedInBeforeKey = "cpu-shell-signed-in-before"
 
     /// How long a still-present session cookie may defer an empty account report
     /// before the gate takes over. Overridable so checks stay fast.
@@ -115,6 +118,14 @@ final class NativeShellCoordinator: ObservableObject {
     /// fallback for an older bundle that cannot report its store state.
     func resolveInitialAuth(webSession: HybridWebViewStore) async {
         guard !isAuthResolved else { return }
+        // A first launch has no session to restore: the login gate shows at once instead of after
+        // the restore window. A cold WebKit start can report an empty cookie store for a while, so
+        // only an install that has never been signed in takes this path.
+        if !UserDefaults.standard.bool(forKey: Self.signedInBeforeKey), !(await webSession.hasSessionCookie()) {
+            guard !isAuthResolved else { return }
+            applyLoginGate(navigateToLogin: false)
+            return
+        }
         if let state = await webSession.waitForAuthState(timeout: sessionRestoreWindow) {
             guard !isAuthResolved else { return }
             if state.authenticated, !state.account.isEmpty {
@@ -146,7 +157,9 @@ final class NativeShellCoordinator: ObservableObject {
             // page itself performs its normal session restore.
             applyAuthenticated(navigateToHome: false)
         } else {
-            applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
+            // The page has not answered yet: loading the login page now would restart it halfway
+            // through its first start. The native gate does not need the page there to sign in.
+            applyLoginGate(navigateToLogin: false)
         }
     }
 
@@ -344,6 +357,7 @@ final class NativeShellCoordinator: ObservableObject {
     private func applyAuthenticated(navigateToHome: Bool) {
         requiresLogin = false
         isAuthResolved = true
+        UserDefaults.standard.set(true, forKey: Self.signedInBeforeKey)
         guard isConnected else { return }
         // Links this install to the signed-in account in the admin statistics.
         IosClientHeartbeat.shared.report(force: true)
