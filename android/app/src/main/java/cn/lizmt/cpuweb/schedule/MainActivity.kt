@@ -99,8 +99,6 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         }
     }
 
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
     private val webPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         val callback = permissionCallback ?: return@registerForActivityResult
         permissionCallback = null
@@ -150,17 +148,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                 else -> openAgendaList()
             }
         }
-        // 日程 with a reminder ahead: ask once for the notification permission (Android 13+).
-        lifecycleScope.launch {
-            snapshotFlow { agenda.items }.collectLatest { items ->
-                val prefs = getSharedPreferences(SHELL_PREFS, MODE_PRIVATE)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !AgendaReminders.canNotify(this@MainActivity) &&
-                    !prefs.getBoolean(KEY_AGENDA_NOTIFICATIONS_ASKED, false) && AgendaReminders.wantsNotifications(items)) {
-                    prefs.edit().putBoolean(KEY_AGENDA_NOTIFICATIONS_ASKED, true).apply()
-                    notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                }
-            }
-        }
+        removeAgendaReminderLeftovers(preferences)
         lifecycleScope.launch {
             snapshotFlow { web.authState.ready to web.authState.authenticated }.collectLatest { (ready, authenticated) ->
                 if (!ready) return@collectLatest
@@ -296,13 +284,21 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         ScheduleDorm.offer(schedule.completeSnapshot())?.let { web.dorm(it) }
     }
 
-    /** Widgets open the native timetable at the current week (or the week they showed); reminders open their item. */
-    private fun handleLaunchIntent(intent: Intent?) {
-        intent?.getStringExtra(AgendaReminders.EXTRA_OPEN_AGENDA)?.let { id ->
-            intent.removeExtra(AgendaReminders.EXTRA_OPEN_AGENDA)
-            openAgenda(id, null)
-            return
+    /**
+     * 日程 reminders in the notification bar are gone: vendor systems on most phones here kill the
+     * alarms. Clears what an older version left behind, once: its channel and its alarm bookkeeping.
+     */
+    private fun removeAgendaReminderLeftovers(preferences: android.content.SharedPreferences) {
+        if (preferences.getBoolean(KEY_AGENDA_REMINDERS_REMOVED, false)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            runCatching { getSystemService(android.app.NotificationManager::class.java)?.deleteNotificationChannel("agenda") }
         }
+        runCatching { deleteSharedPreferences("agenda_reminders") }
+        preferences.edit().remove("agenda_notifications_asked").putBoolean(KEY_AGENDA_REMINDERS_REMOVED, true).apply()
+    }
+
+    /** Widgets open the native timetable at the current week (or the week they showed). */
+    private fun handleLaunchIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_OPEN_SCHEDULE, false) != true) return
         val semester = intent.getStringExtra(EXTRA_SEMESTER)?.takeIf { Regex("^\\d{4}-\\d{4}-[12]$").matches(it) }
         val week = intent.getStringExtra(EXTRA_WEEK)?.takeIf { it.toIntOrNull() in 1..64 }
@@ -496,7 +492,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private const val KEY_PRIORITIES = "v1"
         private const val COUPLE_PREFS = "native_schedule_couple"
         private const val KEY_WELCOME_SEEN = "welcome_seen_v4"
-        private const val KEY_AGENDA_NOTIFICATIONS_ASKED = "agenda_notifications_asked"
+        private const val KEY_AGENDA_REMINDERS_REMOVED = "agenda_reminders_removed"
         private const val REQUEST_WRITE_STORAGE = 2002
     }
 }

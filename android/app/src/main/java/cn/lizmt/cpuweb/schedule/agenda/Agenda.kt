@@ -4,7 +4,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeParseException
 
@@ -39,9 +38,6 @@ object AgendaRemind {
     const val NONE = -1
     val choices = listOf(NONE to "不提醒", 0 to "准时", 5 to "5 分钟前", 15 to "15 分钟前", 30 to "30 分钟前", 60 to "1 小时前", 1440 to "1 天前")
     fun label(minutes: Int): String = choices.firstOrNull { it.first == minutes }?.second ?: "$minutes 分钟前"
-
-    /** Items without a time remind at this hour on their day. */
-    val UNTIMED_AT: LocalTime = LocalTime.of(8, 0)
 }
 
 /**
@@ -89,35 +85,6 @@ data class AgendaItem(
     }
 
     fun isDoneOn(day: String): Boolean = if (repeat == AgendaRepeat.None) done else day in doneDates
-
-    /** When this occurrence's reminder fires, or null without one. */
-    fun reminderAt(day: LocalDate): LocalDateTime? {
-        if (remind < 0) return null
-        val time = parseTime(start) ?: AgendaRemind.UNTIMED_AT
-        // Untimed items: "at the time" and "a day before" make sense, finer offsets do not.
-        val minutes = if (parseTime(start) == null) (if (remind >= 1440) 1440L else 0L) else remind.toLong()
-        return LocalDateTime.of(day, time).minusMinutes(minutes)
-    }
-
-    /** The next occurrence from [from] on whose reminder is still ahead of [now], with its day. */
-    fun nextReminder(now: LocalDateTime, horizonDays: Int = 400): Pair<LocalDate, LocalDateTime>? {
-        if (remind < 0 || !dated) return null
-        if (repeat == AgendaRepeat.None) {
-            val day = parseDate(date) ?: return null
-            if (done) return null
-            val at = reminderAt(day) ?: return null
-            return if (at.isAfter(now)) day to at else null
-        }
-        var day = maxOf(parseDate(date) ?: return null, now.toLocalDate())
-        repeat(horizonDays) {
-            if (occursOn(day) && day.toString() !in doneDates) {
-                val at = reminderAt(day)
-                if (at != null && at.isAfter(now)) return day to at
-            }
-            day = day.plusDays(1)
-        }
-        return null
-    }
 
     companion object {
         fun parseDate(value: String): LocalDate? = if (value.length != 10) null else try {

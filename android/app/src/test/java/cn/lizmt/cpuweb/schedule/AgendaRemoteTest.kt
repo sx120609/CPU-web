@@ -1,6 +1,5 @@
 package cn.lizmt.cpuweb.schedule
 
-import android.app.AlarmManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -14,7 +13,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.LocalDate
 
@@ -34,7 +32,6 @@ class AgendaRemoteTest {
         val sent = mutableListOf<JSONObject>()
         var answer: String? = null
         val remote = AgendaRemote(context, scope) { request -> sent += request; answer }
-        val alarms = shadowOf(context.getSystemService(AlarmManager::class.java))
         val tomorrow = LocalDate.now().plusDays(1)
         answer = JSONObject().put("authenticated", true).put("account", "u1").put("items", JSONArray()
             .put(item("meeting00001", "组会", tomorrow.toString(), "15:00", remind = 15))
@@ -46,9 +43,8 @@ class AgendaRemoteTest {
         assertTrue(remote.available)
         assertEquals(listOf("meeting00001", "daily0000001"), remote.items.map { it.id })
         assertEquals(listOf("daily0000001", "meeting00001"), remote.on(tomorrow).map { it.item.id })
-        // The copy is kept for the next start and for the reminder receivers; only the meeting asks for one.
+        // The copy is kept for the next start.
         assertEquals("u1" to remote.items, AgendaRemote.readCache(context))
-        assertEquals(1, alarms.scheduledAlarms.size)
 
         // A repeat is ticked for that day only, before the page answers.
         answer = null
@@ -68,7 +64,6 @@ class AgendaRemoteTest {
         assertFalse(remote.available)
         assertTrue(remote.items.isEmpty())
         assertEquals("" to emptyList<Any>(), AgendaRemote.readCache(context))
-        assertEquals(0, alarms.scheduledAlarms.size)
     }
 
     @Test

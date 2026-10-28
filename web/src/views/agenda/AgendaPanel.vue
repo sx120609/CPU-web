@@ -75,7 +75,7 @@
           <label class="ap-switch">
             <span>
               <b>微信和 QQ 也提醒</b>
-              <small>设了提醒的日程到点时，服务器发一条站内通知，并转到你绑定的微信和 QQ。手机 App 也会在通知栏提醒。</small>
+              <small>设了提醒的日程到点时，服务器发一条站内通知，并转到你绑定的微信和 QQ。iOS 和鸿蒙 App 也会在通知栏提醒。</small>
             </span>
             <el-switch :model-value="agenda.relay" @change="(on: string | number | boolean) => agenda.setRelay(Boolean(on))" />
           </label>

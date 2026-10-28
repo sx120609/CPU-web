@@ -24,7 +24,7 @@ import java.time.LocalDate
  * timetable itself ([AgendaEditorSheet], [AgendaListSheet]).
  *
  * A copy is kept in `files/agenda-cache.json` for the timetable while the page
- * loads and for the reminders, which fire with the app closed.
+ * loads.
  */
 class AgendaRemote(
     private val context: Context,
@@ -131,7 +131,6 @@ class AgendaRemote(
         relay = false
         account = ""
         writeCache(context, "", emptyList())
-        AgendaReminders.sync(context, emptyList())
     }
 
     /** Takes in a reply that answers for an account; null when the page could not say. */
@@ -157,14 +156,13 @@ class AgendaRemote(
         available = true
         items = next
         writeCache(context, account, next)
-        AgendaReminders.sync(context, next)
     }
 
     companion object {
         private const val FILE = "agenda-cache.json"
         private const val UNREACHABLE = "没能保存，请检查网络后再试"
 
-        /** The account and items last read, for the timetable at start and for the reminder receivers. */
+        /** The account and items last read, for the timetable at start. */
         fun readCache(context: Context): Pair<String, List<AgendaItem>> {
             val raw = runCatching { File(context.filesDir, FILE).takeIf { it.exists() }?.readText() }.getOrNull() ?: return "" to emptyList()
             val json = runCatching { JSONObject(raw) }.getOrNull() ?: return "" to emptyList()

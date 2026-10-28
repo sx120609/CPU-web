@@ -227,7 +227,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     }
 
     // The couple timetable belongs to the user's own grid; a shared timetable shows one person only.
-    // 日程 asked for elsewhere (a reminder, a Web link, the list) open over the user's own grid.
+    // 日程 asked for elsewhere (a Web link, the list) open over the user's own grid.
     if (!store.readOnly) {
         val request = activity.agendaRequest
         LaunchedEffect(request) {

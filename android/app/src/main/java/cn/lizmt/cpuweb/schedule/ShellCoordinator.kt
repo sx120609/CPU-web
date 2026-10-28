@@ -187,7 +187,7 @@ class ShellCoordinator(
         if (!requiresLogin) selectedTab = ShellTab.Schedule
     }
 
-    /** A widget or notification asked for the timetable. */
+    /** A widget asked for the timetable. */
     fun openSchedule(semester: String?, week: String?) {
         if (requiresLogin) return
         selectedTab = ShellTab.Schedule

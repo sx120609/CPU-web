@@ -392,7 +392,7 @@ internal fun AgendaListSheet(remote: AgendaRemote, onEdit: (AgendaItem) -> Unit,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text("微信和 QQ 也提醒", fontSize = 15.sp)
-                    Text("设了提醒的日程到点时，服务器发一条站内通知，并转到你绑定的微信和 QQ；这台手机也会在通知栏提醒。",
+                    Text("设了提醒的日程到点时，服务器发一条站内通知，并转到你绑定的微信和 QQ。",
                         fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.width(10.dp))
