@@ -27,7 +27,8 @@ app.whenReady().then(async () => {
   });
   window = new BrowserWindow({ show: Boolean(process.env.ZHS_SCREENSHOT_DIR), width: 980, height: 820 });
   await window.loadURL('about:blank');
-  tabs = new TabManager(window, { appVersion: 'test', isNavigable: () => false, registerKind: (id, kind) => kinds.set(id, kind), openExternally() {}, onDidFinishLoad() {}, onNavigation() {}, onChange() {} });
+  const externalUrls = [];
+  tabs = new TabManager(window, { appVersion: 'test', isNavigable: () => false, registerKind: (id, kind) => kinds.set(id, kind), openExternally(url) { externalUrls.push(url); }, onDidFinishLoad() {}, onNavigation() {}, onChange() {} });
   await tabs.openZhihuishuTab(zhihuishuPage());
   const contents = tabs.activeContents();
   const js = source => contents.executeJavaScript(source);
@@ -44,10 +45,23 @@ app.whenReady().then(async () => {
   assert.match(info.text, /不会自动恢复/); assert.equal(info.modal, true);
   assert.equal(info.focused, true); assert.equal(info.injected, false);
   assert.ok(Math.abs(info.centerX-info.width/2)<2 && Math.abs(info.centerY-info.height/2)<2, 'Dialog must be centered in the viewport excluding its scrollbar: '+JSON.stringify(info));
-  let opened;
-  contents.setWindowOpenHandler(({url}) => { opened=url; return {action:'deny'}; });
+  // Keep the production window-open handler: replacing it hid the 0.3.28 regression.
+  const workbenchUrl = contents.getURL();
+  const windowCount = BrowserWindow.getAllWindows().length;
   await js("document.querySelector('dialog a').click()");
-  await until(() => opened !== undefined); assert.equal(opened, 'https://www.zhihuishu.com/');
+  await until(() => externalUrls.length > 0);
+  assert.deepEqual(externalUrls, ['https://www.zhihuishu.com/']);
+  await js(`(() => {
+    for (const href of ['https://example.com/', 'https://www.zhihuishu.com.evil.example/', 'https://www.zhihuishu.com/?redirect=https://example.com', 'http://www.zhihuishu.com/', 'file:///tmp/untrusted', 'cpu-test:blocked']) {
+      const link = document.createElement('a'); link.href = href; link.target = '_blank';
+      document.querySelector('dialog').append(link); link.click(); link.remove();
+    }
+  })()`);
+  await pause(150);
+  assert.deepEqual(externalUrls, ['https://www.zhihuishu.com/'], 'Only the fixed official verification link may open externally');
+  assert.equal(contents.getURL(), workbenchUrl, 'The isolated assistant must stay on its bundled page');
+  assert.equal(BrowserWindow.getAllWindows().length, windowCount, 'No privileged popup window may be created');
+  assert.equal(tabs.getState().tabs.length, 1, 'Verification opens in the system browser, preserving the assistant');
   const screenshotDir = process.env.ZHS_SCREENSHOT_DIR;
   async function capture(name) {
     if (screenshotDir) { fs.mkdirSync(screenshotDir, {recursive:true}); fs.writeFileSync(path.join(screenshotDir,name+'.png'), (await contents.capturePage()).toPNG()); }

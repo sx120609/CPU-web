@@ -199,7 +199,12 @@ export class TabManager {
     // 主站里的外部链接都留在应用里。"不是通用浏览器"的边界靠没有地址栏来守。
     if (tab.kind === "workbench") {
       contents.on("will-navigate", event => event.preventDefault());
-      contents.setWindowOpenHandler(() => ({ action: "deny" }));
+      contents.setWindowOpenHandler(({ url }) => {
+        // 验证提示里的固定官网链接交给系统浏览器，工作台仍留在隔离的本地页面。
+        // 不放行任意域名、路径或协议，也不创建带工作台 preload 的新窗口。
+        if (url === "https://www.zhihuishu.com/") this.hooks.openExternally(url);
+        return { action: "deny" };
+      });
       return;
     }
     contents.setWindowOpenHandler(({ url }) => {
