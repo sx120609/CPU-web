@@ -4717,21 +4717,38 @@ async function resolveQqGroupCommandPermission(input: {
   event: OneBotEvent;
 }) {
   const superAdminQqIds = normalizeQqBotQqIdList(parseStringArray(input.config.superAdminQqIds || "", []));
-  if (superAdminQqIds.includes(input.qqId)) {
+  const commandUserQqIds = normalizeQqBotQqIdList(parseStringArray(input.group.commandUserQqIds || "", []));
+  // A super administrator needs no lookup in the group's member list.
+  const role = superAdminQqIds.includes(input.qqId)
+    ? ""
+    : await resolveQqGroupMemberRole(input.group.groupId, input.qqId, input.event);
+  return decideQqGroupCommandPermission({ qqId: input.qqId, role, superAdminQqIds, commandUserQqIds });
+}
+
+export function decideQqGroupCommandPermission(input: {
+  qqId: string;
+  role: string;
+  superAdminQqIds: string[];
+  commandUserQqIds: string[];
+}) {
+  if (input.superAdminQqIds.includes(input.qqId)) {
     return { allowed: true, canManageCommandUsers: true, source: "super-admin" as const };
   }
-
-  const senderRole = await resolveQqGroupMemberRole(input.group.groupId, input.qqId, input.event);
-  if (senderRole === "owner" || senderRole === "admin") {
-    return { allowed: true, canManageCommandUsers: true, source: senderRole };
+  if (input.role === "owner" || input.role === "admin") {
+    return { allowed: true, canManageCommandUsers: true, source: input.role };
   }
-
-  const commandUsers = normalizeQqBotQqIdList(parseStringArray(input.group.commandUserQqIds || "", []));
-  if (commandUsers.includes(input.qqId)) {
+  if (input.commandUserQqIds.includes(input.qqId)) {
     return { allowed: true, canManageCommandUsers: false, source: "command-user" as const };
   }
-
   return { allowed: false, canManageCommandUsers: false, source: "member" as const };
+}
+
+/**
+ * Whether a QQ may handle a group's ad reports on the web page: the same people who may run the
+ * group's commands, so QQBot super administrators and authorized users are included.
+ */
+export async function verifyQqBotGroupManager(group: { groupId: string; commandUserQqIds: string | null }, qqId: string) {
+  return resolveQqGroupCommandPermission({ config: await getQqBotConfigRaw(), group, qqId, event: {} });
 }
 
 async function resolveQqGroupMemberRole(groupId: string, qqId: string, event: OneBotEvent) {

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { prisma } from "../prisma";
-import { grantQqGroupAdWhitelist, verifyQqBotGroupAdminIdentity } from "../services/qqbot";
+import { grantQqGroupAdWhitelist, verifyQqBotGroupAdminIdentity, verifyQqBotGroupManager } from "../services/qqbot";
 import { callQqBotAction } from "../services/qqbot/connection";
 
 export const qqBotAdReportRouter = Router();
@@ -23,7 +23,7 @@ qqBotAdReportRouter.get("/:token", async (req, res, next) => {
     if (context.report.status !== "open") {
       return renderState(res, 200, "该通报已处理", "群内通报消息已经完成处理，无需重复操作。", "success");
     }
-    const identity = await resolveBoundAdmin(req.user.userId, context.report.groupId);
+    const identity = await resolveBoundAdmin(req.user.userId, context.group);
     if (!identity.ok) return renderIdentityState(req, res, identity);
     return res.type("html").send(renderQqBotAdReportActionPage(context.report, context.group, identity.qqId));
   } catch (error) {
@@ -42,7 +42,7 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
     if (context.report.status !== "open") {
       return renderState(res, 200, "该通报已处理", "群内通报消息已经完成处理，无需重复操作。", "success");
     }
-    const identity = await resolveBoundAdmin(req.user.userId, context.report.groupId);
+    const identity = await resolveBoundAdmin(req.user.userId, context.group);
     if (!identity.ok) return renderIdentityState(req, res, identity);
 
     const action = normalizeAction(req.body?.action);
@@ -191,12 +191,12 @@ export function classifyQqBotAdReportAvailability(
   return "open";
 }
 
-async function resolveBoundAdmin(userId: number, groupId: string) {
-  const binding = await prisma.qqBotBinding.findFirst({
+async function resolveBoundAdmin(userId: number, group: { groupId: string; commandUserQqIds: string | null }) {
+  const bindings = await prisma.qqBotBinding.findMany({
     where: { userId, enabled: true },
     orderBy: { updatedAt: "desc" },
   });
-  if (!binding) {
+  if (!bindings.length) {
     return {
       ok: false as const,
       code: "qq-binding-required" as const,
@@ -205,17 +205,18 @@ async function resolveBoundAdmin(userId: number, groupId: string) {
       message: "当前站点账号尚未绑定 QQ，暂时无法核验你是否为该群管理员。请先完成 QQ Bot 绑定，再返回本通报继续处理。",
     };
   }
-  const permission = await verifyQqBotGroupAdminIdentity(groupId, binding.qqId);
-  if (!permission.verified) {
-    return {
-      ok: false as const,
-      code: "group-admin-required" as const,
-      status: 403,
-      title: "没有管理权限",
-      message: `当前账号绑定的 QQ（${maskQq(binding.qqId)}）不是该群的群主或管理员。`,
-    };
+  // Whoever may run the group's commands through any bound QQ may handle its reports.
+  for (const binding of bindings) {
+    const permission = await verifyQqBotGroupManager(group, binding.qqId);
+    if (permission.allowed) return { ok: true as const, qqId: binding.qqId, role: permission.source };
   }
-  return { ok: true as const, qqId: binding.qqId, role: permission.role };
+  return {
+    ok: false as const,
+    code: "group-admin-required" as const,
+    status: 403,
+    title: "没有管理权限",
+    message: `当前账号绑定的 QQ（${bindings.map((binding) => maskQq(binding.qqId)).join("、")}）不是该群的群主、管理员或授权用户，也不是 QQBot 超级管理员。`,
+  };
 }
 
 function redirectToLogin(req: Request, res: Response) {

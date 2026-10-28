@@ -8,6 +8,7 @@ import {
   renderQqBotAdReportActionPage,
 } from "../src/routes/qqbotAdReport";
 import {
+  decideQqGroupCommandPermission,
   describeQqGroupWhitelistPolicy,
   extractQqGroupAdVerificationCode,
   renderQqGroupAdVerificationPrompt,
@@ -60,6 +61,19 @@ test("accepts clearing the strike counter as a report action", () => {
   assert.equal(normalizeQqBotAdReportAction("clear-hit-count"), "clear-hit-count");
   assert.equal(normalizeQqBotAdReportAction("add-whitelist"), "add-whitelist");
   assert.equal(normalizeQqBotAdReportAction("reset-all"), "");
+});
+
+test("report handlers are the people who may run the group's commands", () => {
+  const lists = { superAdminQqIds: ["10001"], commandUserQqIds: ["10002"] };
+  const decide = (qqId: string, role: string) => decideQqGroupCommandPermission({ ...lists, qqId, role });
+  // A QQBot super administrator who is an ordinary member of this group.
+  assert.deepEqual(decide("10001", "member"), { allowed: true, canManageCommandUsers: true, source: "super-admin" });
+  assert.equal(decide("10002", "member").source, "command-user");
+  assert.equal(decide("10002", "member").allowed, true);
+  assert.equal(decide("10003", "admin").source, "admin");
+  assert.equal(decide("10003", "owner").allowed, true);
+  assert.deepEqual(decide("10003", "member"), { allowed: false, canManageCommandUsers: false, source: "member" });
+  assert.equal(decide("10003", "").allowed, false);
 });
 
 test("sends unbound administrators to the QQ binding page and preserves the report link", () => {
