@@ -18,7 +18,8 @@ export async function browserSessionMiddleware(req: Request, res: Response, next
   try {
     const loaded = await loadBrowserSession(req, res);
     req.browserSessionId = loaded?.id;
-    req.browserSession = loaded?.session;
+    req.browserSession = loaded && "session" in loaded ? loaded.session : undefined;
+    req.browserSessionUnavailable = Boolean(loaded && "unavailable" in loaded);
     next();
   } catch (error) {
     next(error);

@@ -28,5 +28,7 @@ export const Errors = {
   conflict: (msg = "冲突") => new HttpError(409, 4009, msg),
   badGateway: (msg = "上游服务暂时不可用") => new HttpError(502, 5002, msg),
   busy: (msg = "当前访问人数较多，请稍后重试") => new HttpError(503, 5031, msg),
+  // A store or database the request depends on failed. Clients keep their sign-in and retry later.
+  unavailable: (msg = "服务暂时不可用，请稍后重试") => new HttpError(503, 5032, msg),
   server: (msg = "服务器内部错误") => new HttpError(500, 5000, msg),
 };

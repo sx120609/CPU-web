@@ -7,6 +7,8 @@ declare global {
       user?: JwtPayload;
       browserSessionId?: string;
       browserSession?: BrowserSession;
+      /** The session cookie's record could not be read (store failure): signed in or not is unknown. */
+      browserSessionUnavailable?: boolean;
     }
   }
 }

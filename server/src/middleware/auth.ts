@@ -1,8 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
 import { prisma } from "../prisma";
-import { signToken, verifySessionTokenSignature, verifyToken } from "../utils/jwt";
+import { isTokenVerificationError, signToken, verifySessionTokenSignature, verifyToken } from "../utils/jwt";
 import { Errors } from "../utils/response";
 import { isCookieAuthRequest, issueBrowserSession, updateBrowserSession } from "../services/browserSession";
+
+const LOGIN_SERVICE_UNAVAILABLE = "登录服务暂时不可用，请稍后重试";
 
 function requestAuthToken(req: Request) {
   if (req.browserSession?.siteToken) return req.browserSession.siteToken;
@@ -57,10 +59,15 @@ async function hydrateBrowserSessionUser(req: Request, res: Response, token: str
   }
 }
 
+/**
+ * Only a credential that is itself invalid ends the sign-in (401). When the session store or the
+ * database fails, the answer is 503: a 401 makes every client sign the user out, drop the 教务
+ * authorization with it and clear the cached timetable, all for an outage on our side.
+ */
 export async function authRequired(req: Request, res: Response, next: NextFunction) {
   const token = requestAuthToken(req);
   if (!token) {
-    return next(Errors.unauthorized());
+    return next(req.browserSessionUnavailable ? Errors.unavailable(LOGIN_SERVICE_UNAVAILABLE) : Errors.unauthorized());
   }
   try {
     req.user = await hydrateBrowserSessionUser(req, res, token);
@@ -75,7 +82,7 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
       next(error);
       return;
     }
-    next(Errors.unauthorized("登录已过期，请重新登录"));
+    next(isTokenVerificationError(error) ? Errors.unauthorized("登录已过期，请重新登录") : Errors.unavailable(LOGIN_SERVICE_UNAVAILABLE));
   }
 }
 

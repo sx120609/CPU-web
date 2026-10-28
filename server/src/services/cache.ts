@@ -95,19 +95,19 @@ function logDurableStoreIssue(error: unknown) {
   console.warn(`[session-store] database fallback unavailable: ${message}`);
 }
 
-async function readDurableEphemeralValue(key: string) {
-  if (!hasDatabaseStore()) return null;
+/** The database copy of a session; `ok: false` when the database could not be asked. */
+async function readDurableEphemeralRecord(key: string) {
   try {
     const record = await prisma.runtimeSession.findUnique({ where: { key } });
-    if (!record) return null;
+    if (!record) return { record: null, ok: true };
     if (record.expiresAt.getTime() <= Date.now()) {
       await prisma.runtimeSession.delete({ where: { key } }).catch(() => undefined);
-      return null;
+      return { record: null, ok: true };
     }
-    return record;
+    return { record, ok: true };
   } catch (error) {
     logDurableStoreIssue(error);
-    return null;
+    return { record: null, ok: false };
   }
 }
 
@@ -477,11 +477,13 @@ export async function deleteSubjectCacheEntries(subjectHash: string) {
   }
 }
 
-// Redis 正常但没查到时才回退数据库，用于 Redis 被清空后恢复会话。伪造的随机会话 Cookie 每次都会走到这里，
-// 所以这条路径有全局速率预算；Redis 不可用时数据库是唯一存储，不受此限制。
-const durableMissBudget = { tokens: 50, updatedAt: Date.now() };
-const DURABLE_MISS_PER_SECOND = 20;
-const DURABLE_MISS_BURST = 50;
+// Redis 正常但没查到时才回退数据库，用于 Redis 被清空后恢复会话，以及 Redis 只留七天热副本后恢复冷会话。
+// 伪造的随机会话 Cookie 每次都会走到这里，所以这条路径有全局速率预算；Redis 不可用时数据库是唯一存储，
+// 不受此限制。按主键查一行很便宜，预算要容得下早上开课时大批冷会话同时回来：用完时只能说“没查”，
+// 调用方据此回答“暂时不可用”而不是“未登录”（readEphemeralValueChecked）。
+const durableMissBudget = { tokens: 300, updatedAt: Date.now() };
+const DURABLE_MISS_PER_SECOND = 100;
+const DURABLE_MISS_BURST = 300;
 
 export function takeDurableMissBudget(now = Date.now()) {
   durableMissBudget.tokens = Math.min(
@@ -495,21 +497,39 @@ export function takeDurableMissBudget(now = Date.now()) {
 }
 
 export async function getEphemeralValue(key: string) {
+  return (await readEphemeralValueChecked(key)).value;
+}
+
+/**
+ * Like getEphemeralValue, and says whether a missing value was looked for in
+ * every store that may hold it. `complete: false` means "could not tell": a
+ * store failed, or the database was skipped for lack of budget. A session
+ * that cannot be read must then count as unavailable, not as signed out.
+ */
+export async function readEphemeralValueChecked(key: string): Promise<{ value: string | null; complete: boolean }> {
   const shared = await readRedisString(key);
-  if (shared.available && shared.value !== null) return shared.value;
-  // 撤销标记必须查到底：漏查会让已退出的会话继续有效。其余键查不到只会被当作未登录。
-  if (isDurableEphemeralKey(key) && (!shared.available || key.startsWith(SESSION_REVOCATION_KEY_PREFIX) || takeDurableMissBudget())) {
-    const durable = await readDurableEphemeralValue(key);
-    if (durable) {
+  if (shared.available && shared.value !== null) return { value: shared.value, complete: true };
+  if (isDurableEphemeralKey(key) && hasDatabaseStore()) {
+    // 撤销标记必须查到底：漏查会让已退出的会话继续有效。
+    if (shared.available && !key.startsWith(SESSION_REVOCATION_KEY_PREFIX) && !takeDurableMissBudget()) {
+      return { value: null, complete: false };
+    }
+    const durable = await readDurableEphemeralRecord(key);
+    if (durable.record) {
       // Redis 被清空或短暂不可用时，用数据库中的加密副本恢复热缓存。
       if (shared.available) {
-        void writeRedisString(key, durable.value, redisTtlFor(Math.max(1, durable.expiresAt.getTime() - Date.now()), true));
+        void writeRedisString(key, durable.record.value, redisTtlFor(Math.max(1, durable.record.expiresAt.getTime() - Date.now()), true));
       }
-      return durable.value;
+      return { value: durable.record.value, complete: true };
     }
+    if (durable.ok) return { value: null, complete: true };
+    if (shared.available) return { value: null, complete: false };
+    const local = readLocalValue(key);
+    return { value: local, complete: local !== null };
   }
-  if (shared.available) return null;
-  return readLocalValue(key);
+  if (shared.available) return { value: null, complete: true };
+  // Without Redis or a database, this process's memory is the only store there is.
+  return { value: readLocalValue(key), complete: true };
 }
 
 export async function deleteEphemeralValue(key: string) {

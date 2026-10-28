@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { Request, Response } from "express";
 import { config, isDev } from "../config";
-import { deleteEphemeralValue, getEphemeralValue, setEphemeralValue } from "./cache";
+import { deleteEphemeralValue, getEphemeralValue, readEphemeralValueChecked, setEphemeralValue } from "./cache";
 import { buildRedisKey } from "./redis";
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
 
@@ -116,8 +116,9 @@ async function saveSession(id: string, session: BrowserSession) {
 export async function loadBrowserSession(req: Request, res?: Response) {
   const id = browserSessionId(req);
   if (!id) return null;
-  const raw = await getEphemeralValue(browserSessionStorageKey(id));
-  if (!raw) return null;
+  const { value: raw, complete } = await readEphemeralValueChecked(browserSessionStorageKey(id));
+  // A store failure is not a sign-out: answering 401 here would sign everyone out whenever Redis or the database falters.
+  if (!raw) return complete ? null : { id, unavailable: true as const };
   try {
     const session = decryptJwxtSensitiveJson<BrowserSession>(
       "browser-session",

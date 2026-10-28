@@ -24,6 +24,7 @@ import {
   jwxtPendingPrefix,
   jwxtSessionKey,
   jwxtSessionPrefix,
+  readEphemeralValueChecked,
   runWithDistributedLock,
   setEphemeralValue,
   touchEphemeralValue,
@@ -470,7 +471,10 @@ function mergeSessionCookieJars(
 
 async function getActiveSession(token: string | undefined | null): Promise<ActiveSession | null> {
   if (!token) return null;
-  const raw = await getEphemeralValue(jwxtSessionKey(token));
+  const { value: raw, complete } = await readEphemeralValueChecked(jwxtSessionKey(token));
+  // A session store that could not be read is not an expired 教务 session: "已失效" makes the
+  // client drop its authorization and the timetable with it.
+  if (!raw && !complete) throw Errors.unavailable("教务会话暂时无法读取，请稍后重试");
   if (!raw) return null;
   try {
     const decrypted = decryptJwxtSensitiveJson<JwxtSessionSnapshot>("active-session", token, raw, { allowLegacyPlaintext: true });
