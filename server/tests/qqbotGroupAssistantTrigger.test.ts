@@ -257,6 +257,55 @@ test("按名字叫拾间AI：开头称呼、文字 @、请问和句尾称呼", (
   }
 });
 
+test("换行、连续空格和图片不会被当成叫拾间AI", () => {
+  for (const input of [
+    "luna 平均1.5s\nsol 平均2-3s",
+    "大佬们  为什么这个只脱一个羧基",
+    "Nishikigi 已运行 1945513s\n待审核: []\n待推送: [774]",
+    "ask/\n\n![QQ图片](/uploads/qqbot/2026/10/a.png)",
+    "第一行\t第二行",
+  ]) {
+    assert.deepEqual(parseQqBotNameCall(input), { called: false, text: input.trim() }, input);
+  }
+  assert.deepEqual(parseQqBotNameCall("@拾间AI  明天\n有课吗"), { called: true, text: "明天 有课吗" });
+  assert.deepEqual(parseQqBotNameCall("拾间AI\n明天有课吗"), { called: true, text: "明天有课吗" });
+});
+
+test("引用回答道谢时 QQ 会带上 @拾间AI，但不再回答", () => {
+  const thanks = ["谢谢", "谢谢谢谢", "谢谢大佬", "好滴谢谢你", "感谢，我去试试", "😯 谢谢", "thanks!", "好的", "收到"];
+  for (const value of thanks) {
+    assert.deepEqual(decideQqGroupAssistant(signals({
+      text: value,
+      mentionsBot: true,
+      message: [{ type: "reply", data: { id: "77" } }, { type: "at", data: { qq: BOT } }, text(value)],
+      quoted: "bot",
+      quotedHasContent: true,
+    })), { action: "ignore", reason: "thanks" }, value);
+    assert.deepEqual(decideQqGroupAssistant(signals({ text: value, calledByName: true })), {
+      action: "ignore",
+      reason: "thanks",
+    }, value);
+  }
+  for (const value of ["谢谢，那补考呢", "谢谢，帮我再查一下明天的课", "感谢！再详细说说", "谢谢大佬，这个怎么弄"]) {
+    assert.deepEqual(decideQqGroupAssistant(signals({ text: value, mentionsBot: true })), {
+      action: "answer",
+      trigger: "mention",
+    }, value);
+  }
+  // Thanks while quoting another member asks the bot about that message.
+  assert.deepEqual(decideQqGroupAssistant(signals({
+    text: "谢谢",
+    mentionsBot: true,
+    quoted: "other",
+    quotedHasContent: true,
+  })), { action: "answer", trigger: "mention" });
+  assert.deepEqual(decideQqGroupAssistant(signals({
+    text: "谢谢",
+    mentionsBot: true,
+    message: [{ type: "at", data: { qq: BOT } }, text("谢谢"), { type: "image", data: { file: "a.png" } }],
+  })), { action: "answer", trigger: "mention" });
+});
+
 test("追问判断：问句和请求算，道谢和附和不算", () => {
   for (const value of ["那补考呢", "成绩什么时候出", "可以吗", "图书馆在哪", "要带身份证吗", "帮我写个请假条", "再详细说说", "为啥？"]) {
     assert.equal(looksLikeQqGroupFollowUpQuestion(value), true, value);

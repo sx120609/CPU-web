@@ -3777,7 +3777,7 @@ async function handleQqBotSelfMuteCommand(input: {
   groupId?: string;
   messageText: string;
 }) {
-  const replyAndLog = async (message: string, result: string, status: "ok" | "ignored" | "error" = "ok") => {
+  const replyAndLog = async (message: string | null, result: string, status: "ok" | "ignored" | "error" = "ok") => {
     await logQqBotMessage({
       direction: "inbound",
       eventType: "self-mute-command",
@@ -3790,7 +3790,7 @@ async function handleQqBotSelfMuteCommand(input: {
       result,
       rawPayload: input.event,
     });
-    await replyToEvent(input, message).catch(() => undefined);
+    if (message) await replyToEvent(input, message).catch(() => undefined);
   };
 
   if (input.event.message_type !== "group" || !input.groupId) {
@@ -3799,8 +3799,9 @@ async function handleQqBotSelfMuteCommand(input: {
 
   try {
     const group = await prisma.qqBotGroup.findUnique({ where: { groupId: input.groupId } });
+    // The easter egg needs no @, so a group that has not enabled muting hears nothing.
     if (!group?.enabled || !group.allowMute) {
-      return replyAndLog("当前群未开启禁言功能。", "mute-disabled", "ignored");
+      return replyAndLog(null, "mute-disabled", "ignored");
     }
     ensureModerationTargetAllowed(input.qqId, input.config, input.event);
     await callQqBotAction("set_group_ban", {

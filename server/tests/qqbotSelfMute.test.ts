@@ -86,11 +86,10 @@ for (const [name, group] of [
   ["未启用", { enabled: false, allowMute: true }],
   ["禁言关闭", { enabled: true, allowMute: false }],
 ] as const) {
-  test(`群${name}时不执行禁言`, async (t) => {
+  test(`群${name}时不执行禁言，也不在群里回话`, async (t) => {
     const { handleQqBotWebhook, event, requests, logs } = await setup(t, group);
     await handleQqBotWebhook(event);
-    assert.equal(requests.some(request => request.action === "set_group_ban"), false);
-    assert.match(requests[0].body.message, /未开启禁言/);
+    assert.deepEqual(requests, []);
     assert.equal(logs.find(log => log.command === "banme")?.status, "ignored");
   });
 }

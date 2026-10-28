@@ -43,6 +43,10 @@ const INTERROGATIVE_PATTERN = /(?:怎么|怎样|咋|如何|为什么|为啥|为�
 // Nudges and pleasantries a member sends while waiting; they add no question.
 const FILLER_PATTERN = /^(?:[?？!！。.…~～]+|在吗|在不在|人呢|有人吗|快点|快回|回我|回复我|回一下|等等|稍等|好了吗|还没好吗|呢|你?(?:怎么|为什么|为啥)?还?(?:不|没)(?:理我|回复?|回答)我?)[\s?？!！。.…~～]*$/u;
 const REQUEST_PATTERN = /^(?:那|那么|还有|另外|再|然后|顺便)?\s*(?:帮我|帮忙|请|麻烦|给我|告诉我|教我|查一下|查查|推荐|解释|介绍|翻译|总结|详细说|展开说|继续)/u;
+const THANKS_PATTERN = /谢谢|谢了|谢啦|多谢|感谢|thx|thanks?|thank\s*you/iu;
+const THANKS_WORDS_PATTERN = new RegExp(THANKS_PATTERN.source, "giu");
+const CLAUSE_SEPARATOR_PATTERN = /[\s，,。.!！~～;；、]+/u;
+const THANKS_MAX_CHARS = 16;
 
 export type QqGroupAssistantTrigger =
   | "mention"
@@ -77,7 +81,7 @@ export type QqGroupAssistantSignals = {
 };
 
 export type QqGroupAssistantDecision =
-  | { action: "ignore"; reason: "unsupported" | "command" | "addressed-to-others" | "not-addressed" }
+  | { action: "ignore"; reason: "unsupported" | "command" | "addressed-to-others" | "not-addressed" | "thanks" }
   | { action: "summon"; trigger: "mention" | "name" | "reply-to-bot" }
   | { action: "answer"; trigger: Exclude<QqGroupAssistantTrigger, "proactive"> }
   /** Eligible for a proactive answer; the group's switch and the model's intent check decide. */
@@ -101,6 +105,10 @@ export function decideQqGroupAssistant(signals: QqGroupAssistantSignals): QqGrou
     // A bare call, or one that only greets, has nothing to answer yet: wait
     // for the question instead of sending the model an empty prompt.
     const quotesSomethingToAnswer = signals.quoted === "other" && signals.quotedHasContent;
+    // Quoting an answer to say thanks adds an @ in QQ, but asks nothing new.
+    if (!hasImage && !quotesSomethingToAnswer && isQqGroupThanksMessage(text)) {
+      return { action: "ignore", reason: "thanks" };
+    }
     const bareCall = !hasImage && !quotesSomethingToAnswer && (!text || isGreetingMessage(text));
     return bareCall ? { action: "summon", trigger: explicit } : { action: "answer", trigger: explicit };
   }
@@ -169,8 +177,12 @@ export function parseQqBotNameCall(text: string): { called: boolean; text: strin
   const original = String(text || "").trim();
   if (!original) return { called: false, text: "" };
 
-  const withoutTextAt = original.replace(TEXT_AT_NAME_PATTERN, " ").replace(/\s+/gu, " ").trim();
-  if (withoutTextAt !== original) return { called: true, text: stripCallSeparator(withoutTextAt) };
+  // Compare before collapsing whitespace: a line break or a double space alone
+  // must not read as a call.
+  const withoutTextAt = original.replace(TEXT_AT_NAME_PATTERN, " ");
+  if (withoutTextAt !== original) {
+    return { called: true, text: stripCallSeparator(withoutTextAt.replace(/\s+/gu, " ").trim()) };
+  }
 
   const leading = original.match(LEADING_NAME_PATTERN);
   if (leading) {
@@ -201,6 +213,21 @@ export function looksLikeQqGroupFollowUpQuestion(text: string) {
     || QUESTION_ENDING_PATTERN.test(normalized)
     || INTERROGATIVE_PATTERN.test(normalized)
     || REQUEST_PATTERN.test(normalized);
+}
+
+/**
+ * True for a short thanks or acknowledgement with no new question:
+ * "谢谢大佬", "好滴谢谢你", "感谢，我去试试". "谢谢，那补考呢" still asks.
+ */
+export function isQqGroupThanksMessage(text: string) {
+  const normalized = cleanQqGroupAssistantText(text);
+  if (!normalized || Array.from(normalized).length > THANKS_MAX_CHARS) return false;
+  if (ACKNOWLEDGEMENT_PATTERN.test(normalized)) return true;
+  if (!THANKS_PATTERN.test(normalized)) return false;
+  return !normalized
+    .replace(THANKS_WORDS_PATTERN, " ")
+    .split(CLAUSE_SEPARATOR_PATTERN)
+    .some((clause) => looksLikeQqGroupFollowUpQuestion(clause));
 }
 
 /**
