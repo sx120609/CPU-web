@@ -7,7 +7,7 @@ import { Errors, ok } from "../utils/response";
 
 export const shopIntegrationRouter = Router();
 
-function authenticateIntegration(suppliedSecret: string, expectedSecret: string) {
+export function authenticateIntegration(suppliedSecret: string, expectedSecret: string) {
   const expected = Buffer.from(expectedSecret);
   const supplied = Buffer.from(suppliedSecret);
   if (expected.length < 32 || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
@@ -18,6 +18,7 @@ function authenticateIntegration(suppliedSecret: string, expectedSecret: string)
 for (const service of [
   { name: "dayi-shop", header: "x-shop-integration-secret", secret: () => config.shopIntegrationSecret },
   { name: "shijian-pay", header: "x-pay-integration-secret", secret: () => config.payIntegrationSecret },
+  { name: "no-ai", header: "x-noai-integration-secret", secret: () => config.noAiIntegrationSecret },
 ]) shopIntegrationRouter.get(`/${service.name}/users/:userId/access`, async (req, res, next) => {
   try {
     authenticateIntegration(String(req.header(service.header) || ""), service.secret());

@@ -471,6 +471,9 @@ export const config = {
   payOAuthClientId: String(process.env.PAY_OAUTH_CLIENT_ID ?? "shijian-pay").trim(),
   payOrigin: String(process.env.PAY_ORIGIN ?? "https://pay.cputime.cn").trim().replace(/\/+$/, ""),
   payIntegrationSecret: String(process.env.PAY_INTEGRATION_SECRET ?? "").trim(),
+  noAiOAuthClientId: String(process.env.NOAI_OAUTH_CLIENT_ID ?? "no-ai").trim(),
+  noAiOrigin: String(process.env.NOAI_ORIGIN ?? "https://noai.cputime.cn").trim().replace(/\/+$/, ""),
+  noAiIntegrationSecret: String(process.env.NOAI_INTEGRATION_SECRET ?? "").trim(),
   oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),
 };
 

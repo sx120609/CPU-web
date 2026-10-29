@@ -15,6 +15,7 @@ export const AI_LOG_SCENES = [
   { value: "video", label: "视频审核" },
   { value: "song-review", label: "药苑之声歌曲审核" },
   { value: "qqbot-group-ad", label: "QQ群广告过滤" },
+  { value: "no-ai", label: "去AI味改写" },
 ] as const;
 
 export type AiLogScene = (typeof AI_LOG_SCENES)[number]["value"];
