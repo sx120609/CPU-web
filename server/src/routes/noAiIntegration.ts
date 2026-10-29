@@ -43,9 +43,9 @@ noAiIntegrationRouter.post("/no-ai/chat", async (req, res, next) => {
       providerConfigs: resolveAiServiceCandidatesForScene(site, "assistant"),
       maxTokens: input.maxTokens ?? 8000,
       maxTransientRetries: 1,
-      upstreamTimeoutMs: 240_000,
+      upstreamTimeoutMs: 540_000,
       enablePromptCache: false,
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(300_000)]),
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(600_000)]),
       logContext: { kind: "no-ai", createdById: input.userId ?? null, targetLabel: "去AI味改写" },
     });
     res.setHeader("Cache-Control", "no-store");
