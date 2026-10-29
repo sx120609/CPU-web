@@ -2,12 +2,27 @@ import { app } from "electron";
 import { ZhihuishuBackgroundPower } from "./zhihuishu-background";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { assistantUpdates, workerExecutable } from "./assistant-service";
+import type { Component } from "./assistant-updates";
 
 // The shared runner is bundled by esbuild, including its validation dependency.
 const { ZhihuishuRunner, ZhsRunnerError, answerPolicySchema } = require("../zhihuishu-runner.cjs");
 const backgroundPower = new ZhihuishuBackgroundPower();
 let runner: InstanceType<typeof ZhihuishuRunner> | undefined;
-export const zhihuishuPage = () => path.join(app.getAppPath(), "dist", "zhihuishu", "index.html");
+let selected: Component | undefined;
+export const zhihuishuPage = () => path.join((selected ?? assistantUpdates().selected("zhihuishu")).root, "ui", "index.html");
+export async function prepareZhihuishu(existingPage: boolean) {
+  await assistantUpdates().init();
+  const snapshot = runner?.snapshot(1);
+  // Keep both UI and Python code pinned across a live login/task or an open page.
+  if (existingPage || snapshot?.loggedIn || ["starting", "qr", "running"].includes(snapshot?.state ?? "")) return;
+  const next = assistantUpdates().selected("zhihuishu");
+  if (selected?.sha256 !== next.sha256) {
+    const policy = runner?.getAnswerPolicy();
+    shutdownZhihuishu(); runner = undefined; selected = next;
+    if (policy) getRunner().setAnswerPolicy(policy);
+  }
+}
 export const isZhihuishuFrame = (url: string) => url.split("#")[0] === pathToFileURL(zhihuishuPage()).href;
 
 export function isAuthorizedZhihuishuRequest(event: Electron.IpcMainInvokeEvent, kind: string | undefined) {
@@ -16,9 +31,9 @@ export function isAuthorizedZhihuishuRequest(event: Electron.IpcMainInvokeEvent,
 
 function getRunner() {
   if (!runner) {
-    const executable = process.platform === "win32" ? "cpu-zhs-worker.exe" : "cpu-zhs-worker";
-    const worker = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), "zhihuishu-runtime", "cpu-zhs-worker", executable);
-    runner = new ZhihuishuRunner({ enabled: true, python: worker, worker, packaged: true, maxSessions: 1, onRunningChange: backgroundPower.setRunning });
+    const worker = workerExecutable();
+    selected ??= assistantUpdates().selected("zhihuishu");
+    runner = new ZhihuishuRunner({ enabled: true, python: worker, worker, packaged: true, workerArgs: selected.source === "cache" ? ["--component-dir", path.join(selected.root, "worker")] : [], maxSessions: 1, onRunningChange: backgroundPower.setRunning });
   }
   return runner!;
 }

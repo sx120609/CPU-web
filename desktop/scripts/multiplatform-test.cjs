@@ -82,7 +82,7 @@ assert.match(config, /mycourse\.cn/, "安全微伴宿主应被放行");
 assert.match(main, /verifyWisdomTreeGuideContent/, "智慧树课程列表首屏空白时应只自动恢复一次");
 assert.match(main, /recoverLearningAssistantAfterSpaNavigation/, "智慧树 SPA 进入任务页时应重建助手实例");
 assert.match(main, /matching\.some\(\(script\) => script\.id === "builtin-chaoxing-helper"\)/, "超星必须避免双引擎并跑");
-assert.match(main, /checkCloudUserScript\("weban"\)/, "安全微伴脚本应在启动后自动检查云端更新");
+assert.match(main, /platformId === "weban" \? "weban"/, "安全微伴打开时应选择独立更新通道");
 assert.match(main, /https:\/\/desktop\.localhost\/ocs-ai/);
 assert.match(main, /bridge\.requestAi/);
 assert.match(main, /fullImage\.getSize\(\)/, "宿主必须依据截图实际像素尺寸换算 CSS 指针坐标");

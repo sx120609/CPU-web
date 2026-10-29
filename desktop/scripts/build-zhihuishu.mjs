@@ -11,3 +11,5 @@ await build({ configFile: false, root: path.join(desktop, "src/zhihuishu"), base
   { find: "@", replacement: path.join(repo, "web/src") },
   { find: "vue", replacement: path.join(desktop, "node_modules/vue/dist/vue.runtime.esm-bundler.js") },
 ] }, build: { outDir: path.join(desktop, "dist/zhihuishu"), emptyOutDir: true, target: "chrome132" } });
+
+await import("./build-assistants.mjs");

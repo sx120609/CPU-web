@@ -877,7 +877,19 @@ const bindCampus = () => {
   });
 };
 
+const renderAssistantState = (state) => {
+  const labels = {chaoxing:"学习通",multiplatform:"多平台",weban:"安全微伴",zhihuishu:"智慧树"};
+  el("assistant-update-status").textContent = `${labels[state.kind] || "助手"} · ${state.message}`;
+  if (el("assistant-open-status")) el("assistant-open-status").textContent = el("assistant-update-status").textContent;
+  if (state.kind === "zhihuishu") el("zhihuishu-component-version").textContent = `v${state.version} · ${state.message}`;
+};
 const bindScript = () => {
+  shell.assistants?.onState(renderAssistantState);
+  el("zhihuishu-check-update").addEventListener("click", async () => {
+    const button = el("zhihuishu-check-update"); button.disabled = true;
+    try { renderAssistantState({kind:"zhihuishu", ...await shell.assistants.check("zhihuishu")}); }
+    finally { button.disabled = false; }
+  });
   el("script-open").addEventListener("click", () => {
     showPane("overview");
     el("platform-grid").scrollIntoView({ block: "center" });

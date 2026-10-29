@@ -375,6 +375,9 @@ export class TabManager {
     this.wire(tab);
     this.activate(tab.id);
     await tab.view!.webContents.loadFile(file);
+    // loadFile can succeed even when a component's JS fails to mount the UI.
+    const healthy = await tab.view!.webContents.executeJavaScript("Boolean(document.querySelector('#app h1') && window.cpuZhihuishu?.request)");
+    if (!healthy) throw new Error("智慧树组件页面未能加载");
   }
 
   /* --------------------------------------------------------------- 操作 */

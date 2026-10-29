@@ -166,6 +166,7 @@
             </div>
 
             <h2 class="caption">打开网课平台</h2>
+            <p class="footnote" id="assistant-open-status" aria-live="polite"></p>
             <div class="platform-grid" id="platform-grid"></div>
             <p class="footnote">平台会在客户端新标签中打开，助手按平台自动接管。账号密码保存在“网课助手”里设置。</p>
           </section>
@@ -220,6 +221,8 @@
             <p class="footnote">账号密码按平台分别使用系统安全存储加密；仅在对应平台出现账号密码登录框时自动填充。二维码、短信验证码不会保存。</p>
 
             <h2 class="caption">助手版本</h2>
+            <p class="footnote">每次打开时轻量检查更新，只下载有变化的助手组件。网络异常时使用本地版本，正在运行的任务不切换版本。</p>
+            <p class="notice" id="assistant-update-status" aria-live="polite">助手组件就绪</p>
             <div class="group">
               <div class="row">
                 <span class="row-text"><strong>学习通专用助手</strong><small id="script-version">正在读取脚本版本…</small></span>
@@ -235,6 +238,7 @@
               </div>
             </div>
 
+            <div class="group"><div class="row"><span class="row-text"><strong>智慧树助手组件</strong><small id="zhihuishu-component-version">界面与业务脚本独立更新</small></span><button class="btn" id="zhihuishu-check-update" type="button">检查更新</button></div></div>
             <details class="logs">
               <summary>运行日志</summary>
               <pre id="script-logs"></pre>

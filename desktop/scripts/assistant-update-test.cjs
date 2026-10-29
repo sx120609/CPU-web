@@ -1,0 +1,64 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { generateKeyPairSync, sign, createHash } = require('node:crypto');
+const { gzipSync } = require('node:zlib');
+const { AssistantUpdates, AliyunAssistantProvider, ASSISTANT_KINDS, verifyCatalog, unpackComponent } = require('../dist/electron/assistant-updates.js');
+(async () => {
+  const cache = await fs.mkdtemp(path.join(os.tmpdir(), 'cpu-components-'));
+  const keys = generateKeyPairSync('ed25519');
+  const publicKey = keys.publicKey.export({format:'pem',type:'spki'});
+  const builtins = Object.fromEntries(ASSISTANT_KINDS.map(k=>[k,{version:'1.0.0',root:'/builtin/'+k,sha256:'builtin',source:'builtin'}]));
+  const pack = (kind, version, files) => {
+    const bytes=gzipSync(Buffer.from(JSON.stringify({schema:1,kind,version,files:Object.fromEntries(Object.entries(files).map(([k,v])=>[k,Buffer.from(v).toString('base64')]))})));
+    return {bytes,release:{version,sha256:createHash('sha256').update(bytes).digest('hex'),size:bytes.length,fileId:'package1',protocol:1,runtime:1,minClient:'0.3.30'}};
+  };
+  const first=pack('zhihuishu','1.1.0',{'ui/index.html':'<p>新版</p>','worker/worker.py':'pass','worker/vendor/fucker.py':'pass'});
+  const releases=Object.fromEntries(ASSISTANT_KINDS.map(k=>[k,first.release]));
+  let seq=1;
+  const envelope = () => {const payload=JSON.stringify({schema:1,sequence:seq,releases});return {payload,signature:sign(null,Buffer.from(payload),keys.privateKey).toString('base64')};};
+  let current=envelope(), bytes=first.bytes, fetches=0, offline=false, reject=false;
+  const provider={catalog:async()=>{if(offline)throw Error('offline');return current;},package:async()=>{fetches++;await new Promise(r=>setTimeout(r,20));return bytes;}};
+  const options={cache,builtins,clientVersion:'0.3.30',provider,publicKey,validate:async()=>{if(reject)throw Error('probe failed');}};
+  try {
+    const manager=new AssistantUpdates(options);
+    const outcomes=await Promise.all([manager.check('zhihuishu'),manager.check('zhihuishu')]);
+    assert.equal(outcomes[0].stage,'updated');assert.equal(fetches,1);
+    const pinned=manager.selected('zhihuishu');assert.equal(pinned.version,'1.1.0');
+    assert.equal(manager.selected('weban').source,'builtin','Unused assistants are never downloaded');
+    assert.equal((await manager.check('zhihuishu')).stage,'updated');assert.equal(fetches,1,'Rapid repeated opens must coalesce');
+    assert.equal((await manager.check('zhihuishu',true)).stage,'current');assert.equal(fetches,1,'Unchanged version only checks metadata');
+    const restored=new AssistantUpdates(options);await restored.init();assert.equal(restored.selected('zhihuishu').version,'1.1.0');
+    const second=pack('zhihuishu','1.2.0',{'ui/index.html':'<p>第二版</p>','worker/worker.py':'pass','worker/vendor/fucker.py':'pass'});
+    seq=2;releases.zhihuishu=second.release;current=envelope();bytes=second.bytes;reject=true;
+    assert.equal((await manager.check('zhihuishu',true)).stage,'error');assert.equal(manager.selected('zhihuishu').version,'1.1.0','A failed startup probe must not activate');
+    reject=false;bytes=Buffer.from('truncated');assert.equal((await manager.check('zhihuishu',true)).stage,'error');
+    bytes=second.bytes;assert.equal((await manager.check('zhihuishu',true)).stage,'updated');
+    assert.equal((await fs.readFile(path.join(pinned.root,'ui/index.html'),'utf8')),'<p>新版</p>','Running tasks keep immutable old files');
+    await manager.rollback('zhihuishu');assert.equal(manager.selected('zhihuishu').version,'1.1.0');
+    const afterRollback=fetches;assert.equal((await manager.check('zhihuishu',true)).stage,'error');assert.equal(fetches,afterRollback,'Do not reinstall a package whose page failed');
+    offline=true;assert.equal((await manager.check('zhihuishu',true)).stage,'error');assert.equal(manager.selected('zhihuishu').version,'1.1.0');offline=false;
+    const third=pack('zhihuishu','1.3.0',{'ui/index.html':'ok','worker/worker.py':'pass','worker/vendor/fucker.py':'pass'});
+    releases.zhihuishu={...third.release,minClient:'99.0.0'};seq=3;current=envelope();const before=fetches;
+    assert.equal((await manager.check('zhihuishu',true)).stage,'current');assert.equal(fetches,before,'Incompatible updates must not download');
+    seq=1;current=envelope();assert.equal((await manager.check('zhihuishu',true)).stage,'error','Reject catalog replay');
+    assert.throws(()=>verifyCatalog({...current,payload:current.payload+' '},publicKey),/签名/);
+    const bad=pack('zhihuishu','1.2.0',{'ui/index.html':'x','worker/worker.py':'pass','worker/vendor/fucker.py':'pass','../escape':'bad'});
+    assert.throws(()=>unpackComponent(bad.bytes,bad.release,'zhihuishu'),/不允许/);
+    await fs.writeFile(path.join(pinned.root,'ui/index.html'),'tampered');
+    const tampered=new AssistantUpdates(options);await tampered.init();assert.equal(tampered.selected('zhihuishu').source,'builtin');
+    const calls=[];
+    const cloud=new AliyunAssistantProvider(async (url,opts={})=>{
+      const body=opts.body?JSON.parse(opts.body):null;calls.push({url:String(url),body});
+      if(String(url).endsWith('/get_share_token'))return Response.json({share_token:'public-only'});
+      if(String(url).endsWith('/file/list'))return Response.json({items:[{name:'assistants-123.json',file_id:'catalog1'}]});
+      if(String(url).endsWith('/get_download_url'))return Response.json({url:'https://bj37249.api.aliyunfile.com/public-catalog'});
+      return Response.json(current);
+    });
+    await cloud.catalog();const count=calls.length;await cloud.catalog();
+    assert.equal(calls.length,count+1,'A repeated check only lists latest metadata, no repeated manifest/package fetch');
+    assert.ok(calls.every(c=>!JSON.stringify(c).includes('Authorization')));
+    console.log('Assistant components: signature, hash, size, compatibility, replay, traversal, pinning, atomic activation, rollback, offline fallback, cache tampering, request coalescing and public cloud checks passed');
+  } finally {await fs.rm(cache,{recursive:true,force:true});}
+})().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,0 +1,81 @@
+name: Assistant components
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/assistants/**"
+      - "desktop/assets/userscripts/**"
+      - "desktop/src/zhihuishu/**"
+      - "desktop/scripts/build-assistants.mjs"
+      - "desktop/scripts/build-zhihuishu.mjs"
+      - "desktop/scripts/assistant-*.cjs"
+      - "desktop/electron/assistant-*.ts"
+      - "server/python/zhihuishu/**"
+      - "server/src/services/zhihuishuRunner.ts"
+      - "web/src/views/services/ZhihuishuAssistant.vue"
+      - "web/src/api/zhihuishu.ts"
+      - "web/src/utils/zhihuishuHistory.ts"
+      - ".github/workflows/assistant-components.yml"
+permissions:
+  contents: write
+  actions: read
+jobs:
+  components:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and test component packages
+        run: |
+          npm ci --prefix desktop
+          npm test --prefix desktop
+          python -m pip install -r server/python/zhihuishu/requirements-lock.txt pyinstaller==6.16.0
+          python -m unittest discover -s server/python/zhihuishu -p test_worker.py
+          python desktop/scripts/build-zhihuishu-worker.py
+          node desktop/scripts/assistant-worker-test.cjs
+      - name: Verify component UI in Electron
+        run: xvfb-run -a desktop/node_modules/.bin/electron --no-sandbox desktop/zhihuishu-verification-smoke.cjs
+      - name: Prepare immutable component bundle
+        run: |
+          mkdir component-release
+          cp desktop/dist/assistants/*.json.gz desktop/dist/assistants/builtin.json component-release/
+          printf '{"commit":"%s","run":"%s"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > component-release/provenance.json
+          cd component-release
+          sha256sum *.json *.json.gz > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assistant-components-${{ github.sha }}
+          path: component-release/*
+          if-no-files-found: error
+      - name: Require exact commit Linux artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&per_page=100")"
+            run_id="$(jq -r '[.workflow_runs[] | select(.name == "Linux deployment artifact" and .head_sha == env.GITHUB_SHA)] | sort_by(.id) | last | .id // empty' <<< "$runs")"
+            if [[ -n "$run_id" ]]; then
+              conclusion="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .conclusion // "pending"' <<< "$runs")"
+              if [[ "$conclusion" == success ]]; then
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" --jq '.artifacts[] | select(.expired == false) | .name' | grep -F "$GITHUB_SHA"
+                exit 0
+              fi
+              if [[ "$conclusion" != pending ]]; then exit 1; fi
+            fi
+            sleep 20
+          done
+          exit 1
+      - name: Publish component assets without a client release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "assistant-$GITHUB_SHA" component-release/* --target "$GITHUB_SHA" --prerelease --latest=false --title "网课助手组件 ${GITHUB_SHA:0:7}" --notes "仅供独立组件签名发布，不需要升级客户端安装包。"

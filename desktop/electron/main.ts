@@ -45,11 +45,9 @@ import {
 } from "./config";
 import {
   CHAOXING_USER_SCRIPT_CHANNEL,
-  checkUserScriptUpdate,
   MULTIPLATFORM_USER_SCRIPT_CHANNEL,
   readCachedUserScript,
   selectPreferredUserScriptSource,
-  USER_SCRIPT_CHECK_INTERVAL_MS,
   WEBAN_USER_SCRIPT_CHANNEL,
   UserScriptUpdateChannel,
   UserScriptUpdateResult,
@@ -58,7 +56,10 @@ import { flushPersistentSession } from "./session-persistence";
 import { sanitizeAiBody } from "./ai-request";
 import { LearningPageActions } from "./page-actions";
 
-import { isAuthorizedZhihuishuRequest, zhihuishuPage, zhihuishuRequest, shutdownZhihuishu } from "./zhihuishu";
+import { isAuthorizedZhihuishuRequest, zhihuishuPage, zhihuishuRequest, shutdownZhihuishu, prepareZhihuishu } from "./zhihuishu";
+
+import { assistantUpdates, onAssistantState } from "./assistant-service";
+import { AssistantKind } from "./assistant-updates";
 
 // Keep the assistant renderer responsive when the desktop window is minimized.
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
@@ -393,12 +394,18 @@ const loadScriptChannel = async (kind: ScriptUpdateKind): Promise<UserScript | u
   const filePath = resolveAsset("assets", "userscripts", definition.assetName);
   try {
     const builtInSource = await readFile(filePath, "utf8");
+    await assistantUpdates().init();
+    const component = assistantUpdates().selected(kind);
+    const componentSource = component.source === "cache" ? await readFile(path.join(component.root, definition.assetName), "utf8") : undefined;
+    if (componentSource) validateCloudScriptCapabilities(componentSource, builtInSource);
     const cached = await readCachedUserScript(
       userScriptCacheDirectory(),
       (source) => validateCloudScriptCapabilities(source, builtInSource),
       definition.channel,
     );
-    const selected = selectPreferredUserScriptSource(builtInSource, cached?.source);
+    const componentChoice = selectPreferredUserScriptSource(builtInSource, componentSource);
+    const selected = selectPreferredUserScriptSource(componentChoice.source, cached?.source);
+    if (componentChoice.origin === "cache" && selected.origin === "builtin") selected.origin = "cache";
     const source = selected.source;
     const script = { ...parseUserScript(source), id: definition.scriptId, values: {} };
     definition.setState({
@@ -448,24 +455,25 @@ const applyUserScriptUpdate = (kind: ScriptUpdateKind, result: UserScriptUpdateR
 const cloudScriptUpdateChecks: Partial<Record<ScriptUpdateKind, Promise<ScriptUpdateState>>> = {};
 const normalizeScriptUpdateKind = (kind: unknown): ScriptUpdateKind =>
   kind === "multiplatform" ? "multiplatform" : kind === "weban" ? "weban" : "chaoxing";
-const checkCloudUserScript = (kind: ScriptUpdateKind = "chaoxing"): Promise<ScriptUpdateState> => {
+const checkCloudUserScript = (kind: ScriptUpdateKind = "chaoxing", force = false): Promise<ScriptUpdateState> => {
   const pending = cloudScriptUpdateChecks[kind];
   if (pending) return pending;
   const definition = scriptChannel(kind);
   const check = (async () => {
     definition.setState({ stage: "checking", message: `正在检查${definition.label}脚本更新` });
     try {
-      const builtInSource = await readFile(resolveAsset("assets", "userscripts", definition.assetName), "utf8");
-      const current = (await getScripts()).find((script) => script.id === definition.scriptId);
-      if (!current) throw new Error(`本地${definition.label}脚本不可用`);
-      const result = await checkUserScriptUpdate({
-        origin: oauthConfig.origin,
-        cacheDirectory: userScriptCacheDirectory(),
-        currentSource: current.source,
-        validateSource: (source) => validateCloudScriptCapabilities(source, builtInSource),
-        channel: definition.channel,
-      });
-      applyUserScriptUpdate(kind, result);
+      const state = await assistantUpdates().check(kind, force);
+      const component = assistantUpdates().selected(kind);
+      if (state.stage === "error") throw new Error(state.message);
+      if (component.source === "cache") {
+        const source = await readFile(path.join(component.root, definition.assetName), "utf8");
+        const builtInSource = await readFile(resolveAsset("assets", "userscripts", definition.assetName), "utf8");
+        validateCloudScriptCapabilities(source, builtInSource);
+        const identity = parseUserScript(source);
+        if (identity.version !== component.version) throw new Error("组件脚本版本不一致");
+        applyUserScriptUpdate(kind, { status: state.stage === "updated" ? "updated" : "current", source,
+          manifest: { name: identity.name, version: identity.version, sha256: createHash("sha256").update(source).digest("hex"), size: Buffer.byteLength(source), sourceUrl: definition.channel.sourcePath } });
+      } else definition.setState({ stage: state.stage, checkedAt: Date.now(), message: state.message });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       definition.setState({
@@ -1207,8 +1215,23 @@ const openLearningPage = async (requestedPlatform: unknown = "chaoxing"): Promis
     if (!auth.loggedIn) throw new Error("限时免登录已结束，请先完成登录");
   }
   await openMainWindow();
-  if (platformId === "zhihuishu") await tabs?.openZhihuishuTab(zhihuishuPage());
-  else await tabs?.openLearningTab(url, { platformId });
+  const kind: AssistantKind = platformId === "zhihuishu" ? "zhihuishu" : platformId === "chaoxing" ? "chaoxing" : platformId === "weban" ? "weban" : "multiplatform";
+  const check = kind === "zhihuishu" ? assistantUpdates().check(kind) : checkCloudUserScript(kind);
+  // A slow/offline update service must never prevent using the local assistant.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([check, new Promise<void>(resolve => { timer = setTimeout(resolve, 1500); })]);
+  if (timer) clearTimeout(timer);
+  if (platformId === "zhihuishu") {
+    const existing = (tabs?.contentsOfKind("workbench").length ?? 0) > 0;
+    await prepareZhihuishu(existing);
+    try { await tabs?.openZhihuishuTab(zhihuishuPage()); }
+    catch (error) {
+      if (existing) throw error;
+      for (const tab of tabs?.getState().tabs.filter(t => t.kind === "workbench") ?? []) tabs?.close(tab.id);
+      await assistantUpdates().rollback("zhihuishu"); await prepareZhihuishu(false);
+      await tabs?.openZhihuishuTab(zhihuishuPage());
+    }
+  } else await tabs?.openLearningTab(url, { platformId });
 };
 
 // 授权页开在应用内窗口，与主站共用会话：用户在主站已登录的话这里直接过。
@@ -1911,6 +1934,13 @@ if (installMode || uninstallMode) {
       running: (tabs?.contentsOfKind("learning").length ?? 0) > 0,
       entries: scriptActivity.slice(-(typeof limit === "number" ? Math.min(Math.max(limit, 1), 200) : 80))
     }));
+    onAssistantState((kind, state) => broadcast("assistant:update-state", { kind, ...state }));
+    ipcMain.handle("assistant:get-states", () => assistantUpdates().states);
+    ipcMain.handle("assistant:check", async (event, kind: unknown) => {
+      if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error("不允许的调用来源");
+      if (!["chaoxing", "multiplatform", "weban", "zhihuishu"].includes(String(kind))) throw new Error("不支持此助手");
+      return assistantUpdates().check(kind as AssistantKind, true);
+    });
     ipcMain.handle("script:get-update-state", () => scriptUpdateState);
     ipcMain.handle("script:get-update-states", () => ({
       chaoxing: scriptUpdateState,
@@ -1918,7 +1948,7 @@ if (installMode || uninstallMode) {
       weban: webanScriptUpdateState,
     }));
     ipcMain.handle("script:check-update", (_event, kind: unknown) =>
-      checkCloudUserScript(normalizeScriptUpdateKind(kind)));
+      checkCloudUserScript(normalizeScriptUpdateKind(kind), true));
 
     ipcMain.handle("userscript:get-learning-policy", async (event, nonce: unknown) => {
       await authorize(event, nonce);
@@ -2096,17 +2126,8 @@ if (installMode || uninstallMode) {
       // 长期开着的实例（这个应用常驻托盘）也要能拿到更新，每 6 小时再探一次
       setInterval(() => void checkAndDownload(), 6 * 60 * 60 * 1000).unref?.();
     }
-    // 三套助手脚本都独立热更新，Windows 与 macOS 共用。失败时保留已校验缓存或内置脚本。
-    setTimeout(() => {
-      void checkCloudUserScript("chaoxing");
-      void checkCloudUserScript("multiplatform");
-      void checkCloudUserScript("weban");
-    }, 4000).unref?.();
-    setInterval(() => {
-      void checkCloudUserScript("chaoxing");
-      void checkCloudUserScript("multiplatform");
-      void checkCloudUserScript("weban");
-    }, USER_SCRIPT_CHECK_INTERVAL_MS).unref?.();
+    // Component checks now happen on use. Do not download unused assistants at startup.
+
   }).catch((error) => {
     // 没有这个 catch 的话，启动期任何异常都会变成被吞掉的 unhandled rejection，
     // 表现为"进程静默退出、没有任何输出"，完全无从排查。

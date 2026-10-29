@@ -58,7 +58,7 @@ export class ZhihuishuRunner {
     }
     return this.getAnswerPolicy();
   }
-  constructor(private options: { enabled: boolean; python: string; worker: string; packaged?: boolean; maxSessions?: number; loginTimeoutMs?: number; taskTimeoutMs?: number; onRunningChange?: (running: boolean) => void }) {}
+  constructor(private options: { enabled: boolean; python: string; worker: string; packaged?: boolean; workerArgs?: string[]; maxSessions?: number; loginTimeoutMs?: number; taskTimeoutMs?: number; onRunningChange?: (running: boolean) => void }) {}
 
   snapshot(userId: number): ZhsSnapshot {
     return structuredClone(this.entries.get(userId)?.view ?? this.blank());
@@ -111,7 +111,7 @@ export class ZhihuishuRunner {
     const e: Entry = { view: this.blank(), child: null, dir: mkdtempSync(path.join(tmpdir(), "cpu-zhs-")), lastLogin: Date.now(), busy: true };
     this.entries.set(userId, e);
     e.view.state = "starting"; e.view.message = "正在连接智慧树";
-    const child = spawn(this.options.python, this.options.packaged ? [] : ["-I", "-u", this.options.worker], {
+    const child = spawn(this.options.python, this.options.packaged ? (this.options.workerArgs ?? []) : ["-I", "-u", this.options.worker], {
       cwd: e.dir, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
       // Do not leak the site's database, cloud storage or AI credentials to upstream code.
       env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP, LANG: "en_US.UTF-8", PYTHONIOENCODING: "utf-8", PYTHONDONTWRITEBYTECODE: "1" },

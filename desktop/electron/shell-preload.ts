@@ -60,6 +60,11 @@ contextBridge.exposeInMainWorld("cpuShell", {
     onState: (callback: (state: any) => void) => on("chaoxing:state-changed", callback)
   },
 
+  assistants: {
+    getStates: () => ipcRenderer.invoke("assistant:get-states"),
+    check: (kind: string) => ipcRenderer.invoke("assistant:check", kind),
+    onState: (callback: (state: any) => void) => on("assistant:update-state", callback),
+  },
   script: {
     getConfig: () => ipcRenderer.invoke("script:get-config"),
     setConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke("script:set-config", patch),
