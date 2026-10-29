@@ -198,3 +198,93 @@ test("payment OAuth enforces callback, client secret, PKCE, single-use codes and
   assert.deepEqual((await profile.json()).data, { sub: "7", user: { id: 7, nickname: "Test buyer", avatar: null } });
   for (status of ["banned", "deleting", "deleted"]) assert.equal((await fetch(origin + "/userinfo", { headers: { Authorization: "Bearer test" } })).status, 403);
 });
+
+test("no-ai OAuth client is confidential, exact-callback and profile-only; its secret stays separate", async t => {
+  const { config } = await import("../src/config");
+  const { oauthClientIsValid, oauthScopesAllowed, serviceOAuthClient } = await import("../src/services/oauthClients");
+  const replace = (target: any, key: string, value: any) => { const before = target[key]; target[key] = value; t.after(() => { target[key] = before; }); };
+  const callback = "https://noai.cputime.cn/api/auth/cputime/callback";
+  replace(config, "noAiIntegrationSecret", "");
+  assert.equal(serviceOAuthClient("no-ai"), null);
+  assert.equal(oauthClientIsValid("no-ai", callback), false);
+  replace(config, "noAiIntegrationSecret", "noai-oauth-test-secret-32-characters");
+  assert.equal(oauthClientIsValid("no-ai", callback), true);
+  for (const uri of ["https://noai.cputime.cn/other", callback + "?x=1", "https://evil.test/api/auth/cputime/callback", "http://noai.cputime.cn/api/auth/cputime/callback"]) assert.equal(oauthClientIsValid("no-ai", uri), false);
+  assert.equal(oauthScopesAllowed("no-ai", ["openid", "profile"]), true);
+  assert.equal(oauthScopesAllowed("no-ai", ["ai"]), false);
+  assert.equal(serviceOAuthClient("no-ai")?.secret, "noai-oauth-test-secret-32-characters");
+});
+
+test("no-ai access and chat endpoints require their own secret and reject unusable accounts before calling AI", async t => {
+  const { config } = await import("../src/config");
+  const { prisma } = await import("../src/prisma");
+  const { integrationsRouter } = await import("../src/routes/integrations");
+  const replace = (target: any, key: string, value: any) => { const before = target[key]; target[key] = value; t.after(() => { target[key] = before; }); };
+  const secret = "noai-integration-test-secret-32-chars";
+  replace(config, "noAiIntegrationSecret", secret);
+  replace(config, "payIntegrationSecret", "separate-payment-secret-32-characters");
+  let status = "active";
+  replace(prisma.user, "findUnique", async () => ({ role: "admin", status }));
+  const app = express(); app.use(express.json(), integrationsRouter);
+  app.use((err: any, _req: any, res: any, _next: any) => res.status(err.status || 400).json({ error: err.message }));
+  const server = createServer(app);
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const origin = `http://127.0.0.1:${(server.address() as any).port}`;
+  const access = (key: string) => fetch(origin + "/no-ai/users/7/access", { headers: { "x-noai-integration-secret": key } });
+  assert.equal((await access(config.payIntegrationSecret)).status, 401);
+  assert.deepEqual((await (await access(secret)).json()).data, { userId: 7, globalAdmin: true });
+  const chat = (key: string, body: unknown) => fetch(origin + "/no-ai/chat", { method: "POST", headers: { "content-type": "application/json", "x-noai-integration-secret": key }, body: JSON.stringify(body) });
+  const valid = { messages: [{ role: "user", content: "hi" }], userId: 7 };
+  assert.equal((await chat("wrong", valid)).status, 401);
+  assert.equal((await chat(config.payIntegrationSecret, valid)).status, 401);
+  assert.equal((await chat(secret, { messages: [] })).status, 400);
+  assert.equal((await chat(secret, { messages: [{ role: "tool", content: "x" }] })).status, 400);
+  assert.equal((await chat(secret, { ...valid, extra: 1 })).status, 400);
+  for (status of ["banned", "deleting", "deleted"]) assert.equal((await chat(secret, valid)).status, 403);
+});
+
+test("no-ai quota endpoints consume all-or-nothing and refund what they reserved", async t => {
+  const { config } = await import("../src/config");
+  const { prisma } = await import("../src/prisma");
+  const { integrationsRouter } = await import("../src/routes/integrations");
+  const replace = (target: any, key: string, value: any) => { const before = target[key]; target[key] = value; t.after(() => { target[key] = before; }); };
+  const secret = "noai-integration-test-secret-32-chars";
+  replace(config, "noAiIntegrationSecret", secret);
+  // 日额度 2 次、没有点数的用户
+  let used = 0;
+  replace(prisma.user, "findUnique", async () => ({ id: 7, status: "active", reputation: 0, reputationLevel: 0, assistantPoints: 0, role: "user" }));
+  replace(prisma.campusAssistantDailyUsage, "upsert", async () => ({}));
+  replace(prisma.campusAssistantDailyUsage, "findUnique", async () => ({ used }));
+  replace(prisma.campusAssistantDailyUsage, "updateMany", async ({ where, data }: any) => {
+    if (data.used.increment) { if (used >= where.used.lt) return { count: 0 }; used++; return { count: 1 }; }
+    if (used > 0) used--; return { count: 1 };
+  });
+  // 没有点数：扣点数的事务里 updateMany 扣不动
+  replace(prisma, "$transaction", async (fn: any) => fn({ user: { updateMany: async () => ({ count: 0 }) } }));
+  const app = express(); app.use(express.json(), integrationsRouter);
+  app.use((err: any, _req: any, res: any, _next: any) => res.status(err.status || 400).json({ error: err.message }));
+  const server = createServer(app);
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const origin = `http://127.0.0.1:${(server.address() as any).port}`;
+  const post = (path: string, body: unknown, key = secret) => fetch(origin + path, { method: "POST", headers: { "content-type": "application/json", "x-noai-integration-secret": key }, body: JSON.stringify(body) });
+  assert.equal((await post("/no-ai/quota/consume", { userId: 7 }, "wrong")).status, 401);
+  const { getCampusAssistantQuotaStatus } = await import("../src/services/campusAssistantQuota");
+  const daily = (await getCampusAssistantQuotaStatus(7)).dailyQuota;
+  assert.ok(daily >= 1);
+  const first = await post("/no-ai/quota/consume", { userId: 7, units: 1 });
+  assert.equal(first.status, 200);
+  const { reservations } = (await first.json()).data;
+  assert.equal(reservations.length, 1);
+  assert.equal(used, 1);
+  // 一次要的比剩下的多：全部退回，不留半扣
+  used = daily - 1;
+  const tooMany = await post("/no-ai/quota/consume", { userId: 7, units: 2 });
+  assert.equal(tooMany.status, 403);
+  assert.equal(used, daily - 1);
+  used = 1;
+  assert.equal((await post("/no-ai/quota/refund", { userId: 7, reservations })).status, 200);
+  assert.equal(used, 0);
+  assert.equal((await post("/no-ai/quota/refund", { userId: 7, reservations: [{ source: "x" }] })).status, 400);
+});

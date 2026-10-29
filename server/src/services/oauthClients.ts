@@ -6,13 +6,16 @@ export function isShopOAuthClient(clientId: string) {
 }
 
 export function isServiceOAuthClientId(clientId: string) {
-  return clientId === config.shopOAuthClientId || clientId === config.payOAuthClientId;
+  return clientId === config.shopOAuthClientId || clientId === config.payOAuthClientId || clientId === config.noAiOAuthClientId;
 }
 
 export function serviceOAuthClient(clientId: string) {
   if (isShopOAuthClient(clientId)) return { secret: config.shopIntegrationSecret, callback: `${config.shopOrigin}/api/v1/auth/cputime/callback` };
   if (clientId === config.payOAuthClientId && config.payIntegrationSecret.length >= 32) {
     return { secret: config.payIntegrationSecret, callback: `${config.payOrigin}/api/auth/cputime/callback` };
+  }
+  if (clientId === config.noAiOAuthClientId && config.noAiIntegrationSecret.length >= 32) {
+    return { secret: config.noAiIntegrationSecret, callback: `${config.noAiOrigin}/api/auth/cputime/callback` };
   }
   return null;
 }
