@@ -248,16 +248,16 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
       return res.json(learningAnswerAppealResponse(outcome));
     }
     const body = learningAssistantAiBodySchema.parse(req.body);
-    // 同一道客观题已有答案：直接返回，不调用模型，也不扣额度
+    const requestedPointCost = learningAssistantPointCost(body.reasoningEffort);
+    const consumedQuota = await consumeCampusAssistantQuota(token.userId, new Date(), requestedPointCost);
+    quotaReservation = consumedQuota.reservation;
+    // 同一道客观题已有答案：照常扣额度，只是不再调用模型
     const cached = await readLearningAnswerCache(body);
     if (cached) {
       responseCompleted = true;
       res.setHeader("Cache-Control", "no-store");
       return res.json(learningAssistantAiResponse(cached.outputText, cached.meta));
     }
-    const requestedPointCost = learningAssistantPointCost(body.reasoningEffort);
-    const consumedQuota = await consumeCampusAssistantQuota(token.userId, new Date(), requestedPointCost);
-    quotaReservation = consumedQuota.reservation;
     const controller = new AbortController();
     timeout = setTimeout(() => controller.abort(), 120_000);
     res.on("close", () => {

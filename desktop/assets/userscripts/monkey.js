@@ -464,7 +464,7 @@
                 const typeName = typeNames[questionTypeId] || "单选题";
                 const structuredReply = data.learning_answer;
                 const hasStructuredReply = structuredReply && typeof structuredReply === "object";
-                // 同一道客观题已有人问过时，服务端直接返回那份答案，不再调用模型、不扣额度
+                // 同一道客观题已有人问过时，服务端直接返回那份答案，不再调用模型
                 const aiMeta = {
                   form: hasStructuredReply && structuredReply.cached ? "AI · 同题已有答案" : "AI",
                   appealId: hasStructuredReply && structuredReply.appealable ? rememberLearningAppealRequest(requestData, questionTypeId) : ""
