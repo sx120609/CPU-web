@@ -33,6 +33,7 @@ import {
   learningAssistantAiResponse,
   requestLearningAssistantAi,
 } from "../services/learningAssistantAi";
+import { isLearningAnswerAppealBody, readLearningAnswerCache, writeLearningAnswerCache } from "../services/learningAnswerCache";
 
 export const siteRouter = Router();
 
@@ -406,6 +407,10 @@ siteRouter.post(
       if (req.header("x-cpu-desktop-client") !== "cpu-web-desktop") {
         throw Errors.forbidden("该入口仅供药大拾间桌面客户端使用");
       }
+      // 申诉返还的点数要记到账号上。回 401 后客户端会带着已登录的 OAuth 会话改走 /api/oauth/v1/responses
+      if (isLearningAnswerAppealBody(req.body)) {
+        throw Errors.unauthorized("答案申诉需要先在药大拾间客户端登录账号，返还的点数会记到账号上");
+      }
       if (getSiteConfig().learningAssistantAccessMode !== "guest-unlimited") {
         throw Errors.unauthorized("限时免登录已结束，请登录后继续使用");
       }
@@ -413,6 +418,11 @@ siteRouter.post(
       const tier = getSiteConfig().learningAssistantTiers[body.reasoningEffort];
       if (!tier.freeInUnlimited) {
         throw Errors.forbidden("该答题档位不参与限时免费，请选择当前开放的档位");
+      }
+      const cached = await readLearningAnswerCache(body);
+      if (cached) {
+        res.setHeader("Cache-Control", "no-store");
+        return res.json(learningAssistantAiResponse(cached.outputText, cached.meta));
       }
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(new Error("AI 请求超过 120 秒，已取消")), 120_000);
@@ -436,7 +446,8 @@ siteRouter.post(
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("X-Accel-Buffering", "no");
       if (!result.ok) return res.send(result.errorBody);
-      return res.json(learningAssistantAiResponse(result.outputText || ""));
+      const cacheMeta = await writeLearningAnswerCache(body, result.outputText || "");
+      return res.json(learningAssistantAiResponse(result.outputText || "", cacheMeta));
     } catch (error) {
       if (timeout) clearTimeout(timeout);
       next(error);

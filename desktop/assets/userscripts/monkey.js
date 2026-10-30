@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.16
+// @version      2.2.17
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -60,6 +60,51 @@
   // 状态上报是可选能力，宿主没提供就静默跳过，不影响刷课
   var _GM_cpuReport = (() => "undefined" != typeof GM_cpuReport ? GM_cpuReport : void 0)();
   const reportToHost = (kind, text) => { try { _GM_cpuReport && _GM_cpuReport(kind, text); } catch { } };
+  // 申诉要原样带回当初的答题请求（含题目图片），只存在内存里，面板只拿编号。
+  // 答题和画面板的可能是不同框架里的脚本实例，所以记录挂在顶层窗口上共用。
+  const learningAppealRequests = (() => {
+    const key = "__cpuLearningAppealRequestsV1__";
+    let shared = window;
+    try {
+      shared = window.top && window.top.document ? window.top : window;
+    } catch {
+      shared = window;
+    }
+    if (!(shared[key] instanceof Map)) shared[key] = new Map();
+    return shared[key];
+  })();
+  const rememberLearningAppealRequest = (request, questionType) => {
+    const id = `appeal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    learningAppealRequests.set(id, { request, questionType, state: { status: "idle", open: false, message: "", explanation: "" } });
+    while (learningAppealRequests.size > 200) learningAppealRequests.delete(learningAppealRequests.keys().next().value);
+    return id;
+  };
+  // 申诉沿用答题通道：原题、原答案，再追问一句“【答案申诉】你的答案”。服务端以缓存里的原答案为准，
+  // 由 AI 重做三轮判决；需要登录药大拾间账号，返还的点数记到账号上。
+  const submitLearningAppeal = async (appealId, originalAnswer, claim) => {
+    const record = learningAppealRequests.get(appealId);
+    if (!record) return { ok: false, message: "答题记录已失效，请刷新页面重新作答后再申诉" };
+    const body = {
+      model: record.request.model,
+      reasoningEffort: record.request.reasoningEffort,
+      input: [
+        record.request.input[0],
+        { role: "assistant", content: [{ type: "output_text", text: formatLearningDisplayText(originalAnswer) || "（无）" }] },
+        { role: "user", content: [{ type: "input_text", text: `【答案申诉】${claim}` }] }
+      ]
+    };
+    try {
+      const response = await _GM_cpuAIRequest(body);
+      if (response.status >= 200 && response.status < 300) {
+        const appeal = JSON.parse(response.text || "{}").learning_appeal;
+        if (appeal && appeal.message) return { ok: true, message: String(appeal.message), explanation: String(appeal.explanation || "") };
+        return { ok: false, message: "服务器没有返回复核结果，请稍后再试" };
+      }
+      return { ok: false, message: cpuAiResponseErrorMessage({ responseText: response.text }) || `申诉失败（HTTP ${response.status}）` };
+    } catch (error) {
+      return { ok: false, message: String(error && error.message || error || "申诉请求失败") };
+    }
+  };
   let cpuAiRequestBlockedMessage = "";
   let cpuAiRequestPausedUntil = 0;
   let cpuAiLastNotice = { message: "", time: 0 };
@@ -419,6 +464,11 @@
                 const typeName = typeNames[questionTypeId] || "单选题";
                 const structuredReply = data.learning_answer;
                 const hasStructuredReply = structuredReply && typeof structuredReply === "object";
+                // 同一道客观题已有人问过时，服务端直接返回那份答案，不再调用模型、不扣额度
+                const aiMeta = {
+                  form: hasStructuredReply && structuredReply.cached ? "AI · 同题已有答案" : "AI",
+                  appealId: hasStructuredReply && structuredReply.appealable ? rememberLearningAppealRequest(requestData, questionTypeId) : ""
+                };
                 const parsedReply = hasStructuredReply
                   ? {
                       answer: String(structuredReply.answer || "").trim(),
@@ -438,7 +488,7 @@
                   if (isTrue || isFalse) {
                     const answerText = isTrue ? "正确" : "错误";
                     console.log(`AI解析成功(${typeName})，答案:`, answerText);
-                    resolve({ form: "AI", answer: [answerText], displayAnswer: answerText, explanation });
+                    resolve({ ...aiMeta, answer: [answerText], displayAnswer: answerText, explanation });
                   } else {
                     console.log("AI返回内容未匹配到判断结果:", content);
                     resolve({ form: "AI", answer: "" });
@@ -457,7 +507,7 @@
                     }
                     if (answerOptions.length > 0) {
                       console.log(`AI解析成功(${typeName})，答案:`, answerLetters);
-                      resolve({ form: "AI", answer: answerOptions, displayAnswer: `${answerLetters.split("").join("、")} · ${answerOptions.join("；")}`, optionLetters: answerLetters, explanation });
+                      resolve({ ...aiMeta, answer: answerOptions, displayAnswer: `${answerLetters.split("").join("、")} · ${answerOptions.join("；")}`, optionLetters: answerLetters, explanation });
                     } else {
                       console.log("AI返回的选项超出范围");
                       resolve({ form: "AI", answer: "" });
@@ -477,7 +527,7 @@
                   if (answerIndex >= 0 && answerIndex < questionData.options.length) {
                     const answerLetter = String.fromCharCode(65 + answerIndex), optionText = questionData.options[answerIndex];
                     console.log(`AI解析成功(${typeName})，答案:`, answerLetter);
-                    resolve({ form: "AI", answer: [optionText], displayAnswer: `${answerLetter}. ${optionText}`, optionLetters: answerLetter, explanation });
+                    resolve({ ...aiMeta, answer: [optionText], displayAnswer: `${answerLetter}. ${optionText}`, optionLetters: answerLetter, explanation });
                   } else {
                     console.log("AI返回内容未匹配到选项字母或选项内容:", content);
                     resolve({ form: "AI", answer: "" });
@@ -486,10 +536,10 @@
                   const textAnswers = answerContent.split("|").map(s => s.trim()).filter(s => s.length > 0);
                   if (textAnswers.length > 0) {
                     console.log(`AI解析成功(${typeName})，答案:`, textAnswers);
-                    resolve({ form: "AI", answer: textAnswers, displayAnswer: textAnswers.join("\n"), explanation });
+                    resolve({ ...aiMeta, answer: textAnswers, displayAnswer: textAnswers.join("\n"), explanation });
                   } else if (answerContent.length > 0) {
                     console.log(`AI解析成功(${typeName})，答案:`, answerContent);
-                    resolve({ form: "AI", answer: [answerContent], displayAnswer: answerContent, explanation });
+                    resolve({ ...aiMeta, answer: [answerContent], displayAnswer: answerContent, explanation });
                   } else {
                     console.log("AI返回内容为空");
                     resolve({ form: "AI", answer: "" });
@@ -2599,6 +2649,12 @@
       #${panelId} .cpu-la-reasoning p { margin: 6px 0 0; }
       #${panelId} .cpu-la-screenshot { width: 100%; max-height: 190px; margin-top: 10px; object-fit: contain; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-subtle); }
       #${panelId} .cpu-la-error { margin: 10px 0 0; color: var(--cpu-la-danger); white-space: pre-wrap; }
+      #${panelId} .cpu-la-appeal { margin-top: 11px; padding: 10px; border: 1px solid var(--cpu-la-border-soft); border-radius: 10px; background: var(--cpu-la-subtle); }
+      #${panelId} .cpu-la-appeal > strong, #${panelId} .cpu-la-appeal > small { display: block; }
+      #${panelId} .cpu-la-appeal > strong { color: var(--cpu-la-primary-strong); }
+      #${panelId} .cpu-la-appeal > small { margin: 3px 0 8px; color: var(--cpu-la-muted); }
+      #${panelId} .cpu-la-appeal > p { margin: 6px 0 0; white-space: pre-wrap; }
+      #${panelId} .cpu-la-appeal input { width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid var(--cpu-la-border); border-radius: 8px; background: var(--cpu-la-surface); color: var(--cpu-la-text); }
       #${panelId} .cpu-la-log { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--cpu-la-border-soft); }
       #${panelId} .cpu-la-log time { color: var(--cpu-la-muted); font-variant-numeric: tabular-nums; }
       #${panelId} .cpu-la-log[data-type="error"] span { color: var(--cpu-la-danger); }
@@ -2675,7 +2731,17 @@
     launcher.textContent = "打开学习助手";
     launcher.hidden = true;
     doc.body.append(panel, launcher);
-    const state = { store: initialStore, tab: "task", signature: "", manual: null, manualVersion: 0 };
+    const state = { store: initialStore, tab: "task", signature: "", manual: null, manualVersion: 0, appealVersion: 0 };
+    const appealPlaceholders = { "0": "正确选项的字母，如 B", "1": "全部正确选项的字母，如 ACD", "2": "每个空的答案，多个空用 | 分隔", "3": "对 或 错" };
+    // 返还点数与次数上限以服务端为准（learningAnswerCache.ts），这里只是说明
+    const renderLearningAppeal = (appealId, record) => {
+      const appeal = record.state, id = escapeHtml(appealId);
+      if (appeal.status === "loading") return '<section class="cpu-la-appeal"><strong>正在复核申诉</strong><p class="cpu-la-muted">AI 正在独立重做三轮，通常需要几十秒…</p></section>';
+      if (appeal.status === "done") return `<section class="cpu-la-appeal"><strong>申诉结果</strong><p>${escapeHtml(appeal.message)}</p>${appeal.explanation ? `<div class="cpu-la-reasoning"><strong>复核依据</strong><div class="cpu-la-markdown">${renderLearningMarkdown(appeal.explanation)}</div></div>` : ""}</section>`;
+      const error = appeal.status === "error" && appeal.message ? `<p class="cpu-la-error">${escapeHtml(appeal.message)}</p>` : "";
+      if (!appeal.open) return `<div class="cpu-la-actions"><button type="button" data-action="appeal-open" data-appeal-id="${id}">答案有误？申诉</button></div>${error}`;
+      return `<section class="cpu-la-appeal"><strong>答案申诉</strong><small>填写你确认正确的答案，AI 会独立重做三轮来判决：原答案错、你的对，返还 10 点；原答案错、你的也不对，返还 1 点；原答案没错不返还。需要登录药大拾间账号，每 24 小时最多 10 次。</small><input type="text" maxlength="200" data-appeal-input data-appeal-id="${id}" placeholder="${escapeHtml(appealPlaceholders[record.questionType] || "你认为正确的答案")}" value="${escapeHtml(appeal.draft || "")}">${error}<div class="cpu-la-actions"><button type="button" data-action="appeal-submit" data-appeal-id="${id}">提交申诉</button><button type="button" data-action="appeal-cancel" data-appeal-id="${id}">取消</button></div></section>`;
+    };
     const positionKey = "cpu-learning-assistant-position-v1";
     let dragState = null;
     const clampPanelPosition = (left, topValue) => {
@@ -2960,7 +3026,7 @@
         const remote = answerModes.find((item) => item && item.key === key) || {};
         return { label: String(remote.label || label), cost: Number.isFinite(Number(remote.pointMultiplier)) ? Number(remote.pointMultiplier) : fallbackCost, available: remote.available !== false };
       }, lowMode = modeMeta("low", "快速判断", 1), highMode = modeMeta("high", "深入分析", 1.5), maxMode = modeMeta("max", "挑战难题", 2);
-      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax), answerDepth: config.answerDepth, answerModes, manualVersion: state.manualVersion };
+      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax), answerDepth: config.answerDepth, answerModes, manualVersion: state.manualVersion, appealVersion: state.appealVersion };
       const signature = JSON.stringify(snapshot);
       if (signature === state.signature) return;
       state.signature = signature;
@@ -2974,6 +3040,12 @@
         : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"></path></svg>';
       panel.querySelectorAll("[data-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === state.tab)));
       const body = panel.querySelector(".cpu-la-body");
+      const active = doc.activeElement;
+      if (state.tab === "task" && active && active.matches && active.matches("[data-appeal-input]") && body.contains(active)) {
+        // 每 400ms 一次的重绘会替换输入框、丢掉焦点；填完离开输入框后再补画
+        state.signature = "";
+        return;
+      }
       if (state.tab === "task") {
         if (state.manual) {
           const manual = state.manual;
@@ -2989,7 +3061,10 @@
           }
         } else {
           const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = String(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<section class="cpu-la-sources"><div class="cpu-la-sources-title">${sources.length} 个答案来源</div>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b><div class="cpu-la-markdown">${renderLearningMarkdown(item.displayAnswer || item.answer || "暂无答案")}</div>${item.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><div class="cpu-la-markdown">${renderLearningMarkdown(item.explanation)}</div></div>` : ""}</div>`).join("")}</section>` : '<p class="cpu-la-muted">尚未收到答案</p>';
-          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">${escapeHtml(task.name || "当前任务")} · ${index + 1}/${questions.length}</span><h3 class="cpu-la-title">${escapeHtml(task.status || (paused ? "已暂停" : "处理中"))}</h3><div class="cpu-la-progress"><i style="width:${progress}%"></i></div></section><section class="cpu-la-card"><span class="cpu-la-kicker">题目</span><div class="cpu-la-question cpu-la-markdown">${renderLearningMarkdown(current.question || "")}</div>${renderLearningOptions(current.options)}${answer ? `<div class="cpu-la-answer cpu-la-markdown">${renderLearningMarkdown(answer)}</div>` : '<p class="cpu-la-muted">正在获取并填写答案…</p>'}${sourceDetails}<div class="cpu-la-actions"><button type="button" data-action="previous" ${index <= 0 ? "disabled" : ""}>上一题</button><button type="button" data-action="locate">定位原题</button>${answer ? '<button type="button" data-action="copy-answer">复制答案</button>' : ""}<button type="button" data-action="next" ${index >= questions.length - 1 ? "disabled" : ""}>下一题</button></div></section>`;
+          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">${escapeHtml(task.name || "当前任务")} · ${index + 1}/${questions.length}</span><h3 class="cpu-la-title">${escapeHtml(task.status || (paused ? "已暂停" : "处理中"))}</h3><div class="cpu-la-progress"><i style="width:${progress}%"></i></div></section><section class="cpu-la-card"><span class="cpu-la-kicker">题目</span><div class="cpu-la-question cpu-la-markdown">${renderLearningMarkdown(current.question || "")}</div>${renderLearningOptions(current.options)}${answer ? `<div class="cpu-la-answer cpu-la-markdown">${renderLearningMarkdown(answer)}</div>` : '<p class="cpu-la-muted">正在获取并填写答案…</p>'}${sourceDetails}${(() => {
+            const appealSource = sources.find((item) => item && item.appealId && learningAppealRequests.has(item.appealId));
+            return appealSource ? renderLearningAppeal(appealSource.appealId, learningAppealRequests.get(appealSource.appealId)) : "";
+          })()}<div class="cpu-la-actions"><button type="button" data-action="previous" ${index <= 0 ? "disabled" : ""}>上一题</button><button type="button" data-action="locate">定位原题</button>${answer ? '<button type="button" data-action="copy-answer">复制答案</button>' : ""}<button type="button" data-action="next" ${index >= questions.length - 1 ? "disabled" : ""}>下一题</button></div></section>`;
         }
       } else if (state.tab === "logs") {
         body.innerHTML = logs.length ? `<section class="cpu-la-card">${logs.map((item) => `<div class="cpu-la-log" data-type="${escapeHtml(item.type || "info")}"><time>${escapeHtml(item.time || "")}</time><span>${escapeHtml(item.msg || "")}</span></div>`).join("")}<div class="cpu-la-actions"><button type="button" data-action="clear-logs">清空日志</button></div></section>` : '<div class="cpu-la-empty"><div><b>暂无运行日志</b><span>开始处理任务后，关键步骤会记录在这里</span></div></div>';
@@ -3059,9 +3134,58 @@
         case "clear-logs":
           store && (store.task.log = []);
           break;
+        case "appeal-open":
+        case "appeal-cancel": {
+          const record = learningAppealRequests.get(target.dataset.appealId || "");
+          if (record) record.state = { ...record.state, open: target.dataset.action === "appeal-open", status: "idle", message: "" };
+          state.appealVersion += 1;
+          break;
+        }
+        case "appeal-submit":
+          void runLearningAppeal(target.dataset.appealId || "");
+          return;
       }
       state.signature = "";
       render();
+    });
+    const runLearningAppeal = async (appealId) => {
+      const record = learningAppealRequests.get(appealId);
+      if (!record || record.state.status === "loading") return;
+      const input = Array.from(panel.querySelectorAll("[data-appeal-input]")).find((element) => element.dataset.appealId === appealId);
+      const claim = String(input ? input.value : record.state.draft || "").trim();
+      const refresh = () => {
+        state.appealVersion += 1;
+        state.signature = "";
+        render();
+      };
+      if (!claim) {
+        record.state = { ...record.state, status: "error", message: "请先填写你认为正确的答案" };
+        return refresh();
+      }
+      input && input.blur();
+      const questions = state.store && state.store.task.work.questionList || [];
+      const source = questions.flatMap((question) => Array.isArray(question.allAnswer) ? question.allAnswer : []).find((item) => item && item.appealId === appealId);
+      record.state = { ...record.state, draft: claim, status: "loading", message: "" };
+      refresh();
+      reportToHost("log", "已提交答案申诉，AI 正在复核");
+      const result = await submitLearningAppeal(appealId, source ? source.displayAnswer || source.answer || "" : "", claim);
+      record.state = result.ok
+        ? { ...record.state, status: "done", open: false, message: result.message, explanation: result.explanation }
+        : { ...record.state, status: "error", open: true, message: result.message };
+      reportToHost("log", `答案申诉：${result.message}`);
+      refresh();
+    };
+    panel.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!target.matches("[data-appeal-input]")) return;
+      const record = learningAppealRequests.get(target.dataset.appealId || "");
+      if (record) record.state = { ...record.state, draft: target.value };
+    });
+    panel.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (event.key !== "Enter" || !target.matches("[data-appeal-input]")) return;
+      event.preventDefault();
+      void runLearningAppeal(target.dataset.appealId || "");
     });
     panel.addEventListener("change", (event) => {
       const target = event.target;

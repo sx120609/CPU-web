@@ -22,6 +22,14 @@ import {
   requestLearningAssistantAi,
   type LearningAssistantAiBody,
 } from "../services/learningAssistantAi";
+import {
+  handleLearningAnswerAppeal,
+  isLearningAnswerAppealBody,
+  learningAnswerAppealBodySchema,
+  learningAnswerAppealResponse,
+  readLearningAnswerCache,
+  writeLearningAnswerCache,
+} from "../services/learningAnswerCache";
 import { Errors, ok } from "../utils/response";
 import { isServiceOAuthClientId, serviceOAuthClient, oauthClientIsValid, oauthScopesAllowed } from "../services/oauthClients";
 
@@ -224,7 +232,29 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
     const token = await loadAccessToken(req);
     userId = token.userId;
     if (!token.scope.split(/\s+/).includes("ai")) throw Errors.forbidden("token 没有 ai scope");
+    if (isLearningAnswerAppealBody(req.body)) {
+      // 答案申诉：AI 三轮复核，不扣额度；返还的点数在复核里按判决发放
+      const appeal = learningAnswerAppealBodySchema.parse(req.body);
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), 120_000);
+      res.on("close", () => {
+        if (!responseCompleted) controller.abort();
+      });
+      const outcome = await handleLearningAnswerAppeal(token.userId, appeal, controller.signal);
+      clearTimeout(timeout);
+      timeout = undefined;
+      responseCompleted = true;
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(learningAnswerAppealResponse(outcome));
+    }
     const body = learningAssistantAiBodySchema.parse(req.body);
+    // 同一道客观题已有答案：直接返回，不调用模型，也不扣额度
+    const cached = await readLearningAnswerCache(body);
+    if (cached) {
+      responseCompleted = true;
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(learningAssistantAiResponse(cached.outputText, cached.meta));
+    }
     const requestedPointCost = learningAssistantPointCost(body.reasoningEffort);
     const consumedQuota = await consumeCampusAssistantQuota(token.userId, new Date(), requestedPointCost);
     quotaReservation = consumedQuota.reservation;
@@ -252,7 +282,8 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
     }
     if (timeout) clearTimeout(timeout);
     timeout = undefined;
-    const result = res.json(learningAssistantAiResponse(aiResult.outputText || ""));
+    const cacheMeta = await writeLearningAnswerCache(body, aiResult.outputText || "");
+    const result = res.json(learningAssistantAiResponse(aiResult.outputText || "", cacheMeta));
     responseCompleted = true;
     return result;
   } catch (error) {

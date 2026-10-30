@@ -3288,3 +3288,42 @@ model TreeholeAuditLog {
   @@index([action, createdAt])
   @@index([targetType, targetId])
 }
+
+// 学习通助手同一道客观题的 AI 答案。cacheKey 是档位、模型和整段题目内容（含图片）的哈希，
+// 题目一字不差、档位和模型都相同才命中；后台换模型后旧答案自然失效。
+model LearningAnswerCache {
+  id           Int       @id @default(autoincrement())
+  cacheKey     String    @unique
+  questionType String // single / multiple / judgement / blank
+  outputText   String
+  // ai：模型首次作答；appeal：申诉复核后改正
+  source       String    @default("ai")
+  hitCount     Int       @default(0)
+  lastHitAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  appeals LearningAnswerAppeal[]
+
+  @@index([updatedAt])
+}
+
+// 答案申诉：AI 三轮复核判决，不经人工。每人对同一条缓存答案只能申诉一次。
+model LearningAnswerAppeal {
+  id             Int      @id @default(autoincrement())
+  cacheId        Int
+  userId         Int
+  originalAnswer String
+  claimedAnswer  String
+  // pending / claim-correct / both-wrong / original-correct / inconclusive
+  verdict        String   @default("pending")
+  judgedAnswer   String   @default("")
+  refundPoints   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  cache LearningAnswerCache @relation(fields: [cacheId], references: [id], onDelete: Cascade)
+
+  @@unique([cacheId, userId])
+  @@index([userId, createdAt])
+}

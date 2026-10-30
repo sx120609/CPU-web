@@ -6,7 +6,7 @@ type DatabaseClient = Prisma.TransactionClient | PrismaClient;
 export type AssistantPointGrant = {
   userId: number;
   points: number;
-  source: "admin_grant" | "sponsor_reward" | "question_bounty_reward";
+  source: "admin_grant" | "sponsor_reward" | "question_bounty_reward" | "answer_appeal_refund";
   reason: string;
   operatorId?: number | null;
   referenceType?: string | null;

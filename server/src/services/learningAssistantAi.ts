@@ -125,7 +125,7 @@ const inputImageSchema = z.object({
   detail: z.enum(["low", "high", "auto", "original"]).optional(),
 }).strict();
 
-const inputContentSchema = z.union([
+export const learningAssistantInputContentSchema = z.union([
   z.string().max(32_000),
   z.array(z.union([
     z.object({
@@ -140,7 +140,7 @@ export const learningAssistantAiBodySchema = z.object({
   model: z.string().min(1).max(200),
   input: z.array(z.object({
     role: z.literal("user"),
-    content: inputContentSchema,
+    content: learningAssistantInputContentSchema,
   }).strict()).length(1),
   temperature: z.number().min(0).max(2).optional(),
   reasoningEffort: z.enum(["low", "high", "max"]).default("low"),
@@ -375,11 +375,12 @@ function learningAssistantAiErrorResult(status: number, message: string): Learni
   };
 }
 
-export function learningAssistantAiResponse(outputText: string) {
+/** meta 说明答案是否来自同题缓存、能否申诉，学习通助手据此显示来源和申诉入口。 */
+export function learningAssistantAiResponse(outputText: string, meta?: { cached: boolean; appealable: boolean }) {
   const learningAnswer = sanitizeLearningAssistantAnswer(parseLearningAssistantAnswer(outputText));
   return {
     output_text: outputText,
-    learning_answer: learningAnswer,
+    learning_answer: meta ? { ...learningAnswer, ...meta } : learningAnswer,
     output: [{
       type: "message",
       role: "assistant",

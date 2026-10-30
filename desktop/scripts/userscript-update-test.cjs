@@ -31,7 +31,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.16" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.17" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
@@ -130,7 +130,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.16", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.17", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cputime.cn",
       cacheDirectory,
@@ -143,7 +143,7 @@ async function main() {
     assert.equal(new URL(requests[1]).searchParams.get("sha256"), manifest.sha256, "正文请求应使用发布哈希隔离缓存");
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.16");
+    assert.equal(cached?.manifest.version, "2.2.17");
     assert.equal(cached?.source, source);
 
     requests.length = 0;
