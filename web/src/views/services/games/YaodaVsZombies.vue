@@ -185,7 +185,17 @@
             <button data-cpu-button="surface" type="button" :disabled="leaderboardLoading" @click="loadLeaderboard(true)">
               {{ leaderboardLoading ? "刷新中..." : "刷新榜单" }}
             </button>
+            <button data-cpu-button="surface"
+              v-if="isLoggedIn"
+              type="button"
+              class="manual-sync-button"
+              :disabled="recovering"
+              @click="recoverLocalHistory(true)"
+            >
+              {{ recovering ? "补传中..." : "补传本机战绩" }}
+            </button>
           </div>
+          <p v-if="recoverMessage" class="history-sync-message">{{ recoverMessage }}</p>
           <ol v-if="leaderboard.length" class="ranking-list">
             <li v-for="entry in leaderboard" :key="entry.userId" :class="{ me: cloudMe?.userId === entry.userId }">
               <span class="rank-number">{{ entry.rank }}</span>
@@ -224,7 +234,7 @@
             <li v-for="(item, index) in history" :key="item.playedAt + '-' + index">
               <span>{{ String(index + 1).padStart(2, "0") }}</span>
               <b>{{ item.score }} 分</b>
-              <small>{{ formatHistoryDate(item.playedAt) }} · 第 {{ item.waves }} 波</small>
+              <small>{{ formatHistoryDate(item.playedAt) }} · 第 {{ item.waves }} 波{{ historyCloudLabel(item) }}</small>
               <em>{{ zdCommanderRank(item.score) }}</em>
             </li>
           </ol>
@@ -307,7 +317,12 @@ import { drawZdMenuArt, drawZdScene, drawZdUnitIcon, setZdArtStyle, zdArtReady, 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";
 type Selection = ZdUnitKind | "shovel" | null;
-type HistoryItem = { score: number; waves: number; playedAt: string };
+/**
+ * cloud：synced 已计入全校榜，pending 登录着打的但没交上去（可以补传），local 只在这台设备上。
+ * 早先的记录没有这个字段，算不清有没有交上去，也可以补传，服务器会认出已经计入的。
+ */
+type HistoryCloud = "synced" | "pending" | "local";
+type HistoryItem = { score: number; waves: number; playedAt: string; durationMs?: number; attemptId?: number; cloud?: HistoryCloud };
 type FocusInfo = { lane: number; row: number; kind: ZdUnitKind; grafts: number; name: string; genes: string | null; perks: string[]; level: number; next: ZdUpgrade | null };
 
 const router = useRouter();
@@ -344,6 +359,8 @@ const achievements = ref<ZombieDefenseAchievement[]>([]);
 const newlyUnlocked = ref<ZombieDefenseLeaderboard["newlyUnlocked"]>([]);
 const cloudSubmitState = ref<"idle" | "syncing" | "success" | "error" | "guest">("idle");
 const cloudSubmitDetail = ref("");
+const recovering = ref(false);
+const recoverMessage = ref("");
 
 const WORLD_WIDTH = 420;
 const STEP_SECONDS = 1 / 30;
@@ -409,6 +426,7 @@ const popPlace = computed(() => {
     },
   };
 });
+const recoverableHistory = computed(() => history.value.filter((item) => item.cloud === undefined || item.cloud === "pending"));
 const unlockedAchievementCount = computed(() => achievements.value.filter((item) => item.unlocked).length);
 const panelTitle = computed(() => {
   if (screen.value === "ranking") return "📊 全校排行";
@@ -831,12 +849,12 @@ function finishGame(options: { silent?: boolean } = {}) {
     bestScore.value = score.value;
     writeStorage(STORAGE_PREFIX + ":best", String(bestScore.value));
   }
-  const item: HistoryItem = { score: game.score, waves: game.wave, playedAt: new Date().toISOString() };
-  history.value = [item, ...history.value].slice(0, 30);
-  writeStorage(STORAGE_PREFIX + ":history", JSON.stringify(history.value));
-  const generation = gameGeneration;
   const result = { score: game.score, waves: game.wave, durationMs: Math.max(0, Math.round(game.time * 1000)) };
-  cloudSettlementPromise = finishCloudAttempt(cloudAttemptPromise, generation, result);
+  const item: HistoryItem = { ...result, playedAt: new Date().toISOString(), cloud: isLoggedIn.value ? "pending" : "local" };
+  history.value = [item, ...history.value].slice(0, 30);
+  writeHistory();
+  const generation = gameGeneration;
+  cloudSettlementPromise = finishCloudAttempt(cloudAttemptPromise, generation, result, item.playedAt);
   if (options.silent) return;
   playTone(180, 0.16, 0.06);
   window.setTimeout(() => playTone(130, 0.2, 0.045), 110);
@@ -925,6 +943,7 @@ async function loadLeaderboard(force = false) {
 async function initializeCloud() {
   if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
   await loadLeaderboard();
+  await recoverLocalHistory(false);
 }
 
 async function beginCloudAttempt(generation: number) {
@@ -949,6 +968,7 @@ async function finishCloudAttempt(
   attemptPromise: Promise<number | null>,
   generation: number,
   result: { score: number; waves: number; durationMs: number },
+  playedAt: string,
 ) {
   if (!isLoggedIn.value) {
     if (generation === gameGeneration) cloudSubmitState.value = "guest";
@@ -956,6 +976,8 @@ async function finishCloudAttempt(
   }
   if (generation === gameGeneration) cloudSubmitState.value = "syncing";
   const attemptId = await attemptPromise;
+  // 云端没建起这一局就没有可补传的对象：开局时间服务器没记下，成绩无从校验。
+  updateHistoryItem(playedAt, attemptId ? { attemptId } : { cloud: "local" });
   if (!attemptId) {
     if (generation === gameGeneration) {
       cloudSubmitState.value = "error";
@@ -970,13 +992,68 @@ async function finishCloudAttempt(
       suppressErrorMessage: true,
     });
     applyLeaderboard(board);
+    updateHistoryItem(playedAt, { cloud: "synced" });
     if (generation === gameGeneration) cloudSubmitState.value = "success";
   } catch (error) {
     if (generation === gameGeneration) {
       cloudSubmitState.value = "error";
-      cloudSubmitDetail.value = cloudFailureMessage(error, "成绩校验未完成，本局仅保存在本机");
+      cloudSubmitDetail.value = cloudFailureMessage(error, "成绩校验未完成，本局仅保存在本机") + "，可在全校排行里补传本机战绩";
     }
   }
+}
+
+/**
+ * 把没交上去的本机战绩补传到云端：服务器找回对应的那一局，照正常结算的规则校验。
+ * 进页面时自动补一次；补过的记录会标上已上榜或仅本机，之后不再重复提交。
+ */
+async function recoverLocalHistory(manual: boolean) {
+  if (!isLoggedIn.value || recovering.value) return;
+  recovering.value = true;
+  if (manual) recoverMessage.value = "";
+  try {
+    // 刚结束的那一局还在正常结算，等它交完，免得补传抢先认领了它。
+    await cloudSettlementPromise;
+    const items = recoverableHistory.value;
+    if (!items.length) {
+      if (manual) recoverMessage.value = history.value.length ? "本机战绩都已处理，没有要补传的对局" : "本机还没有可补传的战绩";
+      return;
+    }
+    const response = await zombieDefenseApi.recover(items.map((item) => ({
+      attemptId: item.attemptId,
+      score: item.score,
+      waves: item.waves,
+      durationMs: item.durationMs,
+      playedAt: item.playedAt,
+    })), { suppressAuthRedirect: true, suppressAuthMessage: true, suppressErrorMessage: true });
+    applyLeaderboard(response);
+    const invalid: string[] = [];
+    for (const result of response.results) {
+      const item = items[result.index];
+      if (!item) continue;
+      if (result.outcome === "invalid" && result.message) invalid.push(result.message);
+      updateHistoryItem(item.playedAt, { cloud: result.outcome === "synced" || result.outcome === "recovered" ? "synced" : "local" });
+    }
+    const parts = [response.recovered ? `已补传 ${response.recovered} 局本机战绩` : "没有找到可补传的对局"];
+    if (invalid.length) parts.push(`${invalid.length} 局没通过校验（${invalid[0]}）`);
+    if (manual || response.recovered) recoverMessage.value = parts.join("；");
+  } catch (error) {
+    if (manual) recoverMessage.value = cloudFailureMessage(error, "补传没有完成，请稍后再试");
+  } finally {
+    recovering.value = false;
+  }
+}
+
+function updateHistoryItem(playedAt: string, patch: Partial<HistoryItem>) {
+  const index = history.value.findIndex((item) => item.playedAt === playedAt);
+  if (index < 0) return;
+  history.value = history.value.map((item, position) => position === index ? { ...item, ...patch } : item);
+  writeHistory();
+}
+
+function historyCloudLabel(item: HistoryItem) {
+  if (item.cloud === "synced") return " · 已上榜";
+  if (item.cloud === "pending") return " · 未上榜";
+  return "";
 }
 
 function cloudFailureMessage(error: unknown, fallback: string) {
@@ -1037,14 +1114,21 @@ function readHistory(): HistoryItem[] {
     return parsed
       .filter((item) => Number.isFinite(Number(item?.score)) && typeof item?.playedAt === "string")
       .slice(0, 30)
-      .map((item) => ({
+      .map((item): HistoryItem => ({
         score: Math.max(0, Math.floor(Number(item.score))),
         waves: Math.max(0, Math.floor(Number(item.waves) || 0)),
         playedAt: item.playedAt,
+        durationMs: Number.isInteger(item.durationMs) && item.durationMs >= 0 ? item.durationMs : undefined,
+        attemptId: Number.isInteger(item.attemptId) && item.attemptId > 0 ? item.attemptId : undefined,
+        cloud: item.cloud === "synced" || item.cloud === "pending" || item.cloud === "local" ? item.cloud : undefined,
       }));
   } catch {
     return [];
   }
+}
+
+function writeHistory() {
+  writeStorage(STORAGE_PREFIX + ":history", JSON.stringify(history.value));
 }
 
 function writeStorage(key: string, value: string) {

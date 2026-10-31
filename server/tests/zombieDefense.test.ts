@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   earnedZombieDefenseAchievementCodes,
+  matchZombieDefenseRecovery,
   maxZombieDefenseScoreThroughWave,
   minimumDurationForZombieWaves,
   validateZombieDefenseResult,
   ZOMBIE_DEFENSE_ACHIEVEMENTS,
+  ZOMBIE_DEFENSE_ATTEMPT_TTL_MS,
   ZOMBIE_DEFENSE_FIRST_WAVE_MS,
   ZOMBIE_DEFENSE_MAX_SCORE,
   ZOMBIE_DEFENSE_MAX_WAVES,
@@ -407,8 +409,10 @@ test("服务端的波次时间表和分数上限与页面引擎一致", () => {
     assert.equal(maxZombieDefenseScoreThroughWave(wave), zdMaxScoreThroughWave(wave), `第 ${wave} 波`);
     if (wave > 0) assert.equal(minimumDurationForZombieWaves(wave), zdWaveStartSeconds(wave) * 1000);
   }
-  assert.equal(ZOMBIE_DEFENSE_MAX_WAVES, 360);
-  assert.equal(ZOMBIE_DEFENSE_MAX_SCORE, maxZombieDefenseScoreThroughWave(360));
+  assert.equal(ZOMBIE_DEFENSE_MAX_WAVES, 720);
+  assert.equal(ZOMBIE_DEFENSE_MAX_SCORE, maxZombieDefenseScoreThroughWave(720));
+  // 成绩存在 32 位整数列里。
+  assert.ok(ZOMBIE_DEFENSE_MAX_SCORE < 2 ** 31);
 
   // 一整局打下来，分数始终不超过当时波次的上限。
   const state = createZdState(42);
@@ -445,7 +449,57 @@ test("对不上波次的分数、伪造的时长会被拒绝", () => {
   assert.match(validateZombieDefenseResult({ score: 100, waves: 3, durationMs: 90_000, serverElapsedMs: 60_000 }) || "", /客户端/);
   assert.match(validateZombieDefenseResult({ score: ZOMBIE_DEFENSE_MAX_SCORE + 1, waves: ZOMBIE_DEFENSE_MAX_WAVES, durationMs: 300_000, serverElapsedMs: 300_000 }) || "", /范围/);
   assert.match(validateZombieDefenseResult({ score: 0, waves: ZOMBIE_DEFENSE_MAX_WAVES + 1, durationMs: 300_000, serverElapsedMs: 300_000 }) || "", /范围/);
-  assert.match(validateZombieDefenseResult({ score: 0, waves: 1, durationMs: 12_000, serverElapsedMs: 121 * 60 * 1000 }) || "", /过期/);
+  assert.match(validateZombieDefenseResult({ score: 0, waves: 1, durationMs: 12_000, serverElapsedMs: ZOMBIE_DEFENSE_ATTEMPT_TTL_MS + 1 }) || "", /过期/);
+});
+
+test("中途暂停、切后台、锁屏的长对局照常计分", () => {
+  // 2026-10-31 的反馈：晚上 7:55 打到 10:20 多，中间暂停过，游戏内大约 88 分钟、第 263 波、两千万分。
+  const waves = 263;
+  assert.equal(validateZombieDefenseResult({
+    score: maxZombieDefenseScoreThroughWave(waves) - 50_000,
+    waves,
+    durationMs: minimumDurationForZombieWaves(waves) + 15_000,
+    serverElapsedMs: (2 * 60 + 27) * 60 * 1000,
+  }), null);
+  // 游戏内时长仍然不能超过真实经过的时间。
+  assert.match(validateZombieDefenseResult({
+    score: 0,
+    waves: 10,
+    durationMs: 3 * 60 * 60 * 1000,
+    serverElapsedMs: 2 * 60 * 60 * 1000,
+  }) || "", /客户端/);
+});
+
+test("补传本机战绩只认服务器开过的局", () => {
+  const now = new Date("2026-11-01T12:00:00Z");
+  const at = (text: string) => new Date(`2026-10-31T${text}Z`);
+  const attempts = [
+    // 交成绩时被判过期的长局。
+    { id: 1, status: "rejected", score: null, waves: null, startedAt: at("11:55:00"), completedAt: at("14:22:10") },
+    // 正常计入的一局。
+    { id: 2, status: "completed", score: 800, waves: 7, startedAt: at("15:00:00"), completedAt: at("15:03:00") },
+    // 断网没交上来，之后被新开的一局顶掉。
+    { id: 3, status: "abandoned", score: null, waves: null, startedAt: at("16:00:00"), completedAt: at("18:00:00") },
+    { id: 4, status: "active", score: null, waves: null, startedAt: at("18:00:00"), completedAt: null },
+  ];
+  const rejected = matchZombieDefenseRecovery({ score: 20_000_000, waves: 263, playedAt: at("14:22:08") }, attempts, now);
+  assert.equal(rejected?.kind, "recoverable");
+  assert.equal(rejected?.kind === "recoverable" && rejected.attempt.id, 1);
+  assert.deepEqual(rejected?.kind === "recoverable" && rejected.endedAt, at("14:22:10"));
+
+  assert.deepEqual(matchZombieDefenseRecovery({ score: 800, waves: 7, playedAt: at("15:02:59") }, attempts, now), { kind: "synced", attemptId: 2 });
+
+  // 没交上来的局：结束时间取本机记录，但不晚于被顶掉的时刻。
+  const lost = matchZombieDefenseRecovery({ score: 300, waves: 5, playedAt: at("16:05:00") }, attempts, now);
+  assert.equal(lost?.kind === "recoverable" && lost.attempt.id, 3);
+  assert.deepEqual(lost?.kind === "recoverable" && lost.endedAt, at("16:15:00"));
+  const late = matchZombieDefenseRecovery({ attemptId: 3, score: 300, waves: 5, playedAt: at("19:00:00") }, attempts, now);
+  assert.equal(late, null);
+
+  // 没登录时打的、或者服务器上没有对应开局的记录不认。
+  assert.equal(matchZombieDefenseRecovery({ score: 300, waves: 5, playedAt: at("09:00:00") }, attempts, now), null);
+  // 拒收时刻和本机结束时间对不上的也不认。
+  assert.equal(matchZombieDefenseRecovery({ attemptId: 1, score: 100, waves: 3, playedAt: at("13:00:00") }, attempts, now), null);
 });
 
 test("云端成就覆盖局数、单局分数、单局波次与累计", () => {

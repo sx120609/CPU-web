@@ -6,10 +6,14 @@ import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import {
   earnedZombieDefenseAchievementCodes,
+  matchZombieDefenseRecovery,
+  minimumDurationForZombieWaves,
   zombieDefenseAchievementProgress,
   validateZombieDefenseResult,
   ZOMBIE_DEFENSE_ACHIEVEMENTS,
+  ZOMBIE_DEFENSE_ATTEMPT_TTL_MS,
   ZOMBIE_DEFENSE_MAX_ATTEMPT_MS,
+  ZOMBIE_DEFENSE_RECOVERY_CLOCK_SKEW_MS,
   ZOMBIE_DEFENSE_MAX_WAVES,
   ZOMBIE_DEFENSE_MAX_SCORE,
 } from "../services/zombieDefensePolicy";
@@ -24,6 +28,18 @@ const finishAttemptSchema = z.object({
   waves: z.number().int().min(0).max(ZOMBIE_DEFENSE_MAX_WAVES),
   durationMs: z.number().int().min(0).max(ZOMBIE_DEFENSE_MAX_ATTEMPT_MS),
 });
+
+const recoverSchema = z.object({
+  records: z.array(z.object({
+    attemptId: z.number().int().positive().optional(),
+    score: z.number().int().min(0).max(ZOMBIE_DEFENSE_MAX_SCORE),
+    waves: z.number().int().min(0).max(ZOMBIE_DEFENSE_MAX_WAVES),
+    durationMs: z.number().int().min(0).max(ZOMBIE_DEFENSE_MAX_ATTEMPT_MS).optional(),
+    playedAt: z.string().min(1).max(40),
+  })).min(1).max(30),
+});
+
+type RecoveryOutcome = "synced" | "recovered" | "unmatched" | "invalid";
 
 async function loadLeaderboard(currentUserId?: number, newlyUnlockedCodes: string[] = []) {
   const aggregates = await prisma.zombieDefenseAttempt.groupBy({
@@ -223,6 +239,83 @@ zombieDefenseRouter.post("/attempts/:id/finish", authRequired, validate(finishAt
     if (updated.count !== 1) throw Errors.conflict("本局成绩已经处理");
     const newlyUnlockedCodes = await unlockAchievementsForUser(req.user!.userId, completedAt);
     ok(res, await loadLeaderboard(req.user!.userId, newlyUnlockedCodes), "成绩与成就已同步");
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * 补传本机战绩：没交上来或被拒收的对局，拿这台设备记下的成绩找回服务器上那一局，
+ * 照正常结算的规则重新校验后计入。每一局只能补一次。
+ */
+zombieDefenseRouter.post("/recover", authRequired, validate(recoverSchema), async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const now = new Date();
+    const records = (req.body as z.infer<typeof recoverSchema>).records.map((record) => ({
+      ...record,
+      playedAt: new Date(record.playedAt),
+    }));
+    const times = records.map((record) => record.playedAt.getTime()).filter(Number.isFinite);
+    const attempts = times.length
+      ? await prisma.zombieDefenseAttempt.findMany({
+        where: {
+          userId,
+          startedAt: {
+            gte: new Date(Math.min(...times) - ZOMBIE_DEFENSE_ATTEMPT_TTL_MS - ZOMBIE_DEFENSE_RECOVERY_CLOCK_SKEW_MS),
+            lte: new Date(Math.max(...times) + ZOMBIE_DEFENSE_RECOVERY_CLOCK_SKEW_MS),
+          },
+        },
+        select: { id: true, status: true, score: true, waves: true, startedAt: true, completedAt: true },
+        orderBy: { startedAt: "desc" },
+        take: 500,
+      })
+      : [];
+    const results: Array<{ index: number; outcome: RecoveryOutcome; message?: string }> = [];
+    let recovered = 0;
+    for (const [index, record] of records.entries()) {
+      const match = matchZombieDefenseRecovery(record, attempts, now);
+      if (!match) {
+        results.push({ index, outcome: "unmatched" });
+        continue;
+      }
+      if (match.kind === "synced") {
+        results.push({ index, outcome: "synced" });
+        continue;
+      }
+      const { attempt, endedAt } = match;
+      const validationError = validateZombieDefenseResult({
+        score: record.score,
+        waves: record.waves,
+        // 早先的本机记录没存游戏内时长，按这个波次最短需要的时长算。
+        durationMs: record.durationMs ?? minimumDurationForZombieWaves(record.waves),
+        serverElapsedMs: endedAt.getTime() - attempt.startedAt.getTime(),
+      });
+      if (validationError) {
+        results.push({ index, outcome: "invalid", message: validationError });
+        continue;
+      }
+      const updated = await prisma.zombieDefenseAttempt.updateMany({
+        where: { id: attempt.id, userId, status: attempt.status },
+        data: {
+          status: "completed",
+          score: record.score,
+          waves: record.waves,
+          durationMs: record.durationMs ?? minimumDurationForZombieWaves(record.waves),
+          completedAt: endedAt,
+        },
+      });
+      if (updated.count !== 1) {
+        results.push({ index, outcome: "unmatched" });
+        continue;
+      }
+      // 同一批里后面的记录不能再认领这一局；完全相同的一条会被当成已计入。
+      Object.assign(attempt, { status: "completed", score: record.score, waves: record.waves, completedAt: endedAt });
+      recovered += 1;
+      results.push({ index, outcome: "recovered" });
+    }
+    const newlyUnlockedCodes = recovered ? await unlockAchievementsForUser(userId, now) : [];
+    ok(res, { ...(await loadLeaderboard(userId, newlyUnlockedCodes)), results, recovered });
   } catch (error) {
     next(error);
   }

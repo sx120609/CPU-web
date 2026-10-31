@@ -33,6 +33,19 @@ export interface ZombieDefenseLeaderboard {
   newlyUnlocked: Array<{ code: string; title: string; icon: string }>;
 }
 
+export interface ZombieDefenseRecoveryRecord {
+  attemptId?: number;
+  score: number;
+  waves: number;
+  durationMs?: number;
+  playedAt: string;
+}
+
+export interface ZombieDefenseRecoveryResult extends ZombieDefenseLeaderboard {
+  results: Array<{ index: number; outcome: "synced" | "recovered" | "unmatched" | "invalid"; message?: string }>;
+  recovered: number;
+}
+
 export const zombieDefenseApi = {
   leaderboard: (options?: RequestOptions) => request.get<ZombieDefenseLeaderboard>(
     "/tools/zombie-defense/leaderboard",
@@ -51,4 +64,6 @@ export const zombieDefenseApi = {
   ),
   finishAttempt: (id: number, payload: { score: number; waves: number; durationMs: number }, options?: RequestOptions) =>
     request.post<ZombieDefenseLeaderboard>(`/tools/zombie-defense/attempts/${id}/finish`, payload, options),
+  recover: (records: ZombieDefenseRecoveryRecord[], options?: RequestOptions) =>
+    request.post<ZombieDefenseRecoveryResult>("/tools/zombie-defense/recover", { records }, options),
 };

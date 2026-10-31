@@ -1,5 +1,8 @@
-// 升级不封顶以后一局能打很久，时长上限放到两小时。
-export const ZOMBIE_DEFENSE_MAX_ATTEMPT_MS = 120 * 60 * 1000;
+// 升级不封顶以后一局能打很久：游戏内时长（暂停不计）上限四小时。
+export const ZOMBIE_DEFENSE_MAX_ATTEMPT_MS = 240 * 60 * 1000;
+// 从开局到交成绩的真实时间还包括暂停、切后台和锁屏，只拦明显放弃了的对局。
+// 防作弊靠的是游戏内时长不能超过真实时间、波次不能早于时间表，与这个上限无关。
+export const ZOMBIE_DEFENSE_ATTEMPT_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 // 波次按固定时间表开始：第 1 波在开局 10 秒，之后每 20 秒一波。页面的引擎用同一组数，测试会核对两边一致。
 export const ZOMBIE_DEFENSE_FIRST_WAVE_MS = 10_000;
 export const ZOMBIE_DEFENSE_WAVE_MS = 20_000;
@@ -84,7 +87,7 @@ export function validateZombieDefenseResult(input: {
   if (!Number.isInteger(durationMs) || durationMs < 0 || durationMs > ZOMBIE_DEFENSE_MAX_ATTEMPT_MS) {
     return "对局时长无效";
   }
-  if (serverElapsedMs < 0 || serverElapsedMs > ZOMBIE_DEFENSE_MAX_ATTEMPT_MS) {
+  if (serverElapsedMs < 0 || serverElapsedMs > ZOMBIE_DEFENSE_ATTEMPT_TTL_MS) {
     return "本局已过期，请重新开始";
   }
   if (score > maxZombieDefenseScoreThroughWave(waves)) {
@@ -111,4 +114,68 @@ export function earnedZombieDefenseAchievementCodes(stats: ZombieDefenseAchievem
   return ZOMBIE_DEFENSE_ACHIEVEMENTS
     .filter((achievement) => zombieDefenseAchievementProgress(achievement, stats) >= achievement.target)
     .map((achievement) => achievement.code);
+}
+
+// 本机记下的结束时间来自手机时钟，和服务器差几分钟也认。
+export const ZOMBIE_DEFENSE_RECOVERY_CLOCK_SKEW_MS = 10 * 60 * 1000;
+
+export interface ZombieDefenseRecoveryRecord {
+  attemptId?: number;
+  score: number;
+  waves: number;
+  playedAt: Date;
+}
+
+export interface ZombieDefenseRecoveryAttempt {
+  id: number;
+  status: string;
+  score: number | null;
+  waves: number | null;
+  startedAt: Date;
+  completedAt: Date | null;
+}
+
+export type ZombieDefenseRecoveryMatch =
+  | { kind: "synced"; attemptId: number }
+  | { kind: "recoverable"; attempt: ZombieDefenseRecoveryAttempt; endedAt: Date }
+  | null;
+
+/**
+ * 给一条本机战绩找它在服务器上的那一局。开局时间只认服务器记下的，结束时间取服务器
+ * 能证明的最早时刻：被拒收的局用拒收那一刻，没交上来的局用本机结束时间（再晚也不超过
+ * 被新一局顶掉的时刻）。已经计入的局原样返回 synced，不重复记分。
+ */
+export function matchZombieDefenseRecovery(
+  record: ZombieDefenseRecoveryRecord,
+  attempts: readonly ZombieDefenseRecoveryAttempt[],
+  now: Date,
+): ZombieDefenseRecoveryMatch {
+  const playedAt = record.playedAt.getTime();
+  if (!Number.isFinite(playedAt)) return null;
+  const skew = ZOMBIE_DEFENSE_RECOVERY_CLOCK_SKEW_MS;
+  const sameAttempt = (attempt: ZombieDefenseRecoveryAttempt) => record.attemptId === undefined || attempt.id === record.attemptId;
+  const synced = attempts.find((attempt) => sameAttempt(attempt)
+    && attempt.status === "completed"
+    && attempt.score === record.score
+    && attempt.waves === record.waves
+    && (record.attemptId !== undefined || Math.abs((attempt.completedAt?.getTime() ?? 0) - playedAt) <= skew));
+  if (synced) return { kind: "synced", attemptId: synced.id };
+  let best: { attempt: ZombieDefenseRecoveryAttempt; endedAt: Date } | null = null;
+  for (const attempt of attempts) {
+    if (!sameAttempt(attempt) || attempt.startedAt.getTime() > playedAt + skew) continue;
+    let endedAt: number;
+    if (attempt.status === "rejected") {
+      if (!attempt.completedAt || Math.abs(attempt.completedAt.getTime() - playedAt) > skew) continue;
+      endedAt = attempt.completedAt.getTime();
+    } else if (attempt.status === "active" || attempt.status === "abandoned") {
+      const closedAt = attempt.completedAt?.getTime() ?? now.getTime();
+      if (playedAt > closedAt + skew) continue;
+      endedAt = Math.min(closedAt, playedAt + skew);
+    } else {
+      continue;
+    }
+    if (endedAt < attempt.startedAt.getTime()) continue;
+    if (!best || attempt.startedAt > best.attempt.startedAt) best = { attempt, endedAt: new Date(endedAt) };
+  }
+  return best ? { kind: "recoverable", ...best } : null;
 }
