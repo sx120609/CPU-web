@@ -88,6 +88,12 @@ export function learningAnswerCacheKey(body: LearningAssistantAiBody, difficulty
 
 export type LearningAnswerCacheMeta = { cached: boolean; appealable: boolean };
 
+/** 提示词里从“题目：”起的部分就是题干和选项；找不到时取末尾一段。 */
+export function learningQuestionText(text: string) {
+  const start = text.indexOf("题目：");
+  return (start >= 0 ? text.slice(start + 3) : text.slice(-2000)).trim().slice(0, 4000);
+}
+
 function appealableFor(body: LearningAssistantAiBody) {
   return Boolean(detectLearningQuestionType(promptText(contentParts(body.input[0].content))));
 }
@@ -124,7 +130,13 @@ export async function writeLearningAnswerCache(body: LearningAssistantAiBody, ou
       where: { cacheKey },
       // 同一题同时有两个人在问：先写进去的为准
       update: {},
-      create: { cacheKey, questionType: type, outputText },
+      create: {
+        cacheKey,
+        questionType: type,
+        questionText: learningQuestionText(promptText(contentParts(body.input[0].content))),
+        imageCount: contentParts(body.input[0].content).filter((part) => part.type === "input_image").length,
+        outputText,
+      },
     });
     return { cached: false, appealable: appealableFor(body) };
   } catch {
@@ -350,6 +362,105 @@ export async function handleLearningAnswerAppeal(userId: number, body: LearningA
     await prisma.learningAnswerAppeal.delete({ where: { id: appealId } }).catch(() => undefined);
     throw error;
   }
+}
+
+const QUESTION_TYPES: LearningQuestionType[] = ["single", "multiple", "judgement", "blank"];
+
+export async function getLearningAnswerBankOverview() {
+  const [entries, bySource, hits, appeals, refunded] = await Promise.all([
+    prisma.learningAnswerCache.count(),
+    prisma.learningAnswerCache.groupBy({ by: ["source"], _count: { _all: true } }),
+    prisma.learningAnswerCache.aggregate({ _sum: { hitCount: true } }),
+    prisma.learningAnswerAppeal.groupBy({ by: ["verdict"], _count: { _all: true } }),
+    prisma.learningAnswerAppeal.aggregate({ _sum: { refundPoints: true } }),
+  ]);
+  return {
+    entries,
+    bySource: Object.fromEntries(bySource.map((row) => [row.source, row._count._all])),
+    hits: hits._sum.hitCount ?? 0,
+    appeals: Object.fromEntries(appeals.map((row) => [row.verdict, row._count._all])),
+    refundedPoints: refunded._sum.refundPoints ?? 0,
+  };
+}
+
+export const learningAnswerBankQuerySchema = z.object({
+  q: z.string().trim().max(100).optional().default(""),
+  type: z.enum(["", ...QUESTION_TYPES] as [string, ...string[]]).optional().default(""),
+  source: z.enum(["", "ai", "appeal", "admin"]).optional().default(""),
+  appealed: z.enum(["", "yes"]).optional().default(""),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  size: z.coerce.number().int().min(10).max(100).default(20),
+});
+
+export async function listLearningAnswerBank(input: z.infer<typeof learningAnswerBankQuerySchema>) {
+  const where: Prisma.LearningAnswerCacheWhereInput = {
+    ...(input.q ? { questionText: { contains: input.q, mode: "insensitive" } } : {}),
+    ...(input.type ? { questionType: input.type } : {}),
+    ...(input.source ? { source: input.source } : {}),
+    ...(input.appealed ? { appeals: { some: {} } } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    prisma.learningAnswerCache.count({ where }),
+    prisma.learningAnswerCache.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      skip: (input.page - 1) * input.size,
+      take: input.size,
+      select: {
+        id: true, questionType: true, questionText: true, imageCount: true, outputText: true, source: true,
+        hitCount: true, lastHitAt: true, createdAt: true, updatedAt: true, _count: { select: { appeals: true } },
+      },
+    }),
+  ]);
+  return {
+    total,
+    page: input.page,
+    size: input.size,
+    items: rows.map(({ outputText, _count, ...row }) => {
+      const parsed = sanitizeLearningAssistantAnswer(parseLearningAssistantAnswer(outputText));
+      return { ...row, answer: parsed.answer, explanation: parsed.explanation, appealCount: _count.appeals };
+    }),
+  };
+}
+
+export async function listLearningAnswerAppeals(cacheId: number) {
+  const appeals = await prisma.learningAnswerAppeal.findMany({
+    where: { cacheId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...new Set(appeals.map((appeal) => appeal.userId))] } },
+    select: { id: true, username: true, nickname: true },
+  });
+  const byId = new Map(users.map((user) => [user.id, user]));
+  return appeals.map((appeal) => ({ ...appeal, user: byId.get(appeal.userId) ?? null }));
+}
+
+export const learningAnswerBankUpdateSchema = z.object({
+  answer: z.string().trim().min(1).max(2000),
+  explanation: z.string().trim().max(4000).optional().default(""),
+});
+
+/** 后台手工改正答案：判断、填空的格式要能被学习通助手解析，否则写进去也填不上。 */
+export async function updateLearningAnswerBankEntry(id: number, input: z.infer<typeof learningAnswerBankUpdateSchema>) {
+  const entry = await prisma.learningAnswerCache.findUnique({ where: { id }, select: { questionType: true } });
+  if (!entry) throw Errors.notFound("这条答案不存在或已删除");
+  const type = QUESTION_TYPES.find((item) => item === entry.questionType);
+  // 多平台助手的选择题答案是选项原文，选择题只要求非空
+  if ((type === "judgement" || type === "blank") && !normalizeLearningAnswer(type, input.answer)) throw Errors.badRequest(CLAIM_FORMAT_HINT[type]);
+  return prisma.learningAnswerCache.update({
+    where: { id },
+    data: { outputText: JSON.stringify({ answer: input.answer, explanation: input.explanation }), source: "admin" },
+    select: { id: true },
+  });
+}
+
+export async function deleteLearningAnswerBankEntry(id: number) {
+  await prisma.learningAnswerCache.delete({ where: { id } }).catch((error) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") throw Errors.notFound("这条答案不存在或已删除");
+    throw error;
+  });
 }
 
 export function learningAnswerAppealResponse(outcome: LearningAnswerAppealOutcome) {

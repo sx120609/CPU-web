@@ -149,6 +149,15 @@ import { readServerBuildCommit, recordAgentUpdateRequest, resolveAgentUpdate } f
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQuota";
+import {
+  deleteLearningAnswerBankEntry,
+  getLearningAnswerBankOverview,
+  learningAnswerBankQuerySchema,
+  learningAnswerBankUpdateSchema,
+  listLearningAnswerAppeals,
+  listLearningAnswerBank,
+  updateLearningAnswerBankEntry,
+} from "../../services/learningAnswerCache";
 import { fetchAiModelCatalog } from "../../services/aiModelCatalog";
 import { getAiRoutingState, loadAiServiceTraffic, probeAiService, saveAiRouting, testAiRoute } from "../../services/aiRouting";
 import { forumAdsAdminRouter } from "./forumAds";
@@ -3103,6 +3112,44 @@ adminRouter.get("/campus-assistant/points/users", adminOnly, async (req, res, ne
   } catch (e) {
     next(e);
   }
+});
+
+// 学习通题库：同题缓存的 AI 答案、申诉改正记录，可手工改正或删除
+const learningAnswerBankId = (value: unknown) => {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("题目编号无效");
+  return id;
+};
+
+adminRouter.get("/learning-answer-bank/overview", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getLearningAnswerBankOverview());
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/learning-answer-bank", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await listLearningAnswerBank(learningAnswerBankQuerySchema.parse(req.query)));
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/learning-answer-bank/:id/appeals", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await listLearningAnswerAppeals(learningAnswerBankId(req.params.id)));
+  } catch (e) { next(e); }
+});
+
+adminRouter.put("/learning-answer-bank/:id", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await updateLearningAnswerBankEntry(learningAnswerBankId(req.params.id), learningAnswerBankUpdateSchema.parse(req.body)));
+  } catch (e) { next(e); }
+});
+
+adminRouter.delete("/learning-answer-bank/:id", adminOnly, async (req, res, next) => {
+  try {
+    await deleteLearningAnswerBankEntry(learningAnswerBankId(req.params.id));
+    ok(res, { deleted: true });
+  } catch (e) { next(e); }
 });
 
 adminRouter.get("/campus-assistant/points/ledger", adminOnly, async (req, res, next) => {

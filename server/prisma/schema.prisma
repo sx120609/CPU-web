@@ -3295,8 +3295,11 @@ model LearningAnswerCache {
   id           Int       @id @default(autoincrement())
   cacheKey     String    @unique
   questionType String // single / multiple / judgement / blank
+  // 题干与选项，后台题库管理里搜索、核对用；不参与命中
+  questionText String    @default("")
+  imageCount   Int       @default(0)
   outputText   String
-  // ai：模型首次作答；appeal：申诉复核后改正
+  // ai：模型首次作答；appeal：申诉复核后改正；admin：后台手工改正
   source       String    @default("ai")
   hitCount     Int       @default(0)
   lastHitAt    DateTime?
@@ -3306,6 +3309,7 @@ model LearningAnswerCache {
   appeals LearningAnswerAppeal[]
 
   @@index([updatedAt])
+  @@index([source, updatedAt])
 }
 
 // 答案申诉：AI 三轮复核判决，不经人工。每人对同一条缓存答案只能申诉一次。

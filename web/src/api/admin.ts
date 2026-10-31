@@ -1320,6 +1320,61 @@ export type ScheduleTermConfig = {
   updatedAt?: string;
 };
 
+export type LearningAnswerBankType = "single" | "multiple" | "judgement" | "blank";
+export type LearningAnswerBankSource = "ai" | "appeal" | "admin";
+export type LearningAnswerAppealVerdict = "pending" | "claim-correct" | "both-wrong" | "original-correct" | "inconclusive";
+
+export interface LearningAnswerBankOverview {
+  entries: number;
+  bySource: Partial<Record<LearningAnswerBankSource, number>>;
+  hits: number;
+  appeals: Partial<Record<LearningAnswerAppealVerdict, number>>;
+  refundedPoints: number;
+}
+
+export interface LearningAnswerBankEntry {
+  id: number;
+  questionType: LearningAnswerBankType;
+  questionText: string;
+  imageCount: number;
+  answer: string;
+  explanation: string;
+  source: LearningAnswerBankSource;
+  hitCount: number;
+  appealCount: number;
+  lastHitAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LearningAnswerBankPage {
+  total: number;
+  page: number;
+  size: number;
+  items: LearningAnswerBankEntry[];
+}
+
+export type LearningAnswerBankParams = {
+  q?: string;
+  type?: LearningAnswerBankType | "";
+  source?: LearningAnswerBankSource | "";
+  appealed?: "" | "yes";
+  page?: number;
+  size?: number;
+};
+
+export interface LearningAnswerAppealRecord {
+  id: number;
+  userId: number;
+  originalAnswer: string;
+  claimedAnswer: string;
+  verdict: LearningAnswerAppealVerdict;
+  judgedAnswer: string;
+  refundPoints: number;
+  createdAt: string;
+  user: { id: number; username: string; nickname: string } | null;
+}
+
 export const adminApi = {
   apnsConfig: (options?: RequestOptions) => request.get<ApnsConfig>("/admin/apns-config", undefined, options),
   updateApnsConfig: (payload: Pick<ApnsConfig, "keyPath" | "keyID" | "teamID" | "bundleID" | "tickSeconds">) =>
@@ -1620,6 +1675,16 @@ export const adminApi = {
     request.get<AssistantPointUser[]>("/admin/campus-assistant/points/users", params, options),
   assistantPointOverview: (options?: RequestOptions) =>
     request.get<AssistantPointOverview>("/admin/campus-assistant/points/overview", undefined, options),
+  learningAnswerBankOverview: (options?: RequestOptions) =>
+    request.get<LearningAnswerBankOverview>("/admin/learning-answer-bank/overview", undefined, options),
+  learningAnswerBank: (params: LearningAnswerBankParams, options?: RequestOptions) =>
+    request.get<LearningAnswerBankPage>("/admin/learning-answer-bank", params, options),
+  learningAnswerAppeals: (id: number) =>
+    request.get<LearningAnswerAppealRecord[]>(`/admin/learning-answer-bank/${id}/appeals`),
+  updateLearningAnswerBankEntry: (id: number, payload: { answer: string; explanation: string }) =>
+    request.put<{ id: number }>(`/admin/learning-answer-bank/${id}`, payload),
+  deleteLearningAnswerBankEntry: (id: number) =>
+    request.delete<{ deleted: boolean }>(`/admin/learning-answer-bank/${id}`),
   assistantPointLedger: (params: AssistantPointLedgerParams, options?: RequestOptions) =>
     request.get<AssistantPointLedgerPage>("/admin/campus-assistant/points/ledger", params, options),
   grantAssistantPoints: (payload: { userIds?: number[]; allUsers?: boolean; points: number; reason: string }) =>
