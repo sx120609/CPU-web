@@ -150,6 +150,7 @@ import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQuota";
 import {
+  backfillLearningQuestionText,
   deleteLearningAnswerBankEntry,
   getLearningAnswerBankOverview,
   learningAnswerBankQuerySchema,
@@ -3130,6 +3131,12 @@ adminRouter.get("/learning-answer-bank/overview", adminOnly, async (_req, res, n
 adminRouter.get("/learning-answer-bank", adminOnly, async (req, res, next) => {
   try {
     ok(res, await listLearningAnswerBank(learningAnswerBankQuerySchema.parse(req.query)));
+  } catch (e) { next(e); }
+});
+
+adminRouter.post("/learning-answer-bank/backfill-text", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await backfillLearningQuestionText());
   } catch (e) { next(e); }
 });
 

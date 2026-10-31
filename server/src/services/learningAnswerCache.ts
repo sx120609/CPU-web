@@ -367,8 +367,9 @@ export async function handleLearningAnswerAppeal(userId: number, body: LearningA
 const QUESTION_TYPES: LearningQuestionType[] = ["single", "multiple", "judgement", "blank"];
 
 export async function getLearningAnswerBankOverview() {
-  const [entries, bySource, hits, appeals, refunded] = await Promise.all([
+  const [entries, missingText, bySource, hits, appeals, refunded] = await Promise.all([
     prisma.learningAnswerCache.count(),
+    prisma.learningAnswerCache.count({ where: { questionText: "" } }),
     prisma.learningAnswerCache.groupBy({ by: ["source"], _count: { _all: true } }),
     prisma.learningAnswerCache.aggregate({ _sum: { hitCount: true } }),
     prisma.learningAnswerAppeal.groupBy({ by: ["verdict"], _count: { _all: true } }),
@@ -376,6 +377,7 @@ export async function getLearningAnswerBankOverview() {
   ]);
   return {
     entries,
+    missingText,
     bySource: Object.fromEntries(bySource.map((row) => [row.source, row._count._all])),
     hits: hits._sum.hitCount ?? 0,
     appeals: Object.fromEntries(appeals.map((row) => [row.verdict, row._count._all])),
@@ -454,6 +456,45 @@ export async function updateLearningAnswerBankEntry(id: number, input: z.infer<t
     data: { outputText: JSON.stringify({ answer: input.answer, explanation: input.explanation }), source: "admin" },
     select: { id: true },
   });
+}
+
+/**
+ * 题目文字是后来才存的，更早的缓存只有答案。每次作答的 AI 日志里有请求原文（前 4000 字）和模型回复原文，
+ * 缓存里存的正是这份回复：回复一字不差、且请求在缓存写入前 3 分钟内发出的那条日志就是它的来源。
+ * 对不上或对上多条不同请求的跳过，不猜。
+ */
+export async function backfillLearningQuestionText() {
+  const pending = await prisma.learningAnswerCache.findMany({
+    where: { questionText: "" },
+    select: { id: true, outputText: true, createdAt: true },
+    orderBy: { id: "asc" },
+    take: 5000,
+  });
+  let filled = 0;
+  let unmatched = 0;
+  for (const entry of pending) {
+    const logs = await prisma.aiReviewLog.findMany({
+      where: {
+        kind: "learning-answer",
+        status: "success",
+        startedAt: { gte: new Date(entry.createdAt.getTime() - 3 * 60 * 1000), lte: entry.createdAt },
+        responseSummary: entry.outputText.slice(0, 4000),
+      },
+      select: { requestSummary: true },
+      take: 10,
+    });
+    const requests = [...new Set(logs.map((log) => log.requestSummary).filter(Boolean))];
+    if (requests.length !== 1) {
+      unmatched += 1;
+      continue;
+    }
+    await prisma.learningAnswerCache.update({
+      where: { id: entry.id },
+      data: { questionText: learningQuestionText(requests[0]) },
+    });
+    filled += 1;
+  }
+  return { checked: pending.length, filled, unmatched };
 }
 
 export async function deleteLearningAnswerBankEntry(id: number) {

@@ -32,6 +32,11 @@
         <el-button :icon="Refresh" :loading="loading || overviewLoading" @click="reloadAll">刷新</el-button>
       </div>
 
+      <el-alert v-if="overview.missingText > 0" type="info" :closable="false" show-icon class="pane-alert">
+        <template #title>有 {{ overview.missingText }} 道题收录时还没保存题目文字，搜不到。可以从答题日志里按 AI 回复原文找回题目。</template>
+        <el-button size="small" type="primary" :loading="backfilling" @click="backfillText">从答题日志补全</el-button>
+      </el-alert>
+
       <div class="filters">
         <el-input
           v-model="filters.q"
@@ -183,7 +188,7 @@ const VERDICT_LABELS: Record<string, string> = {
 };
 
 const overviewLoading = ref(false);
-const overview = ref<LearningAnswerBankOverview>({ entries: 0, bySource: {}, hits: 0, appeals: {}, refundedPoints: 0 });
+const overview = ref<LearningAnswerBankOverview>({ entries: 0, missingText: 0, bySource: {}, hits: 0, appeals: {}, refundedPoints: 0 });
 const appealTotal = computed(() => Object.values(overview.value.appeals).reduce((sum, count) => sum + (count ?? 0), 0));
 
 const loading = ref(false);
@@ -235,6 +240,23 @@ function applyFilters() {
 function reloadAll() {
   void loadOverview();
   void load();
+}
+
+const backfilling = ref(false);
+
+async function backfillText() {
+  backfilling.value = true;
+  try {
+    const result = await adminApi.backfillLearningQuestionText();
+    ElMessage.success(result.unmatched
+      ? `已补全 ${result.filled} 道，${result.unmatched} 道在日志里对不上`
+      : `已补全 ${result.filled} 道题的题目文字`);
+    reloadAll();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "补全失败");
+  } finally {
+    backfilling.value = false;
+  }
 }
 
 function sourceType(source: string) {

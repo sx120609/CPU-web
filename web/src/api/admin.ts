@@ -1326,6 +1326,7 @@ export type LearningAnswerAppealVerdict = "pending" | "claim-correct" | "both-wr
 
 export interface LearningAnswerBankOverview {
   entries: number;
+  missingText: number;
   bySource: Partial<Record<LearningAnswerBankSource, number>>;
   hits: number;
   appeals: Partial<Record<LearningAnswerAppealVerdict, number>>;
@@ -1683,6 +1684,8 @@ export const adminApi = {
     request.get<LearningAnswerAppealRecord[]>(`/admin/learning-answer-bank/${id}/appeals`),
   updateLearningAnswerBankEntry: (id: number, payload: { answer: string; explanation: string }) =>
     request.put<{ id: number }>(`/admin/learning-answer-bank/${id}`, payload),
+  backfillLearningQuestionText: () =>
+    request.post<{ checked: number; filled: number; unmatched: number }>("/admin/learning-answer-bank/backfill-text", {}),
   deleteLearningAnswerBankEntry: (id: number) =>
     request.delete<{ deleted: boolean }>(`/admin/learning-answer-bank/${id}`),
   assistantPointLedger: (params: AssistantPointLedgerParams, options?: RequestOptions) =>
