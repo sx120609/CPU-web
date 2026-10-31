@@ -363,7 +363,8 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
         saved?.username || form.username,
         saved?.password || form.password,
         form.captcha || undefined,
-        remember.value,
+        // 用已保存的账号补一个验证码时，用户没碰“保持登录”，不能因此把保存的账号删掉。
+        remember.value || Boolean(saved),
       );
     } catch {
       return;

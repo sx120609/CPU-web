@@ -104,13 +104,14 @@ async function prewarmJwxtData(options?: { force?: boolean }) {
       await auth.fetchMe({ probe: true }).catch(() => undefined);
     }
     if (!auth.isLoggedIn || justLoggedOutThisSession()) return false;
+    // 冷却期内什么都不做，连教务状态也不查：每多查一次就多一次触发重新登录的机会。
+    if (shouldSkipByCooldown(auth.academicIdentity, options?.force)) return false;
 
     jwxt.hydrate();
+    // 预取是后台的事：不额外探测状态，数据请求自己会发现失效并交给统一的静默恢复。
     const ready = await jwxt.ensureSession({
-      refresh: true,
       silent: true,
       allowAutoLogin: true,
-      repairUnavailableSession: true,
     }).catch(() => false);
     if (!ready || !auth.isLoggedIn) return false;
 

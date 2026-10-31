@@ -59,10 +59,11 @@ export async function repairUnavailableJwxtSession(input: {
   const storage = input.storage === undefined ? browserStorage() : input.storage;
   const now = input.now ?? Date.now();
   if (hasAttemptedModernJwxtSessionRepair(input.username, storage, now, input.cooldownMs)) return false;
+  // 修复要断开现有会话再重新登录；本机没有保存的账号时断开了也接不回来，只会把人登出。
+  if (!input.hasSavedCredentials()) return false;
   markModernJwxtSessionRepairAttempted(input.username, storage, now);
   await input.disconnect().catch(() => undefined);
   input.resetLocalState();
-  if (!input.hasSavedCredentials()) return false;
   return input.autoLogin();
 }
 

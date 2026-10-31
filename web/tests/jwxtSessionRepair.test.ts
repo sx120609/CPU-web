@@ -30,7 +30,7 @@ test("老教务会话有保存凭据时自动断开并重建", async () => {
   assert.deepEqual(steps, ["disconnect", "reset", "login"]);
 });
 
-test("没有保存凭据时只清理旧教务会话并回到教务登录框", async () => {
+test("没有保存凭据时不断开现有教务会话，留给用户手动重新核验", async () => {
   const steps: string[] = [];
   const recovered = await repairUnavailableJwxtSession({
     username: "old-student-without-creds",
@@ -42,7 +42,7 @@ test("没有保存凭据时只清理旧教务会话并回到教务登录框", as
   });
 
   assert.equal(recovered, false);
-  assert.deepEqual(steps, ["disconnect", "reset"]);
+  assert.deepEqual(steps, []);
 });
 
 test("短时间内只自动修复一次，冷却后允许再次恢复", async () => {

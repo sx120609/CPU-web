@@ -79,6 +79,49 @@ test('authorization failures do not trigger an all-weeks compatibility retry', a
   assert.equal(calls, 1);
 });
 
+test('a transient failure does not switch the page to week-by-week loading for good', async () => {
+  const calls = [];
+  let fail = true;
+  const { loader } = setup(async params => {
+    calls.push(params.week);
+    if (fail) { fail = false; throw Object.assign(new Error('教务 Agent 当前繁忙'), { status: 503 }); }
+    return response();
+  });
+  await assert.rejects(loader.load('2026-2027-1', '1'), /繁忙/);
+  await loader.load('2026-2027-1', '1');
+  assert.deepEqual(calls, ['all', 'all']);
+});
+
+test('a whole-semester answer that cannot be used falls back, a network error does not', async () => {
+  const calls = [];
+  const { loader } = setup(async params => {
+    calls.push(params.week);
+    if (params.week === 'all') throw new Error('教务系统未返回有效课表');
+    return response('week', params.week);
+  });
+  await loader.load('2026-2027-1', '1');
+  assert.deepEqual(calls, ['all', '1']);
+
+  const offline = [];
+  const second = setup(async params => {
+    offline.push(params.week);
+    throw Object.assign(new Error('暂时无法连接教务服务，请稍后重试'), { authGeneration: 3 });
+  });
+  await assert.rejects(second.loader.load('2026-2027-1', '1'), /无法连接/);
+  assert.deepEqual(offline, ['all']);
+});
+
+test('an older server rejecting the whole-semester request falls back to single weeks', async () => {
+  const calls = [];
+  const { loader } = setup(async params => {
+    calls.push(params.week);
+    if (params.week === 'all') throw Object.assign(new Error('参数错误'), { status: 400 });
+    return response('week', params.week);
+  });
+  await loader.load('2026-2027-1', '1');
+  assert.deepEqual(calls, ['all', '1']);
+});
+
 test('clearing the account discards in-flight results without publishing them', async () => {
   let finish;
   const { loader, published } = setup(() => new Promise(resolve => { finish = resolve; }));

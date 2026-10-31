@@ -9,6 +9,7 @@ import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { buildGraduateFallbackCalendar, extendScheduleWeeksToCalendar, hydrateCalendar } from "@/views/schedule/calendar";
 import type { CalendarResult, ScheduleResult } from "@/views/schedule/types";
 import { normalizeSlotRange, smallSlots } from "@/views/schedule/slots";
+import { rejectsWholeSemester } from "@/views/schedule/semesterLoader";
 import {
   SCHEDULE_REFRESH_INTERRUPTED_MESSAGE,
   SCHEDULE_REFRESH_SIGNED_OUT_MESSAGE,
@@ -506,15 +507,10 @@ export function installIosNextScheduleBridge(
   }, { flush: "sync" });
 
   // JWXT authorization is a separate, recoverable layer over the site
-  // account. Its expiry invalidates in-flight schedule requests, but must not
-  // tell Swift that the signed-in site account disappeared.
-  watch(() => jwxt.isLoggedIn, () => {
-    generation += 1;
-    selectionRevision += 1;
-    semesters.clear();
-    foreground.clear();
-    activeSemester = "";
-  }, { flush: "sync" });
+  // account. A silent recovery flips jwxt.isLoggedIn off and back on for the
+  // same account, so it must not invalidate the request that triggered it:
+  // that request's retry already carries the recovered data. Account changes
+  // are handled by the auth watcher above.
 
   // The iOS shell may open its quick menu before any auth store field changes
   // after startup. Report the current capability immediately so a restored
@@ -838,6 +834,9 @@ export function installIosNextScheduleBridge(
     };
     try {
       if (!auth.ready) await auth.fetchMe({ probe: true });
+      // Another request may be restoring the session right now; share its
+      // outcome instead of reporting "not authorized" while it is running.
+      await jwxt.waitForRecovery?.();
       // A failed profile probe is a transport problem, not proof that the
       // site account disappeared. Let native keep its cached grid and render
       // a recoverable service state until the next foreground retry.
@@ -919,9 +918,7 @@ export function installIosNextScheduleBridge(
           try {
             data = await loadInitial("all");
           } catch (error) {
-            const failure = error as { status?: number; code?: number; message?: string };
-            if (generation !== epoch || !jwxt.isLoggedIn || failure.status === 401 || failure.code === 4001
-              || /请先登录教务|教务会话已失效|重新登录|重新授权/.test(failure.message || "")) throw error;
+            if (generation !== epoch || !jwxt.isLoggedIn || !rejectsWholeSemester(error)) throw error;
             // Older servers/agents may reject the new all-weeks sentinel.
             // Retry the exact pre-existing request contract, not guessed rules.
             data = await loadInitial(week || undefined);

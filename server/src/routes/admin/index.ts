@@ -147,6 +147,7 @@ import { JWXT_AGENT_FEATURES } from "../../services/jwxtAgentProtocol";
 import { normalizeAgentUpdateReport } from "../../services/agentUpdateStatus";
 import { readServerBuildCommit, recordAgentUpdateRequest, resolveAgentUpdate } from "../../services/agentUpdateTracker";
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
+import { jwxtErrorStats } from "../../services/jwxtErrors";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQuota";
 import {
@@ -320,6 +321,11 @@ async function jwxtAgentAdminSnapshot() {
     })),
   };
 }
+
+/** 最近 24 小时教务接口的错误分类统计（本进程内），用来看学生到底遇到了哪些错。 */
+adminRouter.get("/jwxt-errors", adminOnly, (_req, res) => {
+  ok(res, jwxtErrorStats());
+});
 
 adminRouter.get("/jwxt-agents", adminOnly, async (_req, res, next) => {
   try { ok(res, await jwxtAgentAdminSnapshot()); } catch (error) { next(error); }

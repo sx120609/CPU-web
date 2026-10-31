@@ -2,11 +2,14 @@ import { defineStore } from "pinia";
 import {
   jwxtApi,
   getJwxtToken,
+  getJwxtAuthGeneration,
   setJwxtToken,
   clearJwxtToken,
-  isJwxtAuthExpiredResponse,
+  isJwxtAuthFailure,
+  jwxtNotAuthorizedError,
   JWXT_AUTH_EXPIRED_EVENT,
   JWXT_COOKIE_SESSION_MARKER,
+  type JwxtRequestError,
 } from "@/api/jwxt";
 import { clearCreds, hasCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
@@ -23,6 +26,12 @@ let authExpiredListenerInstalled = false;
 let jwxtStatusRefreshInFlight: Promise<void> | null = null;
 let jwxtEnsureSessionInFlight: Promise<boolean> | null = null;
 let jwxtSessionRecoveryInFlight: Promise<boolean> | null = null;
+/** 上次静默恢复失败的时间；刚失败过就先不再试，连续登录会让学校要求验证码。 */
+let lastRecoveryFailedAt = 0;
+/** 上次静默恢复成功的时间；刚恢复完又失效，说明问题不在会话，别再反复登录。 */
+let lastRecoveredAt = 0;
+const RECOVERY_RETRY_MS = 60_000;
+const RECOVERY_REPEAT_MS = 30_000;
 
 function justLoggedOutThisSession() {
   try {
@@ -41,14 +50,7 @@ function clearLoggedOutThisSession() {
 }
 
 function isJwxtAuthExpired(error: unknown) {
-  const candidate = error as {
-    status?: number;
-    message?: string;
-    response?: { status?: number; data?: { message?: string } };
-  };
-  const status = Number(candidate?.status || candidate?.response?.status || 0);
-  const message = String(candidate?.message || candidate?.response?.data?.message || "");
-  return isJwxtAuthExpiredResponse(status, message);
+  return isJwxtAuthFailure(error);
 }
 
 /**
@@ -69,9 +71,15 @@ export const useJwxtStore = defineStore("jwxt", {
     active: false,
     rememberSaved: false,
     authorizationExpired: false,
+    /** 正在用保存的凭据静默恢复；这期间界面不提示授权失效。 */
+    recovering: false,
+    /** 每恢复成功一次加一，页面据此重新加载数据。 */
+    recoveryVersion: 0,
   }),
   getters: {
     isLoggedIn: (s) => s.active && !!s.token,
+    /** 确实需要用户重新授权：失效了，而且没有在静默恢复。界面只看这个。 */
+    needsReauthorization: (s) => s.authorizationExpired && !s.recovering,
     // 把 auth store 的 SSO 流程态代理出来，供模板 v-if / v-model 直接绑定
     error(): string {
       return useAuthStore().ssoError;
@@ -99,18 +107,21 @@ export const useJwxtStore = defineStore("jwxt", {
       // 否则教务启动会把缺失的教务记录当成过期会话并不断重试。
       const auth = useAuthStore();
       if (!this.authorizationExpired && !this.token && auth.token && auth.user?.studentSso !== false) {
-        setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
+        setJwxtToken(JWXT_COOKIE_SESSION_MARKER, { renewed: false });
         this.token = JWXT_COOKIE_SESSION_MARKER;
       }
       if (this.token) this.active = true;
       this.rememberSaved = hasCreds();
       if (!authExpiredListenerInstalled) {
         authExpiredListenerInstalled = true;
-        window.addEventListener(JWXT_AUTH_EXPIRED_EVENT, () => {
+        window.addEventListener(JWXT_AUTH_EXPIRED_EVENT, (event) => {
           const store = useJwxtStore();
           store.token = "";
           store.active = false;
           store.authorizationExpired = true;
+          // 哪里发现失效就在哪里恢复，不用等用户去教务页。和发起请求的重试共用同一次恢复。
+          const generation = (event as CustomEvent<{ generation?: number }>).detail?.generation;
+          void store.recoverSession(generation);
         });
       }
     },
@@ -144,10 +155,16 @@ export const useJwxtStore = defineStore("jwxt", {
             this.token = "";
             this.authorizationExpired = true;
             auth.clearAcademicIdentityUnavailable();
+            // 同一轮里就开始恢复，界面不会先闪一下“授权已失效”。
+            void this.recoverSession();
           } else {
-            setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
+            const wasExpired = this.authorizationExpired;
+            // 状态检查只说明服务端还存着会话，不是新登录：不换代次。
+            if (getJwxtToken() !== JWXT_COOKIE_SESSION_MARKER) setJwxtToken(JWXT_COOKIE_SESSION_MARKER, { renewed: false });
             this.token = JWXT_COOKIE_SESSION_MARKER;
             this.authorizationExpired = false;
+            // 会话在别处（另一个标签页、教务页）续上了，页面也要重新加载。
+            if (wasExpired) this.recoveryVersion += 1;
             await auth.detectAcademicIdentity({
               force: true,
               silent: true,
@@ -201,6 +218,7 @@ export const useJwxtStore = defineStore("jwxt", {
         this.authorizationExpired = false;
         clearLoggedOutThisSession();
         if (remember) this.rememberSaved = hasCreds();
+        this.recoveryVersion += 1;
         void this.refreshWidgetTokens();
         return true;
       }
@@ -265,12 +283,7 @@ export const useJwxtStore = defineStore("jwxt", {
           authorizationExpired: this.authorizationExpired,
           hasSavedCredentials: this.rememberSaved,
         })) return false;
-        const recoveryPreparation = auth.ssoPendingId.trim().length < 8
-          && !auth.ssoNeedCaptcha
-          ? auth.ssoBegin({ silent: true }).catch(() => undefined)
-          : null;
-        if (recoveryPreparation) await recoveryPreparation;
-        return this.tryAutoLogin({ silent: options?.silent });
+        return this.recoverSession(undefined, { force: options?.forceLogin });
       })();
       if (!options?.forceLogin) jwxtEnsureSessionInFlight = task;
       try {
@@ -333,33 +346,70 @@ export const useJwxtStore = defineStore("jwxt", {
         prepareLogin: () => this.beginLogin({ silent: options?.silent }),
       });
     },
-    async recoverSession(): Promise<boolean> {
+    /**
+     * 全站唯一的静默恢复入口：用本机加密保存的账号重新走一次统一认证。
+     * 同一时间只登录一次；失败的请求发出之后会话已经被续上时，直接让它重试。
+     * failedGeneration 是失败请求发出时的会话代次。
+     */
+    recoverSession(failedGeneration?: number, options: { force?: boolean } = {}): Promise<boolean> {
+      if (failedGeneration !== undefined && failedGeneration !== getJwxtAuthGeneration() && getJwxtToken()) {
+        return Promise.resolve(true);
+      }
       if (jwxtSessionRecoveryInFlight) return jwxtSessionRecoveryInFlight;
+      const auth = useAuthStore();
+      this.rememberSaved = hasCreds();
+      if (
+        !this.rememberSaved
+        || !auth.isLoggedIn
+        || auth.user?.studentSso === false
+        || (!options.force && justLoggedOutThisSession())
+        || (auth.academicIdentityUnavailable && auth.user?.studentSso)
+      ) return Promise.resolve(false);
+      const now = Date.now();
+      if (!options.force && (now - lastRecoveryFailedAt < RECOVERY_RETRY_MS || now - lastRecoveredAt < RECOVERY_REPEAT_MS)) {
+        return Promise.resolve(false);
+      }
+      // 同步置上，调用方（包括失效事件）这一轮里界面就知道在恢复，不会先弹提示。
+      this.recovering = true;
       const task = (async () => {
-        const auth = useAuthStore();
-        if (auth.academicIdentityUnavailable && auth.user?.studentSso) return false;
-        clearJwxtToken();
-        this.token = "";
-        this.active = false;
-        this.rememberSaved = hasCreds();
-        if (!this.rememberSaved) return false;
-        return this.tryAutoLogin({ silent: true });
+        try {
+          this.active = false;
+          const ok = await this.tryAutoLogin({ silent: true, force: options.force });
+          if (ok) {
+            lastRecoveredAt = Date.now();
+            lastRecoveryFailedAt = 0;
+            this.recoveryVersion += 1;
+          } else {
+            lastRecoveryFailedAt = Date.now();
+          }
+          return ok;
+        } catch {
+          lastRecoveryFailedAt = Date.now();
+          return false;
+        }
       })();
       jwxtSessionRecoveryInFlight = task;
-      try {
-        return await task;
-      } finally {
-        if (jwxtSessionRecoveryInFlight === task) jwxtSessionRecoveryInFlight = null;
-      }
+      void task.finally(() => {
+        if (jwxtSessionRecoveryInFlight === task) {
+          jwxtSessionRecoveryInFlight = null;
+          this.recovering = false;
+        }
+      });
+      return task;
+    },
+    /** 等正在进行的静默恢复结束；没有在恢复时立刻返回。 */
+    async waitForRecovery(): Promise<void> {
+      if (jwxtSessionRecoveryInFlight) await jwxtSessionRecoveryInFlight.catch(() => false);
     },
     async withSessionRetry<T>(task: () => Promise<T>): Promise<T> {
+      await this.waitForRecovery();
       const ready = await this.ensureSession();
-      if (!ready) throw new Error("请先登录教务系统");
+      if (!ready) throw jwxtNotAuthorizedError();
       try {
         return await task();
       } catch (error) {
         if (!isJwxtAuthExpired(error)) throw error;
-        const recovered = await this.recoverSession();
+        const recovered = await this.recoverSession((error as JwxtRequestError).authGeneration);
         if (!recovered) throw error;
         return task();
       }

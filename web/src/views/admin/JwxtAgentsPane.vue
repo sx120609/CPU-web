@@ -202,6 +202,27 @@
       </article>
     </div>
 
+    <section class="error-card">
+      <div class="list-head">
+        <div>
+          <h3>学生遇到的教务错误</h3>
+          <span v-if="errorStats">最近 {{ errorStats.windowHours }} 小时 · {{ errorStats.requests }} 次请求 · {{ errorStats.errors }} 次出错（本进程统计，部署后重新计数）</span>
+        </div>
+        <el-button size="small" :loading="errorsLoading" @click="loadErrors">刷新</el-button>
+      </div>
+      <p v-if="errorStats && !errorStats.kinds.length" class="error-empty">这段时间没有出错。</p>
+      <ul v-else-if="errorStats" class="error-list">
+        <li v-for="kind in errorStats.kinds" :key="`${kind.status}-${kind.code}-${kind.message}`">
+          <div class="error-main">
+            <b>{{ kind.count }}</b>
+            <span class="error-message">{{ kind.message || "（无说明）" }}</span>
+            <el-tag size="small" :type="errorTagType(kind)">{{ errorKindLabel(kind) }}</el-tag>
+          </div>
+          <small>{{ kind.status }} · {{ kind.code || "-" }} · 最近 {{ formatClock(Date.parse(kind.lastAt)) }} · {{ kind.paths.map((item) => `${item.path} ×${item.count}`).join("，") }}</small>
+        </li>
+      </ul>
+    </section>
+
     <el-dialog v-model="addVisible" title="添加教务 Agent" width="520px" append-to-body>
       <el-form label-position="top">
         <el-form-item label="Agent ID">
@@ -234,6 +255,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import type { JwxtErrorStats } from "@/api/admin";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Loading } from "@element-plus/icons-vue";
 import {
@@ -366,6 +388,37 @@ async function load() {
   } finally {
     loading.value = false;
   }
+  void loadErrors();
+}
+
+const errorStats = ref<JwxtErrorStats | null>(null);
+const errorsLoading = ref(false);
+
+async function loadErrors() {
+  errorsLoading.value = true;
+  try {
+    errorStats.value = await adminApi.jwxtErrors();
+  } catch {
+    /* 请求层已提示 */
+  } finally {
+    errorsLoading.value = false;
+  }
+}
+
+function errorKindLabel(kind: JwxtErrorStats["kinds"][number]) {
+  if (kind.code === 4011) return "授权失效";
+  if (kind.code === 4001) return "站内登录";
+  if (kind.code === 5021) return "学校拒绝";
+  if (kind.status === 504) return "超时";
+  if (kind.status === 503) return "暂不可用";
+  if (kind.status >= 500) return "服务出错";
+  return "请求错误";
+}
+
+function errorTagType(kind: JwxtErrorStats["kinds"][number]) {
+  if (kind.code === 4011) return "warning";
+  if (kind.status >= 500) return "danger";
+  return "info";
 }
 
 async function save() {
@@ -569,6 +622,15 @@ onMounted(load);
 </script>
 
 <style scoped>
+.error-card { padding: 18px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: var(--cpu-surface); }
+.error-empty { margin: 12px 0 0; color: var(--cpu-text-secondary); font-size: 13px; }
+.error-list { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+.error-list li { display: grid; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid var(--cpu-border-soft); }
+.error-list li:last-child { padding-bottom: 0; border-bottom: 0; }
+.error-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.error-main b { flex: 0 0 auto; min-width: 36px; color: var(--cpu-text); font-variant-numeric: tabular-nums; }
+.error-message { flex: 1; min-width: 0; color: var(--cpu-text); overflow-wrap: anywhere; }
+.error-list small { color: var(--cpu-text-secondary); font-size: 12px; overflow-wrap: anywhere; }
 .agent-pane { display: grid; gap: 18px; }
 .pane-head, .list-head, .agent-card-head, .agent-card-foot, .setting-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .pane-head h2, .list-head h3 { margin: 0; color: var(--cpu-text); }

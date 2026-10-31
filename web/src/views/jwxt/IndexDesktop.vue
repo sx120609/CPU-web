@@ -35,7 +35,7 @@
       title="学校没有返回授权失效提示，但尚未返回可读取的教务数据。站内账号仍可正常使用，也可以手动重新授权核验。"
     />
     <el-alert
-      v-else-if="jwxt.authorizationExpired"
+      v-else-if="jwxt.needsReauthorization"
       type="warning"
       :closable="false"
       show-icon

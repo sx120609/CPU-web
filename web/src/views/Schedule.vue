@@ -341,6 +341,12 @@
       </div>
     </header>
 
+    <!-- 显示着缓存课表、但静默恢复确实失败了：给一个能就地恢复的入口，不跳页。 -->
+    <div v-if="parsed && jwxt.needsReauthorization && auth.isLoggedIn" class="jwxt-reauth-bar" role="status">
+      <span>教务授权已失效，课表停在上次同步的内容</span>
+      <button type="button" @click="reauthOpen = true">恢复授权</button>
+    </div>
+
     <!-- 按设备分流的安装引导：移动端安装/加主屏，桌面端下载原生客户端 -->
     <OpenBrowserPromptDialog ref="openBrowserPromptRef" />
     <InstallPromptDialog ref="installPromptRef" />
@@ -444,13 +450,22 @@
       </el-button>
     </section>
 
+    <!-- 静默恢复期间不提示失效：恢复成功页面会自己刷新，失败了才请用户处理。 -->
+    <section v-else-if="!parsed && !jwxt.isLoggedIn && jwxt.recovering" class="state-card session-checking-state">
+      <el-skeleton :rows="4" animated />
+      <p>正在连接教务…</p>
+    </section>
+
     <section v-else-if="!parsed && !jwxt.isLoggedIn" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
-      <h2>{{ jwxt.authorizationExpired ? "教务授权已失效" : "需要先登录教务" }}</h2>
-      <p>{{ jwxt.authorizationExpired ? "学校返回了登录或统一认证提示，请重新完成教务授权。" : "登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。" }}</p>
+      <h2>{{ jwxt.needsReauthorization ? "教务授权已失效" : "需要先登录教务" }}</h2>
+      <p>{{ jwxt.needsReauthorization ? "学校的登录过期了，没能自动恢复。在这里重新授权就好，课表会自动刷新。" : "登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。" }}</p>
       <p class="scope-note">{{ scheduleLoginScopeText }}</p>
-      <el-button data-cpu-button-theme="schedule" type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { reauthorize: jwxt.authorizationExpired ? '1' : undefined, redirect: '/schedule' } })">
-        {{ jwxt.authorizationExpired ? "重新授权" : "前往登录" }}
+      <el-button v-if="jwxt.needsReauthorization && auth.isLoggedIn" data-cpu-button-theme="schedule" type="primary" size="large" @click="reauthOpen = true">
+        恢复授权
+      </el-button>
+      <el-button v-else data-cpu-button-theme="schedule" type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
+        前往登录
       </el-button>
       <PrivacyPolicyNotice />
     </section>
@@ -945,6 +960,8 @@
 
     <CoupleDialog :couple="couple" :page-style="pageStyle" :initial-code="coupleInviteCode" @changed="onCoupleStatusChanged" />
 
+    <JwxtReauthDialog v-model="reauthOpen" :page-style="pageStyle" dialog-class="schedule-themed-dialog" @restored="reloadAfterJwxtRecovery" />
+
     <DormDialog
       v-model="dormDialogOpen"
       :page-style="pageStyle"
@@ -1156,6 +1173,7 @@
 <script setup lang="ts">
 import ScheduleCourseStatus from "@/components/jwxt/ScheduleCourseStatus.vue";
 import ScheduleUsageNotice from "@/components/jwxt/ScheduleUsageNotice.vue";
+import JwxtReauthDialog from "@/components/jwxt/JwxtReauthDialog.vue";
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -1706,6 +1724,24 @@ const widgetCopyMessage = ref("");
 const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
 let widgetInstructionTimer = 0;
 const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
+
+const reauthOpen = ref(false);
+
+/**
+ * 教务授权在任何地方恢复（这页的请求、别的页面、别的标签页、手动恢复）之后都重新加载一次，
+ * 不用用户再去教务页或手动刷新。
+ */
+async function reloadAfterJwxtRecovery() {
+  if (disposed || !jwxt.isLoggedIn) return;
+  const background = Boolean(parsed.value);
+  try {
+    if (prefersGraduateIdentity.value) await loadGraduateSchedule(undefined, { background });
+    else await Promise.all([loadCalendar(), loadSchedule(false, background)]);
+  } catch {
+    /* 恢复后的这次加载失败时，页面保留现有课表；下次进入或刷新再试。 */
+  }
+}
+watch(() => jwxt.recoveryVersion, () => { void reloadAfterJwxtRecovery(); });
 const academicDataUnavailable = computed(() => Boolean(
   jwxt.isLoggedIn && auth.user?.studentSso && auth.academicIdentityUnavailable,
 ));

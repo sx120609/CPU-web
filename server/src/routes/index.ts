@@ -1,4 +1,4 @@
-import { Router, type RequestHandler } from "express";
+import { Router, type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { authOptional, authRequired } from "../middleware/auth";
 import { authRouter } from "./auth";
 import { userRouter } from "./user";
@@ -12,7 +12,9 @@ import { courseRouter } from "./course";
 import { servicesRouter } from "./services";
 import { messageRouter } from "./message";
 import { searchRouter } from "./search";
-import { jwxtRouter } from "./jwxt";
+import { jwxtRouter, markJwxtSessionUpstreamExpired } from "./jwxt";
+import { JWXT_AUTH_EXPIRED_CODE, classifyJwxtError, recordJwxtOutcome } from "../services/jwxtErrors";
+import { HttpError } from "../utils/response";
 import { adminRouter } from "./admin";
 import { siteRouter } from "./site";
 import { uploadRouter } from "./upload";
@@ -51,6 +53,30 @@ import { treeholeRouter } from "./treehole";
 
 export const router = Router();
 export const apiAdmissionPaths: string[] = [];
+/** 记下每个教务请求的结果，后台据此统计最近出了哪些错。 */
+function recordJwxtOutcomes(req: Request, res: Response, next: NextFunction) {
+  res.on("finish", () => {
+    recordJwxtOutcome({
+      path: `${req.baseUrl}${req.route?.path ?? req.path}`,
+      status: res.statusCode,
+      code: res.locals.serviceErrorCode,
+      message: res.locals.jwxtErrorMessage,
+    });
+  });
+  next();
+}
+
+/** 教务接口的错误统一归类（授权失效带 4011 等），见 services/jwxtErrors.ts。 */
+function jwxtErrorMapper(error: unknown, req: Request, res: Response, next: NextFunction) {
+  const mapped = classifyJwxtError(error);
+  if (mapped instanceof Error) res.locals.jwxtErrorMessage = mapped.message;
+  if (mapped instanceof HttpError && mapped.code === JWXT_AUTH_EXPIRED_CODE) {
+    void markJwxtSessionUpstreamExpired(req).finally(() => next(mapped));
+    return;
+  }
+  next(mapped);
+}
+
 function mount(path: string, ...handlers: RequestHandler[]) {
   apiAdmissionPaths.push('/api' + path);
   router.use(path, ...handlers);
@@ -93,7 +119,7 @@ mount("/integrations", integrationsRouter);
 mount("/oauth", oauthRouter);
 
 // 教务代登录：begin-login / login 公开，其余 handler 内部验 token
-mount("/jwxt", revokedCredentialGate, jwxtRouter);
+mount("/jwxt", recordJwxtOutcomes, revokedCredentialGate, jwxtRouter, jwxtErrorMapper as unknown as RequestHandler);
 
 // 站内登录后
 mount("/user", authRequired, userRouter);

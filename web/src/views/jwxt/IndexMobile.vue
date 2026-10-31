@@ -23,7 +23,7 @@
       <el-icon aria-hidden="true"><InfoFilled /></el-icon>
       <span>学校没有返回授权失效提示，但尚未返回可读取的教务数据。站内账号仍可正常使用，也可以手动重新授权核验。</span>
     </p>
-    <p v-else-if="jwxt.authorizationExpired" class="edu-m-notice is-warn" role="status">
+    <p v-else-if="jwxt.needsReauthorization" class="edu-m-notice is-warn" role="status">
       <el-icon aria-hidden="true"><WarningFilled /></el-icon>
       <span>学校返回了登录或统一认证提示，当前教务授权已失效，请重新授权。</span>
     </p>

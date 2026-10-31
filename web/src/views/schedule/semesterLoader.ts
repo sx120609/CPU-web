@@ -8,6 +8,29 @@ export interface ScheduleResponse {
 
 /** Semester rules are fetched once; old agents are filled one week at a time.
  * Foreground navigation and background filling share the same requests. */
+/**
+ * 服务端不支持整学期请求时才改按单周请求：旧版本回 4xx，或者回了一份用不了的课表（本地解析失败）。
+ * 网络抖动、超时、教务暂时不可用都不算，否则一次失败就让整页永久改成逐周请求。
+ * 请求层的错误都带着发出时的会话代次（authGeneration），据此和本地解析失败区分；
+ * 授权失效交给调用方恢复，取消的请求也不算。
+ */
+export function rejectsWholeSemester(error: unknown) {
+  const failure = error as {
+    status?: number;
+    jwxtAuthExpired?: boolean;
+    authGeneration?: number;
+    name?: string;
+    code?: string;
+  } | null;
+  if (!failure || failure.jwxtAuthExpired) return false;
+  const status = Number(failure.status || 0);
+  if (!status) {
+    return failure.authGeneration === undefined && failure.name !== "CanceledError" && failure.code !== "ERR_CANCELED";
+  }
+  if (status === 401 || status === 403 || status === 408 || status === 429) return false;
+  return status >= 400 && status < 500;
+}
+
 export function createSemesterScheduleLoader(
   fetch: (params: { semester?: string; week?: string; refresh?: string }) => Promise<ScheduleResponse>,
   publish: (response: ScheduleResponse, week: string, reset: boolean) => void,
@@ -96,9 +119,7 @@ export function createSemesterScheduleLoader(
           else {
             try { response = await request("all"); }
             catch (error) {
-              const failure = error as { status?: number; code?: number; message?: string };
-              if (!valid(target) || failure.status === 401 || failure.code === 4001
-                || /请先登录教务|教务会话已失效|重新登录|重新授权/.test(failure.message || "")) throw error;
+              if (!valid(target) || !rejectsWholeSemester(error)) throw error;
               response = await request(week || undefined);
               supportsScope = false;
             }

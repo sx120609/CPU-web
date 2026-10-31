@@ -9,6 +9,11 @@ import { ElMessage } from "element-plus";
 import { detectAnalyticsClient } from "@/utils/clientInfo";
 import { COOKIE_SESSION_MARKER, getToken } from "./request";
 import { shouldRetryJwxtRead, jwxtRetryDelay, waitForJwxtRetry } from "@/utils/jwxtReadRetry";
+import {
+  JWXT_AUTH_EXPIRED_CODE,
+  isJwxtAuthExpiredResponse,
+  type JwxtRequestError,
+} from "@/utils/jwxtAuthErrors";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
 export const JWXT_COOKIE_SESSION_MARKER = "__cpu_jwxt_cookie_session__";
@@ -29,10 +34,18 @@ let authExpiredSignaled = false;
 export function getJwxtToken() {
   return memoryJwxtToken;
 }
-export function setJwxtToken(t: string) {
+/** 每次换上新的教务会话就加一；请求失败时据此判断会话是不是已经被别处续上了。 */
+export function getJwxtAuthGeneration() {
+  return authSessionGeneration;
+}
+/**
+ * renewed：这是一次真正的新会话（统一认证登录成功）。只有它才换代次；
+ * 状态检查只是确认服务端还存着会话，学校那边可能早过期了，不能让在路上的失败请求以为已经续上。
+ */
+export function setJwxtToken(t: string, options: { renewed?: boolean } = {}) {
   memoryJwxtToken = t;
   if (t) {
-    authSessionGeneration += 1;
+    if (options.renewed !== false) authSessionGeneration += 1;
     authExpiredSignaled = false;
   }
   try { sessionStorage.removeItem(JWXT_TOKEN_KEY); } catch { /* ignore */ }
@@ -69,8 +82,21 @@ function shouldSuppressErrorMessage(config: unknown) {
   return Boolean((config as { suppressErrorMessage?: boolean } | undefined)?.suppressErrorMessage);
 }
 
-export function isJwxtAuthExpiredResponse(status: number, message = "") {
-  return status === 401 || /请先登录教务|教务会话已失效|重新登录|重新授权/.test(message);
+export {
+  JWXT_AUTH_EXPIRED_CODE,
+  isJwxtAuthExpiredResponse,
+  isJwxtAuthFailure,
+  type JwxtRequestError,
+} from "@/utils/jwxtAuthErrors";
+
+/** 本地发现没有可用教务会话时抛出的错误，和服务端回的授权失效同一种形状。 */
+export function jwxtNotAuthorizedError(message = "请先登录教务系统") {
+  const error = new Error(message) as JwxtRequestError;
+  error.status = 401;
+  error.code = JWXT_AUTH_EXPIRED_CODE;
+  error.jwxtAuthExpired = true;
+  error.authGeneration = authSessionGeneration;
+  return error;
 }
 
 function requestAuthGeneration(config: unknown) {
@@ -80,11 +106,12 @@ function requestAuthGeneration(config: unknown) {
 function signalJwxtAuthExpired(config: unknown) {
   // A late 401 from the previous session must not clear a session that has
   // already been recovered while the old request was still in flight.
-  if (requestAuthGeneration(config) !== authSessionGeneration) return;
+  const generation = requestAuthGeneration(config);
+  if (generation !== authSessionGeneration) return;
   clearJwxtToken();
   if (authExpiredSignaled) return;
   authExpiredSignaled = true;
-  window.dispatchEvent(new Event(JWXT_AUTH_EXPIRED_EVENT));
+  window.dispatchEvent(new CustomEvent(JWXT_AUTH_EXPIRED_EVENT, { detail: { generation } }));
 }
 
 inst.interceptors.request.use((cfg) => {
@@ -107,14 +134,17 @@ inst.interceptors.response.use(
     if (body && typeof body.code === "number") {
       if (body.code !== 0) {
         const message = normalizeJwxtError(body.message || "请求失败");
-        const authExpired = isJwxtAuthExpiredResponse(0, message);
+        const authExpired = isJwxtAuthExpiredResponse(0, message, body.code);
         if (authExpired) {
           signalJwxtAuthExpired(resp.config);
         } else if (!shouldSuppressErrorMessage(resp.config)) {
           showJwxtError(message);
         }
-        const normalized = new Error(message) as Error & { status?: number };
+        const normalized = new Error(message) as JwxtRequestError;
         normalized.status = authExpired ? 401 : undefined;
+        normalized.code = body.code;
+        normalized.jwxtAuthExpired = authExpired;
+        normalized.authGeneration = requestAuthGeneration(resp.config);
         return Promise.reject(normalized);
       }
       return body.data;
@@ -137,7 +167,8 @@ inst.interceptors.response.use(
         return inst.request(cfg);
       }
     }
-    const authExpired = isJwxtAuthExpiredResponse(status, msg);
+    const code = Number(err.response?.data?.code) || undefined;
+    const authExpired = isJwxtAuthExpiredResponse(status, msg, code);
     if (authExpired) {
       // Session expiry is expected control flow: the JWXT store silently
       // performs one shared recovery and retries callers. Never toast here.
@@ -146,9 +177,12 @@ inst.interceptors.response.use(
     if (!authExpired && !shouldSuppressErrorMessage(err.config)) {
       showJwxtError(msg);
     }
-    const normalized = new Error(msg) as Error & { status?: number; response?: unknown };
+    const normalized = new Error(msg) as JwxtRequestError;
     normalized.status = status || undefined;
+    normalized.code = code;
     normalized.response = err.response;
+    normalized.jwxtAuthExpired = authExpired;
+    normalized.authGeneration = requestAuthGeneration(err.config);
     return Promise.reject(normalized);
   }
 );

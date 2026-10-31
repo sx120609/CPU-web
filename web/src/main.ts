@@ -422,12 +422,16 @@ function scheduleViewCacheSweep() {
 function installJwxtDataPrewarmTriggers() {
   const auth = useAuthStore();
   let lastSessionVersion = auth.sessionVersion;
+  let lastUserId: number | null = null;
   auth.$subscribe(() => {
     if (auth.sessionVersion === lastSessionVersion) return;
     lastSessionVersion = auth.sessionVersion;
-    if (auth.isLoggedIn) {
-      scheduleJwxtDataPrewarm({ force: true });
-    }
+    if (!auth.isLoggedIn) return;
+    // 打开页面时恢复登录也会让 sessionVersion 加一；只有真的换了账号才跳过冷却强制预取。
+    const userId = auth.user?.id ?? null;
+    const switched = lastUserId !== null && userId !== lastUserId;
+    lastUserId = userId;
+    scheduleJwxtDataPrewarm({ force: switched });
   });
 }
 

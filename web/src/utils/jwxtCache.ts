@@ -71,6 +71,24 @@ export function clearJwxtDataCaches() {
   }
 }
 
+const CACHE_OWNER_KEY = "cpu-jwxt-cache-owner-v1";
+
+/**
+ * 课表和教务数据缓存的键里不含账号。每次登录（任何入口：站内登录、统一认证、原生壳）
+ * 都在这里登记缓存属于谁；换了账号就先清掉上一个人的缓存，免得把别人的课表显示出来。
+ */
+export function claimJwxtDataCaches(username: string | null | undefined) {
+  const owner = String(username || "").trim().toLowerCase();
+  if (!owner) return;
+  try {
+    const previous = localStorage.getItem(CACHE_OWNER_KEY);
+    if (previous && previous !== owner) clearJwxtDataCaches();
+    localStorage.setItem(CACHE_OWNER_KEY, owner);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function purgeLegacySensitiveJwxtCaches() {
   try {
     const sensitiveSuffixes = [":grades", ":midterm", ":progress", ":pyfa"];

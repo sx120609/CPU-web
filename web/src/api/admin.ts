@@ -1376,6 +1376,21 @@ export interface LearningAnswerAppealRecord {
   user: { id: number; username: string; nickname: string } | null;
 }
 
+/** 最近 24 小时教务接口错误分类（server/src/services/jwxtErrors.ts）。 */
+export interface JwxtErrorStats {
+  windowHours: number;
+  requests: number;
+  errors: number;
+  kinds: Array<{
+    status: number;
+    code: number;
+    message: string;
+    count: number;
+    lastAt: string;
+    paths: Array<{ path: string; count: number }>;
+  }>;
+}
+
 export const adminApi = {
   apnsConfig: (options?: RequestOptions) => request.get<ApnsConfig>("/admin/apns-config", undefined, options),
   updateApnsConfig: (payload: Pick<ApnsConfig, "keyPath" | "keyID" | "teamID" | "bundleID" | "tickSeconds">) =>
@@ -1394,6 +1409,8 @@ export const adminApi = {
     ),
   jwxtAgents: (options?: RequestOptions) =>
     request.get<JwxtAgentsAdminConfig>("/admin/jwxt-agents", undefined, options),
+  jwxtErrors: (options?: RequestOptions) =>
+    request.get<JwxtErrorStats>("/admin/jwxt-errors", undefined, options),
   updateJwxtAgents: (payload: JwxtAgentsAdminPatch) =>
     request.patch<JwxtAgentsAdminConfig>("/admin/jwxt-agents", payload),
   generateJwxtAgentToken: () =>

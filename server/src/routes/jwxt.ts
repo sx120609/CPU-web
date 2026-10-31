@@ -9,7 +9,7 @@ import { validate } from "../middleware/validate";
 import { authOptional, authRequired } from "../middleware/auth";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { prisma } from "../prisma";
-import { withCache } from "../services/cache";
+import { getEphemeralValue, setEphemeralValue, withCache } from "../services/cache";
 import { detectLoginClient } from "../utils/loginClient";
 import { getSiteOrigin } from "../services/siteSettings";
 import {
@@ -64,6 +64,15 @@ import {
 
 export const jwxtRouter = Router();
 
+// 这些响应按会话 Cookie 或 X-Jwxt-Token 区分账号，网址本身一样；
+// 不带 Vary 的话浏览器可能把上一个账号缓存的内容给下一个账号看。
+jwxtRouter.use((_req, res, next) => {
+  res.vary("Cookie");
+  res.vary("X-Jwxt-Token");
+  res.vary("Authorization");
+  next();
+});
+
 const JWXT_STATUS_CACHE_TTL_MS = 60_000;
 const JWXT_IDENTITY_CACHE_TTL_MS = 5 * 60_000;
 const JWXT_GRADES_CACHE_TTL_MS = 30 * 60_000;
@@ -95,11 +104,28 @@ const GRAD_SCHEDULE_DEBUG_FIXTURE_CANDIDATES = [
  * 该 token 与站内登录 token 完全独立 —— 站内可以未登录也用教务（但通常我们要求站内登录）。
  */
 function getToken(req: any): string | null {
-  return req.browserSession?.jwxtToken || (req.headers["x-jwxt-token"] as string) || null;
+  const token = req.browserSession?.jwxtToken || (req.headers["x-jwxt-token"] as string) || null;
+  // 会话存储一时读不到不等于没登录教务：回 503 让客户端保留授权稍后重试，
+  // 回 401 会让客户端清掉授权、去重新登录。文案里不能有“失效”“重新授权”这类字眼。
+  if (!token && req.browserSessionUnavailable) throw Errors.unavailable("教务会话暂时无法读取，请稍后重试");
+  return token;
 }
 
 function jwxtTokenCacheId(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex").slice(0, 24);
+}
+
+// 服务端只存着会话，并不知道学校那边是不是已经过期；状态检查以前只看存储，
+// 学校早把人踢了它还说“已授权”，客户端就在“已授权”和“失效”之间来回跳。
+// 一个会话被学校拒绝过一次就记下来，之后的状态检查如实回“未授权”。
+// 重新登录会换新会话，记号自然不再适用。
+const UPSTREAM_EXPIRED_TTL_MS = 30 * 60_000;
+const upstreamExpiredKey = (token: string) => `jwxt:upstream-expired:${jwxtTokenCacheId(token)}`;
+
+export async function markJwxtSessionUpstreamExpired(req: any) {
+  const token = req.browserSession?.jwxtToken || (req.headers?.["x-jwxt-token"] as string) || "";
+  if (!token) return;
+  await setEphemeralValue(upstreamExpiredKey(token), "1", UPSTREAM_EXPIRED_TTL_MS).catch(() => undefined);
 }
 
 
@@ -649,9 +675,15 @@ jwxtRouter.get("/status", async (req, res, next) => {
       ok(res, { active: false });
       return;
     }
+    if (await getEphemeralValue(upstreamExpiredKey(token)).catch(() => null)) {
+      res.setHeader("Cache-Control", "private, no-store");
+      ok(res, { active: false });
+      return;
+    }
     const cacheId = jwxtTokenCacheId(token);
     const payload = await withCache("jwxt-status", [cacheId], JWXT_STATUS_CACHE_TTL_MS, async () => getStatus(token));
-    res.setHeader("Cache-Control", "private, max-age=60");
+    // 不能让浏览器缓存：重新授权之后紧接着的状态检查会拿到旧的“未授权”，又把人赶回授权页。
+    res.setHeader("Cache-Control", "private, no-store");
     ok(res, payload);
   } catch (e) { next(e); }
 });
@@ -667,7 +699,7 @@ jwxtRouter.get("/identity", async (req, res, next) => {
       JWXT_IDENTITY_CACHE_TTL_MS,
       async () => detectAcademicIdentity(token),
     );
-    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Cache-Control", "private, no-store");
     ok(res, payload);
   } catch (e) { next(e); }
 });
@@ -827,6 +859,8 @@ jwxtRouter.get("/iapps/icon", authOptional, securityRateLimit("jwxt-iapp-icon", 
 
     res.setHeader("Content-Type", icon.contentType);
     res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+    // 图标与账号无关，可以给所有人共用缓存。
+    res.removeHeader("Vary");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
     res.send(body);

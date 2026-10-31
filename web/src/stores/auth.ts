@@ -7,7 +7,7 @@ import { clearCreds, saveCreds } from "@/utils/credCrypto";
 import { encryptAgentLoginCredentials } from "@/utils/agentCredentialCrypto";
 import { withMediaRevision } from "@/utils/cdnMedia";
 import { shouldHideHarmonyForum } from "@/utils/clientInfo";
-import { clearJwxtDataCaches, purgeLegacySensitiveJwxtCaches } from "@/utils/jwxtCache";
+import { claimJwxtDataCaches, clearJwxtDataCaches, purgeLegacySensitiveJwxtCaches } from "@/utils/jwxtCache";
 import {
   academicIdentityLabel,
   clearAcademicIdentity,
@@ -124,6 +124,7 @@ export const useAuthStore = defineStore("auth", {
       const previousUserId = this.user?.id ?? null;
       const wasLoggedIn = this.isLoggedIn;
       clearJustLoggedOutMarker();
+      claimJwxtDataCaches(user.username);
       setToken(authToken, user.id);
       this.token = authToken;
       this.user = user;
