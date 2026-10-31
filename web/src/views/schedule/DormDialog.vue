@@ -85,6 +85,102 @@
       </header>
 
       <el-tabs v-model="activeTab" class="dorm-tabs">
+        <el-tab-pane label="一周" name="week">
+          <div v-if="dataState === 'error'" class="state-box" role="alert">
+            <p>室友的课表没加载出来，可能是网络不稳定。</p>
+            <el-button data-cpu-button-theme="schedule" size="small" :loading="refreshing" @click="refresh()">重试</el-button>
+          </div>
+          <div v-else-if="dataState === 'loading'" class="dorm-loading"><el-skeleton :rows="3" animated /></div>
+          <div v-else-if="dataState === 'empty'" class="empty-tip">{{ emptyDataText }}</div>
+          <template v-else>
+            <div class="free-bar">
+              <button type="button" class="date-nav" aria-label="上一周" @click="shiftWeek(-1)">‹</button>
+              <b aria-live="polite">{{ weekTitle }}</b>
+              <button type="button" class="date-nav" aria-label="下一周" @click="shiftWeek(1)">›</button>
+              <button v-if="weekMonday !== thisMonday" type="button" class="date-today" @click="setWeek(thisMonday)">回到本周</button>
+            </div>
+
+            <table class="week-table">
+              <caption class="visually-hidden">{{ weekTitle }}每一节谁有空</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="week-corner"><span class="visually-hidden">节次</span></th>
+                  <th v-for="(ymd, dayIndex) in week.dates" :key="ymd" scope="col" :class="{ today: ymd === todayYmd }">
+                    <b>{{ DORM_WEEKDAY_NAMES[dayIndex] }}</b>
+                    <span>{{ ymd === todayYmd ? "今天" : ymd.slice(5) }}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, rowIndex) in week.rows" :key="row.period.no" :class="{ 'break-before': row.breakBefore }">
+                  <th scope="row" class="week-period">
+                    <b>{{ row.period.no }}</b>
+                    <span>{{ row.period.start }}</span>
+                  </th>
+                  <td v-for="(cell, dayIndex) in row.cells" :key="cell.ymd" :class="{ today: cell.ymd === todayYmd }">
+                    <button
+                      type="button"
+                      class="week-cell"
+                      :class="[`level-${dormWeekCellLevel(cell)}`, { selected: isSelectedCell(rowIndex, dayIndex) }]"
+                      :style="weekCellStyle(cell)"
+                      :aria-label="weekCellLabel(cell)"
+                      :aria-pressed="isSelectedCell(rowIndex, dayIndex)"
+                      @click="selectCell(rowIndex, dayIndex)"
+                    >
+                      <span v-if="dormWeekCellLevel(cell) === 'unknown'" class="cell-unknown" aria-hidden="true">?</span>
+                      <span v-else-if="cell.freeIds.length" class="cell-dots" aria-hidden="true">
+                        <i v-for="id in cell.freeIds" :key="id" :style="{ background: dotOf(id) }" />
+                      </span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <ul class="week-legend" aria-label="图例">
+              <li><i class="legend-swatch level-all" aria-hidden="true" />全员有空</li>
+              <li><i class="legend-swatch level-some" aria-hidden="true" />部分有空，圆点是有空的人</li>
+              <li v-for="reader in readers" :key="reader.id">
+                <i class="who-dot" :style="{ background: dotColor(reader.color) }" aria-hidden="true" />{{ reader.id === current.me.id ? "我" : reader.nickname }}
+              </li>
+            </ul>
+
+            <section class="week-detail" aria-live="polite">
+              <template v-if="selectedCell">
+                <h3>
+                  {{ DORM_WEEKDAY_NAMES[selectedDayIndex] }} {{ selectedCell.ymd.slice(5) }} · 第 {{ selectedCell.period.no }} 节
+                  <span>{{ selectedCell.period.start }}–{{ selectedCell.period.end }}</span>
+                </h3>
+                <p class="detail-verdict" :class="`level-${dormWeekCellLevel(selectedCell)}`">{{ dormWeekCellSummary(selectedCell) }}</p>
+                <div v-if="selectedCell.freeIds.length" class="detail-row">
+                  <span class="detail-key">有空</span>
+                  <div class="chips">
+                    <span v-for="id in selectedCell.freeIds" :key="id" class="chip" :style="chipStyleOf(id)">{{ nickOf(id) }}</span>
+                  </div>
+                </div>
+                <div v-if="selectedCell.busy.length" class="detail-row">
+                  <span class="detail-key">上课</span>
+                  <div class="chips">
+                    <span v-for="item in selectedCell.busy" :key="item.id" class="chip busy-chip">
+                      <i class="who-dot" :style="{ background: dotOf(item.id) }" aria-hidden="true" />{{ nickOf(item.id) }} · {{ item.courses.join("、") }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="selectedCell.unknownIds.length" class="detail-row">
+                  <span class="detail-key">没数据</span>
+                  <span class="detail-unknown">{{ namesOf(selectedCell.unknownIds) }}（没同步或不在学期内）</span>
+                </div>
+                <button type="button" class="link-button" @click="openDay(selectedCell.ymd)">看这天连续的空闲时段 ›</button>
+              </template>
+              <p v-else class="note">点任意一格，看那一节谁有空、谁在上什么课。</p>
+            </section>
+
+            <p v-if="weekUnknownNames" class="note warn">
+              {{ weekUnknownNames }} 这周有几天没有可用课表（没同步或不在学期内），那几天的格子只算了其他人。
+            </p>
+          </template>
+        </el-tab-pane>
+
         <el-tab-pane label="空闲" name="free">
           <div v-if="dataState === 'error'" class="state-box" role="alert">
             <p>室友的课表没加载出来，可能是网络不稳定。</p>
@@ -296,8 +392,10 @@ import { useAuthStore } from "@/stores/auth";
 import { rememberDormStatus, type DormSyncNowOptions, type DormSyncNowResult } from "./dormSync";
 import {
   DORM_COLORS,
+  DORM_COLOR_FAMILIES,
   DORM_COLOR_NAMES,
   DORM_WEEKDAY_NAMES,
+  addDaysYmd,
   createDormReaders,
   dormBusySpansForDate,
   dormDateLabel,
@@ -318,6 +416,14 @@ import {
   type DormDayReader,
   type DormMinuteSpan,
 } from "./dorm";
+import {
+  dormWeekCellLevel,
+  dormWeekCellSummary,
+  dormWeekFreeRatio,
+  dormWeekGrid,
+  dormWeekMonday,
+  type DormWeekCell,
+} from "./dormWeek";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -349,10 +455,12 @@ const lastSync = ref<DormSyncNowResult | null>(null);
 const refreshedAt = ref<number | null>(null);
 const joinCode = ref("");
 const dormNameDraft = ref("");
-const activeTab = ref<"free" | "morning" | "manage">("free");
+const activeTab = ref<"week" | "free" | "morning" | "manage">("week");
 const minFree = ref(0);
 const todayYmd = ref(dormTodayYmd());
 const freeDate = ref(dormTodayYmd());
+const weekMonday = ref(dormWeekMonday(dormTodayYmd()));
+const selected = ref<{ row: number; day: number } | null>(null);
 
 // 每次打开弹窗算一轮；关闭或卸载后，还在路上的请求回来也不再改界面。
 let session = 0;
@@ -412,6 +520,33 @@ const minFreeOptions = computed(() => {
   const known = day.value.knownIds.length;
   const allLabel = day.value.unknownIds.length ? `已同步的人（${known} 人）` : `全员（${total} 人）`;
   return [{ value: 0, label: allLabel }, ...relaxed.map((value) => ({ value, label: `至少 ${value} 人` }))];
+});
+
+const thisMonday = computed(() => dormWeekMonday(todayYmd.value));
+const week = computed(() => dormWeekGrid(readers.value, weekMonday.value, current.value?.me.id));
+
+const weekTitle = computed(() => {
+  const { dates, teachingWeek } = week.value;
+  const parts = [
+    weekMonday.value === thisMonday.value ? "本周" : "",
+    teachingWeek ? `第 ${teachingWeek} 周` : "",
+    `${dates[0].slice(5)} – ${dates[6].slice(5)}`,
+  ];
+  return parts.filter(Boolean).join(" · ");
+});
+
+const selectedCell = computed<DormWeekCell | null>(() => {
+  const at = selected.value;
+  return at ? week.value.rows[at.row]?.cells[at.day] ?? null : null;
+});
+const selectedDayIndex = computed(() => selected.value?.day ?? 0);
+
+/** 这周有哪天没有课表的人；整周都在学期外时每个人都没数据，格子里已经是问号，不再重复提示。 */
+const weekUnknownNames = computed(() => {
+  const cells = week.value.rows[0]?.cells ?? [];
+  const ids = new Set(cells.flatMap((cell) => cell.unknownIds));
+  if (!ids.size || cells.every((cell) => dormWeekCellLevel(cell) === "unknown")) return "";
+  return namesOf([...ids]);
 });
 
 const morningDays = computed(() => dormMorningDays(readers.value, dormDateRange(todayYmd.value, 7)));
@@ -515,6 +650,62 @@ function relative(value: string) {
 
 function clockText(value: number) {
   return new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function readerOf(id: number) {
+  return readers.value.find((reader) => reader.id === id);
+}
+
+/** 总表里的人名圆点要叠在浅绿格子上，浅色主题用深一点的同色相，描边色太淡看不清。 */
+function dotColor(color: DormColor) {
+  if (appearance.isDark) return toneOf(color).border;
+  return `hsl(${(DORM_COLOR_FAMILIES[color] ?? DORM_COLOR_FAMILIES.blue).hue} 66% 46%)`;
+}
+
+function dotOf(id: number) {
+  const reader = readerOf(id);
+  return reader ? dotColor(reader.color) : "var(--schedule-text-muted)";
+}
+
+function chipStyleOf(id: number) {
+  const reader = readerOf(id);
+  return reader ? chipStyle(reader.color) : {};
+}
+
+/** 部分有空的格子按有空的比例加深绿色；全员有空另有实色样式。 */
+function weekCellStyle(cell: DormWeekCell) {
+  if (dormWeekCellLevel(cell) !== "some") return undefined;
+  const strength = Math.round(10 + dormWeekFreeRatio(cell) * 26);
+  return { background: `color-mix(in srgb, var(--cpu-success, #2aa06a) ${strength}%, transparent)` };
+}
+
+function weekCellLabel(cell: DormWeekCell) {
+  const day = DORM_WEEKDAY_NAMES[week.value.dates.indexOf(cell.ymd)] ?? "";
+  const who = cell.freeIds.length && dormWeekCellLevel(cell) === "some" ? `：${namesOf(cell.freeIds)}` : "";
+  return `${day} 第 ${cell.period.no} 节 ${cell.period.start}–${cell.period.end}，${dormWeekCellSummary(cell)}${who}`;
+}
+
+function isSelectedCell(row: number, day: number) {
+  return selected.value?.row === row && selected.value.day === day;
+}
+
+function selectCell(row: number, day: number) {
+  selected.value = isSelectedCell(row, day) ? null : { row, day };
+}
+
+function setWeek(monday: string) {
+  weekMonday.value = monday;
+  selected.value = null;
+}
+
+function shiftWeek(weeks: number) {
+  setWeek(addDaysYmd(weekMonday.value, weeks * 7));
+}
+
+/** 从总表跳到按天的空闲时段。 */
+function openDay(ymd: string) {
+  freeDate.value = ymd;
+  activeTab.value = "free";
 }
 
 function shiftFreeDate(days: number) {
@@ -752,6 +943,7 @@ async function leave() {
 function onOpen() {
   todayYmd.value = dormTodayYmd();
   freeDate.value = todayYmd.value;
+  setWeek(dormWeekMonday(todayYmd.value));
   if (props.initialCode && !joinCode.value) joinCode.value = props.initialCode;
   lastSync.value = null;
   loading.value = !status.value;
@@ -949,6 +1141,78 @@ onBeforeUnmount(endSession);
 .chip-free.unknown { color: var(--cpu-warning, #b26a00); }
 .who-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; }
 
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.week-table { width: 100%; margin-top: 10px; border-collapse: separate; border-spacing: 2px; table-layout: fixed; }
+.week-table th { padding: 0; font-weight: 400; }
+/* 深色主题的全局规则会给 th 和偶数行 td 铺底色，这张表不要。 */
+.week-table th,
+.week-table td { background: transparent !important; }
+.week-corner { width: 38px; }
+.week-table thead th { padding-bottom: 2px; text-align: center; }
+.week-table thead th b { display: block; color: var(--schedule-text); font-size: var(--cpu-fs-xs); font-weight: 600; line-height: 16px; }
+.week-table thead th span { display: block; color: var(--schedule-text-muted); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; line-height: 16px; }
+.week-table thead th.today b,
+.week-table thead th.today span { color: var(--schedule-accent, var(--cpu-primary)); font-weight: 700; }
+.week-period { text-align: right; padding-right: 4px !important; white-space: nowrap; }
+.week-period b { display: block; color: var(--schedule-text-secondary); font-size: var(--cpu-fs-xs); font-weight: 600; line-height: 14px; }
+.week-period span { display: block; color: var(--schedule-text-muted); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; line-height: 14px; }
+.week-table tr.break-before > * { padding-top: 6px; }
+.week-table td { padding: 0; }
+.week-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--schedule-text-muted) 7%, transparent);
+  color: var(--schedule-text);
+  font: inherit;
+  cursor: pointer;
+}
+.week-table td.today .week-cell { border-color: color-mix(in srgb, var(--schedule-accent, var(--cpu-primary)) 35%, transparent); }
+.week-cell.level-all { background: color-mix(in srgb, var(--cpu-success, #2aa06a) 72%, transparent); }
+.week-cell.level-unknown {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--schedule-text-muted) 10%, transparent) 0 4px, transparent 4px 8px);
+}
+.week-cell.selected { border-color: var(--schedule-text); box-shadow: 0 0 0 1px var(--schedule-text); }
+.week-cell:focus-visible { outline: 2px solid var(--schedule-accent, var(--cpu-primary)); outline-offset: 1px; }
+.cell-unknown { color: var(--schedule-text-muted); font-size: var(--cpu-fs-xs); }
+.cell-dots { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; max-width: 30px; }
+.cell-dots i { width: 6px; height: 6px; border-radius: 50%; }
+
+.week-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 10px 0 0; padding: 0; color: var(--schedule-text-muted); font-size: var(--cpu-fs-xs); list-style: none; }
+.week-legend li { display: inline-flex; align-items: center; gap: 4px; }
+.legend-swatch { width: 14px; height: 10px; border-radius: 3px; }
+.legend-swatch.level-all { background: color-mix(in srgb, var(--cpu-success, #2aa06a) 72%, transparent); }
+.legend-swatch.level-some { background: color-mix(in srgb, var(--cpu-success, #2aa06a) 24%, transparent); }
+
+.week-detail { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--schedule-border); border-radius: 10px; }
+.week-detail h3 { margin: 0; color: var(--schedule-text); font-size: var(--cpu-fs-s); }
+.week-detail h3 span { margin-left: 4px; color: var(--schedule-text-muted); font-size: var(--cpu-fs-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
+.week-detail .note { margin: 0; }
+.detail-verdict { margin: 4px 0 6px; color: var(--schedule-text-secondary); font-size: var(--cpu-fs-xs); font-weight: 600; }
+.detail-verdict.level-all,
+.detail-verdict.level-some { color: var(--cpu-success, #2aa06a); }
+.detail-row { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; }
+.detail-key { flex: 0 0 40px; color: var(--schedule-text-muted); font-size: var(--cpu-fs-xs); line-height: 20px; }
+.detail-unknown { color: var(--cpu-warning, #b26a00); font-size: var(--cpu-fs-xs); line-height: 20px; }
+.busy-chip { border-color: var(--schedule-border); color: var(--schedule-text-secondary); }
+.link-button {
+  margin-top: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--schedule-accent, var(--cpu-primary));
+  font: inherit;
+  font-size: var(--cpu-fs-xs);
+  cursor: pointer;
+}
+.link-button:focus-visible { outline: 2px solid var(--schedule-accent, var(--cpu-primary)); outline-offset: 2px; }
+
 .next-morning { margin: 4px 0 10px; color: var(--schedule-text); font-size: var(--cpu-fs-s); line-height: 1.7; }
 .next-morning b { margin-right: 6px; font-weight: 700; }
 .morning-list { margin: 0; padding: 0; list-style: none; }
@@ -993,6 +1257,8 @@ onBeforeUnmount(endSession);
 @media (pointer: coarse) {
   .date-nav { width: 44px; height: 44px; }
   .date-today, .refresh-button { min-height: 44px; }
+  .week-cell { height: 34px; }
+  .link-button { min-height: 44px; }
   .swatch { width: 44px; height: 44px; }
 }
 @media (max-width: 520px) {
@@ -1003,5 +1269,8 @@ onBeforeUnmount(endSession);
   .sync-line strong { text-align: left; }
   .morning-list li { flex-wrap: wrap; }
   .morning-date { flex-basis: 60px; }
+  .week-table { border-spacing: 1px; }
+  .week-corner { width: 40px; }
+  .week-period { padding-right: 2px !important; }
 }
 </style>
