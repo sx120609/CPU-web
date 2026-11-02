@@ -220,6 +220,17 @@ let strongNoticeLoadSeq = 0;
 let disposed = false;
 
 const currentStrongNotice = computed(() => strongNoticeQueue.value[0] ?? null);
+// A poll can empty or reorder the queue while the dialog is up (the notice was
+// read in another WebView, on another device, or by "read all"). Never leave an
+// empty dialog whose button has nothing left to acknowledge.
+watch(
+  () => currentStrongNotice.value?.id ?? null,
+  (id, previous) => {
+    if (!strongNoticeOpen.value || id === previous) return;
+    if (id === null) closeStrongNotice();
+    else startStrongNoticeTimer();
+  },
+);
 const directNoticeOpen = ref(false);
 const currentDirectNotice = computed(() => msg.latestDirectNotice);
 
@@ -407,10 +418,12 @@ async function loadStrongNotices() {
   strongNoticeLoading = true;
   try {
     const [list, settings] = await Promise.all([
-      messageApi.list("system").catch(() => []),
+      messageApi.list("system").catch(() => null),
       messageApi.settings().catch(() => null),
     ]);
     if (disposed || seq !== strongNoticeLoadSeq || !auth.isLoggedIn || auth.needDataAuthAgreement) return;
+    // Keep the current queue when the list request fails instead of treating it as empty.
+    if (!list) return;
     if (settings && settings.subscribeSystem === false) {
       strongNoticeQueue.value = [];
       strongNoticeOpen.value = false;
@@ -598,25 +611,35 @@ function clearStrongNoticePoller() {
 async function ackStrongNotice() {
   if (strongNoticeReadSeconds.value > 0) return;
   const current = currentStrongNotice.value;
-  if (!current) return;
+  if (!current) {
+    closeStrongNotice();
+    return;
+  }
   try {
     await messageApi.read(current.id);
     if (disposed) return;
     msg.refresh();
-    strongNoticeQueue.value.shift();
+    // A poll may have replaced the queue while the request was in flight.
+    strongNoticeQueue.value = strongNoticeQueue.value.filter((n) => n.id !== current.id);
     if (strongNoticeQueue.value.length) {
       strongNoticeOpen.value = false;
       await nextTick();
       requestStrongNoticeOpen();
     } else {
-      strongNoticeOpen.value = false;
-      pendingStrongNoticeOpen = false;
-      clearStrongNoticeTimer();
-      requestDirectNoticeOpen();
+      closeStrongNotice();
     }
   } catch {
     ElMessage.error("已读标记失败，请稍后重试");
+    // The notice may have been withdrawn; a reload drops it from the queue.
+    void loadStrongNotices();
   }
+}
+
+function closeStrongNotice() {
+  strongNoticeOpen.value = false;
+  pendingStrongNoticeOpen = false;
+  clearStrongNoticeTimer();
+  requestDirectNoticeOpen();
 }
 
 function openStrongNoticeLink() {
