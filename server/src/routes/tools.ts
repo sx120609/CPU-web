@@ -8,7 +8,9 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../prisma";
 import { authOptional, authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { securityRateLimit } from "../middleware/securityRateLimit";
 import { Errors, ok } from "../utils/response";
+import { readCanteenReviews, submitCanteenReview } from "../services/canteenReviews";
 import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
@@ -206,6 +208,40 @@ toolsRouter.use(async (_req, _res, next) => {
     next(e);
   }
 });
+
+toolsRouter.get("/canteen/reviews", authOptional, async (req, res, next) => {
+  try {
+    await ensureToolUsableForRequest("canteen_picker", req.user);
+    const shopId = z.string().trim().min(1).max(120).parse(req.query.shopId);
+    ok(res, await readCanteenReviews(shopId, req.user));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.post(
+  "/canteen/reviews",
+  authRequired,
+  securityRateLimit("canteen-review", 20, 10 * 60 * 1000),
+  validate(
+    z.object({
+      shopId: z.string().trim().min(1).max(120),
+      rating: z.number().int().min(1).max(5),
+      comment: z.string().max(200).optional().default(""),
+    }).strict(),
+  ),
+  async (req, res, next) => {
+    try {
+      ok(
+        res,
+        await submitCanteenReview(
+          req.body.shopId,
+          req.body.rating,
+          req.body.comment,
+          req.user!,
+        ),
+      );
+    } catch (e) { next(e); }
+  },
+);
 
 toolsRouter.get("/", authOptional, async (req, res, next) => {
   try {

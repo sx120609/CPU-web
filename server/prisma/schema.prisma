@@ -165,6 +165,7 @@ model User {
   workshopResolvedReports      WorkshopReport[] @relation("WorkshopReportResolver")
   workshopSaves                WorkshopSave[]
   workshopScores               WorkshopScore[]
+  canteenReviews               CanteenReview[] @relation("CanteenReviewAuthor")
   workshopAuditEvents          WorkshopAudit[]
   forumReactions               ForumReaction[]
   verificationApplications     UserVerificationApplication[] @relation("VerificationApplicant")
@@ -2946,6 +2947,22 @@ model WorkshopSave {
   user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([workId, userId])
+  @@index([userId, updatedAt])
+}
+
+// Public 1–5 star reviews for a canteen shop; one row per account and shop.
+model CanteenReview {
+  id        String   @id @default(uuid())
+  userId    Int
+  shopId    String
+  rating    Int
+  comment   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation("CanteenReviewAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shopId])
+  @@index([shopId, updatedAt])
   @@index([userId, updatedAt])
 }
 

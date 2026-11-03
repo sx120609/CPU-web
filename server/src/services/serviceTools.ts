@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 
-export const SERVICE_TOOL_CODES = ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools"] as const;
+export const SERVICE_TOOL_CODES = ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools", "canteen_picker"] as const;
 export type ServiceToolCode = typeof SERVICE_TOOL_CODES[number];
 
 export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode; name: string; description: string }> = {
@@ -29,6 +29,11 @@ export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode;
     code: "pdf_tools",
     name: "PDF 工具",
     description: "合并、拆分、压缩、转换和提取 PDF 内容",
+  },
+  canteen_picker: {
+    code: "canteen_picker",
+    name: "药大今天吃什么",
+    description: "按食堂、楼层和品类筛选门店，随机选择并分享公开评价",
   },
 };
 

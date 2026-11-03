@@ -24,26 +24,26 @@
           />
         </el-tabs>
 
-        <div v-if="activeTool === 'pdf_tools'" class="tool-admin-grid permission-only-grid">
+        <div v-if="standaloneTool" class="tool-admin-grid permission-only-grid">
           <section class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
-                <h3>PDF 工具</h3>
-                <p>PDF 工具在浏览器本地完成合并、拆分、压缩和转换。这里维护入口可见性、登录要求和管理器。</p>
+                <h3>{{ standaloneTool.name }}</h3>
+                <p>{{ standaloneTool.description }}</p>
               </div>
-              <el-button type="primary" @click="openPdfTool">
+              <el-button type="primary" @click="openStandaloneTool">
                 <el-icon><View /></el-icon>
                 打开工具
               </el-button>
             </div>
             <div class="empty-panel">
-              工具不会保存用户上传的文件；常见处理会在当前设备完成，适合公开给同学临时整理 PDF 材料。
+              {{ standaloneTool.note }}
             </div>
           </section>
 
           <ToolAccessSettings
             v-if="canAdminActiveTool"
-            description="可决定 PDF 工具是否展示在小工具入口，以及是否要求登录后使用。"
+            :description="`可决定${standaloneTool.name}是否展示在小工具入口，以及是否要求登录后使用。`"
             :visible="Boolean(currentToolMeta?.isVisible)"
             :visible-text="currentToolMeta?.isVisible ? '当前会显示在小工具入口中' : '当前已从小工具入口中隐藏'"
             :require-login="Boolean(currentToolMeta?.requireLogin)"
@@ -57,7 +57,7 @@
           <ToolManagerPanel
             v-if="canAdminActiveTool"
             v-model:username="managerUsername"
-            description="被分配后可维护 PDF 工具入口设置。"
+            :description="`被分配后可维护${standaloneTool.name}入口设置。`"
             :managers="managers"
             :saving="managerSaving"
             :removing-id="managerRemovingId"
@@ -864,6 +864,19 @@ const activeResponseFields = ref<QuestionnaireField[]>([]);
 
 const manageableTools = computed(() => allTools.value.filter((tool) => manageableCodes.value.includes(tool.code)));
 const currentToolMeta = computed(() => allTools.value.find((tool) => tool.code === activeTool.value));
+const standaloneTool = computed(() => {
+  if (activeTool.value === "pdf_tools") return {
+    name: "PDF 工具",
+    description: "PDF 工具在浏览器本地完成合并、拆分、压缩和转换。这里维护入口可见性、登录要求和管理器。",
+    note: "工具不会保存用户上传的文件；常见处理会在当前设备完成，适合公开给同学临时整理 PDF 材料。",
+  };
+  if (activeTool.value === "canteen_picker") return {
+    name: "药大今天吃什么",
+    description: "按食堂、楼层和品类随机选择门店。这里维护入口可见性、登录要求和管理器。",
+    note: "默认允许游客抽取门店和查看评价；提交或更新评分与短评始终需要登录。",
+  };
+  return null;
+});
 const canAdminActiveTool = computed(() => adminCodes.value.includes(activeTool.value));
 const openCount = computed(() => questionnaires.value.filter((item) => item.status === "open").length);
 const totalResponses = computed(() => questionnaires.value.reduce((sum, item) => sum + (item.responseCount ?? 0), 0));
@@ -926,7 +939,7 @@ function pickInitialTool(): ServiceToolCode {
 function normalizeToolQuery(value: unknown): ServiceToolCode | "" {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return "";
-  return (["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
+  return (["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools", "canteen_picker"] as ServiceToolCode[]).includes(raw as ServiceToolCode)
     ? raw as ServiceToolCode
     : "";
 }
@@ -954,7 +967,7 @@ async function reloadActive() {
     questionnaires.value = [];
     return;
   }
-  if (activeTool.value === "pdf_tools") {
+  if (standaloneTool.value) {
     questionnaires.value = [];
     gradeChecks.value = [];
     return;
@@ -964,8 +977,8 @@ async function reloadActive() {
   gradeChecks.value = [];
 }
 
-function openPdfTool() {
-  router.push("/services/tools/pdf_tools");
+function openStandaloneTool() {
+  router.push(`/services/tools/${activeTool.value}`);
 }
 
 async function saveToolSetting(value: string | number | boolean) {

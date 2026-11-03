@@ -18,6 +18,18 @@
     <PdfToolPanel v-else-if="tool.componentKey === 'pdf_tools'" :require-login="requireLogin" />
     <SchoolCalendarPanel v-else-if="tool.componentKey === 'school_calendar'" />
     <VenueReservationPanel v-else-if="tool.componentKey === 'venue_reservation'" />
+    <template v-else-if="tool.componentKey === 'canteen_picker'">
+      <section v-if="!canteenMeta" class="pk-card pk-empty" role="status">
+        <p>{{ toolsError || "正在加载工具设置…" }}</p>
+        <el-button v-if="toolsError" @click="loadToolMetas">重试</el-button>
+      </section>
+      <section v-else-if="requireLogin && !auth.isLoggedIn" class="pk-card pk-empty">
+        <h2 class="pk-h2">登录后使用药大今天吃什么</h2>
+        <p>管理员已将这个工具设为登录后可用。</p>
+        <router-link :to="{ path: '/login', query: { redirect: route.fullPath } }">去登录</router-link>
+      </section>
+      <CanteenPickerPanel v-else />
+    </template>
 
     <!-- 问卷、成绩核对、文件收集都是“凭分享链接进入”的工具，这里只给说明和入口。 -->
     <section v-else class="pk-card tool-entry">
@@ -74,14 +86,16 @@ import "@/styles/page-kit.css";
 const PdfToolPanel = defineAsyncComponent(() => import("./PdfToolPanel.vue"));
 const SchoolCalendarPanel = defineAsyncComponent(() => import("./SchoolCalendarPanel.vue"));
 const VenueReservationPanel = defineAsyncComponent(() => import("./VenueReservationPanel.vue"));
+const CanteenPickerPanel = defineAsyncComponent(() => import("./CanteenPickerPanel.vue"));
 
 const route = useRoute();
-const { toolMetas, isLoginRequired, toolBadge } = useServiceTools();
+const { auth, toolMetas, toolsError, loadToolMetas, isLoginRequired, toolBadge } = useServiceTools();
 const { canManageTool, openToolManage } = useToolManageEntry(toolMetas);
 const tool = computed(() => findServiceTool(String(route.params.slug || "")));
 useDocumentTitle(() => tool.value?.name);
 const requireLogin = computed(() => Boolean(tool.value && isLoginRequired(tool.value.slug)));
 const canManage = computed(() => Boolean(tool.value && canManageTool(tool.value.slug)));
+const canteenMeta = computed(() => toolMetas.value.find((item) => item.code === "canteen_picker"));
 const loggedIn = Boolean(getToken());
 
 const related = ref<GradeCheckTable[]>([]);

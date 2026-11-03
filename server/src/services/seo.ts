@@ -156,6 +156,11 @@ const STATIC_PAGES: Record<string, StaticPage> = {
     description: "按部门、校区或办事需求查找中国药科大学各部门的公开联系方式。",
     sitemap: true,
   },
+  "/services/tools/canteen_picker": {
+    title: "药大今天吃什么",
+    description: "按食堂、楼层和品类筛选中国药科大学食堂门店，随机选择并查看公开评分与评论。",
+    sitemap: true,
+  },
   "/services/tools/pdf_tools": {
     title: "PDF 工具",
     description: "在浏览器本地合并、拆分、压缩 PDF，转图片和提取文字，适合整理作业、通知和课程材料。",
