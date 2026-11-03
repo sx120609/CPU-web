@@ -19,7 +19,7 @@ test('real PostgreSQL: one-connection pool survives concurrent config reads, loc
   let releaseLock: (() => void) | undefined;
   try {
     await db.$executeRawUnsafe('CREATE TABLE "SiteSetting" ("id" SERIAL PRIMARY KEY, "key" TEXT UNIQUE NOT NULL, "value" TEXT NOT NULL, "updatedAt" TIMESTAMP(3) NOT NULL)');
-    await db.$executeRawUnsafe('CREATE TABLE "SchedulePeriodConfig" ("id" INTEGER PRIMARY KEY DEFAULT 1, "periods" TEXT NOT NULL DEFAULT \'[]\', "version" INTEGER NOT NULL DEFAULT 1, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL)');
+    await db.$executeRawUnsafe('CREATE TABLE "SchedulePeriodConfig" ("id" INTEGER PRIMARY KEY DEFAULT 1, "schoolId" TEXT NOT NULL UNIQUE DEFAULT \'cpu\', "periods" TEXT NOT NULL DEFAULT \'[]\', "version" INTEGER NOT NULL DEFAULT 1, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL)');
     await db.$executeRawUnsafe('CREATE TABLE "LiveActivityScheduleVersion" ("id" TEXT PRIMARY KEY, "scheduleId" TEXT NOT NULL, "timezone" TEXT NOT NULL, "periods" TEXT NOT NULL, "broadcastUntil" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)');
     process.env.DATABASE_URL = url.toString();
     (globalThis as any).prisma = db;
