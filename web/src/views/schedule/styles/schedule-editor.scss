@@ -22,6 +22,40 @@
   opacity: 0.55;
 }
 
+/* 周次选择：数字下面一张 7×6 的点阵，有课的时段点亮。点跟着格子的文字色走，选中格子里也看得清。 */
+.week-cell--dots {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 4px 8px;
+  line-height: 1;
+}
+.week-cell-no {
+  font-size: var(--cpu-fs-s);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.week-dots {
+  display: grid;
+  grid-template-columns: repeat(7, 4px);
+  grid-auto-rows: 4px;
+  gap: 2px;
+}
+.week-dots i {
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.16;
+}
+.week-dots i.on { opacity: 0.9; }
+.week-dots.is-unknown i { opacity: 0.08; }
+.week-dots-note {
+  margin: 10px 0 0;
+  font-size: var(--cpu-fs-xs);
+  color: var(--schedule-text-secondary);
+  text-align: center;
+}
+
 .course-editor-overlay {
   position: fixed;
   inset: 0;

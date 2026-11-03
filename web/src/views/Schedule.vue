@@ -305,6 +305,15 @@
                   >
                     清除
                   </button>
+                  <button
+                    type="button"
+                    class="more-subaction"
+                    :disabled="!hasScheduleBackground || backgroundSaving"
+                    title="按图片明暗和当前深浅色调整显现程度，让课表文字看得清"
+                    @click="autoAdjustScheduleBackground"
+                  >
+                    按图片调整
+                  </button>
                 </div>
                 <label class="background-control">
                   <span class="background-control-head">
@@ -528,6 +537,22 @@
                 @open="openAgendaItem"
                 @toggle="toggleAgenda"
               />
+              <button
+                v-if="viewMode === 'day' && pageIsToday(page) && nextClassState"
+                type="button"
+                class="next-class-strip"
+                :disabled="!nextClassState.next"
+                @click="goToNextClass"
+              >
+                <span class="next-class-today">{{ nextClassState.todayCount ? `今天 ${nextClassState.todayCount} 节课都上完了` : "今天没有课" }}</span>
+                <span v-if="nextClassState.next" class="next-class-main">
+                  <em>下次课</em>
+                  <b>{{ nextClassState.next.block.course.name }}</b>
+                  <small>{{ nextClassDayLabel(todayYmd, nextClassState.next) }} {{ nextClassState.next.start }}<template v-if="nextClassState.next.block.course.location"> · {{ classroomOnly(nextClassState.next.block.course.location) }}</template></small>
+                </span>
+                <span v-else class="next-class-main"><small>两周内没有课</small></span>
+                <el-icon v-if="nextClassState.next" class="next-class-arrow" aria-hidden="true"><ArrowRight /></el-icon>
+              </button>
               <section
                 v-if="viewMode === 'week' && scheduleStyle === 'classic'"
                 class="week-overview"
@@ -741,7 +766,7 @@
     <el-dialog
       v-model="weekDialogOpen"
       title="选择周次"
-      :width="320"
+      :width="360"
       align-center
       :show-close="true"
       append-to-body
@@ -753,14 +778,25 @@
           v-for="w in weeks"
           :key="w.value"
           type="button"
-          class="week-cell"
+          class="week-cell week-cell--dots"
           :class="{ active: String(w.value) === week, current: Number(w.value) === calendar?.currentWeek }"
           :disabled="loading"
+          :aria-label="weekDotsLabel(w.value)"
           @click="selectWeek(w.value)"
         >
-          {{ w.value }}
+          <span class="week-cell-no">{{ w.value }}</span>
+          <span
+            class="week-dots"
+            :class="{ 'is-unknown': !weekDotsByWeek.get(String(w.value)) }"
+            aria-hidden="true"
+          >
+            <template v-for="(row, r) in weekDotsByWeek.get(String(w.value)) ?? emptyWeekDots()" :key="r">
+              <i v-for="(on, d) in row" :key="d" :class="{ on }" />
+            </template>
+          </span>
         </button>
       </div>
+      <p class="week-dots-note">点亮的是有课的时段，每行两节，从左到右是周一到周日</p>
       <template #footer>
         <el-button data-cpu-button-theme="schedule" v-if="canJumpToCurrentWeek" type="primary" :disabled="loading" @click="onJumpAndClose">回到本周</el-button>
         <el-button data-cpu-button-theme="schedule" @click="weekDialogOpen = false">关闭</el-button>
@@ -986,8 +1022,14 @@
       :can-edit="quickLook?.canEdit ?? false"
       :owner-label="quickLook?.ownerLabel ?? ''"
       :page-style="pageStyle"
+      :colorable="quickLookColorable"
+      :color-hue="quickLook ? courseHueOverride(quickLook.block.course.name) : null"
+      :has-color-overrides="hasCourseColorOverrides()"
       @close="quickLook = null"
       @edit="editQuickLookCourse"
+      @color="onQuickLookColor"
+      @assign-colors="assignSemesterCourseColors"
+      @reset-colors="resetCourseColors"
     />
 
     <Teleport to="body">
@@ -1260,10 +1302,14 @@ import {
   type SchedulePriorityMap,
 } from "@/views/schedule/displayPriority";
 import { buildWeekIcs, saveWeekIcs, weekIcsFileName } from "@/views/schedule/icsExport";
+import { emptyWeekDots, weekDotCount, weekDotMatrix, type WeekDotMatrix } from "@/views/schedule/weekDots";
+import { findNextClass, nextClassDayLabel } from "@/views/schedule/nextClass";
+import { assignCourseHues, clearCourseHues, courseHueOverride, hasCourseColorOverrides, setCourseHue } from "@/views/schedule/courseColors";
 import { buildDateIndex, buildMonthDays, calendarMonths, monthKeyOf } from "@/views/schedule/monthModel";
 import { blockScheduleLine, classroomOnly, courseCardNote, formatClock, nowRowPosition, shanghaiMinutes } from "@/views/schedule/nowIndicator";
 import {
   DEFAULT_SCHEDULE_STYLE,
+  hueCourseTone,
   readStoredScheduleStyle,
   rgbToCss,
   scheduleStyleCanvas,
@@ -1530,6 +1576,24 @@ function selectWeek(v: string | number) {
   }
   void refreshScheduleForCurrentSource();
 }
+// 周次选择里的点阵：只在弹窗打开时按周算一遍。还没取到的周（逐周加载的旧节点）不画点。
+const weekDotsByWeek = computed(() => {
+  const map = new Map<string, WeekDotMatrix>();
+  if (!weekDialogOpen.value) return map;
+  for (const item of weeks.value) {
+    const value = String(item.value);
+    const source = scheduleForWeek(value);
+    if (!source) continue;
+    map.set(value, weekDotMatrix(weekCourseBlocksFor(Number(value), source)));
+  }
+  return map;
+});
+function weekDotsLabel(value: string | number) {
+  const dots = weekDotsByWeek.value.get(String(value));
+  if (!dots) return `第 ${value} 周`;
+  const count = weekDotCount(dots);
+  return count ? `第 ${value} 周，${count} 个时段有课` : `第 ${value} 周，没有课`;
+}
 async function onJumpAndClose() {
   weekDialogOpen.value = false;
   await jumpToCurrentWeek();
@@ -1559,6 +1623,7 @@ const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const widgetInstalling = ref(false);
 const {
+  autoAdjustScheduleBackground,
   backgroundImageInputRef,
   backgroundPreviewStyle,
   backgroundSaving,
@@ -1572,7 +1637,7 @@ const {
   pickScheduleBackground,
   restoreScheduleBackground,
   scheduleBackground,
-} = useScheduleBackground();
+} = useScheduleBackground({ isDark: () => appearance.isDark });
 // 仅 Web 教务课表采用学校已排好的补课；不改写共用校历缓存或原生桥数据。
 const displayCalendar = computed(() => scheduleSource.value === "jwxt"
   ? officialScheduleCalendar(calendar.value)
@@ -3453,6 +3518,8 @@ function nextWeekValue(delta: number) {
 }
 
 function toneFor(name: string): CourseTone {
+  const hueOverride = courseHueOverride(name);
+  if (hueOverride !== null) return hueCourseTone(hueOverride, appearance.isDark);
   if (scheduleTheme.value === "color-glass") return getColorGlassCourseTone(name, appearance.isDark);
   const theme = getScheduleThemePalette(scheduleTheme.value);
   if (appearance.isDark) {
@@ -4282,6 +4349,33 @@ function pageIsToday(page: SchedulePageModel) {
   return pageDate(page) === todayYmd.value;
 }
 
+// 日视图的「下次课」：今天的课都上完了或者今天没课时才有值。双人模式有自己的日视图，不显示。
+const nextClassState = computed(() => {
+  if (viewMode.value !== "day" || couple.active.value || !parsed.value || nowMinutes.value === null) return null;
+  const index = dateIndex.value;
+  return findNextClass({
+    today: todayYmd.value,
+    nowMinutes: nowMinutes.value,
+    clocks: smallSlots,
+    dayAt: (date) => {
+      const slot = index.get(date);
+      return slot ? { week: Number(slot.week), day: slot.day } : undefined;
+    },
+    blocksOn: (weekNo, day) => {
+      const source = scheduleForWeek(weekNo);
+      return source ? dayCourseBlocksFor(weekNo, day, source) : [];
+    },
+  });
+});
+function goToNextClass() {
+  const next = nextClassState.value?.next;
+  if (!next) return;
+  if (String(next.week) !== week.value) selectWeek(next.week);
+  slideDirection.value = "next";
+  activeDay.value = next.day;
+  saveLastState();
+}
+
 function pageIsPast(page: SchedulePageModel) {
   const date = pageDate(page);
   return Boolean(date) && date < todayYmd.value;
@@ -4428,6 +4522,33 @@ const quickLookAccent = computed(() => {
   }
   return scheduleStyleCourseTone(name, scheduleTheme.value, appearance.isDark).accent;
 });
+
+// 单门课换色：自己的课才能换；双人模式下颜色按人区分，不在这里换。
+const quickLookColorable = computed(() => Boolean(quickLook.value && !quickLook.value.ownerLabel && !couple.active.value));
+function onQuickLookColor(hue: number | null) {
+  const name = quickLook.value?.block.course.name;
+  if (name) setCourseHue(name, hue);
+}
+function semesterCourseNames() {
+  const names = new Set<string>();
+  for (const item of weeks.value) {
+    const source = scheduleForWeek(item.value);
+    if (!source) continue;
+    for (const block of weekCourseBlocksFor(Number(item.value), source)) names.add(block.course.name);
+  }
+  // 逐周加载时只拿到了看过的几周，至少把这一周的课算上。
+  for (const block of weekCourseBlocks.value) names.add(block.course.name);
+  return Array.from(names);
+}
+function assignSemesterCourseColors() {
+  const count = assignCourseHues(semesterCourseNames());
+  if (count) ElMessage.success(`已给 ${count} 门课排开颜色`);
+  else ElMessage.info("这学期还没有课程");
+}
+function resetCourseColors() {
+  clearCourseHues();
+  ElMessage.success("已恢复默认颜色");
+}
 
 function openQuickLook(
   block: WeekCourseBlock,

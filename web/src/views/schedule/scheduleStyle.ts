@@ -7,6 +7,7 @@ import {
   normalizeScheduleTheme,
   type CourseTone,
 } from "@/components/jwxt/scheduleTheme";
+import { COURSE_COLOR_SATURATION, courseHueOverride } from "./courseColors";
 
 export type ScheduleStyleKey = "classic" | "minimal" | "grid" | "table" | "paper" | "board";
 
@@ -294,6 +295,9 @@ export interface ScheduleStyleCourseColor {
  * 所以同一门课在各端是同一个色系；单色配色下所有课都用那个配色的色相。
  */
 export function scheduleStyleCourseColor(name: string, palette: string): ScheduleStyleCourseColor {
+  // 在速览里单独换过颜色的课：只换色相，深浅仍跟着样式走。
+  const override = courseHueOverride(name);
+  if (override !== null) return { hue: override, saturation: COURSE_COLOR_SATURATION, backgroundLightness: 91 };
   const key = normalizeScheduleTheme(palette);
   if (key !== "color-glass") {
     const [hue, saturation] = hueSaturation(scheduleStyleBrand(key));
@@ -428,6 +432,8 @@ export function scheduleStyleFramesPanel(style: ScheduleStyleKey) {
 
 /** 经典样式的课程配色：逐课配色按课程名取色，单色配色用主题自己的三种颜色。 */
 export function classicCourseTone(name: string, palette: string, dark: boolean): CourseTone {
+  const override = courseHueOverride(name);
+  if (override !== null) return hueCourseTone(override, dark);
   const key = normalizeScheduleTheme(palette);
   if (key === "color-glass") return getColorGlassCourseTone(name, dark);
   if (dark) {
@@ -439,4 +445,21 @@ export function classicCourseTone(name: string, palette: string, dark: boolean):
   }
   const theme = getScheduleThemePalette(key);
   return { bg: theme.courseBg, border: theme.courseBorder, text: theme.courseText };
+}
+
+/** 换过颜色的课在经典样式里的配色：和彩色配色同一套明暗，只是色相由用户选。 */
+export function hueCourseTone(hue: number, dark: boolean): CourseTone {
+  const saturation = COURSE_COLOR_SATURATION;
+  if (dark) {
+    return {
+      bg: `linear-gradient(180deg, hsla(${hue}, ${saturation + 4}%, 34%, 0.84), hsla(${hue}, ${saturation + 4}%, 24%, 0.88))`,
+      border: `hsla(${hue}, ${saturation + 8}%, 72%, 0.72)`,
+      text: "#f8fffd",
+    };
+  }
+  return {
+    bg: `hsla(${hue}, ${saturation}%, 91%, 0.86)`,
+    border: `hsla(${hue}, ${saturation + 8}%, 52%, 0.48)`,
+    text: `hsl(${hue}, ${saturation + 4}%, 28%)`,
+  };
 }

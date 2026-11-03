@@ -7,10 +7,11 @@ import {
   saveScheduleBackgroundBlob,
 } from "@/utils/scheduleBackgroundStorage";
 import type { ScheduleBackgroundSettings } from "./types";
+import { recommendBackgroundOverlay, sampleImagePixels } from "./backgroundTone";
 
 const BACKGROUND_KEY = "cpu-schedule-background-v1";
 
-export function useScheduleBackground() {
+export function useScheduleBackground(options: { isDark?: () => boolean } = {}) {
   const backgroundImageInputRef = ref<HTMLInputElement | null>(null);
   const backgroundSaving = ref(false);
   const persistedBackground = readPersistedScheduleBackground();
@@ -161,10 +162,41 @@ export function useScheduleBackground() {
         setScheduleBackgroundPreview(URL.createObjectURL(file));
       }
       legacyImageDataUrl = "";
+      const adjusted = await fitOverlayToImage(file);
       persistScheduleBackgroundSafe();
-      ElMessage.success(file.size > 6 * 1024 * 1024 ? "已设置课表背景，大图首次显示可能会稍慢" : "已设置课表背景");
+      const visibility = adjusted ? `，按图片明暗把显现调到了 ${backgroundVisibility.value}%` : "";
+      ElMessage.success(file.size > 6 * 1024 * 1024 ? `已设置课表背景${visibility}，大图首次显示可能会稍慢` : `已设置课表背景${visibility}`);
     } catch (error: any) {
       ElMessage.warning(String(error?.message || "背景保存失败，可能是浏览器本地空间不足"));
+    } finally {
+      backgroundSaving.value = false;
+    }
+  }
+
+  /** 按图片明暗和当前深浅色定遮罩浓淡；读不出像素就保持原样。 */
+  async function fitOverlayToImage(image: Blob) {
+    const pixels = await sampleImagePixels(image);
+    const opacity = pixels ? recommendBackgroundOverlay(pixels, options.isDark?.() ?? false) : null;
+    if (opacity === null) return false;
+    scheduleBackground.overlayOpacity = clampNumber(opacity, scheduleBackground.overlayOpacity, 0.12, 0.78);
+    return true;
+  }
+
+  /** 「按图片调整」：换了深浅色之后可以再按当前的样子调一次。 */
+  async function autoAdjustScheduleBackground() {
+    if (!hasScheduleBackground.value || backgroundSaving.value) return;
+    backgroundSaving.value = true;
+    try {
+      // 页面的 CSP 不让 fetch blob: 地址，直接用本地存着的那份图片。
+      const blob = peekPreloadedScheduleBackgroundAsset()?.blob ?? (await preloadScheduleBackgroundAsset())?.blob;
+      if (!blob || !(await fitOverlayToImage(blob))) {
+        ElMessage.warning("读不出这张图片的颜色，请手动调整显现程度");
+        return;
+      }
+      persistScheduleBackgroundSafe("背景设置保存失败");
+      ElMessage.success(`已按图片明暗把显现调到 ${backgroundVisibility.value}%`);
+    } catch {
+      ElMessage.warning("读不出这张图片的颜色，请手动调整显现程度");
     } finally {
       backgroundSaving.value = false;
     }
@@ -201,6 +233,7 @@ export function useScheduleBackground() {
   }
 
   return {
+    autoAdjustScheduleBackground,
     backgroundImageInputRef,
     backgroundPreviewStyle,
     backgroundSaving,

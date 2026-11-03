@@ -381,6 +381,58 @@ body[data-cpu-native-app="1"] .schedule-page .week-grid-head {
 .day-pane {
   will-change: transform, opacity;
 }
+
+/* 日视图「下次课」：今天的课上完了或今天没课时，一行告诉你接下来最近的一节，点一下翻过去。 */
+.next-class-strip {
+  box-sizing: border-box;
+  width: calc(100% - 16px);
+  margin: 8px 8px 0;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  border: 1px solid var(--schedule-border);
+  border-radius: var(--cpu-radius-m);
+  background: var(--schedule-surface-bg);
+  color: var(--schedule-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.next-class-strip:disabled {
+  cursor: default;
+}
+.next-class-today {
+  grid-column: 1 / -1;
+  font-size: var(--cpu-fs-xs);
+  color: var(--schedule-text-secondary);
+}
+.next-class-main {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.next-class-main em {
+  font-style: normal;
+  font-size: var(--cpu-fs-xs);
+  color: var(--schedule-accent);
+  font-weight: 600;
+}
+.next-class-main b {
+  font-size: var(--cpu-fs-m);
+  font-weight: 600;
+}
+.next-class-main small {
+  font-size: var(--cpu-fs-s);
+  color: var(--schedule-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.next-class-arrow {
+  color: var(--schedule-text-secondary);
+}
 .next-card,
 .next-card span,
 .next-card em,

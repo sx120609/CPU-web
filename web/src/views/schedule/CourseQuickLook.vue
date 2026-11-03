@@ -25,6 +25,36 @@
             </div>
           </dl>
 
+          <!-- 课程颜色：只换色相，深浅跟着当前配色和样式走。 -->
+          <section v-if="colorable" class="quick-look-colors" aria-label="课程颜色">
+            <div class="quick-look-colors-head">
+              <span>课程颜色</span>
+              <button type="button" @click="emit('assign-colors')">一键分配</button>
+              <button v-if="hasColorOverrides" type="button" @click="emit('reset-colors')">全部恢复</button>
+            </div>
+            <div class="quick-look-swatches" role="radiogroup" aria-label="选择这门课的颜色">
+              <button
+                type="button"
+                class="quick-look-swatch is-default"
+                role="radio"
+                :aria-checked="colorHue === null"
+                aria-label="默认颜色"
+                @click="emit('color', null)"
+              >默认</button>
+              <button
+                v-for="hue in COURSE_COLOR_HUES"
+                :key="hue"
+                type="button"
+                class="quick-look-swatch"
+                role="radio"
+                :aria-checked="colorHue === hue"
+                :aria-label="`色相 ${hue}`"
+                :style="{ '--swatch': `hsl(${hue}, ${COURSE_COLOR_SATURATION}%, 52%)` }"
+                @click="emit('color', hue)"
+              />
+            </div>
+          </section>
+
           <p v-if="ownerLabel" class="quick-look-note">{{ ownerLabel }}</p>
           <p v-else-if="block.course.orphaned" class="quick-look-note warn">
             <el-icon><WarningFilled /></el-icon>教务课表里已找不到这门课，请核对后保留或删除。
@@ -42,6 +72,7 @@
 import { computed, onBeforeUnmount, watch, type Component } from "vue";
 import { Calendar, Clock, Close, EditPen, Location, Memo, User, WarningFilled } from "@element-plus/icons-vue";
 import { cleanLocation } from "./nowIndicator";
+import { COURSE_COLOR_HUES, COURSE_COLOR_SATURATION } from "./courseColors";
 import type { WeekCourseBlock } from "./types";
 
 const props = withDefaults(defineProps<{
@@ -55,17 +86,28 @@ const props = withDefaults(defineProps<{
   /** 不是自己的课时写一行说明（TA 的课、共享课表）。 */
   ownerLabel?: string;
   pageStyle?: Record<string, string>;
+  /** 显示课程颜色那一栏（自己的课才有）。 */
+  colorable?: boolean;
+  /** 这门课换过的色相，没换过是 null。 */
+  colorHue?: number | null;
+  hasColorOverrides?: boolean;
 }>(), {
   scheduleLine: "",
   accent: "var(--schedule-accent)",
   canEdit: false,
   ownerLabel: "",
   pageStyle: () => ({}),
+  colorable: false,
+  colorHue: null,
+  hasColorOverrides: false,
 });
 
 const emit = defineEmits<{
   (event: "close"): void;
   (event: "edit"): void;
+  (event: "color", hue: number | null): void;
+  (event: "assign-colors"): void;
+  (event: "reset-colors"): void;
 }>();
 
 function clean(value: string | undefined) {
@@ -233,6 +275,61 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 }
 .quick-look-note.warn {
   color: #c2410c;
+}
+.quick-look-colors {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--cpu-border-soft, #e4e6ea);
+}
+.quick-look-colors-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--cpu-text-secondary, #4e5661);
+}
+.quick-look-colors-head span {
+  flex: 1 1 auto;
+}
+.quick-look-colors-head button {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--schedule-accent-strong, #0f8f7f);
+  cursor: pointer;
+}
+.quick-look-swatches {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+  gap: 8px;
+}
+.quick-look-swatch {
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 32px;
+  justify-self: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.quick-look-swatch[aria-checked="true"] {
+  box-shadow: 0 0 0 2px var(--cpu-card, #fff), 0 0 0 4px var(--swatch, var(--cpu-text-secondary, #4e5661));
+}
+.quick-look-swatch.is-default {
+  grid-column: span 2;
+  max-width: none;
+  aspect-ratio: auto;
+  border-radius: 999px;
+  background: var(--cpu-surface-subtle, rgba(127, 127, 127, 0.14));
+  color: var(--cpu-text-secondary, #4e5661);
+  font: inherit;
+  font-size: 12px;
 }
 
 @media (min-width: 761px) {
