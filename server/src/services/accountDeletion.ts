@@ -118,6 +118,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   await tx.treeholeRoomMember.updateMany({ where: { userId, status: "active" }, data: { status: "left", leftAt: new Date() } });
   await tx.treeholeRoomApplication.updateMany({ where: { visitorId: userId, status: "pending" }, data: { status: "cancelled" } });
   await tx.forumReport.deleteMany({ where: { OR: [{ reporterId: userId }, { targetAuthorId: userId }] } });
+  await tx.canteenReview.deleteMany({ where: { userId } });
   await tx.questionnaireResponse.deleteMany({ where: { respondentId: userId } });
   await tx.questionnaire.deleteMany({ where: { createdById: userId, isSystem: false } });
   await tx.questionnaire.updateMany({ where: { createdById: userId }, data: { createdById: null } });

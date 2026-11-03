@@ -1,5 +1,7 @@
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
+import { buildMutedMessage, isMuteActive } from "./userModeration";
+import { lockWorkshopAuthor } from "./workshopAccountDeletion";
 
 export const CANTEEN_REVIEW_COMMENT_MAX = 200;
 export const CANTEEN_REVIEW_SHOP_MAX = 120;
@@ -88,16 +90,22 @@ export async function submitCanteenReview(
   const shopId = normalizeShopId(shopIdValue);
   const rating = normalizeRating(ratingValue);
   const comment = normalizeComment(commentValue);
-  const player = await prisma.user.findUnique({
-    where: { id: viewer.userId },
-    select: { status: true },
-  });
-  if (!player || visibleUser.status.notIn.includes(player.status))
-    throw Errors.forbidden("账户已停止访问，无法提交评价");
-  const review = await prisma.canteenReview.upsert({
-    where: { userId_shopId: { userId: viewer.userId, shopId } },
-    create: { userId: viewer.userId, shopId, rating, comment },
-    update: { rating, comment },
+  const review = await prisma.$transaction(async (tx) => {
+    // Account deletion holds this same lock before changing status and erasing data.
+    // Recheck after acquiring it so an in-flight submission cannot recreate erased reviews.
+    await lockWorkshopAuthor(tx, viewer.userId);
+    const player = await tx.user.findUnique({
+      where: { id: viewer.userId },
+      select: { status: true, mutedUntil: true },
+    });
+    if (!player || visibleUser.status.notIn.includes(player.status))
+      throw Errors.forbidden("账户已停止访问，无法提交评价");
+    if (isMuteActive(player)) throw Errors.forbidden(buildMutedMessage(player.mutedUntil));
+    return tx.canteenReview.upsert({
+      where: { userId_shopId: { userId: viewer.userId, shopId } },
+      create: { userId: viewer.userId, shopId, rating, comment },
+      update: { rating, comment },
+    });
   });
   const aggregate = await prisma.canteenReview.aggregate({
     where: reviewWhere(shopId),

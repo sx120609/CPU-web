@@ -223,7 +223,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getToken, hasAuthPresence } from "@/api/request";
+import { useAuthStore } from "@/stores/auth";
 import { toolsApi } from "@/api/tools";
 import type { CanteenReviews } from "@/api/tools";
 import {
@@ -239,6 +239,7 @@ import {
 } from "@/data/canteenPicker";
 
 const route = useRoute();
+const auth = useAuthStore();
 const canteen = ref("all");
 const level = ref("all");
 const category = ref("all");
@@ -252,7 +253,7 @@ const rating = ref(0);
 const comment = ref("");
 const reviewTouched = ref(false);
 const reviewStatus = ref("");
-const loggedIn = computed(() => Boolean(getToken()) || hasAuthPresence());
+const loggedIn = computed(() => auth.isLoggedIn);
 
 const canteenOptions = [
   { value: "all", label: "不限" },

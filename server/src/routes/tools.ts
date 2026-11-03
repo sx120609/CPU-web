@@ -211,6 +211,7 @@ toolsRouter.use(async (_req, _res, next) => {
 
 toolsRouter.get("/canteen/reviews", authOptional, async (req, res, next) => {
   try {
+    await ensureToolUsableForRequest("canteen_picker", req.user);
     const shopId = z.string().trim().min(1).max(120).parse(req.query.shopId);
     ok(res, await readCanteenReviews(shopId, req.user));
   } catch (e) { next(e); }

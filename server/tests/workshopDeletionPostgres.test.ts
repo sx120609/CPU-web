@@ -34,9 +34,14 @@ test("workshop account erasure revokes tickets, removes owned records and retrie
     const { removeWorkshopPackage } = await import("../src/services/workshopPackage");
     const { deleteWorkshopSave, listWorkshopSaves, createWorkshopDraft } = await import("../src/services/workshop");
     const { listWorkshopPlacements } = await import("../src/services/workshopPlacements");
+    const { submitCanteenReview } = await import("../src/services/canteenReviews");
     const owner = await db.user.create({ data: { username: `workshop-delete-${randomUUID()}`, passwordHash: "test", nickname: "Owner" } });
     const other = await db.user.create({ data: { username: `workshop-other-${randomUUID()}`, passwordHash: "test", nickname: "Other" } });
     users.push(owner.id, other.id);
+    await db.canteenReview.createMany({ data: [
+      { userId: owner.id, shopId: "1.1::张良麻辣烫", rating: 4, comment: "private authored review" },
+      { userId: other.id, shopId: "1.1::张良麻辣烫", rating: 5, comment: "keep other review" },
+    ] });
     const makeWork = async (authorId: number, type = "tool") => {
       const work = await db.workshopWork.create({ data: { slug: `work-${randomUUID()}`, authorId } });
       const packageKey = randomUUID();
@@ -74,6 +79,7 @@ test("workshop account erasure revokes tickets, removes owned records and retrie
     await loadWorkshopRuntime(ticket);
     assert.equal((await listWorkshopPlacements()).items.length, 1);
     const deletion = await requestAccountDeletion(owner.id);
+    await assert.rejects(submitCanteenReview("1.1::张良麻辣烫", 5, "late write", { userId: owner.id }), /账户已停止访问/);
     await assert.rejects(loadWorkshopRuntime(ticket), /撤销/);
     assert.equal((await listWorkshopPlacements()).items.length, 0);
     assert.equal((await db.workshopWork.findUniqueOrThrow({ where: { id: owned.work.id } })).disabled, true);
@@ -105,6 +111,8 @@ test("workshop account erasure revokes tickets, removes owned records and retrie
     const cleanedReport = await db.workshopReport.findUniqueOrThrow({ where: { id: otherReport.id } });
     assert.equal(cleanedReport.resolvedById, null); assert.equal(cleanedReport.resolution, null); assert.equal(cleanedReport.reason, "keep");
     assert.equal((await db.user.findUniqueOrThrow({ where: { id: owner.id } })).status, "deleted");
+    assert.equal(await db.canteenReview.count({ where: { userId: owner.id } }), 0);
+    assert.equal(await db.canteenReview.count({ where: { userId: other.id } }), 1);
     await access(path.join(root, owned.packageKey, "index.html"));
     failPackage = false;
     await processAccountDeletion(deletion.id, dependencies);
