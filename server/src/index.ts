@@ -7,6 +7,7 @@ import { ensureBuiltinBoards } from "./services/defaultBoards";
 import { ensureCollegeFeedSources } from "./services/collegeFeedSources";
 import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
+import { loadSchoolModuleOverrides } from "./schools/modules";
 import { loadStorageConfig } from "./services/storageConfig";
 import { attachJwxtAgentGateway } from "./services/jwxtAgentGateway";
 import { remoteGateway } from "./services/jwxtGatewayTransport";
@@ -48,6 +49,9 @@ async function start() {
   await loadFeatures().catch((e) => {
     if (managedRelease) throw e;
     console.warn("loadFeatures failed:", e?.message);
+  });
+  await loadSchoolModuleOverrides().catch((e) => {
+    console.warn("loadSchoolModuleOverrides failed:", e?.message);
   });
   await loadStorageConfig().catch((e) => {
     if (managedRelease) throw e;

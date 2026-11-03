@@ -6,6 +6,8 @@ export interface JwtPayload {
   studentId: string;
   role: string;
   campus: string;
+  /** 旧令牌没有这一项，按默认学校处理；鉴权时以用户表为准。 */
+  schoolId?: string;
   voiceHubRole?: string | null;
   lostFoundRole?: string | null;
   blockedUserIds?: number[];

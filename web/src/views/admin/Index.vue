@@ -90,6 +90,7 @@
       <el-tab-pane name="navigation" v-if="auth.isAdmin"><template #label><AppIcon name="menu" /> 顶部导航</template><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
       <el-tab-pane name="feeds" v-if="auth.isAdmin"><template #label><AppIcon name="sync" /> 同步源</template><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
       <el-tab-pane name="jwxt-agents" v-if="auth.isAdmin"><template #label><AppIcon name="school" /> 教务节点</template><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
+      <el-tab-pane name="schools" v-if="auth.isAdmin"><template #label><AppIcon name="school" /> 学校与功能</template><SchoolsPane v-if="tab === 'schools'" /></el-tab-pane>
       <el-tab-pane name="schedule-terms" v-if="auth.isAdmin"><template #label><AppIcon name="calendar" /> 课表校历</template><ScheduleTermsPane v-if="tab === 'schedule-terms'" /></el-tab-pane>
       <el-tab-pane name="apns" v-if="auth.isAdmin"><template #label><AppIcon name="service" /> APNs 推送</template><ApnsPane v-if="tab === 'apns'" /></el-tab-pane>
       <el-tab-pane name="announcements" v-if="auth.isAdmin"><template #label><AppIcon name="announcement" /> 公告</template><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
@@ -134,6 +135,7 @@ const NavigationPane = defineAsyncComponent(() => import("./NavigationPane.vue")
 const FeedsPane = defineAsyncComponent(() => import("./FeedsPane.vue"));
 const JwxtAgentsPane = defineAsyncComponent(() => import("./JwxtAgentsPane.vue"));
 const ScheduleTermsPane = defineAsyncComponent(() => import("./ScheduleTermsPane.vue"));
+const SchoolsPane = defineAsyncComponent(() => import("./SchoolsPane.vue"));
 const ApnsPane = defineAsyncComponent(() => import("./ApnsPane.vue"));
 const AnnouncementsPane = defineAsyncComponent(() => import("./AnnouncementsPane.vue"));
 const ForumAdsPane = defineAsyncComponent(() => import("./ForumAdsPane.vue"));
@@ -181,6 +183,7 @@ function allowedAdminTab(value: string) {
   if (value === "forum-ads") return auth.isAdmin;
   if (value === "vip-gift-codes") return auth.isAdmin;
   if (value === "schedule-terms") return auth.isAdmin;
+  if (value === "schools") return auth.isAdmin;
   if (value === "apns") return auth.isAdmin;
   if (value === "ios-clients") return auth.isAdmin;
   if (value === "android-clients") return auth.isAdmin;

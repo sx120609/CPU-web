@@ -21,6 +21,8 @@ import { uploadRouter } from "./upload";
 import { toolsRouter } from "./tools";
 import { departmentContactsRouter } from "./departmentContacts";
 import { paymentsRouter } from "./payments";
+import { schoolsRouter } from "./schools";
+import { requireSchoolModule, schoolModuleForRoute } from "../schools/modules";
 import { qqBotRouter } from "./qqbot";
 import { storageRouter } from "./storage";
 import { courseBotRouter } from "./courseBot";
@@ -79,7 +81,8 @@ function jwxtErrorMapper(error: unknown, req: Request, res: Response, next: Next
 
 function mount(path: string, ...handlers: RequestHandler[]) {
   apiAdmissionPaths.push('/api' + path);
-  router.use(path, ...handlers);
+  const schoolModule = schoolModuleForRoute(path);
+  router.use(path, ...(schoolModule ? [requireSchoolModule(schoolModule)] : []), ...handlers);
 }
 mount("/privacy", privacyRouter);
 mount("/schedule-shares", scheduleShareRouter);
@@ -98,6 +101,7 @@ mount("/courses", authOptional, courseRouter);
 mount("/search", authOptional, searchRouter);
 mount("/home", authOptional, homeRouter);
 mount("/site", siteRouter);
+mount("/schools", authOptional, schoolsRouter);
 mount("/forum-ads", forumAdsRouter);
 mount("/vip", vipRouter);
 mount("/storage", storageRouter);

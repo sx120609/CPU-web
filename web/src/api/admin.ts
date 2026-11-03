@@ -1391,6 +1391,27 @@ export interface JwxtErrorStats {
   }>;
 }
 
+export type SchoolModuleIsolation = "school" | "global" | "pending";
+
+export interface AdminSchoolModuleState {
+  key: string;
+  label: string;
+  isolation: SchoolModuleIsolation;
+  available: boolean;
+  defaultEnabled: boolean;
+  override: boolean | null;
+  enabled: boolean;
+}
+
+export interface AdminSchool {
+  id: string;
+  name: string;
+  shortName: string;
+  brandName: string;
+  academicSystem: string;
+  modules: AdminSchoolModuleState[];
+}
+
 export const adminApi = {
   apnsConfig: (options?: RequestOptions) => request.get<ApnsConfig>("/admin/apns-config", undefined, options),
   updateApnsConfig: (payload: Pick<ApnsConfig, "keyPath" | "keyID" | "teamID" | "bundleID" | "tickSeconds">) =>
@@ -1431,6 +1452,10 @@ export const adminApi = {
     request.put<ScheduleTermConfig['periods']>('/admin/schedule-periods', { periods }),
   saveScheduleTerm: (semester: string, payload: Omit<ScheduleTermConfig, 'semester' | 'version' | 'updatedAt'>) =>
     request.put<ScheduleTermConfig>(`/admin/schedule-terms/${encodeURIComponent(semester)}`, payload),
+  schools: (options?: RequestOptions) =>
+    request.get<AdminSchool[]>('/admin/schools', undefined, options),
+  saveSchoolModules: (schoolId: string, modules: Record<string, boolean>) =>
+    request.put<AdminSchoolModuleState[]>(`/admin/schools/${encodeURIComponent(schoolId)}/modules`, { modules }),
   // 数据库备份
   databaseStatus: (options?: RequestOptions) => request.get<DatabaseBackupStatus>("/admin/database/status", undefined, options),
   downloadDatabaseBackup: () =>

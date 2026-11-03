@@ -1,4 +1,5 @@
 import { Router, type RequestHandler } from "express";
+import { resolveSchoolId } from "../schools/registry";
 import { z } from "zod";
 import multer from "multer";
 import path from "node:path";
@@ -338,7 +339,7 @@ toolsRouter.post("/:toolCode/managers", authRequired, validate(managerCreateSche
 
     const target = req.body.userId
       ? await prisma.user.findUnique({ where: { id: req.body.userId } })
-      : await prisma.user.findUnique({ where: { username: req.body.username } });
+      : await prisma.user.findUnique({ where: { schoolId_username: { schoolId: resolveSchoolId(req.user?.schoolId), username: req.body.username } } });
     if (!target) throw Errors.notFound("用户不存在");
     if (target.status === "banned") throw Errors.badRequest("不能分配给已封禁用户");
 

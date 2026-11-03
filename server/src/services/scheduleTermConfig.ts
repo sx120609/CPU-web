@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import type { Prisma } from "@prisma/client";
 import { type CalendarResult } from "../services/jwxtParser";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 
 export type SchedulePeriod = {
   id: number;
@@ -123,12 +124,12 @@ export function scheduleTermConfigFromRow(row: {
   };
 }
 
-export async function getScheduleTermConfig(semester: string): Promise<ScheduleTermConfigValue | null> {
+export async function getScheduleTermConfig(semester: string, schoolId = DEFAULT_SCHOOL_ID): Promise<ScheduleTermConfigValue | null> {
   if (!process.env.DATABASE_URL || !semester) return null;
   try {
     const [row, periods] = await Promise.all([
-      prisma.scheduleTermConfig.findUnique({ where: { semester } }),
-      getSchedulePeriods(),
+      prisma.scheduleTermConfig.findUnique({ where: { schoolId_semester: { schoolId, semester } } }),
+      getSchedulePeriods(prisma, schoolId),
     ]);
     return row ? scheduleTermConfigFromRow(row, periods) : null;
   } catch {
@@ -138,20 +139,20 @@ export async function getScheduleTermConfig(semester: string): Promise<ScheduleT
   }
 }
 
-export async function listScheduleTermConfigs() {
+export async function listScheduleTermConfigs(schoolId = DEFAULT_SCHOOL_ID) {
   if (!process.env.DATABASE_URL) return [];
   const [rows, periods] = await Promise.all([
-    prisma.scheduleTermConfig.findMany({ orderBy: { semester: "desc" } }),
-    getSchedulePeriods(),
+    prisma.scheduleTermConfig.findMany({ where: { schoolId }, orderBy: { semester: "desc" } }),
+    getSchedulePeriods(prisma, schoolId),
   ]);
   return rows.map((row) => scheduleTermConfigFromRow(row, periods));
 }
 
-/// 节次时间全校统一，存在单行的 SchedulePeriodConfig 里。
-export async function getSchedulePeriods(db: Prisma.TransactionClient = prisma): Promise<SchedulePeriod[]> {
+/// 节次时间每所学校一套，各存在 SchedulePeriodConfig 的一行里。
+export async function getSchedulePeriods(db: Prisma.TransactionClient = prisma, schoolId = DEFAULT_SCHOOL_ID): Promise<SchedulePeriod[]> {
   if (!process.env.DATABASE_URL) return [];
   try {
-    const row = await db.schedulePeriodConfig.findUnique({ where: { id: 1 }, select: { periods: true } });
+    const row = await db.schedulePeriodConfig.findUnique({ where: { schoolId }, select: { periods: true } });
     return row ? (JSON.parse(row.periods) as SchedulePeriod[]) : [];
   } catch {
     return [];
@@ -159,26 +160,30 @@ export async function getSchedulePeriods(db: Prisma.TransactionClient = prisma):
 }
 
 /// 只写节次时间，不碰任何学期。
-export async function saveSchedulePeriods(input: unknown): Promise<SchedulePeriod[]> {
+export async function saveSchedulePeriods(input: unknown, schoolId = DEFAULT_SCHOOL_ID): Promise<SchedulePeriod[]> {
   const periods = normalizeSchedulePeriods(input);
   const encoded = JSON.stringify(periods);
-  const current = await prisma.schedulePeriodConfig.findUnique({ where: { id: 1 }, select: { version: true } });
+  const current = await prisma.schedulePeriodConfig.findUnique({ where: { schoolId }, select: { version: true } });
+  // 主键沿用旧的整数 id（药大那行是 1），新学校的行接在最大 id 后面。
+  const nextId = current ? 0 : ((await prisma.schedulePeriodConfig.aggregate({ _max: { id: true } }))._max.id ?? 0) + 1;
   const row = await prisma.schedulePeriodConfig.upsert({
-    where: { id: 1 },
-    create: { id: 1, periods: encoded, version: 1 },
+    where: { schoolId },
+    create: { id: nextId, schoolId, periods: encoded, version: 1 },
     update: { periods: encoded, version: (current?.version ?? 0) + 1 },
   });
   return JSON.parse(row.periods) as SchedulePeriod[];
 }
 
-export async function saveScheduleTermConfig(input: unknown) {
+export async function saveScheduleTermConfig(input: unknown, schoolId = DEFAULT_SCHOOL_ID) {
   const value = normalizeScheduleTermConfig(input);
-  const current = await prisma.scheduleTermConfig.findUnique({ where: { semester: value.semester }, select: { version: true } });
-  // 节次时间跟着这次保存一起更新，但落在全校那一行上，而不是这个学期里。
-  const periods = await saveSchedulePeriods(value.periods);
+  const where = { schoolId_semester: { schoolId, semester: value.semester } };
+  const current = await prisma.scheduleTermConfig.findUnique({ where, select: { version: true } });
+  // 节次时间跟着这次保存一起更新，但落在这所学校那一行上，而不是这个学期里。
+  const periods = await saveSchedulePeriods(value.periods, schoolId);
   const row = await prisma.scheduleTermConfig.upsert({
-    where: { semester: value.semester },
+    where,
     create: {
+      schoolId,
       semester: value.semester,
       semesterStartMonday: value.semesterStartMonday,
       weekCount: value.weekCount,

@@ -19,6 +19,7 @@ async function hydrateUserFromToken(token: string, allowExpiredSessionToken = fa
     where: { id: payload.userId },
     select: {
       id: true,
+      schoolId: true,
       username: true,
       role: true,
       voiceHubRole: true,
@@ -33,6 +34,7 @@ async function hydrateUserFromToken(token: string, allowExpiredSessionToken = fa
   return {
     ...payload,
     studentId: user.username,
+    schoolId: user.schoolId,
     role: user.role,
     voiceHubRole: user.voiceHubRole,
     lostFoundRole: user.lostFoundRole,
@@ -49,6 +51,7 @@ async function hydrateBrowserSessionUser(req: Request, res: Response, token: str
     const renewedToken = signToken({
       userId: user.userId,
       studentId: user.studentId,
+      schoolId: user.schoolId,
       role: user.role,
       campus: user.campus || "",
       voiceHubRole: user.voiceHubRole,

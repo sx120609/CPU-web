@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { signToken } from "../utils/jwt";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
@@ -54,7 +55,8 @@ authRouter.post("/login", validate(loginSchema), passwordLoginLimit, async (req,
   try {
     const { username, password } = req.body;
     await releaseExpiredMutes();
-    const user = await prisma.user.findUnique({ where: { username } });
+    // 站内账号目前只开在默认学校；登录页加上选校后从请求里取。
+    const user = await prisma.user.findUnique({ where: { schoolId_username: { schoolId: DEFAULT_SCHOOL_ID, username } } });
     if (!user) throw Errors.badRequest("用户名或密码错误");
     if (user.studentSso) throw Errors.badRequest("该账号已绑定学校认证，请用「学校账号登录」入口");
     const ok2 = await verifyPassword(password, user.passwordHash);
@@ -74,6 +76,7 @@ authRouter.post("/login", validate(loginSchema), passwordLoginLimit, async (req,
     const token = signToken({
       userId: user.id,
       studentId: user.username,
+      schoolId: user.schoolId,
       role: user.role,
       campus: "",
       voiceHubRole: user.voiceHubRole,
@@ -97,7 +100,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
     if (!isDev) throw Errors.forbidden("仅支持学校账号登录");
     const { username, password, nickname, college, enrollYear } = req.body;
     const pendingNickname = normalizeNicknameSubmission(nickname);
-    const exists = await prisma.user.findUnique({ where: { username } });
+    const exists = await prisma.user.findUnique({ where: { schoolId_username: { schoolId: DEFAULT_SCHOOL_ID, username } } });
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await hashPassword(password);
     const client = detectLoginClient(req);
@@ -122,6 +125,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
     const token = signToken({
       userId: user.id,
       studentId: user.username,
+      schoolId: user.schoolId,
       role: user.role,
       campus: "",
       voiceHubRole: user.voiceHubRole,
@@ -199,15 +203,17 @@ authRouter.post(
         });
       }
 
-      // 学号 = username。查 / 建 User
+      // 学号 = username，在所属学校内唯一。教务登录目前只接了默认学校的系统。
+      const schoolId = DEFAULT_SCHOOL_ID;
       const studentId = String(r.authenticatedUsername || username || "").trim();
       if (!studentId) throw Errors.server("登录节点未返回认证账号");
-      let user = await prisma.user.findUnique({ where: { username: studentId } });
+      let user = await prisma.user.findUnique({ where: { schoolId_username: { schoolId, username: studentId } } });
       const dummyHash = "$$sso$$"; // SSO 账号不存密码，占位
 
       if (!user) {
         user = await prisma.user.create({
           data: {
+            schoolId,
             username: studentId,
             passwordHash: dummyHash,
             nickname: "", // 强制首次登录设置
@@ -240,6 +246,7 @@ authRouter.post(
       const siteToken = signToken({
         userId: user.id,
         studentId: user.username,
+        schoolId: user.schoolId,
         role: user.role,
         campus: "",
         voiceHubRole: user.voiceHubRole,

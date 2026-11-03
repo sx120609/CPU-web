@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { resolveSchoolId } from "../schools/registry";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
@@ -445,7 +446,10 @@ treeholeAdminRouter.post("/staff", validate(createStaffSchema), async (req, res,
     requireTreeholeStaffManager(viewer);
     const body = req.body as z.infer<typeof createStaffSchema>;
     if (!body.isHost && !body.isAdmin) throw Errors.badRequest("请至少选择洞主或核心管理员中的一项");
-    const user = await prisma.user.findUnique({ where: { username: body.username }, select: { id: true, status: true, role: true } });
+    const user = await prisma.user.findUnique({
+      where: { schoolId_username: { schoolId: resolveSchoolId(req.user?.schoolId), username: body.username } },
+      select: { id: true, status: true, role: true },
+    });
     if (!user || ["deleted", "deleting", "banned"].includes(user.status) || user.role === "bot") throw Errors.notFound("没有找到这个账号，请对方先登录一次药大拾间");
     const staff = await prisma.$transaction(async (tx) => {
       const existing = await tx.treeholeStaff.findUnique({ where: { userId: user.id } });

@@ -3,6 +3,7 @@ import { courseMatchesWeek, normalizedCourseWeekList } from "../shared/scheduleW
 import { adjustmentForDate, type ScheduleAdjustmentLike } from "../shared/scheduleAdjustments";
 import { classroomOnly } from "../shared/classroom";
 import { courseCustomTime } from "../shared/scheduleCustomTime";
+import { getDefaultSchool } from "../schools/registry";
 export { parseWeekText as parseScheduleWidgetWeeks } from "../shared/scheduleWeeks";
 
 export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 11;
@@ -89,20 +90,8 @@ export function scheduleWidgetFallbackPayload(payload?: string | null, requested
   };
 }
 
-const SMALL_SLOTS = [
-  { no: 1, start: "08:00", end: "08:45" },
-  { no: 2, start: "08:55", end: "09:40" },
-  { no: 3, start: "09:55", end: "10:40" },
-  { no: 4, start: "10:50", end: "11:35" },
-  { no: 5, start: "13:30", end: "14:15" },
-  { no: 6, start: "14:25", end: "15:10" },
-  { no: 7, start: "15:25", end: "16:10" },
-  { no: 8, start: "16:20", end: "17:05" },
-  { no: 9, start: "18:30", end: "19:15" },
-  { no: 10, start: "19:25", end: "20:10" },
-  { no: 11, start: "20:20", end: "21:05" },
-  { no: 12, start: "21:15", end: "22:00" },
-];
+// 默认学校的作息；接入第二所学校时改成按课表所属学校取。
+const SMALL_SLOTS = getDefaultSchool().defaultPeriods;
 const MAX_SMALL_SLOT = SMALL_SLOTS[SMALL_SLOTS.length - 1]?.no ?? 11;
 
 type WidgetCourse = {

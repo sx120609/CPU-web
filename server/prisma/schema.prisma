@@ -15,7 +15,9 @@ datasource db {
 
 model User {
   id                     Int       @id @default(autoincrement())
-  username               String    @unique // 登录名（学校账号登录时即为学号）
+  // 所属学校（见 server/src/schools）。历史账号都是药大。
+  schoolId               String    @default("cpu")
+  username               String // 登录名（学校账号登录时即为学号），在同一所学校内唯一
   passwordHash           String
   nickname               String // 显示名（学校账号首次登录时为空，强制设置）
   pendingNickname        String?
@@ -190,6 +192,8 @@ model User {
   @@index([nicknameReviewStatus, nicknameReviewedAt])
   @@index([profileReviewStatus, updatedAt])
   @@index([status, mutedUntil])
+  @@unique([schoolId, username])
+  @@index([username])
 }
 
 model UserBlock {
@@ -720,21 +724,23 @@ model UserScheduleEdit {
   @@index([userId, updatedAt])
 }
 
-// 节次时间全校统一，不随学期变化，所以单独一行存放，学期表不再各存一份。
+// 节次时间不随学期变化，每所学校单独一行存放，学期表不再各存一份。
 // JSON 是为了兼容不同教务入口的节次数量，并让一次修改原子生效。
 model SchedulePeriodConfig {
   id        Int      @id @default(1)
+  schoolId  String   @unique @default("cpu")
   periods   String   @default("[]")
   version   Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// 管理员维护的学期校历。adjustments 保持 JSON 是为了让一次修改能原子覆盖
+// 管理员维护的学期校历，每所学校各一套。adjustments 保持 JSON 是为了让一次修改能原子覆盖
 // 完整学期配置；节次时间见 SchedulePeriodConfig。
 model ScheduleTermConfig {
   id                  Int      @id @default(autoincrement())
-  semester            String   @unique
+  schoolId            String   @default("cpu")
+  semester            String
   semesterStartMonday String
   weekCount           Int
   // Legacy column retained for old instances during blue-green deployment.
@@ -746,6 +752,7 @@ model ScheduleTermConfig {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
+  @@unique([schoolId, semester])
   @@index([updatedAt])
 }
 

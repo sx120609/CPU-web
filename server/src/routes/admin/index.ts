@@ -175,6 +175,8 @@ import {
   startAdminDeploymentUpdate,
 } from "../../services/deployment";
 import { getSchedulePeriods, listScheduleTermConfigs, saveSchedulePeriods, saveScheduleTermConfig } from "../../services/scheduleTermConfig";
+import { listSchools, resolveSchoolId } from "../../schools/registry";
+import { getSchoolModuleStates, saveSchoolModuleOverrides } from "../../schools/modules";
 
 export const adminRouter = Router();
 adminRouter.use("/forum-ads", forumAdsAdminRouter);
@@ -783,12 +785,14 @@ adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, re
       college,
       enrollYear,
     } = req.body;
-    const exists = await prisma.user.findUnique({ where: { username } });
+    // 新账号开在管理员自己的学校。
+    const schoolId = resolveSchoolId(req.user?.schoolId);
+    const exists = await prisma.user.findUnique({ where: { schoolId_username: { schoolId, username } } });
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await bcrypt.hash(password, 10);
     const u = await prisma.user.create({
       data: {
-        username, passwordHash, nickname,
+        schoolId, username, passwordHash, nickname,
         role: role === "voicehub_admin" ? "user" : role ?? "user",
         voiceHubRole: role === "voicehub_admin" ? "admin" : voiceHubRole ?? null,
         lostFoundRole: lostFoundRole ?? null,
@@ -2274,18 +2278,35 @@ adminRouter.post("/schedule-terms/holiday-preview", adminOnly, validate(holidayP
   catch (error) { next(Errors.badGateway(error instanceof Error ? error.message : "公开节假日获取失败")); }
 });
 
-adminRouter.get("/schedule-terms", adminOnly, async (_req, res, next) => {
-  try { ok(res, await listScheduleTermConfigs()); } catch (error) { next(error); }
+adminRouter.get("/schedule-terms", adminOnly, async (req, res, next) => {
+  try { ok(res, await listScheduleTermConfigs(resolveSchoolId(req.user?.schoolId))); } catch (error) { next(error); }
 });
 
-/// 全校统一的节次时间，和学期分开读写。
-adminRouter.get("/schedule-periods", adminOnly, async (_req, res, next) => {
-  try { ok(res, await getSchedulePeriods()); } catch (error) { next(error); }
+/// 各校档案和功能开关。还没按学校隔离的功能，只有默认学校能打开。
+adminRouter.get("/schools", adminOnly, (_req, res) => {
+  ok(res, listSchools().map((school) => ({
+    id: school.id,
+    name: school.name,
+    shortName: school.shortName,
+    brandName: school.brandName,
+    academicSystem: school.academicSystem,
+    modules: getSchoolModuleStates(school.id),
+  })));
+});
+
+adminRouter.put("/schools/:schoolId/modules", adminOnly, validate(z.object({ modules: z.record(z.boolean()) }).strict()), async (req, res, next) => {
+  try { ok(res, await saveSchoolModuleOverrides(String(req.params.schoolId || ""), req.body.modules)); }
+  catch (error) { next(error); }
+});
+
+/// 管理员所在学校的节次时间，和学期分开读写。
+adminRouter.get("/schedule-periods", adminOnly, async (req, res, next) => {
+  try { ok(res, await getSchedulePeriods(undefined, resolveSchoolId(req.user?.schoolId))); } catch (error) { next(error); }
 });
 
 adminRouter.put("/schedule-periods", adminOnly, validate(schedulePeriodsSchema), async (req, res, next) => {
   try {
-    ok(res, await saveSchedulePeriods(req.body.periods));
+    ok(res, await saveSchedulePeriods(req.body.periods, resolveSchoolId(req.user?.schoolId)));
   } catch (error) {
     next(Errors.badRequest(error instanceof Error ? error.message : "节次时间无效"));
   }
@@ -2293,7 +2314,7 @@ adminRouter.put("/schedule-periods", adminOnly, validate(schedulePeriodsSchema),
 
 adminRouter.put("/schedule-terms/:semester", adminOnly, validate(scheduleTermPatchSchema), async (req, res, next) => {
   try {
-    ok(res, await saveScheduleTermConfig({ ...req.body, semester: String(req.params.semester || "") }));
+    ok(res, await saveScheduleTermConfig({ ...req.body, semester: String(req.params.semester || "") }, resolveSchoolId(req.user?.schoolId)));
   } catch (error) {
     next(Errors.badRequest(error instanceof Error ? error.message : "学期校历配置无效"));
   }
