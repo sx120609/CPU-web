@@ -3,6 +3,11 @@ import { ConcurrencyGate, TtlLru } from "../utils/loadShield";
 import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "./retiredBoards";
 import { enabledBoardTypes, getSiteOrigin, isBoardTypeEnabled, isFeatureOn } from "./siteSettings";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { boardSlugKey } from "../schools/forumScope";
+
+/** 搜索引擎看到的是默认学校的站点，只收录它的板块和帖子。 */
+const SEO_SCHOOL_ID = DEFAULT_SCHOOL_ID;
 
 // 主站是单页应用：搜索引擎和聊天软件的链接预览只看得到服务端返回的 index.html。
 // 这里按路径给它换上该页自己的标题、描述、canonical 和结构化数据，私人页面标 noindex。
@@ -326,10 +331,10 @@ async function loadTopic(id: number) {
         hidden: true,
         createdAt: true,
         updatedAt: true,
-        board: { select: { slug: true, name: true, type: true, feedDepartment: true } },
+        board: { select: { schoolId: true, slug: true, name: true, type: true, feedDepartment: true } },
       },
     });
-    if (!topic || topic.hidden || !topic.board || isRetiredBoardSlug(topic.board.slug)) return null;
+    if (!topic || topic.hidden || !topic.board || topic.board.schoolId !== SEO_SCHOOL_ID || isRetiredBoardSlug(topic.board.slug)) return null;
     const { title, content } = sanitizeLostFoundTopicFields(topic);
     return { id: topic.id, title, content, createdAt: topic.createdAt, updatedAt: topic.updatedAt, board: topic.board };
   }));
@@ -337,7 +342,7 @@ async function loadTopic(id: number) {
 
 async function loadBoard(slug: string) {
   return boardCache.load(slug, DYNAMIC_CACHE_TTL_MS, () => lookupGate.run(async () => {
-    const board = await prisma.board.findUnique({ where: { slug }, select: { slug: true, name: true, description: true, type: true } });
+    const board = await prisma.board.findUnique({ where: boardSlugKey(SEO_SCHOOL_ID, slug), select: { slug: true, name: true, description: true, type: true } });
     return board && !isRetiredBoardSlug(board.slug) ? board : null;
   }));
 }
@@ -539,12 +544,12 @@ async function collectSitemapEntries(): Promise<SitemapEntry[]> {
   const boardTypes = indexableBoardTypes();
   const [boards, topics, works] = await Promise.all([
     prisma.board.findMany({
-      where: { type: { in: boardTypes }, topicCount: { gt: 0 }, ...visibleBoardSlugFilter() },
+      where: { schoolId: SEO_SCHOOL_ID, type: { in: boardTypes }, topicCount: { gt: 0 }, ...visibleBoardSlugFilter() },
       select: { slug: true },
       orderBy: [{ type: "asc" }, { order: "asc" }],
     }),
     prisma.topic.findMany({
-      where: { hidden: false, board: { type: { in: boardTypes }, ...visibleBoardSlugFilter() } },
+      where: { hidden: false, board: { schoolId: SEO_SCHOOL_ID, type: { in: boardTypes }, ...visibleBoardSlugFilter() } },
       select: { id: true, updatedAt: true },
       orderBy: { id: "desc" },
       take: SITEMAP_TOPIC_LIMIT,

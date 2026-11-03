@@ -71,9 +71,9 @@ export function isCampusLifeCampaignMetadata(value: unknown) {
     && ["canteen", "nearby", "today", "fun"].includes(String(metadata.campaignTheme || ""));
 }
 
-export async function allowsCampusLifeCampaignAnonymousPost(boardSlug: string, metadata: unknown) {
+export async function allowsCampusLifeCampaignAnonymousPost(boardSlug: string, metadata: unknown, schoolId: string) {
   if (boardSlug !== "life" || !isCampusLifeCampaignMetadata(metadata)) return false;
-  return (await listActiveForumAds("compose-mobile-campaign", false)).length > 0;
+  return (await listActiveForumAds("compose-mobile-campaign", false, schoolId)).length > 0;
 }
 
 export function forumAdMetricDay(value = new Date()) {
@@ -143,6 +143,7 @@ export function summarizeForumAdMetrics(rows: ForumAdMetricRow[], now = new Date
 
 export async function recordForumAdEvent(input: {
   adId: number;
+  schoolId: string;
   placement: ForumAdPlacement;
   device: ForumAdDevice;
   type: ForumAdEventType;
@@ -151,6 +152,7 @@ export async function recordForumAdEvent(input: {
   const ad = await prisma.forumAd.findFirst({
     where: {
       id: input.adId,
+      schoolId: input.schoolId,
       enabled: true,
       OR: [
         { placements: { has: input.placement } },
@@ -191,9 +193,10 @@ export async function recordForumAdEvent(input: {
   return true;
 }
 
-export async function listActiveForumAds(placement: ForumAdPlacement, vip: boolean) {
+export async function listActiveForumAds(placement: ForumAdPlacement, vip: boolean, schoolId: string) {
   const now = new Date();
   const where: Prisma.ForumAdWhereInput = {
+    schoolId,
     enabled: true,
     OR: [
       { placements: { has: placement } },

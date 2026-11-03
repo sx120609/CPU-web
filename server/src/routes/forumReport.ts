@@ -8,6 +8,7 @@ import { featureClosedMessage, isBoardTypeEnabled, removeTopicFromGlobalPins } f
 import { isRetiredBoardSlug } from "../services/retiredBoards";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { acquireForumReportTargetLock } from "../services/forumReportLock";
+import { requestSchoolId } from "../schools/modules";
 import {
   refreshBoardTopicCounts,
   refreshTopicReplyStats,
@@ -64,6 +65,7 @@ async function resolveTopicReportTarget(
   reporterId: number,
   reporterRole: string,
   targetId: number,
+  schoolId: string,
 ): Promise<ReportTarget> {
   const topic = await prisma.topic.findUnique({
     where: { id: targetId },
@@ -73,10 +75,10 @@ async function resolveTopicReportTarget(
       title: true,
       content: true,
       hidden: true,
-      board: { select: { slug: true, type: true } },
+      board: { select: { schoolId: true, slug: true, type: true } },
     },
   });
-  if (!topic || topic.hidden || isRetiredBoardSlug(topic.board.slug)) throw Errors.notFound("帖子不存在或已不可见");
+  if (!topic || topic.hidden || topic.board.schoolId !== schoolId || isRetiredBoardSlug(topic.board.slug)) throw Errors.notFound("帖子不存在或已不可见");
   if (!isBoardTypeEnabled(topic.board.type)) throw Errors.forbidden(featureClosedMessage(topic.board.type));
   await ensureCanReadBoardType(topic.board.type, reporterId, reporterRole);
   const ineligible = forumReportEligibility({ targetType: "topic", reporterId, targetAuthorId: topic.authorId });
@@ -93,6 +95,7 @@ async function resolveReplyReportTarget(
   reporterId: number,
   reporterRole: string,
   targetId: number,
+  schoolId: string,
 ): Promise<ReportTarget> {
   const reply = await prisma.reply.findUnique({
     where: { id: targetId },
@@ -106,12 +109,12 @@ async function resolveReplyReportTarget(
           id: true,
           title: true,
           hidden: true,
-          board: { select: { slug: true, type: true } },
+          board: { select: { schoolId: true, slug: true, type: true } },
         },
       },
     },
   });
-  if (!reply || reply.hidden || reply.topic.hidden || isRetiredBoardSlug(reply.topic.board.slug)) {
+  if (!reply || reply.hidden || reply.topic.hidden || reply.topic.board.schoolId !== schoolId || isRetiredBoardSlug(reply.topic.board.slug)) {
     throw Errors.notFound("评论不存在或已不可见");
   }
   if (!isBoardTypeEnabled(reply.topic.board.type)) throw Errors.forbidden(featureClosedMessage(reply.topic.board.type));
@@ -158,15 +161,16 @@ async function resolveReportTarget(
   targetId: number,
   reporterId: number,
   reporterRole: string,
+  schoolId: string,
 ) {
   if (targetType === "user") {
-    const user = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true, nickname: true, avatar: true, bio: true, college: true, status: true } });
-    if (!user || ["deleting", "deleted"].includes(user.status)) throw Errors.notFound("用户不存在");
+    const user = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true, schoolId: true, nickname: true, avatar: true, bio: true, college: true, status: true } });
+    if (!user || user.schoolId !== schoolId || ["deleting", "deleted"].includes(user.status)) throw Errors.notFound("用户不存在");
     if (user.id === reporterId) throw Errors.badRequest("不能举报自己");
     return { targetAuthorId: user.id, targetLabel: `用户资料：${user.nickname}`, contentSnapshot: JSON.stringify({ nickname: user.nickname, avatar: user.avatar, bio: user.bio, college: user.college }) };
   }
-  if (targetType === "topic") return resolveTopicReportTarget(reporterId, reporterRole, targetId);
-  if (targetType === "reply") return resolveReplyReportTarget(reporterId, reporterRole, targetId);
+  if (targetType === "topic") return resolveTopicReportTarget(reporterId, reporterRole, targetId, schoolId);
+  if (targetType === "reply") return resolveReplyReportTarget(reporterId, reporterRole, targetId, schoolId);
   return resolveDirectMessageReportTarget(reporterId, targetId);
 }
 
@@ -181,7 +185,7 @@ forumReportRouter.post(
         where: { reporterId, createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
       });
       if (recentCount >= 20) throw new HttpError(429, 4029, "举报提交过于频繁，请稍后再试");
-      const target = await resolveReportTarget(targetType, targetId, reporterId, req.user!.role);
+      const target = await resolveReportTarget(targetType, targetId, reporterId, req.user!.role, requestSchoolId(req));
       const created = await prisma.$transaction(async (tx) => {
         await acquireForumReportTargetLock(tx, targetType, targetId);
         const report = await tx.forumReport.create({
@@ -250,7 +254,7 @@ forumReportRouter.post(
         await invalidateForumCaches({ includeCourses: true });
       }
       const staff = await prisma.user.findMany({
-        where: { role: { in: ["admin", "mod"] }, status: { not: "banned" } },
+        where: { schoolId: requestSchoolId(req), role: { in: ["admin", "mod"] }, status: { not: "banned" } },
         select: { id: true },
       });
       if (staff.length) {
@@ -324,7 +328,9 @@ async function reporterTargetUrl(targetType: ForumReportTargetType, targetId: nu
 forumReportAdminRouter.get("/", validate(listSchema, "query"), async (req, res, next) => {
   try {
     const { status, targetType, page, size } = req.query as unknown as z.infer<typeof listSchema>;
+    // 举报归举报人所在学校，各校管理员只处理本校的举报。
     const where = {
+      reporter: { schoolId: requestSchoolId(req) },
       ...(status !== "all" ? { status } : {}),
       ...(targetType !== "all" ? { targetType } : {}),
     };
@@ -341,7 +347,7 @@ forumReportAdminRouter.get("/", validate(listSchema, "query"), async (req, res, 
         skip: (page - 1) * size,
         take: size,
       }),
-      prisma.forumReport.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.forumReport.groupBy({ by: ["status"], where: { reporter: { schoolId: requestSchoolId(req) } }, _count: { _all: true } }),
     ]);
     const topicIds = await topicIdsForReplyReports(reports);
     const reporterIds = [...new Set(reports.map((item) => item.reporterId))];
@@ -400,8 +406,8 @@ forumReportAdminRouter.patch("/:id", validate(handleSchema), async (req, res, ne
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("举报 ID 不正确");
-    const existing = await prisma.forumReport.findUnique({ where: { id } });
-    if (!existing) throw Errors.notFound("举报记录不存在");
+    const existing = await prisma.forumReport.findUnique({ where: { id }, include: { reporter: { select: { schoolId: true } } } });
+    if (!existing || existing.reporter.schoolId !== requestSchoolId(req)) throw Errors.notFound("举报记录不存在");
     const { status, note } = req.body as z.infer<typeof handleSchema>;
     const handledAt = new Date();
     const handled = await prisma.$transaction(async (tx) => {

@@ -16,6 +16,8 @@ import {
 import { scheduleDirectMessageSubmissionReview } from "../services/directMessageSubmissionReview";
 import { ensureNoUserBlock, lockUserPair } from "../services/userBlock";
 import { shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
+import { requestSchoolId } from "../schools/modules";
+import { topicBelongsToSchool } from "../schools/forumScope";
 import {
   anonymousForumDirectScope,
   canonicalDirectParticipants,
@@ -200,6 +202,7 @@ function parseForumDirectKind(raw: string): ForumDirectKind {
 async function resolveForumDirectTarget(
   viewerId: number,
   viewerRole: string,
+  viewerSchoolId: string,
   kind: ForumDirectKind,
   postId: number,
 ) {
@@ -213,7 +216,7 @@ async function resolveForumDirectTarget(
           anonymousAlias: true,
           hidden: true,
           author: { select: directUserSelect },
-          board: { select: { slug: true, type: true } },
+          board: { select: { schoolId: true, slug: true, type: true } },
         },
       })
     : await prisma.reply.findUnique({
@@ -231,7 +234,7 @@ async function resolveForumDirectTarget(
               id: true,
               authorId: true,
               hidden: true,
-              board: { select: { slug: true, type: true } },
+              board: { select: { schoolId: true, slug: true, type: true } },
             },
           },
         },
@@ -241,6 +244,7 @@ async function resolveForumDirectTarget(
   const post = raw as any;
   const topic = kind === "topic" ? post : post.topic;
   const isStaff = viewerRole === "admin" || viewerRole === "mod";
+  if (!topicBelongsToSchool(topic, viewerSchoolId)) throw Errors.notFound("帖子或回复不存在");
   if (topic.hidden && topic.authorId !== viewerId && !isStaff) throw Errors.notFound("帖子或回复不存在");
   if (post.hidden && post.authorId !== viewerId && !isStaff) throw Errors.notFound("帖子或回复不存在");
   if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子或回复不存在");
@@ -516,7 +520,7 @@ directMessageRouter.get("/forum/:kind/:postId", async (req, res, next) => {
     const userId = req.user!.userId;
     const kind = parseForumDirectKind(req.params.kind);
     const postId = parsePositiveId(req.params.postId, kind === "topic" ? "帖子" : "回复");
-    const target = await resolveForumDirectTarget(userId, req.user!.role, kind, postId);
+    const target = await resolveForumDirectTarget(userId, req.user!.role, requestSchoolId(req), kind, postId);
     const conversation = await findConversationForUsers(userId, target.recipientId, target.scopeKey);
     const counterpart = target.recipientAlias
       ? anonymousDirectUser(target.recipientAlias)
@@ -543,7 +547,7 @@ directMessageRouter.post("/forum/:kind/:postId/messages", validate(sendSchema), 
     const userId = req.user!.userId;
     const kind = parseForumDirectKind(req.params.kind);
     const postId = parsePositiveId(req.params.postId, kind === "topic" ? "帖子" : "回复");
-    const target = await resolveForumDirectTarget(userId, req.user!.role, kind, postId);
+    const target = await resolveForumDirectTarget(userId, req.user!.role, requestSchoolId(req), kind, postId);
     const result = await sendDirectMessage(userId, target.recipientId, req.body.content, {
       scopeKey: target.scopeKey,
       recipientAlias: target.recipientAlias,

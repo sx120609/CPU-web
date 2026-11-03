@@ -31,6 +31,8 @@ import { calculateMarketOrderAmounts } from "../services/marketFinance";
 import { ensureForumImageAssetsForContent, shouldRunImageReview } from "../services/imageModeration";
 import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../services/forumStats";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { boardSlugKey } from "../schools/forumScope";
 
 export const marketRouter = Router();
 marketRouter.use(authOptional);
@@ -459,7 +461,8 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
     }
     const priceCents = cents(input.price) ?? 0;
     const originalPriceCents = cents(input.originalPrice);
-    const board = await prisma.board.findUnique({ where: { slug: "market" } });
+    // 二手市场还没按学校隔离，只开在默认学校。
+    const board = await prisma.board.findUnique({ where: boardSlugKey(DEFAULT_SCHOOL_ID, "market") });
     if (!board) throw Errors.notFound("商城板块不存在");
     const metadata = {
       marketItem: true,

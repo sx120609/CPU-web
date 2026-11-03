@@ -101,7 +101,7 @@ export async function saveSchoolModuleOverrides(schoolId: string, input: unknown
  */
 export function requestSchoolId(req: Request): string {
   if (req.user?.schoolId) return resolveSchoolId(req.user.schoolId);
-  const header = req.headers.authorization;
+  const header = req.headers?.authorization;
   const token = req.browserSession?.siteToken || (header?.startsWith("Bearer ") ? header.slice(7) : "");
   if (token) {
     try {

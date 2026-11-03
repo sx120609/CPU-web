@@ -22,6 +22,8 @@ import {
 } from "../services/imageModeration";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../services/forumStats";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { boardSlugKey } from "../schools/forumScope";
 import {
   canViewLostFoundRaw,
   sanitizeLostFoundItemFields,
@@ -142,9 +144,10 @@ function imageContent(images: string[]) {
   return images.map((url, index) => `![失物图片 ${index + 1}](${url})`).join("\n");
 }
 
+/** 失物招领还没按学校隔离，板块只建在默认学校。 */
 async function ensureBoard() {
   return prisma.board.upsert({
-    where: { slug: BOARD_SLUG },
+    where: boardSlugKey(DEFAULT_SCHOOL_ID, BOARD_SLUG),
     update: {
       name: "失物招领",
       description: "校园失物信息与认领互助",
@@ -152,6 +155,7 @@ async function ensureBoard() {
       color: "#0f8f7b",
     },
     create: {
+      schoolId: DEFAULT_SCHOOL_ID,
       slug: BOARD_SLUG,
       name: "失物招领",
       description: "校园失物信息与认领互助",

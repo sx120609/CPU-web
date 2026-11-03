@@ -6,6 +6,8 @@ import { Errors, ok } from "../utils/response";
 import { ensureCanReadBoardType } from "../services/forumAccess";
 import { lockUserPair } from "../services/userBlock";
 import { directCounterpartId, directParticipantAlias } from "../services/directMessagePolicy";
+import { requestSchoolId } from "../schools/modules";
+import { topicBelongsToSchool } from "../schools/forumScope";
 
 export const userBlockRouter = Router();
 const schema = z.object({ targetType: z.enum(["user", "topic", "reply", "conversation"]), targetId: z.number().int().positive() });
@@ -33,7 +35,7 @@ userBlockRouter.post("/", validate(schema), async (req, res, next) => {
         : await prisma.reply.findUnique({ where: { id: targetId }, include: { topic: { include: { board: true } } } });
       if (!post || post.hidden) throw Errors.notFound("内容不存在");
       const topic = "topic" in post ? post.topic : post;
-      if (topic.hidden) throw Errors.notFound("内容不存在");
+      if (topic.hidden || !topicBelongsToSchool(topic, requestSchoolId(req))) throw Errors.notFound("内容不存在");
       await ensureCanReadBoardType(topic.board.type, ownerId, req.user!.role);
       resolvedId = post.authorId;
       anonymous = post.isAnonymous;

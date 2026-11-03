@@ -53,6 +53,8 @@ import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForConte
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
 import { compactTopicAuthors } from "../utils/publicAvatar";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
+import { requestSchoolId } from "../schools/modules";
+import { boardSlugKey, topicBelongsToSchool } from "../schools/forumScope";
 import {
   encodeTopicEditReviewContext,
   forumContentVisibilityWhere,
@@ -196,6 +198,7 @@ topicRouter.get("/", async (req, res, next) => {
     const boardType = req.query.type ? String(req.query.type) : "";
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? null;
+    const schoolId = requestSchoolId(req);
 
     const marketKinds = new Set(["sell", "wanted", "discuss"]);
     const marketCategories = new Set(["books", "digital", "dorm", "fashion", "sports", "tickets", "digital_goods", "other"]);
@@ -213,7 +216,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     let boardId: number | undefined;
     if (boardSlug && boardSlug !== "all") {
-      const b = await prisma.board.findUnique({ where: { slug: boardSlug } });
+      const b = await prisma.board.findUnique({ where: boardSlugKey(schoolId, boardSlug) });
       if (!b) throw Errors.notFound("板块不存在");
       if (isRetiredBoardSlug(b.slug)) throw Errors.notFound("板块不存在");
       if (!isBoardTypeEnabled(b.type)) throw Errors.forbidden(featureClosedMessage(b.type));
@@ -233,9 +236,9 @@ topicRouter.get("/", async (req, res, next) => {
     );
     const where: any = { ...forumContentVisibilityWhere(listViewerId) };
     if (boardId) where.boardId = boardId;
-    else if (boardType && announceSlugs.length) where.board = { type: boardType, AND: [visibleBoardSlugFilter(), { slug: { in: announceSlugs } }] };
-    else if (boardType) where.board = { type: boardType, ...visibleBoardSlugFilter() };
-    else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
+    else if (boardType && announceSlugs.length) where.board = { schoolId, type: boardType, AND: [visibleBoardSlugFilter(), { slug: { in: announceSlugs } }] };
+    else if (boardType) where.board = { schoolId, type: boardType, ...visibleBoardSlugFilter() };
+    else where.board = { schoolId, type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
     const structuredFilters: any[] = [];
@@ -274,7 +277,8 @@ topicRouter.get("/", async (req, res, next) => {
     const cached = await withCache(
       "forum-list",
       [
-        "topic-list-v7",
+        "topic-list-v8",
+        schoolId,
         listViewerId ? `viewer-${listViewerId}` : "public",
         boardSlug || "all",
         page,
@@ -345,7 +349,7 @@ topicRouter.post(
         where: {
           id: { in: ids },
           hidden: false,
-          board: { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
+          board: { schoolId: requestSchoolId(req), type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
         },
         select: { id: true },
       });
@@ -418,7 +422,7 @@ topicRouter.post(
       await ensureUserCanSpeak(req.user!.userId);
       const board = parsed.data.boardSlug
         ? await prisma.board.findUnique({
-            where: { slug: parsed.data.boardSlug },
+            where: boardSlugKey(requestSchoolId(req), parsed.data.boardSlug),
             select: { name: true, type: true },
           })
         : null;
@@ -482,12 +486,12 @@ topicRouter.get("/:id", async (req, res, next) => {
       where: { id },
       include: {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
-        board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
+        board: { select: { id: true, schoolId: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
         lostFoundItem: { select: { id: true, kind: true, status: true } },
       },
     });
-    if (!topic || isAuthorBlocked(topic.authorId, req.user)) throw Errors.notFound();
+    if (!topic || !topicBelongsToSchool(topic, requestSchoolId(req)) || isAuthorBlocked(topic.authorId, req.user)) throw Errors.notFound();
     if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound();
     const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
     if (topic.hidden && !canSeeHidden) throw Errors.notFound();
@@ -510,9 +514,9 @@ async function findTopicForAiAnswer(req: Request) {
   const requesterRole = req.user?.role ?? "";
   const topic = await prisma.topic.findUnique({
     where: { id },
-    select: { id: true, authorId: true, hidden: true, board: { select: { slug: true, type: true } } },
+    select: { id: true, authorId: true, hidden: true, board: { select: { schoolId: true, slug: true, type: true } } },
   });
-  if (!topic || isAuthorBlocked(topic.authorId, req.user)) throw Errors.notFound();
+  if (!topic || !topicBelongsToSchool(topic, requestSchoolId(req)) || isAuthorBlocked(topic.authorId, req.user)) throw Errors.notFound();
   if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound();
   const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
   if (topic.hidden && !canSeeHidden) throw Errors.notFound();
@@ -595,7 +599,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       throw Errors.badRequest("正文包含审核占位符，请刷新页面后重新编辑，原始媒体不会被覆盖");
     }
     await ensureUserCanSubmitTopic(userId);
-    const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
+    const board = await prisma.board.findUnique({ where: boardSlugKey(requestSchoolId(req), boardSlug) });
     if (!board) throw Errors.notFound("板块不存在");
     if (isRetiredBoardSlug(board.slug)) throw Errors.notFound("板块不存在");
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
@@ -614,7 +618,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       : (metadata ?? {});
     const activityAllowsAnonymous = anonymous
       && !board.anonymousEnabled
-      && await allowsCampusLifeCampaignAnonymousPost(board.slug, effectiveMetadata);
+      && await allowsCampusLifeCampaignAnonymousPost(board.slug, effectiveMetadata, board.schoolId);
     if (anonymous && !board.anonymousEnabled && !activityAllowsAnonymous) {
       throw Errors.forbidden("该板块暂不支持匿名发布");
     }
@@ -775,7 +779,7 @@ topicRouter.post("/format", authRequired, validate(formatSchema), async (req, re
     const { title, content, boardSlug, editorMode } = req.body;
     const board = boardSlug
       ? await prisma.board.findUnique({
-          where: { slug: boardSlug },
+          where: boardSlugKey(requestSchoolId(req), boardSlug),
           select: { name: true, type: true },
         })
       : null;
@@ -826,9 +830,9 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { slug: true, type: true } } },
+      include: { board: { select: { schoolId: true, slug: true, type: true } } },
     });
-    if (!t) throw Errors.notFound();
+    if (!t || !topicBelongsToSchool(t, requestSchoolId(req))) throw Errors.notFound();
     if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
@@ -990,9 +994,9 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { slug: true, type: true } } },
+      include: { board: { select: { schoolId: true, slug: true, type: true } } },
     });
-    if (!t) throw Errors.notFound();
+    if (!t || !topicBelongsToSchool(t, requestSchoolId(req))) throw Errors.notFound();
     if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
@@ -1024,9 +1028,9 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
     await releaseExpiredMutes();
     const topic = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { slug: true, type: true } } },
+      include: { board: { select: { schoolId: true, slug: true, type: true } } },
     });
-    if (!topic) throw Errors.notFound("帖子不存在");
+    if (!topic || !topicBelongsToSchool(topic, requestSchoolId(req))) throw Errors.notFound("帖子不存在");
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? "";
     const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));

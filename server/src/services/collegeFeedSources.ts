@@ -6,6 +6,7 @@
  */
 import { prisma } from "../prisma";
 import { invalidateBoardCaches } from "./cacheInvalidation";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 
 export interface CollegeFeedSource {
   slug: string;
@@ -54,11 +55,12 @@ export async function ensureCollegeFeedSources() {
     ?? (await prisma.user.findFirst({ where: { role: "bot" }, orderBy: { id: "asc" }, select: { id: true } }))?.id;
   if (!botUserId) return [];
 
-  let order = ((await prisma.board.aggregate({ where: { type: "announce" }, _max: { order: true } }))._max.order ?? 0) + 1;
+  // 学院公告源都是药大的。
+  let order = ((await prisma.board.aggregate({ where: { schoolId: DEFAULT_SCHOOL_ID, type: "announce" }, _max: { order: true } }))._max.order ?? 0) + 1;
   for (const college of missing) {
     // 板块 slug 或部门名被占用时（例如门户先同步出了同名部门）只建源，不动别人的板块。
     const taken = await prisma.board.findFirst({
-      where: { OR: [{ slug: college.slug }, { feedDepartment: college.name }] },
+      where: { schoolId: DEFAULT_SCHOOL_ID, OR: [{ slug: college.slug }, { feedDepartment: college.name }] },
       select: { id: true, feedSourceId: true },
     });
     await prisma.$transaction(async (tx) => {
@@ -80,6 +82,7 @@ export async function ensureCollegeFeedSources() {
       }
       await tx.board.create({
         data: {
+          schoolId: DEFAULT_SCHOOL_ID,
           slug: college.slug,
           name: college.name,
           description: `${college.name}的通知公告`,

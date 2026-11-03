@@ -12,6 +12,7 @@ import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere, resolveForumListViewerId } from "../services/forumSubmission";
 import { compactTopicAuthors, publicAvatarValue } from "../utils/publicAvatar";
 import { parseHomeFeedStream, selectHomeFeedBoardTypes, type HomeFeedStream } from "../services/homeFeed";
+import { requestSchoolId } from "../schools/modules";
 import {
   computeHotScore,
   HOT_TOPIC_FALLBACK_WINDOW_MS,
@@ -63,16 +64,17 @@ homeRouter.get("/summary", async (req, res, next) => {
     const trust = user ? buildUserTrustSnapshot(user) : null;
     const forumBoardTypes = homeFeedBoardTypes("forum");
     const globalPinnedIds = getGlobalPinnedTopicIds();
+    const schoolId = requestSchoolId(req);
     const publicSummary = await withCache(
       "home",
-      ["summary-v8", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-v9", schoolId, forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
-          forumAccessEnabled ? listGlobalPinnedTopics(globalPinnedIds, forumBoardTypes, 6) : Promise.resolve([]),
-          forumAccessEnabled ? listHotTopics(6, forumBoardTypes) : Promise.resolve([]),
+          forumAccessEnabled ? listGlobalPinnedTopics(schoolId, globalPinnedIds, forumBoardTypes, 6) : Promise.resolve([]),
+          forumAccessEnabled ? listHotTopics(schoolId, 6, forumBoardTypes) : Promise.resolve([]),
           forumAccessEnabled ? prisma.topic.findMany({
-            where: { hidden: false, board: { type: { in: forumBoardTypes }, ...visibleBoardSlugFilter() } },
+            where: { hidden: false, board: { schoolId, type: { in: forumBoardTypes }, ...visibleBoardSlugFilter() } },
             orderBy: { createdAt: "desc" },
             take: 10,
             include: {
@@ -84,7 +86,7 @@ homeRouter.get("/summary", async (req, res, next) => {
           }).then(compactTopicAuthors) : Promise.resolve([]),
           prisma.topic.findMany({
             // 首页只放默认部门的公告；面向教职工的部门要到公告页自己勾选。
-            where: { hidden: false, board: { readOnly: true, announceDefault: true, ...visibleBoardSlugFilter() } },
+            where: { hidden: false, board: { schoolId, readOnly: true, announceDefault: true, ...visibleBoardSlugFilter() } },
             orderBy: { createdAt: "desc" },
             take: 8,
             include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
@@ -104,7 +106,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         authorId: userId,
         aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] },
         id: { notIn: globalPinnedIds },
-        board: { type: { in: forumBoardTypes }, ...visibleBoardSlugFilter() },
+        board: { schoolId, type: { in: forumBoardTypes }, ...visibleBoardSlugFilter() },
       },
       orderBy: { createdAt: "desc" },
       take: 10,
@@ -156,7 +158,8 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     if (!forumAccessEnabled) return ok(res, []);
     const stream = parseHomeFeedStream(_req.query.stream);
     const contentBoardTypes = homeFeedBoardTypes(stream);
-    const list = await withCache("home", ["hot-ranking-v6", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
+    const schoolId = requestSchoolId(_req);
+    const list = await withCache("home", ["hot-ranking-v7", schoolId, stream], 60_000, async () => listHotTopics(schoolId, HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     const presented = await decodeTopicsForViewerForList(list, _req.user);
     ok(res, presented.map((item, index) => ({
       rank: index + 1,
@@ -182,13 +185,14 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
       userId,
       (selfVisibleWhere) => prisma.topic.findFirst({ where: selfVisibleWhere, select: { id: true } }),
     );
+    const schoolId = requestSchoolId(req);
     const where = {
       ...forumContentVisibilityWhere(listViewerId),
-      board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
+      board: { schoolId, type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
     };
-    const cached = await withCache("home", ["latest-feed-v7", stream, listViewerId ? `viewer-${listViewerId}` : "public", page, size], 60_000, async () => {
+    const cached = await withCache("home", ["latest-feed-v8", schoolId, stream, listViewerId ? `viewer-${listViewerId}` : "public", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
-        listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
+        listGlobalPinnedTopics(schoolId, globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({
           where,
           orderBy: { createdAt: "desc" },
@@ -219,7 +223,8 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit = ids.length || 20) {
+/** 全站置顶是一份 id 列表，各校只取出属于自己板块的那几条。 */
+async function listGlobalPinnedTopics(schoolId: string, ids: number[], boardTypes: string[], limit = ids.length || 20) {
   const orderedIds = ids.slice(0, Math.max(0, limit));
   if (!orderedIds.length) return [];
   const include = {
@@ -231,7 +236,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
       where: {
         id: { in: orderedIds },
         hidden: false,
-        board: { type: { in: boardTypes }, ...visibleBoardSlugFilter() },
+        board: { schoolId, type: { in: boardTypes }, ...visibleBoardSlugFilter() },
       },
     include,
   }));
@@ -239,7 +244,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
   return orderedIds.map((id) => byId.get(id)).filter(Boolean) as typeof rows;
 }
 
-async function listHotTopics(size: number, boardTypes: string[]) {
+async function listHotTopics(schoolId: string, size: number, boardTypes: string[]) {
   const nowMs = Date.now();
   const cutoff = new Date(nowMs - HOT_TOPIC_FALLBACK_WINDOW_MS);
   const include = {
@@ -251,7 +256,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
   const candidates = await prisma.topic.findMany({
     where: {
       hidden: false,
-      board: { type: { in: boardTypes }, ...visibleBoardSlugFilter() },
+      board: { schoolId, type: { in: boardTypes }, ...visibleBoardSlugFilter() },
       createdAt: { gte: cutoff },
     },
     orderBy: { createdAt: "desc" },

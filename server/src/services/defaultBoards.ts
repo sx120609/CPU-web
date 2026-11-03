@@ -1,6 +1,8 @@
 import { prisma } from "../prisma";
 import { invalidateBoardCaches } from "./cacheInvalidation";
 import { COMMUNITY_BOARD_DEFS, type CommunityBoardDefinition } from "./defaultBoardCatalog";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { boardSlugKey } from "../schools/forumScope";
 
 const BOOTSTRAP_BOARD_SLUGS = new Set<string>(["treehole", "market", "group"]);
 const LEGACY_MARKET_NAMES = new Set(["商城", "校园商城"]);
@@ -9,16 +11,18 @@ const LEGACY_MARKET_DESCRIPTIONS = new Set([
   "实体商品 / 电子资料 / 校园好物",
 ]);
 
+/** 内置板块是药大论坛的；其他学校的板块由该校管理员在后台自己建。 */
 export async function ensureBuiltinBoards() {
   const defs = COMMUNITY_BOARD_DEFS.filter((board) => BOOTSTRAP_BOARD_SLUGS.has(board.slug));
   if (!defs.length) return [] as CommunityBoardDefinition[];
 
   const existing = await prisma.board.findMany({
-    where: { slug: { in: defs.map((board) => board.slug) } },
+    where: { schoolId: DEFAULT_SCHOOL_ID, slug: { in: defs.map((board) => board.slug) } },
     select: { slug: true, name: true, description: true, icon: true, type: true, readOnly: true },
   });
   const existingBySlug = new Map(existing.map((board) => [board.slug, board]));
   let nextOrder = ((await prisma.board.findFirst({
+    where: { schoolId: DEFAULT_SCHOOL_ID },
     orderBy: { order: "desc" },
     select: { order: true },
   }))?.order ?? -1) + 1;
@@ -29,7 +33,7 @@ export async function ensureBuiltinBoards() {
     if (current) {
       if (board.slug === "group" && !current.icon?.trim()) {
         await prisma.board.update({
-          where: { slug: board.slug },
+          where: boardSlugKey(DEFAULT_SCHOOL_ID, board.slug),
           data: { icon: board.icon },
         });
         synchronized.push(board);
@@ -42,7 +46,7 @@ export async function ensureBuiltinBoards() {
         if (current.type !== "market") data.type = "market";
         if (current.readOnly) data.readOnly = false;
         if (Object.keys(data).length) {
-          await prisma.board.update({ where: { slug: board.slug }, data });
+          await prisma.board.update({ where: boardSlugKey(DEFAULT_SCHOOL_ID, board.slug), data });
           synchronized.push(board);
         }
       }
@@ -50,6 +54,7 @@ export async function ensureBuiltinBoards() {
     }
     await prisma.board.create({
       data: {
+        schoolId: DEFAULT_SCHOOL_ID,
         slug: board.slug,
         name: board.name,
         description: board.description,

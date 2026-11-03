@@ -33,6 +33,7 @@ import { detectLoginClient } from "../utils/loginClient";
 import { isCampusAssistantDestination, shouldHideHarmonyAssistant } from "../utils/nativeAssistantAccess";
 import { readCachedDepartmentContactSearch, searchDepartmentContactsWithAi } from "../services/departmentContactSearch";
 import { isDepartmentContactCampus } from "../services/departmentContacts";
+import { requestSchoolId } from "../schools/modules";
 
 export const searchRouter = Router();
 
@@ -108,8 +109,10 @@ searchRouter.get("/", async (req, res, next) => {
     if (!servicesOnly && forumAccessEnabled && features.market) searchableBoardTypes.push("market");
     if (!servicesOnly && forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
 
+    const schoolId = requestSchoolId(req);
     const cacheParts = [
       "retired-boards-v2",
+      schoolId,
       q,
       servicesOnly ? "services-only" : "all-content",
       forumAccessEnabled ? "forum-enabled" : "announce-only",
@@ -123,7 +126,7 @@ searchRouter.get("/", async (req, res, next) => {
         servicesOnly ? Promise.resolve([]) : prisma.topic.findMany({
           where: {
             hidden: false,
-            board: { type: { in: searchableBoardTypes }, ...visibleBoardSlugFilter() },
+            board: { schoolId, type: { in: searchableBoardTypes }, ...visibleBoardSlugFilter() },
             OR: [{ title: { contains: q } }, { content: { contains: q } }],
           },
           orderBy: { lastReplyAt: "desc" },

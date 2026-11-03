@@ -22,8 +22,8 @@ export type SchoolModuleDefinition = {
 
 export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
   { key: "academic", label: "教务与课表", isolation: "school", routes: ["/jwxt", "/schedule-shares", "/couple"] },
-  { key: "announcements", label: "学校公告", isolation: "pending", routes: ["/announcements"] },
-  { key: "forum", label: "论坛", isolation: "pending", routes: ["/boards", "/topics", "/replies", "/likes", "/forum-ads", "/forum-reports"] },
+  { key: "announcements", label: "学校公告", isolation: "school", implementedFor: ["cpu"], routes: ["/announcements"] },
+  { key: "forum", label: "论坛", isolation: "school", routes: ["/boards", "/topics", "/replies", "/likes", "/forum-ads", "/forum-reports"] },
   { key: "search", label: "站内搜索", isolation: "pending", routes: ["/search"] },
   { key: "courseReview", label: "课程评价", isolation: "pending", routes: ["/courses", "/course-bot"] },
   { key: "lostFound", label: "失物招领", isolation: "pending", routes: ["/lost-found"] },

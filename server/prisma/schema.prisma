@@ -344,7 +344,9 @@ model CampusAssistantPointLedger {
 
 model Board {
   id                 Int                 @id @default(autoincrement())
-  slug               String              @unique // 路由用 slug，如 hot / question / market / coursereview / news-jwc
+  // 所属学校。帖子、回复、点赞都经由板块归属学校，各校只看得到自己的板块。
+  schoolId           String              @default("cpu")
+  slug               String // 路由用 slug，如 hot / question / market / coursereview / news-jwc；同校内唯一
   name               String
   description        String?
   icon               String? // emoji 或 element icon name
@@ -365,12 +367,15 @@ model Board {
   feedSourceId       Int?                @unique
   feedSource         SchoolFeedSource?   @relation(fields: [feedSourceId], references: [id])
   // 融合门户资讯聚合里的发布部门名（如“教务处”）；该部门的门户公告归入本板块。
-  feedDepartment     String?             @unique
+  feedDepartment     String?
   // 用户没有自己选过公告部门时，“全部”里是否默认包含本板块。
   announceDefault    Boolean             @default(true)
 
   topics Topic[]
 
+  @@unique([schoolId, slug])
+  @@unique([schoolId, feedDepartment])
+  @@index([slug])
   @@index([order])
   @@index([type, order])
 }
@@ -2731,6 +2736,8 @@ model SiteSetting {
 // 广告只保存展示所需的公开内容；投放链接由服务端校验为站内路径或 http(s)。
 model ForumAd {
   id          Int      @id @default(autoincrement())
+  // 广告投在哪所学校的论坛。
+  schoolId    String   @default("cpu")
   title       String
   description String?
   imageUrl    String?
@@ -2748,6 +2755,7 @@ model ForumAd {
   updatedAt   DateTime @updatedAt
   metrics     ForumAdMetric[]
 
+  @@index([schoolId, enabled])
   @@index([placement, enabled, sortOrder])
   @@index([startsAt, endsAt])
 }

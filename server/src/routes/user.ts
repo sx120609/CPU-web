@@ -17,6 +17,7 @@ import { submitProfileReview } from "../services/profileReview";
 import { isAuthorBlocked } from "../services/userBlock";
 import { userBlockRouter } from "./userBlock";
 import { detectLoginClient, loginClientUsage } from "../utils/loginClient";
+import { requestSchoolId } from "../schools/modules";
 
 export const userRouter = Router();
 userRouter.use("/blocks", userBlockRouter);
@@ -106,7 +107,7 @@ userRouter.get("/:id", async (req, res, next) => {
     const id = Number(req.params.id);
     await releaseExpiredMutes();
     const user = await prisma.user.findUnique({ where: { id } });
-    if (!user || ["deleting", "deleted"].includes(user.status)) throw Errors.notFound();
+    if (!user || user.schoolId !== requestSchoolId(req) || ["deleting", "deleted"].includes(user.status)) throw Errors.notFound();
     ok(res, buildPublicUser(user, req.user));
   } catch (e) { next(e); }
 });
@@ -121,7 +122,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
       where: {
         authorId: id,
         ...forumContentVisibilityWhere(req.user?.userId === id ? id : null),
-        board: { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
+        board: { schoolId: requestSchoolId(req), type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
         ...(canSeeAnonymous ? {} : { isAnonymous: false }),
       },
       orderBy: { createdAt: "desc" },

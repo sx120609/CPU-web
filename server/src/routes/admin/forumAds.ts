@@ -17,6 +17,7 @@ import {
 import { invalidateForumAdCaches } from "../../services/cacheInvalidation";
 import { FORUM_IMAGE_MAX_SOURCE_BYTES, normalizeForumImageUpload } from "../../services/forumImageCompression";
 import { resolveMediaPublicUrl, saveMediaAsset } from "../../services/mediaStorage";
+import { resolveSchoolId } from "../../schools/registry";
 
 export const forumAdsAdminRouter = Router();
 const uploadAdImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: FORUM_IMAGE_MAX_SOURCE_BYTES } });
@@ -89,9 +90,10 @@ function normalizePayload(input: z.infer<typeof adInputFields>) {
   };
 }
 
-forumAdsAdminRouter.get("/", adminOnly, async (_req, res, next) => {
+forumAdsAdminRouter.get("/", adminOnly, async (req, res, next) => {
   try {
     const list = await prisma.forumAd.findMany({
+      where: { schoolId: resolveSchoolId(req.user?.schoolId) },
       orderBy: [{ placement: "asc" }, { sortOrder: "asc" }, { updatedAt: "desc" }],
       include: {
         metrics: {
@@ -142,7 +144,7 @@ forumAdsAdminRouter.post("/image", adminOnly, (req, res, next) => {
 forumAdsAdminRouter.post("/", adminOnly, validate(adInputSchema), async (req, res, next) => {
   try {
     const ad = await prisma.forumAd.create({
-      data: { ...normalizePayload(req.body), createdById: req.user!.userId },
+      data: { ...normalizePayload(req.body), schoolId: resolveSchoolId(req.user?.schoolId), createdById: req.user!.userId },
     });
     await invalidateForumAdCaches();
     ok(res, ad);
@@ -154,7 +156,7 @@ forumAdsAdminRouter.patch("/:id", adminOnly, validate(adPatchSchema), async (req
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("广告 ID 无效");
     const existing = await prisma.forumAd.findUnique({ where: { id } });
-    if (!existing) throw Errors.notFound("广告不存在");
+    if (!existing || existing.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("广告不存在");
     const placements = req.body.placements
       ?? (req.body.placement ? [req.body.placement] : normalizeForumAdPlacements(existing.placements, existing.placement));
     const merged = {
@@ -182,8 +184,8 @@ forumAdsAdminRouter.delete("/:id", adminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("广告 ID 无效");
-    const existing = await prisma.forumAd.findUnique({ where: { id }, select: { id: true } });
-    if (!existing) throw Errors.notFound("广告不存在");
+    const existing = await prisma.forumAd.findUnique({ where: { id }, select: { id: true, schoolId: true } });
+    if (!existing || existing.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("广告不存在");
     await prisma.forumAd.delete({ where: { id } });
     await invalidateForumAdCaches();
     ok(res, { ok: true });

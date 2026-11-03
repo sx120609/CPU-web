@@ -35,7 +35,8 @@ test("the default school keeps every existing feature switched on", () => {
 
 test("another school cannot open features that are not yet split by school or not built for it", () => {
   const byKey = new Map(SCHOOL_MODULES.map((module) => [module.key, module]));
-  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("forum")!), false);
+  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("forum")!), true);
+  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("announcements")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("treehole")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("dormElectric")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("academic")!), true);

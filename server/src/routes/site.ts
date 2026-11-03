@@ -34,6 +34,8 @@ import {
   requestLearningAssistantAi,
 } from "../services/learningAssistantAi";
 import { isLearningAnswerAppealBody, readLearningAnswerCache, writeLearningAnswerCache } from "../services/learningAnswerCache";
+import { requestSchoolId } from "../schools/modules";
+import { repliesOfSchool, topicsOfSchool } from "../schools/forumScope";
 
 export const siteRouter = Router();
 
@@ -55,13 +57,14 @@ siteRouter.get("/config", async (_req, res, next) => {
 });
 
 /** 公开：致谢页开场的社区数字。只有汇总计数，不含任何个人信息。 */
-siteRouter.get("/community-stats", async (_req, res, next) => {
+siteRouter.get("/community-stats", async (req, res, next) => {
   try {
-    ok(res, await withCache("site", ["community-stats"], 60_000, async () => {
+    const schoolId = requestSchoolId(req);
+    ok(res, await withCache("site", ["community-stats", schoolId], 60_000, async () => {
       const [users, topics, replies] = await Promise.all([
-        prisma.user.count(),
-        prisma.topic.count({ where: { hidden: false } }),
-        prisma.reply.count({ where: { hidden: false } }),
+        prisma.user.count({ where: { schoolId } }),
+        prisma.topic.count({ where: { hidden: false, ...topicsOfSchool(schoolId) } }),
+        prisma.reply.count({ where: { hidden: false, ...repliesOfSchool(schoolId) } }),
       ]);
       return { users, topics, replies };
     }));

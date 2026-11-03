@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  const board = await prisma.board.findUnique({ where: { slug: "news-campus" } });
+  const board = await prisma.board.findUnique({ where: { schoolId_slug: { schoolId: "cpu", slug: "news-campus" } } });
   if (board) {
     await prisma.like.deleteMany({ where: { topic: { boardId: board.id } } });
     await prisma.reply.deleteMany({ where: { topic: { boardId: board.id } } });

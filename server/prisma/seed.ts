@@ -8,6 +8,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { COMMUNITY_BOARD_DEFS } from "../src/services/defaultBoardCatalog";
+import { DEFAULT_SCHOOL_ID } from "../src/schools/registry";
 
 const prisma = new PrismaClient();
 
@@ -397,7 +398,7 @@ async function main() {
 
   // 更新 board.topicCount
   for (const slug of COMMUNITY_BOARD_DEFS.map((board) => board.slug)) {
-    const b = await prisma.board.findUnique({ where: { slug } });
+    const b = await prisma.board.findUnique({ where: { schoolId_slug: { schoolId: DEFAULT_SCHOOL_ID, slug } } });
     if (!b) continue;
     const c = await prisma.topic.count({ where: { boardId: b.id, hidden: false } });
     await prisma.board.update({ where: { id: b.id }, data: { topicCount: c } });

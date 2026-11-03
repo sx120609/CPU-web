@@ -67,6 +67,9 @@ import {
   type QqConversationStep,
 } from "./qqbot/conversationRendering";
 import { buildQqBotDebugExport } from "./qqbot/forwardDebug";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { boardSlugKey } from "../schools/forumScope";
+
 import {
   appendSourceFooter,
   extractForwardNodeId,
@@ -148,6 +151,9 @@ import {
   type CampusAssistantResponse,
 } from "./campusAssistant";
 import { createWindowBudget } from "../utils/loadShield";
+
+/** QQ 群机器人只服务药大的群，投稿都进药大论坛。 */
+const QQBOT_SCHOOL_ID = DEFAULT_SCHOOL_ID;
 
 export { buildQqBotDebugExport };
 export { connectQqBotWebSocket };
@@ -542,7 +548,7 @@ export async function updateQqBotConfig(input: {
   if (input.webhookSecret !== undefined) data.webhookSecret = input.webhookSecret.trim();
   if (input.defaultBoardSlug !== undefined) {
     const slug = input.defaultBoardSlug.trim() || "general";
-    const board = await prisma.board.findUnique({ where: { slug }, select: { slug: true } });
+    const board = await prisma.board.findUnique({ where: boardSlugKey(QQBOT_SCHOOL_ID, slug), select: { slug: true } });
     if (!board) throw Errors.badRequest("默认投稿板块不存在");
     data.defaultBoardSlug = slug;
   }
@@ -2301,11 +2307,12 @@ async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: s
   if (!target) return null;
   const currentDefaultSlug = await resolveDefaultBoardSlug(defaultBoardSlug, groupId);
   if (/^(默认板块|默认投稿区|默认区|默认)$/i.test(target)) {
-    const board = await prisma.board.findUnique({ where: { slug: currentDefaultSlug }, select: { slug: true, name: true } });
+    const board = await prisma.board.findUnique({ where: boardSlugKey(QQBOT_SCHOOL_ID, currentDefaultSlug), select: { slug: true, name: true } });
     return board ? { slug: board.slug, name: board.name } : null;
   }
   const boards = await prisma.board.findMany({
     where: {
+      schoolId: QQBOT_SCHOOL_ID,
       readOnly: false,
       type: { in: ["normal", "question", "coursereview"] },
       ...visibleBoardSlugFilter(),
@@ -2472,7 +2479,7 @@ async function createTopicFromQq(input: {
   await ensureForumAccessEnabled(userId, input.user.role);
   await ensureUserCanSpeak(userId);
   await ensureUserCanSubmitTopic(userId);
-  const board = await prisma.board.findUnique({ where: { slug: input.boardSlug } });
+  const board = await prisma.board.findUnique({ where: boardSlugKey(QQBOT_SCHOOL_ID, input.boardSlug) });
   if (!board) throw Errors.notFound("板块不存在");
   if (board.readOnly && input.user.role !== "bot" && input.user.role !== "admin") throw Errors.forbidden("该板块为只读公告板，禁止发帖");
   if (board.type !== "announce" && input.user.role !== "admin") {
@@ -5060,6 +5067,7 @@ async function renderBoardList(defaultBoardSlug: string, groupId?: string) {
 async function getAvailableBoardOptions() {
   return prisma.board.findMany({
     where: {
+      schoolId: QQBOT_SCHOOL_ID,
       readOnly: false,
       type: { in: ["normal", "question", "coursereview"] },
     },
@@ -5113,7 +5121,7 @@ function resolveNotificationLink(notification: { link?: string | null; payload?:
 async function resolveBoardDisplayName(slug?: string | null) {
   const normalized = String(slug || "").trim();
   if (!normalized) return "默认投稿区";
-  const board = await prisma.board.findUnique({ where: { slug: normalized }, select: { name: true } }).catch(() => null);
+  const board = await prisma.board.findUnique({ where: boardSlugKey(QQBOT_SCHOOL_ID, normalized), select: { name: true } }).catch(() => null);
   return board?.name || normalized;
 }
 

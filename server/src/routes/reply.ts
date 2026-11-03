@@ -24,6 +24,8 @@ import {
 } from "../services/forumSubmission";
 import { scheduleReplySubmissionReview } from "../services/forumSubmissionReview";
 import { parseQuestionMetadata } from "../services/questionBounty";
+import { requestSchoolId } from "../schools/modules";
+import { topicBelongsToSchool } from "../schools/forumScope";
 
 export const replyRouter = Router();
 
@@ -122,10 +124,10 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
-      include: { board: { select: { slug: true, type: true, name: true, anonymousEnabled: true } } },
+      include: { board: { select: { schoolId: true, slug: true, type: true, name: true, anonymousEnabled: true } } },
     });
     const canSeeHiddenTopic = Boolean(req.user?.userId && (req.user.userId === topic?.authorId || req.user.role === "admin" || req.user.role === "mod"));
-    if (!topic || (topic.hidden && !canSeeHiddenTopic)) throw Errors.notFound("帖子不存在");
+    if (!topic || !topicBelongsToSchool(topic, requestSchoolId(req)) || (topic.hidden && !canSeeHiddenTopic)) throw Errors.notFound("帖子不存在");
     if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, userId, req.user?.role);
@@ -345,13 +347,13 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
             locked: true,
             hidden: true,
             metadata: true,
-            board: { select: { slug: true, type: true, name: true } },
+            board: { select: { schoolId: true, slug: true, type: true, name: true } },
           },
         },
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
       },
     });
-    if (!reply || !reply.topic || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
+    if (!reply || !reply.topic || !topicBelongsToSchool(reply.topic, requestSchoolId(req)) || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
     if (isRetiredBoardSlug(reply.topic.board?.slug)) throw Errors.notFound("回复不存在");
     const isOwner = reply.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
@@ -430,9 +432,9 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const r = await prisma.reply.findUnique({
       where: { id },
-      include: { topic: { select: { id: true, authorId: true, createdAt: true, metadata: true, board: { select: { slug: true, type: true } } } } },
+      include: { topic: { select: { id: true, authorId: true, createdAt: true, metadata: true, board: { select: { schoolId: true, slug: true, type: true } } } } },
     });
-    if (!r) throw Errors.notFound();
+    if (!r || !topicBelongsToSchool(r.topic, requestSchoolId(req))) throw Errors.notFound();
     if (isRetiredBoardSlug(r.topic?.board?.slug)) throw Errors.notFound();
     const isOwner = r.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";

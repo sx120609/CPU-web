@@ -4,6 +4,8 @@ import { Errors, ok } from "../utils/response";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { ensureCanReadBoardType } from "../services/forumAccess";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
+import { requestSchoolId } from "../schools/modules";
+import { topicBelongsToSchool } from "../schools/forumScope";
 
 export const likeRouter = Router();
 const LIKE_NOTIFICATION_DEDUP_MS = 24 * 60 * 60 * 1000;
@@ -14,9 +16,9 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
     const topicId = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id: topicId },
-      include: { board: { select: { slug: true, type: true } } },
+      include: { board: { select: { schoolId: true, slug: true, type: true } } },
     });
-    if (!t || t.hidden) throw Errors.notFound();
+    if (!t || !topicBelongsToSchool(t, requestSchoolId(req)) || t.hidden) throw Errors.notFound();
     if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
     if (!isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     await ensureCanReadBoardType(t.board?.type, userId, req.user?.role);
@@ -64,9 +66,9 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
     const replyId = Number(req.params.id);
     const r = await prisma.reply.findUnique({
       where: { id: replyId },
-      include: { topic: { include: { board: { select: { slug: true, type: true } } } } },
+      include: { topic: { include: { board: { select: { schoolId: true, slug: true, type: true } } } } },
     });
-    if (!r || r.hidden || r.topic?.hidden) throw Errors.notFound();
+    if (!r || !topicBelongsToSchool(r.topic, requestSchoolId(req)) || r.hidden || r.topic?.hidden) throw Errors.notFound();
     if (isRetiredBoardSlug(r.topic?.board?.slug)) throw Errors.notFound();
     if (!isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     await ensureCanReadBoardType(r.topic?.board?.type, userId, req.user?.role);

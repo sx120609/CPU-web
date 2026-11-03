@@ -16,6 +16,8 @@ import {
   updateQqBotConfig,
 } from "../../services/qqbot";
 import { MAX_JOIN_AUTO_APPROVE_KEYWORDS, normalizeJoinAutoApproveKeywords } from "../../services/qqbot/joinRequestAutoApprove";
+import { DEFAULT_SCHOOL_ID } from "../../schools/registry";
+import { boardSlugKey } from "../../schools/forumScope";
 
 export const qqBotAdminRouter = Router();
 
@@ -125,7 +127,7 @@ const groupUpsertSchema = z.object({
 qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, next) => {
   try {
     if (req.body.defaultBoardSlug) {
-      const board = await prisma.board.findUnique({ where: { slug: req.body.defaultBoardSlug }, select: { id: true } });
+      const board = await prisma.board.findUnique({ where: boardSlugKey(DEFAULT_SCHOOL_ID, req.body.defaultBoardSlug), select: { id: true } });
       if (!board) throw Errors.badRequest("群默认投稿板块不存在");
     }
     const payload = {

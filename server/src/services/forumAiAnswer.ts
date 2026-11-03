@@ -26,6 +26,7 @@ import {
 import { knowledgePlainText } from "./knowledgeText";
 import { FORUM_KNOWLEDGE_EXCLUDED_BOARD_SLUGS } from "./forumKnowledge";
 import { isRetiredBoardSlug } from "./retiredBoards";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 
 export type TopicAiAnswerStatus = "pending" | "answered" | "skipped" | "failed" | "dismissed";
 
@@ -60,10 +61,12 @@ export function isForumAiAnswerCandidate(topic: {
   title: string;
   content: string;
   hidden: boolean;
-  board: { type: string; slug: string };
+  board: { type: string; slug: string; schoolId?: string };
   author?: { role?: string | null } | null;
 }) {
   if (topic.hidden) return false;
+  // 拾间AI 的知识库（学校资料、公告、往期帖子）只有默认学校的，外校帖子不作答。
+  if (topic.board.schoolId && topic.board.schoolId !== DEFAULT_SCHOOL_ID) return false;
   if (!ANSWER_BOARD_TYPES.has(topic.board.type)) return false;
   if (SKIPPED_BOARD_SLUGS.has(topic.board.slug) || isRetiredBoardSlug(topic.board.slug)) return false;
   if (topic.author?.role === "bot") return false;
@@ -338,7 +341,7 @@ export async function processForumAiAnswer(topicId: number, requestAi: typeof re
       content: true,
       hidden: true,
       authorId: true,
-      board: { select: { type: true, slug: true, name: true } },
+      board: { select: { schoolId: true, type: true, slug: true, name: true } },
       author: { select: { role: true } },
     },
   });

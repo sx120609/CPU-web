@@ -1,4 +1,6 @@
 import { prisma } from "../prisma";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { boardSlugKey } from "../schools/forumScope";
 
 const MARKET_BOARD = {
   slug: "market",
@@ -118,16 +120,17 @@ async function migrateLegacyTopic(topic: LegacyTopic) {
 
 export async function bootstrapMarket() {
   const existingBoard = await prisma.board.findUnique({
-    where: { slug: MARKET_BOARD.slug },
+    where: boardSlugKey(DEFAULT_SCHOOL_ID, MARKET_BOARD.slug),
     select: { id: true },
   });
   const nextOrder = existingBoard
     ? 0
-    : ((await prisma.board.findFirst({ orderBy: { order: "desc" }, select: { order: true } }))?.order ?? -1) + 1;
+    : ((await prisma.board.findFirst({ where: { schoolId: DEFAULT_SCHOOL_ID }, orderBy: { order: "desc" }, select: { order: true } }))?.order ?? -1) + 1;
   const board = await prisma.board.upsert({
-    where: { slug: MARKET_BOARD.slug },
+    where: boardSlugKey(DEFAULT_SCHOOL_ID, MARKET_BOARD.slug),
     create: {
       ...MARKET_BOARD,
+      schoolId: DEFAULT_SCHOOL_ID,
       order: nextOrder,
       readOnly: false,
       anonymousEnabled: false,

@@ -15,6 +15,7 @@ import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessio
 import { beginLogin, getPortalNotices, logout, submitLogin } from "./jwxtTransport";
 import { fetchSchoolFeedDetails } from "./schoolCrawlerTransport";
 import { SCHOOL_FEED_DETAIL_BATCH, type SchoolFeedDetail } from "./schoolCrawlerCore";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 import {
   isDefaultAnnouncementDepartment,
   PORTAL_NOTICE_HOMEPAGE,
@@ -78,18 +79,20 @@ function departmentSlug(department: string) {
 async function departmentBoard(department: string, cache: Map<string, Board>) {
   const cached = cache.get(department);
   if (cached) return cached;
-  let board = await prisma.board.findUnique({ where: { feedDepartment: department } });
+  // 融合门户是药大的系统，部门板块都建在药大名下。
+  let board = await prisma.board.findUnique({ where: { schoolId_feedDepartment: { schoolId: DEFAULT_SCHOOL_ID, feedDepartment: department } } });
   if (!board) {
     // 已有直接抓部门网站的板块（如“教务处通知”）时并进去，不另开一个同名部门。
     const existing = await prisma.board.findFirst({
-      where: { type: "announce", feedDepartment: null, feedSourceId: { not: null }, name: { startsWith: department } },
+      where: { schoolId: DEFAULT_SCHOOL_ID, type: "announce", feedDepartment: null, feedSourceId: { not: null }, name: { startsWith: department } },
     });
     if (existing) {
       board = await prisma.board.update({ where: { id: existing.id }, data: { feedDepartment: department } });
     } else {
-      const last = await prisma.board.aggregate({ where: { type: "announce" }, _max: { order: true } });
+      const last = await prisma.board.aggregate({ where: { schoolId: DEFAULT_SCHOOL_ID, type: "announce" }, _max: { order: true } });
       board = await prisma.board.create({
         data: {
+          schoolId: DEFAULT_SCHOOL_ID,
           slug: departmentSlug(department),
           // 学校主站的通知在门户里署名是校名，当标签不好认。
           name: department === "中国药科大学" ? "学校通知" : department,

@@ -13,7 +13,7 @@ test("keyword hits remain private on forum create/edit, even for AI-whitelisted 
     const previous = target[key]; target[key] = value;
     t.after(() => { target[key] = previous; });
   };
-  const board = { id: 1, slug: "market", name: "二手交流", type: "market", readOnly: false };
+  const board = { id: 1, schoolId: "cpu", slug: "market", name: "二手交流", type: "market", readOnly: false };
   let topic: any;
   let reply: any;
   const writes: any[] = [];

@@ -1,7 +1,7 @@
 import { holidayPreviewSchema, previewRequestedHolidays } from "../../services/publicHolidayCalendar";
 import { ensureApnsChannels } from "../../services/apnsChannels";
 import { getApnsConfig, normalizeApnsConfig, saveApnsConfig } from "../../services/apnsConfig";
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -175,7 +175,8 @@ import {
   startAdminDeploymentUpdate,
 } from "../../services/deployment";
 import { getSchedulePeriods, listScheduleTermConfigs, saveSchedulePeriods, saveScheduleTermConfig } from "../../services/scheduleTermConfig";
-import { listSchools, resolveSchoolId } from "../../schools/registry";
+import { DEFAULT_SCHOOL_ID, listSchools, resolveSchoolId } from "../../schools/registry";
+import { boardSlugKey, repliesOfSchool, topicsOfSchool } from "../../schools/forumScope";
 import { getSchoolModuleStates, saveSchoolModuleOverrides } from "../../schools/modules";
 
 export const adminRouter = Router();
@@ -475,7 +476,8 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
 
-    const where: any = {};
+    // 各校管理员只看得到本校账号。
+    const where: any = { schoolId: resolveSchoolId(req.user?.schoolId) };
     if (q) where.OR = [
       { username: { contains: q } },
       { nickname: { contains: q } },
@@ -609,6 +611,7 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
       where: { id },
       select: {
         id: true,
+        schoolId: true,
         status: true,
         mutedUntil: true,
         createdAt: true,
@@ -621,7 +624,7 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
         anonymousCreditsFrozen: true,
       },
     });
-    if (!current) throw Errors.notFound("用户不存在");
+    if (!current || current.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("用户不存在");
     if (["deleting", "deleted"].includes(current.status)) throw Errors.conflict("删除中的账户及已删除账户不可恢复或修改");
 
     const data: any = {};
@@ -817,7 +820,7 @@ adminRouter.patch("/users/:id/password", adminOnly, validate(resetPasswordSchema
   try {
     const id = Number(req.params.id);
     const target = await prisma.user.findUnique({ where: { id } });
-    if (!target) throw Errors.notFound("用户不存在");
+    if (!target || target.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("用户不存在");
     if (target.studentSso) {
       throw Errors.badRequest("该账号走学校认证，无站内密码可重置");
     }
@@ -834,7 +837,7 @@ adminRouter.delete("/users/:id", adminOnly, async (req, res, next) => {
     if (id === req.user!.userId) throw Errors.badRequest("不能删除当前登录的自己");
 
     const target = await prisma.user.findUnique({ where: { id } });
-    if (!target) throw Errors.notFound("用户不存在");
+    if (!target || target.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("用户不存在");
     if (target.role === "admin") {
       const adminCount = await prisma.user.count({ where: { role: "admin" } });
       if (adminCount <= 1) throw Errors.badRequest("不能删除最后一个管理员");
@@ -940,6 +943,22 @@ adminRouter.delete("/users/:id", adminOnly, async (req, res, next) => {
 
 // ============ 帖子管理 ============
 
+/** 帖子和回复的管理操作只对管理员本校的内容生效，外校的一律当作不存在。 */
+function forumTargetInAdminSchool(fixedKind?: "topic" | "reply") {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const id = Number(req.params.id);
+      const kind = fixedKind ?? String(req.params.kind || "");
+      if (!Number.isSafeInteger(id) || id <= 0 || (kind !== "topic" && kind !== "reply")) return next();
+      const board = kind === "topic"
+        ? (await prisma.topic.findUnique({ where: { id }, select: { board: { select: { schoolId: true } } } }))?.board
+        : (await prisma.reply.findUnique({ where: { id }, select: { topic: { select: { board: { select: { schoolId: true } } } } } }))?.topic.board;
+      if (board && board.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound(kind === "topic" ? "帖子不存在" : "回复不存在");
+      next();
+    } catch (error) { next(error); }
+  };
+}
+
 adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
@@ -949,7 +968,8 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? 20)));
 
-    const where: any = {};
+    const schoolId = resolveSchoolId(req.user?.schoolId);
+    const where: any = { ...topicsOfSchool(schoolId) };
     const topicIdMatch = q.match(/^(?:#?(\d+)|https?:\/\/[^/]+\/forum\/topic\/(\d+)(?:[/?#].*)?)$/i);
     const topicId = Number(topicIdMatch?.[1] || topicIdMatch?.[2]);
     if (q) where.OR = [
@@ -960,7 +980,7 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
     if (typeof hidden === "boolean") where.hidden = hidden;
     if (reviewStatus) where.aiReviewStatus = reviewStatus;
     if (boardSlug) {
-      const b = await prisma.board.findUnique({ where: { slug: boardSlug } });
+      const b = await prisma.board.findUnique({ where: boardSlugKey(schoolId, boardSlug) });
       if (b) where.boardId = b.id;
     }
 
@@ -992,9 +1012,10 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
 adminRouter.get("/manual-reviews", modOrAbove, async (req, res, next) => {
   try {
     const statuses = ["manual_requested", "manual_reviewing"];
+    const schoolId = resolveSchoolId(req.user?.schoolId);
     const [topics, replies, topicCount, replyCount] = await Promise.all([
       prisma.topic.findMany({
-        where: { hidden: true, aiReviewStatus: { in: statuses } },
+        where: { hidden: true, aiReviewStatus: { in: statuses }, ...topicsOfSchool(schoolId) },
         orderBy: { createdAt: "asc" },
         take: 100,
         include: {
@@ -1003,7 +1024,7 @@ adminRouter.get("/manual-reviews", modOrAbove, async (req, res, next) => {
         },
       }),
       prisma.reply.findMany({
-        where: { hidden: true, aiReviewStatus: { in: statuses } },
+        where: { hidden: true, aiReviewStatus: { in: statuses }, ...repliesOfSchool(schoolId) },
         orderBy: { createdAt: "asc" },
         take: 100,
         include: {
@@ -1017,8 +1038,8 @@ adminRouter.get("/manual-reviews", modOrAbove, async (req, res, next) => {
           },
         },
       }),
-      prisma.topic.count({ where: { hidden: true, aiReviewStatus: { in: statuses } } }),
-      prisma.reply.count({ where: { hidden: true, aiReviewStatus: { in: statuses } } }),
+      prisma.topic.count({ where: { hidden: true, aiReviewStatus: { in: statuses }, ...topicsOfSchool(schoolId) } }),
+      prisma.reply.count({ where: { hidden: true, aiReviewStatus: { in: statuses }, ...repliesOfSchool(schoolId) } }),
     ]);
     ok(res, {
       total: topicCount + replyCount,
@@ -1030,7 +1051,7 @@ adminRouter.get("/manual-reviews", modOrAbove, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-adminRouter.get("/review-targets/:kind/:id", modOrAbove, async (req, res, next) => {
+adminRouter.get("/review-targets/:kind/:id", modOrAbove, forumTargetInAdminSchool(), async (req, res, next) => {
   try {
     const kind = String(req.params.kind);
     const id = Number(req.params.id);
@@ -1070,7 +1091,7 @@ adminRouter.get("/review-targets/:kind/:id", modOrAbove, async (req, res, next) 
   } catch (e) { next(e); }
 });
 
-adminRouter.post("/review-targets/:kind/:id/retry-ai", modOrAbove, async (req, res, next) => {
+adminRouter.post("/review-targets/:kind/:id/retry-ai", modOrAbove, forumTargetInAdminSchool(), async (req, res, next) => {
   try {
     const kind = String(req.params.kind);
     const id = Number(req.params.id);
@@ -1154,7 +1175,7 @@ adminRouter.post("/review-targets/:kind/:id/retry-ai", modOrAbove, async (req, r
   } catch (e) { next(e); }
 });
 
-adminRouter.get("/review-targets/:kind/:id/images", modOrAbove, async (req, res, next) => {
+adminRouter.get("/review-targets/:kind/:id/images", modOrAbove, forumTargetInAdminSchool(), async (req, res, next) => {
   try {
     const kind = String(req.params.kind);
     const id = Number(req.params.id);
@@ -1188,7 +1209,7 @@ adminRouter.get("/review-targets/:kind/:id/images", modOrAbove, async (req, res,
   } catch (e) { next(e); }
 });
 
-adminRouter.get("/review-targets/:kind/:id/videos", modOrAbove, async (req, res, next) => {
+adminRouter.get("/review-targets/:kind/:id/videos", modOrAbove, forumTargetInAdminSchool(), async (req, res, next) => {
   try {
     const kind = String(req.params.kind);
     const id = Number(req.params.id);
@@ -1247,7 +1268,7 @@ const forumVideoPatchSchema = z.object({
   manualReviewNote: z.string().max(500).optional(),
 });
 
-adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (req, res, next) => {
+adminRouter.patch("/topics/:id", modOrAbove, forumTargetInAdminSchool("topic"), validate(topicPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const existing = await prisma.topic.findUnique({
@@ -1276,7 +1297,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     if (typeof req.body.locked === "boolean") data.locked = req.body.locked;
     const wantsGlobalPinned = typeof req.body.globalPinned === "boolean" ? req.body.globalPinned : undefined;
     if (req.body.boardSlug) {
-      const target = await prisma.board.findUnique({ where: { slug: req.body.boardSlug } });
+      const target = await prisma.board.findUnique({ where: boardSlugKey(resolveSchoolId(req.user?.schoolId), req.body.boardSlug) });
       if (!target) throw Errors.notFound("目标板块不存在");
       if (target.readOnly) throw Errors.badRequest("不能转入只读板块");
       data.boardId = target.id;
@@ -1375,7 +1396,7 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
   } catch (e) { next(e); }
 });
 
-adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
+adminRouter.delete("/topics/:id", modOrAbove, forumTargetInAdminSchool("topic"), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const hard = req.query.hard === "1" || req.query.hard === "true";
@@ -1407,7 +1428,7 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-adminRouter.patch("/replies/:id", modOrAbove, validate(replyPatchSchema), async (req, res, next) => {
+adminRouter.patch("/replies/:id", modOrAbove, forumTargetInAdminSchool("reply"), validate(replyPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const existing = await prisma.reply.findUnique({
@@ -1549,9 +1570,10 @@ adminRouter.patch("/forum-videos/:id", modOrAbove, validate(forumVideoPatchSchem
 
 // ============ 板块管理 ============
 
-adminRouter.get("/boards", adminOnly, async (_req, res, next) => {
+adminRouter.get("/boards", adminOnly, async (req, res, next) => {
   try {
     const list = await prisma.board.findMany({
+      where: { schoolId: resolveSchoolId(req.user?.schoolId) },
       orderBy: [{ order: "asc" }, { id: "asc" }],
       include: {
         feedSource: { select: { id: true, name: true } },
@@ -1573,10 +1595,19 @@ const boardCreateSchema = z.object({
   anonymousEnabled: z.boolean().optional(),
 });
 
+/** 二手和课评的数据还没按学校拆开，这两类板块只能开在默认学校。 */
+function ensureBoardTypeAllowedForSchool(type: string | undefined, schoolId: string) {
+  if ((type === "market" || type === "coursereview") && schoolId !== DEFAULT_SCHOOL_ID) {
+    throw Errors.badRequest("二手和课程评价板块暂时只能在药大开设");
+  }
+}
+
 adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, res, next) => {
   try {
+    ensureBoardTypeAllowedForSchool(req.body.type, resolveSchoolId(req.user?.schoolId));
     const created = await prisma.board.create({
       data: {
+        schoolId: resolveSchoolId(req.user?.schoolId),
         slug: req.body.slug,
         name: req.body.name,
         description: req.body.description || null,
@@ -1609,10 +1640,11 @@ adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (r
   try {
     const id = Number(req.params.id);
     const current = await prisma.board.findUnique({ where: { id }, include: { feedSource: true } });
-    if (!current) throw Errors.notFound("板块不存在");
+    if (!current || current.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("板块不存在");
     if (current.readOnly || current.feedSourceId) {
       throw Errors.badRequest("公告同步板块请通过公告源配置维护");
     }
+    ensureBoardTypeAllowedForSchool(req.body.type, current.schoolId);
     const updated = await prisma.board.update({
       where: { id },
       data: {
@@ -1636,7 +1668,7 @@ adminRouter.delete("/boards/:id", adminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const board = await prisma.board.findUnique({ where: { id } });
-    if (!board) throw Errors.notFound("板块不存在");
+    if (!board || board.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("板块不存在");
     if (board.readOnly || board.feedSourceId) throw Errors.badRequest("公告同步板块不能在这里删除");
     const topicCount = await prisma.topic.count({ where: { boardId: id } });
     if (topicCount > 0) throw Errors.badRequest("该板块下仍有帖子，不能删除");
@@ -1702,10 +1734,10 @@ adminRouter.delete("/feeds/portal/session", adminOnly, async (_req, res, next) =
 });
 
 /** 公告部门（板块）以及它是否默认出现在“全部”里 */
-adminRouter.get("/feeds/departments", adminOnly, async (_req, res, next) => {
+adminRouter.get("/feeds/departments", adminOnly, async (req, res, next) => {
   try {
     ok(res, await prisma.board.findMany({
-      where: { type: "announce" },
+      where: { schoolId: resolveSchoolId(req.user?.schoolId), type: "announce" },
       orderBy: [{ order: "asc" }, { id: "asc" }],
       select: { id: true, slug: true, name: true, topicCount: true, feedDepartment: true, announceDefault: true, feedSourceId: true },
     }));
@@ -1717,8 +1749,8 @@ adminRouter.patch("/feeds/departments/:id", adminOnly, validate(z.object({
 })), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const board = await prisma.board.findUnique({ where: { id }, select: { type: true } });
-    if (board?.type !== "announce") throw Errors.notFound("公告部门不存在");
+    const board = await prisma.board.findUnique({ where: { id }, select: { type: true, schoolId: true } });
+    if (board?.type !== "announce" || board.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("公告部门不存在");
     const updated = await prisma.board.update({ where: { id }, data: { announceDefault: req.body.announceDefault } });
     await invalidateBoardCaches();
     ok(res, updated);
@@ -2161,9 +2193,11 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
 
 // ============ 概览 / 健康 ============
 
-adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
+adminRouter.get("/overview", modOrAbove, async (req, res, next) => {
   try {
     const { dateKey: todayDateKey, start: todayStart, end: todayEnd } = getChinaDayRange();
+    // 账号和论坛数字按本校算；客户端和登录统计是全站运维数据。
+    const schoolId = resolveSchoolId(req.user?.schoolId);
     await backfillAdminDailyLoginsFromLastLogin(30).catch((error) => {
       console.warn("[admin-stats] failed to backfill daily logins", error);
     });
@@ -2190,16 +2224,16 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       todayLogins,
       dailyActiveSeries,
     ] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { status: "banned" } }),
-      prisma.topic.count({ where: { hidden: false } }),
-      prisma.topic.count({ where: { hidden: true } }),
-      prisma.reply.count({ where: { hidden: false } }),
+      prisma.user.count({ where: { schoolId } }),
+      prisma.user.count({ where: { schoolId, status: "banned" } }),
+      prisma.topic.count({ where: { hidden: false, ...topicsOfSchool(schoolId) } }),
+      prisma.topic.count({ where: { hidden: true, ...topicsOfSchool(schoolId) } }),
+      prisma.reply.count({ where: { hidden: false, ...repliesOfSchool(schoolId) } }),
       prisma.topic.count({
-        where: { createdAt: { gte: todayStart, lt: todayEnd }, hidden: false },
+        where: { createdAt: { gte: todayStart, lt: todayEnd }, hidden: false, ...topicsOfSchool(schoolId) },
       }),
       prisma.schoolFeedSource.count({ where: { enabled: true } }),
-      prisma.board.count(),
+      prisma.board.count({ where: { schoolId } }),
       prisma.user.count({ where: { usedIosClient: true } }),
       prisma.user.count({ where: { usedIosNativeClient: true } }),
       prisma.user.count({ where: { usedIosPwaClient: true } }),

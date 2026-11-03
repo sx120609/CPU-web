@@ -11,6 +11,7 @@ import {
   recordForumAdEvent,
 } from "../services/forumAds";
 import { Errors, ok } from "../utils/response";
+import { requestSchoolId } from "../schools/modules";
 
 export const forumAdsRouter = Router();
 
@@ -27,7 +28,8 @@ forumAdsRouter.get("/", authOptional, async (req, res, next) => {
       throw Errors.badRequest(`广告位无效，可选值：${FORUM_AD_PLACEMENTS.join("、")}`);
     }
     const vip = req.user ? await isUserVip(req.user.userId) : false;
-    const ads = await withCache("forum-ads", [rawPlacement, vip], 60_000, () => listActiveForumAds(rawPlacement, vip));
+    const schoolId = requestSchoolId(req);
+    const ads = await withCache("forum-ads", [schoolId, rawPlacement, vip], 60_000, () => listActiveForumAds(rawPlacement, vip, schoolId));
     res.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
     ok(res, ads);
   } catch (error) {
@@ -39,7 +41,7 @@ forumAdsRouter.post("/:id/events", validate(eventSchema), async (req, res, next)
   try {
     const adId = Number(req.params.id);
     if (!Number.isInteger(adId) || adId <= 0) throw Errors.badRequest("广告 ID 无效");
-    const recorded = await recordForumAdEvent({ adId, ...req.body });
+    const recorded = await recordForumAdEvent({ adId, schoolId: requestSchoolId(req), ...req.body });
     ok(res, { recorded });
   } catch (error) {
     next(error);

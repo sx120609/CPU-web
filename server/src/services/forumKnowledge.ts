@@ -8,6 +8,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { isRetiredBoardSlug } from "./retiredBoards";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 import {
   KNOWLEDGE_DAY_MS,
   extractKnowledgeQueryTerms,
@@ -236,6 +237,8 @@ function topicPrior(doc: IndexedTopic, now: number) {
 
 export async function searchForumKnowledge(query: string, options: {
   audience: ForumKnowledgeAudience;
+  /** 只引用这所学校的帖子和公告；不传按默认学校。 */
+  schoolId?: string;
   /** 只要公告或只要帖子；默认两者都要，各自限额。 */
   kinds?: Array<"forum" | "announce">;
   limit?: number;
@@ -275,7 +278,7 @@ export async function searchForumKnowledge(query: string, options: {
 
   const ids = candidates.map((item) => item.entry.id);
   const topics = await prisma.topic.findMany({
-    where: { id: { in: ids }, hidden: false, board: { type: { in: [...allowedTypes] } } },
+    where: { id: { in: ids }, hidden: false, board: { schoolId: options.schoolId ?? DEFAULT_SCHOOL_ID, type: { in: [...allowedTypes] } } },
     select: {
       id: true,
       title: true,

@@ -7,6 +7,7 @@ import { ok } from "../utils/response";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { announcementOverridesFor, resolveAnnouncementSelection } from "../services/portalNotices";
 import { isOwnCollegeBoard } from "../services/collegeFeedSources";
+import { requestSchoolId } from "../schools/modules";
 
 export const announcementsRouter = Router();
 
@@ -20,10 +21,10 @@ function slugList(raw: string) {
 }
 
 /** 公告板块以及它对这个用户是否默认显示：全站默认的，加上用户自己学院的。 */
-async function announcementSources(userId: number) {
+async function announcementSources(userId: number, schoolId: string) {
   const [boards, user] = await Promise.all([
     prisma.board.findMany({
-      where: { type: "announce", ...visibleBoardSlugFilter() },
+      where: { schoolId, type: "announce", ...visibleBoardSlugFilter() },
       select: { slug: true, announceDefault: true, feedDepartment: true },
     }),
     prisma.user.findUnique({ where: { id: userId }, select: { college: true } }),
@@ -42,7 +43,7 @@ function defaultSlugs(sources: Array<{ slug: string; announceDefault: boolean }>
 announcementsRouter.get("/preference", authRequired, async (req, res, next) => {
   try {
     const [sources, row] = await Promise.all([
-      announcementSources(req.user!.userId),
+      announcementSources(req.user!.userId, requestSchoolId(req)),
       prisma.announcementPreference.findUnique({ where: { userId: req.user!.userId } }),
     ]);
     const overrides = row ? { include: slugList(row.include), exclude: slugList(row.exclude) } : null;
@@ -55,7 +56,7 @@ announcementsRouter.put("/preference", authRequired, validate(z.object({
 })), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    const sources = await announcementSources(userId);
+    const sources = await announcementSources(userId, requestSchoolId(req));
     const overrides = announcementOverridesFor(sources, req.body.selected);
     const data = { include: JSON.stringify(overrides.include), exclude: JSON.stringify(overrides.exclude) };
     await prisma.announcementPreference.upsert({ where: { userId }, create: { userId, ...data }, update: data });
@@ -67,7 +68,7 @@ announcementsRouter.put("/preference", authRequired, validate(z.object({
 announcementsRouter.delete("/preference", authRequired, async (req, res, next) => {
   try {
     await prisma.announcementPreference.deleteMany({ where: { userId: req.user!.userId } });
-    const defaults = defaultSlugs(await announcementSources(req.user!.userId));
+    const defaults = defaultSlugs(await announcementSources(req.user!.userId, requestSchoolId(req)));
     ok(res, { customized: false, selected: defaults, defaults });
   } catch (e) { next(e); }
 });
