@@ -110,6 +110,14 @@ export function createWorkshopSDK({
     requestShake: () => request("motion.requestShake", {}, interactionTimeout),
     submitScore: (score) => request("leaderboard.submit", { score }),
     getLeaderboard: (params = {}) => request("leaderboard.get", params),
+    getReviews: (params = {}) =>
+      request("reviews.get", { subject: params.subject, limit: params.limit }),
+    submitReview: (params = {}) =>
+      request("reviews.submit", {
+        subject: params.subject,
+        rating: params.rating,
+        comment: params.comment ?? "",
+      }),
     getSave: () => enqueue(() => request("storage.get")),
     setSave: (value) => enqueue(() => request("storage.set", { value })),
     removeSave: () => enqueue(() => request("storage.remove")),
@@ -189,7 +197,7 @@ export function createLocalPreviewSDK({
         width: window.innerWidth || 0,
         height: window.innerHeight || 0,
       },
-      capabilities: ["storage"],
+      capabilities: ["storage", "reviews"],
       motionSupported: false,
       game,
     }),
@@ -203,6 +211,15 @@ export function createLocalPreviewSDK({
     requestShake: unsupportedPreview,
     submitScore: unsupportedPreview,
     getLeaderboard: unsupportedPreview,
+    getReviews: async (params = {}) => ({
+      subject: typeof params.subject === "string" ? params.subject : "",
+      average: 0,
+      count: 0,
+      entries: [],
+      me: null,
+      preview: true,
+    }),
+    submitReview: async () => ({ recorded: false, reason: "preview" }),
     getSave: () => enqueue(read),
     setSave: (value) => enqueue(() => write(value)),
     removeSave: () =>

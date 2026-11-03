@@ -343,6 +343,88 @@ test("disposed bridge suppresses pending async responses", async () => {
   }
 });
 
+test("reviews need permission, validate fields, and pace submissions", async () => {
+  const reads: Array<[string, number]> = [];
+  const writes: Array<[string, number, string]> = [];
+  const h = harness(true, {
+    permissions: ["reviews"],
+    handlers: {
+      getReviews: async (subject, limit) => {
+        reads.push([subject, limit]);
+        return { subject, average: 4.5, count: 2, entries: [], me: null };
+      },
+      submitReview: async (subject, rating, comment) => {
+        writes.push([subject, rating, comment]);
+        return { recorded: true, average: rating, count: 1, me: null };
+      },
+    },
+  });
+  try {
+    h.hello();
+    const port = h.port!;
+    assert.deepEqual((await request(port, "reviews.get", { subject: "1.1::张良麻辣烫" })).result, {
+      subject: "1.1::张良麻辣烫",
+      average: 4.5,
+      count: 2,
+      entries: [],
+      me: null,
+    });
+    await request(port, "reviews.get", { subject: "1.1::张良麻辣烫", limit: 50 });
+    assert.deepEqual(reads, [["1.1::张良麻辣烫", 20], ["1.1::张良麻辣烫", 50]]);
+    for (const params of [
+      {},
+      { subject: "" },
+      { subject: "x".repeat(121) },
+      { subject: "ok", limit: 0 },
+      { subject: "ok", limit: 51 },
+      { subject: "ok", limit: 2.5 },
+      { subject: "ok", extra: true },
+    ])
+      assert.ok((await request(port, "reviews.get", params)).error);
+    for (const params of [
+      { subject: "shop", rating: 0 },
+      { subject: "shop", rating: 6 },
+      { subject: "shop", rating: 2.5 },
+      { subject: "shop", rating: 3, comment: "x".repeat(201) },
+      { subject: "shop", rating: 3, extra: true },
+    ])
+      assert.ok((await request(port, "reviews.submit", params)).error);
+    assert.deepEqual(
+      (await request(port, "reviews.submit", {
+        subject: "shop",
+        rating: 5,
+        comment: "  很好吃  ",
+      })).result,
+      { recorded: true, average: 5, count: 1, me: null },
+    );
+    assert.deepEqual(writes, [["shop", 5, "很好吃"]]);
+    assert.match(
+      (await request(port, "reviews.submit", { subject: "shop", rating: 4 })).error!.message,
+      /频繁/,
+    );
+  } finally {
+    h.close();
+  }
+
+  const undeclared = harness(true, {
+    permissions: ["storage"],
+    handlers: { getReviews: async () => ({}), submitReview: async () => ({}) },
+  });
+  try {
+    undeclared.hello();
+    for (const [method, params] of [
+      ["reviews.get", { subject: "shop" }],
+      ["reviews.submit", { subject: "shop", rating: 5 }],
+    ] as const)
+      assert.match(
+        (await request(undeclared.port!, method, params)).error!.message,
+        /未声明所需权限/,
+      );
+  } finally {
+    undeclared.close();
+  }
+});
+
 test("leaderboard needs its permission, whole scores in range, and paces submissions", async () => {
   const scores: number[] = [];
   const limits: number[] = [];

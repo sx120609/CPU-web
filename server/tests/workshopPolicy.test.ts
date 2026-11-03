@@ -7,6 +7,9 @@ import {
   canManageWorkshop,
   isWorkshopTicketCurrent,
   workshopSaveBytes,
+  normalizeWorkshopReviewComment,
+  normalizeWorkshopReviewSubject,
+  isWorkshopReviewRating,
   WORKSHOP_SAVE_MAX_BYTES,
   type WorkshopRuntimeTicket,
 } from "../src/services/workshopPolicy";
@@ -228,6 +231,20 @@ test("runtime signatures reject forged/expired/cross-secret ticket claims", () =
   assert.throws(() => verifyWorkshopTicket(ticket, "other-secret", 9000), /无效/u);
   assert.throws(() => verifyWorkshopTicket(ticket, "test-secret", 10000), /过期/u);
   assert.throws(() => verifyWorkshopTicket(`${ticket.slice(0, -4)}abcd`, "test-secret", 9000), /无效/u);
+});
+
+test("workshop review inputs are normalized and bounded", () => {
+  assert.equal(normalizeWorkshopReviewSubject("  1.1::张良麻辣烫  "), "1.1::张良麻辣烫");
+  assert.throws(() => normalizeWorkshopReviewSubject(""), /评价对象/);
+  assert.throws(() => normalizeWorkshopReviewSubject("x".repeat(121)), /评价对象/);
+  assert.throws(() => normalizeWorkshopReviewSubject("bad\u0000subject"), /评价对象/);
+  assert.equal(normalizeWorkshopReviewComment("  分量足  "), "分量足");
+  assert.equal(normalizeWorkshopReviewComment(undefined), "");
+  assert.throws(() => normalizeWorkshopReviewComment("x".repeat(201)), /最多/);
+  assert.equal(isWorkshopReviewRating(1), true);
+  assert.equal(isWorkshopReviewRating(5), true);
+  for (const value of [0, 6, 2.5, "5", null, Number.NaN])
+    assert.equal(isWorkshopReviewRating(value), false);
 });
 
 test("save quotas measure encoded JSON bytes, including multibyte content", () => {

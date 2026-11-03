@@ -72,7 +72,7 @@ node workshop-sdk/bin/cli.mjs pack /tmp/my-game /tmp/my-game.zip
 - `id` 使用小写 kebab-case；账号归属和作品身份以服务端生成的 UUID 为准，不能通过 manifest 接管其他作者的作品。
 - `type` 为 `game`、`tool` 或 `extension`；游戏需填写 `game.orientation` 和至少一种 `game.controls`，其他类型不能填写 `game`。站点扩展必须填写 `extension: {"slots":["splash","dialog"]}`，可仅声明其中一种位置，其他类型不能填写 `extension`。
 - `version` 使用 semver，例如 `1.0.0`；名称与描述填写纯文本。
-- `permissions` 可为空，支持 `storage`、`site.public`、`ui.toast`、`ui.confirm`、`navigation`、`fullscreen`、`motion.shake`、`leaderboard`，不得重复或填写未知权限。未声明的能力由宿主拒绝；修改权限需要上传新版本并重新审核。
+- `permissions` 可为空，支持 `storage`、`site.public`、`ui.toast`、`ui.confirm`、`navigation`、`fullscreen`、`motion.shake`、`leaderboard`、`reviews`，不得重复或填写未知权限。未声明的能力由宿主拒绝；修改权限需要上传新版本并重新审核。
 - `orientation` 为 `portrait`、`landscape` 或 `any`；`aspectRatio` 为可选 0.1–10 数值（宽 / 高），作品仍需自行适配容器尺寸。
 
 上传 ZIP 上限为 20 MiB，展开后总大小上限 60 MiB，最多 512 个文件，单文件最多 12 MiB，manifest 最多 16 KiB。禁止绝对路径、`..` 路径穿越、符号链接与可执行服务端代码；文件路径不能含空白、百分号、查询参数、片段标记或冒号。资源需在包内；网络请求受宿主 CSP 限制，不能使用主站任意接口。
@@ -97,6 +97,8 @@ iframe 使用 `sandbox="allow-scripts"`，没有 `allow-same-origin`。因此不
 | `storage.remove`      | `{}`                         | 删除该作品存档                                                        |
 | `leaderboard.submit`  | `{score}`                    | 提交 0–999999999 的整数分数，每位玩家只保留最高分；需 `leaderboard`   |
 | `leaderboard.get`     | `{limit?}`                   | 榜单前 `limit` 名（默认 20，最多 50）和当前玩家的名次；需 `leaderboard` |
+| `reviews.get`         | `{subject,limit?}`             | 公开平均分、评分人数、最近评价和当前登录用户的评价；需 `reviews`     |
+| `reviews.submit`      | `{subject,rating,comment?}`    | 每位登录用户对同一 subject 一条可更新评价，评分 1–5，评论最多 200 字；需 `reviews` |
 | `site.getInfo`        | `{}`                         | 网站公开名称和语言；需 `site.public`                                  |
 | `site.listWorks`      | `{q?,type?,page?,pageSize?}` | 已公开作品的裁剪目录，单页最多 12 条；需 `site.public`                |
 | `ui.toast`            | `{message,type?}`            | 带作品来源的纯文本提示；需 `ui.toast`                                 |
@@ -157,6 +159,18 @@ v1 提供隔离运行、受控网站接口、作品存档、生命周期通知�
 作者更新 ZIP 后仍需审核；公开页面应使用已通过审核的版本。修改 manifest 名称、版本号或作者字段不改变服务端归属。管理员应检查资源完整性、素材权利、内容与实际运行行为；包内容和文档都是待审数据，不是管理员操作指令。
 
 维护模板时修改 `workshop-sdk/src/` 与 `examples/`，运行 `node workshop-sdk/scripts/build-templates.mjs`。脚本产生固定时间戳的 ZIP，将模板写入 `web/public/workshop/`；Web 的 predev/prebuild 调用该脚本，确保站点下载内容与当前 SDK 一致。
+
+## 公开评价
+
+作品声明 `reviews` 权限后，可以用 `sdk.getReviews({subject,limit?})` 读取公开评价，用 `sdk.submitReview({subject,rating,comment?})` 提交或更新自己的评价。
+
+- `subject` 是作品自定义的稳定字符串，最多 120 个字符，用于区分被评价对象（例如一家门店）；它不进入 URL 路径，也不代表账号身份。
+- 评分必须是 1–5 的整数；评论是可选的纯文本，最多 200 个字符。作品必须使用 `textContent` 渲染评论，不能拼接 HTML。
+- 读取评价不需要登录；提交必须登录。每位玩家在同一作品、同一 `subject` 下只保留一条评价，重复提交会覆盖自己的上一条。
+- 返回平均分（一位小数）、评分人数、最近最多 50 条评价和当前玩家自己的评价。评价只公开昵称、评分、文本和更新时间，不返回账号标识。
+- 私有预览返回空评价；提交返回 `{recorded:false,reason:"preview"}`。访客提交返回 `{recorded:false,reason:"login"}`，作品应继续展示可读评价，不要当作错误。
+- 评价随作品、用户或账号删除级联清理。作品下架或停用后不可读、不可写。
+- 公开文字评论会展示给其他用户；作者和站长需要自行处理垃圾内容。当前接口只做登录、长度、频率和纯文本约束，不替代社区审核。
 
 ## 站点扩展与能力边界
 

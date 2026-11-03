@@ -10,7 +10,8 @@ export type WorkshopPermission =
   | "navigation"
   | "fullscreen"
   | "motion.shake"
-  | "leaderboard";
+  | "leaderboard"
+  | "reviews";
 export interface WorkshopPlacement {
   slot: WorkshopSlot;
   workId: string;
@@ -105,6 +106,27 @@ export interface WorkshopAudit {
   action: string;
   reason: string | null;
   createdAt: string;
+}
+export interface WorkshopReviewEntry {
+  nickname: string;
+  rating: number;
+  comment: string;
+  updatedAt: string;
+  me: boolean;
+}
+export interface WorkshopReviews {
+  subject: string;
+  average: number;
+  count: number;
+  entries: WorkshopReviewEntry[];
+  me: { rating: number; comment: string; updatedAt: string } | null;
+  preview?: boolean;
+}
+export interface WorkshopReviewResult {
+  recorded: true;
+  average: number;
+  count: number;
+  me: { rating: number; comment: string; updatedAt: string };
 }
 export interface WorkshopLeaderboard {
   entries: { rank: number; nickname: string; score: number; achievedAt: string; me: boolean }[];
@@ -271,6 +293,21 @@ export const workshopApi = {
     request.post(
       `/workshop/admin/works/${encodeURIComponent(id)}/state`,
       { action },
+      writeOptions,
+    ),
+  reviews: (
+    id: string,
+    params: { subject: string; limit?: number; versionId?: string },
+  ) =>
+    request.get<WorkshopReviews>(`${workPath(id)}/reviews`, params, readOptions),
+  submitReview: (
+    id: string,
+    versionId: string,
+    params: { subject: string; rating: number; comment: string },
+  ) =>
+    request.post<WorkshopReviewResult>(
+      `${workPath(id)}/reviews`,
+      { versionId, ...params },
       writeOptions,
     ),
   leaderboard: (id: string, params: { versionId?: string; limit?: number } = {}) =>

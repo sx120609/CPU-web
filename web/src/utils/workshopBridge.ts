@@ -48,6 +48,8 @@ export const WORKSHOP_SCORE_MAX = 999_999_999;
 export interface WorkshopBridgeHandlers {
   getLeaderboard(limit: number): Promise<unknown>;
   submitScore(score: number): Promise<unknown>;
+  getReviews(subject: string, limit: number): Promise<unknown>;
+  submitReview(subject: string, rating: number, comment: string): Promise<unknown>;
   getSiteInfo(): Promise<unknown>;
   listWorks(params: WorkshopListParams): Promise<unknown>;
   toast(params: WorkshopToastParams): void | Promise<void>;
@@ -104,6 +106,7 @@ export function createWorkshopBridge(options: BridgeOptions) {
 
   const uiCalls = new Map<string, number>();
   let lastScoreAt = 0;
+  let lastReviewAt = 0;
   const allowed = (permission: string) =>
     options.permissions
       ? options.permissions.includes(permission)
@@ -173,6 +176,45 @@ export function createWorkshopBridge(options: BridgeOptions) {
         )
           throw new Error("分页参数不正确");
       return handler("listWorks", "site.public")(data as WorkshopListParams);
+    }
+    if (method === "reviews.get") {
+      const data = paramsObject(params, ["subject", "limit"]);
+      const subject = textParam(data.subject, 120);
+      if (
+        data.limit !== undefined &&
+        (!Number.isSafeInteger(data.limit) ||
+          (data.limit as number) < 1 ||
+          (data.limit as number) > 50)
+      )
+        throw new Error("评价条数不正确");
+      return handler("getReviews", "reviews")(
+        subject,
+        (data.limit as number | undefined) ?? 20,
+      );
+    }
+    if (method === "reviews.submit") {
+      const data = paramsObject(params, ["subject", "rating", "comment"]);
+      const subject = textParam(data.subject, 120);
+      if (
+        !Number.isSafeInteger(data.rating) ||
+        (data.rating as number) < 1 ||
+        (data.rating as number) > 5
+      )
+        throw new Error("评分必须是 1–5 的整数");
+      if (
+        data.comment !== undefined &&
+        (typeof data.comment !== "string" || data.comment.length > 200)
+      )
+        throw new Error("评价内容最多 200 个字符");
+      const fn = handler("submitReview", "reviews");
+      const now = Date.now();
+      if (now - lastReviewAt < 3000) throw new Error("评价提交过于频繁，请稍后重试");
+      lastReviewAt = now;
+      return fn(
+        subject,
+        data.rating as number,
+        typeof data.comment === "string" ? data.comment.trim() : "",
+      );
     }
     if (method === "leaderboard.get") {
       const data = paramsObject(params, ["limit"]);

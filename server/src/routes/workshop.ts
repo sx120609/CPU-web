@@ -26,9 +26,11 @@ import {
   readWorkshopSave,
   listWorkshopSaves,
   readWorkshopLeaderboard,
+  readWorkshopReviews,
   reportWorkshopWork,
   reviewWorkshopVersion,
   setWorkshopWorkState,
+  submitWorkshopReview,
   submitWorkshopScore,
   submitWorkshopVersion,
   writeWorkshopSave,
@@ -352,6 +354,55 @@ workshopRouter.post(
         idSchema.parse(req.params.id),
         req.body.versionId,
         req.body.score,
+        req.user!,
+      ),
+    ),
+  ),
+);
+workshopRouter.get(
+  "/works/:id/reviews",
+  authOptional,
+  route(async (req, res) => {
+    const query = z
+      .object({
+        subject: z.string().trim().min(1).max(120),
+        limit: z.coerce.number().int().min(1).max(50).optional(),
+      })
+      .strict()
+      .parse(req.query);
+    ok(
+      res,
+      await readWorkshopReviews(
+        idSchema.parse(req.params.id),
+        query,
+        req.user,
+      ),
+    );
+  }),
+);
+workshopRouter.post(
+  "/works/:id/reviews",
+  authRequired,
+  limit("review", 30, 10 * 60 * 1000),
+  validate(
+    z
+      .object({
+        versionId: idSchema,
+        subject: z.string().trim().min(1).max(120),
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().max(200).optional().default(""),
+      })
+      .strict(),
+  ),
+  route(async (req, res) =>
+    ok(
+      res,
+      await submitWorkshopReview(
+        idSchema.parse(req.params.id),
+        req.body.versionId,
+        req.body.subject,
+        req.body.rating,
+        req.body.comment,
         req.user!,
       ),
     ),

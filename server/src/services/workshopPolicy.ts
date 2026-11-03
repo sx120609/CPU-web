@@ -108,6 +108,32 @@ export function isWorkshopScore(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= WORKSHOP_SCORE_MAX;
 }
 
+export const WORKSHOP_REVIEW_SUBJECT_MAX = 120;
+export const WORKSHOP_REVIEW_COMMENT_MAX = 200;
+export const WORKSHOP_REVIEW_LIMIT_MAX = 50;
+/** Reviews are a 1–5 star integer. */
+export function isWorkshopReviewRating(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= 5;
+}
+/** Opaque, work-defined subject such as a shop id; it never reaches a URL path. */
+export function normalizeWorkshopReviewSubject(value: unknown) {
+  if (typeof value !== "string") throw Errors.badRequest("评价对象不正确");
+  const subject = value.trim();
+  if (!subject || subject.length > WORKSHOP_REVIEW_SUBJECT_MAX)
+    throw Errors.badRequest(`评价对象必须为 1–${WORKSHOP_REVIEW_SUBJECT_MAX} 个字符`);
+  if (/[\u0000-\u001f\u007f]/u.test(subject)) throw Errors.badRequest("评价对象包含无效字符");
+  return subject;
+}
+/** Optional plain-text note; rendering must still use textContent. */
+export function normalizeWorkshopReviewComment(value: unknown) {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw Errors.badRequest("评价内容不正确");
+  const comment = value.trim();
+  if (comment.length > WORKSHOP_REVIEW_COMMENT_MAX)
+    throw Errors.badRequest(`评价内容最多 ${WORKSHOP_REVIEW_COMMENT_MAX} 个字符`);
+  return comment;
+}
+
 export const WORKSHOP_SAVE_MAX_BYTES = 64 * 1024;
 export const WORKSHOP_SAVE_ACCOUNT_BYTES = 2 * 1024 * 1024;
 /** JSON wire size is also our quota measure; reject objects that cannot be JSON. */

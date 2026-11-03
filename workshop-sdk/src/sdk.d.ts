@@ -56,6 +56,33 @@ export interface CapabilityResult {
   enabled: boolean;
   reason?: string;
 }
+export interface ReviewEntry {
+  nickname: string;
+  rating: number;
+  comment: string;
+  /** ISO time the review was last edited. */
+  updatedAt: string;
+  /** The current player's own row. */
+  me: boolean;
+}
+export interface Reviews {
+  subject: string;
+  /** Mean rating, rounded to one decimal place; 0 when there are no reviews. */
+  average: number;
+  count: number;
+  entries: ReviewEntry[];
+  me: { rating: number; comment: string; updatedAt: string } | null;
+  preview?: boolean;
+}
+export interface ReviewParams {
+  subject: string;
+  rating: number;
+  /** Plain text; the host renders it as text, never HTML. */
+  comment?: string;
+}
+export type ReviewResult =
+  | { recorded: true; average: number; count: number; me: { rating: number; comment: string; updatedAt: string } }
+  | { recorded: false; reason: "preview" | "login" };
 export interface LeaderboardEntry {
   rank: number;
   nickname: string;
@@ -106,6 +133,10 @@ export interface WorkshopSDK {
   submitScore(score: number): Promise<ScoreResult>;
   /** Needs `leaderboard`. Up to 50 entries (default 20), best first. */
   getLeaderboard(params?: { limit?: number }): Promise<Leaderboard>;
+  /** Needs `reviews`. Public average and latest reviews for one work-defined subject. */
+  getReviews(params: { subject: string; limit?: number }): Promise<Reviews>;
+  /** Needs `reviews`. One review per signed-in player per subject; higher is not better. */
+  submitReview(params: ReviewParams): Promise<ReviewResult>;
   getSave(): Promise<JSONValue>;
   setSave(value: JSONValue): Promise<unknown>;
   removeSave(): Promise<unknown>;

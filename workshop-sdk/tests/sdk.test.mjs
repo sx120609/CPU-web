@@ -209,6 +209,62 @@ test("extension SDK routes all capabilities and lifecycle events", async () => {
   }
 });
 
+test("review SDK calls carry the subject, rating and comment", async () => {
+  const host = harness();
+  const sdk = createWorkshopSDK({ timeout: 1000 });
+  try {
+    const port = host.connect();
+    const calls = [];
+    port.on("message", (req) => {
+      calls.push([req.method, req.params]);
+      port.postMessage({
+        type: "response",
+        id: req.id,
+        result:
+          req.method === "reviews.submit"
+            ? { recorded: true, average: 4.5, count: 2, me: { rating: 5, comment: "好", updatedAt: "2026-11-03T00:00:00.000Z" } }
+            : { subject: "shop", average: 4.5, count: 2, entries: [], me: null },
+      });
+    });
+    assert.deepEqual(await sdk.getReviews({ subject: "shop", limit: 10 }), {
+      subject: "shop",
+      average: 4.5,
+      count: 2,
+      entries: [],
+      me: null,
+    });
+    await sdk.submitReview({ subject: "shop", rating: 5, comment: "好" });
+    assert.deepEqual(calls[0], ["reviews.get", { subject: "shop", limit: 10 }]);
+    assert.deepEqual(calls[1], ["reviews.submit", { subject: "shop", rating: 5, comment: "好" }]);
+  } finally {
+    sdk.destroy();
+    host.dispose();
+  }
+});
+
+test("local preview exposes empty reviews but never records a review", async () => {
+  const previous = globalThis.window;
+  globalThis.window = { parent: {} };
+  globalThis.window.parent = globalThis.window;
+  try {
+    const sdk = createLocalPreviewSDK({ appId: "preview-reviews" });
+    assert.deepEqual(await sdk.getReviews({ subject: "shop" }), {
+      subject: "shop",
+      average: 0,
+      count: 0,
+      entries: [],
+      me: null,
+      preview: true,
+    });
+    assert.deepEqual(await sdk.submitReview({ subject: "shop", rating: 5, comment: "好" }), {
+      recorded: false,
+      reason: "preview",
+    });
+  } finally {
+    globalThis.window = previous;
+  }
+});
+
 test("navigation waits for user consent beyond the ordinary RPC timeout", async () => {
   const host = harness();
   const sdk = createWorkshopSDK({ timeout: 100, interactionTimeout: 2000 });

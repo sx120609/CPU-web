@@ -347,6 +347,29 @@ async function start() {
           if (!userId) return { recorded: false, reason: "login" };
           return { recorded: true, ...(await workshopApi.submitScore(id, selected.id, score)) };
         },
+        getReviews: (subject, limit) =>
+          props.preview
+            ? Promise.resolve({
+                subject,
+                average: 0,
+                count: 0,
+                entries: [],
+                me: null,
+                preview: true,
+              })
+            : workshopApi.reviews(id, { subject, limit }),
+        async submitReview(subject, rating, comment) {
+          if (props.preview) return { recorded: false, reason: "preview" };
+          if (!userId) return { recorded: false, reason: "login" };
+          return {
+            recorded: true,
+            ...(await workshopApi.submitReview(id, selected.id, {
+              subject,
+              rating,
+              comment,
+            })),
+          };
+        },
         getSiteInfo: () => workshopApi.publicSite(),
         listWorks: (params) => workshopApi.publicCatalog(params),
         toast: (params) => {

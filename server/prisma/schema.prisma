@@ -165,6 +165,7 @@ model User {
   workshopResolvedReports      WorkshopReport[] @relation("WorkshopReportResolver")
   workshopSaves                WorkshopSave[]
   workshopScores               WorkshopScore[]
+  workshopReviews              WorkshopReview[] @relation("WorkshopReviewAuthor")
   workshopAuditEvents          WorkshopAudit[]
   forumReactions               ForumReaction[]
   verificationApplications     UserVerificationApplication[] @relation("VerificationApplicant")
@@ -2871,6 +2872,7 @@ model WorkshopWork {
   reports            WorkshopReport[]
   saves              WorkshopSave[]
   scores             WorkshopScore[]
+  reviews            WorkshopReview[]
   audits             WorkshopAudit[]
 
   @@index([authorId, updatedAt])
@@ -2946,6 +2948,25 @@ model WorkshopSave {
   user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([workId, userId])
+  @@index([userId, updatedAt])
+}
+
+// One public review per player and subject (for example, one shop) in a work.
+// Requires the `reviews` permission and a published version.
+model WorkshopReview {
+  id        String   @id @default(uuid())
+  workId    String
+  userId    Int
+  subject   String
+  rating    Int
+  comment   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  work      WorkshopWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  user      User         @relation("WorkshopReviewAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workId, userId, subject])
+  @@index([workId, subject, updatedAt])
   @@index([userId, updatedAt])
 }
 

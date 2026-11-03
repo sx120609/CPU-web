@@ -10,9 +10,13 @@ import {
   assertWorkshopVersionDeletion,
   canManageWorkshop,
   isWorkshopPublished,
+  isWorkshopReviewRating,
   isWorkshopScore,
+  normalizeWorkshopReviewComment,
+  normalizeWorkshopReviewSubject,
   workshopSaveBytes,
   WORKSHOP_LEADERBOARD_MAX_ENTRIES,
+  WORKSHOP_REVIEW_LIMIT_MAX,
   WORKSHOP_SAVE_ACCOUNT_BYTES,
   type WorkshopViewer,
 } from "./workshopPolicy";
@@ -678,6 +682,95 @@ export async function submitWorkshopScore(
       where: { workId_userId: { workId: id, userId: viewer.userId } },
     });
     return { improved: improved.length > 0, best: own.score, rank: await scoreRank(tx, id, own) };
+  });
+}
+async function reviewWork(tx: Tx, id: string, versionId?: string) {
+  const work = await publicWork(id, tx);
+  const manifest = work.publishedVersion!.manifest as unknown as WorkshopManifest;
+  if (versionId && work.publishedVersionId !== versionId)
+    throw Errors.conflict("作品已更新或下架，请重新打开作品");
+  if (!manifest.permissions?.includes("reviews"))
+    throw Errors.forbidden("此作品未申请公开评价权限");
+  return work;
+}
+function reviewStats(average: number | null, count: number) {
+  return { average: average === null ? 0 : Math.round(average * 10) / 10, count };
+}
+/** Public reviews are read without login; `me` marks the optional viewer's row. */
+export async function readWorkshopReviews(
+  id: string,
+  options: { subject: string; limit?: number },
+  viewer?: WorkshopViewer,
+  db: Database = prisma,
+) {
+  const subject = normalizeWorkshopReviewSubject(options.subject);
+  await reviewWork(db, id);
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), WORKSHOP_REVIEW_LIMIT_MAX);
+  const where = { workId: id, subject, user: rankedPlayer };
+  const [stats, rows, own] = await Promise.all([
+    db.workshopReview.aggregate({ where, _avg: { rating: true }, _count: { _all: true } }),
+    db.workshopReview.findMany({
+      where,
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      take: limit,
+      include: { user: { select: { nickname: true } } },
+    }),
+    viewer
+      ? db.workshopReview.findUnique({
+          where: { workId_userId_subject: { workId: id, userId: viewer.userId, subject } },
+        })
+      : null,
+  ]);
+  const { average, count } = reviewStats(stats._avg.rating, stats._count._all);
+  return {
+    subject,
+    ...{ average, count },
+    entries: rows.map((row) => ({
+      nickname: row.user.nickname,
+      rating: row.rating,
+      comment: row.comment,
+      updatedAt: row.updatedAt,
+      me: row.userId === viewer?.userId,
+    })),
+    me: own
+      ? { rating: own.rating, comment: own.comment, updatedAt: own.updatedAt }
+      : null,
+  };
+}
+export async function submitWorkshopReview(
+  id: string,
+  versionId: string,
+  subjectValue: unknown,
+  ratingValue: unknown,
+  commentValue: unknown,
+  viewer: WorkshopViewer,
+  db: Database = prisma,
+) {
+  const subject = normalizeWorkshopReviewSubject(subjectValue);
+  if (!isWorkshopReviewRating(ratingValue)) throw Errors.badRequest("评分必须是 1–5 的整数");
+  const comment = normalizeWorkshopReviewComment(commentValue);
+  return db.$transaction(async (tx) => {
+    await reviewWork(tx, id, versionId);
+    const player = await tx.user.findUnique({ where: { id: viewer.userId }, select: { status: true } });
+    if (!player || rankedPlayer.status.notIn.includes(player.status))
+      throw Errors.forbidden("账户已停止访问，无法提交评价");
+    const review = await tx.workshopReview.upsert({
+      where: { workId_userId_subject: { workId: id, userId: viewer.userId, subject } },
+      create: { workId: id, userId: viewer.userId, subject, rating: ratingValue, comment },
+      update: { rating: ratingValue, comment },
+    });
+    const stats = await tx.workshopReview.aggregate({
+      where: { workId: id, subject },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+    const { average, count } = reviewStats(stats._avg.rating, stats._count._all);
+    return {
+      recorded: true as const,
+      average,
+      count,
+      me: { rating: review.rating, comment: review.comment, updatedAt: review.updatedAt },
+    };
   });
 }
 export async function readWorkshopSave(id: string, versionId: string, viewer: WorkshopViewer) {
