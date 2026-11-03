@@ -1,6 +1,6 @@
 import { request, type RequestOptions } from "./request";
 
-export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools";
+export type ServiceToolCode = "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "canteen_picker";
 export type QuestionnaireStatus = "draft" | "open" | "closed";
 export type QuestionnaireVisibility = "public" | "login";
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
@@ -298,7 +298,36 @@ export type ToolQqReminderPatch = Partial<{
   beforeDeadlineHours: number | null;
 }>;
 
+export interface CanteenReviewEntry {
+  nickname: string;
+  rating: number;
+  comment: string;
+  updatedAt: string;
+  me: boolean;
+}
+export interface CanteenReviews {
+  shopId: string;
+  average: number;
+  count: number;
+  entries: CanteenReviewEntry[];
+  me: { rating: number; comment: string; updatedAt: string } | null;
+}
+export interface CanteenReviewResult {
+  recorded: true;
+  average: number;
+  count: number;
+  me: { rating: number; comment: string; updatedAt: string };
+}
+
 export const toolsApi = {
+  canteenReviews: (shopId: string, options?: RequestOptions) =>
+    request.get<CanteenReviews>(
+      "/tools/canteen/reviews",
+      { shopId },
+      options ?? { cacheTtlMs: 0, cacheStaleTtlMs: 0 },
+    ),
+  submitCanteenReview: (payload: { shopId: string; rating: number; comment: string }) =>
+    request.post<CanteenReviewResult>("/tools/canteen/reviews", payload),
   tools: (options?: RequestOptions) => request.get<ToolMeta[]>("/tools", undefined, options),
   myPermissions: (options?: RequestOptions) =>
     request.get<{ toolCodes: ServiceToolCode[]; adminToolCodes: ServiceToolCode[] }>("/tools/permissions/me", undefined, options),

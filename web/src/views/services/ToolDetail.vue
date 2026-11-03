@@ -18,6 +18,7 @@
     <PdfToolPanel v-else-if="tool.componentKey === 'pdf_tools'" :require-login="requireLogin" />
     <SchoolCalendarPanel v-else-if="tool.componentKey === 'school_calendar'" />
     <VenueReservationPanel v-else-if="tool.componentKey === 'venue_reservation'" />
+    <CanteenPickerPanel v-else-if="tool.componentKey === 'canteen_picker'" />
 
     <!-- 问卷、成绩核对、文件收集都是“凭分享链接进入”的工具，这里只给说明和入口。 -->
     <section v-else class="pk-card tool-entry">
@@ -74,6 +75,7 @@ import "@/styles/page-kit.css";
 const PdfToolPanel = defineAsyncComponent(() => import("./PdfToolPanel.vue"));
 const SchoolCalendarPanel = defineAsyncComponent(() => import("./SchoolCalendarPanel.vue"));
 const VenueReservationPanel = defineAsyncComponent(() => import("./VenueReservationPanel.vue"));
+const CanteenPickerPanel = defineAsyncComponent(() => import("./CanteenPickerPanel.vue"));
 
 const route = useRoute();
 const { toolMetas, isLoginRequired, toolBadge } = useServiceTools();

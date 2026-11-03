@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda" | "treehole";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda" | "treehole" | "canteen_picker";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -213,6 +213,21 @@ export const serviceTools: ServiceTool[] = [
     accent: "#0f8f7b",
     iconComponent: Trophy,
     badge: "即点即玩",
+    badgeType: "success",
+  },
+  {
+    slug: "canteen_picker",
+    name: "药大今天吃什么",
+    summary: "按食堂、楼层和品类随机选一家，看看大家怎么说",
+    description: "已经收录两个食堂 80 家门店。可按食堂、楼层和品类筛选，排除不想吃的店后随机抽取；登录后还能给门店打分和写公开短评。",
+    icon: "tools",
+    status: "ready",
+    category: "校园生活",
+    routeName: "service-tool-detail",
+    componentKey: "canteen_picker",
+    accent: "#d97706",
+    iconComponent: Tools,
+    badge: "随机干饭",
     badgeType: "success",
   },
   {
