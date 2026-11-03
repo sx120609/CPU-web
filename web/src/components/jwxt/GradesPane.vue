@@ -43,6 +43,9 @@
           · 加权 GPA <b>{{ statGpa.toFixed(2) }}</b> / 5.0
         </span>
         <span class="stat mobile-stat">{{ compactStatsText }}</span>
+        <el-select v-model="gradeSort" size="small" class="sort-select" aria-label="成绩排序">
+          <el-option v-for="option in gradeSortOptions" :key="option.value" :value="option.value" :label="option.label" />
+        </el-select>
         <!-- 真正的按钮：触屏设备没有悬停，提示改为点按打开，再点一次或点别处关闭。 -->
         <el-tooltip placement="top" :trigger="canHover ? 'hover' : 'click'">
           <template #content>
@@ -252,6 +255,15 @@ interface GradeRow {
 }
 
 type StatMode = "all" | "only" | "exclude";
+type GradeSort = "default" | "score-desc" | "score-asc" | "credits-desc";
+
+const gradeSortOptions: Array<{ value: GradeSort; label: string }> = [
+  { value: "default", label: "默认排序" },
+  { value: "score-desc", label: "成绩从高到低" },
+  { value: "score-asc", label: "成绩从低到高" },
+  { value: "credits-desc", label: "学分从高到低" },
+];
+const GRADE_SORT_KEY = "cpu-grades-sort-v1";
 
 const statModeOptions: Array<{ value: StatMode; label: string }> = [
   { value: "all", label: "全部" },
@@ -267,6 +279,15 @@ const semesterFilter = ref<string[]>([]);
 const attrFilter = ref<string[]>([]);
 const keyword = ref<string>("");
 const statMode = ref<StatMode>("all");
+const gradeSort = ref<GradeSort>(readGradeSort());
+watch(gradeSort, (value) => {
+  try {
+    if (value === "default") localStorage.removeItem(GRADE_SORT_KEY);
+    else localStorage.setItem(GRADE_SORT_KEY, value);
+  } catch {
+    /* 存不下就只在这次打开里生效 */
+  }
+});
 const selectedCourseKeys = ref<string[]>([]);
 const loadError = ref("");
 let loadSeq = 0;
@@ -494,7 +515,7 @@ const groupedBySem = computed(() => {
   for (const s of semesters) m[s] = [];
   for (const g of list) (m[g.semester || "未知学期"] ??= []).push(g);
   for (const s of Object.keys(m)) {
-    m[s] = sortRowsByPublishedScore(m[s]);
+    m[s] = sortGradeRows(sortRowsByPublishedScore(m[s]), gradeSort.value);
   }
   return m;
 });
@@ -583,6 +604,36 @@ function componentScore(score?: string, weight?: string) {
   return ratio ? `${value} · ${ratio}` : value;
 }
 
+function readGradeSort(): GradeSort {
+  try {
+    const saved = localStorage.getItem(GRADE_SORT_KEY);
+    return gradeSortOptions.some((option) => option.value === saved) ? saved as GradeSort : "default";
+  } catch {
+    return "default";
+  }
+}
+
+/** 排序用的分数：百分制直接用；「优秀」「良好」这类按绩点折回百分制；还没出或期末未出的排最后。 */
+function sortScore(row: GradeRow) {
+  if (row.pendingFinal || !hasPublishedScore(row)) return null;
+  if (typeof row.scoreNum === "number" && Number.isFinite(row.scoreNum)) return row.scoreNum;
+  return typeof row.gpa === "number" ? 50 + row.gpa * 10 : null;
+}
+
+/** 每个学期里按所选方式排；分数相同的保持原来的先后。 */
+function sortGradeRows(rows: GradeRow[], mode: GradeSort) {
+  if (mode === "default") return rows;
+  const value = (row: GradeRow) => (mode === "credits-desc" ? (row.credits ?? null) : sortScore(row));
+  const direction = mode === "score-asc" ? 1 : -1;
+  return rows
+    .map((row, index) => ({ row, index, key: value(row) }))
+    .sort((a, b) => {
+      if (a.key === null || b.key === null) return a.key === b.key ? a.index - b.index : a.key === null ? 1 : -1;
+      return (a.key - b.key) * direction || a.index - b.index;
+    })
+    .map(({ row }) => row);
+}
+
 function sortRowsByPublishedScore(rows: GradeRow[]) {
   return rows
     .map((row, index) => ({ row, index }))
@@ -654,6 +705,7 @@ function requestMessage(error: unknown) {
   min-width: 0;
 }
 .ctrl-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sort-select { width: 128px; }
 .filter-field {
   min-width: 0;
   display: flex;
