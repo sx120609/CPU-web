@@ -152,9 +152,10 @@
                 </div>
               </div>
               <div class="score-badges">
-                <span class="score-pill" :style="{ color: scoreColor(row.scoreNum) }">总评 {{ row.score || "—" }}</span>
+                <span class="score-pill" :style="{ color: scoreColor(row) }">总评 {{ scoreText(row) }}</span>
                 <span class="score-pill" :style="{ color: gpaColor(row.gpa) }">GPA {{ row.gpa?.toFixed(1) ?? "—" }}</span>
               </div>
+              <div v-if="row.pendingFinal" class="pending-note">{{ pendingNote(row) }}</div>
               <div class="grade-detail">
                 <span>平时 {{ componentScore(row.usual, row.usualWeight) }}</span>
                 <span>期中 {{ componentScore(row.midterm, row.midtermWeight) }}</span>
@@ -183,7 +184,7 @@
               </el-table-column>
               <el-table-column label="总成绩" width="88" align="right">
                 <template #default="{ row }">
-                  <span :style="{ color: scoreColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
+                  <span :style="{ color: scoreColor(row), fontWeight: 600 }" :title="row.pendingFinal ? pendingNote(row) : undefined">{{ scoreText(row) }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="绩点" width="70" align="right">
@@ -224,7 +225,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
-import { collapseTranscriptGrades, transcriptGradePoint, transcriptGradeStats } from "@/utils/jwxtGradeStats";
+import { collapseTranscriptGrades, isPendingFinalGrade, transcriptGradePoint, transcriptGradeStats } from "@/utils/jwxtGradeStats";
 import { useFormFactor } from "@/utils/formFactor";
 import { GRADES_CARDS_FALLBACK_QUERY, gradesLayoutTier, type GradesLayoutTier } from "./gradesLayout";
 
@@ -247,6 +248,7 @@ interface GradeRow {
   examType?: string;
   remark?: string;
   statKey?: string;
+  pendingFinal?: boolean;
 }
 
 type StatMode = "all" | "only" | "exclude";
@@ -357,7 +359,8 @@ function scoreToGpa(score?: string): number | undefined {
 }
 
 function normalizeGradeRow(row: GradeRow): GradeRow {
-  return { ...row, gpa: transcriptGradePoint(row) ?? scoreToGpa(row.score) };
+  if (isPendingFinalGrade(row)) return { ...row, gpa: undefined, pendingFinal: true };
+  return { ...row, gpa: transcriptGradePoint(row) ?? scoreToGpa(row.score), pendingFinal: false };
 }
 
 function normalizeParsedGrades(data: any) {
@@ -473,7 +476,7 @@ const courseOptions = computed(() => {
       row.semester || "未知学期",
       row.courseCode || "",
       typeof row.credits === "number" ? `${row.credits} 学分` : "",
-      row.score ? `成绩 ${row.score}` : "",
+      row.pendingFinal ? "期末未出" : row.score ? `成绩 ${row.score}` : "",
     ].filter(Boolean).join(" · ");
     return {
       key: courseKey(row),
@@ -587,7 +590,18 @@ function sortRowsByPublishedScore(rows: GradeRow[]) {
     .map(({ row }) => row);
 }
 
-function scoreColor(n: number | null) {
+function scoreText(row: GradeRow) {
+  if (row.pendingFinal) return "期末未出";
+  return row.score || "—";
+}
+
+function pendingNote(row: GradeRow) {
+  return `教务暂按已出部分折算为 ${row.score}，不是最终成绩，不计入 GPA`;
+}
+
+function scoreColor(row: GradeRow) {
+  if (row.pendingFinal) return "var(--cpu-text-muted)";
+  const n = row.scoreNum;
   if (n === null) return "var(--cpu-text)";
   if (n >= 85) return "#16a34a";
   if (n >= 60) return "var(--cpu-text)";
@@ -897,6 +911,13 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: var(
   text-align: center;
   font-size: var(--cpu-fs-s);
   font-weight: 700;
+}
+
+.pending-note {
+  margin-top: 7px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.45;
 }
 
 .grade-tag {

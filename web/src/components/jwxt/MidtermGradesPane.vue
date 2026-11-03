@@ -66,8 +66,8 @@
                 </div>
               </div>
               <div class="score-badges">
-                <span class="score-pill" :style="{ color: totalColor(row.scoreNum) }">
-                  总评 {{ row.score || "—" }}
+                <span class="score-pill" :style="{ color: totalColor(row) }">
+                  总评 {{ totalText(row) }}
                 </span>
                 <span class="score-pill" :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">
                   期中 {{ componentScore(row.midterm, row.midtermWeight) }}
@@ -87,7 +87,7 @@
               <el-table-column prop="courseName" label="课程名称" min-width="220" />
               <el-table-column label="总评" width="80" align="right">
                 <template #default="{ row }">
-                  <span :style="{ color: totalColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
+                  <span :style="{ color: totalColor(row), fontWeight: 600 }" :title="totalTitle(row)">{{ totalText(row) }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="期中" width="104" align="right">
@@ -118,6 +118,7 @@ import AppIcon from "@/components/common/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
+import { isPendingFinalGrade } from "@/utils/jwxtGradeStats";
 
 interface GradeRow {
   semester: string;
@@ -257,7 +258,19 @@ function midtermColor(n: number | null) {
   return "#dc2626";
 }
 
-function totalColor(n: number | null) {
+// 期末未出时教务的“总评”只是已出部分的折算（期中 93 × 30% → 28），不显示成不及格。
+function totalText(row: GradeRow) {
+  if (isPendingFinalGrade(row)) return "期末未出";
+  return row.score || "—";
+}
+
+function totalTitle(row: GradeRow) {
+  return isPendingFinalGrade(row) ? `教务暂按已出部分折算为 ${row.score}，不是最终成绩` : undefined;
+}
+
+function totalColor(row: GradeRow) {
+  if (isPendingFinalGrade(row)) return "var(--cpu-text-muted)";
+  const n = row.scoreNum;
   if (n === null) return "var(--cpu-text-muted)";
   if (n >= 85) return "#16a34a";
   if (n >= 60) return "var(--cpu-text)";

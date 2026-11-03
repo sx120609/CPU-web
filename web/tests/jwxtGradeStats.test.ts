@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collapseTranscriptGrades, transcriptGradeStats } from "../src/utils/jwxtGradeStats";
+import { collapseTranscriptGrades, isPendingFinalGrade, transcriptGradeStats } from "../src/utils/jwxtGradeStats";
 
 test("同一学期同一课程代码的重复成绩只保留一条", () => {
   const rows = collapseTranscriptGrades([
@@ -124,4 +124,23 @@ test("含补考的官方成绩单样本汇总为 94.8 学分和 3.06 GPA", () =>
 
   assert.equal(stats.credits, 94.8);
   assert.equal(stats.gpa.toFixed(2), "3.06");
+});
+
+test("期末未出时教务的折算总评不当作不及格，也不计入统计", () => {
+  const pending = {
+    semester: "2026-2027-1", courseCode: "1112010139", courseName: "药物化学", score: "28", credits: 3,
+    usual: "0", usualWeight: "30%", midterm: "93", midtermWeight: "30%", final: "0", finalWeight: "40%",
+  };
+  assert.equal(isPendingFinalGrade(pending), true);
+  assert.equal(isPendingFinalGrade({ ...pending, final: "" }), true);
+  assert.equal(isPendingFinalGrade({ ...pending, final: "75", score: "58" }), false);
+  assert.equal(isPendingFinalGrade({ ...pending, remark: "缺考" }), false);
+  assert.equal(isPendingFinalGrade({ ...pending, finalWeight: "" }), false);
+
+  const stats = transcriptGradeStats([
+    pending,
+    { semester: "2026-2027-1", courseCode: "PASS", courseName: "通过课程", score: "90", credits: 2 },
+  ]);
+  assert.equal(stats.credits, 2);
+  assert.equal(stats.gpa, 4);
 });

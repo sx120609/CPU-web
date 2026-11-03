@@ -16,6 +16,32 @@ export interface TranscriptGradeRow {
   gpa?: number;
   courseAttr?: string;
   examType?: string;
+  final?: string;
+  finalWeight?: string;
+  remark?: string;
+}
+
+const ABSENT_MARK = /缺考|缓考|旷考|作弊|违纪|取消/;
+
+function percentValue(raw?: string) {
+  const n = Number.parseFloat(String(raw ?? "").replace(/[%％\s]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 期末还没出分时，教务会先按已出的平时、期中折算一个总评（期中 93 × 30% → 总评 28）。
+ * 这不是最终成绩：不按不及格标红，也不计入绩点和学分统计。
+ * 期末有占比、期末分为空或 0、且没有缺考等标记时视为期末未出。
+ */
+export function isPendingFinalGrade(row: TranscriptGradeRow) {
+  if (!String(row.score ?? "").trim()) return false;
+  if (isTranscriptMakeup(row)) return false;
+  const weight = percentValue(row.finalWeight);
+  if (weight === null || weight <= 0) return false;
+  const final = String(row.final ?? "").trim();
+  if (final && Number.parseFloat(final) !== 0) return false;
+  const marks = [row.score, row.final, row.remark, row.examType].map((v) => String(v ?? "")).join(" ");
+  return !ABSENT_MARK.test(marks);
 }
 
 const PASS_LEVELS = new Set([
@@ -119,7 +145,7 @@ export interface TranscriptGradeStats<T extends TranscriptGradeRow = TranscriptG
 
 /** 对当前筛选/选择范围按电子成绩单口径统计。 */
 export function transcriptGradeStats<T extends TranscriptGradeRow>(rows: T[]): TranscriptGradeStats<T> {
-  const countedRows = collapseTranscriptGrades(rows).filter((row) => {
+  const countedRows = collapseTranscriptGrades(rows.filter((row) => !isPendingFinalGrade(row))).filter((row) => {
     return (isTranscriptMakeup(row) || isTranscriptPassing(row))
       && typeof row.credits === "number"
       && Number.isFinite(row.credits)
