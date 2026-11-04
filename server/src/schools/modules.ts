@@ -4,6 +4,7 @@ import { Errors } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
 import { broadcastSiteSettingsReload } from "../services/runtimeBroadcast";
 import { invalidateSiteSettingCaches } from "../services/cacheInvalidation";
+import { enabledBoardTypes, featureForBoardType, isBoardTypeEnabled } from "../services/siteSettings";
 import { SCHOOL_MODULES, findSchoolModule, schoolModulePageMap, type SchoolModuleDefinition } from "./catalog";
 import { DEFAULT_SCHOOL_ID, findSchool, getSchool, resolveSchoolId, type SchoolProfile } from "./registry";
 
@@ -173,5 +174,21 @@ export function isSchoolPathEnabled(schoolId: string | null | undefined, url: st
   const page = map.pages
     .filter((item) => path === item.prefix || path.startsWith(`${item.prefix}/`))
     .sort((a, b) => b.prefix.length - a.prefix.length)[0];
-  return page ? isSchoolModuleEnabled(schoolId, page.module) : true;
+  return page?.module ? isSchoolModuleEnabled(schoolId, page.module) : true;
+}
+
+/**
+ * 板块按类型归不同功能管：公告板归「校园公告」，二手归「二手市场」，课评归「课程点评」，其余归「论坛」。
+ * 关掉论坛只关讨论区，公告、二手、课评照常；站点总开关（siteSettings）和学校开关都开着才算开。
+ */
+const BOARD_FEATURE_MODULES: Record<string, string> = { forum: "forum", market: "market", coursereview: "courseReview" };
+
+export function isBoardTypeOpen(schoolId: string | null | undefined, type: string | null | undefined) {
+  if (!isBoardTypeEnabled(type)) return false;
+  const feature = featureForBoardType(type);
+  return isSchoolModuleEnabled(schoolId, feature ? BOARD_FEATURE_MODULES[feature] ?? "forum" : "announcements");
+}
+
+export function openBoardTypes(schoolId: string | null | undefined) {
+  return enabledBoardTypes().filter((type) => isBoardTypeOpen(schoolId, type));
 }

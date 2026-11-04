@@ -7,7 +7,7 @@ import { ensureUserCanSpeak } from "../services/userModeration";
 import { buildUserPreview } from "../utils/publicUser";
 import { ensureCanReadBoardType } from "../services/forumAccess";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
-import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
+import { featureClosedMessage } from "../services/siteSettings";
 import { presentAnonymousAlias } from "../services/userTrust";
 import {
   DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES,
@@ -16,7 +16,7 @@ import {
 import { scheduleDirectMessageSubmissionReview } from "../services/directMessageSubmissionReview";
 import { ensureNoUserBlock, lockUserPair } from "../services/userBlock";
 import { shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
-import { requestSchoolId } from "../schools/modules";
+import { isBoardTypeOpen, requestSchoolId } from "../schools/modules";
 import { topicBelongsToSchool } from "../schools/forumScope";
 import {
   anonymousForumDirectScope,
@@ -250,7 +250,7 @@ async function resolveForumDirectTarget(
   if (topic.hidden && topic.authorId !== viewerId && !isStaff) throw Errors.notFound("帖子或回复不存在");
   if (post.hidden && post.authorId !== viewerId && !isStaff) throw Errors.notFound("帖子或回复不存在");
   if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子或回复不存在");
-  if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+  if (!isBoardTypeOpen(viewerSchoolId, topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
   await ensureCanReadBoardType(topic.board?.type, viewerId, viewerRole);
 
   if (post.authorId === viewerId) throw Errors.badRequest("不能与自己私聊");

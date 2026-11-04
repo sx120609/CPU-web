@@ -47,7 +47,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     key: "forum",
     label: "论坛",
     isolation: "school",
-    routes: ["/boards", "/topics", "/replies", "/likes", "/forum-ads", "/forum-reports"],
+    // 板块、帖子、回复、点赞、举报接口公告和二手也在用，按板块类型拦（schools/modules.ts isBoardTypeOpen），不整块挂在论坛下。
+    routes: ["/forum-ads"],
     pages: ["/forum", "/post"],
   },
   { key: "search", label: "站内搜索", isolation: "school", routes: ["/search"] },
@@ -158,9 +159,18 @@ export function findSchoolModule(key: string): SchoolModuleDefinition | undefine
 }
 
 /** 网页路由前缀和工具卡片各归哪个功能，原样下发给网页。 */
+/**
+ * 在论坛前缀下、但不只属于论坛的页面：帖子详情也用来看公告、二手、课评的帖子，由服务端按板块类型判断能不能看。
+ * module 为空表示不受学校功能开关限制（网页和 isSchoolPathEnabled 都按“开着”处理）。
+ */
+const SHARED_PAGES = ["/forum/topic"];
+
 export function schoolModulePageMap() {
   return {
-    pages: SCHOOL_MODULES.flatMap((module) => (module.pages ?? []).map((prefix) => ({ prefix, module: module.key }))),
+    pages: [
+      ...SCHOOL_MODULES.flatMap((module) => (module.pages ?? []).map((prefix) => ({ prefix, module: module.key }))),
+      ...SHARED_PAGES.map((prefix) => ({ prefix, module: "" })),
+    ],
     tools: SCHOOL_MODULES.flatMap((module) => (module.tools ?? []).map((slug) => ({ slug, module: module.key }))),
   };
 }

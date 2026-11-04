@@ -5,7 +5,7 @@ import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
-import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
+import { featureClosedMessage } from "../services/siteSettings";
 import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
 import { notifyKeywordManualReview, reviewReplyContent, requestManualReplyReview, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
@@ -24,7 +24,7 @@ import {
 } from "../services/forumSubmission";
 import { scheduleReplySubmissionReview } from "../services/forumSubmissionReview";
 import { parseQuestionMetadata } from "../services/questionBounty";
-import { requestSchoolId } from "../schools/modules";
+import { isBoardTypeOpen, requestSchoolId } from "../schools/modules";
 import { topicBelongsToSchool } from "../schools/forumScope";
 
 export const replyRouter = Router();
@@ -129,7 +129,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     const canSeeHiddenTopic = Boolean(req.user?.userId && (req.user.userId === topic?.authorId || req.user.role === "admin" || req.user.role === "mod"));
     if (!topic || !topicBelongsToSchool(topic, requestSchoolId(req)) || (topic.hidden && !canSeeHiddenTopic)) throw Errors.notFound("帖子不存在");
     if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子不存在");
-    if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+    if (!isBoardTypeOpen(requestSchoolId(req), topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, userId, req.user?.role);
     if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
     if (anonymous && !topic.board?.anonymousEnabled) {
@@ -362,7 +362,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
     if (isOwner && !isMod && acceptedReplyId === reply.id) {
       throw Errors.forbidden("已采纳回答不能再修改，如需处理请联系管理员");
     }
-    if (!isMod && !isBoardTypeEnabled(reply.topic.board?.type)) throw Errors.forbidden(featureClosedMessage(reply.topic.board?.type));
+    if (!isMod && !isBoardTypeOpen(requestSchoolId(req), reply.topic.board?.type)) throw Errors.forbidden(featureClosedMessage(reply.topic.board?.type));
     if (reply.topic.locked && !isMod) throw Errors.forbidden("帖子已锁定，无法修改回复");
     if (isOwner) {
       await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
@@ -443,7 +443,7 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
     if (isOwner && !isMod && acceptedReplyId === r.id) {
       throw Errors.forbidden("已采纳回答不能删除，如需处理请联系管理员");
     }
-    if (!isMod && !isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
+    if (!isMod && !isBoardTypeOpen(requestSchoolId(req), r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.$transaction(async (tx) => {
       await tx.reply.update({ where: { id }, data: { hidden: true, reportHiddenAt: null, aiReviewStatus: "deleted" } });

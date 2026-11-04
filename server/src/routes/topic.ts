@@ -10,11 +10,9 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import {
-  enabledBoardTypes,
   featureClosedMessage,
   featureForBoardType,
   getSiteConfig,
-  isBoardTypeEnabled,
   isFeatureOn,
   removeTopicFromGlobalPins,
   setTopicGlobalPinned,
@@ -53,7 +51,7 @@ import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForConte
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
 import { compactTopicAuthors } from "../utils/publicAvatar";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
-import { requestSchoolId } from "../schools/modules";
+import { isBoardTypeOpen, openBoardTypes, requestSchoolId } from "../schools/modules";
 import { boardSlugKey, topicBelongsToSchool } from "../schools/forumScope";
 import {
   encodeTopicEditReviewContext,
@@ -220,7 +218,7 @@ topicRouter.get("/", async (req, res, next) => {
       const b = await prisma.board.findUnique({ where: boardSlugKey(schoolId, boardSlug) });
       if (!b) throw Errors.notFound("板块不存在");
       if (isRetiredBoardSlug(b.slug)) throw Errors.notFound("板块不存在");
-      if (!isBoardTypeEnabled(b.type)) throw Errors.forbidden(featureClosedMessage(b.type));
+      if (!isBoardTypeOpen(requestSchoolId(req), b.type)) throw Errors.forbidden(featureClosedMessage(b.type));
       await ensureCanReadBoardType(b.type, requesterId, requesterRole);
       boardId = b.id;
     }
@@ -239,7 +237,7 @@ topicRouter.get("/", async (req, res, next) => {
     if (boardId) where.boardId = boardId;
     else if (boardType && announceSlugs.length) where.board = { schoolId, type: boardType, AND: [visibleBoardSlugFilter(), { slug: { in: announceSlugs } }] };
     else if (boardType) where.board = { schoolId, type: boardType, ...visibleBoardSlugFilter() };
-    else where.board = { schoolId, type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
+    else where.board = { schoolId, type: { in: openBoardTypes(requestSchoolId(req)) }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
     const structuredFilters: any[] = [];
@@ -350,7 +348,7 @@ topicRouter.post(
         where: {
           id: { in: ids },
           hidden: false,
-          board: { schoolId: requestSchoolId(req), type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
+          board: { schoolId: requestSchoolId(req), type: { in: openBoardTypes(requestSchoolId(req)) }, ...visibleBoardSlugFilter() },
         },
         select: { id: true },
       });
@@ -496,7 +494,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound();
     const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
     if (topic.hidden && !canSeeHidden) throw Errors.notFound();
-    if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+    if (!isBoardTypeOpen(requestSchoolId(req), topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
     if (!topic.hidden) recordTopicView(id);
     const presented = await decodeTopicForViewerWithImages(topic, req.user);
@@ -521,7 +519,7 @@ async function findTopicForAiAnswer(req: Request) {
   if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound();
   const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
   if (topic.hidden && !canSeeHidden) throw Errors.notFound();
-  if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+  if (!isBoardTypeOpen(requestSchoolId(req), topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
   await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
   return topic;
 }
@@ -610,7 +608,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     // type=announce 由系统/爬虫机器人发，不受用户开关约束
     if (board.type !== "announce" && req.user!.role !== "admin") {
       const featureKey = featureForBoardType(board.type) ?? "forum";
-      if (!isFeatureOn(featureKey)) {
+      if (!isFeatureOn(featureKey) || !isBoardTypeOpen(board.schoolId, board.type)) {
         throw Errors.forbidden("该板块当前不可发帖，已被站方临时关闭");
       }
     }
@@ -799,7 +797,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     const canEditContent = isOwner || req.user!.role === "admin" || (req.user!.role === "mod" && t.board?.type !== "announce");
     if (!isOwner && !isMod) throw Errors.forbidden();
-    if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
+    if (!isMod && !isBoardTypeOpen(requestSchoolId(req), t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
 
     const body = req.body as any;
@@ -966,7 +964,7 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
-    if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
+    if (!isMod && !isBoardTypeOpen(requestSchoolId(req), t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.$transaction(async (tx) => {
       await tx.topic.update({ where: { id }, data: { hidden: true, reportHiddenAt: null, aiReviewStatus: "deleted" } });
@@ -1001,7 +999,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
     const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
     if (topic.hidden && !canSeeHidden) throw Errors.notFound("帖子不存在");
     if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子不存在");
-    if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+    if (!isBoardTypeOpen(requestSchoolId(req), topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, req.user?.userId ?? null, req.user?.role ?? null);
     const list = await prisma.reply.findMany({
       where: { topicId: id, ...forumContentVisibilityWhere(requesterId), ...blockedAuthorWhere(req.user) },

@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
-import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
+import { featureClosedMessage } from "../services/siteSettings";
 import { ensureCanReadBoardType } from "../services/forumAccess";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
-import { requestSchoolId } from "../schools/modules";
+import { isBoardTypeOpen, requestSchoolId } from "../schools/modules";
 import { topicBelongsToSchool } from "../schools/forumScope";
 
 export const likeRouter = Router();
@@ -20,7 +20,7 @@ likeRouter.post("/topic/:id", async (req, res, next) => {
     });
     if (!t || !topicBelongsToSchool(t, requestSchoolId(req)) || t.hidden) throw Errors.notFound();
     if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
-    if (!isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
+    if (!isBoardTypeOpen(requestSchoolId(req), t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     await ensureCanReadBoardType(t.board?.type, userId, req.user?.role);
     const existing = await prisma.like.findFirst({ where: { userId, topicId } });
     if (existing) {
@@ -70,7 +70,7 @@ likeRouter.post("/reply/:id", async (req, res, next) => {
     });
     if (!r || !topicBelongsToSchool(r.topic, requestSchoolId(req)) || r.hidden || r.topic?.hidden) throw Errors.notFound();
     if (isRetiredBoardSlug(r.topic?.board?.slug)) throw Errors.notFound();
-    if (!isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
+    if (!isBoardTypeOpen(requestSchoolId(req), r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     await ensureCanReadBoardType(r.topic?.board?.type, userId, req.user?.role);
     const existing = await prisma.like.findFirst({ where: { userId, replyId } });
     if (existing) {

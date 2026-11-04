@@ -4,7 +4,7 @@ import { prisma } from "../prisma";
 import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
-import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
+import { getGlobalPinnedTopicIds } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
 import { decodeTopicForViewer, decodeTopicsForViewerForList, forumAuthorReputationSelect, forumReplyPreviewInclude } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
@@ -12,7 +12,7 @@ import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere, resolveForumListViewerId } from "../services/forumSubmission";
 import { compactTopicAuthors, publicAvatarValue } from "../utils/publicAvatar";
 import { parseHomeFeedStream, selectHomeFeedBoardTypes, type HomeFeedStream } from "../services/homeFeed";
-import { requestSchoolId } from "../schools/modules";
+import { openBoardTypes, requestSchoolId } from "../schools/modules";
 import {
   computeHotScore,
   HOT_TOPIC_FALLBACK_WINDOW_MS,
@@ -23,8 +23,8 @@ export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
 const HOT_TOPIC_DEFAULT_SIZE = 10;
 const LATEST_FEED_DEFAULT_SIZE = 20;
-function homeFeedBoardTypes(stream: HomeFeedStream) {
-  return selectHomeFeedBoardTypes(enabledBoardTypes(), stream);
+function homeFeedBoardTypes(stream: HomeFeedStream, schoolId: string) {
+  return selectHomeFeedBoardTypes(openBoardTypes(schoolId), stream);
 }
 
 /**
@@ -62,7 +62,7 @@ homeRouter.get("/summary", async (req, res, next) => {
     ]);
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const trust = user ? buildUserTrustSnapshot(user) : null;
-    const forumBoardTypes = homeFeedBoardTypes("forum");
+    const forumBoardTypes = homeFeedBoardTypes("forum", requestSchoolId(req));
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const schoolId = requestSchoolId(req);
     const publicSummary = await withCache(
@@ -157,7 +157,7 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     if (!forumAccessEnabled) return ok(res, []);
     const stream = parseHomeFeedStream(_req.query.stream);
-    const contentBoardTypes = homeFeedBoardTypes(stream);
+    const contentBoardTypes = homeFeedBoardTypes(stream, requestSchoolId(_req));
     const schoolId = requestSchoolId(_req);
     const list = await withCache("home", ["hot-ranking-v7", schoolId, stream], 60_000, async () => listHotTopics(schoolId, HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     const presented = await decodeTopicsForViewerForList(list, _req.user);
@@ -178,7 +178,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
     const stream = parseHomeFeedStream(req.query.stream);
-    const contentBoardTypes = homeFeedBoardTypes(stream);
+    const contentBoardTypes = homeFeedBoardTypes(stream, requestSchoolId(req));
     const globalPinnedIds = getGlobalPinnedTopicIds();
     // 没有仅自己可见的审核中帖子时与游客共用公开查询和缓存。
     const listViewerId = await resolveForumListViewerId(

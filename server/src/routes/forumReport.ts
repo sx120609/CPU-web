@@ -4,11 +4,11 @@ import { prisma } from "../prisma";
 import { validate } from "../middleware/validate";
 import { Errors, HttpError, ok } from "../utils/response";
 import { ensureCanReadBoardType } from "../services/forumAccess";
-import { featureClosedMessage, isBoardTypeEnabled, removeTopicFromGlobalPins } from "../services/siteSettings";
+import { featureClosedMessage, removeTopicFromGlobalPins } from "../services/siteSettings";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { acquireForumReportTargetLock } from "../services/forumReportLock";
-import { requestSchoolId } from "../schools/modules";
+import { isBoardTypeOpen, requestSchoolId } from "../schools/modules";
 import {
   refreshBoardTopicCounts,
   refreshTopicReplyStats,
@@ -79,7 +79,7 @@ async function resolveTopicReportTarget(
     },
   });
   if (!topic || topic.hidden || topic.board.schoolId !== schoolId || isRetiredBoardSlug(topic.board.slug)) throw Errors.notFound("帖子不存在或已不可见");
-  if (!isBoardTypeEnabled(topic.board.type)) throw Errors.forbidden(featureClosedMessage(topic.board.type));
+  if (!isBoardTypeOpen(schoolId, topic.board.type)) throw Errors.forbidden(featureClosedMessage(topic.board.type));
   await ensureCanReadBoardType(topic.board.type, reporterId, reporterRole);
   const ineligible = forumReportEligibility({ targetType: "topic", reporterId, targetAuthorId: topic.authorId });
   if (ineligible) throw Errors.badRequest(ineligible);
@@ -117,7 +117,7 @@ async function resolveReplyReportTarget(
   if (!reply || reply.hidden || reply.topic.hidden || reply.topic.board.schoolId !== schoolId || isRetiredBoardSlug(reply.topic.board.slug)) {
     throw Errors.notFound("评论不存在或已不可见");
   }
-  if (!isBoardTypeEnabled(reply.topic.board.type)) throw Errors.forbidden(featureClosedMessage(reply.topic.board.type));
+  if (!isBoardTypeOpen(schoolId, reply.topic.board.type)) throw Errors.forbidden(featureClosedMessage(reply.topic.board.type));
   await ensureCanReadBoardType(reply.topic.board.type, reporterId, reporterRole);
   const ineligible = forumReportEligibility({ targetType: "reply", reporterId, targetAuthorId: reply.authorId });
   if (ineligible) throw Errors.badRequest(ineligible);
