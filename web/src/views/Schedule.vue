@@ -1249,6 +1249,7 @@ import { useFormFactor } from "@/utils/formFactor";
 import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
 import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import { mergeSemesters, readKnownSemesters, rememberSemesters } from "@/views/schedule/knownSemesters";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import IosAppRecommendation from "@/components/install/IosAppRecommendation.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
@@ -2441,7 +2442,17 @@ onBeforeUnmount(() => {
   clearScheduleBackgroundPreview();
 });
 
-const semesters = computed(() => parsed.value?.semesters ?? []);
+const knownSemestersVersion = ref(0);
+const semesters = computed(() => {
+  void knownSemestersVersion.value;
+  const fresh = parsed.value?.semesters ?? [];
+  return mergeSemesters(fresh, readKnownSemesters(scheduleStorageScope()));
+});
+watch(() => parsed.value?.semesters, (list) => {
+  if (!list?.length) return;
+  rememberSemesters(scheduleStorageScope(), mergeSemesters(list, readKnownSemesters(scheduleStorageScope())));
+  knownSemestersVersion.value += 1;
+});
 const weeks = computed(() => parsed.value?.weeks ?? []);
 const currentWeekInfo = computed(() => weekInfoFor(currentWeekValue()));
 const currentWeekRange = computed(() => weekRangeFor(currentWeekValue()));

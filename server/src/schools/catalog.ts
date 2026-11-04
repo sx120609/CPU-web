@@ -38,7 +38,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     key: "announcements",
     label: "学校公告",
     isolation: "school",
-    implementedFor: ["cpu"],
+    // 药大的公告爬虫源，南医的教务处、学校通知、学工处、科研院、要闻（schools/njmu/feeds.ts）。
+    implementedFor: ["cpu", "njmu"],
     routes: ["/announcements"],
     pages: ["/announcements"],
   },

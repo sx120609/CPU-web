@@ -124,7 +124,9 @@ function parseList(html: string, listUrlBase: string): ParsedSchoolFeedListItem[
     if (!href || !title || !dateStr) return;
 
     const absUrl = normalizePublicUrl(href, listUrlBase);
-    const externalId = (absUrl.match(/c(\d+)a(\d+)/i) ?? [])[0] ?? absUrl;
+    const articleId = (absUrl.match(/c(\d+)a(\d+)/i) ?? [])[0];
+    // 外校站点也用博达 CMS，「c栏目a文章」编号会和药大的撞；药大保留原编号，外校前面加域名。
+    const externalId = articleId ? (isSchoolHost(absUrl) ? articleId : `${hostOf(absUrl)}:${articleId}`) : absUrl;
     items.push({
       externalId,
       url: absUrl,
@@ -234,6 +236,14 @@ async function fetchDetail(url: string): Promise<{ content: string; effectiveUrl
     return { content: md.slice(0, 8000), effectiveUrl, isExternal: false };
   } catch {
     return { content: "", effectiveUrl: url, isExternal: false };
+  }
+}
+
+function hostOf(url: string) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
   }
 }
 

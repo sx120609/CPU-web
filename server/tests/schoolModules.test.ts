@@ -118,7 +118,8 @@ test("南医是带教务驱动的内置学校：统一认证登录、教务可�
   assert.equal(njmu.enabled, false);
   assert.equal(njmu.defaultPeriods.length, 15);
   assert.equal(isSchoolModuleAvailable(njmu, byKey.get("academic")!), true);
-  assert.equal(isSchoolModuleAvailable(njmu, byKey.get("announcements")!), false);
+  assert.equal(isSchoolModuleAvailable(njmu, byKey.get("announcements")!), true);
+  assert.equal(isSchoolModuleAvailable(njmu, byKey.get("dormElectric")!), false);
   assert.ok(getEnabledSchoolModules("njmu").includes("academic"));
   applySchoolRows([{ id: "njmu", name: "南京医科大学", shortName: "南医", brandName: "南医拾间", tagline: "南医校园互助", enabled: true }], SCHOOL_MODULE_KEYS);
   try {

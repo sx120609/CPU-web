@@ -9,6 +9,7 @@ import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
 import { loadSchoolModuleOverrides } from "./schools/modules";
 import { ensureBuiltinSchools, loadSchools } from "./schools/store";
+import { ensureNjmuFeeds } from "./schools/njmu/feeds";
 import { loadStorageConfig } from "./services/storageConfig";
 import { attachJwxtAgentGateway } from "./services/jwxtAgentGateway";
 import { remoteGateway } from "./services/jwxtGatewayTransport";
@@ -54,6 +55,10 @@ async function start() {
   // 学校表要先于各校功能开关载入：开关只认已登记的学校。
   await ensureBuiltinSchools().then(loadSchools).catch((e) => {
     console.warn("loadSchools failed:", e?.message);
+  });
+  // 南医的公告机器人、爬虫源和公告板块；蓝绿两个实例同时启动时其中一个建表冲突无妨。
+  await ensureNjmuFeeds().catch((e) => {
+    console.warn("ensureNjmuFeeds failed:", e?.message);
   });
   await loadSchoolModuleOverrides().catch((e) => {
     console.warn("loadSchoolModuleOverrides failed:", e?.message);

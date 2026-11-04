@@ -18,6 +18,7 @@ const DATA_CACHE_PREFIXES = [
   "cpu-schedule-calendar-v1:",
   "cpu-schedule-calendar-v2:",
   "cpu-schedule-last-cache-key-v1:",
+  "cpu-schedule-semesters-v1:",
   "cpu-jwxt-schedule-view-state-v1:",
   "cpu-schedule-last-state-v1:",
 ];
