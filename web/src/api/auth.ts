@@ -9,6 +9,8 @@ export interface UserInfo {
   id: number;
   /** 所属学校；旧版服务端不返回。 */
   schoolId?: string;
+  /** 平台管理员（默认学校的站点管理员），管所有学校和全站设置；旧版服务端不返回。 */
+  platformAdmin?: boolean;
   username: string;
   nickname: string;
   nicknameReview?: {

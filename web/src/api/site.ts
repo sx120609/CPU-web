@@ -59,6 +59,7 @@ export type SchoolSummary = {
   name: string;
   shortName: string;
   brandName: string;
+  tagline: string;
   ssoLogin: boolean;
 };
 

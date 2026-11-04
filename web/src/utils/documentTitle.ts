@@ -2,12 +2,21 @@ import { watch } from "vue";
 import { useRoute } from "vue-router";
 
 // 与服务端 server/src/services/seo.ts 的标题格式一致：搜索引擎渲染页面后看到的标题和首屏 HTML 相同。
-export const SITE_NAME = "药大拾间";
-export const SITE_HOME_TITLE = "药大拾间 · 中国药科大学校园互助与服务平台";
+// 默认学校的品牌；学校信息拉到后换成当前学校的品牌名。
+let siteName = "药大拾间";
+let homeTitle = "药大拾间 · 中国药科大学校园互助与服务平台";
+let lastTitle: string | null = null;
 
 export function setDocumentTitle(title?: string | null) {
-  const text = String(title || "").trim();
-  document.title = text ? `${text} · ${SITE_NAME}` : SITE_HOME_TITLE;
+  lastTitle = String(title || "").trim() || null;
+  document.title = lastTitle ? `${lastTitle} · ${siteName}` : homeTitle;
+}
+
+/** 当前学校的品牌名和学校全称，用来拼页面标题；换学校后当前页的标题立即跟着变。 */
+export function setDocumentBrand(brandName: string, schoolName: string) {
+  siteName = brandName;
+  homeTitle = `${brandName} · ${schoolName}校园互助与服务平台`;
+  if (typeof document !== "undefined") document.title = lastTitle ? `${lastTitle} · ${siteName}` : homeTitle;
 }
 
 /** 详情页（帖子、板块、作品）数据到了以后用内容自己的名字做标题；只在本页路由时生效，缓存的页面不会改别人的标题。 */

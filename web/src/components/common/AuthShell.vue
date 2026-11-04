@@ -4,7 +4,7 @@
       <aside class="auth-aside">
         <div class="auth-aside-brand">
           <img :src="'/favicon.svg?v=20260830'" alt="" aria-hidden="true" decoding="async" />
-          <span>药大拾间</span>
+          <span>{{ site.brandName }}</span>
         </div>
         <h2>课表、教务数据和校园服务，在一个地方查看。</h2>
         <ul>
@@ -37,10 +37,12 @@
 
 <script setup lang="ts">
 import { ArrowLeft, Calendar, DataLine, Service } from "@element-plus/icons-vue";
+import { useSiteStore } from "@/stores/site";
 
 // 登录页与注册页共用的外壳：桌面端左侧品牌区，移动端只保留表单一列。
 defineProps<{ title: string; subtitle?: string }>();
 const emit = defineEmits<{ home: [] }>();
+const site = useSiteStore();
 </script>
 
 <style scoped lang="scss">

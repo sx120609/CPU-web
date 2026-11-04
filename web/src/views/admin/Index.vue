@@ -87,30 +87,30 @@
       <el-tab-pane v-if="isCoreStaff" name="account-verifications"><template #label><AppIcon name="check" /> 拾间认证</template><AccountVerificationsPane v-if="tab === 'account-verifications'" /></el-tab-pane>
       <el-tab-pane v-if="isCoreStaff" name="manual-reviews"><template #label><AppIcon name="shield" /> 人工审核</template><ManualReviewsPane v-if="tab === 'manual-reviews'" /></el-tab-pane>
       <el-tab-pane v-if="canManageLostFound" name="lost-found"><template #label><AppIcon name="service" /> 失物招领</template><LostFoundPane v-if="tab === 'lost-found'" /></el-tab-pane>
-      <el-tab-pane name="navigation" v-if="auth.isAdmin"><template #label><AppIcon name="menu" /> 顶部导航</template><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
-      <el-tab-pane name="feeds" v-if="auth.isAdmin"><template #label><AppIcon name="sync" /> 同步源</template><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
-      <el-tab-pane name="jwxt-agents" v-if="auth.isAdmin"><template #label><AppIcon name="school" /> 教务节点</template><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
+      <el-tab-pane name="navigation" v-if="isPlatformAdmin"><template #label><AppIcon name="menu" /> 顶部导航</template><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
+      <el-tab-pane name="feeds" v-if="isPlatformAdmin"><template #label><AppIcon name="sync" /> 同步源</template><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
+      <el-tab-pane name="jwxt-agents" v-if="isPlatformAdmin"><template #label><AppIcon name="school" /> 教务节点</template><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
       <el-tab-pane name="schools" v-if="auth.isAdmin"><template #label><AppIcon name="school" /> 学校与功能</template><SchoolsPane v-if="tab === 'schools'" /></el-tab-pane>
-      <el-tab-pane name="schedule-terms" v-if="auth.isAdmin"><template #label><AppIcon name="calendar" /> 课表校历</template><ScheduleTermsPane v-if="tab === 'schedule-terms'" /></el-tab-pane>
-      <el-tab-pane name="apns" v-if="auth.isAdmin"><template #label><AppIcon name="service" /> APNs 推送</template><ApnsPane v-if="tab === 'apns'" /></el-tab-pane>
-      <el-tab-pane name="announcements" v-if="auth.isAdmin"><template #label><AppIcon name="announcement" /> 公告</template><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
+      <el-tab-pane name="schedule-terms" v-if="auth.isAdmin && site.pathEnabled('/schedule')"><template #label><AppIcon name="calendar" /> 课表校历</template><ScheduleTermsPane v-if="tab === 'schedule-terms'" /></el-tab-pane>
+      <el-tab-pane name="apns" v-if="isPlatformAdmin"><template #label><AppIcon name="service" /> APNs 推送</template><ApnsPane v-if="tab === 'apns'" /></el-tab-pane>
+      <el-tab-pane name="announcements" v-if="isPlatformAdmin"><template #label><AppIcon name="announcement" /> 公告</template><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
       <el-tab-pane name="forum-ads" v-if="auth.isAdmin"><template #label><AppIcon name="promotion" /> 论坛广告</template><ForumAdsPane v-if="tab === 'forum-ads'" /></el-tab-pane>
-      <el-tab-pane name="vip-gift-codes" v-if="auth.isAdmin"><template #label><AppIcon name="gift" /> VIP 礼品码</template><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
-      <el-tab-pane name="epay" v-if="auth.isAdmin"><template #label><AppIcon name="card" /> 支付对接</template><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
-      <el-tab-pane name="sponsor" v-if="auth.isAdmin"><template #label><AppIcon name="star" /> 赞助</template><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
-      <el-tab-pane name="qqbot" v-if="auth.isAdmin"><template #label><AppIcon name="bot" /> QQBot</template><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
-      <el-tab-pane name="wechat" v-if="auth.isAdmin"><template #label><AppIcon name="forum" /> 微信服务号</template><WechatServicePane v-if="tab === 'wechat'" /></el-tab-pane>
-      <el-tab-pane name="ai" v-if="auth.isAdmin"><template #label><AppIcon name="ai" /> AI 管理</template><AiManagementPane v-if="tab === 'ai'" /></el-tab-pane>
-      <el-tab-pane name="deployment" v-if="auth.isAdmin"><template #label><AppIcon name="promotion" /> 更新部署</template><DeploymentPane v-if="tab === 'deployment'" /></el-tab-pane>
-      <el-tab-pane name="database" v-if="auth.isAdmin"><template #label><AppIcon name="database" /> 数据备份</template><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
-      <el-tab-pane name="ios-clients" v-if="auth.isAdmin"><template #label><AppIcon name="chart" /> iOS 客户端</template><IosClientsPane v-if="tab === 'ios-clients'" /></el-tab-pane>
-      <el-tab-pane name="android-clients" v-if="auth.isAdmin"><template #label><AppIcon name="mobile" /> 安卓客户端</template><AndroidClientsPane v-if="tab === 'android-clients'" /></el-tab-pane>
-      <el-tab-pane name="harmony-clients" v-if="auth.isAdmin"><template #label><AppIcon name="mobile" /> 鸿蒙客户端</template><HarmonyClientsPane v-if="tab === 'harmony-clients'" /></el-tab-pane>
-      <el-tab-pane name="desktop-installs" v-if="auth.isAdmin"><template #label><AppIcon name="desktop" /> 桌面端安装</template><DesktopInstallsPane v-if="tab === 'desktop-installs'" /></el-tab-pane>
-      <el-tab-pane name="cloud-usage" v-if="auth.isAdmin"><template #label><AppIcon name="chart" /> 云资源用量</template><CloudUsagePane v-if="tab === 'cloud-usage'" /></el-tab-pane>
-      <el-tab-pane name="media-storage" v-if="auth.isAdmin"><template #label><AppIcon name="folder" /> 媒体存储</template><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
-      <el-tab-pane name="filestore-settings" v-if="auth.isAdmin"><template #label><AppIcon name="box" /> 文件收集</template><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
-      <el-tab-pane name="features" v-if="auth.isAdmin"><template #label><AppIcon name="settings" /> 功能开关</template><FeaturesPane v-if="tab === 'features'" /></el-tab-pane>
+      <el-tab-pane name="vip-gift-codes" v-if="isPlatformAdmin"><template #label><AppIcon name="gift" /> VIP 礼品码</template><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
+      <el-tab-pane name="epay" v-if="isPlatformAdmin"><template #label><AppIcon name="card" /> 支付对接</template><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
+      <el-tab-pane name="sponsor" v-if="isPlatformAdmin"><template #label><AppIcon name="star" /> 赞助</template><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
+      <el-tab-pane name="qqbot" v-if="isPlatformAdmin"><template #label><AppIcon name="bot" /> QQBot</template><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
+      <el-tab-pane name="wechat" v-if="isPlatformAdmin"><template #label><AppIcon name="forum" /> 微信服务号</template><WechatServicePane v-if="tab === 'wechat'" /></el-tab-pane>
+      <el-tab-pane name="ai" v-if="isPlatformAdmin"><template #label><AppIcon name="ai" /> AI 管理</template><AiManagementPane v-if="tab === 'ai'" /></el-tab-pane>
+      <el-tab-pane name="deployment" v-if="isPlatformAdmin"><template #label><AppIcon name="promotion" /> 更新部署</template><DeploymentPane v-if="tab === 'deployment'" /></el-tab-pane>
+      <el-tab-pane name="database" v-if="isPlatformAdmin"><template #label><AppIcon name="database" /> 数据备份</template><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
+      <el-tab-pane name="ios-clients" v-if="isPlatformAdmin"><template #label><AppIcon name="chart" /> iOS 客户端</template><IosClientsPane v-if="tab === 'ios-clients'" /></el-tab-pane>
+      <el-tab-pane name="android-clients" v-if="isPlatformAdmin"><template #label><AppIcon name="mobile" /> 安卓客户端</template><AndroidClientsPane v-if="tab === 'android-clients'" /></el-tab-pane>
+      <el-tab-pane name="harmony-clients" v-if="isPlatformAdmin"><template #label><AppIcon name="mobile" /> 鸿蒙客户端</template><HarmonyClientsPane v-if="tab === 'harmony-clients'" /></el-tab-pane>
+      <el-tab-pane name="desktop-installs" v-if="isPlatformAdmin"><template #label><AppIcon name="desktop" /> 桌面端安装</template><DesktopInstallsPane v-if="tab === 'desktop-installs'" /></el-tab-pane>
+      <el-tab-pane name="cloud-usage" v-if="isPlatformAdmin"><template #label><AppIcon name="chart" /> 云资源用量</template><CloudUsagePane v-if="tab === 'cloud-usage'" /></el-tab-pane>
+      <el-tab-pane name="media-storage" v-if="isPlatformAdmin"><template #label><AppIcon name="folder" /> 媒体存储</template><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
+      <el-tab-pane name="filestore-settings" v-if="isPlatformAdmin"><template #label><AppIcon name="box" /> 文件收集</template><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
+      <el-tab-pane name="features" v-if="isPlatformAdmin"><template #label><AppIcon name="settings" /> 功能开关</template><FeaturesPane v-if="tab === 'features'" /></el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -121,6 +121,7 @@ import { computed, defineAsyncComponent, ref, onMounted, watch } from "vue";
 import type { EChartsOption } from "echarts";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { adminApi, type AdminOverview } from "@/api/admin";
 
 const DailyActiveChart = defineAsyncComponent(() => import("./DailyActiveChart.vue"));
@@ -157,6 +158,7 @@ const FilestoreSettingsPane = defineAsyncComponent(() => import("./FilestoreSett
 const FeaturesPane = defineAsyncComponent(() => import("./FeaturesPane.vue"));
 
 const auth = useAuthStore();
+const site = useSiteStore();
 const route = useRoute();
 const router = useRouter();
 const isCoreStaff = computed(() => auth.user?.role === "admin" || auth.user?.role === "mod");
@@ -176,7 +178,12 @@ const adminIdentityLabel = computed(() => {
   return labels.join(" / ") || "模块管理员";
 });
 
+// 全站设置和运维只给平台管理员；其他学校的管理员只看按学校划分过的页面。旧版服务端不返回 platformAdmin 时按原来的管理员处理。
+const isPlatformAdmin = computed(() => auth.isAdmin && auth.user?.platformAdmin !== false);
+const PLATFORM_ADMIN_TABS = new Set(["navigation", "feeds", "jwxt-agents", "apns", "announcements", "vip-gift-codes", "epay", "sponsor", "qqbot", "wechat", "ai", "deployment", "database", "ios-clients", "android-clients", "harmony-clients", "desktop-installs", "cloud-usage", "media-storage", "filestore-settings", "features"]);
+
 function allowedAdminTab(value: string) {
+  if (PLATFORM_ADMIN_TABS.has(value)) return isPlatformAdmin.value;
   if (value === "users") return canManageUsers.value;
   if (value === "lost-found") return canManageLostFound.value;
   if (value === "deployment") return auth.isAdmin;

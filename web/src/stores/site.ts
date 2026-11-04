@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { DEFAULT_TOP_NAVIGATION, siteApi, type FeatureMap, type PublicSiteConfig, type SchoolInfo, type TopNavigationItem } from "@/api/site";
 import { isSchoolPathEnabled, isSchoolToolEnabled } from "@/utils/schoolModules";
+import { setDocumentBrand } from "@/utils/documentTitle";
 
 /**
  * 站点级开关：默认关闭可选功能，拉到后台真实开关后再展示入口。
@@ -17,9 +18,21 @@ export const useSiteStore = defineStore("site", {
     loading: false,
     _pendingFetch: null as Promise<void> | null,
   }),
+  getters: {
+    /** 拾间品牌下当前学校的名字；学校信息到之前用默认学校的，药大用户看不到闪变。 */
+    brandName: (state) => state.school?.brandName || "药大拾间",
+    brandTagline: (state) => (state.school ? state.school.tagline : "CPU 校园互助服务"),
+    schoolName: (state) => state.school?.name || "中国药科大学",
+    schoolShortName: (state) => state.school?.shortName || "药大",
+  },
   actions: {
-    async fetch(force = false) {
-      if (this._pendingFetch) return this._pendingFetch;
+    async fetch(force = false): Promise<void> {
+      if (this._pendingFetch) {
+        if (!force) return this._pendingFetch;
+        // 换学校、登录退出时要的是新结果：等在途的那次结束后再拉一次，不能拿旧学校的结果顶替。
+        await this._pendingFetch.catch(() => undefined);
+        return this.fetch(true);
+      }
       if (this.loaded && !force) return;
       this.loading = true;
       const task = (async () => {
@@ -35,6 +48,7 @@ export const useSiteStore = defineStore("site", {
           }
           if (schoolResult.status === "fulfilled") {
             this.school = schoolResult.value;
+            setDocumentBrand(this.brandName, this.schoolName);
           }
           if (configResult.status === "fulfilled") {
             this.siteOrigin = configResult.value.siteOrigin || "";

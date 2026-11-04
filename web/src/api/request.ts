@@ -116,7 +116,8 @@ function cacheKey(url: string, params?: Record<string, unknown>) {
   const authScope = memoryToken || hasAuthPresence()
     ? (memoryAuthCacheScope || "auth-pending")
     : "guest";
-  return `${responseCacheGeneration}:${authScope}:${url}:${stableParams(params)}`;
+  // 访客换学校后看到的板块、首页、开关都不同，缓存要按所选学校分开。
+  return `${responseCacheGeneration}:${authScope}:${getSchoolChoice() || "default"}:${url}:${stableParams(params)}`;
 }
 
 function toReactiveCacheValue<T>(value: T): T {

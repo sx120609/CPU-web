@@ -1408,9 +1408,20 @@ export interface AdminSchool {
   name: string;
   shortName: string;
   brandName: string;
-  academicSystem: string;
+  tagline: string;
+  enabled: boolean;
+  academicSystem: string | null;
+  ssoLogin: boolean;
   modules: AdminSchoolModuleState[];
 }
+
+export interface AdminSchoolList {
+  /** 平台管理员管所有学校、能新建学校；其他学校的管理员只看到本校。 */
+  platformAdmin: boolean;
+  schools: AdminSchool[];
+}
+
+export type AdminSchoolInput = Partial<Pick<AdminSchool, "id" | "name" | "shortName" | "brandName" | "tagline" | "enabled">>;
 
 export const adminApi = {
   apnsConfig: (options?: RequestOptions) => request.get<ApnsConfig>("/admin/apns-config", undefined, options),
@@ -1453,7 +1464,11 @@ export const adminApi = {
   saveScheduleTerm: (semester: string, payload: Omit<ScheduleTermConfig, 'semester' | 'version' | 'updatedAt'>) =>
     request.put<ScheduleTermConfig>(`/admin/schedule-terms/${encodeURIComponent(semester)}`, payload),
   schools: (options?: RequestOptions) =>
-    request.get<AdminSchool[]>('/admin/schools', undefined, options),
+    request.get<AdminSchoolList>('/admin/schools', undefined, options),
+  createSchool: (input: AdminSchoolInput) =>
+    request.post<AdminSchool>('/admin/schools', input),
+  updateSchool: (schoolId: string, input: Omit<AdminSchoolInput, "id">) =>
+    request.patch<AdminSchool>(`/admin/schools/${encodeURIComponent(schoolId)}`, input),
   saveSchoolModules: (schoolId: string, modules: Record<string, boolean>) =>
     request.put<AdminSchoolModuleState[]>(`/admin/schools/${encodeURIComponent(schoolId)}/modules`, { modules }),
   // 数据库备份
@@ -1510,6 +1525,7 @@ export const adminApi = {
     voiceHubRole?: "admin" | "super_admin" | null;
     lostFoundRole?: "admin" | "super_admin" | null;
     college?: string; enrollYear?: number;
+    schoolId?: string;
   }) => request.post<any>("/admin/users", data),
   resetUserPassword: (id: number, newPassword: string) =>
     request.patch<{ ok: true }>(`/admin/users/${id}/password`, { newPassword }),

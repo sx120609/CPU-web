@@ -29,8 +29,8 @@
             data-image-eager="true"
           />
           <span class="brand-text">
-            <span class="brand-name">药大拾间</span>
-            <span class="brand-sub">CPU 校园互助服务</span>
+            <span class="brand-name">{{ site.brandName }}</span>
+            <span v-if="site.brandTagline" class="brand-sub">{{ site.brandTagline }}</span>
           </span>
         </router-link>
 
@@ -327,7 +327,7 @@
       :show-close="false"
     >
       <p class="dlg-tip">
-        欢迎来到药大拾间，先设置一个公开显示的昵称
+        欢迎来到{{ site.brandName }}，先设置一个公开显示的昵称
       </p>
       <p class="dlg-hint">
         {{ nicknameHint }}，<b>不会展示你的学号</b>。提交后由 AI 在后台异步审核，通过后才会公开显示。

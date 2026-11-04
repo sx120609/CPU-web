@@ -6,9 +6,9 @@
         <div class="footer-brand-block">
           <router-link class="footer-brand" to="/home">
             <img class="footer-brand-mark" :src="'/favicon.svg?v=20260830'" alt="" aria-hidden="true" decoding="async" />
-            药大拾间
+            {{ site.brandName }}
           </router-link>
-          <p class="footer-tagline">CPU 校园互助服务</p>
+          <p v-if="site.brandTagline" class="footer-tagline">{{ site.brandTagline }}</p>
           <p class="footer-company">球谐信息技术（深圳）有限公司</p>
         </div>
 
@@ -37,7 +37,7 @@
 
       <div class="footer-bottom">
         <div class="footer-legal">
-          <span>© 2026 药大拾间 · 非学校官方站点</span>
+          <span>© 2026 {{ site.brandName }} · 非学校官方站点</span>
           <a href="/terms.html">用户协议</a>
           <a href="/privacy.html">隐私政策</a>
         </div>

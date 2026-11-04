@@ -2,7 +2,7 @@
   <div class="home">
     <section class="intro" aria-label="首页功能入口">
       <div class="intro-copy">
-        <h1>药大拾间</h1>
+        <h1>{{ site.brandName }}</h1>
         <p>{{ heroIntro }}</p>
       </div>
       <div class="intro-actions cpu-button-row">
@@ -25,7 +25,7 @@
       </div>
     </section>
 
-    <p class="independent-service-note"><el-icon aria-hidden="true"><InfoFilled /></el-icon>独立校园工具，非中国药科大学官方应用；学校名称仅用于说明适用用户和数据来源。</p>
+    <p class="independent-service-note"><el-icon aria-hidden="true"><InfoFilled /></el-icon>独立校园工具，非{{ site.schoolName }}官方应用；学校名称仅用于说明适用用户和数据来源。</p>
 
     <section v-if="showForumContent" class="home-search-top" aria-label="站内搜索">
       <SiteSearchBar placeholder="搜索帖子或校园服务" />
@@ -245,7 +245,7 @@ const forumActionLabel = computed(() => {
 const heroIntro = computed(() => {
   const labels = enabledFeatureLabels.value;
   const text = labels.length > 1 ? `${labels.slice(0, -1).join("、")}与${labels.at(-1)}` : labels[0];
-  return `${text}，给药大学生一个更顺手的信息入口。`;
+  return `${text}，给${site.schoolShortName}学生一个更顺手的信息入口。`;
 });
 
 const loginActionText = computed(() => site.features.forum ? "登录" : "登录使用");
