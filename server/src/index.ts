@@ -8,6 +8,7 @@ import { ensureCollegeFeedSources } from "./services/collegeFeedSources";
 import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
 import { loadSchoolModuleOverrides } from "./schools/modules";
+import { ensureBuiltinSchools, loadSchools } from "./schools/store";
 import { loadStorageConfig } from "./services/storageConfig";
 import { attachJwxtAgentGateway } from "./services/jwxtAgentGateway";
 import { remoteGateway } from "./services/jwxtGatewayTransport";
@@ -49,6 +50,10 @@ async function start() {
   await loadFeatures().catch((e) => {
     if (managedRelease) throw e;
     console.warn("loadFeatures failed:", e?.message);
+  });
+  // 学校表要先于各校功能开关载入：开关只认已登记的学校。
+  await ensureBuiltinSchools().then(loadSchools).catch((e) => {
+    console.warn("loadSchools failed:", e?.message);
   });
   await loadSchoolModuleOverrides().catch((e) => {
     console.warn("loadSchoolModuleOverrides failed:", e?.message);

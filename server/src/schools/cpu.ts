@@ -6,6 +6,8 @@ export const cpuSchool: SchoolProfile = {
   name: "中国药科大学",
   shortName: "药大",
   brandName: "药大拾间",
+  tagline: "CPU 校园互助服务",
+  enabled: true,
   academicSystem: "qiangzhi-jsxsd",
   ssoLogin: true,
   hosts: {

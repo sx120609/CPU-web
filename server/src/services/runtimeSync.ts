@@ -1,6 +1,7 @@
 import { onRedisBroadcast, startRedisSubscriptions } from "./redis";
 import { loadFeatures } from "./siteSettings";
 import { loadSchoolModuleOverrides } from "../schools/modules";
+import { loadSchools } from "../schools/store";
 import { resetMediaStorageRuntimeCaches } from "./mediaStorage";
 import { resetOneDriveChinaTransientCaches } from "./oneDriveChina";
 import { loadStorageConfig } from "./storageConfig";
@@ -30,8 +31,8 @@ async function reloadSiteSettings() {
     loadFeatures().catch((error) => {
       console.warn("[runtime-sync] reload site settings failed", error);
     }),
-    loadSchoolModuleOverrides().catch((error) => {
-      console.warn("[runtime-sync] reload school modules failed", error);
+    loadSchools().then(loadSchoolModuleOverrides).catch((error) => {
+      console.warn("[runtime-sync] reload schools failed", error);
     }),
   ]);
 }

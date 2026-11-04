@@ -175,7 +175,8 @@ import {
   startAdminDeploymentUpdate,
 } from "../../services/deployment";
 import { getSchedulePeriods, listScheduleTermConfigs, saveSchedulePeriods, saveScheduleTermConfig } from "../../services/scheduleTermConfig";
-import { listSchools, resolveSchoolId } from "../../schools/registry";
+import { findSchool, listSchools, resolveSchoolId, type SchoolProfile } from "../../schools/registry";
+import { createSchool, ensureCanManageSchool, isPlatformAdmin, updateSchool } from "../../schools/store";
 import { boardSlugKey, repliesOfSchool, topicsOfSchool } from "../../schools/forumScope";
 import { getSchoolModuleStates, saveSchoolModuleOverrides } from "../../schools/modules";
 
@@ -476,8 +477,9 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
 
-    // 各校管理员只看得到本校账号。
-    const where: any = { schoolId: resolveSchoolId(req.user?.schoolId) };
+    // 各校管理员只看得到本校账号；平台管理员可以用 schoolId 查看其他学校。
+    const requestedSchool = isPlatformAdmin(req.user) && typeof req.query.schoolId === "string" ? findSchool(req.query.schoolId) : null;
+    const where: any = { schoolId: requestedSchool?.id ?? resolveSchoolId(req.user?.schoolId) };
     if (q) where.OR = [
       { username: { contains: q } },
       { nickname: { contains: q } },
@@ -774,6 +776,8 @@ const userCreateSchema = z.object({
   lostFoundRole: z.enum(["admin", "super_admin"]).nullable().optional(),
   college: z.string().max(40).optional(),
   enrollYear: z.number().int().min(2000).max(2100).optional(),
+  /** 平台管理员给其他学校开账号（例如新学校的第一个管理员）；其他管理员只能开在本校。 */
+  schoolId: z.string().trim().max(32).optional(),
 });
 
 adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, res, next) => {
@@ -788,8 +792,13 @@ adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, re
       college,
       enrollYear,
     } = req.body;
-    // 新账号开在管理员自己的学校。
-    const schoolId = resolveSchoolId(req.user?.schoolId);
+    // 新账号开在管理员自己的学校；平台管理员可以指定学校。
+    const requestedSchool = req.body.schoolId ? findSchool(req.body.schoolId) : null;
+    if (req.body.schoolId && !requestedSchool) throw Errors.badRequest("学校不存在");
+    if (requestedSchool && requestedSchool.id !== resolveSchoolId(req.user?.schoolId) && !isPlatformAdmin(req.user)) {
+      throw Errors.forbidden("只能在本校开通账号");
+    }
+    const schoolId = requestedSchool?.id ?? resolveSchoolId(req.user?.schoolId);
     const exists = await prisma.user.findUnique({ where: { schoolId_username: { schoolId, username } } });
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await bcrypt.hash(password, 10);
@@ -2307,21 +2316,60 @@ adminRouter.get("/schedule-terms", adminOnly, async (req, res, next) => {
   try { ok(res, await listScheduleTermConfigs(resolveSchoolId(req.user?.schoolId))); } catch (error) { next(error); }
 });
 
-/// 各校档案和功能开关。还没按学校隔离的功能，只有默认学校能打开。
-adminRouter.get("/schools", adminOnly, (_req, res) => {
-  ok(res, listSchools().map((school) => ({
+/// 拾间品牌下的各校档案和功能开关。平台管理员管所有学校、能新建学校；其他学校的管理员只管本校。
+function adminSchoolView(school: SchoolProfile) {
+  return {
     id: school.id,
     name: school.name,
     shortName: school.shortName,
     brandName: school.brandName,
+    tagline: school.tagline,
+    enabled: school.enabled,
     academicSystem: school.academicSystem,
+    ssoLogin: school.ssoLogin,
     modules: getSchoolModuleStates(school.id),
-  })));
+  };
+}
+
+adminRouter.get("/schools", adminOnly, (req, res) => {
+  const platform = isPlatformAdmin(req.user);
+  const ownSchoolId = resolveSchoolId(req.user?.schoolId);
+  ok(res, {
+    platformAdmin: platform,
+    schools: listSchools().filter((school) => platform || school.id === ownSchoolId).map(adminSchoolView),
+  });
+});
+
+const schoolInputSchema = z.object({
+  id: z.string().trim().max(32).optional(),
+  name: z.string().trim().max(40).optional(),
+  shortName: z.string().trim().max(12).optional(),
+  brandName: z.string().trim().max(20).optional(),
+  tagline: z.string().trim().max(40).optional(),
+  enabled: z.boolean().optional(),
+}).strict();
+
+adminRouter.post("/schools", adminOnly, validate(schoolInputSchema), async (req, res, next) => {
+  try {
+    if (!isPlatformAdmin(req.user)) throw Errors.forbidden("只有平台管理员可以新建学校");
+    ok(res, adminSchoolView(await createSchool(req.body)));
+  } catch (error) { next(error); }
+});
+
+adminRouter.patch("/schools/:schoolId", adminOnly, validate(schoolInputSchema.omit({ id: true })), async (req, res, next) => {
+  try {
+    const schoolId = String(req.params.schoolId || "");
+    ensureCanManageSchool(req.user, schoolId);
+    ok(res, adminSchoolView(await updateSchool(schoolId, req.body, { canToggleEnabled: isPlatformAdmin(req.user) })));
+  } catch (error) { next(error); }
 });
 
 adminRouter.put("/schools/:schoolId/modules", adminOnly, validate(z.object({ modules: z.record(z.boolean()) }).strict()), async (req, res, next) => {
-  try { ok(res, await saveSchoolModuleOverrides(String(req.params.schoolId || ""), req.body.modules)); }
-  catch (error) { next(error); }
+  try {
+    const schoolId = String(req.params.schoolId || "");
+    ensureCanManageSchool(req.user, schoolId);
+    ok(res, await saveSchoolModuleOverrides(schoolId, req.body.modules));
+  } catch (error) { next(error); }
 });
 
 /// 管理员所在学校的节次时间，和学期分开读写。

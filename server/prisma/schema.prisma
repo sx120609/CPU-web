@@ -11,6 +11,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============ 学校（拾间品牌下的各校站点） ============
+
+// 名称和品牌信息后台可改；教务对接、统一认证等要写代码的部分只有内置学校（server/src/schools）才有。
+// 各表的 schoolId 指向这里的 id，不设外键：内置学校在没有这一行时也能用。
+model School {
+  id        String   @id // 小写字母开头的短代号，例如 cpu
+  name      String
+  shortName String
+  brandName String
+  tagline   String   @default("")
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ============ 用户（站内独立账号，不接学校账号） ============
 
 model User {

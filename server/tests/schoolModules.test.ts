@@ -11,7 +11,8 @@ import {
   requireSchoolModule,
   schoolModuleForRoute,
 } from "../src/schools/modules";
-import { DEFAULT_SCHOOL_ID, getSchool, resolveSchoolId, type SchoolProfile } from "../src/schools/registry";
+import { DEFAULT_SCHOOL_ID, applySchoolRows, findSchool, getSchool, resolveSchoolId, type SchoolProfile } from "../src/schools/registry";
+import { ensureCanManageSchool, isPlatformAdmin } from "../src/schools/store";
 import { signToken } from "../src/utils/jwt";
 
 const otherSchool: SchoolProfile = { ...getSchool(DEFAULT_SCHOOL_ID), id: "njmu", defaultModules: SCHOOL_MODULE_KEYS };
@@ -75,4 +76,35 @@ test("every guarded route prefix is mounted exactly as listed", () => {
       assert.equal(schoolModuleForRoute(route), module.key);
     }
   }
+});
+
+test("schools created in the admin are local-account schools with every isolated feature on", () => {
+  applySchoolRows([
+    { id: "cpu", name: "中国药科大学", shortName: "药大", brandName: "药大拾间", tagline: "", enabled: true },
+    { id: "njmu", name: "南京医科大学", shortName: "南医", brandName: "南医拾间", tagline: "", enabled: false },
+  ], SCHOOL_MODULE_KEYS);
+  try {
+    const njmu = findSchool("njmu")!;
+    assert.equal(njmu.brandName, "南医拾间");
+    assert.equal(njmu.ssoLogin, false);
+    assert.equal(njmu.academicSystem, null);
+    assert.equal(resolveSchoolId("njmu"), "njmu");
+    assert.equal(getSchool("cpu").ssoLogin, true);
+    assert.ok(getEnabledSchoolModules("njmu").includes("forum"));
+    assert.ok(!getEnabledSchoolModules("njmu").includes("academic"));
+  } finally {
+    applySchoolRows([], SCHOOL_MODULE_KEYS);
+  }
+  assert.equal(findSchool("njmu"), null);
+  assert.equal(getSchool("cpu").brandName, "药大拾间");
+});
+
+test("only default-school admins manage every school; other admins manage their own", () => {
+  assert.equal(isPlatformAdmin({ role: "admin", schoolId: "cpu" }), true);
+  assert.equal(isPlatformAdmin({ role: "admin" }), true);
+  assert.equal(isPlatformAdmin({ role: "admin", schoolId: "njmu" }), false);
+  assert.equal(isPlatformAdmin({ role: "mod", schoolId: "cpu" }), false);
+  assert.doesNotThrow(() => ensureCanManageSchool({ role: "admin", schoolId: "njmu" }, "njmu"));
+  assert.throws(() => ensureCanManageSchool({ role: "admin", schoolId: "njmu" }, "cpu"));
+  assert.throws(() => ensureCanManageSchool({ role: "mod", schoolId: "njmu" }, "njmu"));
 });
