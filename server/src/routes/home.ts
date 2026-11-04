@@ -58,7 +58,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       }) : Promise.resolve(null),
       userId ? prisma.notification.count({ where: { userId, readAt: null } }) : Promise.resolve(0),
       userId ? prisma.notificationRead.count({ where: { userId } }) : Promise.resolve(0),
-      userId ? prisma.notification.count({ where: { userId: null } }) : Promise.resolve(0),
+      userId ? prisma.notification.count({ where: { userId: null, schoolId: requestSchoolId(req) } }) : Promise.resolve(0),
     ]);
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const trust = user ? buildUserTrustSnapshot(user) : null;

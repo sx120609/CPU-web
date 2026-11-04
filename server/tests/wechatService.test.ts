@@ -156,7 +156,7 @@ test("accepts content report notifications for WeChat forwarding", () => {
 
 test("limits notification scans to bound users while retaining global notices", () => {
   assert.deepEqual(wechatNotificationAudienceWhere([11, 23, 11, 0, -1]), {
-    OR: [{ userId: null }, { userId: { in: [11, 23] } }],
+    OR: [{ userId: null, schoolId: "cpu" }, { userId: { in: [11, 23] } }],
   });
 });
 

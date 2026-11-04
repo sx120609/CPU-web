@@ -206,13 +206,14 @@ export async function backfillAdminDailyLoginsFromLastLogin(days = 30, now = new
   return locked.acquired ? locked.result ?? { skipped: true, count: 0 } : { skipped: true, count: 0 };
 }
 
-export async function listAdminDailyLoginSeries(days = 30, now = new Date()): Promise<AdminDailyLoginPoint[]> {
+/** schoolId 给了就只算这所学校的账号（Redis 里的计数桶不分学校，此时不用）。 */
+export async function listAdminDailyLoginSeries(days = 30, now = new Date(), schoolId?: string): Promise<AdminDailyLoginPoint[]> {
   const dateKeys = recentDateKeys(days, now);
   const dbCounts = new Map<string, number>();
   try {
     const rows = await prisma.adminDailyLogin.groupBy({
       by: ["dateKey"],
-      where: { dateKey: { in: dateKeys } },
+      where: { dateKey: { in: dateKeys }, ...(schoolId ? { user: { schoolId } } : {}) },
       _count: { _all: true },
     });
     rows.forEach((row) => {
@@ -222,6 +223,7 @@ export async function listAdminDailyLoginSeries(days = 30, now = new Date()): Pr
     console.warn("[admin-stats] failed to read daily login rows", error);
   }
 
+  if (schoolId) return dateKeys.map((dateKey) => ({ date: dateKey, count: dbCounts.get(dateKey) ?? 0 }));
   const buckets = await Promise.all(dateKeys.map((dateKey) => getCachedJson<AdminDailyLoginBucket>(dailyLoginCacheKey(dateKey))));
   return dateKeys.map((dateKey, index) => {
     const bucket = normalizeBucket(buckets[index], dateKey);

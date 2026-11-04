@@ -1,3 +1,4 @@
+import { adminSchoolId } from "../../schools/store";
 import { Router } from "express";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -93,7 +94,7 @@ function normalizePayload(input: z.infer<typeof adInputFields>) {
 forumAdsAdminRouter.get("/", schoolAdminOnly, async (req, res, next) => {
   try {
     const list = await prisma.forumAd.findMany({
-      where: { schoolId: resolveSchoolId(req.user?.schoolId) },
+      where: { schoolId: adminSchoolId(req) },
       orderBy: [{ placement: "asc" }, { sortOrder: "asc" }, { updatedAt: "desc" }],
       include: {
         metrics: {
@@ -144,7 +145,7 @@ forumAdsAdminRouter.post("/image", schoolAdminOnly, (req, res, next) => {
 forumAdsAdminRouter.post("/", schoolAdminOnly, validate(adInputSchema), async (req, res, next) => {
   try {
     const ad = await prisma.forumAd.create({
-      data: { ...normalizePayload(req.body), schoolId: resolveSchoolId(req.user?.schoolId), createdById: req.user!.userId },
+      data: { ...normalizePayload(req.body), schoolId: adminSchoolId(req), createdById: req.user!.userId },
     });
     await invalidateForumAdCaches();
     ok(res, ad);
@@ -156,7 +157,7 @@ forumAdsAdminRouter.patch("/:id", schoolAdminOnly, validate(adPatchSchema), asyn
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("广告 ID 无效");
     const existing = await prisma.forumAd.findUnique({ where: { id } });
-    if (!existing || existing.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("广告不存在");
+    if (!existing || existing.schoolId !== adminSchoolId(req)) throw Errors.notFound("广告不存在");
     const placements = req.body.placements
       ?? (req.body.placement ? [req.body.placement] : normalizeForumAdPlacements(existing.placements, existing.placement));
     const merged = {
@@ -185,7 +186,7 @@ forumAdsAdminRouter.delete("/:id", schoolAdminOnly, async (req, res, next) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("广告 ID 无效");
     const existing = await prisma.forumAd.findUnique({ where: { id }, select: { id: true, schoolId: true } });
-    if (!existing || existing.schoolId !== resolveSchoolId(req.user?.schoolId)) throw Errors.notFound("广告不存在");
+    if (!existing || existing.schoolId !== adminSchoolId(req)) throw Errors.notFound("广告不存在");
     await prisma.forumAd.delete({ where: { id } });
     await invalidateForumAdCaches();
     ok(res, { ok: true });

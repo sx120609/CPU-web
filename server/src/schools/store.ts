@@ -8,6 +8,7 @@ import {
   DEFAULT_SCHOOL_ID,
   applySchoolRows,
   findSchool,
+  resolveSchoolId,
   type SchoolProfile,
   type SchoolRow,
 } from "./registry";
@@ -21,6 +22,18 @@ const SCHOOL_ID_PATTERN = /^[a-z][a-z0-9-]{1,31}$/u;
  */
 export function isPlatformAdmin(user: { role?: string | null; schoolId?: string | null } | null | undefined) {
   return user?.role === "admin" && user.schoolId === DEFAULT_SCHOOL_ID;
+}
+
+/**
+ * 后台「正在管理的学校」。平台管理员在后台顶部切换学校，请求带 X-Admin-School；
+ * 各校管理员只能是自己学校，带了别的学校也不认。
+ */
+export function adminSchoolId(req: { user?: { role?: string | null; schoolId?: string | null } | null; headers?: Record<string, unknown> }) {
+  const own = resolveSchoolId(req.user?.schoolId);
+  if (!isPlatformAdmin(req.user)) return own;
+  const raw = req.headers?.["x-admin-school"];
+  const requested = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return requested && findSchool(requested) ? requested : own;
 }
 
 export function ensureCanManageSchool(user: { role?: string | null; schoolId?: string | null } | null | undefined, schoolId: string) {

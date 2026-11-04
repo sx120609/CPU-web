@@ -3,6 +3,16 @@
     <div class="admin-head">
       <h1 class="title"><AppIcon name="tools" /> 管理后台</h1>
       <div class="user-tag">
+        <el-select
+          v-if="isPlatformAdmin && managedSchools.length > 1"
+          :model-value="managedSchoolId"
+          size="small"
+          class="admin-school-select"
+          aria-label="正在管理的学校"
+          @change="switchManagedSchool"
+        >
+          <el-option v-for="item in managedSchools" :key="item.id" :label="`管理：${item.brandName}`" :value="item.id" />
+        </el-select>
         <router-link v-if="auth.isAdmin" to="/workshop/review"><el-button size="small">创意工坊审核</el-button></router-link>
         <el-button v-if="canOpenVoiceHub" size="small" @click="openVoiceHubDashboard">
           药苑之声控制台
@@ -93,7 +103,7 @@
       <el-tab-pane name="schools" v-if="auth.isAdmin"><template #label><AppIcon name="school" /> 学校与功能</template><SchoolsPane v-if="tab === 'schools'" /></el-tab-pane>
       <el-tab-pane name="schedule-terms" v-if="auth.isAdmin && site.pathEnabled('/schedule')"><template #label><AppIcon name="calendar" /> 课表校历</template><ScheduleTermsPane v-if="tab === 'schedule-terms'" /></el-tab-pane>
       <el-tab-pane name="apns" v-if="isPlatformAdmin"><template #label><AppIcon name="service" /> APNs 推送</template><ApnsPane v-if="tab === 'apns'" /></el-tab-pane>
-      <el-tab-pane name="announcements" v-if="isPlatformAdmin"><template #label><AppIcon name="announcement" /> 公告</template><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
+      <el-tab-pane name="announcements" v-if="auth.isAdmin"><template #label><AppIcon name="announcement" /> 公告</template><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
       <el-tab-pane name="forum-ads" v-if="auth.isAdmin"><template #label><AppIcon name="promotion" /> 论坛广告</template><ForumAdsPane v-if="tab === 'forum-ads'" /></el-tab-pane>
       <el-tab-pane name="vip-gift-codes" v-if="isPlatformAdmin"><template #label><AppIcon name="gift" /> VIP 礼品码</template><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
       <el-tab-pane name="epay" v-if="isPlatformAdmin"><template #label><AppIcon name="card" /> 支付对接</template><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
@@ -123,6 +133,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { adminApi, type AdminOverview } from "@/api/admin";
+import { adminSchool, setAdminSchool } from "@/utils/adminSchool";
 
 const DailyActiveChart = defineAsyncComponent(() => import("./DailyActiveChart.vue"));
 const UsersPane = defineAsyncComponent(() => import("./UsersPane.vue"));
@@ -166,7 +177,7 @@ const canManageUsers = computed(() => isCoreStaff.value
   || auth.user?.voiceHubRole === "super_admin"
   || auth.user?.lostFoundRole === "super_admin");
 const canManageLostFound = computed(() => isCoreStaff.value || !!auth.user?.lostFoundRole);
-const canOpenVoiceHub = computed(() => auth.isMod || !!auth.user?.voiceHubRole);
+const canOpenVoiceHub = computed(() => (auth.isMod || !!auth.user?.voiceHubRole) && managedSchoolId.value === "cpu");
 const adminIdentityLabel = computed(() => {
   const labels: string[] = [];
   if (auth.user?.role === "admin") labels.push("站点超级管理员");
@@ -180,6 +191,15 @@ const adminIdentityLabel = computed(() => {
 
 // 全站设置和运维只给平台管理员；其他学校的管理员只看按学校划分过的页面。旧版服务端不返回 platformAdmin 时按原来的管理员处理。
 const isPlatformAdmin = computed(() => auth.isAdmin && auth.user?.platformAdmin !== false);
+
+// 平台管理员在这里切换正在管理的学校；后台的统计、用户、帖子、公告、AI 等按这所学校读写。
+const managedSchools = ref<Array<{ id: string; brandName: string }>>([]);
+const managedSchoolId = computed(() => adminSchool.value || auth.user?.schoolId || "cpu");
+function switchManagedSchool(value: string) {
+  setAdminSchool(value === (auth.user?.schoolId || "cpu") ? "" : value);
+  // 各个面板各自缓存了数据，整页重新载入最稳。
+  window.location.reload();
+}
 const PLATFORM_ADMIN_TABS = new Set(["navigation", "feeds", "jwxt-agents", "apns", "announcements", "vip-gift-codes", "epay", "sponsor", "qqbot", "wechat", "ai", "deployment", "database", "ios-clients", "android-clients", "harmony-clients", "desktop-installs", "cloud-usage", "media-storage", "filestore-settings", "features"]);
 
 function allowedAdminTab(value: string) {
@@ -333,6 +353,13 @@ const dailyActiveChartOption = computed<EChartsOption>(() => {
 
 onMounted(() => {
   if (isCoreStaff.value) loadOverview();
+  if (isPlatformAdmin.value) {
+    adminApi.schools({ cacheTtlMs: 0 }).then((result) => {
+      managedSchools.value = result.schools.map((item) => ({ id: item.id, brandName: item.brandName }));
+      // 管理的学校被删掉或从未存在时回到自己学校。
+      if (adminSchool.value && !result.schools.some((item) => item.id === adminSchool.value)) setAdminSchool("");
+    }).catch(() => undefined);
+  }
 });
 
 function openVoiceHubDashboard() {
@@ -383,6 +410,7 @@ watch(tab, (next) => {
 .admin-head { display: flex; justify-content: space-between; align-items: center; }
 .title { margin: 0; font-size: 24px; }
 .user-tag { display: flex; gap: 8px; align-items: center; }
+.admin-school-select { width: 160px; }
 .me { font-size: 13px; color: var(--cpu-text-secondary); }
 .overview-alert :deep(.el-alert__content) {
   display: flex;

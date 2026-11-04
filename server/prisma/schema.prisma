@@ -2354,6 +2354,8 @@ model LostFoundClaim {
 model Notification {
   id           Int       @id @default(autoincrement())
   userId       Int? // null = 全局广播
+  /// 全局广播属于哪所学校（只发给这所学校的用户）；个人通知不填。
+  schoolId     String?
   // 事件类型：reply / mention / like / system / school-feed
   category     String
   // 目标客户端：null = 全部；仅对对应客户端可见
@@ -2373,6 +2375,7 @@ model Notification {
   @@index([userId, readAt])
   @@index([userId, category, createdAt])
   @@index([category, createdAt])
+  @@index([schoolId, createdAt])
   @@index([targetClient, createdAt])
 }
 

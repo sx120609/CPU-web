@@ -1,4 +1,5 @@
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
+import { activeAdminSchool } from "@/utils/adminSchool";
 import { ElMessage } from "element-plus";
 import { reactive } from "vue";
 import { detectAnalyticsClient } from "@/utils/clientInfo";
@@ -117,7 +118,7 @@ function cacheKey(url: string, params?: Record<string, unknown>) {
     ? (memoryAuthCacheScope || "auth-pending")
     : "guest";
   // 访客换学校后看到的板块、首页、开关都不同，缓存要按所选学校分开。
-  return `${responseCacheGeneration}:${authScope}:${getSchoolChoice() || "default"}:${url}:${stableParams(params)}`;
+  return `${responseCacheGeneration}:${authScope}:${getSchoolChoice() || "default"}:${activeAdminSchool() || "-"}:${url}:${stableParams(params)}`;
 }
 
 function toReactiveCacheValue<T>(value: T): T {
@@ -373,6 +374,9 @@ instance.interceptors.request.use(async (config) => {
   config.headers["X-CPU-Client"] = detectAnalyticsClient();
   const schoolChoice = getSchoolChoice();
   if (schoolChoice) config.headers["X-CPU-School"] = schoolChoice;
+  // 平台管理员在后台切换到某所学校时，后台页面的请求按那所学校处理。
+  const managedSchool = activeAdminSchool();
+  if (managedSchool) config.headers["X-Admin-School"] = managedSchool;
   return config;
 });
 

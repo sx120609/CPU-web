@@ -1,3 +1,4 @@
+import { resolveSchoolId } from "../schools/registry";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
@@ -56,7 +57,8 @@ messageRouter.get("/", async (req, res, next) => {
     const list = await prisma.notification.findMany({
       where: {
         AND: [
-          { OR: [{ userId }, { userId: null }] },
+          // 全站公告只看本校的。
+          { OR: [{ userId }, { userId: null, schoolId: resolveSchoolId(req.user!.schoolId) }] },
           category ? { category } : {},
         ],
       },
@@ -120,6 +122,7 @@ messageRouter.post("/read-all", async (req, res, next) => {
     const globals = await prisma.notification.findMany({
       where: {
         userId: null,
+        schoolId: resolveSchoolId(req.user!.schoolId),
         ...notificationTargetClientWhere(client),
       },
       select: { id: true },

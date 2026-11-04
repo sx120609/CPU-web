@@ -12,7 +12,7 @@ import {
   schoolModuleForRoute,
 } from "../src/schools/modules";
 import { DEFAULT_SCHOOL_ID, applySchoolRows, findSchool, getSchool, resolveSchoolId, type SchoolProfile } from "../src/schools/registry";
-import { ensureCanManageSchool, isPlatformAdmin } from "../src/schools/store";
+import { adminSchoolId, ensureCanManageSchool, isPlatformAdmin } from "../src/schools/store";
 import { signToken } from "../src/utils/jwt";
 
 const otherSchool: SchoolProfile = { ...getSchool(DEFAULT_SCHOOL_ID), id: "example", defaultModules: SCHOOL_MODULE_KEYS };
@@ -133,4 +133,24 @@ test("南医是带教务驱动的内置学校：统一认证登录、教务可�
   } finally {
     applySchoolRows([], SCHOOL_MODULE_KEYS);
   }
+});
+
+test("后台切换学校只对平台管理员生效", () => {
+  const withHeader = (user: Record<string, unknown> | undefined, bearer?: string) => ({
+    user,
+    headers: { "x-admin-school": "njmu", ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
+  }) as unknown as Request;
+  assert.equal(requestSchoolId(withHeader({ role: "admin", schoolId: "cpu" })), "njmu");
+  assert.equal(adminSchoolId(withHeader({ role: "admin", schoolId: "cpu" })), "njmu");
+  // 外校管理员、普通用户带了也不认。
+  assert.equal(requestSchoolId(withHeader({ role: "admin", schoolId: "njmu" })), "njmu");
+  assert.equal(requestSchoolId(withHeader({ role: "user", schoolId: "cpu" })), "cpu");
+  assert.equal(adminSchoolId(withHeader({ role: "mod", schoolId: "cpu" })), "cpu");
+  // 只有令牌、还没解析出用户时同样只认平台管理员。
+  const adminToken = signToken({ userId: 1, studentId: "admin", role: "admin", campus: "", schoolId: "cpu" });
+  assert.equal(requestSchoolId(withHeader(undefined, adminToken)), "njmu");
+  assert.equal(requestSchoolId(withHeader(undefined, token("cpu"))), "cpu");
+  // 不存在的学校按自己学校。
+  const unknown = { user: { role: "admin", schoolId: "cpu" }, headers: { "x-admin-school": "nowhere" } } as unknown as Request;
+  assert.equal(adminSchoolId(unknown), "cpu");
 });

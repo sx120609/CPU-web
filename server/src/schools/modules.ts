@@ -102,13 +102,22 @@ export async function saveSchoolModuleOverrides(schoolId: string, input: unknown
  * 直接验令牌签名取 schoolId，不查库；旧令牌按默认学校。访客按网页选的学校
  * （X-CPU-School 请求头），没选过的按默认学校。
  */
+/** 平台管理员在后台切换到某所学校时（X-Admin-School），后台请求按那所学校处理；其他人带了也不认。 */
+function adminSchoolOverride(req: Request, identity: { role?: string | null; schoolId?: string | null } | null | undefined) {
+  if (identity?.role !== "admin" || resolveSchoolId(identity.schoolId) !== DEFAULT_SCHOOL_ID || !identity.schoolId) return null;
+  const raw = req.headers?.["x-admin-school"];
+  const requested = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return requested && findSchool(requested) ? requested : null;
+}
+
 export function requestSchoolId(req: Request): string {
-  if (req.user?.schoolId) return resolveSchoolId(req.user.schoolId);
+  if (req.user?.schoolId) return adminSchoolOverride(req, req.user) ?? resolveSchoolId(req.user.schoolId);
   const header = req.headers?.authorization;
   const token = req.browserSession?.siteToken || (header?.startsWith("Bearer ") ? header.slice(7) : "");
   if (token) {
     try {
-      return resolveSchoolId(verifyToken(token).schoolId);
+      const payload = verifyToken(token);
+      return adminSchoolOverride(req, payload) ?? resolveSchoolId(payload.schoolId);
     } catch {
       // 令牌无效时交给后面的鉴权去回 401，这里只决定按哪所学校的开关放行。
     }

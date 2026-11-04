@@ -1,3 +1,4 @@
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 import crypto from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import QRCode from "qrcode";
@@ -1282,7 +1283,8 @@ export async function dispatchRecentWechatNotifications() {
 
 export function wechatNotificationAudienceWhere(userIds: readonly number[]) {
   const ids = Array.from(new Set(userIds.filter((userId) => Number.isInteger(userId) && userId > 0)));
-  return { OR: [{ userId: null }, { userId: { in: ids } }] };
+  // 微信服务号是默认学校的，外校的全站公告不推。
+  return { OR: [{ userId: null, schoolId: DEFAULT_SCHOOL_ID }, { userId: { in: ids } }] };
 }
 
 export function wechatNotificationAttemptSince(notificationCreatedAt: Date, lastInteractionAt?: Date | null) {

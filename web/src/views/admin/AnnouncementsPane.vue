@@ -1,13 +1,13 @@
 <template>
   <div class="ann-pane">
     <el-card shadow="never" class="composer">
-      <template #header><h3 style="margin:0;font-size:15px"><AppIcon :name="editingId ? 'edit' : 'announcement'" /> {{ editingId ? "编辑全站公告" : "发布全站公告" }}</h3></template>
+      <template #header><h3 style="margin:0;font-size:15px"><AppIcon :name="editingId ? 'edit' : 'announcement'" /> {{ editingId ? "编辑本校公告" : "发布本校公告" }}</h3></template>
       <el-form :model="form" label-position="top">
         <el-form-item label="标题">
           <el-input v-model="form.title" maxlength="120" placeholder="公告标题" show-word-limit />
         </el-form-item>
         <el-form-item label="内容">
-          <el-input v-model="form.content" type="textarea" :rows="4" maxlength="2000" placeholder="公告内容，所有用户都会在消息中心看到" show-word-limit />
+          <el-input v-model="form.content" type="textarea" :rows="4" maxlength="2000" placeholder="公告内容，这所学校的用户都会在消息中心看到" show-word-limit />
         </el-form-item>
         <el-form-item label="级别">
           <el-radio-group v-model="form.level">

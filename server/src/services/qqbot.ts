@@ -3363,7 +3363,8 @@ export async function dispatchRecentQqNotifications() {
         category: { in: categories },
         OR: [
           { userId: { not: null }, readAt: null },
-          { userId: null },
+          // QQ 机器人目前只服务默认学校，外校的全站公告不转发。
+          { userId: null, schoolId: DEFAULT_SCHOOL_ID },
         ],
       },
       orderBy: { createdAt: "asc" },
