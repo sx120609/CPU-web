@@ -42,31 +42,31 @@
           </div>
 
           <div class="cp-filter">
-            <span class="cp-filter-label">楼层</span>
+            <span class="cp-filter-label">楼层（可多选）</span>
             <div class="cp-chips">
               <button
                 v-for="option in floorOptions"
                 :key="option.value"
                 type="button"
                 class="cp-chip"
-                :class="{ 'is-active': level === option.value }"
-                :aria-pressed="level === option.value"
-                @click="selectFloor(option.value)"
+                :class="{ 'is-active': isFloorActive(option.value) }"
+                :aria-pressed="isFloorActive(option.value)"
+                @click="toggleFloor(option.value)"
               >{{ option.label }}</button>
             </div>
           </div>
 
           <div class="cp-filter">
-            <span class="cp-filter-label">品类</span>
+            <span class="cp-filter-label">品类（可多选）</span>
             <div class="cp-chips">
               <button
                 v-for="option in categoryOptions"
                 :key="option.value"
                 type="button"
                 class="cp-chip"
-                :class="{ 'is-active': category === option.value }"
-                :aria-pressed="category === option.value"
-                @click="selectCategory(option.value)"
+                :class="{ 'is-active': isCategoryActive(option.value) }"
+                :aria-pressed="isCategoryActive(option.value)"
+                @click="toggleCategory(option.value)"
               >{{ option.label }}</button>
             </div>
           </div>
@@ -223,7 +223,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
-import { useAuthStore } from "@/stores/auth";
+import { getToken, hasAuthPresence } from "@/api/request";
 import { toolsApi } from "@/api/tools";
 import type { CanteenReviews } from "@/api/tools";
 import {
@@ -239,10 +239,9 @@ import {
 } from "@/data/canteenPicker";
 
 const route = useRoute();
-const auth = useAuthStore();
 const canteen = ref("all");
-const level = ref("all");
-const category = ref("all");
+const levels = ref(new Set<string>());
+const categories = ref(new Set<string>());
 const excluded = ref(new Set<string>());
 const selected = ref<CanteenShop | null>(null);
 const lastCandidateCount = ref(0);
@@ -253,7 +252,7 @@ const rating = ref(0);
 const comment = ref("");
 const reviewTouched = ref(false);
 const reviewStatus = ref("");
-const loggedIn = computed(() => auth.isLoggedIn);
+const loggedIn = computed(() => Boolean(getToken()) || hasAuthPresence());
 
 const canteenOptions = [
   { value: "all", label: "不限" },
@@ -272,27 +271,36 @@ const scopedShops = computed(() =>
   ALL_SHOPS.filter(
     (shop) =>
       (canteen.value === "all" || shop.canteenId === canteen.value) &&
-      (level.value === "all" || String(shop.level) === level.value),
+      (levels.value.size === 0 || levels.value.has(String(shop.level))),
   ),
 );
 const filteredShops = computed(() =>
   scopedShops.value.filter(
-    (shop) => category.value === "all" || shop.tags.includes(category.value),
+    (shop) => categories.value.size === 0 || shop.tags.some((tag) => categories.value.has(tag)),
   ),
 );
 const candidates = computed(() =>
   filteredShops.value.filter((shop) => !excluded.value.has(shop.id)),
 );
 
+const selectedFloorLevels = computed(() =>
+  FLOOR_LEVELS.filter((level) => levels.value.has(String(level))),
+);
+const selectedCategoryNames = computed(() =>
+  CATEGORIES.filter((item) => categories.value.has(item.id)).map((item) => item.name),
+);
 const scopeLabel = computed(() => {
-  const canteenName =
+  const canteenLabel =
     canteen.value === "all"
       ? "全部食堂"
       : CANTEENS.find((item) => item.id === canteen.value)?.name || "全部食堂";
-  const floorName = level.value === "all" ? "全部楼层" : `${level.value} 楼`;
-  return category.value === "all"
-    ? `${canteenName} · ${floorName}`
-    : `${canteenName} · ${floorName} · ${categoryName(category.value)}`;
+  const floorLabel = selectedFloorLevels.value.length
+    ? selectedFloorLevels.value.map((level) => `${level} 楼`).join(" / ")
+    : "全部楼层";
+  const categoryLabel = selectedCategoryNames.value.length
+    ? selectedCategoryNames.value.join(" / ")
+    : "全部品类";
+  return `${canteenLabel} · ${floorLabel} · ${categoryLabel}`;
 });
 
 const emptyFloorNote = computed(() =>
@@ -301,9 +309,24 @@ const emptyFloorNote = computed(() =>
     : "",
 );
 
+const emptyFloor = computed(() =>
+  EMPTY_FLOORS.find(
+    (item) =>
+      (canteen.value === "all" || canteen.value === item.canteenId) &&
+      (levels.value.size === 0 || levels.value.has(String(item.level))),
+  ),
+);
 const emptyState = computed(() => {
-  if (!scopedShops.value.length) return { title: "这个范围暂无门店", text: "换一个楼层或食堂试试。" };
-  if (!filteredShops.value.length) return { title: "这个品类暂无门店", text: "换个品类或放宽筛选。" };
+  if (!scopedShops.value.length) {
+    if (emptyFloor.value) {
+      return {
+        title: `${emptyFloor.value.canteenName} ${emptyFloor.value.code} 待补充`,
+        text: `${emptyFloor.value.canteenName} ${emptyFloor.value.label}还没有录入门店数据，先换一个楼层吧。`,
+      };
+    }
+    return { title: "这个范围暂无门店", text: "换一个楼层或食堂试试。" };
+  }
+  if (!filteredShops.value.length) return { title: "这些品类暂无门店", text: "换几个品类或放宽筛选。" };
   return { title: "店铺都被排除了", text: "恢复一些店铺，或换一个筛选范围。" };
 });
 const emptyTitle = computed(() => (candidates.value.length ? "答案还在路上" : emptyState.value.title));
@@ -322,12 +345,32 @@ function selectCanteen(value: string) {
   canteen.value = value;
   resetResult();
 }
-function selectFloor(value: string) {
-  level.value = value;
+function isFloorActive(value: string) {
+  return value === "all" ? levels.value.size === 0 : levels.value.has(value);
+}
+function toggleFloor(value: string) {
+  if (value === "all") {
+    levels.value = new Set();
+  } else {
+    const next = new Set(levels.value);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    levels.value = next;
+  }
   resetResult();
 }
-function selectCategory(value: string) {
-  category.value = value;
+function isCategoryActive(value: string) {
+  return value === "all" ? categories.value.size === 0 : categories.value.has(value);
+}
+function toggleCategory(value: string) {
+  if (value === "all") {
+    categories.value = new Set();
+  } else {
+    const next = new Set(categories.value);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    categories.value = next;
+  }
   resetResult();
 }
 function resetResult() {
