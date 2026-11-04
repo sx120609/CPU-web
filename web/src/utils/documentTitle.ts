@@ -6,9 +6,15 @@ import { useRoute } from "vue-router";
 let siteName = "药大拾间";
 let homeTitle = "药大拾间 · 中国药科大学校园互助与服务平台";
 let lastTitle: string | null = null;
+/** 外校时把页面名里写给药大的说法（「药大人能飞」）换成本校简称；默认学校为空。 */
+let localShortName = "";
+
+function localizeTitle(title: string) {
+  return localShortName ? title.replaceAll("药大", localShortName) : title;
+}
 
 export function setDocumentTitle(title?: string | null) {
-  lastTitle = String(title || "").trim() || null;
+  lastTitle = localizeTitle(String(title || "").trim()) || null;
   document.title = lastTitle ? `${lastTitle} · ${siteName}` : homeTitle;
 }
 
@@ -18,8 +24,9 @@ export function currentBrandName() {
 }
 
 /** 当前学校的品牌名和学校全称，用来拼页面标题；换学校后当前页的标题立即跟着变。 */
-export function setDocumentBrand(brandName: string, schoolName: string) {
+export function setDocumentBrand(brandName: string, schoolName: string, shortName = "", isDefaultSchool = true) {
   siteName = brandName;
+  localShortName = isDefaultSchool ? "" : shortName;
   homeTitle = `${brandName} · ${schoolName}校园互助与服务平台`;
   if (typeof document !== "undefined") document.title = lastTitle ? `${lastTitle} · ${siteName}` : homeTitle;
 }

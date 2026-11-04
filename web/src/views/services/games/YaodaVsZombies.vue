@@ -6,7 +6,7 @@
         ref="canvasEl"
         class="game-canvas"
         role="img"
-        aria-label="药大人大战僵尸游戏区域"
+        :aria-label="st('药大人大战僵尸游戏区域')"
         tabindex="0"
         @pointerdown="handleCanvasPointer"
       ></canvas>
@@ -14,7 +14,7 @@
       <section v-if="screen === 'menu'" class="menu-screen">
         <button data-cpu-button="surface" type="button" class="corner-back" aria-label="返回小游戏" @click="router.push(MINI_GAMES_PATH)">←</button>
         <canvas ref="menuArtEl" class="menu-emblem" width="248" height="248" role="img" aria-label="胶囊射手对阵僵尸"></canvas>
-        <h1>药大人大战僵尸</h1>
+        <h1>{{ st('药大人大战僵尸') }}</h1>
         <p class="menu-tagline">🌿 种药材 · 守药圃 · 一只都别放过</p>
         <div class="best-score-box">
           <span>最高分</span>
@@ -274,6 +274,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSchoolText } from "@/utils/schoolText";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { onBeforeRouteLeave, useRouter } from "vue-router";
 import { getToken } from "@/api/request";
@@ -313,6 +314,9 @@ import {
   type ZdUnitKind,
 } from "./zombieDefenseEngine";
 import { drawZdMenuArt, drawZdScene, drawZdUnitIcon, setZdArtStyle, zdArtReady, zdCellAt, zdLayout, type ZdArtStyle } from "./zombieDefenseScene";
+
+// 外校显示成本校简称（见 utils/schoolText.ts）。
+const st = useSchoolText();
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";

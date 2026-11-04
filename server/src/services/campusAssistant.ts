@@ -91,10 +91,10 @@ export function assistantSchoolOf(context: Pick<CampusAssistantContext, "schoolI
 
 const DEFAULT_ASSISTANT_SCHOOL: AssistantSchool = { id: DEFAULT_SCHOOL_ID, name: "中国药科大学", shortName: "药大", brandName: "药大拾间" };
 
-/** 写给药大的说明换成当前学校的名字；药大自己原样返回。只换品牌和校名，「药大人能飞」这类作品名不动。 */
+/** 写给药大的说明换成当前学校的名字；药大自己原样返回。小游戏名等说法和网页显示一致，也换成本校简称。 */
 export function localizeAssistantText(text: string, school: AssistantSchool = DEFAULT_ASSISTANT_SCHOOL) {
   if (school.id === DEFAULT_SCHOOL_ID) return text;
-  return text.replaceAll("药大拾间", school.brandName).replaceAll("中国药科大学", school.name);
+  return text.replaceAll("药大拾间", school.brandName).replaceAll("中国药科大学", school.name).replaceAll("药大", school.shortName);
 }
 
 /** 部门通讯录是药大的；外校的学校没开这个功能时不查，免得把药大的电话当成本校的给出去。 */

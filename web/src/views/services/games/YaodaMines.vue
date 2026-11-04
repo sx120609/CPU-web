@@ -6,7 +6,7 @@
         ref="canvasEl"
         class="game-canvas"
         role="img"
-        aria-label="清扫药大雷游戏区域"
+        :aria-label="st('清扫药大雷游戏区域')"
         tabindex="0"
         @pointerdown="handlePointerDown"
         @pointermove="handlePointerMove"
@@ -17,8 +17,8 @@
 
       <section v-if="screen === 'menu'" class="menu-screen">
         <button data-cpu-button="surface" type="button" class="corner-back" aria-label="返回小游戏" @click="router.push(MINI_GAMES_PATH)">←</button>
-        <canvas ref="menuArtEl" class="menu-emblem" width="248" height="248" role="img" aria-label="拿着探雷器的药大学生和一颗胶囊雷"></canvas>
-        <h1>清扫药大雷</h1>
+        <canvas ref="menuArtEl" class="menu-emblem" width="248" height="248" role="img" :aria-label="st('拿着探雷器的药大学生和一颗胶囊雷')"></canvas>
+        <h1>{{ st('清扫药大雷') }}</h1>
         <p class="menu-tagline">推理排雷不用猜 · 和下课铃赛跑</p>
         <div class="best-score-box">
           <span>最高分</span>
@@ -95,7 +95,7 @@
             <div class="result-stats">
               <span><small>历史最高</small><b>{{ displayBest }}</b></span>
               <span><small>清完</small><b>{{ boards }} 关</b></span>
-              <span><small>称号</small><b>{{ rankTitle }}</b></span>
+              <span><small>称号</small><b>{{ st(rankTitle) }}</b></span>
             </div>
             <p class="cloud-result" :class="{ success: cloudSubmitState === 'success' }">{{ cloudResultMessage }}</p>
             <div v-if="newlyUnlocked.length" class="new-unlocks">
@@ -183,7 +183,7 @@
             <span v-for="(kind, index) in MINE_KINDS" :key="kind.name">
               <canvas ref="guideEls" width="96" height="96" aria-hidden="true"></canvas>
               <b>{{ kind.name }}</b>
-              <small>{{ kind.line }}</small>
+              <small>{{ st(kind.line) }}</small>
             </span>
           </div>
           <p>操作：点一下翻开，长按插旗（下方可以切成“点一下插旗、长按翻开”）。点一个已经翻开的数字，它周围插够了旗，就把其余的邻格一起翻开。电脑上左键翻开、右键插旗；F 切换点击方式，P 暂停，Esc 返回主页。</p>
@@ -194,6 +194,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSchoolText } from "@/utils/schoolText";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
@@ -236,6 +237,9 @@ import {
   type MinesFx,
   type MinesInsets,
 } from "./yaodaMinesScene";
+
+// 外校显示成本校简称（见 utils/schoolText.ts）。
+const st = useSchoolText();
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";
@@ -313,7 +317,7 @@ const rankTitle = computed(() => minesRank(score.value));
 const placeName = computed(() => placeFor(level.value));
 const resultTitle = computed(() => causeKind.value === null ? "时间到" : "踩到雷了");
 const causeName = computed(() => causeKind.value === null ? "下课铃" : MINE_KINDS[causeKind.value].name);
-const causeLine = computed(() => causeKind.value === null ? "铃声响了，雷还没扫完" : MINE_KINDS[causeKind.value].line);
+const causeLine = computed(() => causeKind.value === null ? "铃声响了，雷还没扫完" : st(MINE_KINDS[causeKind.value].line));
 const unlockedAchievementCount = computed(() => achievements.value.filter((item) => item.unlocked).length);
 const panelTitle = computed(() => {
   if (screen.value === "ranking") return "📊 全校排行";

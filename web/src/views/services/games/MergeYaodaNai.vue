@@ -6,7 +6,7 @@
         ref="canvasEl"
         class="game-canvas"
         role="img"
-        aria-label="合成药大奶游戏区域"
+        :aria-label="st('合成药大奶游戏区域')"
         tabindex="0"
         @pointerdown="handlePointerDown"
         @pointermove="handlePointerMove"
@@ -16,8 +16,8 @@
 
       <section v-if="screen === 'menu'" class="menu-screen">
         <button data-cpu-button="surface" type="button" class="corner-back" aria-label="返回小游戏" @click="router.push(MINI_GAMES_PATH)">←</button>
-        <canvas ref="menuArtEl" class="menu-emblem" width="248" height="248" role="img" aria-label="一群装在泡泡里的药大奶"></canvas>
-        <h1>合成药大奶</h1>
+        <canvas ref="menuArtEl" class="menu-emblem" width="248" height="248" role="img" :aria-label="st('一群装在泡泡里的药大奶')"></canvas>
+        <h1>{{ st('合成药大奶') }}</h1>
         <p class="menu-tagline">两只一样的撞一起，合成更大的一只</p>
         <div class="best-score-box">
           <span>最高分</span>
@@ -39,7 +39,7 @@
           <strong>{{ score }}</strong>
           <small>最高 {{ displayBest }}</small>
         </div>
-        <div class="nai-next" :aria-label="`下一个：${NAI_LEVELS[nextLevel - 1].name}`">
+        <div class="nai-next" :aria-label="st(`下一个：${NAI_LEVELS[nextLevel - 1].name}`)">
           <small>下一个</small>
           <canvas ref="nextEl" width="96" height="96" aria-hidden="true"></canvas>
         </div>
@@ -79,7 +79,7 @@
             <div class="result-stats">
               <span><small>历史最高</small><b>{{ displayBest }}</b></span>
               <span><small>最高合成</small><b>{{ bestLevelName }}</b></span>
-              <span><small>称号</small><b>{{ rankTitle }}</b></span>
+              <span><small>称号</small><b>{{ st(rankTitle) }}</b></span>
             </div>
             <p class="cloud-result" :class="{ success: cloudSubmitState === 'success' }">{{ cloudResultMessage }}</p>
             <div v-if="newlyUnlocked.length" class="new-unlocks">
@@ -160,11 +160,11 @@
             <button data-cpu-button="surface" v-if="!isLoggedIn" type="button" @click="goToLogin">登录</button>
             <b v-else class="cloud-online">已连接</b>
           </div>
-          <p>玩法：把手里的奶蛙投进罐子，两只一样的撞在一起会合成高一级的一只，等级越高分越多。投下来的只会是前四级。落稳的球顶部越过警戒线超过一秒半，这一局就结束。两只药大奶相撞会一起消失，再加 {{ NAI_RULES.clearBonus }} 分。</p>
+          <p>玩法：把手里的奶蛙投进罐子，两只一样的撞在一起会合成高一级的一只，等级越高分越多。投下来的只会是前四级。落稳的球顶部越过警戒线超过一秒半，这一局就结束。两只{{ st("药大奶") }}相撞会一起消失，再加 {{ NAI_RULES.clearBonus }} 分。</p>
           <div class="nai-guide">
             <span v-for="(level, index) in NAI_LEVELS" :key="level.name">
               <canvas ref="guideEls" width="96" height="96" aria-hidden="true"></canvas>
-              <b>{{ level.name }}</b>
+              <b>{{ st(level.name) }}</b>
               <small>{{ index ? `合成 +${naiMergeScore(index + 1)}` : "最小的一只" }}</small>
             </span>
           </div>
@@ -176,6 +176,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSchoolText } from "@/utils/schoolText";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
@@ -201,6 +202,9 @@ import {
   type NaiState,
 } from "./yaodaNaiEngine";
 import { drawNaiIcon, drawNaiMenuArt, drawNaiScene, naiAimAt, naiArtReady, naiLayout } from "./yaodaNaiScene";
+
+// 外校显示成本校简称（见 utils/schoolText.ts）。
+const st = useSchoolText();
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";
@@ -259,7 +263,7 @@ const isLoggedIn = computed(() => Boolean(getToken()));
 const displayBest = computed(() => Math.max(bestScore.value, cloudMe.value?.bestScore ?? 0));
 const rankTitle = computed(() => naiRank(score.value));
 const bestLevelName = computed(() => levelName(maxLevel.value));
-const resultTitle = computed(() => maxLevel.value >= 9 ? "离药大奶一步之遥" : maxLevel.value >= 7 ? "渐入佳境" : "罐子满了");
+const resultTitle = computed(() => maxLevel.value >= 9 ? st("离药大奶一步之遥") : maxLevel.value >= 7 ? "渐入佳境" : "罐子满了");
 const unlockedAchievementCount = computed(() => achievements.value.filter((item) => item.unlocked).length);
 const panelTitle = computed(() => {
   if (screen.value === "ranking") return "📊 全校排行";
@@ -316,7 +320,7 @@ onBeforeUnmount(() => {
 });
 
 function levelName(level: number) {
-  return level >= 1 ? NAI_LEVELS[Math.min(NAI_MAX_LEVEL, level) - 1].name : "—";
+  return level >= 1 ? st(NAI_LEVELS[Math.min(NAI_MAX_LEVEL, level) - 1].name) : "—";
 }
 
 function openScreen(value: Screen) {
@@ -499,14 +503,14 @@ function playEvents() {
       // 第一次合成出高等级时报个名。
       if (event.level >= 5 && event.level > announcedLevel) {
         announcedLevel = event.level;
-        showBanner(event.level === NAI_MAX_LEVEL ? "药大奶！" : `合成出${NAI_LEVELS[event.level - 1].name}`);
+        showBanner(event.level === NAI_MAX_LEVEL ? st("药大奶！") : st(`合成出${NAI_LEVELS[event.level - 1].name}`));
         if (event.level === NAI_MAX_LEVEL) {
           window.setTimeout(() => playTone(784, 0.12, 0.05), 90);
           window.setTimeout(() => playTone(1047, 0.2, 0.05), 190);
         }
       }
     } else if (event.type === "clear") {
-      showBanner(`两只药大奶！+${NAI_RULES.clearBonus}`);
+      showBanner(st(`两只药大奶！+${NAI_RULES.clearBonus}`));
       for (const [index, frequency] of [523, 659, 784, 1047].entries()) {
         window.setTimeout(() => playTone(frequency, 0.16, 0.05), index * 80);
       }

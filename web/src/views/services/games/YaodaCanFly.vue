@@ -6,7 +6,7 @@
         ref="canvasEl"
         class="game-canvas"
         role="img"
-        aria-label="药大人能飞游戏区域"
+        :aria-label="st('药大人能飞游戏区域')"
         tabindex="0"
         @pointerdown="handleCanvasPointer"
       ></canvas>
@@ -14,7 +14,7 @@
       <section v-if="screen === 'menu'" class="menu-screen">
         <button data-cpu-button="surface" type="button" class="corner-back" aria-label="返回小游戏" @click="router.push(MINI_GAMES_PATH)">←</button>
         <img class="menu-emblem" :src="cpuEmblem" alt="中国药科大学校标" />
-        <h1>药大人能飞</h1>
+        <h1>{{ st('药大人能飞') }}</h1>
         <p class="menu-tagline">💊 点击起飞 · 穿越药苑 · 兴药为民</p>
         <div class="best-score-box">
           <span>最高分</span>
@@ -169,6 +169,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSchoolText } from "@/utils/schoolText";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
@@ -187,6 +188,9 @@ import {
   njuCircleIntersectsRect,
   njuFlightPipeGeometry,
 } from "./yaodaFlightDifficulty";
+
+// 外校显示成本校简称（见 utils/schoolText.ts）。
+const st = useSchoolText();
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";

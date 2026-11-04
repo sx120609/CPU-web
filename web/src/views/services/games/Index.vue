@@ -25,8 +25,8 @@
       >
         <span class="games-hub-cover" aria-hidden="true">{{ game.cover }}</span>
         <span class="games-hub-copy">
-          <b>{{ game.name }}</b>
-          <small>{{ game.summary }}</small>
+          <b>{{ st(game.name) }}</b>
+          <small>{{ st(game.summary) }}</small>
           <span class="games-hub-tags">
             <em v-for="tag in game.tags" :key="tag">{{ tag }}</em>
             <em v-if="bestScores[game.slug]" class="is-best">我的最高 {{ bestScores[game.slug] }} 分</em>
@@ -39,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSchoolText } from "@/utils/schoolText";
 import { onMounted, reactive } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowLeft, ArrowRight, Trophy } from "@element-plus/icons-vue";
@@ -46,6 +47,9 @@ import { request } from "@/api/request";
 import { miniGames } from "@/data/miniGames";
 import { useAuthStore } from "@/stores/auth";
 import "@/styles/page-kit.css";
+
+// 外校显示成本校简称（见 utils/schoolText.ts）。
+const st = useSchoolText();
 
 const router = useRouter();
 const auth = useAuthStore();

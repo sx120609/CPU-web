@@ -53,7 +53,7 @@ export const useSiteStore = defineStore("site", {
           }
           if (schoolResult.status === "fulfilled") {
             this.school = schoolResult.value;
-            setDocumentBrand(this.brandName, this.schoolName);
+            setDocumentBrand(this.brandName, this.schoolName, this.schoolShortName, this.school?.id === "cpu");
             // 下次打开时启动画面先显示这所学校的品牌（public/appearance-bootstrap.js 读取）。
             try {
               window.localStorage.setItem("cpu-school-brand-v1", JSON.stringify({ brandName: this.brandName, schoolName: this.schoolName }));
