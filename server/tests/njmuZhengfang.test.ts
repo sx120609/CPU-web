@@ -280,3 +280,12 @@ test("图书馆：在借按到期日排序、算剩余续借次数，额度和�
   assert.deepEqual(unwrapLibrary('{"borrowCount":3}'), { borrowCount: 3 });
   assert.throws(() => unwrapLibrary('{"code":1,"msg":"失败","data":null}'));
 });
+
+test("图书馆开放时间：两列表格转成地点和时间", async () => {
+  const { parseLibraryOpenHours } = await import("../src/schools/njmu/library");
+  const html = `<table><tr><td>开放时间</td><td>每学期正常开放</td></tr><tr><td>自习空间（201）</td><td>7:00-22:00（考试期间6:30-22:40）</td></tr><tr><td colspan="2">&nbsp;</td></tr></table>`;
+  assert.deepEqual(parseLibraryOpenHours(html), [
+    { place: "开放时间", hours: "每学期正常开放" },
+    { place: "自习空间（201）", hours: "7:00-22:00（考试期间6:30-22:40）" },
+  ]);
+});

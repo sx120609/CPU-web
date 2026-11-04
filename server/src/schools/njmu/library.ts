@@ -164,3 +164,34 @@ export async function loadLibraryHistory(token: string, page: number, signal?: A
   const safePage = Math.min(Math.max(1, Math.trunc(page) || 1), 100);
   return { page: safePage, ...parseLibraryHistory(await libraryData(token, `/users/loan_hists?page=${safePage}&pageSize=20`, signal)) };
 }
+
+// ============ 图书馆官网（lib.njmu.edu.cn，公开）的开放时间 ============
+
+const OPEN_HOURS_URL = "https://lib.njmu.edu.cn/bggk/kfsj.htm";
+const OPEN_HOURS_TTL_MS = 6 * 60 * 60 * 1000;
+let openHoursCache: { at: number; rows: Array<{ place: string; hours: string }> } | null = null;
+
+function cellText(html: string) {
+  return html.replace(/<[^>]+>/gu, " ").replace(/&nbsp;/gu, " ").replace(/&amp;/gu, "&").replace(/\s+/gu, " ").trim();
+}
+
+/** 开放时间页只有一张两列表格：地点 | 时间。 */
+export function parseLibraryOpenHours(html: string) {
+  const table = html.match(/<table[\s\S]*?<\/table>/iu)?.[0] ?? "";
+  return (table.match(/<tr[\s\S]*?<\/tr>/giu) ?? []).flatMap((row) => {
+    const cells = [...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/giu)].map((match) => cellText(match[1]));
+    return cells.length >= 2 && cells[0] && cells[1] ? [{ place: cells[0], hours: cells.slice(1).join(" ") }] : [];
+  });
+}
+
+export async function loadLibraryOpenHours() {
+  if (openHoursCache && Date.now() - openHoursCache.at < OPEN_HOURS_TTL_MS) return openHoursCache.rows;
+  const res = await fetch(OPEN_HOURS_URL, { signal: AbortSignal.timeout(15_000), headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
+  if (!res?.ok) {
+    if (openHoursCache) return openHoursCache.rows;
+    throw Errors.badGateway("南医图书馆官网暂时连不上");
+  }
+  const rows = parseLibraryOpenHours(await res.text());
+  openHoursCache = { at: Date.now(), rows };
+  return rows;
+}

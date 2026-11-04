@@ -66,6 +66,16 @@
       </section>
     </template>
 
+    <details v-if="openHours.length" class="library-section library-hours">
+      <summary>开放时间</summary>
+      <dl>
+        <template v-for="row in openHours" :key="row.place">
+          <dt>{{ row.place }}</dt>
+          <dd>{{ row.hours }}</dd>
+        </template>
+      </dl>
+    </details>
+
     <section class="library-section" aria-labelledby="library-history-title">
       <h2 id="library-history-title">借阅历史<span v-if="historyTotal" class="library-count">{{ historyTotal }} 本</span></h2>
       <p v-if="historyLoaded && !history.length" class="library-empty">还没有借阅记录。</p>
@@ -97,6 +107,7 @@ const historyTotal = ref(0);
 const historyPage = ref(0);
 const historyLoaded = ref(false);
 const historyLoading = ref(false);
+const openHours = ref<Array<{ place: string; hours: string }>>([]);
 
 function errorText(e: unknown, fallback: string) {
   const serverMessage = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
@@ -151,7 +162,10 @@ async function load() {
   await loadHistory(1);
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  libraryApi.openHours().then((rows) => { openHours.value = rows; }).catch(() => undefined);
+});
 </script>
 
 <style scoped>
@@ -164,6 +178,10 @@ onMounted(load);
 .library-stat-label { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
 .library-stat.is-warn .library-stat-value { color: var(--cpu-accent); }
 .library-section { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.library-hours summary { cursor: pointer; font-size: var(--cpu-fs-m); font-weight: 600; }
+.library-hours dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; margin: 8px 0 0; }
+.library-hours dt { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
+.library-hours dd { margin: 0; font-size: var(--cpu-fs-s); font-variant-numeric: tabular-nums; text-align: right; }
 .library-section h2 { margin: 0; font-size: var(--cpu-fs-m); font-weight: 600; }
 .library-count { margin-left: 8px; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); font-weight: 400; }
 .library-empty { margin: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }

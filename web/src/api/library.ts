@@ -28,5 +28,7 @@ export interface LibraryHistoryPage {
 /** 图书馆「我的借阅」：用学校统一认证登录时的会话换票进图书馆（目前只有南医）。 */
 export const libraryApi = {
   overview: () => request.get<LibraryOverview>("/library/overview", undefined, { suppressErrorMessage: true, cacheTtlMs: 0 }),
+  /** 图书馆官网公开的开放时间（地点 / 时间）。 */
+  openHours: () => request.get<Array<{ place: string; hours: string }>>("/library/open-hours", undefined, { suppressErrorMessage: true }),
   history: (page: number) => request.get<LibraryHistoryPage>("/library/history", { page }, { suppressErrorMessage: true, cacheTtlMs: 0 }),
 };
