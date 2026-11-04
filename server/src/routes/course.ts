@@ -2,18 +2,36 @@ import { Router } from "express";
 import type { Request } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
-import { ok, Errors } from "../utils/response";
+import { ok, Errors, HttpError } from "../utils/response";
 import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
-import { getGrades, getPyfa } from "../services/jwxtTransport";
-import type { GradeRow, PyfaCourse } from "../services/jwxtParser";
+import { securityRateLimit } from "../middleware/securityRateLimit";
+import { getGrades, getPyfa, getSchedule } from "../services/jwxtTransport";
+import type { GradeRow, PyfaCourse, ScheduleResult } from "../services/jwxtParser";
+import { classifyJwxtError, JWXT_AUTH_EXPIRED_CODE } from "../services/jwxtErrors";
 import { invalidateCourseCaches } from "../services/cacheInvalidation";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureForumAccessEnabled, forumAccessErrorMessage, resolveForumAccess } from "../services/forumAccess";
 import { requestSchoolId } from "../schools/modules";
+import {
+  ensureCourseTeacher,
+  loadVisibleRatings,
+  ratingDistribution,
+  summarizeRatings,
+  type RatingRow,
+} from "../services/courseReviews";
+import { catalogCategories, COURSE_SORTS, queryCatalog, type CatalogCourse, type CourseSort } from "../services/courseCatalog";
+import { applyCourseSync, buildSyncedCourses, gradeSemesters, type CourseSource } from "../services/courseSync";
+import { forumContentVisibilityWhere, FORUM_SELF_VISIBLE_REVIEW_STATUSES } from "../services/forumSubmission";
+import { blockedAuthorWhere } from "../services/userBlock";
+import { decodeTopicsForViewerForList, forumAuthorReputationSelect } from "../services/forumPresentation";
+import { compactTopicAuthors } from "../utils/publicAvatar";
 
 export const courseRouter = Router();
+
+const CATALOG_TTL_MS = 5 * 60_000;
+const SOURCE_ORDER: Record<string, number> = { schedule: 0, grade: 1, pyfa: 2 };
 
 function assertCourseReviewEnabled() {
   if (!isFeatureOn("coursereview")) throw Errors.forbidden("课程点评当前已关闭");
@@ -25,62 +43,172 @@ async function ensureCanReadCourseReview(req: Request) {
   if (!allowed) throw Errors.forbidden(forumAccessErrorMessage(true));
 }
 
-/** 把 Course 的 courseTeachers 关联展开成 teachers: { id, name, courseTeacherId }[] */
-function withTeachers(course: any) {
-  if (!course) return course;
-  const teachers = (course.courseTeachers ?? []).map((ct: any) => ({
-    id: ct.teacher.id,
-    name: ct.teacher.name,
-    courseTeacherId: ct.id,
-  }));
-  const { courseTeachers, ...rest } = course;
-  return { ...rest, teachers };
+function positiveInt(value: unknown, fallback: number, max: number) {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, max) : fallback;
 }
 
+function courseIdParam(req: Request) {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) throw Errors.notFound("课程不存在");
+  return id;
+}
+
+/** 整校课程目录 + 可见评分统计，五分钟一份；帖子有任何变化都会刷新这份缓存。 */
+function loadCatalog(schoolId: string): Promise<CatalogCourse[]> {
+  return withCache("courses", ["catalog-v2", schoolId], CATALOG_TTL_MS, async () => {
+    const courses = await prisma.course.findMany({
+      where: { schoolId },
+      select: {
+        id: true, code: true, name: true, credits: true, category: true, college: true,
+        courseTeachers: { select: { id: true, teacher: { select: { id: true, name: true } } }, orderBy: { id: "asc" } },
+      },
+    });
+    const ids = new Set(courses.map((c) => c.id));
+    const byCourse = new Map<number, Array<RatingRow & { createdAt: Date }>>();
+    for (const rating of await loadVisibleRatings()) {
+      if (!ids.has(rating.courseId)) continue;
+      const list = byCourse.get(rating.courseId) ?? [];
+      list.push(rating);
+      byCourse.set(rating.courseId, list);
+    }
+    return courses.map((c) => {
+      const ratings = byCourse.get(c.id) ?? [];
+      return {
+        id: c.id,
+        code: c.code,
+        name: c.name,
+        credits: c.credits,
+        category: c.category,
+        college: c.college,
+        teachers: c.courseTeachers.map((ct) => ({ id: ct.teacher.id, name: ct.teacher.name, courseTeacherId: ct.id })),
+        stats: summarizeRatings(ratings),
+        lastReviewAt: ratings.length ? Math.max(...ratings.map((r) => new Date(r.createdAt).getTime())) : null,
+      };
+    });
+  });
+}
+
+/** 我写过的课评：公开的和审核中的都算，按课程归。 */
+async function ownReviews(userId: number) {
+  const ratings = await prisma.courseRating.findMany({ where: { authorId: userId }, select: { topicId: true, courseId: true } });
+  if (!ratings.length) return new Map<number, { topicId: number; pending: boolean }>();
+  const topics = await prisma.topic.findMany({
+    where: {
+      id: { in: ratings.map((r) => r.topicId) },
+      authorId: userId,
+      OR: [{ hidden: false }, { hidden: true, aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] } }],
+    },
+    select: { id: true, hidden: true },
+  });
+  const state = new Map(topics.map((t) => [t.id, t.hidden]));
+  const result = new Map<number, { topicId: number; pending: boolean }>();
+  for (const r of ratings) {
+    if (!state.has(r.topicId)) continue;
+    const pending = state.get(r.topicId)!;
+    const current = result.get(r.courseId);
+    if (!current || (current.pending && !pending)) result.set(r.courseId, { topicId: r.topicId, pending });
+  }
+  return result;
+}
+
+type MineInfo = {
+  source: CourseSource;
+  semester: string | null;
+  score: string | null;
+  teacherNames: string[];
+  review: { topicId: number; pending: boolean } | null;
+};
+
+async function loadMine(userId: number, courseIds?: number[]) {
+  const [links, reviews] = await Promise.all([
+    prisma.userCourse.findMany({
+      where: { userId, ...(courseIds ? { courseId: { in: courseIds } } : {}) },
+      select: { courseId: true, source: true, semester: true, score: true, teacherNames: true, syncedAt: true },
+    }),
+    ownReviews(userId),
+  ]);
+  const mine = new Map<number, MineInfo>();
+  for (const link of links) {
+    mine.set(link.courseId, {
+      source: (link.source in SOURCE_ORDER ? link.source : "pyfa") as CourseSource,
+      semester: link.semester,
+      score: link.score,
+      teacherNames: link.teacherNames ? link.teacherNames.split("、").filter(Boolean) : [],
+      review: reviews.get(link.courseId) ?? null,
+    });
+  }
+  const syncedAt = links.reduce<Date | null>((latest, l) => (!latest || l.syncedAt > latest ? l.syncedAt : latest), null);
+  return { mine, reviews, syncedAt };
+}
+
+function compareMine(mine: Map<number, MineInfo>) {
+  return (a: CatalogCourse, b: CatalogCourse) => {
+    const ma = mine.get(a.id)!;
+    const mb = mine.get(b.id)!;
+    const bySource = SOURCE_ORDER[ma.source] - SOURCE_ORDER[mb.source];
+    if (bySource) return bySource;
+    const bySemester = (mb.semester ?? "").localeCompare(ma.semester ?? "");
+    if (bySemester) return bySemester;
+    return a.code.localeCompare(b.code);
+  };
+}
+
+/** 课程页头部的概况：全站多少门课、多少篇点评，我修过几门、还有几门没评。 */
+courseRouter.get("/overview", async (req, res, next) => {
+  try {
+    assertCourseReviewEnabled();
+    await ensureCanReadCourseReview(req);
+    const catalog = await loadCatalog(requestSchoolId(req));
+    const { mine, syncedAt } = await loadMine(req.user!.userId);
+    const inSchool = new Set(catalog.map((c) => c.id));
+    const myCourses = [...mine.entries()].filter(([id]) => inSchool.has(id)).map(([, info]) => info);
+    ok(res, {
+      courseCount: catalog.length,
+      reviewedCourseCount: catalog.filter((c) => c.stats.count > 0).length,
+      reviewCount: catalog.reduce((sum, c) => sum + c.stats.count, 0),
+      categories: catalogCategories(catalog),
+      mine: {
+        total: myCourses.length,
+        taken: myCourses.filter((m) => m.source === "grade").length,
+        current: myCourses.filter((m) => m.source === "schedule").length,
+        planned: myCourses.filter((m) => m.source === "pyfa").length,
+        reviewed: myCourses.filter((m) => m.review).length,
+        todo: myCourses.filter((m) => m.source !== "pyfa" && !m.review).length,
+        syncedAt,
+      },
+    });
+  } catch (e) { next(e); }
+});
+
+/**
+ * 课程列表：?q=&sort=hot|recommend|recent|easy|code&category=&scope=all|mine|todo&reviewed=1&page=&size=
+ * scope=mine 是我的全部课程，todo 是修过或在修但还没评价的课。
+ */
 courseRouter.get("/", async (req, res, next) => {
   try {
     assertCourseReviewEnabled();
     await ensureCanReadCourseReview(req);
-    const q = String(req.query.q ?? "").trim();
-    const mine = req.query.mine === "1";
     const schoolId = requestSchoolId(req);
-    const where: any = { schoolId };
+    const q = String(req.query.q ?? "").trim().slice(0, 60);
+    const scope = ["mine", "todo"].includes(String(req.query.scope)) ? String(req.query.scope) : "all";
+    const sortParam = String(req.query.sort ?? "");
+    const sort = (COURSE_SORTS as string[]).includes(sortParam) ? (sortParam as CourseSort) : "hot";
+    const category = String(req.query.category ?? "").trim().slice(0, 30) || undefined;
+    const page = positiveInt(req.query.page, 1, 500);
+    const size = positiveInt(req.query.size, 20, 50);
 
-    if (mine) {
-      // 解析 token 拿 userId（公开路由，软鉴权）
-      if (!req.user) return ok(res, []);
-      try {
-        const userId = req.user.userId;
-        const ucs = await prisma.userCourse.findMany({ where: { userId }, select: { courseId: true } });
-        if (!ucs.length) return ok(res, []);
-        where.id = { in: ucs.map((u) => u.courseId) };
-      } catch { return ok(res, []); }
-    }
-    if (q) where.OR = [
-      { name: { contains: q } },
-      { code: { contains: q } },
-      { teacher: { contains: q } }, // 兼容旧字段
-      { courseTeachers: { some: { teacher: { name: { contains: q } } } } },
-    ];
+    const catalog = await loadCatalog(schoolId);
+    const { mine } = await loadMine(req.user!.userId);
+    let ids: Set<number> | undefined;
+    if (scope === "mine") ids = new Set(mine.keys());
+    if (scope === "todo") ids = new Set([...mine.entries()].filter(([, m]) => m.source !== "pyfa" && !m.review).map(([id]) => id));
 
-    const list = mine
-      ? await prisma.course.findMany({
-          where,
-          orderBy: [{ ratingCount: "desc" }, { id: "asc" }],
-          take: 200,
-          include: {
-            courseTeachers: { include: { teacher: true } },
-          },
-        })
-      : await withCache("courses", ["list", schoolId, q || ""], 5 * 60_000, async () => prisma.course.findMany({
-          where,
-          orderBy: [{ ratingCount: "desc" }, { id: "asc" }],
-          take: 200,
-          include: {
-            courseTeachers: { include: { teacher: true } },
-          },
-        }));
-    ok(res, list.map(withTeachers));
+    let list = queryCatalog(catalog, { q, sort, category, ids, reviewedOnly: req.query.reviewed === "1" });
+    // 我的课程默认按“在修 → 修过（新学期在前）→ 培养方案”排，用户主动选了排序或在搜索时按选的来。
+    if (scope !== "all" && !sortParam && !q) list = [...list].sort(compareMine(mine));
+    const items = list.slice((page - 1) * size, page * size).map((course) => ({ ...course, mine: mine.get(course.id) ?? null }));
+    ok(res, { page, size, total: list.length, items });
   } catch (e) { next(e); }
 });
 
@@ -88,195 +216,177 @@ courseRouter.get("/:id", async (req, res, next) => {
   try {
     assertCourseReviewEnabled();
     await ensureCanReadCourseReview(req);
-    const id = Number(req.params.id);
-    const schoolId = requestSchoolId(req);
-    const course = await withCache("courses", ["detail", schoolId, id], 5 * 60_000, async () => prisma.course.findFirst({
-      where: { id, schoolId },
-      include: {
-        courseTeachers: { include: { teacher: true } },
-      },
-    }));
-    if (!course) return res.status(404).json({ code: 4004, data: null, message: "课程不存在" });
-    const ratings = await withCache("courses", ["ratings", id], 5 * 60_000, async () => prisma.courseRating.findMany({
-      where: { courseId: id },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      include: {
-        courseTeacher: { include: { teacher: true } },
-      },
-    }));
-    // 评分上也把老师名展开，前端可显示"@王老师"
-    const ratingsOut = ratings.map((r: any) => ({
-      ...r,
-      teacherName: r.courseTeacher?.teacher?.name ?? null,
-      teacherId: r.courseTeacher?.teacher?.id ?? null,
-      courseTeacher: undefined,
-    }));
-    ok(res, { course: withTeachers(course), ratings: ratingsOut });
+    const id = courseIdParam(req);
+    const catalog = await loadCatalog(requestSchoolId(req));
+    const course = catalog.find((c) => c.id === id);
+    if (!course) throw Errors.notFound("课程不存在");
+    const ratings = await loadVisibleRatings({ courseId: id });
+    const byTeacher = new Map<number | null, typeof ratings>();
+    for (const r of ratings) {
+      const list = byTeacher.get(r.courseTeacherId) ?? [];
+      list.push(r);
+      byTeacher.set(r.courseTeacherId, list);
+    }
+    const { mine } = await loadMine(req.user!.userId, [id]);
+    const own = mine.get(id)?.review ?? (await ownReviews(req.user!.userId)).get(id) ?? null;
+    const teachers = course.teachers
+      .map((t) => ({ ...t, stats: summarizeRatings(byTeacher.get(t.courseTeacherId) ?? []) }))
+      .sort((a, b) => b.stats.count - a.stats.count || a.name.localeCompare(b.name, "zh-CN"));
+    ok(res, {
+      course: { ...course, stats: summarizeRatings(ratings) },
+      distribution: ratingDistribution(ratings),
+      teachers,
+      unassignedCount: (byTeacher.get(null) ?? []).length,
+      mine: mine.get(id) ?? null,
+      myReview: own,
+    });
   } catch (e) { next(e); }
 });
 
-/** 为某门课添加授课老师；登录用户即可，重复时返回已有 */
-const addTeacherSchema = z.object({
-  name: z.string().trim().min(1).max(40),
+/** 课程的点评列表：?teacher=courseTeacherId&sort=new|hot&page=&size= */
+courseRouter.get("/:id/reviews", async (req, res, next) => {
+  try {
+    assertCourseReviewEnabled();
+    await ensureCanReadCourseReview(req);
+    const id = courseIdParam(req);
+    const course = await prisma.course.findFirst({ where: { id, schoolId: requestSchoolId(req) }, select: { id: true } });
+    if (!course) throw Errors.notFound("课程不存在");
+    const page = positiveInt(req.query.page, 1, 200);
+    const size = positiveInt(req.query.size, 10, 30);
+    const sort = req.query.sort === "hot" ? "hot" : "new";
+    const teacher = Number(req.query.teacher);
+
+    const ratings = await prisma.courseRating.findMany({
+      where: { courseId: id, ...(Number.isInteger(teacher) && teacher > 0 ? { courseTeacherId: teacher } : {}) },
+      include: { courseTeacher: { include: { teacher: true } } },
+    });
+    if (!ratings.length) return ok(res, { page, size, total: 0, list: [] });
+    const ratingByTopic = new Map(ratings.map((r) => [r.topicId, r]));
+    const where = {
+      AND: [
+        { id: { in: [...ratingByTopic.keys()] } },
+        forumContentVisibilityWhere(req.user!.userId),
+        blockedAuthorWhere(req.user),
+      ],
+    };
+    const [topics, total] = await Promise.all([
+      prisma.topic.findMany({
+        where,
+        orderBy: sort === "hot" ? [{ likeCount: "desc" }, { createdAt: "desc" }] : [{ createdAt: "desc" }],
+        skip: (page - 1) * size,
+        take: size,
+        include: {
+          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
+          board: { select: { id: true, slug: true, name: true, color: true, type: true } },
+          tags: { include: { tag: true } },
+        },
+      }),
+      prisma.topic.count({ where }),
+    ]);
+    const decoded = await decodeTopicsForViewerForList(compactTopicAuthors(topics), req.user);
+    ok(res, {
+      page,
+      size,
+      total,
+      list: decoded.map((topic: any) => {
+        const r = ratingByTopic.get(topic.id)!;
+        return {
+          topic,
+          rating: {
+            difficulty: r.difficulty,
+            reward: r.reward,
+            recommend: r.recommend,
+            givingScore: r.givingScore,
+            semester: r.semester,
+            courseTeacherId: r.courseTeacherId,
+            teacherName: r.courseTeacher?.teacher?.name ?? null,
+          },
+        };
+      }),
+    });
+  } catch (e) { next(e); }
 });
-courseRouter.post("/:id/teachers", authRequired, validate(addTeacherSchema), async (req, res, next) => {
+
+/** 为某门课添加授课老师；同名老师已存在时直接返回。 */
+const addTeacherSchema = z.object({
+  name: z.string().trim().min(2).max(40),
+});
+courseRouter.post("/:id/teachers", authRequired, securityRateLimit("course-add-teacher", 20, 60 * 60_000), validate(addTeacherSchema), async (req, res, next) => {
   try {
     assertCourseReviewEnabled();
     await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
-    const courseId = Number(req.params.id);
-    const name = String(req.body.name).trim();
+    const courseId = courseIdParam(req);
     const course = await prisma.course.findFirst({ where: { id: courseId, schoolId: requestSchoolId(req) } });
     if (!course) throw Errors.notFound("课程不存在");
-
-    const teacher = await prisma.teacher.upsert({
-      where: { schoolId_name: { schoolId: course.schoolId, name } },
-      update: {},
-      create: { schoolId: course.schoolId, name, createdById: req.user!.userId },
-    });
-    const ct = await prisma.courseTeacher.upsert({
-      where: { courseId_teacherId: { courseId, teacherId: teacher.id } },
-      update: {},
-      create: { courseId, teacherId: teacher.id, source: "user-add" },
-    });
+    const ct = await ensureCourseTeacher({ schoolId: course.schoolId, courseId, name: String(req.body.name), createdById: req.user!.userId, source: "user-add" });
+    if (!ct) throw Errors.badRequest("请填写老师姓名");
     await invalidateCourseCaches();
-    ok(res, { id: teacher.id, name: teacher.name, courseTeacherId: ct.id });
+    ok(res, { id: ct.teacher.id, name: ct.teacher.name, courseTeacherId: ct.id });
   } catch (e) { next(e); }
 });
 
+function isAuthExpired(error: unknown) {
+  const classified = classifyJwxtError(error);
+  return classified instanceof HttpError && classified.code === JWXT_AUTH_EXPIRED_CODE;
+}
+
+/** 教务授权失效：409 + 4011，网页据此静默恢复授权后重试；不用 401，免得被当成站内登录过期。 */
+function jwxtAuthExpired(message = "教务授权已失效") {
+  return new HttpError(409, JWXT_AUTH_EXPIRED_CODE, message);
+}
+
+async function settle<T>(task: () => Promise<T>): Promise<{ value?: T; error?: unknown }> {
+  try {
+    return { value: await task() };
+  } catch (error) {
+    return { error };
+  }
+}
+
 /**
- * 同步当前用户的教务课程到 Course 表 + UserCourse 关联
- * - 需要：站内 JWT (Authorization) + 教务 token (X-Jwxt-Token)
- * - 来源：成绩列表（cjcx_list）+ 培养方案（pyfa_query）
+ * 从教务导入我的课程：成绩（修过）、培养方案（计划修读）、本学期和往期课表（在修 + 任课老师）。
+ * 使用 HttpOnly 浏览器会话里的教务身份。
  */
-courseRouter.post("/sync", authRequired, async (req, res, next) => {
+courseRouter.post("/sync", authRequired, securityRateLimit("course-sync", 6, 10 * 60_000), async (req, res, next) => {
   try {
     assertCourseReviewEnabled();
     await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     const userId = req.user!.userId;
-    // 课程从本人所在学校的教务同步，归入该校的课程目录。
     const schoolId = requestSchoolId(req);
-    const jwxtToken = req.browserSession?.jwxtToken || (req.headers["x-jwxt-token"] as string) || "";
-    if (!jwxtToken) throw Errors.badRequest("需要 X-Jwxt-Token，请先登录教务直连");
+    const token = req.browserSession?.jwxtToken || String(req.headers["x-jwxt-token"] || "");
+    if (!token) throw jwxtAuthExpired("请先授权教务");
 
-    // 1) 拉成绩
-    let gradesList: GradeRow[] = [];
-    try {
-      gradesList = (await getGrades(jwxtToken, { semester: "" })).list;
-    } catch { /* 教务 token 失效或接口异常，跳过 */ }
-
-    // 2) 拉培养方案
-    let pyfaList: PyfaCourse[] = [];
-    try {
-      pyfaList = (await getPyfa(jwxtToken)).list;
-    } catch { /* 同上 */ }
-
-    if (!gradesList.length && !pyfaList.length) {
-      throw Errors.badRequest("未能从教务系统获取任何课程，请确认教务会话有效");
+    const [grades, pyfa, current] = await Promise.all([
+      settle(() => getGrades(token, { semester: "" })),
+      settle(() => getPyfa(token)),
+      settle(() => getSchedule(token)),
+    ]);
+    const firstStage = [grades, pyfa, current];
+    if (firstStage.some((r) => r.error && isAuthExpired(r.error))) throw jwxtAuthExpired();
+    if (grades.error && pyfa.error) {
+      throw new HttpError(502, 5020, "教务系统暂时没有响应，请稍后再试");
     }
 
-    // 3) 合并为以 code 为键的 Map（pyfa 信息更全，先用 pyfa；成绩补充 teacher/学期）
-    type CourseFromJwxt = {
-      code: string; name: string; teacher?: string; credits?: number;
-      category?: string; college?: string;
-      source: "grade" | "pyfa";
-      semester?: string; score?: string;
-    };
-    const merged = new Map<string, CourseFromJwxt>();
-
-    for (const p of pyfaList) {
-      if (!p.courseCode) continue;
-      merged.set(p.courseCode, {
-        code: p.courseCode,
-        name: p.courseName,
-        credits: p.credits,
-        category: p.attr,
-        college: p.unit,
-        source: "pyfa",
-      });
-    }
-    // grade 在 pyfa 基础上补充 teacher、学期、成绩；如果 pyfa 没有，则单独成行（source=grade）
-    for (const g of gradesList) {
-      if (!g.courseCode) continue;
-      const ex = merged.get(g.courseCode);
-      if (ex) {
-        ex.source = "grade"; // 既在培养方案又有成绩 → 偏向 grade
-        ex.semester = g.semester;
-        ex.score = g.score;
-        if (!ex.credits) ex.credits = g.credits;
-        if (!ex.category) ex.category = g.courseAttr;
-      } else {
-        merged.set(g.courseCode, {
-          code: g.courseCode,
-          name: g.courseName,
-          credits: g.credits,
-          category: g.courseAttr,
-          source: "grade",
-          semester: g.semester,
-          score: g.score,
-        });
-      }
+    const gradeRows: GradeRow[] = grades.value?.list ?? [];
+    const pyfaRows: PyfaCourse[] = pyfa.value?.list ?? [];
+    const schedules: ScheduleResult[] = current.value ? [current.value] : [];
+    // 往期课表只用来补任课老师；拉不到就算了，不影响导入。
+    const pastSemesters = gradeSemesters(gradeRows, [current.value?.currentSemester ?? ""], 6);
+    for (let i = 0; i < pastSemesters.length; i += 2) {
+      const batch = await Promise.all(pastSemesters.slice(i, i + 2).map((semester) => settle(() => getSchedule(token, { semester }))));
+      if (batch.some((r) => r.error && isAuthExpired(r.error))) break;
+      for (const r of batch) if (r.value) schedules.push(r.value);
     }
 
-    // 4) upsert
-    let coursesCreated = 0, coursesExisting = 0;
-    let linksCreated = 0, linksUpdated = 0;
-
-    for (const c of merged.values()) {
-      // 课程：以 code 为键，存在则不覆盖（避免抢别人写的好数据）
-      let course = await prisma.course.findUnique({ where: { schoolId_code: { schoolId, code: c.code } } });
-      if (!course) {
-        course = await prisma.course.create({
-          data: {
-            schoolId,
-            code: c.code,
-            name: c.name,
-            teacher: c.teacher ?? "",
-            credits: c.credits,
-            category: c.category,
-            college: c.college,
-          },
-        });
-        coursesCreated++;
-      } else {
-        coursesExisting++;
-      }
-
-      // 用户-课程关联
-      const existingLink = await prisma.userCourse.findUnique({
-        where: { userId_courseId: { userId, courseId: course.id } },
-      });
-      if (!existingLink) {
-        await prisma.userCourse.create({
-          data: {
-            userId, courseId: course.id,
-            source: c.source,
-            semester: c.semester,
-            score: c.score,
-          },
-        });
-        linksCreated++;
-      } else {
-        // 已存在 → 仅升级 source/semester/score（不删除）
-        await prisma.userCourse.update({
-          where: { id: existingLink.id },
-          data: {
-            source: c.source === "grade" ? "grade" : existingLink.source,
-            semester: c.semester ?? existingLink.semester,
-            score: c.score ?? existingLink.score,
-          },
-        });
-        linksUpdated++;
-      }
-    }
-
+    const courses = buildSyncedCourses({ grades: gradeRows, pyfa: pyfaRows, schedules });
+    if (!courses.length) throw Errors.badRequest("教务里没有找到你的课程记录");
+    const summary = await applyCourseSync(userId, schoolId, courses);
     await invalidateCourseCaches();
-
     ok(res, {
-      examined: merged.size,
-      coursesCreated, coursesExisting,
-      linksCreated, linksUpdated,
-      breakdown: { fromGrade: gradesList.length, fromPyfa: pyfaList.length },
+      ...summary,
+      partial: Boolean(grades.error || pyfa.error),
+      syncedAt: new Date().toISOString(),
     });
   } catch (e) { next(e); }
 });
+

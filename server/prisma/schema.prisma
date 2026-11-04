@@ -726,9 +726,13 @@ model UserCourse {
   id        Int      @id @default(autoincrement())
   userId    Int
   courseId  Int
-  source    String // 'grade' (有成绩) / 'pyfa' (培养方案里)
-  semester  String? // 学期，仅 grade 来源时有
+  source    String // 'grade' (有成绩) / 'schedule' (本学期在修) / 'pyfa' (培养方案里)
+  semester  String? // 学期：grade 来源为成绩学期，schedule 来源为课表学期
   score     String? // 成绩，仅 grade 来源时有
+  // 教务课表里这门课的任课老师，多位用“、”分隔；写课评时默认选中。
+  teacherNames String?
+  // 最近一次从教务同步到这条记录的时间。
+  syncedAt  DateTime @default(now())
   createdAt DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

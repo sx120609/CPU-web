@@ -198,6 +198,7 @@ export const router = createRouter({
         { path: "treehole/host", name: "treehole-host", component: () => import("@/views/treehole/HostConsole.vue"), meta: { title: "洞主工作台" } },
         { path: "treehole/admin", name: "treehole-admin", component: () => import("@/views/treehole/AdminConsole.vue"), meta: { title: "树洞后台" } },
         { path: "coursereview", name: "coursereview", component: () => import("@/views/coursereview/Index.vue"), meta: { title: "课程点评", public: true } },
+        { path: "coursereview/write", name: "course-review-write", component: () => import("@/views/coursereview/Write.vue"), meta: { nativeChrome: "page", title: "写点评" } },
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
         { path: "services", name: "services", component: loadServicesView, meta: { title: "校园服务", public: true } },
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },

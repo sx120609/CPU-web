@@ -20,9 +20,9 @@ export async function invalidateForumCaches(options?: {
   includeBoards?: boolean;
   includeCourses?: boolean;
 }) {
-  const domains: CacheDomain[] = ["forum-list", "home", "search"];
+  // 课评统计只算公开可见的帖子；隐藏、删除、审核通过等任何帖子变化都会影响它，所以课程缓存总是跟着刷新。
+  const domains: CacheDomain[] = ["forum-list", "home", "search", "courses"];
   if (options?.includeBoards !== false) domains.push("boards");
-  if (options?.includeCourses) domains.push("courses");
   await bumpMany(domains);
 }
 

@@ -1,63 +1,158 @@
 import { request, type RequestOptions } from "./request";
+import type { Topic } from "./topic";
 
 export interface CourseTeacherInfo {
   /** Teacher.id */
   id: number;
   name: string;
-  /** CourseTeacher 关联表 id（发课评写入 CourseRating.courseTeacherId 用） */
+  /** CourseTeacher 关联 id，写课评时放进 metadata.courseTeacherId */
   courseTeacherId: number;
+}
+
+/** 可见点评的平均分（1–5）；count 为 0 时其余都是 0。 */
+export interface CourseStats {
+  count: number;
+  recommend: number;
+  reward: number;
+  difficulty: number;
+  /** 给分 */
+  grading: number;
+}
+
+export type CourseSource = "grade" | "schedule" | "pyfa";
+
+export interface CourseMine {
+  /** grade 修过 / schedule 本学期在修 / pyfa 培养方案里 */
+  source: CourseSource;
+  semester: string | null;
+  score: string | null;
+  /** 教务课表里的任课老师 */
+  teacherNames: string[];
+  review: { topicId: number; pending: boolean } | null;
 }
 
 export interface Course {
   id: number;
   code: string;
   name: string;
-  /** 兼容旧字段：分隔符拼接的字符串（"王老师、李老师"），新代码请用 teachers */
-  teacher: string;
+  credits: number | null;
+  category: string | null;
+  college: string | null;
   teachers: CourseTeacherInfo[];
-  credits?: number;
-  category?: string;
-  college?: string;
-  ratingCount: number;
-  avgDifficulty: number;
-  avgReward: number;
-  avgRecommend: number;
-  avgScore: number;
+  stats: CourseStats;
+  lastReviewAt: number | null;
+  mine?: CourseMine | null;
 }
 
-export interface CourseRating {
-  id: number;
-  topicId: number;
-  courseId: number;
-  /** 评分针对的具体老师（可能为 null —— 早期点评未指定） */
-  teacherId: number | null;
-  teacherName: string | null;
-  authorId: number;
+export interface CourseTeacherDetail extends CourseTeacherInfo {
+  stats: CourseStats;
+}
+
+export interface CourseDetail {
+  course: Course;
+  /** 推荐度 1–5 分各有几人 */
+  distribution: number[];
+  teachers: CourseTeacherDetail[];
+  /** 没写老师的点评数 */
+  unassignedCount: number;
+  mine: CourseMine | null;
+  myReview: { topicId: number; pending: boolean } | null;
+}
+
+export interface CourseReviewRatings {
   difficulty: number;
   reward: number;
   recommend: number;
   givingScore: number;
-  semester?: string;
-  createdAt: string;
+}
+
+export interface CourseReviewItem {
+  topic: Topic;
+  rating: CourseReviewRatings & {
+    semester: string | null;
+    courseTeacherId: number | null;
+    teacherName: string | null;
+  };
+}
+
+export interface CourseOverview {
+  courseCount: number;
+  reviewedCourseCount: number;
+  reviewCount: number;
+  categories: string[];
+  mine: {
+    total: number;
+    taken: number;
+    current: number;
+    planned: number;
+    reviewed: number;
+    todo: number;
+    syncedAt: string | null;
+  };
+}
+
+export type CourseSort = "hot" | "recommend" | "recent" | "easy" | "code";
+export type CourseScope = "all" | "mine" | "todo";
+
+export interface CourseListQuery {
+  q?: string;
+  scope?: CourseScope;
+  sort?: CourseSort;
+  category?: string;
+  reviewed?: boolean;
+  page?: number;
+  size?: number;
 }
 
 export interface CourseSyncResult {
   examined: number;
+  taken: number;
+  current: number;
+  planned: number;
   coursesCreated: number;
-  coursesExisting: number;
-  linksCreated: number;
-  linksUpdated: number;
-  breakdown: { fromGrade: number; fromPyfa: number };
+  teachersLinked: number;
+  /** 成绩或培养方案有一项没拉到 */
+  partial: boolean;
+  syncedAt: string;
+}
+
+/** 课评帖 metadata 里的字段 */
+export interface CourseReviewMetadata {
+  courseId: number;
+  courseTeacherId?: number;
+  teacherName?: string;
+  semester?: string;
+  ratings: CourseReviewRatings;
 }
 
 export const courseApi = {
-  list: (q?: string, mine = false, options?: RequestOptions) =>
-    request.get<Course[]>("/courses", { ...(q ? { q } : {}), ...(mine ? { mine: 1 } : {}) }, options),
-  detail: (id: number, options?: RequestOptions) =>
-    request.get<{ course: Course; ratings: CourseRating[] }>(`/courses/${id}`, undefined, options),
-  /** 使用当前 HttpOnly 浏览器会话中的教务身份同步课程。 */
-  sync: () => request.post<CourseSyncResult>("/courses/sync"),
-  /** 为课程添加一位授课老师（登录用户即可；重复时返回已有关联） */
+  overview: (options?: RequestOptions) => request.get<CourseOverview>("/courses/overview", undefined, options),
+  list: (query: CourseListQuery = {}, options?: RequestOptions) =>
+    request.get<{ page: number; size: number; total: number; items: Course[] }>("/courses", {
+      ...(query.q ? { q: query.q } : {}),
+      ...(query.scope && query.scope !== "all" ? { scope: query.scope } : {}),
+      ...(query.sort ? { sort: query.sort } : {}),
+      ...(query.category ? { category: query.category } : {}),
+      ...(query.reviewed ? { reviewed: 1 } : {}),
+      ...(query.page && query.page > 1 ? { page: query.page } : {}),
+      ...(query.size ? { size: query.size } : {}),
+    }, options),
+  detail: (id: number, options?: RequestOptions) => request.get<CourseDetail>(`/courses/${id}`, undefined, options),
+  reviews: (id: number, query: { teacher?: number; sort?: "new" | "hot"; page?: number; size?: number } = {}, options?: RequestOptions) =>
+    request.get<{ page: number; size: number; total: number; list: CourseReviewItem[] }>(`/courses/${id}/reviews`, {
+      ...(query.teacher ? { teacher: query.teacher } : {}),
+      ...(query.sort && query.sort !== "new" ? { sort: query.sort } : {}),
+      ...(query.page && query.page > 1 ? { page: query.page } : {}),
+      ...(query.size ? { size: query.size } : {}),
+    }, options),
+  /** 用 HttpOnly 浏览器会话里的教务身份导入课程；授权失效时返回 409 + 4011。 */
+  sync: (options?: RequestOptions) => request.post<CourseSyncResult>("/courses/sync", undefined, options),
   addTeacher: (courseId: number, name: string) =>
     request.post<CourseTeacherInfo>(`/courses/${courseId}/teachers`, { name }),
+};
+
+export const COURSE_SOURCE_LABEL: Record<CourseSource, string> = {
+  grade: "修过",
+  schedule: "在修",
+  pyfa: "培养方案",
 };

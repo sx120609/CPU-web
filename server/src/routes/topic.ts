@@ -65,6 +65,7 @@ import {
   scheduleForumBackgroundTask,
 } from "../services/forumSubmission";
 import { scheduleTopicSubmissionReview } from "../services/forumSubmissionReview";
+import { assertCourseReviewSubmission, syncTopicCourseRating } from "../services/courseReviews";
 import { dismissTopicAiAnswer, presentTopicAiAnswer, regenerateTopicAiAnswer, scheduleForumAiAnswer } from "../services/forumAiAnswer";
 import {
   acceptQuestionAnswer,
@@ -623,6 +624,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       throw Errors.forbidden("该板块暂不支持匿名发布");
     }
 
+    if (board.type === "coursereview") {
+      await assertCourseReviewSubmission({ schoolId: board.schoolId, authorId: userId, metadata: effectiveMetadata });
+    }
     const keywordReview = reviewContentKeywords({ title, content, metadata: { ...effectiveMetadata, tags } });
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
@@ -681,6 +685,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       }
     }
 
+    // 课评：评分写进 CourseRating；审核中的帖子也先写，统计只算公开可见的。
+    if (board.type === "coursereview") await syncTopicCourseRating(topic.id);
+
     if (shouldReview) {
       await invalidateForumCaches({ includeCourses: board.type === "coursereview" });
       scheduleTopicSubmissionReview(topic.id);
@@ -699,56 +706,6 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       metadata: effectiveMetadata,
     }, topic.id);
     scheduleForumAiAnswer(topic.id);
-
-    // 课评：写入 CourseRating 派生表
-    // 课程必须是本板块所在学校的，外校课程 id 不写评分。
-    const ratedCourse = board.type === "coursereview" && effectiveMetadata?.courseId && effectiveMetadata?.ratings
-      ? await prisma.course.findFirst({ where: { id: Number(effectiveMetadata.courseId), schoolId: board.schoolId }, select: { id: true } })
-      : null;
-    if (ratedCourse) {
-      const r = effectiveMetadata.ratings;
-      const courseId = ratedCourse.id;
-
-      // 解析"针对哪位老师"：
-      //   - 优先用 metadata.courseTeacherId（前端已选的 CourseTeacher 关联 id）
-      //   - 否则若给了 teacherName 字符串，自助 upsert Teacher + CourseTeacher
-      //   - 都没给则 null（旧行为兼容）
-      let courseTeacherId: number | null = null;
-      if (effectiveMetadata.courseTeacherId) {
-        const ct = await prisma.courseTeacher.findFirst({
-          where: { id: Number(effectiveMetadata.courseTeacherId), courseId },
-        });
-        if (ct) courseTeacherId = ct.id;
-      } else if (typeof effectiveMetadata.teacherName === "string" && effectiveMetadata.teacherName.trim()) {
-        const name = effectiveMetadata.teacherName.trim().slice(0, 40);
-        const teacher = await prisma.teacher.upsert({
-          where: { schoolId_name: { schoolId: board.schoolId, name } },
-          update: {},
-          create: { schoolId: board.schoolId, name, createdById: userId },
-        });
-        const ct = await prisma.courseTeacher.upsert({
-          where: { courseId_teacherId: { courseId, teacherId: teacher.id } },
-          update: {},
-          create: { courseId, teacherId: teacher.id, source: "user-add" },
-        });
-        courseTeacherId = ct.id;
-      }
-
-      await prisma.courseRating.create({
-        data: {
-          topicId: topic.id,
-          courseId,
-          courseTeacherId,
-          authorId: userId,
-          difficulty: clampInt(r.difficulty, 1, 5),
-          reward: clampInt(r.reward, 1, 5),
-          recommend: clampInt(r.recommend, 1, 5),
-          givingScore: clampInt(r.givingScore ?? r.score, 1, 5),
-          semester: effectiveMetadata.semester ?? null,
-        },
-      }).catch(() => {});
-      await refreshCourseStats(courseId);
-    }
 
     const mediaRegistration = Promise.all([
       ensureForumImageAssetsForContent(content, userId).catch(() => null),
@@ -863,6 +820,9 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (typeof body.title === "string" && canEditContent) data.title = body.title;
     if (typeof body.content === "string" && canEditContent) data.content = body.content;
     if (typeof body.metadata === "object" && body.metadata && canEditContent) data.metadata = nextMetadataRaw;
+    if (t.board?.type === "coursereview" && data.metadata !== undefined) {
+      await assertCourseReviewSubmission({ schoolId: t.board.schoolId, authorId: t.authorId, metadata: nextMetadata, exceptTopicId: id });
+    }
     if (typeof body.pinned === "boolean" && isMod) data.pinned = body.pinned;
     if (typeof body.locked === "boolean" && isMod) data.locked = body.locked;
     if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
@@ -959,6 +919,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       }
       return updated;
     });
+    if (t.board?.type === "coursereview") await syncTopicCourseRating(id);
     if (wantsGlobalPinned !== undefined) {
       await setTopicGlobalPinned(id, wantsGlobalPinned);
     } else if (u.hidden) {
@@ -1056,26 +1017,4 @@ function parseJsonSafe(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
 }
-function clampInt(v: any, min: number, max: number) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.round(n)));
-}
 
-async function refreshCourseStats(courseId: number) {
-  const agg = await prisma.courseRating.aggregate({
-    where: { courseId },
-    _count: true,
-    _avg: { difficulty: true, reward: true, recommend: true, givingScore: true },
-  });
-  await prisma.course.update({
-    where: { id: courseId },
-    data: {
-      ratingCount: agg._count,
-      avgDifficulty: agg._avg.difficulty ?? 0,
-      avgReward: agg._avg.reward ?? 0,
-      avgRecommend: agg._avg.recommend ?? 0,
-      avgScore: agg._avg.givingScore ?? 0,
-    },
-  });
-}

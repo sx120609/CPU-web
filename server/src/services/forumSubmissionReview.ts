@@ -6,6 +6,7 @@ import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { scheduleForumAiAnswer } from "./forumAiAnswer";
+import { syncTopicCourseRating } from "./courseReviews";
 import {
   AUTO_MANUAL_RETRY_MARKER,
   forumReviewAttempt,
@@ -313,7 +314,7 @@ export async function processTopicSubmissionReview(topicId: number, review = rev
     await Promise.all([
       runNonCriticalSideEffect(`topic ${topic.id} media registration`, () => registerTopicMedia(topic.content, topic.authorId)),
       runNonCriticalSideEffect(`topic ${topic.id} AI tags`, () => generateAndSyncTopicTags(topic)),
-      runNonCriticalSideEffect(`topic ${topic.id} course rating`, () => createCourseRatingIfNeeded(topic, metadata)),
+      runNonCriticalSideEffect(`topic ${topic.id} course rating`, () => topic.board.type === "coursereview" ? syncTopicCourseRating(topic.id) : Promise.resolve()),
     ]);
     await invalidateForumCaches({ includeCourses: topic.board.type === "coursereview" }).catch(() => undefined);
     scheduleForumAiAnswer(topic.id);
@@ -632,73 +633,6 @@ async function createReplyNotifications(reply: {
   if (notifications.length) await prisma.notification.createMany({ data: notifications }).catch(() => undefined);
 }
 
-async function createCourseRatingIfNeeded(topic: {
-  id: number;
-  authorId: number;
-  board: { type: string; schoolId: string };
-}, metadata: Record<string, any>) {
-  if (topic.board.type !== "coursereview" || !metadata.courseId || !metadata.ratings) return;
-  const courseId = Number(metadata.courseId);
-  if (!Number.isInteger(courseId) || courseId <= 0) return;
-  // 课程必须是帖子所在学校的。
-  if (!await prisma.course.findFirst({ where: { id: courseId, schoolId: topic.board.schoolId }, select: { id: true } })) return;
-  let courseTeacherId: number | null = null;
-  if (metadata.courseTeacherId) {
-    const courseTeacher = await prisma.courseTeacher.findFirst({
-      where: { id: Number(metadata.courseTeacherId), courseId },
-      select: { id: true },
-    });
-    courseTeacherId = courseTeacher?.id || null;
-  } else if (typeof metadata.teacherName === "string" && metadata.teacherName.trim()) {
-    const name = metadata.teacherName.trim().slice(0, 40);
-    const teacher = await prisma.teacher.upsert({
-      where: { schoolId_name: { schoolId: topic.board.schoolId, name } },
-      update: {},
-      create: { schoolId: topic.board.schoolId, name, createdById: topic.authorId },
-    });
-    const courseTeacher = await prisma.courseTeacher.upsert({
-      where: { courseId_teacherId: { courseId, teacherId: teacher.id } },
-      update: {},
-      create: { courseId, teacherId: teacher.id, source: "user-add" },
-    });
-    courseTeacherId = courseTeacher.id;
-  }
-  const ratings = metadata.ratings;
-  await prisma.courseRating.upsert({
-    where: { topicId: topic.id },
-    update: {},
-    create: {
-      topicId: topic.id,
-      courseId,
-      courseTeacherId,
-      authorId: topic.authorId,
-      difficulty: clampInt(ratings.difficulty, 1, 5),
-      reward: clampInt(ratings.reward, 1, 5),
-      recommend: clampInt(ratings.recommend, 1, 5),
-      givingScore: clampInt(ratings.givingScore ?? ratings.score, 1, 5),
-      semester: metadata.semester ?? null,
-    },
-  });
-  await refreshCourseStats(courseId);
-}
-
-async function refreshCourseStats(courseId: number) {
-  const aggregate = await prisma.courseRating.aggregate({
-    where: { courseId },
-    _count: true,
-    _avg: { difficulty: true, reward: true, recommend: true, givingScore: true },
-  });
-  await prisma.course.update({
-    where: { id: courseId },
-    data: {
-      ratingCount: aggregate._count,
-      avgDifficulty: aggregate._avg.difficulty || 0,
-      avgReward: aggregate._avg.reward || 0,
-      avgRecommend: aggregate._avg.recommend || 0,
-      avgScore: aggregate._avg.givingScore || 0,
-    },
-  });
-}
 
 async function notifySubmissionResult(input: {
   userId: number;
@@ -737,11 +671,6 @@ function parseJsonObject(value: string | null | undefined): Record<string, any> 
   }
 }
 
-function clampInt(value: unknown, min: number, max: number) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return min;
-  return Math.max(min, Math.min(max, Math.round(number)));
-}
 
 function reviewFailureReason(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
