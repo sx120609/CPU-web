@@ -202,7 +202,7 @@ async function main() {
     const ctMap: Record<string, number> = {};
     for (const tn of def.teachers) {
       const t = await prisma.teacher.upsert({
-        where: { name: tn },
+        where: { schoolId_name: { schoolId: DEFAULT_SCHOOL_ID, name: tn } },
         update: {},
         create: { name: tn },
       });

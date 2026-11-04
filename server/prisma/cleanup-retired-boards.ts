@@ -1,4 +1,5 @@
 import { prisma } from "../src/prisma";
+import { DEFAULT_SCHOOL_ID } from "../src/schools/registry";
 
 const RETIRED_BOARD_SLUG = "campus-wall";
 const RETIRED_NOTIFICATION_SOURCE = "逛逛同步";
@@ -195,8 +196,9 @@ async function main() {
   await removeRetiredMirrorTables();
 
   console.log(`[cleanup] Checking retired board ${RETIRED_BOARD_SLUG}`);
+  // 退役的是药大论坛的板块。
   const board = await prisma.board.findUnique({
-    where: { slug: RETIRED_BOARD_SLUG },
+    where: { schoolId_slug: { schoolId: DEFAULT_SCHOOL_ID, slug: RETIRED_BOARD_SLUG } },
     select: { id: true, feedSourceId: true },
   });
   if (board?.feedSourceId) {
