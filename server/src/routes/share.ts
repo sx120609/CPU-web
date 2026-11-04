@@ -96,7 +96,7 @@ shareRouter.get("/topic/:id/card.png", async (req, res, next) => {
 
 function loadFallbackCardPng() {
   if (!fallbackCardPng) {
-    fallbackCardPng = renderSvgToPng(renderFallbackCardSvg("药大拾间", "分享内容不存在或暂不可用"));
+    fallbackCardPng = renderSvgToPng(renderFallbackCardSvg("拾间", "分享内容不存在或暂不可用"));
     fallbackCardPng.catch(() => {
       fallbackCardPng = null;
     });
@@ -376,10 +376,10 @@ function renderNotFoundPage(origin: string, targetPath: string) {
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="refresh" content="0;url=${escapeHtml(target)}" />
-    <title>药大拾间</title>
+    <title>拾间</title>
   </head>
   <body>
-    <a href="${escapeHtml(target)}">继续访问药大拾间</a>
+    <a href="${escapeHtml(target)}">继续访问拾间</a>
   </body>
 </html>`;
 }
@@ -403,7 +403,7 @@ function textUnits(text: string) {
 // Break into at most maxLines lines of maxUnits each. Latin words move to the next line whole when they can, and
 // only text that really did not fit ends in an ellipsis.
 function wrapText(text: string, maxUnits: number, maxLines: number) {
-  const source = text.trim() || "药大拾间";
+  const source = text.trim() || "拾间";
   const isWordChar = (ch: string) => /[A-Za-z0-9]/.test(ch);
   const lines: string[] = [];
   let current = "";

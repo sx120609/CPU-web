@@ -54,6 +54,9 @@
   const schoolName = typeof brand.schoolName === "string" ? brand.schoolName.slice(0, 40) : "";
   if (document.title.indexOf("药大拾间") === 0) {
     document.title = schoolName ? `${brandName} · ${schoolName}校园互助与服务平台` : brandName;
+  } else if (/ · 药大拾间$/.test(document.title)) {
+    // 服务端给搜索引擎的页面标题（「论坛 · 药大拾间」），网页加载前先换成上次的学校。
+    document.title = document.title.replace(/ · 药大拾间$/, ` · ${brandName}`);
   }
   const apply = () => {
     const screen = document.getElementById("boot-screen");

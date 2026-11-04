@@ -1,3 +1,4 @@
+import { schoolizeText } from "@/utils/schoolText";
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch, type InjectionKey, type Ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
@@ -23,11 +24,18 @@ export function useServiceTools() {
   let disposed = false;
   const toolsCacheKey = computed(() => `cpu-services-tools-v1:${auth.user?.id ? `user-${auth.user.id}` : "guest"}`);
   const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
+  // 外校把「药大奶」「药大主题」这类说法换成本校简称（utils/schoolText.ts）。
+  const localizeTool = (tool: ServiceTool): ServiceTool => ({
+    ...tool,
+    name: schoolizeText(tool.name, site.school?.id, site.schoolShortName),
+    summary: schoolizeText(tool.summary, site.school?.id, site.schoolShortName),
+    description: schoolizeText(tool.description, site.school?.id, site.schoolShortName),
+  });
   const visibleTools = computed(() => serviceTools.filter((tool) => (
     toolAccessMap.value[tool.slug]?.isVisible !== false
     && site.toolEnabled(tool.slug)
     && !(tool.slug === "mini_games" && shouldHideNativeMiniGames(auth.isLoggedIn, auth.user?.username))
-  )));
+  )).map(localizeTool));
 
   onMounted(() => {
     disposed = false;

@@ -11,7 +11,7 @@
 
     <template v-else>
       <header class="fs-s-hero">
-        <p class="fs-s-brand"><span aria-hidden="true">药</span>{{ task.siteTitle || "药大拾间文件收集" }} · 文件提交</p>
+        <p class="fs-s-brand"><span aria-hidden="true">{{ site.schoolShortName.slice(0, 1) }}</span>{{ task.siteTitle || `${site.brandName}文件收集` }} · 文件提交</p>
         <h1>{{ task.title }}</h1>
         <ul class="fs-s-chips">
           <li :class="task.status === 'open' ? 'is-open' : 'is-closed'"><span class="fs-s-dot" aria-hidden="true" />{{ task.status === "open" ? "正在收集" : "已停止提交" }}</li>
@@ -283,6 +283,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -323,6 +324,8 @@ import {
   requestErrorMessage,
   statusPath,
 } from "./shared";
+
+const site = useSiteStore();
 
 type MessageType = "" | "ok" | "error" | "warn";
 type FileEntry = {
@@ -388,7 +391,7 @@ async function load() {
     const next = await filestoreApi.publicTask(slug.value);
     if (seq !== loadSeq) return;
     task.value = next;
-    document.title = `${next.siteTitle || "药大拾间文件收集"} - ${next.title}`;
+    document.title = `${next.siteTitle || `${site.brandName}文件收集`} - ${next.title}`;
     for (const field of next.fields) answers[field.key] = "";
     for (const field of next.surveyFields || []) surveyAnswers[field.id] = field.type === "multiple" ? [] : "";
   } catch (err) {

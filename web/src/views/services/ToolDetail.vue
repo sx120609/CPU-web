@@ -77,6 +77,7 @@ import { ArrowLeft, ArrowRight, Link, Setting } from "@element-plus/icons-vue";
 import { getToken } from "@/api/request";
 import { toolsApi, type GradeCheckTable, type ServiceToolCode } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
+import { useSchoolText } from "@/utils/schoolText";
 import { useDocumentTitle } from "@/utils/documentTitle";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import ToolFeedbackPanel from "./components/ToolFeedbackPanel.vue";
@@ -91,7 +92,12 @@ const CanteenPickerPanel = defineAsyncComponent(() => import("./CanteenPickerPan
 const route = useRoute();
 const { auth, toolMetas, toolsError, loadToolMetas, isLoginRequired, toolBadge } = useServiceTools();
 const { canManageTool, openToolManage } = useToolManageEntry(toolMetas);
-const tool = computed(() => findServiceTool(String(route.params.slug || "")));
+const schoolText = useSchoolText();
+const tool = computed(() => {
+  const found = findServiceTool(String(route.params.slug || ""));
+  // 外校把「药大」说法换成本校简称（utils/schoolText.ts）。
+  return found ? { ...found, name: schoolText(found.name), summary: schoolText(found.summary), description: schoolText(found.description) } : found;
+});
 useDocumentTitle(() => tool.value?.name);
 const requireLogin = computed(() => Boolean(tool.value && isLoginRequired(tool.value.slug)));
 const canManage = computed(() => Boolean(tool.value && canManageTool(tool.value.slug)));

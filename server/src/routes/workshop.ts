@@ -1,3 +1,4 @@
+import { getSchool } from "../schools/registry";
 import path from "node:path";
 import { Router, type ErrorRequestHandler, type RequestHandler } from "express";
 import multer from "multer";
@@ -88,8 +89,8 @@ function route(handler: RequestHandler): RequestHandler {
 
 workshopRouter.get(
   "/public/site",
-  route((_req, res) => {
-    ok(res, { name: "药大拾间", locale: "zh-CN" });
+  route((req, res) => {
+    ok(res, { name: getSchool(requestSchoolId(req)).brandName, locale: "zh-CN" });
   }),
 );
 workshopRouter.get(

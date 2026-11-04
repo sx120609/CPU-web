@@ -11,7 +11,7 @@
 
     <template v-else>
       <header class="fs-st-hero">
-        <p class="fs-st-brand"><span aria-hidden="true">药</span>{{ statusData.siteTitle || "药大拾间文件收集" }} · 提交成功名单</p>
+        <p class="fs-st-brand"><span aria-hidden="true">{{ site.schoolShortName.slice(0, 1) }}</span>{{ statusData.siteTitle || `${site.brandName}文件收集` }} · 提交成功名单</p>
         <h1>{{ statusData.title }}</h1>
         <p class="fs-st-desc">这里显示已经成功提交的记录和文件名，文件内容不会在此页面公开。</p>
         <ul class="fs-st-chips">
@@ -80,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { Clock, Search, Upload, WarningFilled } from "@element-plus/icons-vue";
@@ -87,6 +88,8 @@ import { filestoreApi, type FilestorePublicStatus } from "@/api/filestore";
 import { formatBytes } from "@/views/services/fileCollectExport";
 import FileBadge from "./components/FileBadge.vue";
 import { formatDateTime, requestErrorMessage, submitPath } from "./shared";
+
+const site = useSiteStore();
 
 const route = useRoute();
 const loading = ref(false);
@@ -126,7 +129,7 @@ async function load() {
     const next = await filestoreApi.publicStatus(slug.value);
     if (seq !== loadSeq) return;
     statusData.value = next;
-    document.title = `${next.siteTitle || "药大拾间文件收集"} - 提交成功名单`;
+    document.title = `${next.siteTitle || `${site.brandName}文件收集`} - 提交成功名单`;
   } catch (err) {
     if (seq !== loadSeq) return;
     error.value = requestErrorMessage(err, "成功名单加载失败");

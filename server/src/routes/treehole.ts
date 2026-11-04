@@ -1,3 +1,4 @@
+import { getSchool } from "../schools/registry";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
@@ -254,8 +255,8 @@ treeholeRouter.post("/sessions", validate(createSessionSchema), async (req, res,
     const staffMember = viewer.isHost || viewer.isAdmin;
     if (!config.open && !staffMember) throw Errors.forbidden("树洞暂未开放，开放后会在这里通知大家");
     if (config.studentOnly && !staffMember) {
-      const user = await prisma.user.findUnique({ where: { id: viewer.userId }, select: { studentSso: true } });
-      if (!user?.studentSso) throw Errors.forbidden("树洞仅面向在校同学，请先用学校统一身份认证登录药大拾间");
+      const user = await prisma.user.findUnique({ where: { id: viewer.userId }, select: { studentSso: true, schoolId: true } });
+      if (!user?.studentSso) throw Errors.forbidden(`树洞仅面向在校同学，请先用学校统一身份认证登录${getSchool(user?.schoolId).brandName}`);
     }
     if (!body.content && !body.imageId) throw Errors.badRequest("先说点什么吧");
     const open = await prisma.treeholeSession.findFirst({ where: { visitorId: viewer.userId, status: "active" }, select: { id: true } });

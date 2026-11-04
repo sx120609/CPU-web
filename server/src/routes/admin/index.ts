@@ -968,6 +968,24 @@ function forumTargetInAdminSchool(fixedKind?: "topic" | "reply") {
   };
 }
 
+/** 论坛图片、视频的人工复核：只能处理后台当前学校的人上传的。 */
+function forumAssetInAdminSchool(kind: "image" | "video") {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return next();
+      const asset = kind === "image"
+        ? await prisma.forumImageAsset.findUnique({ where: { id }, select: { createdById: true } })
+        : await prisma.forumVideoAsset.findUnique({ where: { id }, select: { createdById: true } });
+      if (asset?.createdById) {
+        const owner = await prisma.user.findUnique({ where: { id: asset.createdById }, select: { schoolId: true } });
+        if (owner && owner.schoolId !== adminSchoolId(req)) throw Errors.notFound(kind === "image" ? "图片不存在" : "视频不存在");
+      }
+      next();
+    } catch (error) { next(error); }
+  };
+}
+
 adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
@@ -1510,7 +1528,7 @@ adminRouter.patch("/replies/:id", modOrAbove, forumTargetInAdminSchool("reply"),
   } catch (e) { next(e); }
 });
 
-adminRouter.patch("/forum-images/:id", modOrAbove, validate(forumImagePatchSchema), async (req, res, next) => {
+adminRouter.patch("/forum-images/:id", modOrAbove, forumAssetInAdminSchool("image"), validate(forumImagePatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("图片 ID 不合法");
@@ -1546,7 +1564,7 @@ adminRouter.get("/forum-videos", adminOnly, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-adminRouter.patch("/forum-videos/:id", modOrAbove, validate(forumVideoPatchSchema), async (req, res, next) => {
+adminRouter.patch("/forum-videos/:id", modOrAbove, forumAssetInAdminSchool("video"), validate(forumVideoPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("视频 ID 不合法");
@@ -3194,15 +3212,18 @@ adminRouter.get("/campus-assistant/points/users", adminOnly, async (req, res, ne
   try {
     const q = String(req.query.q ?? "").trim();
     const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
+    // 积分是账户层面的，但列表按后台当前学校的账号来。
+    const schoolId = adminSchoolId(req);
     const where = q
       ? {
+          schoolId,
           OR: [
             { username: { contains: q, mode: "insensitive" as const } },
             { nickname: { contains: q, mode: "insensitive" as const } },
             { email: { contains: q, mode: "insensitive" as const } },
           ],
         }
-      : {};
+      : { schoolId };
     const list = await prisma.user.findMany({
       where,
       orderBy: q ? [{ id: "desc" }] : [{ assistantPoints: "desc" }, { id: "desc" }],
@@ -3299,7 +3320,8 @@ adminRouter.get("/campus-assistant/points/ledger", adminOnly, async (req, res, n
     if (fromDate) dateRange.gte = fromDate;
     if (toDate) dateRange.lte = toDate;
 
-    const filters: Prisma.CampusAssistantPointLedgerWhereInput[] = [];
+    // 流水按后台当前学校的账号来。
+    const filters: Prisma.CampusAssistantPointLedgerWhereInput[] = [{ user: { schoolId: adminSchoolId(req) } }];
     if (source) filters.push({ source });
     if (direction === "income") filters.push({ delta: { gt: 0 } });
     if (direction === "expense") filters.push({ delta: { lt: 0 } });

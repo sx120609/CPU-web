@@ -67,6 +67,7 @@ test('canteen detail waits for settings and blocks guests when login is required
     '@/api/request': { getToken: () => '' },
     '@/data/serviceTools': { findServiceTool: () => tool },
     '@/utils/documentTitle': { useDocumentTitle: () => {} },
+    '@/utils/schoolText': { useSchoolText: () => (text) => text },
     './servicesPage': {
       useServiceTools: () => ({ auth, toolMetas, toolsError: ref(''), loadToolMetas: async () => {},
         isLoginRequired: () => toolMetas.value[0]?.requireLogin, toolBadge: () => '' }),
