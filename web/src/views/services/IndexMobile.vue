@@ -19,7 +19,7 @@
         enterkeyhint="search"
         autocomplete="off"
         aria-label="搜索校园服务"
-        :placeholder="jwxt.isLoggedIn ? '搜索工具或校园应用' : '搜索校园工具'"
+        :placeholder="jwxt.isLoggedIn && campusPortal ? '搜索工具或校园应用' : '搜索校园工具'"
         @keydown.enter="($event.target as HTMLInputElement).blur()"
       />
       <button v-if="keyword" data-cpu-button="surface" type="button" aria-label="清空搜索" @click="keyword = ''">
@@ -86,7 +86,7 @@
       </div>
     </section>
 
-    <section v-show="!searching || appMatchCount" class="svc-m-section" aria-labelledby="svc-m-apps-title">
+    <section v-if="campusPortal" v-show="!searching || appMatchCount" class="svc-m-section" aria-labelledby="svc-m-apps-title">
       <header class="svc-m-section-head">
         <h2 id="svc-m-apps-title">校园应用</h2>
         <span v-if="jwxt.isLoggedIn && !searching">来自学校融合门户</span>
@@ -163,6 +163,8 @@ const {
   toolsError,
   visibleTools,
   academicDataUnavailable,
+  campusPortal,
+  clientApps,
   loadToolMetas,
   isLoginRequired,
   toolBadge,
@@ -171,7 +173,7 @@ const {
 } = useInjectedServicesPage();
 
 const appMatches = ref(0);
-const appMatchCount = computed(() => (jwxt.isLoggedIn ? appMatches.value : 0));
+const appMatchCount = computed(() => (jwxt.isLoggedIn && campusPortal.value ? appMatches.value : 0));
 const needle = computed(() => keyword.value.trim().toLowerCase());
 const searching = computed(() => Boolean(needle.value));
 
@@ -184,7 +186,7 @@ const shortcuts = computed(() => [
     sub: "剩余电量与金额",
     open: () => { electricOpen.value = true; },
   }] : []),
-  ...(hidesClientDownloads() ? [] : [{
+  ...(hidesClientDownloads() || !clientApps.value ? [] : [{
     key: "download",
     icon: "download",
     tone: "#2563eb",
@@ -197,7 +199,7 @@ const shortcuts = computed(() => [
 const matchedShortcuts = computed(() => shortcuts.value.filter((item) => matches(item.title, item.sub)));
 const matchedTools = computed(() => visibleTools.value.filter((tool) => matches(tool.name, tool.summary, tool.category, tool.description)));
 // 已登录教务时完整应用列表里已包含这些入口，不再重复展示。
-const matchedLinks = computed(() => (jwxt.isLoggedIn ? [] : publicServiceLinks.filter((link) => matches(link.name))));
+const matchedLinks = computed(() => (jwxt.isLoggedIn || !campusPortal.value ? [] : publicServiceLinks.filter((link) => matches(link.name))));
 const hasMatches = computed(() => Boolean(
   matchedShortcuts.value.length
   || matchedTools.value.length

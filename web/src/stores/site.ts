@@ -25,6 +25,10 @@ export const useSiteStore = defineStore("site", {
     brandTagline: (state) => (state.school ? state.school.tagline : "CPU 校园互助服务"),
     schoolName: (state) => state.school?.name || "中国药科大学",
     schoolShortName: (state) => state.school?.shortName || "药大",
+    /** 手机 App、桌面端、NEXT 都是药大拾间的，只给默认学校露出下载和安装入口。 */
+    clientAppsAvailable: (state) => !state.school || state.school.id === "cpu",
+    /** 融合门户应用、公开外链这类直接指向药大自己系统的入口，只给默认学校。 */
+    campusPortalAvailable: (state) => !state.school || state.school.id === "cpu",
   },
   actions: {
     async fetch(force = false): Promise<void> {
@@ -50,6 +54,10 @@ export const useSiteStore = defineStore("site", {
           if (schoolResult.status === "fulfilled") {
             this.school = schoolResult.value;
             setDocumentBrand(this.brandName, this.schoolName);
+            // 下次打开时启动画面先显示这所学校的品牌（public/appearance-bootstrap.js 读取）。
+            try {
+              window.localStorage.setItem("cpu-school-brand-v1", JSON.stringify({ brandName: this.brandName, schoolName: this.schoolName }));
+            } catch { /* 无痕模式等存不了就算了 */ }
             if (schoolResult.value.periods?.length) useSchoolSlots(schoolResult.value.periods);
           }
           if (configResult.status === "fulfilled") {

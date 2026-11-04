@@ -803,6 +803,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import { ref, reactive, computed, nextTick, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -843,6 +844,8 @@ import {
   resolveForumReviewState,
   waitForForumSubmissionResult,
 } from "@/utils/forumSubmission";
+
+const site = useSiteStore();
 
 const route = useRoute();
 const router = useRouter();
@@ -977,7 +980,7 @@ const metaPriceLabel = computed(() => {
   return price > 0 ? `¥ ${price}` : "面议";
 });
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
-const boardDisplayName = computed(() => topic.value?.board?.name || "药大拾间");
+const boardDisplayName = computed(() => topic.value?.board?.name || site.brandName);
 const displayTopicTitle = computed(() => topic.value?.title || "");
 const isSayTopic = computed(() => topic.value?.metadata?._postMode === "say");
 const isReadOnly = computed(() => topic.value?.board?.readOnly);

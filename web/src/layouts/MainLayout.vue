@@ -626,7 +626,7 @@ const drawerItems = computed(() => {
   items.push({ id: "system-messages", to: "/messages", label: "消息", icon: Message });
   if (auth.isLoggedIn && !hidesNativeCommerce()) items.push({ id: "system-vip", to: "/vip", label: "VIP 中心", icon: StarFilled });
   if (auth.canAccessModuleAdmin) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
-  if (!hidesClientDownloads() && !items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
+  if (!hidesClientDownloads() && site.clientAppsAvailable && !items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
   for (const item of site.topNavigation.filter((candidate) => candidate.to !== "/download" && candidate.showInDrawer && navigationItemVisible(candidate))) {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
@@ -654,7 +654,7 @@ function isExternalNav(to: string) {
   return /^(?:https?:\/\/|mailto:|#)/i.test(to);
 }
 
-const displayName = computed(() => auth.user?.nickname?.trim() || "药大同学");
+const displayName = computed(() => auth.user?.nickname?.trim() || `${site.schoolShortName}同学`);
 
 // 首次登录设昵称
 const showNicknameDialog = ref(false);

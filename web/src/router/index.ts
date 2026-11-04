@@ -290,7 +290,7 @@ export const router = createRouter({
         { path: "profile/storage", name: "storage", component: () => import("@/views/profile/Storage.vue"), meta: { title: "存储与缓存", public: true } },
         { path: "profile/verification", name: "profile-verification", component: () => import("@/views/profile/Verification.vue"), meta: { title: "拾间认证" } },
         { path: "vip", name: "vip", component: () => import("@/views/profile/Vip.vue"), meta: { title: "VIP 中心" } },
-        { path: "sponsor", name: "sponsor", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "支持药大拾间", public: true } },
+        { path: "sponsor", name: "sponsor", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "支持拾间", public: true } },
         { path: "sponsor-wall", redirect: "/sponsor" },
         { path: "u/:id", name: "user", component: () => import("@/views/profile/User.vue"), meta: { title: "用户", public: true } },
         { path: "admin", name: "admin", component: () => import("@/views/admin/Index.vue"), meta: { title: "管理后台", requireMod: true } },

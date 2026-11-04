@@ -12,6 +12,11 @@ export function setDocumentTitle(title?: string | null) {
   document.title = lastTitle ? `${lastTitle} · ${siteName}` : homeTitle;
 }
 
+/** 当前学校的品牌名（例如「南医拾间」），给导出文件名、分享文案这类不在组件里的地方用。 */
+export function currentBrandName() {
+  return siteName;
+}
+
 /** 当前学校的品牌名和学校全称，用来拼页面标题；换学校后当前页的标题立即跟着变。 */
 export function setDocumentBrand(brandName: string, schoolName: string) {
   siteName = brandName;

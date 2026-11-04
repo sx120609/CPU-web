@@ -5,7 +5,7 @@
         <span class="pk-tile" aria-hidden="true"><el-icon><Calendar /></el-icon></span>
         <div class="pk-title-copy">
           <h1>日程</h1>
-          <p>课表以外自己安排的事。网页、手机 App 和药大拾间 NEXT 用的是同一份，在哪里改都会同步。</p>
+          <p>课表以外自己安排的事。网页和各个客户端用的是同一份，在哪里改都会同步。</p>
         </div>
       </div>
     </header>

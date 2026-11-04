@@ -15,7 +15,7 @@
     <ol class="schedule-usage-notice__items">
       <li>
         <strong>先核对上课周次</strong>
-        <p>药大拾间课表理论上与教务系统保持一致。如发现差异，请先仔细核对教务系统中的“单双周”“上课周次”等信息，确认是否因周次理解不同造成误读。</p>
+        <p>{{ site.brandName }}课表理论上与教务系统保持一致。如发现差异，请先仔细核对教务系统中的“单双周”“上课周次”等信息，确认是否因周次理解不同造成误读。</p>
       </li>
       <li>
         <strong>点击课程即可编辑</strong>
@@ -40,9 +40,12 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import { ElButton, ElDialog } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useScheduleUsageNotice } from "@/views/schedule/useScheduleUsageNotice";
+
+const site = useSiteStore();
 
 const auth = useAuthStore();
 const { visible, secondsLeft, beginReading, acknowledge } = useScheduleUsageNotice(

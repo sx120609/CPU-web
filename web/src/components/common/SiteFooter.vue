@@ -16,7 +16,7 @@
           <h2>使用</h2>
           <router-link to="/services">校园服务</router-link>
           <router-link v-if="site.pathEnabled('/schedule')" to="/schedule">课表</router-link>
-          <router-link v-if="!hidesClientDownloads()" to="/download">客户端下载</router-link>
+          <router-link v-if="!hidesClientDownloads() && site.clientAppsAvailable" to="/download">客户端下载</router-link>
         </nav>
 
         <nav class="footer-col" aria-label="关于与条款">

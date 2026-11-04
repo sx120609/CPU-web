@@ -18,7 +18,7 @@
       <p v-if="avatarPreviewFailed" class="avatar-preview-note">头像已保存，预览暂时加载失败，无需重新上传。</p>
       <h3 class="name">
         <span class="name-primary">
-          <DisplayNickname :name="user?.nickname || '药大同学'" />
+          <DisplayNickname :name="user?.nickname || `${site.schoolShortName}同学`" />
           <UserVerificationBadge :verification="user?.verification" />
         </span>
         <span class="identity-tags">
@@ -248,7 +248,7 @@
         <div v-for="order in sponsorOrders" :key="order.outTradeNo" class="sponsor-order-row">
           <div>
             <b>¥{{ order.amount }}</b>
-            <span>{{ order.categoryTitle || "支持药大拾间" }} · {{ payTypeLabels[order.payType as PayType] || order.payType }} · 已支付</span>
+            <span>{{ order.categoryTitle || `支持${site.brandName}` }} · {{ payTypeLabels[order.payType as PayType] || order.payType }} · 已支付</span>
           </div>
           <div class="order-actions">
             <span>{{ fmtDate(order.paidAt || order.createdAt, "MM-DD HH:mm") }}</span>
@@ -275,7 +275,7 @@
         </div>
         <div class="sponsor-confirm-line">
           <span>赞助类别</span>
-          <strong>{{ selectedSponsorCategory?.title || "支持药大拾间" }}</strong>
+          <strong>{{ selectedSponsorCategory?.title || `支持${site.brandName}` }}</strong>
         </div>
         <div class="sponsor-confirm-line">
           <span>支付方式</span>

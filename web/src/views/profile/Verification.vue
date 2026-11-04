@@ -16,7 +16,7 @@
         </svg>
       </div>
       <div>
-        <p class="eyebrow">药大拾间 · 拾间认证</p>
+        <p class="eyebrow">{{ site.brandName }} · 拾间认证</p>
         <h1>让同学确认账号背后的真实身份</h1>
         <p>面向具有可核验身份的个人，以及校内社团、学生组织、学院或部门账号。通过后，昵称旁会展示蓝色认证标记，完整说明可在个人主页查看。</p>
       </div>
@@ -102,7 +102,7 @@
             v-model="form.requestedLabel"
             maxlength="30"
             show-word-limit
-            :placeholder="form.type === 'individual' ? '例如：校园摄影创作者' : '例如：中国药科大学轮滑协会'"
+            :placeholder="form.type === 'individual' ? '例如：校园摄影创作者' : `例如：${site.schoolName}轮滑协会`"
           />
           <p class="field-help">至少填写 2 个字。审核通过后，昵称旁显示蓝色认证标记；这段完整说明会显示在悬停提示和个人主页，管理员可按核验结果校正。</p>
         </el-form-item>
@@ -171,6 +171,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
@@ -189,6 +190,8 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { accountVerificationApplicationIssue } from "@/utils/accountVerificationForm";
 import { fmtDate } from "@/utils/format";
+
+const site = useSiteStore();
 
 const auth = useAuthStore();
 const route = useRoute();

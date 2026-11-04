@@ -229,8 +229,13 @@ let adsLoadSeq = 0;
 let mounted = false;
 
 const enabledFeatureLabels = computed(() => {
-  const labels = auth.forumHidden ? ["教务数据", "常用校园服务"] : ["公告聚合", "教务数据", "常用校园服务"];
-  if (site.features.coursereview && showForumContent.value) labels.splice(2, 0, "课程点评");
+  // 按这所学校开着的功能说；外校没有公告聚合、可能没接教务。
+  const labels = [
+    ...(!auth.forumHidden && site.pathEnabled("/announcements") ? ["公告聚合"] : []),
+    ...(site.pathEnabled("/jwxt") ? ["教务数据"] : []),
+    "常用校园服务",
+  ];
+  if (site.features.coursereview && showForumContent.value) labels.splice(labels.length - 1, 0, "课程点评");
   if (site.features.market && showForumContent.value) labels.splice(labels.length - 1, 0, "二手交流");
   if (site.features.electric) labels.push("宿舍电费查询");
   if (showForumContent.value) labels.unshift("校园讨论");

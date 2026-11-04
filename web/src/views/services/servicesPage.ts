@@ -152,9 +152,14 @@ export function useServicesPage() {
     disposed = true;
   });
 
+  // 校园应用（融合门户）、公开入口、客户端下载都是药大自己的。
+  const campusPortal = computed(() => site.campusPortalAvailable);
+  const clientApps = computed(() => site.clientAppsAvailable);
   return {
     ...tools,
     jwxt,
+    campusPortal,
+    clientApps,
     electricOpen,
     electricAvailable,
     academicDataUnavailable,

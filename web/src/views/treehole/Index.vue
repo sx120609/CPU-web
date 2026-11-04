@@ -28,7 +28,7 @@
           <li><strong>你全程匿名。</strong>每次倾诉都会生成新的虚拟 ID，洞主看不到你的学号、姓名和手机号；每段对话严格隔离。</li>
           <li><strong>遇到危机情况</strong>，小艾绒会引导你联系学校心理发展中心，必要时转介给中心老师。</li>
           <li><strong>对话记录会留存</strong>，只有你本人、接待你的洞主和社团核心管理员可以查看，用于陪伴跟进和危机追溯。</li>
-          <li>只有在评估存在严重安全风险、需要线下干预时，经两名核心管理员共同审批，才会查看你在药大拾间的账号信息，全程记录在案。</li>
+          <li>只有在评估存在严重安全风险、需要线下干预时，经两名核心管理员共同审批，才会查看你在{{ site.brandName }}的账号信息，全程记录在案。</li>
         </ul>
         <el-checkbox v-model="agree">我已阅读并同意以上说明</el-checkbox>
         <div class="th-actions">
@@ -41,7 +41,7 @@
           树洞暂未开放。开放后，你可以在这里找小艾绒聊聊。
         </div>
         <div v-else-if="!me.eligible" class="th-notice is-warn">
-          树洞仅面向在校同学，请先退出后用“学校账号登录”进入药大拾间。
+          树洞仅面向在校同学，请先退出后用“学校账号登录”进入{{ site.brandName }}。
         </div>
 
         <section v-if="activeSession" class="th-group th-group--flush">
@@ -150,6 +150,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
@@ -157,6 +158,8 @@ import { ArrowRight, ChatDotRound, EditPen } from "@element-plus/icons-vue";
 import { treeholeApi, type TreeholeMe } from "@/api/treehole";
 import { errorText, timeText } from "./shared";
 import "./treehole.css";
+
+const site = useSiteStore();
 
 const router = useRouter();
 const me = ref<TreeholeMe | null>(null);

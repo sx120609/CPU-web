@@ -1,3 +1,4 @@
+import { currentBrandName } from "@/utils/documentTitle";
 // 把一周的课导出成 `.ics` 日历文件。用的是课表已经按日期解析好的课程，
 // 所以放假那天什么都不导出，补班那天导出它实际上的课（iOS 见 ScheduleICSExport.swift）。
 import { classroomOnly, clockMinutes, type SlotClock } from "./nowIndicator";
@@ -89,7 +90,7 @@ export function buildWeekIcs(input: { week: number; days: IcsDay[]; clocks: Slot
 }
 
 export function weekIcsFileName(week: number) {
-  return `药大拾间-第${week}周课表.ics`;
+  return `${currentBrandName()}-第${week}周课表.ics`;
 }
 
 /** 交给浏览器保存；支持分享文件的手机浏览器先走系统分享面板，好直接加进日历。 */

@@ -1,5 +1,7 @@
-export function buildScriptableWidgetScript(endpoint: string) {
-  return `// 药大课表小组件
+import { currentBrandName } from "@/utils/documentTitle";
+
+export function buildScriptableWidgetScript(endpoint: string, brandName = currentBrandName()) {
+  return `// ${brandName}课表小组件
 // 小组件参数：upcoming（临近课程）、split（当前/接下来）、today（今日课程）、twoday（两日课表）。
 const API_ENDPOINT = ${JSON.stringify(endpoint)};
 const FAMILY = config.widgetFamily || "medium";
@@ -343,7 +345,7 @@ function renderTwoDay(widget, data) {
   const tomorrow = resolveDay(data, selected.offset + 1);
   const heading = widget.addStack();
   heading.layoutHorizontally();
-  addLine(heading, "药大拾间·课表", Font.boldSystemFont(16), color("#172033", "#f8fafc"));
+  addLine(heading, ${JSON.stringify(`${brandName}·课表`)}, Font.boldSystemFont(16), color("#172033", "#f8fafc"));
   heading.addSpacer();
   addLine(heading, shortDate(today?.date) + " - " + shortDate(tomorrow?.date), Font.systemFont(10), color("#667085", "#cbd5e1"));
   widget.addSpacer(10);

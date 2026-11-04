@@ -1213,6 +1213,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import ScheduleCourseStatus from "@/components/jwxt/ScheduleCourseStatus.vue";
 import ScheduleUsageNotice from "@/components/jwxt/ScheduleUsageNotice.vue";
 import JwxtReauthDialog from "@/components/jwxt/JwxtReauthDialog.vue";
@@ -1410,6 +1411,8 @@ import type {
   ViewMode,
   WeekCourseBlock,
 } from "@/views/schedule/types";
+
+const site = useSiteStore();
 
 const auth = useAuthStore();
 const couple = useCoupleOverlay(() => auth.user?.id);
@@ -2110,7 +2113,7 @@ async function installIOSWidget() {
     const token = await jwxtApi.createScheduleWidgetToken({ name: "iOS 小组件" });
     bridge.installScheduleWidget(JSON.stringify({
       endpoint: token.endpoint,
-      title: "药大课表",
+      title: `${site.schoolShortName}课表`,
       theme: scheduleTheme.value,
     }));
   } finally {
@@ -2135,7 +2138,7 @@ async function installHarmonyWidget() {
     const token = await jwxtApi.createScheduleWidgetToken({ name: "鸿蒙小组件" });
     bridge.installScheduleWidget(JSON.stringify({
       endpoint: token.endpoint,
-      title: "药大课表",
+      title: `${site.schoolShortName}课表`,
       theme: scheduleTheme.value,
     }));
   } finally {
@@ -2174,7 +2177,7 @@ async function installAndroidWidget() {
     const token = await jwxtApi.createScheduleWidgetToken({ name: "Android 小组件" });
     bridge.installScheduleWidget(JSON.stringify({
       endpoint: token.endpoint,
-      title: "药大课表",
+      title: `${site.schoolShortName}课表`,
     }));
     androidWidgetGuideOpen.value = true;
     ElMessage.success("小组件配置已保存");
@@ -2360,7 +2363,7 @@ onMounted(() => {
 
   // 服务号来源作为微信客户端使用；普通微信链接由全局关注引导接管，其他受限内置浏览器仍提示跳转。
   openBrowserPromptRef.value?.autoPromptIfEligible();
-  installPromptRef.value?.autoPromptIfEligible();
+  if (site.clientAppsAvailable) installPromptRef.value?.autoPromptIfEligible();
 
   if (offlineMode.value) {
     sessionChecking.value = false;

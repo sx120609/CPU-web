@@ -39,3 +39,31 @@
   link.media = matched[1];
   document.head.appendChild(link);
 })();
+
+// 拾间品牌下的学校：上次用的是哪所学校，启动画面和标签页标题先显示那所学校的品牌，
+// 不要先闪一下默认学校（药大拾间）。品牌由网页在拿到学校信息后写入（stores/site.ts）。
+(function () {
+  let brand = null;
+  try {
+    brand = JSON.parse(window.localStorage.getItem("cpu-school-brand-v1") || "null");
+  } catch {
+    return;
+  }
+  if (!brand || typeof brand.brandName !== "string" || !brand.brandName || brand.brandName.length > 20) return;
+  const brandName = brand.brandName;
+  const schoolName = typeof brand.schoolName === "string" ? brand.schoolName.slice(0, 40) : "";
+  if (document.title.indexOf("药大拾间") === 0) {
+    document.title = schoolName ? `${brandName} · ${schoolName}校园互助与服务平台` : brandName;
+  }
+  const apply = () => {
+    const screen = document.getElementById("boot-screen");
+    if (!screen) return;
+    screen.setAttribute("aria-label", `${brandName}正在启动`);
+    const title = screen.querySelector(".app-launch-title");
+    if (title) title.textContent = brandName;
+    const logo = screen.querySelector(".app-launch-logo");
+    if (logo) logo.setAttribute("aria-label", brandName);
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply, { once: true });
+  else apply();
+})();

@@ -1,3 +1,4 @@
+import { currentBrandName } from "@/utils/documentTitle";
 // 共享课表：别人分享给我的课表整份保存在这台设备上，按导入它的账号分开
 // （iOS 见 NativeSharedSchedule.swift、NativeScheduleSharingService.swift）。
 // 发布和撤销自己的分享码走站点账号（/api/schedule-shares），跟着账号走；
@@ -390,7 +391,7 @@ export function buildSharePublishBody(input: {
 /** 发给朋友的文字：分享码、在哪里输入，以及在浏览器里直接打开同一份课表的链接。 */
 export function shareInvitationText(code: string, origin: string) {
   const base = origin.replace(/\/+$/u, "");
-  return `我的课表分享码：${code}\n在药大拾间「课表 → 更多 → 共享课表」里输入就能看，也可以直接打开：${base}/schedule/share/${code}`;
+  return `我的课表分享码：${code}\n在${currentBrandName()}「课表 → 更多 → 共享课表」里输入就能看，也可以直接打开：${base}/schedule/share/${code}`;
 }
 
 /** 「更新于 10月7日」，取自服务端的 ISO 时间。 */

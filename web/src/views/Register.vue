@@ -1,5 +1,5 @@
 <template>
-  <AuthShell title="注册药大拾间" subtitle="暂不开放公开注册" @home="goHome">
+  <AuthShell :title="`注册${site.brandName}`" subtitle="暂不开放公开注册" @home="goHome">
     <template #nav><button data-cpu-button="surface" type="button" @click="goLogin">直接登录</button></template>
 
       <!-- 生产模式：公开注册已关闭 -->
@@ -8,7 +8,7 @@
           <div style="line-height:1.7">
             <p style="margin:0 0 6px"><b>公开注册已关闭。</b></p>
             <p style="margin:0">
-              药大学生请在 <button data-cpu-button="text" type="button" class="inline-link" @click="goLogin">登录页</button> 使用<b>学校统一认证</b>登录，首次登录会自动创建账号。<br>
+              {{ site.schoolShortName }}学生请在 <button data-cpu-button="text" type="button" class="inline-link" @click="goLogin">登录页</button> 使用<b>学校统一认证</b>登录，首次登录会自动创建账号。<br>
               暂时无法使用统一认证的账号，可联系站务协助处理。
             </p>
           </div>
@@ -51,8 +51,8 @@
         <PrivacyPolicyNotice />
       </template>
 
-    <el-dialog v-model="showTerms" title="药大拾间 用户协议" width="500">
-      <p>药大拾间是面向校内同学的交流与服务平台。</p>
+    <el-dialog v-model="showTerms" :title="`${site.brandName} 用户协议`" width="500">
+      <p>{{ site.brandName }}是面向校内同学的交流与服务平台。</p>
       <p>注册即表示你同意：</p>
       <ol>
         <li>不发布违法、违规、人身攻击内容</li>
@@ -69,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSiteStore } from "@/stores/site";
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
@@ -76,6 +77,8 @@ import AuthShell from "@/components/common/AuthShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { resolveSafeRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+
+const site = useSiteStore();
 
 const router = useRouter();
 const route = useRoute();

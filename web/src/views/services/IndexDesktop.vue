@@ -8,7 +8,7 @@
           <p v-if="academicDataUnavailable">
             当前账号已完成站内登录，但学校暂未开放可读取的教务数据；公共服务仍可正常使用，教务相关入口会在数据可用后自动显示。
           </p>
-          <p v-else>整理常用校园入口。登录教务后，还可以查看更完整的应用列表。</p>
+          <p v-else>整理常用校园入口。<template v-if="campusPortal">登录教务后，还可以查看更完整的应用列表。</template></p>
         </div>
         <router-link v-if="jwxt.isLoggedIn" class="pk-pill svc-d-status" to="/jwxt"><span aria-hidden="true" />教务已连接</router-link>
         <router-link v-else-if="!academicDataUnavailable" class="pk-pill" to="/jwxt">登录教务<el-icon aria-hidden="true"><ArrowRight /></el-icon></router-link>
@@ -22,7 +22,7 @@
         <span><b>宿舍电费查询</b><small>站内查询本宿舍剩余电量、剩余金额与抄表时间</small></span>
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
       </button>
-      <button v-if="!hidesClientDownloads()" data-cpu-button="surface" type="button" class="svc-d-shortcut" style="--tone: #2563eb" @click="$router.push('/download')">
+      <button v-if="!hidesClientDownloads() && clientApps" data-cpu-button="surface" type="button" class="svc-d-shortcut" style="--tone: #2563eb" @click="$router.push('/download')">
         <span class="pk-tile" aria-hidden="true"><AppIcon :name="clientShortcut.icon" /></span>
         <span><b>{{ clientShortcut.title }}</b><small>{{ clientShortcut.sub }}</small></span>
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
@@ -53,7 +53,7 @@
       </div>
     </section>
 
-    <section class="svc-d-section" aria-labelledby="svc-d-apps-title">
+    <section v-if="campusPortal" class="svc-d-section" aria-labelledby="svc-d-apps-title">
       <header class="svc-d-section-head">
         <div>
           <h2 id="svc-d-apps-title" class="pk-h2">校园应用</h2>
@@ -86,7 +86,7 @@
     </section>
 
     <!-- 未登录的兜底：少量基础外链 -->
-    <section v-if="!jwxt.isLoggedIn" class="svc-d-section" aria-labelledby="svc-d-links-title">
+    <section v-if="!jwxt.isLoggedIn && campusPortal" class="svc-d-section" aria-labelledby="svc-d-links-title">
       <header class="svc-d-section-head">
         <h2 id="svc-d-links-title" class="pk-h2">公开入口</h2>
         <span class="pk-muted">在新页面打开</span>
@@ -121,6 +121,8 @@ const {
   toolsError,
   visibleTools,
   academicDataUnavailable,
+  campusPortal,
+  clientApps,
   loadToolMetas,
   isLoginRequired,
   toolBadge,

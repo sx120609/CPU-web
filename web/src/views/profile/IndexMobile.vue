@@ -21,7 +21,7 @@
         <div class="me-m-identity">
           <h1 id="me-m-name" class="me-m-name">
             <span class="name-primary">
-              <DisplayNickname :name="user?.nickname || '药大同学'" />
+              <DisplayNickname :name="user?.nickname || `${site.schoolShortName}同学`" />
               <UserVerificationBadge :verification="user?.verification" />
             </span>
           </h1>
@@ -258,7 +258,7 @@
           <h3>我的赞助记录</h3>
           <div v-for="order in sponsorOrders" :key="order.outTradeNo" class="me-m-sponsor-order">
             <div>
-              <b>{{ order.categoryTitle || "支持药大拾间" }}</b>
+              <b>{{ order.categoryTitle || `支持${site.brandName}` }}</b>
               <small>{{ payTypeLabels[order.payType as PayType] || order.payType }} · {{ fmtDate(order.paidAt || order.createdAt, "MM-DD HH:mm") }}</small>
             </div>
             <strong>¥{{ order.amount }}</strong>
@@ -378,7 +378,7 @@
         </div>
         <div class="me-m-confirm-line">
           <span>赞助类别</span>
-          <strong>{{ selectedSponsorCategory?.title || "支持药大拾间" }}</strong>
+          <strong>{{ selectedSponsorCategory?.title || `支持${site.brandName}` }}</strong>
         </div>
         <div class="me-m-confirm-line">
           <span>支付方式</span>

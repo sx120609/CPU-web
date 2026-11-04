@@ -12,7 +12,7 @@
           <li><el-icon aria-hidden="true"><DataLine /></el-icon>成绩、考试与培养方案</li>
           <li><el-icon aria-hidden="true"><Service /></el-icon>校园服务与小工具</li>
         </ul>
-        <p>面向药大师生的独立校园工具 · 非学校官方应用</p>
+        <p>面向{{ site.schoolShortName }}师生的独立校园工具 · 非学校官方应用</p>
       </aside>
 
       <main class="auth-main">

@@ -4,6 +4,7 @@ import { renderAsync } from "@resvg/resvg-js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "../prisma";
+import { getSchool } from "../schools/registry";
 import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
 import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
@@ -56,7 +57,8 @@ shareRouter.get("/topic/:id", async (req, res, next) => {
       shareUrl,
       topicUrl,
       imageUrl,
-      title: `${topic.title} · 药大拾间`,
+      title: `${topic.title} · ${brandOfTopic(topic)}`,
+      siteName: brandOfTopic(topic),
       description,
       topicTitle: topic.title,
       boardName: topic.board.name,
@@ -118,7 +120,7 @@ async function queryShareTopic(id: number) {
   const topic = await prisma.topic.findUnique({
     where: { id },
     include: {
-      board: { select: { name: true, slug: true, type: true, color: true, icon: true } },
+      board: { select: { name: true, slug: true, type: true, color: true, icon: true, schoolId: true } },
       author: { select: { nickname: true } },
     },
   });
@@ -162,11 +164,13 @@ function renderTopicSharePage(input: {
   topicUrl: string;
   imageUrl: string;
   title: string;
+  siteName: string;
   description: string;
   topicTitle: string;
   boardName: string;
   imageHeight: number;
 }) {
+  const siteName = input.siteName;
   const title = escapeHtml(input.title);
   const description = escapeHtml(input.description);
   const topicUrl = escapeHtml(input.topicUrl);
@@ -182,7 +186,7 @@ function renderTopicSharePage(input: {
     <title>${title}</title>
     <meta name="description" content="${description}" />
     <meta property="og:type" content="article" />
-    <meta property="og:site_name" content="药大拾间" />
+    <meta property="og:site_name" content="${escapeHtml(siteName)}" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:url" content="${shareUrl}" />
@@ -279,8 +283,14 @@ export function layoutTopicCard(topic: any) {
   return { titleLines, excerptLines, titleY, excerptY, metaY, dividerY, footerY, height };
 }
 
+/** 帖子所属学校的品牌名（拾间品牌下各校不同），卡片和预览页都用它。 */
+function brandOfTopic(topic: { board?: { schoolId?: string | null } | null }) {
+  return getSchool(topic.board?.schoolId).brandName;
+}
+
 export async function renderTopicCardSvg(topic: any, origin: string) {
-  const boardName = topic.board?.name || "药大拾间";
+  const brandName = brandOfTopic(topic);
+  const boardName = topic.board?.name || brandName;
   const boardColor = normalizeHex(topic.board?.color) || "#086f63";
   const authorName = topic.isAnonymous ? presentAnonymousAlias(topic.anonymousAlias) : (topic.author?.nickname || "同学");
   const meta = `${authorName} · ${topic.replyCount || 0} 回复 · ${topic.viewCount || 0} 浏览`;
@@ -315,7 +325,7 @@ export async function renderTopicCardSvg(topic: any, origin: string) {
   <rect x="88" y="${layout.dividerY}" width="544" height="1" fill="${CARD_HAIRLINE}" />
 
   <image x="88" y="${layout.footerY + 24}" width="64" height="64" href="${siteLogoDataUrl()}" />
-  <text x="170" y="${layout.footerY + 52}" font-size="28" font-weight="700" fill="${CARD_INK}">药大拾间</text>
+  <text x="170" y="${layout.footerY + 52}" font-size="28" font-weight="700" fill="${CARD_INK}">${escapeXml(brandName)}</text>
   <text x="170" y="${layout.footerY + 84}" font-size="19" fill="${CARD_INK_MUTED}">扫码看原帖 · ${escapeXml(host)}</text>
   <image x="520" y="${layout.footerY}" width="112" height="112" href="${escapeXml(qrDataUrl)}" />
 </svg>`;

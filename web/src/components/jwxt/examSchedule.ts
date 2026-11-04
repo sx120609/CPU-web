@@ -1,3 +1,4 @@
+import { currentBrandName } from "@/utils/documentTitle";
 // 考试安排：把教务给的考试时间读成日期和起止时刻，算倒计时、分紧急程度，并导出成 `.ics` 日历文件。
 // 教务的时间是一段文字，常见的是 "2026-06-20 09:00-11:00"，也见过斜杠、中文年月日、带秒和用 ~ 连接的写法。
 
@@ -230,6 +231,6 @@ export function buildExamIcs(list: ExamLike[], stamp = new Date()) {
 }
 
 export function examIcsFileName(list: ExamLike[]) {
-  if (list.length === 1) return `药大拾间-考试-${list[0].courseName.trim().replace(/[\\/:*?"<>|]/g, "") || "课程"}.ics`;
-  return "药大拾间-考试安排.ics";
+  if (list.length === 1) return `${currentBrandName()}-考试-${list[0].courseName.trim().replace(/[\\/:*?"<>|]/g, "") || "课程"}.ics`;
+  return `${currentBrandName()}-考试安排.ics`;
 }

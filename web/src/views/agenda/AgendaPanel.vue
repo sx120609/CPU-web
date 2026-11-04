@@ -86,7 +86,7 @@
           <span v-if="agenda.error" class="warn">{{ agenda.error }}</span>
           <span v-else-if="agenda.syncing">正在同步…</span>
           <span v-else-if="agenda.dirtyCount">有 {{ agenda.dirtyCount }} 处改动还没同步</span>
-          <span v-else-if="agenda.syncedAt">已同步。网页、手机 App 和药大拾间 NEXT 用的是同一份。</span>
+          <span v-else-if="agenda.syncedAt">已同步。网页和各个客户端用的是同一份。</span>
         </p>
       </template>
     </div>
