@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
-import { DEFAULT_TOP_NAVIGATION, siteApi, type FeatureMap, type PublicSiteConfig, type TopNavigationItem } from "@/api/site";
+import { DEFAULT_TOP_NAVIGATION, siteApi, type FeatureMap, type PublicSiteConfig, type SchoolInfo, type TopNavigationItem } from "@/api/site";
+import { isSchoolPathEnabled, isSchoolToolEnabled } from "@/utils/schoolModules";
 
 /**
  * 站点级开关：默认关闭可选功能，拉到后台真实开关后再展示入口。
@@ -11,6 +12,7 @@ export const useSiteStore = defineStore("site", {
     siteOrigin: "",
     siteFilingNumber: "",
     topNavigation: DEFAULT_TOP_NAVIGATION.map((item) => ({ ...item })) as TopNavigationItem[],
+    school: null as SchoolInfo | null,
     loaded: false,
     loading: false,
     _pendingFetch: null as Promise<void> | null,
@@ -22,13 +24,17 @@ export const useSiteStore = defineStore("site", {
       this.loading = true;
       const task = (async () => {
         try {
-          const [featureResult, configResult, navigationResult] = await Promise.allSettled([
+          const [featureResult, configResult, navigationResult, schoolResult] = await Promise.allSettled([
             siteApi.features(),
             siteApi.config(),
             siteApi.navigation(),
+            siteApi.school(),
           ]);
           if (featureResult.status === "fulfilled") {
             this.features = featureResult.value;
+          }
+          if (schoolResult.status === "fulfilled") {
+            this.school = schoolResult.value;
           }
           if (configResult.status === "fulfilled") {
             this.siteOrigin = configResult.value.siteOrigin || "";
@@ -47,6 +53,18 @@ export const useSiteStore = defineStore("site", {
       })();
       this._pendingFetch = task;
       return task;
+    },
+    /** 功能开关按学校下发：登录、退出后所属学校变了就重新拉一次。 */
+    async refreshForSchool(schoolId: string | null | undefined) {
+      if (!this.loaded) return;
+      if (schoolId && this.school?.id === schoolId) return;
+      await this.fetch(true);
+    },
+    pathEnabled(path: string) {
+      return isSchoolPathEnabled(this.school, path);
+    },
+    toolEnabled(slug: string) {
+      return isSchoolToolEnabled(this.school, slug);
     },
     /** admin PATCH /admin/features 成功后调一次更新本地状态 */
     apply(map: FeatureMap) {

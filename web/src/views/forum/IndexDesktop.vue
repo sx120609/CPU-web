@@ -71,7 +71,7 @@
         </div>
       </template>
 
-      <div class="footer-tip">
+      <div v-if="site.pathEnabled('/announcements')" class="footer-tip">
         <el-icon><InfoFilled /></el-icon>
         <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
       </div>
@@ -88,10 +88,12 @@ import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { forumCacheScope, readForumBoards, writeForumBoards } from "@/utils/forumCache";
 
 const router = useRouter();
 const auth = useAuthStore();
+const site = useSiteStore();
 const all = ref<Board[]>([]);
 const loading = ref(false);
 const error = ref("");

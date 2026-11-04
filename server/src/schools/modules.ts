@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
 import { broadcastSiteSettingsReload } from "../services/runtimeBroadcast";
+import { invalidateSiteSettingCaches } from "../services/cacheInvalidation";
 import { SCHOOL_MODULES, findSchoolModule, type SchoolModuleDefinition } from "./catalog";
 import { DEFAULT_SCHOOL_ID, findSchool, getSchool, resolveSchoolId, type SchoolProfile } from "./registry";
 
@@ -91,6 +92,7 @@ export async function saveSchoolModuleOverrides(schoolId: string, input: unknown
   const value = JSON.stringify(next);
   await prisma.siteSetting.upsert({ where: { key: SETTING_KEY }, create: { key: SETTING_KEY, value }, update: { value } });
   overrides = next;
+  await invalidateSiteSettingCaches();
   await broadcastSiteSettingsReload();
   return getSchoolModuleStates(school.id);
 }
@@ -119,6 +121,24 @@ export function requireSchoolModule(key: string) {
     if (isSchoolModuleEnabled(requestSchoolId(req), key)) return next();
     next(Errors.notFound("本校暂未开放这个功能"));
   };
+}
+
+/** 站点功能开关里和学校功能对应的几项；网页沿用这些开关隐藏入口，所以下发前与学校开关取交集。 */
+const SITE_FEATURE_MODULES: Record<string, string> = {
+  forum: "forum",
+  market: "market",
+  coursereview: "courseReview",
+  electric: "dormElectric",
+  assistantEntry: "assistant",
+  sponsor: "vip",
+};
+
+export function applySchoolToSiteFeatures<T extends Record<string, boolean>>(features: T, schoolId: string | null | undefined): T {
+  const result: Record<string, boolean> = { ...features };
+  for (const [feature, module] of Object.entries(SITE_FEATURE_MODULES)) {
+    if (feature in result) result[feature] = result[feature] && isSchoolModuleEnabled(schoolId, module);
+  }
+  return result as T;
 }
 
 /** /api 下的路径前缀归哪个功能管，供挂载时套守卫。 */

@@ -54,8 +54,20 @@ export type IosAppUpdateStatus = {
   storeUrl?: string;
 };
 
+/** 当前访问者所属学校：开着哪些功能，以及网页路径、服务卡片各归哪个功能。 */
+export type SchoolInfo = {
+  id: string;
+  name: string;
+  shortName: string;
+  brandName: string;
+  modules: string[];
+  pages: Array<{ prefix: string; module: string }>;
+  tools: Array<{ slug: string; module: string }>;
+};
+
 export const siteApi = {
   features: () => request.get<FeatureMap>("/site/features"),
+  school: () => request.get<SchoolInfo>("/schools/current", undefined, { suppressErrorMessage: true }),
   config: () => request.get<PublicSiteConfig>("/site/config"),
   communityStats: () => request.get<{ users: number; topics: number; replies: number }>("/site/community-stats", undefined, { suppressErrorMessage: true }),
   navigation: () => request.get<TopNavigationItem[]>("/site/navigation", undefined, { suppressErrorMessage: true }),

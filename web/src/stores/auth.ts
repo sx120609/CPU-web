@@ -128,6 +128,7 @@ export const useAuthStore = defineStore("auth", {
       setToken(authToken, user.id);
       this.token = authToken;
       this.user = user;
+      void useSiteStore().refreshForSchool(user.schoolId);
       this.syncDataAuthAgreement(user);
       this.academicIdentityUnavailable = Boolean(
         user.studentSso && readAcademicIdentityUnavailable(user.username),
@@ -516,6 +517,7 @@ export const useAuthStore = defineStore("auth", {
       pendingSsoLoginAbortController = null;
       this.sessionVersion += 1;
       clearToken(); this.token = ""; this.user = null; this.dataAuthAgreed = false; this.ready = true;
+      void siteLogoutTask.then(() => useSiteStore().refreshForSchool(null));
       this._pendingFetchMe = null;
       this._pendingSsoBegin = null;
       this._pendingSsoLogin = null;

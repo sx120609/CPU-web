@@ -177,7 +177,8 @@ const visibleServices = computed(() => (summary.value?.services || [])
     && isMiniGameDestination(service?.url)
   ))
   .slice(0, 4));
-const quickEntries = computed(() => {
+const quickEntries = computed(() => schoolQuickEntries().filter((entry) => site.pathEnabled(entry.to)));
+function schoolQuickEntries() {
   if (!showForumContent.value) {
     return [
       ...(auth.forumHidden ? [{ icon: Search, label: "搜索", to: "/search/results?scope=services", hue: "blue" }]
@@ -194,7 +195,7 @@ const quickEntries = computed(() => {
     { icon: Service, label: "服务", to: "/services", hue: "green" },
     assistantEntryVisible.value ? { icon: MagicStick, label: "拾间AI", to: "/search", hue: "violet" } : null,
   ].filter(Boolean) as Array<{ icon: Component; label: string; to: string; hue: string }>;
-});
+}
 const homeCacheScope = computed(() => {
   const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";
   return `${identity}:forum-${showForumContent.value ? "on" : "off"}`;

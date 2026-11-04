@@ -7,6 +7,8 @@ export interface RegisterPayload { username: string; password: string; nickname:
 export interface UserInfo {
   profileReview?: { status: string; reason: string | null; pending: Record<string, unknown> | null };
   id: number;
+  /** 所属学校；旧版服务端不返回。 */
+  schoolId?: string;
   username: string;
   nickname: string;
   nicknameReview?: {

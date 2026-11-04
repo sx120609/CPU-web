@@ -631,10 +631,11 @@ const drawerItems = computed(() => {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
   if (assistantEntryVisible.value && !items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "拾间AI", icon: Search });
-  return items;
+  return items.filter((item) => site.pathEnabled(item.to));
 });
 
 function navigationItemVisible(item: TopNavigationItem) {
+  if (!site.pathEnabled(item.to)) return false;
   if (auth.forumHidden && (isForumDestination(item.to) || item.requireForumAccess
     || ["forum", "market", "coursereview"].includes(item.feature || ""))) return false;
   if (!item.enabled) return false;

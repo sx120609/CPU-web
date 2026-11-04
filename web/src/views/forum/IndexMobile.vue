@@ -73,7 +73,7 @@
         </button>
       </div>
       <template #footer>
-        <router-link class="announcement-link" to="/announcements" @click="boardsOpen = false">查看校园公告 →</router-link>
+        <router-link v-if="site.pathEnabled('/announcements')" class="announcement-link" to="/announcements" @click="boardsOpen = false">查看校园公告 →</router-link>
       </template>
     </el-dialog>
   </div>

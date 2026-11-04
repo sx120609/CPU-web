@@ -34,15 +34,16 @@ import {
   requestLearningAssistantAi,
 } from "../services/learningAssistantAi";
 import { isLearningAnswerAppealBody, readLearningAnswerCache, writeLearningAnswerCache } from "../services/learningAnswerCache";
-import { requestSchoolId } from "../schools/modules";
+import { applySchoolToSiteFeatures, requestSchoolId } from "../schools/modules";
 import { repliesOfSchool, topicsOfSchool } from "../schools/forumScope";
 
 export const siteRouter = Router();
 
 /** 公开：前端读功能开关，过滤导航 / 路由 / 占位页 */
-siteRouter.get("/features", async (_req, res, next) => {
+siteRouter.get("/features", async (req, res, next) => {
   try {
-    ok(res, await withCache("site", ["features"], 60_000, async () => getFeatures()));
+    const schoolId = requestSchoolId(req);
+    ok(res, await withCache("site", ["features", schoolId], 60_000, async () => applySchoolToSiteFeatures(getFeatures(), schoolId)));
   } catch (e) { next(e); }
 });
 

@@ -14,6 +14,7 @@ import { readViewCache, writeViewCache } from "@/utils/viewCache";
 // 校园小工具的可见性、登录要求与打开方式；服务页和“全部小工具”页共用。
 export function useServiceTools() {
   const auth = useAuthStore();
+  const site = useSiteStore();
   const router = useRouter();
   const toolMetas = ref<ToolMeta[]>([]);
   const toolsLoading = ref(false);
@@ -24,6 +25,7 @@ export function useServiceTools() {
   const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
   const visibleTools = computed(() => serviceTools.filter((tool) => (
     toolAccessMap.value[tool.slug]?.isVisible !== false
+    && site.toolEnabled(tool.slug)
     && !(tool.slug === "mini_games" && shouldHideNativeMiniGames(auth.isLoggedIn, auth.user?.username))
   )));
 

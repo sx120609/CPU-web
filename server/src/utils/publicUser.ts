@@ -29,6 +29,7 @@ export function buildSelfUser(u: any) {
   const trust = buildUserTrustSnapshot(u);
   return {
     id: u.id,
+    schoolId: u.schoolId,
     username: u.username,
     nickname: u.nickname,
     profileReview: { status: u.profileReviewStatus || "none", reason: u.profileReviewReason || null, pending: u.pendingProfile ? JSON.parse(u.pendingProfile) : null },
