@@ -32,7 +32,7 @@ function mainGuard(user) {
     shouldHideNativeMiniGames: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, user, token: user ? 'session' : null, canAccessModuleAdmin: false }),
-    useSiteStore: () => ({}),
+    useSiteStore: () => ({ loaded: true, pathEnabled: () => true }),
     CACHE_FIRST_EDUCATION_ROUTES: new Set(),
     FEATURE_GATED: {},
     firstRouteValue: value => value,
