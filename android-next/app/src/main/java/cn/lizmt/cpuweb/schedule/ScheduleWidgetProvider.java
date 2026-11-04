@@ -13,6 +13,8 @@ import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -37,6 +39,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ScheduleWidgetProvider extends AppWidgetProvider {
     static final String ACTION_WIDGET_PINNED = BuildConfig.APPLICATION_ID + ".ACTION_WIDGET_PINNED";
@@ -47,6 +50,16 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     // 今天的课上完后，往后找最近有课的一天，最远看这么多天（见 docs/schedule-widget-rules.md）。
     static final int LOOKAHEAD_DAYS = 21;
     private static final long FALLBACK_REFRESH_MILLIS = 30L * 60L * 1000L;
+    private static final long BROADCAST_BUDGET_MILLIS = 8_000L;
+    private static final int COURSE_ALARM_REQUEST = 2002;
+    private static final int DAY_ALARM_REQUEST = 2003;
+    private static final Class<?>[] PROVIDERS = {
+            ScheduleWidgetProvider.class,
+            ScheduleWidgetProviderWide.class,
+            ScheduleWidgetProviderTodayWide.class,
+            ScheduleWidgetProviderTodayLarge.class,
+            ScheduleWidgetProviderLarge.class,
+    };
 
     public enum WidgetMode {
         COMPACT,
@@ -74,17 +87,69 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     @Override
+    public void onDisabled(Context context) {
+        Context appContext = context.getApplicationContext();
+        if (!hasAnyWidget(appContext)) cancelRefreshAlarms(appContext);
+    }
+
+    static boolean hasAnyWidget(Context context) {
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        if (manager == null) return false;
+        for (Class<?> provider : PROVIDERS) {
+            int[] ids = manager.getAppWidgetIds(new ComponentName(context, provider));
+            if (ids != null && ids.length > 0) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Broadcasts that end in a redraw. The redraw runs on {@link #EXECUTOR} and is what sets the
+     * next refresh alarm, so these keep the process alive with goAsync() until it is done, and a
+     * fallback alarm is set before anything else: if the process is killed mid-render the chain
+     * of refresh alarms still goes on instead of leaving the widget on an old day.
+     */
+    static boolean redrawsWidgets(String action) {
+        return AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action)
+                || AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED.equals(action)
+                || ACTION_WIDGET_PINNED.equals(action)
+                || ACTION_WIDGET_REFRESH.equals(action)
+                || ACTION_WIDGET_TICK.equals(action)
+                // Alarms are cleared by a reboot and a clock or time zone change moves the day.
+                || Intent.ACTION_BOOT_COMPLETED.equals(action)
+                || Intent.ACTION_TIME_CHANGED.equals(action)
+                || Intent.ACTION_TIMEZONE_CHANGED.equals(action)
+                || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action);
+    }
+
+    @Override
     public void onReceive(Context context, Intent intent) {
+        String action = intent == null ? null : intent.getAction();
+        if (redrawsWidgets(action)) {
+            Context appContext = context.getApplicationContext();
+            if (!hasAnyWidget(appContext)) {
+                // Nothing on a home screen: no refresh alarms after a reboot or a clock change.
+                cancelRefreshAlarms(appContext);
+                super.onReceive(context, intent);
+                return;
+            }
+            scheduleRefreshAlarms(appContext, null);
+            PendingResult pending = goAsync();
+            super.onReceive(context, intent);
+            if (ACTION_WIDGET_PINNED.equals(action)) {
+                Toast.makeText(context, "课表小组件已添加", Toast.LENGTH_SHORT).show();
+                updateAll(appContext);
+            } else if (ACTION_WIDGET_REFRESH.equals(action)) {
+                Toast.makeText(context, "正在刷新课表", Toast.LENGTH_SHORT).show();
+                updateAll(appContext);
+            } else if (!AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action)
+                    && !AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED.equals(action)) {
+                updateAll(appContext);
+            }
+            finishAfterQueuedRenders(pending);
+            return;
+        }
         super.onReceive(context, intent);
-        if (intent != null && ACTION_WIDGET_PINNED.equals(intent.getAction())) {
-            Toast.makeText(context, "课表小组件已添加", Toast.LENGTH_SHORT).show();
-            updateAll(context);
-        } else if (intent != null && ACTION_WIDGET_REFRESH.equals(intent.getAction())) {
-            Toast.makeText(context, "正在刷新课表", Toast.LENGTH_SHORT).show();
-            updateAll(context);
-        } else if (intent != null && ACTION_WIDGET_TICK.equals(intent.getAction())) {
-            updateAll(context);
-        } else if (intent != null && ScheduleWidgetCelebration.ACTION.equals(intent.getAction())) {
+        if (intent != null && ScheduleWidgetCelebration.ACTION.equals(action)) {
             int id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
             android.appwidget.AppWidgetProviderInfo info = AppWidgetManager.getInstance(context).getAppWidgetInfo(id);
             if (info == null || !context.getPackageName().equals(info.provider.getPackageName())) return;
@@ -169,7 +234,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             } catch (Exception error) {
                 RemoteViews views = baseViews(context, mode);
                 renderFailure(views, mode, error);
-                scheduleNextRefresh(context, null);
+                scheduleRefreshAlarms(context, null);
                 manager.updateAppWidget(appWidgetId, views);
             }
         });
@@ -185,10 +250,10 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         RemoteViews views = baseViews(context, mode);
         if (data == null) {
             renderMessage(views, mode, "读取失败", "本地课表无法读取，请打开 App 刷新", "");
-            scheduleNextRefresh(context, null);
+            scheduleRefreshAlarms(context, null);
         } else {
             renderSchedule(context, manager, appWidgetId, views, data, mode);
-            scheduleNextRefresh(context, data);
+            scheduleRefreshAlarms(context, data);
         }
         manager.updateAppWidget(appWidgetId, views);
     }
@@ -224,15 +289,74 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         return PendingIntent.getBroadcast(context, 2001, intent, flags);
     }
 
-    private static void scheduleNextRefresh(Context context, JSONObject data) {
+    /**
+     * Ends the broadcast once the renders queued so far have run (the executor is single-threaded,
+     * so a task queued now runs after them), or after {@link #BROADCAST_BUDGET_MILLIS} at the
+     * latest so a slow network fallback cannot hold the broadcast past the system's limit.
+     */
+    /** Runs after every render queued so far; tests wait on it. */
+    static java.util.concurrent.Future<?> afterQueuedRenders() {
+        return EXECUTOR.submit(() -> { });
+    }
+
+    private static void finishAfterQueuedRenders(PendingResult pending) {
+        if (pending == null) return;
+        AtomicBoolean finished = new AtomicBoolean(false);
+        Runnable finish = () -> {
+            if (finished.compareAndSet(false, true)) pending.finish();
+        };
+        new Handler(Looper.getMainLooper()).postDelayed(finish, BROADCAST_BUDGET_MILLIS);
+        EXECUTOR.execute(finish);
+    }
+
+    /**
+     * Two alarms keep the widget current. The course alarm redraws at each class boundary without
+     * waking the device: nobody looks at a widget with the screen off, and it fires when the screen
+     * comes back on. The day alarm wakes the device just after midnight, allowed while idle, so the
+     * widget moves to the new day even when the phone sat in Doze all night; it is inexact and
+     * needs no exact-alarm permission. Each render sets both again.
+     */
+    static void scheduleRefreshAlarms(Context context, JSONObject data) {
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarms == null) return;
+        long now = System.currentTimeMillis();
         JSONObject today = data == null ? null : fullDayForDate(data, deviceDateOffset(0), 0);
-        long at = nextRefreshAt(today, System.currentTimeMillis());
-        Intent intent = new Intent(context, ScheduleWidgetProvider.class).setAction(ACTION_WIDGET_TICK);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
-        // 不唤醒设备：息屏时没人看小组件，亮屏后系统补发即可，也用不着精确闹钟权限。
-        alarms.setWindow(AlarmManager.RTC, at, 60_000L, PendingIntent.getBroadcast(context, 2002, intent, flags));
+        Intent tick = new Intent(context, ScheduleWidgetProvider.class).setAction(ACTION_WIDGET_TICK);
+        try {
+            alarms.setWindow(AlarmManager.RTC, nextRefreshAt(today, now), 60_000L,
+                    PendingIntent.getBroadcast(context, COURSE_ALARM_REQUEST, tick, flags));
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextDayRolloverAt(now),
+                    PendingIntent.getBroadcast(context, DAY_ALARM_REQUEST, tick, flags));
+        } catch (RuntimeException ignored) {
+            // Some ROMs cap the number of alarms per app; the periodic widget update still runs.
+        }
+    }
+
+    static void cancelRefreshAlarms(Context context) {
+        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarms == null) return;
+        int flags = PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE;
+        Intent tick = new Intent(context, ScheduleWidgetProvider.class).setAction(ACTION_WIDGET_TICK);
+        for (int request : new int[]{COURSE_ALARM_REQUEST, DAY_ALARM_REQUEST}) {
+            PendingIntent pending = PendingIntent.getBroadcast(context, request, tick, flags);
+            if (pending != null) {
+                alarms.cancel(pending);
+                pending.cancel();
+            }
+        }
+    }
+
+    /** One minute past the next local midnight. */
+    static long nextDayRolloverAt(long nowMillis) {
+        Calendar midnight = Calendar.getInstance();
+        midnight.setTimeInMillis(nowMillis);
+        midnight.set(Calendar.HOUR_OF_DAY, 0);
+        midnight.set(Calendar.MINUTE, 0);
+        midnight.set(Calendar.SECOND, 0);
+        midnight.set(Calendar.MILLISECOND, 0);
+        midnight.add(Calendar.DAY_OF_YEAR, 1);
+        return midnight.getTimeInMillis() + 60_000L;
     }
 
     /** 下一次刷新：今天每节课开始、结束后 1 分钟，次日 00:01，最迟 30 分钟兜底。 */
