@@ -16,6 +16,7 @@ import {
 import { publicFlightName } from "../services/yaodaFlightPolicy";
 import { publicAvatarValue } from "../utils/publicAvatar";
 import { withCache } from "../services/cache";
+import { requestSchoolId } from "../schools/modules";
 
 export const tomatoNoodleRouter = Router();
 
@@ -25,10 +26,11 @@ const finishAttemptSchema = z.object({
   durationMs: z.number().int().min(0).max(TOMATO_NOODLE_MAX_ATTEMPT_MS),
 });
 
-async function loadLeaderboard(currentUserId?: number, newlyUnlockedCodes: string[] = []) {
+/** 排行榜只排本校同学。 */
+async function loadLeaderboard(schoolId: string, currentUserId?: number, newlyUnlockedCodes: string[] = []) {
   const aggregates = await prisma.tomatoNoodleAttempt.groupBy({
     by: ["userId"],
-    where: { status: "completed", score: { not: null } },
+    where: { status: "completed", score: { not: null }, user: { schoolId } },
     _max: { score: true, bowls: true, completedAt: true },
     _sum: { score: true, bowls: true },
     _count: { _all: true },
@@ -157,7 +159,8 @@ tomatoNoodleRouter.get("/leaderboard", authOptional, async (req, res, next) => {
   try {
     // 匿名访客看到的是同一份榜单：短时缓存，避免每次请求都对全部成绩做聚合。
     const userId = req.user?.userId;
-    ok(res, userId ? await loadLeaderboard(userId) : await withCache("game-leaderboard", ["tomato-egg-noodles"], 15_000, () => loadLeaderboard()));
+    const schoolId = requestSchoolId(req);
+    ok(res, userId ? await loadLeaderboard(schoolId, userId) : await withCache("game-leaderboard", ["tomato-egg-noodles", schoolId], 15_000, () => loadLeaderboard(schoolId)));
   } catch (error) {
     next(error);
   }
@@ -222,7 +225,7 @@ tomatoNoodleRouter.post("/attempts/:id/finish", authRequired, validate(finishAtt
     });
     if (updated.count !== 1) throw Errors.conflict("本局成绩已经处理");
     const newlyUnlockedCodes = await unlockAchievementsForUser(req.user!.userId, completedAt);
-    ok(res, await loadLeaderboard(req.user!.userId, newlyUnlockedCodes), "成绩与成就已同步");
+    ok(res, await loadLeaderboard(requestSchoolId(req), req.user!.userId, newlyUnlockedCodes), "成绩与成就已同步");
   } catch (error) {
     next(error);
   }

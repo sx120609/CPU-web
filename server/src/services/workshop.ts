@@ -16,6 +16,19 @@ import {
   WORKSHOP_SAVE_ACCOUNT_BYTES,
   type WorkshopViewer,
 } from "./workshopPolicy";
+import { resolveSchoolId } from "../schools/registry";
+
+/** 作品归作者所在学校，各校只看得到、只能管理本校同学的作品；访客按默认学校。 */
+function schoolOf(viewer?: WorkshopViewer | null) {
+  return resolveSchoolId(viewer?.schoolId);
+}
+function worksOfSchool(schoolId: string) {
+  return { author: { schoolId } };
+}
+async function assertWorkInSchool(tx: Tx, workId: string, schoolId: string) {
+  if (!(await tx.workshopWork.findFirst({ where: { id: workId, ...worksOfSchool(schoolId) }, select: { id: true } })))
+    throw Errors.notFound("作品不存在");
+}
 
 const MAX_AUTHOR_PACKAGE_BYTES = 300 * 1024 * 1024;
 const MAX_AUTHOR_VERSIONS = 50;
@@ -144,6 +157,7 @@ export async function listWorkshopWorks(
   if ((mode === "mine" || page.favorites) && !viewer) throw Errors.unauthorized();
   const metadata = metadataWhere(page);
   const where: Prisma.WorkshopWorkWhereInput = {
+    ...worksOfSchool(schoolOf(viewer)),
     ...(mode === "public"
       ? { ...publicWhere(), publishedVersion: { is: { status: "APPROVED", ...metadata } } }
       : {}),
@@ -177,8 +191,8 @@ export async function listWorkshopWorks(
 }
 
 export async function getWorkshopWork(id: string, viewer?: WorkshopViewer) {
-  const work = await prisma.workshopWork.findUnique({
-    where: { id },
+  const work = await prisma.workshopWork.findFirst({
+    where: { id, ...worksOfSchool(schoolOf(viewer)) },
     include: workInclude(viewer?.userId, true),
   });
   if (!work) throw Errors.notFound("作品不存在");
@@ -378,6 +392,7 @@ export async function reviewWorkshopVersion(
   assertWorkshopAdmin(viewer);
   return db.$transaction(async (tx) => {
     const version = await loadVersion(tx, id);
+    await assertWorkInSchool(tx, version.workId, schoolOf(viewer));
     assertWorkshopReview(version.work, version, viewer);
     const status = input.decision === "approve" ? "APPROVED" : "REJECTED";
     const update = await tx.workshopVersion.updateMany({
@@ -423,7 +438,7 @@ export async function setWorkshopWorkState(
   assertWorkshopAdmin(viewer);
   return db.$transaction(async (tx) => {
     await lockWork(tx, id);
-    const work = await tx.workshopWork.findUnique({ where: { id } });
+    const work = await tx.workshopWork.findFirst({ where: { id, ...worksOfSchool(schoolOf(viewer)) } });
     if (!work) throw Errors.notFound("作品不存在");
     await tx.workshopWork.update({
       where: { id },
@@ -443,7 +458,7 @@ export async function setWorkshopWorkState(
 
 export async function listWorkshopQueue(page: WorkshopPage, viewer: WorkshopViewer) {
   assertWorkshopAdmin(viewer);
-  const where: Prisma.WorkshopVersionWhereInput = { status: "PENDING", ...metadataWhere(page) };
+  const where: Prisma.WorkshopVersionWhereInput = { status: "PENDING", work: worksOfSchool(schoolOf(viewer)), ...metadataWhere(page) };
   const [versions, total] = await prisma.$transaction([
     prisma.workshopVersion.findMany({
       where,
@@ -460,9 +475,9 @@ export async function listWorkshopQueue(page: WorkshopPage, viewer: WorkshopView
   };
 }
 
-async function publicWork(id: string, tx: Tx = prisma) {
-  const work = await tx.workshopWork.findUnique({
-    where: { id },
+async function publicWork(id: string, schoolId: string, tx: Tx = prisma) {
+  const work = await tx.workshopWork.findFirst({
+    where: { id, ...worksOfSchool(schoolId) },
     include: { publishedVersion: true },
   });
   if (!work || !isWorkshopPublished(work, work.publishedVersion))
@@ -470,7 +485,7 @@ async function publicWork(id: string, tx: Tx = prisma) {
   return work;
 }
 export async function favoriteWorkshopWork(id: string, viewer: WorkshopViewer, add: boolean) {
-  if (add) await publicWork(id);
+  if (add) await publicWork(id, schoolOf(viewer));
   if (add)
     await prisma.workshopFavorite.upsert({
       where: { workId_userId: { workId: id, userId: viewer.userId } },
@@ -484,7 +499,7 @@ export async function favoriteWorkshopWork(id: string, viewer: WorkshopViewer, a
   };
 }
 export async function reportWorkshopWork(id: string, reason: string, viewer: WorkshopViewer) {
-  await publicWork(id);
+  await publicWork(id, schoolOf(viewer));
   const existing = await prisma.workshopReport.findFirst({
     where: {
       workId: id,
@@ -500,7 +515,7 @@ export async function reportWorkshopWork(id: string, reason: string, viewer: Wor
 }
 export async function listWorkshopAudits(id: string, page: WorkshopPage, viewer: WorkshopViewer) {
   assertWorkshopAdmin(viewer);
-  if (!(await prisma.workshopWork.findUnique({ where: { id }, select: { id: true } })))
+  if (!(await prisma.workshopWork.findFirst({ where: { id, ...worksOfSchool(schoolOf(viewer)) }, select: { id: true } })))
     throw Errors.notFound("作品不存在");
   const where = { workId: id };
   const [items, total] = await prisma.$transaction([
@@ -543,9 +558,10 @@ function workshopReportDto(report: Prisma.WorkshopReportGetPayload<{ include: ty
 }
 export async function listWorkshopReports(page: WorkshopReportPage, viewer: WorkshopViewer) {
   assertWorkshopAdmin(viewer);
-  const where: Prisma.WorkshopReportWhereInput = page.reportStatus
-    ? { resolvedAt: page.reportStatus === "open" ? null : { not: null } }
-    : {};
+  const where: Prisma.WorkshopReportWhereInput = {
+    work: worksOfSchool(schoolOf(viewer)),
+    ...(page.reportStatus ? { resolvedAt: page.reportStatus === "open" ? null : { not: null } } : {}),
+  };
   const [reports, total] = await prisma.$transaction([
     prisma.workshopReport.findMany({
       where,
@@ -569,7 +585,7 @@ export async function resolveWorkshopReport(
   resolution = resolution.trim();
   if (!resolution || resolution.length > 1000) throw Errors.badRequest("处理说明必填且最多 1000 字");
   return db.$transaction(async (tx) => {
-    const report = await tx.workshopReport.findUnique({ where: { id } });
+    const report = await tx.workshopReport.findFirst({ where: { id, work: worksOfSchool(schoolOf(viewer)) } });
     if (!report) throw Errors.notFound("举报不存在");
     const update = await tx.workshopReport.updateMany({
       where: { id, resolvedAt: null },
@@ -585,8 +601,8 @@ export async function resolveWorkshopReport(
   });
 }
 
-async function storageWork(tx: Tx, id: string, versionId: string) {
-  const work = await publicWork(id, tx);
+async function storageWork(tx: Tx, id: string, versionId: string, schoolId: string) {
+  const work = await publicWork(id, schoolId, tx);
   const manifest = work.publishedVersion!.manifest as unknown as WorkshopManifest;
   if (work.publishedVersionId !== versionId)
     throw Errors.conflict("作品已更新或下架，请重新打开作品");
@@ -595,8 +611,8 @@ async function storageWork(tx: Tx, id: string, versionId: string) {
 }
 // Accounts that no longer take part are left off every board, including their own rank.
 const rankedPlayer = { status: { notIn: ["banned", "deleting", "deleted"] } };
-async function leaderboardWork(tx: Tx, id: string, versionId?: string) {
-  const work = await publicWork(id, tx);
+async function leaderboardWork(tx: Tx, id: string, versionId: string | undefined, schoolId: string) {
+  const work = await publicWork(id, schoolId, tx);
   const manifest = work.publishedVersion!.manifest as unknown as WorkshopManifest;
   if (versionId && work.publishedVersionId !== versionId)
     throw Errors.conflict("作品已更新或下架，请重新打开作品");
@@ -625,7 +641,7 @@ export async function readWorkshopLeaderboard(
   viewer?: WorkshopViewer,
   db: Database = prisma,
 ) {
-  await leaderboardWork(db, id, options.versionId);
+  await leaderboardWork(db, id, options.versionId, schoolOf(viewer));
   const limit = Math.min(Math.max(options.limit ?? 20, 1), WORKSHOP_LEADERBOARD_MAX_ENTRIES);
   const where = { workId: id, user: rankedPlayer };
   const [rows, total, own] = await Promise.all([
@@ -662,7 +678,7 @@ export async function submitWorkshopScore(
 ) {
   if (!isWorkshopScore(score)) throw Errors.badRequest("分数必须是 0 到 999999999 之间的整数");
   return db.$transaction(async (tx) => {
-    await leaderboardWork(tx, id, versionId);
+    await leaderboardWork(tx, id, versionId, schoolOf(viewer));
     const player = await tx.user.findUnique({ where: { id: viewer.userId }, select: { status: true } });
     if (!player || rankedPlayer.status.notIn.includes(player.status))
       throw Errors.forbidden("账户已停止访问，无法记录成绩");
@@ -681,7 +697,7 @@ export async function submitWorkshopScore(
   });
 }
 export async function readWorkshopSave(id: string, versionId: string, viewer: WorkshopViewer) {
-  await storageWork(prisma, id, versionId);
+  await storageWork(prisma, id, versionId, schoolOf(viewer));
   const save = await prisma.workshopSave.findUnique({
     where: { workId_userId: { workId: id, userId: viewer.userId } },
   });
@@ -696,7 +712,7 @@ export async function writeWorkshopSave(
   const bytes = workshopSaveBytes(data);
   return prisma.$transaction(async (tx) => {
     await lockWork(tx, id);
-    await storageWork(tx, id, versionId);
+    await storageWork(tx, id, versionId, schoolOf(viewer));
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${20261013}::int, ${viewer.userId}::int)`;
     const [quota, existing] = await Promise.all([
       tx.workshopSave.aggregate({ where: { userId: viewer.userId }, _sum: { bytes: true } }),

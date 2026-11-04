@@ -56,6 +56,7 @@ import { startHarmonyClientStatsPrunePoller } from "./services/harmonyClientStat
 import { startDesktopInstallReportPrunePoller } from "./services/desktopInstallReports";
 import { startLogRetentionSweeper } from "./services/logRetention";
 import { startDurableRedisTrim } from "./services/cache";
+import { requireSchoolModule } from "./schools/modules";
 
 export function startAppWorkers() {
   startForumImageModerationPoller();
@@ -129,7 +130,7 @@ export function createApp(options: { workers?: boolean } = {}) {
     receiveCspReport,
   );
   app.use("/api", requestOriginAndCsrfProtection);
-  app.use("/api/workshop", workshopRouter);
+  app.use("/api/workshop", requireSchoolModule("workshop"), workshopRouter);
   app.use(["/api/auth", "/api/user", "/api/jwxt", "/api/admin", "/api/courses/sync", "/api/live-activities"], (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Pragma", "no-cache");

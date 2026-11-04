@@ -38,7 +38,8 @@ test("another school cannot open features that are not yet split by school or no
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("forum")!), true);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("announcements")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("treehole")!), true);
-  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("games")!), false);
+  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("games")!), true);
+  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("assistant")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("dormElectric")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("academic")!), true);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("vip")!), true);

@@ -60,6 +60,7 @@ function fixture(status = "DRAFT", publishedVersionId: string | null = priorId) 
     },
     workshopWork: {
       findUnique: async () => ({ ...work }),
+      findFirst: async () => ({ ...work }),
       update: async ({ data }: { data: Record<string, any> }) => {
         if ("publishedVersionId" in data) work.publishedVersionId = data.publishedVersionId;
         if ("disabled" in data) work.disabled = data.disabled;
@@ -260,6 +261,7 @@ test("competing report resolutions accept one administrator and record one audit
   const tx = {
     workshopReport: {
       findUnique: async () => ({ ...report }),
+      findFirst: async () => ({ ...report }),
       updateMany: async ({ data }: { data: { resolvedAt: Date; resolution: string; resolvedById: number } }) => {
         if (report.resolvedAt) return { count: 0 };
         Object.assign(report, data, { resolvedBy: { id: data.resolvedById, nickname: "管理员" } });

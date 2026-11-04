@@ -34,6 +34,7 @@ import {
   writeWorkshopSave,
 } from "../services/workshop";
 import { assertWorkshopAdmin } from "../services/workshopPolicy";
+import { requestSchoolId } from "../schools/modules";
 import {
   issueWorkshopRuntime,
   loadWorkshopRuntime,
@@ -101,14 +102,16 @@ workshopRouter.get(
           .omit({ favorites: true })
           .extend({ pageSize: z.coerce.number().int().min(1).max(12).default(12) })
           .parse(req.query),
+        undefined,
+        requestSchoolId(req),
       ),
     );
   }),
 );
 workshopRouter.get(
   "/placements",
-  route(async (_req, res) => {
-    ok(res, await listWorkshopPlacements());
+  route(async (req, res) => {
+    ok(res, await listWorkshopPlacements(undefined, undefined, requestSchoolId(req)));
   }),
 );
 workshopRouter.get(

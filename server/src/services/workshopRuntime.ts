@@ -5,6 +5,7 @@ import { config } from "../config";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import type { WorkshopManifest } from "./workshopPackage";
+import { resolveSchoolId } from "../schools/registry";
 import {
   canManageWorkshop,
   isWorkshopPublished,
@@ -134,16 +135,16 @@ export async function issueWorkshopRuntime(
 ) {
   let version;
   if (options.kind === "public") {
-    const work = await prisma.workshopWork.findUnique({
-      where: { id: options.workId! },
+    const work = await prisma.workshopWork.findFirst({
+      where: { id: options.workId!, author: { schoolId: resolveSchoolId(viewer?.schoolId) } },
       include: { publishedVersion: { include: { work: true } } },
     });
     if (!work || !isWorkshopPublished(work, work.publishedVersion))
       throw Errors.notFound("作品尚未公开或已下架");
     version = work.publishedVersion!;
   } else {
-    version = await prisma.workshopVersion.findUnique({
-      where: { id: options.versionId! },
+    version = await prisma.workshopVersion.findFirst({
+      where: { id: options.versionId!, work: { author: { schoolId: resolveSchoolId(viewer?.schoolId) } } },
       include: { work: true },
     });
     if (!version || !canManageWorkshop(version.work, viewer))

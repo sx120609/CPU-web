@@ -1,6 +1,6 @@
 import { Errors } from "../utils/response";
 
-export type WorkshopViewer = { userId: number; role: string };
+export type WorkshopViewer = { userId: number; role: string; schoolId?: string | null };
 export type WorkshopPolicyWork = {
   id: string;
   authorId: number;

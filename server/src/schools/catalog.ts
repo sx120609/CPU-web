@@ -76,16 +76,16 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
   {
     key: "workshop",
     label: "创意工坊",
-    isolation: "pending",
+    isolation: "school",
     routes: [],
     pages: ["/workshop", "/services/tools/yaoda-can-fly/workshop"],
     tools: ["workshop"],
   },
-  { key: "assistant", label: "拾间AI", isolation: "pending", routes: [] },
+  { key: "assistant", label: "拾间AI", isolation: "school", implementedFor: ["cpu"], routes: [] },
   {
     key: "games",
     label: "小游戏",
-    isolation: "pending",
+    isolation: "school",
     routes: [
       "/tools/yaoda-can-fly",
       "/tools/tomato-egg-noodles",
@@ -132,11 +132,11 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
   },
   { key: "schoolCalendar", label: "校历", isolation: "school", implementedFor: ["cpu"], routes: [], tools: ["school_calendar"] },
   { key: "venueReservation", label: "场馆预约", isolation: "school", implementedFor: ["cpu"], routes: [], tools: ["venue_reservation"] },
-  { key: "canteen", label: "食堂选择器", isolation: "pending", implementedFor: ["cpu"], routes: [], tools: ["canteen_picker"] },
+  { key: "canteen", label: "食堂选择器", isolation: "school", implementedFor: ["cpu"], routes: [], tools: ["canteen_picker"] },
   {
     key: "voicehub",
     label: "药苑之声",
-    isolation: "pending",
+    isolation: "school",
     implementedFor: ["cpu"],
     routes: [],
     pages: ["/services/tools/voicehub"],

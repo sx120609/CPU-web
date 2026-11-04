@@ -20,6 +20,7 @@ import {
 import { publicFlightName } from "../services/yaodaFlightPolicy";
 import { publicAvatarValue } from "../utils/publicAvatar";
 import { withCache } from "../services/cache";
+import { requestSchoolId } from "../schools/modules";
 
 export const zombieDefenseRouter = Router();
 
@@ -41,10 +42,11 @@ const recoverSchema = z.object({
 
 type RecoveryOutcome = "synced" | "recovered" | "unmatched" | "invalid";
 
-async function loadLeaderboard(currentUserId?: number, newlyUnlockedCodes: string[] = []) {
+/** 排行榜只排本校同学。 */
+async function loadLeaderboard(schoolId: string, currentUserId?: number, newlyUnlockedCodes: string[] = []) {
   const aggregates = await prisma.zombieDefenseAttempt.groupBy({
     by: ["userId"],
-    where: { status: "completed", score: { not: null } },
+    where: { status: "completed", score: { not: null }, user: { schoolId } },
     _max: { score: true, waves: true, completedAt: true },
     _sum: { score: true, waves: true },
     _count: { _all: true },
@@ -173,7 +175,8 @@ zombieDefenseRouter.get("/leaderboard", authOptional, async (req, res, next) => 
   try {
     // 匿名访客看到的是同一份榜单：短时缓存，避免每次请求都对全部成绩做聚合。
     const userId = req.user?.userId;
-    ok(res, userId ? await loadLeaderboard(userId) : await withCache("game-leaderboard", ["zombie-defense"], 15_000, () => loadLeaderboard()));
+    const schoolId = requestSchoolId(req);
+    ok(res, userId ? await loadLeaderboard(schoolId, userId) : await withCache("game-leaderboard", ["zombie-defense", schoolId], 15_000, () => loadLeaderboard(schoolId)));
   } catch (error) {
     next(error);
   }
@@ -238,7 +241,7 @@ zombieDefenseRouter.post("/attempts/:id/finish", authRequired, validate(finishAt
     });
     if (updated.count !== 1) throw Errors.conflict("本局成绩已经处理");
     const newlyUnlockedCodes = await unlockAchievementsForUser(req.user!.userId, completedAt);
-    ok(res, await loadLeaderboard(req.user!.userId, newlyUnlockedCodes), "成绩与成就已同步");
+    ok(res, await loadLeaderboard(requestSchoolId(req), req.user!.userId, newlyUnlockedCodes), "成绩与成就已同步");
   } catch (error) {
     next(error);
   }
@@ -315,7 +318,7 @@ zombieDefenseRouter.post("/recover", authRequired, validate(recoverSchema), asyn
       results.push({ index, outcome: "recovered" });
     }
     const newlyUnlockedCodes = recovered ? await unlockAchievementsForUser(userId, now) : [];
-    ok(res, { ...(await loadLeaderboard(userId, newlyUnlockedCodes)), results, recovered });
+    ok(res, { ...(await loadLeaderboard(requestSchoolId(req), userId, newlyUnlockedCodes)), results, recovered });
   } catch (error) {
     next(error);
   }

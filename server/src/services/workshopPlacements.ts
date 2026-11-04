@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { workshopManifestSchema } from "./workshopPackage";
 import { workshopVersionDto, workshopPagination, type WorkshopPage } from "./workshop";
+import { DEFAULT_SCHOOL_ID, resolveSchoolId } from "../schools/registry";
 import {
   assertWorkshopAdmin,
   isWorkshopPublished,
@@ -23,8 +24,13 @@ export function workshopPlacementActive(
     Boolean(parsed.data.extension?.slots.includes(slot as WorkshopSlot))
   );
 }
-export async function listWorkshopPlacements(viewer?: WorkshopViewer, db: PrismaClient = prisma) {
+/**
+ * 站点插件位（开屏、弹窗）全站只有一套，归默认学校；其他学校的访客看不到，管理员也不能设置。
+ * viewer 为空时是公开读取，schoolId 是访客所属学校。
+ */
+export async function listWorkshopPlacements(viewer?: WorkshopViewer, db: PrismaClient = prisma, schoolId = resolveSchoolId(viewer?.schoolId)) {
   if (viewer) assertWorkshopAdmin(viewer);
+  if (schoolId !== DEFAULT_SCHOOL_ID) return { items: [] };
   const rows = await db.workshopPlacement.findMany({
     include: { version: { include: { work: true } } },
     orderBy: { slot: "asc" },
@@ -52,6 +58,7 @@ export async function setWorkshopPlacement(
   db: PrismaClient = prisma,
 ) {
   assertWorkshopAdmin(viewer);
+  if (resolveSchoolId(viewer.schoolId) !== DEFAULT_SCHOOL_ID) throw Errors.forbidden("站点插件位只在默认学校开放");
   if (!["splash", "dialog"].includes(slot)) throw Errors.badRequest("插件位置无效");
   await db.$transaction(async (tx) => {
     // Serialize empty slots too; use the same work-row lock as review/disable.
@@ -102,10 +109,11 @@ export async function setWorkshopPlacement(
   });
   return listWorkshopPlacements(viewer, db);
 }
-export async function listWorkshopPublicCatalog(page: WorkshopPage, db: PrismaClient = prisma) {
+export async function listWorkshopPublicCatalog(page: WorkshopPage, db: PrismaClient = prisma, schoolId = DEFAULT_SCHOOL_ID) {
   page = { ...page, pageSize: Math.min(12, page.pageSize) };
   const where = {
     disabled: false,
+    author: { schoolId },
     publishedVersion: {
       is: {
         status: "APPROVED",

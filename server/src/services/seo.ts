@@ -349,7 +349,7 @@ async function loadBoard(slug: string) {
 
 async function loadWorkshopWork(id: string) {
   return workshopCache.load(id, DYNAMIC_CACHE_TTL_MS, () => lookupGate.run(() => prisma.workshopWork.findFirst({
-    where: { id, disabled: false, publishedVersion: { is: { status: "APPROVED" } } },
+    where: { id, disabled: false, author: { schoolId: SEO_SCHOOL_ID }, publishedVersion: { is: { status: "APPROVED" } } },
     select: { id: true, updatedAt: true, publishedVersion: { select: { name: true, description: true } } },
   })));
 }
@@ -555,7 +555,7 @@ async function collectSitemapEntries(): Promise<SitemapEntry[]> {
       take: SITEMAP_TOPIC_LIMIT,
     }),
     prisma.workshopWork.findMany({
-      where: { disabled: false, publishedVersion: { is: { status: "APPROVED" } } },
+      where: { disabled: false, author: { schoolId: SEO_SCHOOL_ID }, publishedVersion: { is: { status: "APPROVED" } } },
       select: { id: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
       take: SITEMAP_WORKSHOP_LIMIT,
