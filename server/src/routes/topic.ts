@@ -701,9 +701,13 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     scheduleForumAiAnswer(topic.id);
 
     // 课评：写入 CourseRating 派生表
-    if (board.type === "coursereview" && effectiveMetadata?.courseId && effectiveMetadata?.ratings) {
+    // 课程必须是本板块所在学校的，外校课程 id 不写评分。
+    const ratedCourse = board.type === "coursereview" && effectiveMetadata?.courseId && effectiveMetadata?.ratings
+      ? await prisma.course.findFirst({ where: { id: Number(effectiveMetadata.courseId), schoolId: board.schoolId }, select: { id: true } })
+      : null;
+    if (ratedCourse) {
       const r = effectiveMetadata.ratings;
-      const courseId = Number(effectiveMetadata.courseId);
+      const courseId = ratedCourse.id;
 
       // 解析"针对哪位老师"：
       //   - 优先用 metadata.courseTeacherId（前端已选的 CourseTeacher 关联 id）
@@ -718,9 +722,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       } else if (typeof effectiveMetadata.teacherName === "string" && effectiveMetadata.teacherName.trim()) {
         const name = effectiveMetadata.teacherName.trim().slice(0, 40);
         const teacher = await prisma.teacher.upsert({
-          where: { name },
+          where: { schoolId_name: { schoolId: board.schoolId, name } },
           update: {},
-          create: { name, createdById: userId },
+          create: { schoolId: board.schoolId, name, createdById: userId },
         });
         const ct = await prisma.courseTeacher.upsert({
           where: { courseId_teacherId: { courseId, teacherId: teacher.id } },

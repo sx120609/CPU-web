@@ -47,11 +47,11 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     routes: ["/boards", "/topics", "/replies", "/likes", "/forum-ads", "/forum-reports"],
     pages: ["/forum", "/post"],
   },
-  { key: "search", label: "站内搜索", isolation: "pending", routes: ["/search"] },
+  { key: "search", label: "站内搜索", isolation: "school", routes: ["/search"] },
   {
     key: "courseReview",
     label: "课程评价",
-    isolation: "pending",
+    isolation: "school",
     routes: ["/courses", "/course-bot"],
     pages: ["/coursereview"],
   },
@@ -72,7 +72,7 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     tools: ["treehole"],
   },
   { key: "directMessage", label: "私信", isolation: "school", routes: ["/direct-messages"] },
-  { key: "market", label: "二手市场", isolation: "pending", routes: [], pages: ["/forum/b/market"] },
+  { key: "market", label: "二手市场", isolation: "school", routes: [], pages: ["/forum/b/market"] },
   {
     key: "workshop",
     label: "创意工坊",

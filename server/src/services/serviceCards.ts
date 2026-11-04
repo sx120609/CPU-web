@@ -1,8 +1,9 @@
 const REMOVED_SERVICE_CODES = ["CARD_PORTAL", "DORM_ELEC", "LIB_SEAT", "HEALTH_CLINIC"];
 
-export function visibleServiceWhere(extra: Record<string, any> = {}) {
+export function visibleServiceWhere(schoolId: string, extra: Record<string, any> = {}) {
   return {
     ...extra,
+    schoolId,
     hidden: false,
     code: { notIn: REMOVED_SERVICE_CODES },
   };

@@ -206,7 +206,7 @@ export async function processTopicSubmissionReview(topicId: number, review = rev
   const topic = await prisma.topic.findFirst({
     where: { id: topicId, aiReviewStatus: { in: ["checking", "manual_requested"] }, hidden: true },
     include: {
-      board: { select: { id: true, name: true, type: true } },
+      board: { select: { id: true, schoolId: true, name: true, type: true } },
       tags: { include: { tag: true } },
     },
   });
@@ -635,11 +635,13 @@ async function createReplyNotifications(reply: {
 async function createCourseRatingIfNeeded(topic: {
   id: number;
   authorId: number;
-  board: { type: string };
+  board: { type: string; schoolId: string };
 }, metadata: Record<string, any>) {
   if (topic.board.type !== "coursereview" || !metadata.courseId || !metadata.ratings) return;
   const courseId = Number(metadata.courseId);
   if (!Number.isInteger(courseId) || courseId <= 0) return;
+  // 课程必须是帖子所在学校的。
+  if (!await prisma.course.findFirst({ where: { id: courseId, schoolId: topic.board.schoolId }, select: { id: true } })) return;
   let courseTeacherId: number | null = null;
   if (metadata.courseTeacherId) {
     const courseTeacher = await prisma.courseTeacher.findFirst({
@@ -650,9 +652,9 @@ async function createCourseRatingIfNeeded(topic: {
   } else if (typeof metadata.teacherName === "string" && metadata.teacherName.trim()) {
     const name = metadata.teacherName.trim().slice(0, 40);
     const teacher = await prisma.teacher.upsert({
-      where: { name },
+      where: { schoolId_name: { schoolId: topic.board.schoolId, name } },
       update: {},
-      create: { name, createdById: topic.authorId },
+      create: { schoolId: topic.board.schoolId, name, createdById: topic.authorId },
     });
     const courseTeacher = await prisma.courseTeacher.upsert({
       where: { courseId_teacherId: { courseId, teacherId: teacher.id } },

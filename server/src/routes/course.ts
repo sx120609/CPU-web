@@ -11,6 +11,7 @@ import type { GradeRow, PyfaCourse } from "../services/jwxtParser";
 import { invalidateCourseCaches } from "../services/cacheInvalidation";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureForumAccessEnabled, forumAccessErrorMessage, resolveForumAccess } from "../services/forumAccess";
+import { requestSchoolId } from "../schools/modules";
 
 export const courseRouter = Router();
 
@@ -42,7 +43,8 @@ courseRouter.get("/", async (req, res, next) => {
     await ensureCanReadCourseReview(req);
     const q = String(req.query.q ?? "").trim();
     const mine = req.query.mine === "1";
-    const where: any = {};
+    const schoolId = requestSchoolId(req);
+    const where: any = { schoolId };
 
     if (mine) {
       // 解析 token 拿 userId（公开路由，软鉴权）
@@ -70,7 +72,7 @@ courseRouter.get("/", async (req, res, next) => {
             courseTeachers: { include: { teacher: true } },
           },
         })
-      : await withCache("courses", ["list", q || ""], 5 * 60_000, async () => prisma.course.findMany({
+      : await withCache("courses", ["list", schoolId, q || ""], 5 * 60_000, async () => prisma.course.findMany({
           where,
           orderBy: [{ ratingCount: "desc" }, { id: "asc" }],
           take: 200,
@@ -87,8 +89,9 @@ courseRouter.get("/:id", async (req, res, next) => {
     assertCourseReviewEnabled();
     await ensureCanReadCourseReview(req);
     const id = Number(req.params.id);
-    const course = await withCache("courses", ["detail", id], 5 * 60_000, async () => prisma.course.findUnique({
-      where: { id },
+    const schoolId = requestSchoolId(req);
+    const course = await withCache("courses", ["detail", schoolId, id], 5 * 60_000, async () => prisma.course.findFirst({
+      where: { id, schoolId },
       include: {
         courseTeachers: { include: { teacher: true } },
       },
@@ -123,13 +126,13 @@ courseRouter.post("/:id/teachers", authRequired, validate(addTeacherSchema), asy
     await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     const courseId = Number(req.params.id);
     const name = String(req.body.name).trim();
-    const course = await prisma.course.findUnique({ where: { id: courseId } });
+    const course = await prisma.course.findFirst({ where: { id: courseId, schoolId: requestSchoolId(req) } });
     if (!course) throw Errors.notFound("课程不存在");
 
     const teacher = await prisma.teacher.upsert({
-      where: { name },
+      where: { schoolId_name: { schoolId: course.schoolId, name } },
       update: {},
-      create: { name, createdById: req.user!.userId },
+      create: { schoolId: course.schoolId, name, createdById: req.user!.userId },
     });
     const ct = await prisma.courseTeacher.upsert({
       where: { courseId_teacherId: { courseId, teacherId: teacher.id } },
@@ -151,6 +154,8 @@ courseRouter.post("/sync", authRequired, async (req, res, next) => {
     assertCourseReviewEnabled();
     await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     const userId = req.user!.userId;
+    // 课程从本人所在学校的教务同步，归入该校的课程目录。
+    const schoolId = requestSchoolId(req);
     const jwxtToken = req.browserSession?.jwxtToken || (req.headers["x-jwxt-token"] as string) || "";
     if (!jwxtToken) throw Errors.badRequest("需要 X-Jwxt-Token，请先登录教务直连");
 
@@ -219,10 +224,11 @@ courseRouter.post("/sync", authRequired, async (req, res, next) => {
 
     for (const c of merged.values()) {
       // 课程：以 code 为键，存在则不覆盖（避免抢别人写的好数据）
-      let course = await prisma.course.findUnique({ where: { code: c.code } });
+      let course = await prisma.course.findUnique({ where: { schoolId_code: { schoolId, code: c.code } } });
       if (!course) {
         course = await prisma.course.create({
           data: {
+            schoolId,
             code: c.code,
             name: c.name,
             teacher: c.teacher ?? "",

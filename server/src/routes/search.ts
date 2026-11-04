@@ -33,7 +33,7 @@ import { detectLoginClient } from "../utils/loginClient";
 import { isCampusAssistantDestination, shouldHideHarmonyAssistant } from "../utils/nativeAssistantAccess";
 import { readCachedDepartmentContactSearch, searchDepartmentContactsWithAi } from "../services/departmentContactSearch";
 import { isDepartmentContactCampus } from "../services/departmentContacts";
-import { requestSchoolId } from "../schools/modules";
+import { requestSchoolId, requireSchoolModule } from "../schools/modules";
 
 export const searchRouter = Router();
 
@@ -139,6 +139,7 @@ searchRouter.get("/", async (req, res, next) => {
         }),
         !servicesOnly && forumAccessEnabled && features.coursereview ? prisma.course.findMany({
           where: {
+            schoolId,
             OR: [
               { name: { contains: q } },
               { code: { contains: q } },
@@ -152,7 +153,7 @@ searchRouter.get("/", async (req, res, next) => {
           },
         }) : Promise.resolve([]),
         prisma.serviceCard.findMany({
-          where: visibleServiceWhere({
+          where: visibleServiceWhere(schoolId, {
             OR: [
               { name: { contains: q } },
               { category: { contains: q } },
@@ -186,7 +187,8 @@ searchRouter.get("/", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-searchRouter.use("/assistant", authRequired, (req, _res, next) => {
+// 拾间AI 挂在搜索下面，但按自己的开关算。
+searchRouter.use("/assistant", requireSchoolModule("assistant"), authRequired, (req, _res, next) => {
   if (shouldHideHarmonyAssistant(detectLoginClient(req).client, true, req.user?.studentId)) {
     return next(Errors.forbidden("拾间AI在当前客户端不可用"));
   }

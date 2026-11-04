@@ -92,7 +92,7 @@ homeRouter.get("/summary", async (req, res, next) => {
             include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },
           }),
           prisma.serviceCard.findMany({
-            where: visibleServiceWhere(),
+            where: visibleServiceWhere(schoolId),
             orderBy: [{ order: "asc" }, { id: "asc" }],
             take: 8,
           }),

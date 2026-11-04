@@ -6,14 +6,16 @@ import { authRequired } from "../middleware/auth";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { queryDormElectric } from "../services/dormElectric";
 import { isFeatureOn } from "../services/siteSettings";
+import { requestSchoolId } from "../schools/modules";
 
 export const servicesRouter = Router();
 
 servicesRouter.get("/", async (req, res, next) => {
   try {
     const category = req.query.category ? String(req.query.category) : undefined;
-    const list = await withCache("services", ["list", category || "all"], 5 * 60_000, async () => prisma.serviceCard.findMany({
-      where: visibleServiceWhere(category ? { category } : undefined),
+    const schoolId = requestSchoolId(req);
+    const list = await withCache("services", ["list", schoolId, category || "all"], 5 * 60_000, async () => prisma.serviceCard.findMany({
+      where: visibleServiceWhere(schoolId, category ? { category } : undefined),
       orderBy: [{ order: "asc" }, { id: "asc" }],
     }));
     ok(res, list.map(normalizeServiceCard));

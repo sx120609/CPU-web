@@ -647,7 +647,9 @@ model TopicTag {
 
 model Course {
   id       Int     @id @default(autoincrement())
-  code     String  @unique
+  // 课程目录按学校分开，课程代码同校内唯一。
+  schoolId String  @default("cpu")
+  code     String
   name     String
   // 旧字段：保留以兼容历史数据。新代码请通过 courseTeachers 读取多老师。
   // 数据迁移见 migrations/20260515090000_add_teachers。
@@ -665,18 +667,25 @@ model Course {
 
   userCourses    UserCourse[]
   courseTeachers CourseTeacher[]
+
+  @@unique([schoolId, code])
+  @@index([code])
 }
 
 // 老师（与课程多对多，由 CourseTeacher 关联）
 model Teacher {
   id          Int      @id @default(autoincrement())
-  name        String   @unique // 同名老师暂归为同一人；后续 admin 后台可拆分
+  schoolId    String   @default("cpu")
+  name        String // 同校同名老师暂归为同一人；后续 admin 后台可拆分
   college     String?
   // 用户自助添加来源标记：留作后续审核合并用
   createdById Int?
   createdAt   DateTime @default(now())
 
   courseTeachers CourseTeacher[]
+
+  @@unique([schoolId, name])
+  @@index([name])
 }
 
 // 课程-老师 关联（一个老师在一门课上的"授课记录"，可跨学期累计）
@@ -1351,7 +1360,9 @@ model AnnouncementPreference {
 
 model ServiceCard {
   id          Int      @id @default(autoincrement())
-  code        String   @unique
+  // 办事入口是各校自己的系统，按学校分开；代码同校内唯一。
+  schoolId    String   @default("cpu")
+  code        String
   name        String
   category    String // 教务 / 卡务 / 健康 / 生活 / 就业 / 信息化
   owner       String // 责任部门
@@ -1367,6 +1378,8 @@ model ServiceCard {
   hidden      Boolean  @default(false)
   createdAt   DateTime @default(now())
 
+  @@unique([schoolId, code])
+  @@index([schoolId, hidden, order])
   @@index([hidden, order])
 }
 

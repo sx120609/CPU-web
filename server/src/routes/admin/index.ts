@@ -175,7 +175,7 @@ import {
   startAdminDeploymentUpdate,
 } from "../../services/deployment";
 import { getSchedulePeriods, listScheduleTermConfigs, saveSchedulePeriods, saveScheduleTermConfig } from "../../services/scheduleTermConfig";
-import { DEFAULT_SCHOOL_ID, listSchools, resolveSchoolId } from "../../schools/registry";
+import { listSchools, resolveSchoolId } from "../../schools/registry";
 import { boardSlugKey, repliesOfSchool, topicsOfSchool } from "../../schools/forumScope";
 import { getSchoolModuleStates, saveSchoolModuleOverrides } from "../../schools/modules";
 
@@ -1595,16 +1595,8 @@ const boardCreateSchema = z.object({
   anonymousEnabled: z.boolean().optional(),
 });
 
-/** 二手和课评的数据还没按学校拆开，这两类板块只能开在默认学校。 */
-function ensureBoardTypeAllowedForSchool(type: string | undefined, schoolId: string) {
-  if ((type === "market" || type === "coursereview") && schoolId !== DEFAULT_SCHOOL_ID) {
-    throw Errors.badRequest("二手和课程评价板块暂时只能在药大开设");
-  }
-}
-
 adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, res, next) => {
   try {
-    ensureBoardTypeAllowedForSchool(req.body.type, resolveSchoolId(req.user?.schoolId));
     const created = await prisma.board.create({
       data: {
         schoolId: resolveSchoolId(req.user?.schoolId),
@@ -1644,7 +1636,6 @@ adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (r
     if (current.readOnly || current.feedSourceId) {
       throw Errors.badRequest("公告同步板块请通过公告源配置维护");
     }
-    ensureBoardTypeAllowedForSchool(req.body.type, current.schoolId);
     const updated = await prisma.board.update({
       where: { id },
       data: {
