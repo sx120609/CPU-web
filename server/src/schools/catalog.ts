@@ -114,6 +114,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     ],
     tools: ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools", "assessment-form"],
   },
+  // 图书馆「我的借阅」：南医统一认证换票进图书馆（schools/njmu/library.ts）。
+  { key: "library", label: "图书馆借阅", isolation: "school", implementedFor: ["njmu"], routes: ["/library"], pages: ["/library"] },
   { key: "dormElectric", label: "宿舍电费", isolation: "school", implementedFor: ["cpu"], routes: ["/dorm"] },
   {
     key: "campus3d",

@@ -22,6 +22,11 @@
         <span><b>宿舍电费查询</b><small>站内查询本宿舍剩余电量、剩余金额与抄表时间</small></span>
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
       </button>
+      <button v-if="libraryAvailable" data-cpu-button="surface" type="button" class="svc-d-shortcut" style="--tone: #0f766e" @click="$router.push('/library')">
+        <span class="pk-tile" aria-hidden="true"><AppIcon name="course" /></span>
+        <span><b>图书馆借阅</b><small>在借图书、到期日、借阅历史与罚款</small></span>
+        <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+      </button>
       <button v-if="!hidesClientDownloads() && clientApps" data-cpu-button="surface" type="button" class="svc-d-shortcut" style="--tone: #2563eb" @click="$router.push('/download')">
         <span class="pk-tile" aria-hidden="true"><AppIcon :name="clientShortcut.icon" /></span>
         <span><b>{{ clientShortcut.title }}</b><small>{{ clientShortcut.sub }}</small></span>
@@ -123,6 +128,7 @@ const {
   academicDataUnavailable,
   campusPortal,
   clientApps,
+  libraryAvailable,
   loadToolMetas,
   isLoginRequired,
   toolBadge,

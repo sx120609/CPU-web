@@ -42,8 +42,16 @@ function newId() {
   return `${NJMU_TOKEN_PREFIX}${crypto.randomBytes(24).toString("hex")}`;
 }
 
+/** 图书馆「元宇宙」OPAC，统一认证换票进入。 */
+export const LIBRARY_HOST = "meta.njmu.edu.cn";
+
+/** 带某个子系统回调地址的统一认证登录页；已有 CASTGC 时直接 302 回子系统并带上 ticket。 */
+export function casLoginUrl(service: string) {
+  return `${AUTH_ORIGIN}/authserver/login?service=${encodeURIComponent(service)}`;
+}
+
 function isSchoolHost(host: string) {
-  return host === AUTH_HOST || host === JW_HOST;
+  return host === AUTH_HOST || host === JW_HOST || host === LIBRARY_HOST;
 }
 
 // ============ 带 cookie 的请求，重定向手动跟、只跟学校自己的域名 ============
@@ -213,7 +221,7 @@ const deviceKey = (username: string) => buildRedisKey("njmu", "cas-device", cryp
  * 平台写下 MULTIFACTOR_BROWSER_FINGERPRINT。扫码通过、「信任此设备」都记在这个指纹上，没交指纹就既记不住、也过不了验证。
  * 服务端没有浏览器可算，就给每个账号生成一个固定的随机指纹，连同平台写下的长期 cookie 一起按账号保存。
  */
-type DeviceRecord = { fingerprint: string; cookies: Record<string, string> };
+type DeviceRecord = { fingerprint: string; cookies: Record<string, string>; stored?: boolean };
 const PER_LOGIN_COOKIE = /^(JSESSIONID|CASTGC|route|SERVERID|_?csrf.*|org\.springframework\..*)$/iu;
 
 async function loadDevice(username: string): Promise<DeviceRecord> {
@@ -222,7 +230,7 @@ async function loadDevice(username: string): Promise<DeviceRecord> {
     try {
       const value = decryptJwxtSensitiveJson<Partial<DeviceRecord>>("njmu-device", username, raw).value;
       if (typeof value.fingerprint === "string" && /^[0-9A-F]{32}$/u.test(value.fingerprint)) {
-        return { fingerprint: value.fingerprint, cookies: value.cookies ?? {} };
+        return { fingerprint: value.fingerprint, cookies: value.cookies ?? {}, stored: true };
       }
     } catch {
       // 记录坏了就当新设备
@@ -234,6 +242,9 @@ async function loadDevice(username: string): Promise<DeviceRecord> {
 /** 把这个账号的设备指纹和长期 cookie 放进 jar，并像网页那样把指纹交给认证平台。 */
 async function presentDevice(username: string, jar: CookieJar, signal?: AbortSignal) {
   const device = await loadDevice(username);
+  // 设备记录读不到、但会话里带着登录时用的指纹：沿用它，别换成新指纹被学校当成新设备。
+  const sessionFingerprint = jar.value(AUTH_HOST, "MULTIFACTOR_BROWSER_FINGERPRINT");
+  if (!device.stored && /^[0-9A-F]{32}$/u.test(sessionFingerprint)) device.fingerprint = sessionFingerprint;
   jar.ingest(Object.entries(device.cookies).map(([name, value]) => `${name}=${value}; Path=/authserver`), AUTH_HOST);
   await request(jar, `${AUTH_ORIGIN}/authserver/bfp/info?bfp=${device.fingerprint}&_=${Date.now()}`, {
     headers: { Accept: "application/json, text/javascript, */*; q=0.01", "X-Requested-With": "XMLHttpRequest", Referer: LOGIN_URL },
@@ -543,4 +554,44 @@ export async function jwJson<T>(token: string, path: string, form?: Record<strin
   } catch {
     throw Errors.badGateway("南医教务返回了无法识别的数据");
   }
+}
+
+// ============ 统一认证下的其他子系统（图书馆等） ============
+
+/**
+ * 以已登录身份请求南医的其他子系统。子系统会话过期（401 或被送回统一认证）时，
+ * 打开它的入口页让统一认证用还活着的 CASTGC 换票，再重试一次。
+ */
+export async function subsystemRequest(
+  token: string,
+  url: string,
+  entryUrl: string,
+  init: { form?: Record<string, string>; json?: boolean } = {},
+  signal?: AbortSignal,
+): Promise<{ status: number; body: string }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const session = await loadSession(token);
+    if (!session) throw expired();
+    const jar = CookieJar.fromJson(session.jar);
+    if (attempt === 1) {
+      await presentDevice(session.username, jar, signal);
+      const landed = await getPage(jar, entryUrl, signal);
+      if (landed.url.host === AUTH_HOST) {
+        console.warn(`[njmu] 换票进 ${new URL(entryUrl).host} 被统一认证挡回：${landed.url.pathname}`);
+        throw expired();
+      }
+    }
+    const hop = await request(jar, url, {
+      form: init.form,
+      method: init.form ? "POST" : "GET",
+      headers: init.json ? { Accept: "application/json, text/plain, */*" } : {},
+      signal,
+    });
+    const bounced = hop.status === 401 || (hop.status >= 300 && hop.status < 400 && /authserver/u.test(hop.location));
+    if (!bounced) {
+      await saveSession(token, { ...session, jar: jar.toJson() });
+      return { status: hop.status, body: hop.body };
+    }
+  }
+  throw expired();
 }

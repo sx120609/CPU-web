@@ -30,8 +30,11 @@ function token(schoolId?: string) {
 }
 
 test("the default school keeps every existing feature switched on", () => {
-  assert.deepEqual(getEnabledSchoolModules(DEFAULT_SCHOOL_ID), [...SCHOOL_MODULE_KEYS]);
-  assert.deepEqual(getEnabledSchoolModules("unknown-school"), [...SCHOOL_MODULE_KEYS]);
+  // 只有南医接了的功能（图书馆借阅）药大没有。
+  const cpuModules = SCHOOL_MODULES.filter((module) => isSchoolModuleAvailable(getSchool(DEFAULT_SCHOOL_ID), module)).map((module) => module.key);
+  assert.deepEqual(cpuModules, SCHOOL_MODULE_KEYS.filter((key) => key !== "library"));
+  assert.deepEqual(getEnabledSchoolModules(DEFAULT_SCHOOL_ID), cpuModules);
+  assert.deepEqual(getEnabledSchoolModules("unknown-school"), cpuModules);
 });
 
 test("another school cannot open features that are not yet split by school or not built for it", () => {
@@ -121,6 +124,7 @@ test("南医是带教务驱动的内置学校：统一认证登录、教务可�
   assert.equal(isSchoolModuleAvailable(njmu, byKey.get("announcements")!), true);
   assert.equal(isSchoolModuleAvailable(njmu, byKey.get("dormElectric")!), false);
   assert.ok(getEnabledSchoolModules("njmu").includes("academic"));
+  assert.ok(getEnabledSchoolModules("njmu").includes("library"));
   applySchoolRows([{ id: "njmu", name: "南京医科大学", shortName: "南医", brandName: "南医拾间", tagline: "南医校园互助", enabled: true }], SCHOOL_MODULE_KEYS);
   try {
     assert.equal(getSchool("njmu").tagline, "南医校园互助");

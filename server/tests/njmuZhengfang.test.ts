@@ -263,3 +263,20 @@ test("同时段的 PBL 多条记录合成一门，老师多时只列前三个", 
   assert.equal(courses[0].weeks, "2周,5-14周");
   assert.equal(courses[0].teacher, "老师1、老师2、老师3等4人");
 });
+
+test("图书馆：在借按到期日排序、算剩余续借次数，额度和信封都能解", async () => {
+  const { parseLibraryLoans, parseLibraryHistory, parseLibraryFines, parseLibraryQuota, unwrapLibrary } = await import("../src/schools/njmu/library");
+  const loans = parseLibraryLoans({ items: [
+    { barCode: "B2", title: "人体解剖学", dueDate: "2026-12-01 23:59:59", renewTimes: 1, callNo: "R322", location: "江宁书库", bibAttrs: { author: "某作者" } },
+    { barCode: "B1", item: { title: "医学统计学" }, dueDate: "2026-11-10", renewTimes: 0 },
+  ] }, [{ barCode: "B2", maxRenewTimes: 2 }]);
+  assert.deepEqual(loans.map((loan) => [loan.title, loan.dueDate, loan.renewLeft]), [["医学统计学", "2026-11-10", undefined], ["人体解剖学", "2026-12-01", 1]]);
+  assert.equal(loans[1].author, "某作者");
+  assert.deepEqual(parseLibraryHistory({ total: 5, items: [{ title: "大学计算机", loanDate: "2024-09-08 10:00", returnDate: "2024-09-11" }] }), { list: [{ title: "大学计算机", author: undefined, callNo: undefined, loanDate: "2024-09-08", returnDate: "2024-09-11" }], total: 5 });
+  assert.deepEqual(parseLibraryFines({ items: [{ title: "逾期", fineSum: "1.50元", reason: "逾期 15 天" }] }), [{ title: "逾期", amount: 1.5, reason: "逾期 15 天" }]);
+  assert.deepEqual(parseLibraryQuota("3 / 20"), { borrowed: 3, limit: 20 });
+  assert.equal(parseLibraryQuota(null), null);
+  assert.deepEqual(unwrapLibrary('{"code":0,"msg":"ok","data":{"items":[]}}'), { items: [] });
+  assert.deepEqual(unwrapLibrary('{"borrowCount":3}'), { borrowCount: 3 });
+  assert.throws(() => unwrapLibrary('{"code":1,"msg":"失败","data":null}'));
+});

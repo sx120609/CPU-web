@@ -165,6 +165,7 @@ const {
   academicDataUnavailable,
   campusPortal,
   clientApps,
+  libraryAvailable,
   loadToolMetas,
   isLoginRequired,
   toolBadge,
@@ -185,6 +186,14 @@ const shortcuts = computed(() => [
     title: "宿舍电费",
     sub: "剩余电量与金额",
     open: () => { electricOpen.value = true; },
+  }] : []),
+  ...(libraryAvailable.value ? [{
+    key: "library",
+    icon: "course",
+    tone: "#0f766e",
+    title: "图书馆借阅",
+    sub: "在借图书与到期日",
+    open: () => { void router.push("/library"); },
   }] : []),
   ...(hidesClientDownloads() || !clientApps.value ? [] : [{
     key: "download",

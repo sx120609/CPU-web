@@ -68,6 +68,8 @@ const DURABLE_EPHEMERAL_PREFIXES = [
   buildRedisKey("jwxt", "session") + ":",
   buildRedisKey("jwxt", "agent-session-replica") + ":",
   buildRedisKey("jwxt", "user-session") + ":",
+  // 南医统一认证的可信设备指纹：丢了就要重新扫码，跟会话一样存一份到数据库。
+  buildRedisKey("njmu", "cas-device") + ":",
 ];
 const SESSION_REVOCATION_KEY_PREFIX = buildRedisKey("auth", "browser-session-revoked") + ":";
 // 会话在数据库里保存完整有效期；Redis 只留最近活跃的热副本，冷会话下次访问时从数据库恢复。
