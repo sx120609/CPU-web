@@ -60,7 +60,7 @@ test('Harmony direct entries leave no title or intranet toast while service noti
     hidesNativeCommerce: () => false, hidesClientDownloads: () => false, isNativeScheduleShell: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, forumHidden: true, token: 'session', user: { username: '2020240384' } }),
-    useSiteStore: () => ({ loaded: true, features: {} }),
+    useSiteStore: () => ({ loaded: true, features: {}, pathEnabled: () => true }),
     CACHE_FIRST_EDUCATION_ROUTES: new Set(), FEATURE_GATED: {},
     firstRouteValue: value => value, LEGACY_FILE_COLLECTION_SUBMIT_PREFIX: '/legacy/',
     isNativeForumIntranetOnlyAccount: () => true, shouldHideNativeMiniGames: () => false,

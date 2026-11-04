@@ -95,7 +95,7 @@ function loadMainRouteGuard({ user = null, hideGame = false, hideAssistant = fal
     hidesNativeCommerce: () => false, hidesClientDownloads: () => false, isNativeScheduleShell: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, user, token: user ? 'session' : '', canAccessForum: true }),
-    useSiteStore: () => ({ loaded: true, features: {} }),
+    useSiteStore: () => ({ loaded: true, features: {}, pathEnabled: () => true }),
     CACHE_FIRST_EDUCATION_ROUTES: new Set(), FEATURE_GATED: {},
     firstRouteValue: (value) => value,
     LEGACY_FILE_COLLECTION_SUBMIT_PREFIX: '/legacy-file-collection/',
