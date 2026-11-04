@@ -872,8 +872,8 @@ const standaloneTool = computed(() => {
   };
   if (activeTool.value === "canteen_picker") return {
     name: "药大今天吃什么",
-    description: "按食堂、楼层和品类随机选择门店。这里维护入口可见性、登录要求和管理器。",
-    note: "默认允许游客抽取门店和查看评价；提交或更新评分与短评始终需要登录。",
+    description: "按食堂、楼层和品类随机选择门店，门店信息由同学纠错、投票后 AI 修改。这里维护入口可见性、登录要求和管理器。",
+    note: "默认允许游客抽取门店、查看评价和纠错；打分、短评、提交纠错和投票需要登录。工具管理员可以在工具页里删除评价、关闭纠错或撤销 AI 做的修改。",
   };
   return null;
 });

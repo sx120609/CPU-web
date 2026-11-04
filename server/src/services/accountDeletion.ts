@@ -120,6 +120,10 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   await tx.treeholeRoomApplication.updateMany({ where: { visitorId: userId, status: "pending" }, data: { status: "cancelled" } });
   await tx.forumReport.deleteMany({ where: { OR: [{ reporterId: userId }, { targetAuthorId: userId }] } });
   await tx.canteenReview.deleteMany({ where: { userId } });
+  // 已生效的门店纠错是公共目录的一部分，只解除关联；其余纠错和投票一并删除。
+  await tx.canteenCorrectionVote.deleteMany({ where: { userId } });
+  await tx.canteenCorrection.deleteMany({ where: { userId, status: { not: "applied" } } });
+  await tx.canteenCorrection.updateMany({ where: { userId }, data: { userId: null } });
   await tx.questionnaireResponse.deleteMany({ where: { respondentId: userId } });
   await tx.questionnaire.deleteMany({ where: { createdById: userId, isSystem: false } });
   await tx.questionnaire.updateMany({ where: { createdById: userId }, data: { createdById: null } });

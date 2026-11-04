@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { prisma } from "../src/prisma";
-import { submitCanteenReview } from "../src/services/canteenReviews";
+import { readCanteenSummary, submitCanteenReview } from "../src/services/canteenReviews";
 import { toolsRouter } from "../src/routes/tools";
+
+// The live catalog reads applied corrections; these tests run on the base catalog.
+prisma.canteenCorrection.findMany = (async () => []) as any;
 
 test("canteen publication respects active, expired and permanent account restrictions inside the deletion lock", async () => {
   const originalTransaction = prisma.$transaction;
@@ -57,6 +60,8 @@ test("the reviews route allows public reads by default and enforces the tool log
   const originalSetting = prisma.toolSetting.upsert;
   const originalAggregate = prisma.canteenReview.aggregate;
   const originalRows = prisma.canteenReview.findMany;
+  const originalGroupBy = prisma.canteenReview.groupBy;
+  prisma.canteenReview.groupBy = (async () => []) as any;
   let requireLogin = false;
   let reads = 0;
   prisma.toolSetting.upsert = (async () => ({ toolCode: "canteen_picker", requireLogin })) as any;
@@ -87,5 +92,53 @@ test("the reviews route allows public reads by default and enforces the tool log
     prisma.toolSetting.upsert = originalSetting;
     prisma.canteenReview.aggregate = originalAggregate;
     prisma.canteenReview.findMany = originalRows;
+    prisma.canteenReview.groupBy = originalGroupBy;
+  }
+});
+
+test("reviews only accept shops in the catalog and screen public comments", async () => {
+  const originalTransaction = prisma.$transaction;
+  let transactions = 0;
+  prisma.$transaction = (async () => { transactions += 1; throw new Error("must not write"); }) as any;
+  try {
+    await assert.rejects(submitCanteenReview("9.9::不存在的店", 5, "", { userId: 7 }), /没有这家门店/);
+    await assert.rejects(submitCanteenReview("1.1::张良麻辣烫", 5, "x".repeat(201), { userId: 7 }), /最多 200/);
+    await assert.rejects(submitCanteenReview("1.1::张良麻辣烫", 0, "", { userId: 7 }), /1–5/);
+    assert.equal(transactions, 0);
+  } finally {
+    prisma.$transaction = originalTransaction;
+  }
+});
+
+test("the summary folds ratings per catalog shop and drops unknown ids", async () => {
+  const originalGroupBy = prisma.canteenReview.groupBy;
+  const originalRows = prisma.canteenReview.findMany;
+  prisma.canteenReview.groupBy = (async () => [
+    { shopId: "1.1::张良麻辣烫", rating: 5, _count: { _all: 2 } },
+    { shopId: "1.1::张良麻辣烫", rating: 2, _count: { _all: 1 } },
+    { shopId: "x::已撤店", rating: 1, _count: { _all: 9 } },
+  ]) as any;
+  prisma.canteenReview.findMany = (async () => [{ shopId: "1.1::张良麻辣烫", rating: 4 }, { shopId: "x::已撤店", rating: 3 }]) as any;
+  try {
+    const summary = await readCanteenSummary({ userId: 7 });
+    assert.deepEqual(summary.shops, { "1.1::张良麻辣烫": { average: 4, count: 3 } });
+    assert.deepEqual(summary.mine, { "1.1::张良麻辣烫": 4 });
+  } finally {
+    prisma.canteenReview.groupBy = originalGroupBy;
+    prisma.canteenReview.findMany = originalRows;
+  }
+});
+
+test("only tool managers may delete someone else's review", async () => {
+  const route = toolsRouter.stack.find((layer: any) => layer.route?.path === "/canteen/reviews/:id" && layer.route.methods.delete)?.route as any;
+  assert.ok(route);
+  const originalPermissions = prisma.toolPermission.findMany;
+  prisma.toolPermission.findMany = (async () => []) as any;
+  try {
+    let error: any;
+    await route.stack.at(-1).handle({ params: { id: "00000000-0000-0000-0000-000000000000" }, user: { userId: 9, role: "user" } }, {}, (value: any) => { error = value; });
+    assert.equal(error.status, 403);
+  } finally {
+    prisma.toolPermission.findMany = originalPermissions;
   }
 });

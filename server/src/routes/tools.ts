@@ -11,7 +11,16 @@ import { authOptional, authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { Errors, ok } from "../utils/response";
-import { readCanteenReviews, submitCanteenReview } from "../services/canteenReviews";
+import {
+  CANTEEN_CORRECTION_KINDS,
+  listCanteenCorrections,
+  moderateCanteenCorrection,
+  processApprovedCanteenCorrections,
+  readCanteenCatalog,
+  submitCanteenCorrection,
+  voteCanteenCorrection,
+} from "../services/canteenCorrections";
+import { deleteCanteenReviewById, deleteOwnCanteenReview, readCanteenReviews, readCanteenSummary, submitCanteenReview } from "../services/canteenReviews";
 import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
@@ -210,11 +219,26 @@ toolsRouter.use(async (_req, _res, next) => {
   }
 });
 
+async function canModerateCanteen(user?: { userId?: number; role?: string } | null) {
+  return (await listManagerToolCodes(user)).includes("canteen_picker");
+}
+
+toolsRouter.get("/canteen/summary", authOptional, async (req, res, next) => {
+  try {
+    await ensureToolUsableForRequest("canteen_picker", req.user);
+    void processApprovedCanteenCorrections().catch(() => undefined);
+    ok(res, await readCanteenSummary(req.user));
+  } catch (e) { next(e); }
+});
+
 toolsRouter.get("/canteen/reviews", authOptional, async (req, res, next) => {
   try {
     await ensureToolUsableForRequest("canteen_picker", req.user);
     const shopId = z.string().trim().min(1).max(120).parse(req.query.shopId);
-    ok(res, await readCanteenReviews(shopId, req.user));
+    ok(res, await readCanteenReviews(shopId, req.user, {
+      offset: req.query.offset,
+      canModerate: await canModerateCanteen(req.user),
+    }));
   } catch (e) { next(e); }
 });
 
@@ -226,23 +250,90 @@ toolsRouter.post(
     z.object({
       shopId: z.string().trim().min(1).max(120),
       rating: z.number().int().min(1).max(5),
-      comment: z.string().max(200).optional().default(""),
+      comment: z.string().max(400).optional().default(""),
     }).strict(),
   ),
   async (req, res, next) => {
     try {
-      ok(
-        res,
-        await submitCanteenReview(
-          req.body.shopId,
-          req.body.rating,
-          req.body.comment,
-          req.user!,
-        ),
-      );
+      await ensureToolUsableForRequest("canteen_picker", req.user);
+      ok(res, await submitCanteenReview(req.body.shopId, req.body.rating, req.body.comment, req.user!));
     } catch (e) { next(e); }
   },
 );
+
+toolsRouter.get("/canteen/catalog", authOptional, async (req, res, next) => {
+  try {
+    await ensureToolUsableForRequest("canteen_picker", req.user);
+    ok(res, await readCanteenCatalog());
+  } catch (e) { next(e); }
+});
+
+toolsRouter.get("/canteen/corrections", authOptional, async (req, res, next) => {
+  try {
+    await ensureToolUsableForRequest("canteen_picker", req.user);
+    const shopId = z.string().trim().max(120).optional().parse(req.query.shopId || undefined);
+    ok(res, await listCanteenCorrections(req.user, { shopId, canModerate: await canModerateCanteen(req.user) }));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.post(
+  "/canteen/corrections",
+  authRequired,
+  securityRateLimit("canteen-correction", 10, 60 * 60 * 1000),
+  validate(
+    z.object({
+      shopId: z.string().trim().max(120).optional().default(""),
+      kind: z.enum(CANTEEN_CORRECTION_KINDS),
+      content: z.string().max(600),
+    }).strict(),
+  ),
+  async (req, res, next) => {
+    try {
+      await ensureToolUsableForRequest("canteen_picker", req.user);
+      ok(res, await submitCanteenCorrection(req.body, req.user!));
+    } catch (e) { next(e); }
+  },
+);
+
+toolsRouter.post(
+  "/canteen/corrections/:id/vote",
+  authRequired,
+  securityRateLimit("canteen-correction-vote", 60, 10 * 60 * 1000),
+  validate(z.object({ agree: z.boolean() }).strict()),
+  async (req, res, next) => {
+    try {
+      await ensureToolUsableForRequest("canteen_picker", req.user);
+      ok(res, await voteCanteenCorrection(req.params.id, req.body.agree, req.user!));
+    } catch (e) { next(e); }
+  },
+);
+
+toolsRouter.post(
+  "/canteen/corrections/:id/moderate",
+  authRequired,
+  validate(z.object({ action: z.enum(["dismiss", "revert", "retry"]) }).strict()),
+  async (req, res, next) => {
+    try {
+      if (!await canModerateCanteen(req.user)) throw Errors.forbidden("只有工具管理员可以处理纠错");
+      ok(res, await moderateCanteenCorrection(req.params.id, req.body.action));
+    } catch (e) { next(e); }
+  },
+);
+
+toolsRouter.delete("/canteen/reviews/mine", authRequired, async (req, res, next) => {
+  try {
+    await ensureToolUsableForRequest("canteen_picker", req.user);
+    const shopId = z.string().trim().min(1).max(120).parse(req.query.shopId);
+    ok(res, await deleteOwnCanteenReview(shopId, req.user!));
+  } catch (e) { next(e); }
+});
+
+toolsRouter.delete("/canteen/reviews/:id", authRequired, async (req, res, next) => {
+  try {
+    if (!await canModerateCanteen(req.user)) throw Errors.forbidden("只有工具管理员可以删除他人的评价");
+    ok(res, await deleteCanteenReviewById(req.params.id));
+  } catch (e) { next(e); }
+});
 
 toolsRouter.get("/", authOptional, async (req, res, next) => {
   try {

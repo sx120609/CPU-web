@@ -183,6 +183,8 @@ model User {
   workshopSaves                WorkshopSave[]
   workshopScores               WorkshopScore[]
   canteenReviews               CanteenReview[] @relation("CanteenReviewAuthor")
+  canteenCorrections           CanteenCorrection[] @relation("CanteenCorrectionAuthor")
+  canteenCorrectionVotes       CanteenCorrectionVote[] @relation("CanteenCorrectionVoter")
   workshopAuditEvents          WorkshopAudit[]
   forumReactions               ForumReaction[]
   verificationApplications     UserVerificationApplication[] @relation("VerificationApplicant")
@@ -3016,6 +3018,47 @@ model CanteenReview {
   @@index([userId, updatedAt])
 }
 
+
+// A shop-data correction for the canteen picker. Other users vote on it; once more than
+// five agree, an AI turns it into a validated catalog patch that is applied live.
+model CanteenCorrection {
+  id            String    @id @default(uuid())
+  userId        Int?
+  shopId        String    @default("")
+  kind          String
+  content       String
+  // voting | approved | applied | rejected | failed | dismissed | reverted
+  status        String    @default("voting")
+  agreeCount    Int       @default(0)
+  disagreeCount Int       @default(0)
+  // JSON catalog patch produced by the AI and applied to the base catalog.
+  patch         String    @default("")
+  aiNote        String    @default("")
+  attempts      Int       @default(0)
+  lockedAt      DateTime?
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User?     @relation("CanteenCorrectionAuthor", fields: [userId], references: [id], onDelete: SetNull)
+  votes         CanteenCorrectionVote[]
+
+  @@index([status, createdAt])
+  @@index([shopId, status])
+  @@index([userId, createdAt])
+}
+
+model CanteenCorrectionVote {
+  correctionId String
+  userId       Int
+  agree        Boolean
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  correction   CanteenCorrection @relation(fields: [correctionId], references: [id], onDelete: Cascade)
+  user         User @relation("CanteenCorrectionVoter", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([correctionId, userId])
+  @@index([userId])
+}
 // Best score per player in a work that declares the `leaderboard` permission.
 // Reported by the work itself: a ranking among players, not a verified result.
 model WorkshopScore {

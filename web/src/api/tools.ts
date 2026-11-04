@@ -299,6 +299,7 @@ export type ToolQqReminderPatch = Partial<{
 }>;
 
 export interface CanteenReviewEntry {
+  id: string;
   nickname: string;
   rating: number;
   comment: string;
@@ -309,6 +310,11 @@ export interface CanteenReviews {
   shopId: string;
   average: number;
   count: number;
+  /** 1–5 星各有几人。 */
+  histogram: number[];
+  offset: number;
+  hasMore: boolean;
+  canModerate: boolean;
   entries: CanteenReviewEntry[];
   me: { rating: number; comment: string; updatedAt: string } | null;
 }
@@ -318,16 +324,69 @@ export interface CanteenReviewResult {
   count: number;
   me: { rating: number; comment: string; updatedAt: string };
 }
+export interface CanteenSummary {
+  /** 门店目录的版本；变了就重新拉目录。 */
+  version: string;
+  shops: Record<string, { average: number; count: number }>;
+  /** 我给过分的门店。 */
+  mine: Record<string, number>;
+}
+
+export type CanteenCorrectionKind = "新增门店" | "删除门店" | "店名不对" | "位置不对" | "品类不对" | "其他";
+export type CanteenCorrectionStatus = "voting" | "approved" | "applied" | "rejected" | "failed" | "dismissed" | "reverted";
+export interface CanteenCorrectionEntry {
+  id: string;
+  shopId: string;
+  shopName: string;
+  kind: CanteenCorrectionKind;
+  content: string;
+  status: CanteenCorrectionStatus;
+  agreeCount: number;
+  disagreeCount: number;
+  aiNote: string;
+  hasPatch: boolean;
+  author: string;
+  mine: boolean;
+  myVote: "agree" | "disagree" | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+export interface CanteenCorrections {
+  threshold: number;
+  canModerate: boolean;
+  entries: CanteenCorrectionEntry[];
+}
+export interface CanteenCatalogPayload {
+  version: string;
+  categories: { id: string; name: string }[];
+  canteens: import("@/data/canteenPicker").Canteen[];
+}
 
 export const toolsApi = {
-  canteenReviews: (shopId: string, options?: RequestOptions) =>
+  canteenCatalog: (options?: RequestOptions) =>
+    request.get<CanteenCatalogPayload>("/tools/canteen/catalog", undefined, options ?? { cacheTtlMs: 0, cacheStaleTtlMs: 0 }),
+  canteenCorrections: (shopId?: string, options?: RequestOptions) =>
+    request.get<CanteenCorrections>("/tools/canteen/corrections", shopId ? { shopId } : undefined, options ?? { cacheTtlMs: 0, cacheStaleTtlMs: 0 }),
+  submitCanteenCorrection: (payload: { shopId?: string; kind: CanteenCorrectionKind; content: string }) =>
+    request.post<{ id: string }>("/tools/canteen/corrections", payload),
+  voteCanteenCorrection: (id: string, agree: boolean) =>
+    request.post<{ status: CanteenCorrectionStatus; agreeCount: number; disagreeCount: number }>(`/tools/canteen/corrections/${encodeURIComponent(id)}/vote`, { agree }),
+  moderateCanteenCorrection: (id: string, action: "dismiss" | "revert" | "retry") =>
+    request.post<{ status: CanteenCorrectionStatus }>(`/tools/canteen/corrections/${encodeURIComponent(id)}/moderate`, { action }),
+  canteenSummary: (options?: RequestOptions) =>
+    request.get<CanteenSummary>("/tools/canteen/summary", undefined, options ?? { cacheTtlMs: 0, cacheStaleTtlMs: 0 }),
+  canteenReviews: (shopId: string, offset = 0, options?: RequestOptions) =>
     request.get<CanteenReviews>(
       "/tools/canteen/reviews",
-      { shopId },
+      offset ? { shopId, offset } : { shopId },
       options ?? { cacheTtlMs: 0, cacheStaleTtlMs: 0 },
     ),
   submitCanteenReview: (payload: { shopId: string; rating: number; comment: string }) =>
     request.post<CanteenReviewResult>("/tools/canteen/reviews", payload),
+  deleteMyCanteenReview: (shopId: string) =>
+    request.delete<{ removed: number; average: number; count: number }>(`/tools/canteen/reviews/mine?shopId=${encodeURIComponent(shopId)}`),
+  deleteCanteenReview: (id: string) =>
+    request.delete<{ removed: number }>(`/tools/canteen/reviews/${encodeURIComponent(id)}`),
   tools: (options?: RequestOptions) => request.get<ToolMeta[]>("/tools", undefined, options),
   myPermissions: (options?: RequestOptions) =>
     request.get<{ toolCodes: ServiceToolCode[]; adminToolCodes: ServiceToolCode[] }>("/tools/permissions/me", undefined, options),
