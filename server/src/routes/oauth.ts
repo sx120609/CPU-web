@@ -32,6 +32,8 @@ import {
 } from "../services/learningAnswerCache";
 import { Errors, ok } from "../utils/response";
 import { isServiceOAuthClientId, serviceOAuthClient, oauthClientIsValid, oauthScopesAllowed } from "../services/oauthClients";
+import { buildCpudateUserInfo } from "../services/cpudateOAuth";
+import { getSiteOrigin } from "../services/siteSettings";
 
 export const oauthRouter = Router();
 
@@ -198,6 +200,9 @@ oauthRouter.get("/userinfo", async (req, res, next) => {
     if (!token.scope.split(/\s+/).includes("profile")) throw Errors.forbidden("token 没有 profile scope");
     res.setHeader("Cache-Control", "no-store");
     if (serviceOAuthClient(token.clientId)) {
+      if (token.clientId === config.cpudateOAuthClientId) {
+        return ok(res, buildCpudateUserInfo(token.user, getSiteOrigin() || "https://cputime.cn"));
+      }
       return ok(res, { sub: String(token.userId), user: { id: token.userId, nickname: token.user.nickname, avatar: token.user.avatar } });
     }
     const quota = await getCampusAssistantQuotaStatus(token.userId);

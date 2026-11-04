@@ -81,7 +81,7 @@ test("CPU Date authorize, token, userinfo and revoke reuse confidential OAuth pr
   config.shopIntegrationSecret = "separate-shop-test-secret-32-characters";
   config.payIntegrationSecret = "separate-pay-test-secret-32-characters";
   config.noAiIntegrationSecret = "separate-noai-test-secret-32-characters";
-  const user = { id: 7, username: "test-user", schoolId: "cpu", role: "user", status: "active", nickname: "Test member", avatar: "https://example.test/avatar.png" };
+  const user = { id: 7, username: "2020260001", studentSso: true, schoolId: "cpu", role: "user", status: "active", nickname: "Test member", avatar: "/uploads/avatars/test.png" };
   // In-memory persistence exercises the real router and authentication without a database.
   let code: any;
   let token: any;
@@ -158,7 +158,16 @@ test("CPU Date authorize, token, userinfo and revoke reuse confidential OAuth pr
   const profile = await fetch(`${origin}/api/oauth/userinfo`, { headers });
   assert.equal(profile.status, 200);
   assert.equal(profile.headers.get("cache-control"), "no-store");
-  assert.deepEqual((await profile.json()).data, { sub: "7", user: { id: 7, nickname: user.nickname, avatar: user.avatar } });
+  assert.deepEqual((await profile.json()).data, {
+    sub: "7",
+    user: { id: 7, studentId: user.username, studentSso: true, schoolId: "cpu", nickname: user.nickname, avatar: "https://cputime.cn/uploads/avatars/test.png" },
+  });
+  user.studentSso = false;
+  const unverified = await fetch(`${origin}/api/oauth/userinfo`, { headers });
+  assert.equal(unverified.status, 200);
+  const unverifiedProfile = (await unverified.json()).data;
+  assert.equal(unverifiedProfile.user.studentId, null);
+  assert.equal(unverifiedProfile.user.studentSso, false);
   assert.equal((await fetch(`${origin}/api/oauth/v1/responses`, { method: "POST", headers })).status, 403);
   const revoke = (clientSecret: string) => fetch(`${origin}/api/oauth/revoke`, {
     method: "POST", body: new URLSearchParams({ client_id: "cpudate", client_secret: clientSecret, token: credentials.access_token }),
@@ -166,4 +175,25 @@ test("CPU Date authorize, token, userinfo and revoke reuse confidential OAuth pr
   assert.equal((await revoke(config.noAiIntegrationSecret)).status, 401);
   assert.equal((await revoke(secret)).status, 200);
   assert.equal((await fetch(`${origin}/api/oauth/userinfo`, { headers })).status, 401);
+});
+
+test("CPU Date student IDs preserve leading zeros and retain the school namespace", async () => {
+  const { buildCpudateUserInfo } = await import("../src/services/cpudateOAuth");
+  const user = { id: 7, username: "0012345678", studentSso: true, schoolId: "cpu", nickname: "Test member", avatar: null };
+  assert.equal(buildCpudateUserInfo(user).user.studentId, "0012345678");
+  assert.equal(buildCpudateUserInfo({ ...user, schoolId: "njmu" }).user.schoolId, "njmu");
+  assert.equal(buildCpudateUserInfo({ ...user, studentSso: false }).user.studentId, null);
+});
+
+test("CPU Date avatar URLs work outside CPU-web, including inline and missing avatars", async () => {
+  const { buildCpudateUserInfo } = await import("../src/services/cpudateOAuth");
+  const user = { id: 7, username: "2020260001", studentSso: true, schoolId: "cpu", nickname: "Test member", avatar: null as string | null };
+  assert.equal(buildCpudateUserInfo(user).user.avatar, null);
+  assert.equal(buildCpudateUserInfo({ ...user, avatar: "/uploads/avatar.png" }).user.avatar, "https://cputime.cn/uploads/avatar.png");
+  assert.equal(buildCpudateUserInfo({ ...user, avatar: "/uploads/avatar.png" }, "https://cpu.example.com").user.avatar, "https://cpu.example.com/uploads/avatar.png");
+  assert.equal(buildCpudateUserInfo({ ...user, avatar: "https://cdn.example.com/avatar.png" }).user.avatar, "https://cdn.example.com/avatar.png");
+  assert.match(buildCpudateUserInfo({ ...user, avatar: "data:image/png;base64,aGVsbG8=" }).user.avatar!, /^https:\/\/cputime\.cn\/api\/user-avatars\/7\?v=[a-f0-9]{16}$/);
+  for (const avatar of ["javascript:alert(1)", "file:///etc/passwd", "https://["]) {
+    assert.equal(buildCpudateUserInfo({ ...user, avatar }).user.avatar, null);
+  }
 });
