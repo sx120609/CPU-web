@@ -101,7 +101,7 @@ test("schools created in the admin are local-account schools with every isolated
 
 test("only default-school admins manage every school; other admins manage their own", () => {
   assert.equal(isPlatformAdmin({ role: "admin", schoolId: "cpu" }), true);
-  assert.equal(isPlatformAdmin({ role: "admin" }), true);
+  assert.equal(isPlatformAdmin({ role: "admin" }), false);
   assert.equal(isPlatformAdmin({ role: "admin", schoolId: "njmu" }), false);
   assert.equal(isPlatformAdmin({ role: "mod", schoolId: "cpu" }), false);
   assert.doesNotThrow(() => ensureCanManageSchool({ role: "admin", schoolId: "njmu" }, "njmu"));

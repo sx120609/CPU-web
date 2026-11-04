@@ -14,7 +14,7 @@ import type { Prisma } from "@prisma/client";
 import { anonymousTiersPatchSchema } from "./siteConfigValidation";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
-import { adminOnly, modOrAbove, userDirectoryAccess } from "../../middleware/admin";
+import { adminOnly, modOrAbove, schoolAdminOnly, userDirectoryAccess } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
 import { isModuleSuperAdmin } from "../../utils/moduleRoles";
 import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
@@ -780,7 +780,7 @@ const userCreateSchema = z.object({
   schoolId: z.string().trim().max(32).optional(),
 });
 
-adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, res, next) => {
+adminRouter.post("/users", schoolAdminOnly, validate(userCreateSchema), async (req, res, next) => {
   try {
     const {
       username,
@@ -825,7 +825,7 @@ adminRouter.post("/users", adminOnly, validate(userCreateSchema), async (req, re
 const resetPasswordSchema = z.object({
   newPassword: z.string().min(6).max(64),
 });
-adminRouter.patch("/users/:id/password", adminOnly, validate(resetPasswordSchema), async (req, res, next) => {
+adminRouter.patch("/users/:id/password", schoolAdminOnly, validate(resetPasswordSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const target = await prisma.user.findUnique({ where: { id } });
@@ -839,7 +839,7 @@ adminRouter.patch("/users/:id/password", adminOnly, validate(resetPasswordSchema
   } catch (e) { next(e); }
 });
 
-adminRouter.delete("/users/:id", adminOnly, async (req, res, next) => {
+adminRouter.delete("/users/:id", schoolAdminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("用户 ID 不合法");
@@ -1579,7 +1579,7 @@ adminRouter.patch("/forum-videos/:id", modOrAbove, validate(forumVideoPatchSchem
 
 // ============ 板块管理 ============
 
-adminRouter.get("/boards", adminOnly, async (req, res, next) => {
+adminRouter.get("/boards", schoolAdminOnly, async (req, res, next) => {
   try {
     const list = await prisma.board.findMany({
       where: { schoolId: resolveSchoolId(req.user?.schoolId) },
@@ -1604,7 +1604,7 @@ const boardCreateSchema = z.object({
   anonymousEnabled: z.boolean().optional(),
 });
 
-adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, res, next) => {
+adminRouter.post("/boards", schoolAdminOnly, validate(boardCreateSchema), async (req, res, next) => {
   try {
     const created = await prisma.board.create({
       data: {
@@ -1637,7 +1637,7 @@ const boardPatchSchema = z.object({
   anonymousEnabled: z.boolean().optional(),
 });
 
-adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (req, res, next) => {
+adminRouter.patch("/boards/:id", schoolAdminOnly, validate(boardPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const current = await prisma.board.findUnique({ where: { id }, include: { feedSource: true } });
@@ -1664,7 +1664,7 @@ adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (r
   } catch (e) { next(e); }
 });
 
-adminRouter.delete("/boards/:id", adminOnly, async (req, res, next) => {
+adminRouter.delete("/boards/:id", schoolAdminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const board = await prisma.board.findUnique({ where: { id } });
@@ -2307,12 +2307,12 @@ const scheduleTermPatchSchema = z.object({
   note: z.string().trim().max(500).optional(),
 }).strict();
 
-adminRouter.post("/schedule-terms/holiday-preview", adminOnly, validate(holidayPreviewSchema), async (req, res, next) => {
+adminRouter.post("/schedule-terms/holiday-preview", schoolAdminOnly, validate(holidayPreviewSchema), async (req, res, next) => {
   try { ok(res, await previewRequestedHolidays(req.body)); }
   catch (error) { next(Errors.badGateway(error instanceof Error ? error.message : "公开节假日获取失败")); }
 });
 
-adminRouter.get("/schedule-terms", adminOnly, async (req, res, next) => {
+adminRouter.get("/schedule-terms", schoolAdminOnly, async (req, res, next) => {
   try { ok(res, await listScheduleTermConfigs(resolveSchoolId(req.user?.schoolId))); } catch (error) { next(error); }
 });
 
@@ -2331,7 +2331,7 @@ function adminSchoolView(school: SchoolProfile) {
   };
 }
 
-adminRouter.get("/schools", adminOnly, (req, res) => {
+adminRouter.get("/schools", schoolAdminOnly, (req, res) => {
   const platform = isPlatformAdmin(req.user);
   const ownSchoolId = resolveSchoolId(req.user?.schoolId);
   ok(res, {
@@ -2349,14 +2349,14 @@ const schoolInputSchema = z.object({
   enabled: z.boolean().optional(),
 }).strict();
 
-adminRouter.post("/schools", adminOnly, validate(schoolInputSchema), async (req, res, next) => {
+adminRouter.post("/schools", schoolAdminOnly, validate(schoolInputSchema), async (req, res, next) => {
   try {
     if (!isPlatformAdmin(req.user)) throw Errors.forbidden("只有平台管理员可以新建学校");
     ok(res, adminSchoolView(await createSchool(req.body)));
   } catch (error) { next(error); }
 });
 
-adminRouter.patch("/schools/:schoolId", adminOnly, validate(schoolInputSchema.omit({ id: true })), async (req, res, next) => {
+adminRouter.patch("/schools/:schoolId", schoolAdminOnly, validate(schoolInputSchema.omit({ id: true })), async (req, res, next) => {
   try {
     const schoolId = String(req.params.schoolId || "");
     ensureCanManageSchool(req.user, schoolId);
@@ -2364,7 +2364,7 @@ adminRouter.patch("/schools/:schoolId", adminOnly, validate(schoolInputSchema.om
   } catch (error) { next(error); }
 });
 
-adminRouter.put("/schools/:schoolId/modules", adminOnly, validate(z.object({ modules: z.record(z.boolean()) }).strict()), async (req, res, next) => {
+adminRouter.put("/schools/:schoolId/modules", schoolAdminOnly, validate(z.object({ modules: z.record(z.boolean()) }).strict()), async (req, res, next) => {
   try {
     const schoolId = String(req.params.schoolId || "");
     ensureCanManageSchool(req.user, schoolId);
@@ -2373,11 +2373,11 @@ adminRouter.put("/schools/:schoolId/modules", adminOnly, validate(z.object({ mod
 });
 
 /// 管理员所在学校的节次时间，和学期分开读写。
-adminRouter.get("/schedule-periods", adminOnly, async (req, res, next) => {
+adminRouter.get("/schedule-periods", schoolAdminOnly, async (req, res, next) => {
   try { ok(res, await getSchedulePeriods(undefined, resolveSchoolId(req.user?.schoolId))); } catch (error) { next(error); }
 });
 
-adminRouter.put("/schedule-periods", adminOnly, validate(schedulePeriodsSchema), async (req, res, next) => {
+adminRouter.put("/schedule-periods", schoolAdminOnly, validate(schedulePeriodsSchema), async (req, res, next) => {
   try {
     ok(res, await saveSchedulePeriods(req.body.periods, resolveSchoolId(req.user?.schoolId)));
   } catch (error) {
@@ -2385,7 +2385,7 @@ adminRouter.put("/schedule-periods", adminOnly, validate(schedulePeriodsSchema),
   }
 });
 
-adminRouter.put("/schedule-terms/:semester", adminOnly, validate(scheduleTermPatchSchema), async (req, res, next) => {
+adminRouter.put("/schedule-terms/:semester", schoolAdminOnly, validate(scheduleTermPatchSchema), async (req, res, next) => {
   try {
     ok(res, await saveScheduleTermConfig({ ...req.body, semester: String(req.params.semester || "") }, resolveSchoolId(req.user?.schoolId)));
   } catch (error) {

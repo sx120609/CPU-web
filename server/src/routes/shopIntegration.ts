@@ -4,6 +4,7 @@ import { z } from "zod";
 import { config } from "../config";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
+import { isPlatformAdmin } from "../schools/store";
 
 export const shopIntegrationRouter = Router();
 
@@ -23,9 +24,9 @@ for (const service of [
   try {
     authenticateIntegration(String(req.header(service.header) || ""), service.secret());
     const userId = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(req.params.userId);
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, schoolId: true, status: true } });
     res.setHeader("Cache-Control", "no-store");
-    ok(res, { userId, globalAdmin: user?.role === "admin" && user.status === "active" });
+    ok(res, { userId, globalAdmin: isPlatformAdmin(user) && user?.status === "active" });
   } catch (error) { next(error); }
 });
 

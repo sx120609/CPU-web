@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
+import { isPlatformAdmin } from "../schools/store";
 
 export const SERVICE_TOOL_CODES = ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools", "canteen_picker"] as const;
 export type ServiceToolCode = typeof SERVICE_TOOL_CODES[number];
@@ -41,13 +42,14 @@ export function isServiceToolCode(code: string): code is ServiceToolCode {
   return (SERVICE_TOOL_CODES as readonly string[]).includes(code);
 }
 
-export function isSiteAdmin(role?: string | null) {
-  return role === "admin";
+/** 小工具（问卷、成绩核对、文件收集）的全站管理只给平台管理员，其他学校的管理员只管自己建的。 */
+export function isSiteAdmin(user?: { role?: string | null; schoolId?: string | null } | null) {
+  return isPlatformAdmin(user);
 }
 
 export async function hasToolManagerPermission(toolCode: string, user?: { userId?: number; role?: string } | null) {
   if (!user?.userId) return false;
-  if (isSiteAdmin(user.role)) return true;
+  if (isSiteAdmin(user)) return true;
   if (!isServiceToolCode(toolCode)) return false;
   const row = await prisma.toolPermission.findUnique({
     where: { toolCode_userId: { toolCode, userId: user.userId } },
@@ -68,7 +70,7 @@ export async function hasToolContentManagePermission(toolCode: string, user?: { 
 
 export async function listManagerToolCodes(user?: { userId?: number; role?: string } | null) {
   if (!user?.userId) return [];
-  if (isSiteAdmin(user.role)) return [...SERVICE_TOOL_CODES];
+  if (isSiteAdmin(user)) return [...SERVICE_TOOL_CODES];
   const rows = await prisma.toolPermission.findMany({
     where: { userId: user.userId },
     select: { toolCode: true },

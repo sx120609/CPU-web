@@ -1,9 +1,21 @@
 import type { Request, Response, NextFunction } from "express";
 import { Errors } from "../utils/response";
 import { isModuleSuperAdmin } from "../utils/moduleRoles";
+import { isPlatformAdmin } from "../schools/store";
 
-/** 仅 admin 可访问 */
+/**
+ * 仅平台管理员（默认学校的站点管理员）可访问：部署、备份、AI、支付、站点设置等全站功能。
+ * 其他学校的管理员只能用按学校划分过的后台功能，见 schoolAdminOnly。
+ */
 export function adminOnly(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user) return next(Errors.unauthorized());
+  if (req.user.role !== "admin") return next(Errors.forbidden("仅管理员可操作"));
+  if (!isPlatformAdmin(req.user)) return next(Errors.forbidden("仅平台管理员可操作"));
+  next();
+}
+
+/** 任一学校的站点管理员；接口内部只读写本校的数据。 */
+export function schoolAdminOnly(req: Request, _res: Response, next: NextFunction) {
   if (!req.user) return next(Errors.unauthorized());
   if (req.user.role !== "admin") return next(Errors.forbidden("仅管理员可操作"));
   next();

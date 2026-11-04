@@ -3,10 +3,11 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { validate } from "../middleware/validate";
 import { securityRateLimit } from "../middleware/securityRateLimit";
-import { adminOnly } from "../middleware/admin";
+import { schoolAdminOnly } from "../middleware/admin";
 import { Errors, ok } from "../utils/response";
 import { publicAvatarValue } from "../utils/publicAvatar";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
+import { requestSchoolId } from "../schools/modules";
 import {
   ACCOUNT_VERIFICATION_STATUSES,
   ACCOUNT_VERIFICATION_SUBMISSION_LIMIT,
@@ -246,7 +247,9 @@ accountVerificationAdminRouter.get("/", async (req, res, next) => {
     const q = String(req.query.q || "").trim();
     const page = Math.max(1, Number(req.query.page || 1));
     const size = Math.min(100, Math.max(10, Number(req.query.size || 30)));
-    const where: any = {};
+    // 各校只处理本校账号的认证申请。
+    const schoolUser = { user: { is: { schoolId: requestSchoolId(req) } } };
+    const where: any = { AND: [schoolUser] };
     if (status !== "all") where.status = status;
     if (q) {
       where.OR = [
@@ -270,7 +273,7 @@ accountVerificationAdminRouter.get("/", async (req, res, next) => {
         },
       }),
       prisma.userVerificationApplication.count({ where }),
-      prisma.userVerificationApplication.count({ where: { status: "pending" } }),
+      prisma.userVerificationApplication.count({ where: { status: "pending", ...schoolUser } }),
     ]);
     ok(res, { page, size, total, pending, list: list.map(serializeApplication) });
   } catch (error) { next(error); }
@@ -278,7 +281,7 @@ accountVerificationAdminRouter.get("/", async (req, res, next) => {
 
 accountVerificationAdminRouter.get(
   "/candidates",
-  adminOnly,
+  schoolAdminOnly,
   validate(candidateSearchSchema, "query"),
   async (req, res, next) => {
     try {
@@ -286,6 +289,7 @@ accountVerificationAdminRouter.get(
       const numericId = Number(q);
       const users = await prisma.user.findMany({
         where: {
+          schoolId: requestSchoolId(req),
           status: { not: "banned" },
           OR: [
             ...(Number.isInteger(numericId) && numericId > 0 ? [{ id: numericId }] : []),
@@ -327,7 +331,7 @@ accountVerificationAdminRouter.get(
 
 accountVerificationAdminRouter.post(
   "/grant",
-  adminOnly,
+  schoolAdminOnly,
   validate(grantSchema),
   async (req, res, next) => {
     try {
@@ -335,9 +339,9 @@ accountVerificationAdminRouter.post(
       const userId = req.body.userId;
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, nickname: true, status: true },
+        select: { id: true, schoolId: true, nickname: true, status: true },
       });
-      if (!user) throw Errors.notFound("用户不存在");
+      if (!user || user.schoolId !== requestSchoolId(req)) throw Errors.notFound("用户不存在");
       if (user.status === "banned") throw Errors.forbidden("不能为已封禁账号添加认证");
 
       const now = new Date();
@@ -408,7 +412,7 @@ accountVerificationAdminRouter.patch("/:id/review", validate(reviewSchema), asyn
       where: { id },
       include: { user: true },
     });
-    if (!application) throw Errors.notFound("认证申请不存在");
+    if (!application || application.user.schoolId !== requestSchoolId(req)) throw Errors.notFound("认证申请不存在");
     if (application.userId === req.user!.userId && req.user!.role !== "admin") {
       throw Errors.forbidden("论坛管理员不能审核自己的认证申请");
     }
@@ -474,8 +478,8 @@ accountVerificationAdminRouter.patch("/:id/review", validate(reviewSchema), asyn
 accountVerificationAdminRouter.post("/:id/revoke", validate(revokeSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
-    const application = await prisma.userVerificationApplication.findUnique({ where: { id } });
-    if (!application) throw Errors.notFound("认证申请不存在");
+    const application = await prisma.userVerificationApplication.findUnique({ where: { id }, include: { user: { select: { schoolId: true } } } });
+    if (!application || application.user.schoolId !== requestSchoolId(req)) throw Errors.notFound("认证申请不存在");
     if (application.userId === req.user!.userId && req.user!.role !== "admin") {
       throw Errors.forbidden("论坛管理员不能处理自己的认证");
     }

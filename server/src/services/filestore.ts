@@ -42,6 +42,7 @@ import {
 } from "../utils/officePreview";
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
 import { ConcurrencyGate, ConcurrencyGateFullError, TtlLru } from "../utils/loadShield";
+import { isPlatformAdmin } from "../schools/store";
 
 const MOUNT_PATH = "/filestore";
 const APP_PATH = "/services/tools/filestore";
@@ -70,6 +71,7 @@ type PlatformFilestoreUser = {
   username: string;
   nickname: string;
   role: string;
+  schoolId: string;
   studentId: string;
   campus: string;
 };
@@ -105,11 +107,12 @@ async function platformUserFromRequest(req: Request) {
     const payload = verifyToken(token);
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, username: true, nickname: true, role: true, status: true },
+      select: { id: true, schoolId: true, username: true, nickname: true, role: true, status: true },
     });
     if (!user || user.status === "banned") return null;
     return {
       ...payload,
+      schoolId: user.schoolId,
       studentId: user.username,
       username: user.username,
       nickname: user.nickname || user.username,
@@ -560,8 +563,9 @@ function normalizeTemplatePayload(input: unknown) {
   };
 }
 
+/** 文件收集的超级管理员看得到所有人的任务，只有平台管理员是。 */
 function userIsSuperAdmin(user: FilestoreAccessUser | null | undefined) {
-  return user?.role === "admin";
+  return isPlatformAdmin(user);
 }
 
 function userCanManageGlobalFilestore(user: FilestoreAccessUser | null | undefined) {
@@ -2124,7 +2128,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(401).json({ error: "请先登录平台账号" });
       return true;
     }
-    if (user.role !== "admin") {
+    if (!isPlatformAdmin(user)) {
       res.status(403).json({ error: "仅超级管理员可绑定旧任务创建者" });
       return true;
     }

@@ -376,7 +376,7 @@ toolsRouter.get("/grade-checks", authRequired, async (req, res, next) => {
       return;
     }
     if (!(await hasToolContentManagePermission("grade_check", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    const canSeeAll = isSiteAdmin(req.user?.role);
+    const canSeeAll = isSiteAdmin(req.user);
     const list = await prisma.gradeCheckTable.findMany({
       where: canSeeAll ? {} : { createdById: req.user!.userId },
       orderBy: [{ createdAt: "desc" }],
@@ -631,7 +631,7 @@ toolsRouter.delete("/grade-checks/:id", authRequired, async (req, res, next) => 
 toolsRouter.get("/file-collection-templates", authRequired, async (req, res, next) => {
   try {
     if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    const canSeeAll = isSiteAdmin(req.user?.role);
+    const canSeeAll = isSiteAdmin(req.user);
     const list = await prisma.fileCollectTemplate.findMany({
       where: canSeeAll ? {} : { createdById: req.user!.userId },
       orderBy: [{ updatedAt: "desc" }],
@@ -672,7 +672,7 @@ toolsRouter.delete("/file-collection-templates/:id", authRequired, async (req, r
     const id = Number(req.params.id);
     const current = await prisma.fileCollectTemplate.findUnique({ where: { id } });
     if (!current) throw Errors.notFound("模板不存在");
-    const canDelete = current.createdById === req.user!.userId || isSiteAdmin(req.user?.role);
+    const canDelete = current.createdById === req.user!.userId || isSiteAdmin(req.user);
     if (!canDelete) throw Errors.forbidden("没有该模板的管理权限");
     await prisma.fileCollectTemplate.delete({ where: { id } });
     ok(res, { ok: true });
@@ -686,7 +686,7 @@ toolsRouter.get("/file-collections", authRequired, async (req, res, next) => {
       return;
     }
     if (!(await hasToolContentManagePermission("file_collect", req.user))) throw Errors.forbidden("没有该小工具的管理权限");
-    const canSeeAll = isSiteAdmin(req.user?.role);
+    const canSeeAll = isSiteAdmin(req.user);
     const list = await prisma.fileCollectTask.findMany({
       where: canSeeAll ? {} : { createdById: req.user!.userId },
       orderBy: [{ createdAt: "desc" }],
@@ -1060,7 +1060,7 @@ toolsRouter.get("/questionnaires", authOptional, async (req, res, next) => {
     const contentManageCodes = req.user ? await listContentManageableToolCodes(req.user) : [];
     if (includeDraft && toolCode && !contentManageCodes.includes(toolCode)) throw Errors.forbidden("没有该小工具的管理权限");
     if (includeDraft && !toolCode && !contentManageCodes.length) throw Errors.forbidden("没有小工具管理权限");
-    const canSeeAll = isSiteAdmin(req.user?.role);
+    const canSeeAll = isSiteAdmin(req.user);
     const manageScope = toolCode
       ? (canSeeAll ? {} : { createdById: req.user!.userId })
       : (canSeeAll ? {} : { createdById: req.user!.userId });
@@ -1714,7 +1714,7 @@ async function ensureGradeCheckFeedbackQuestionnaire(table: {
 
 async function canManageQuestionnaire(row: { toolCode: string; slug?: string; createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
-  if (isSiteAdmin(user.role)) return true;
+  if (isSiteAdmin(user)) return true;
   if (row.slug && await canManageGradeFeedbackQuestionnaire(row.slug, user)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission(row.toolCode, user);
 }
@@ -1729,13 +1729,13 @@ async function canManageGradeFeedbackQuestionnaire(slug: string, user: Express.R
 
 async function canManageGradeCheckTable(row: { createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
-  if (isSiteAdmin(user.role)) return true;
+  if (isSiteAdmin(user)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission("grade_check", user);
 }
 
 async function canManageFileCollectTask(row: { createdById: number | null }, user: Express.Request["user"]) {
   if (!user?.userId) return false;
-  if (isSiteAdmin(user.role)) return true;
+  if (isSiteAdmin(user)) return true;
   return row.createdById === user.userId && await hasToolContentManagePermission("file_collect", user);
 }
 
@@ -1744,7 +1744,7 @@ function canManageQuestionnaireRow(
   user: Express.Request["user"],
 ) {
   if (!user?.userId) return false;
-  return isSiteAdmin(user.role) || row.createdById === user.userId;
+  return isSiteAdmin(user) || row.createdById === user.userId;
 }
 
 function validateFields(fields: QuestionnaireField[]) {

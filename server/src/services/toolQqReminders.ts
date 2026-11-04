@@ -28,6 +28,7 @@ export type ToolQqReminderPatch = {
 type AccessUser = {
   userId?: number;
   role?: string;
+  schoolId?: string;
 } | null | undefined;
 
 type ReminderNotificationInput = {
@@ -71,7 +72,7 @@ export function normalizeToolQqReminderTargetType(value: unknown): ToolQqReminde
 export async function listToolQqReminderItems(user: AccessUser) {
   if (!user?.userId) return [];
   const manageableCodes = await listContentManageableToolCodes(user);
-  const canSeeAll = isSiteAdmin(user.role);
+  const canSeeAll = isSiteAdmin(user);
   const tasks: Array<Promise<any[]>> = [];
 
   if (manageableCodes.includes("questionnaire")) {
@@ -352,7 +353,7 @@ async function createReminderNotification(input: ReminderNotificationInput) {
 }
 
 function assertReminderOwner(createdById: number | null, user: AccessUser) {
-  if (!user?.userId || (!isSiteAdmin(user.role) && createdById !== user.userId)) {
+  if (!user?.userId || (!isSiteAdmin(user) && createdById !== user.userId)) {
     throw Errors.forbidden("只能设置自己发起的小工具提醒");
   }
 }

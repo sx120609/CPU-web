@@ -24,7 +24,7 @@ test("personal and organization accounts can use the verification workflow", () 
 });
 
 test("direct grants stay admin-only and auditable while allowing self-grants", () => {
-  assert.match(routeSource, /accountVerificationAdminRouter\.post\(\s*"\/grant",\s*adminOnly,/);
+  assert.match(routeSource, /accountVerificationAdminRouter\.post\(\s*"\/grant",\s*schoolAdminOnly,/);
   assert.match(routeSource, /source:\s*"admin_grant"/);
   assert.match(routeSource, /type:\s*req\.body\.type/);
   assert.doesNotMatch(routeSource, /不能为自己的账号主动添加认证/);

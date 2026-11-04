@@ -15,14 +15,17 @@ import {
 const SCHOOL_ROW_SELECT = { id: true, name: true, shortName: true, brandName: true, tagline: true, enabled: true } as const;
 const SCHOOL_ID_PATTERN = /^[a-z][a-z0-9-]{1,31}$/u;
 
-/** 平台管理员（默认学校的站点管理员）管所有学校；其他学校的管理员只管本校。 */
+/**
+ * 平台管理员（默认学校的站点管理员）管所有学校；其他学校的管理员只管本校。
+ * 不知道属于哪所学校的身份一律不算，免得漏传 schoolId 时把外校管理员当成平台管理员。
+ */
 export function isPlatformAdmin(user: { role?: string | null; schoolId?: string | null } | null | undefined) {
-  return user?.role === "admin" && (user.schoolId || DEFAULT_SCHOOL_ID) === DEFAULT_SCHOOL_ID;
+  return user?.role === "admin" && user.schoolId === DEFAULT_SCHOOL_ID;
 }
 
 export function ensureCanManageSchool(user: { role?: string | null; schoolId?: string | null } | null | undefined, schoolId: string) {
   if (isPlatformAdmin(user)) return;
-  if (user?.role === "admin" && (user.schoolId || DEFAULT_SCHOOL_ID) === schoolId) return;
+  if (user?.role === "admin" && user.schoolId === schoolId) return;
   throw Errors.notFound("学校不存在");
 }
 

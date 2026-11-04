@@ -17,12 +17,12 @@ test("shop access exposes only current active global-admin authority to the auth
   t.after(() => { config.shopIntegrationSecret = beforeSecret; config.payIntegrationSecret = beforePaySecret; prisma.user.findUnique = beforeFind; });
   config.shopIntegrationSecret = secret;
   config.payIntegrationSecret = "separate-payment-secret-32-characters";
-  let user: any = { role: "admin", status: "active" };
+  let user: any = { role: "admin", schoolId: "cpu", status: "active" };
   let calls = 0;
   prisma.user.findUnique = (async ({ where, select }: any) => {
     calls++;
     assert.equal(where.id, 7);
-    assert.deepEqual(select, { role: true, status: true });
+    assert.deepEqual(select, { role: true, schoolId: true, status: true });
     return user;
   }) as any;
   const app = express(); app.use(shopIntegrationRouter);
@@ -44,15 +44,19 @@ test("shop access exposes only current active global-admin authority to the auth
   assert.equal((await get(config.payIntegrationSecret)).status, 401);
   assert.deepEqual((await (await payAccess()).json()).data, { userId: 7, globalAdmin: true });
   for (const role of ["user", "mod", "bot"]) {
-    user = { role, status: "active", voiceHubRole: "super_admin" };
+    user = { role, schoolId: "cpu", status: "active", voiceHubRole: "super_admin" };
     assert.equal((await (await get()).json()).data.globalAdmin, false);
     assert.equal((await (await payAccess()).json()).data.globalAdmin, false);
   }
   for (const status of ["banned", "deleting", "deleted"]) {
-    user = { role: "admin", status };
+    user = { role: "admin", schoolId: "cpu", status };
     assert.equal((await (await get()).json()).data.globalAdmin, false);
     assert.equal((await (await payAccess()).json()).data.globalAdmin, false);
   }
+  // 其他学校的管理员不是平台管理员。
+  user = { role: "admin", schoolId: "njmu", status: "active" };
+  assert.equal((await (await get()).json()).data.globalAdmin, false);
+  assert.equal((await (await payAccess()).json()).data.globalAdmin, false);
   user = null;
   assert.equal((await (await get()).json()).data.globalAdmin, false);
 });
@@ -224,7 +228,7 @@ test("no-ai access and chat endpoints require their own secret and reject unusab
   replace(config, "noAiIntegrationSecret", secret);
   replace(config, "payIntegrationSecret", "separate-payment-secret-32-characters");
   let status = "active";
-  replace(prisma.user, "findUnique", async () => ({ role: "admin", status }));
+  replace(prisma.user, "findUnique", async () => ({ role: "admin", schoolId: "cpu", status }));
   const app = express(); app.use(express.json(), integrationsRouter);
   app.use((err: any, _req: any, res: any, _next: any) => res.status(err.status || 400).json({ error: err.message }));
   const server = createServer(app);

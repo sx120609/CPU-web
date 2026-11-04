@@ -1,6 +1,7 @@
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { publicAvatarValue } from "./publicAvatar";
 import { buildAccountVerification } from "../services/accountVerification";
+import { isPlatformAdmin } from "../schools/store";
 
 type Viewer = {
   userId?: number | null;
@@ -30,6 +31,7 @@ export function buildSelfUser(u: any) {
   return {
     id: u.id,
     schoolId: u.schoolId,
+    platformAdmin: isPlatformAdmin(u),
     username: u.username,
     nickname: u.nickname,
     profileReview: { status: u.profileReviewStatus || "none", reason: u.profileReviewReason || null, pending: u.pendingProfile ? JSON.parse(u.pendingProfile) : null },

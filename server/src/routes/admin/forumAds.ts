@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../../prisma";
-import { adminOnly } from "../../middleware/admin";
+import { schoolAdminOnly } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
 import { Errors, ok } from "../../utils/response";
 import {
@@ -90,7 +90,7 @@ function normalizePayload(input: z.infer<typeof adInputFields>) {
   };
 }
 
-forumAdsAdminRouter.get("/", adminOnly, async (req, res, next) => {
+forumAdsAdminRouter.get("/", schoolAdminOnly, async (req, res, next) => {
   try {
     const list = await prisma.forumAd.findMany({
       where: { schoolId: resolveSchoolId(req.user?.schoolId) },
@@ -110,7 +110,7 @@ forumAdsAdminRouter.get("/", adminOnly, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-forumAdsAdminRouter.post("/image", adminOnly, (req, res, next) => {
+forumAdsAdminRouter.post("/image", schoolAdminOnly, (req, res, next) => {
   uploadAdImage.single("file")(req, res, (error: any) => {
     if (error?.code === "LIMIT_FILE_SIZE") return next(Errors.badRequest("广告图片不能超过 32MB"));
     return error ? next(error) : next();
@@ -141,7 +141,7 @@ forumAdsAdminRouter.post("/image", adminOnly, (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-forumAdsAdminRouter.post("/", adminOnly, validate(adInputSchema), async (req, res, next) => {
+forumAdsAdminRouter.post("/", schoolAdminOnly, validate(adInputSchema), async (req, res, next) => {
   try {
     const ad = await prisma.forumAd.create({
       data: { ...normalizePayload(req.body), schoolId: resolveSchoolId(req.user?.schoolId), createdById: req.user!.userId },
@@ -151,7 +151,7 @@ forumAdsAdminRouter.post("/", adminOnly, validate(adInputSchema), async (req, re
   } catch (error) { next(error); }
 });
 
-forumAdsAdminRouter.patch("/:id", adminOnly, validate(adPatchSchema), async (req, res, next) => {
+forumAdsAdminRouter.patch("/:id", schoolAdminOnly, validate(adPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("广告 ID 无效");
@@ -180,7 +180,7 @@ forumAdsAdminRouter.patch("/:id", adminOnly, validate(adPatchSchema), async (req
   } catch (error) { next(error); }
 });
 
-forumAdsAdminRouter.delete("/:id", adminOnly, async (req, res, next) => {
+forumAdsAdminRouter.delete("/:id", schoolAdminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("广告 ID 无效");
