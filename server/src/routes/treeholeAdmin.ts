@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { resolveSchoolId } from "../schools/registry";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
@@ -36,6 +35,11 @@ export const treeholeAdminRouter = Router();
 
 const REVEAL_LOCK = -71003;
 
+/** 后台数据只取管理员本校的：会话、工单、溯源都经由洞主归属学校。 */
+const sessionsOfSchool = (schoolId: string) => ({ host: { schoolId } });
+const casesOfSchool = (schoolId: string) => ({ session: sessionsOfSchool(schoolId) });
+const revealsOfSchool = (schoolId: string) => ({ crisisCase: casesOfSchool(schoolId) });
+
 treeholeAdminRouter.get("/overview", async (_req, res, next) => {
   try {
     const viewer = viewerOf(res);
@@ -45,10 +49,10 @@ treeholeAdminRouter.get("/overview", async (_req, res, next) => {
       return;
     }
     const [openCases, pendingReveals, activeSessions, activeRooms] = await Promise.all([
-      prisma.treeholeCrisisCase.count({ where: { status: { not: "closed" } } }),
-      prisma.treeholeRevealRequest.count({ where: { status: "pending" } }),
-      prisma.treeholeSession.count({ where: { status: "active" } }),
-      prisma.treeholeRoom.count({ where: { status: "active" } }),
+      prisma.treeholeCrisisCase.count({ where: { status: { not: "closed" }, ...casesOfSchool(viewer.schoolId) } }),
+      prisma.treeholeRevealRequest.count({ where: { status: "pending", ...revealsOfSchool(viewer.schoolId) } }),
+      prisma.treeholeSession.count({ where: { status: "active", ...sessionsOfSchool(viewer.schoolId) } }),
+      prisma.treeholeRoom.count({ where: { status: "active", schoolId: viewer.schoolId } }),
     ]);
     ok(res, { isAdmin: true, isSiteAdmin: viewer.isSiteAdmin, counts: { openCases, pendingReveals, activeSessions, activeRooms } });
   } catch (error) {
@@ -72,12 +76,13 @@ treeholeAdminRouter.get("/sessions", validate(sessionListSchema, "query"), async
     requireTreeholeAdmin(viewer);
     const query = req.query as unknown as z.infer<typeof sessionListSchema>;
     const where: Prisma.TreeholeSessionWhereInput = {
+      ...sessionsOfSchool(viewer.schoolId),
       ...(query.tag ? { tag: query.tag } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.mode ? { mode: query.mode } : {}),
       ...(query.hostId ? { hostId: query.hostId } : {}),
     };
-    const config = await loadTreeholeConfig();
+    const config = await loadTreeholeConfig(viewerOf(res).schoolId);
     const [total, list] = await Promise.all([
       prisma.treeholeSession.count({ where }),
       listSessionSummaries(where, "admin", config, { take: 30, skip: (query.page - 1) * 30 }),
@@ -107,7 +112,10 @@ treeholeAdminRouter.get("/cases", validate(caseListSchema, "query"), async (req,
     const viewer = viewerOf(res);
     requireTreeholeAdmin(viewer);
     const query = req.query as unknown as z.infer<typeof caseListSchema>;
-    const where: Prisma.TreeholeCrisisCaseWhereInput = query.status === "all" ? {} : query.status === "unclosed" ? { status: { not: "closed" } } : { status: query.status };
+    const where: Prisma.TreeholeCrisisCaseWhereInput = {
+      ...casesOfSchool(viewer.schoolId),
+      ...(query.status === "all" ? {} : query.status === "unclosed" ? { status: { not: "closed" } } : { status: query.status }),
+    };
     const cases = await prisma.treeholeCrisisCase.findMany({
       where,
       orderBy: [{ createdAt: "desc" }],
@@ -138,8 +146,8 @@ treeholeAdminRouter.get("/cases", validate(caseListSchema, "query"), async (req,
 });
 
 async function loadCaseDetail(caseId: number, viewer: TreeholeViewer) {
-  const row = await prisma.treeholeCrisisCase.findUnique({
-    where: { id: caseId },
+  const row = await prisma.treeholeCrisisCase.findFirst({
+    where: { id: caseId, ...casesOfSchool(viewer.schoolId) },
     include: {
       session: { select: { id: true, alias: true, status: true, mode: true, contact: true, contactAt: true, createdAt: true, hostId: true } },
       notes: { orderBy: { createdAt: "asc" } },
@@ -221,7 +229,7 @@ treeholeAdminRouter.post("/cases/:id/notes", validate(noteSchema), async (req, r
     const staff = requireTreeholeAdmin(viewer);
     const caseId = parseTreeholeId(req.params.id, "工单编号");
     await prisma.$transaction(async (tx) => {
-      const row = await tx.treeholeCrisisCase.findUnique({ where: { id: caseId }, select: { id: true } });
+      const row = await tx.treeholeCrisisCase.findFirst({ where: { id: caseId, ...casesOfSchool(viewer.schoolId) }, select: { id: true } });
       if (!row) throw Errors.notFound("工单不存在");
       await tx.treeholeCaseNote.create({ data: { caseId, authorId: staff.id, content: req.body.content } });
       await tx.treeholeCrisisCase.update({ where: { id: caseId }, data: { updatedAt: new Date() } });
@@ -242,7 +250,7 @@ treeholeAdminRouter.patch("/cases/:id", validate(caseStatusSchema), async (req, 
     requireTreeholeAdmin(viewer);
     const caseId = parseTreeholeId(req.params.id, "工单编号");
     await prisma.$transaction(async (tx) => {
-      const row = await tx.treeholeCrisisCase.findUnique({ where: { id: caseId }, select: { status: true } });
+      const row = await tx.treeholeCrisisCase.findFirst({ where: { id: caseId, ...casesOfSchool(viewer.schoolId) }, select: { status: true } });
       if (!row) throw Errors.notFound("工单不存在");
       await tx.treeholeCrisisCase.update({
         where: { id: caseId },
@@ -267,7 +275,7 @@ treeholeAdminRouter.post("/cases/:id/reveals", validate(revealSchema), async (re
     const caseId = parseTreeholeId(req.params.id, "工单编号");
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REVEAL_LOCK}::int, ${caseId}::int)`;
-      const row = await tx.treeholeCrisisCase.findUnique({ where: { id: caseId }, include: { reveals: { select: { status: true } } } });
+      const row = await tx.treeholeCrisisCase.findFirst({ where: { id: caseId, ...casesOfSchool(viewer.schoolId) }, include: { reveals: { select: { status: true } } } });
       if (!row) throw Errors.notFound("工单不存在");
       if (row.reveals.some((reveal) => reveal.status === "pending")) throw Errors.conflict("已有一份溯源申请在等待审批");
       if (row.reveals.some((reveal) => reveal.status === "approved")) throw Errors.conflict("这张工单已经完成实名溯源");
@@ -297,7 +305,7 @@ treeholeAdminRouter.post("/reveals/:id/approve", async (req, res, next) => {
     const staff = requireTreeholeAdmin(viewer);
     const requestId = parseTreeholeId(req.params.id, "申请编号");
     const caseId = await prisma.$transaction(async (tx) => {
-      const request = await tx.treeholeRevealRequest.findUnique({ where: { id: requestId }, select: { caseId: true } });
+      const request = await tx.treeholeRevealRequest.findFirst({ where: { id: requestId, ...revealsOfSchool(viewer.schoolId) }, select: { caseId: true } });
       if (!request) throw Errors.notFound("溯源申请不存在");
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REVEAL_LOCK}::int, ${request.caseId}::int)`;
       const fresh = await tx.treeholeRevealRequest.findUniqueOrThrow({ where: { id: requestId }, include: { approvals: true } });
@@ -333,7 +341,7 @@ treeholeAdminRouter.post("/reveals/:id/reject", validate(rejectSchema), async (r
     const staff = requireTreeholeAdmin(viewer);
     const requestId = parseTreeholeId(req.params.id, "申请编号");
     const caseId = await prisma.$transaction(async (tx) => {
-      const request = await tx.treeholeRevealRequest.findUnique({ where: { id: requestId } });
+      const request = await tx.treeholeRevealRequest.findFirst({ where: { id: requestId, ...revealsOfSchool(viewer.schoolId) } });
       if (!request) throw Errors.notFound("溯源申请不存在");
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REVEAL_LOCK}::int, ${request.caseId}::int)`;
       const updated = await tx.treeholeRevealRequest.updateMany({
@@ -355,8 +363,8 @@ treeholeAdminRouter.get("/reveals/:id/identity", async (req, res, next) => {
     const viewer = viewerOf(res);
     requireTreeholeAdmin(viewer);
     const requestId = parseTreeholeId(req.params.id, "申请编号");
-    const request = await prisma.treeholeRevealRequest.findUnique({
-      where: { id: requestId },
+    const request = await prisma.treeholeRevealRequest.findFirst({
+      where: { id: requestId, ...revealsOfSchool(viewer.schoolId) },
       include: { crisisCase: { select: { id: true, session: { select: { visitorId: true } } } } },
     });
     if (!request || request.status !== "approved") throw Errors.forbidden("只有获得双人审批的溯源申请才能查看实名信息");
@@ -411,15 +419,16 @@ treeholeAdminRouter.get("/staff", async (_req, res, next) => {
   try {
     const viewer = viewerOf(res);
     requireTreeholeStaffManager(viewer);
-    const rows = await prisma.treeholeStaff.findMany({ include: STAFF_INCLUDE, orderBy: [{ enabled: "desc" }, { hostCode: "asc" }, { id: "asc" }] });
+    const rows = await prisma.treeholeStaff.findMany({ where: { schoolId: viewer.schoolId }, include: STAFF_INCLUDE, orderBy: [{ enabled: "desc" }, { hostCode: "asc" }, { id: "asc" }] });
     ok(res, rows.map(serializeStaff));
   } catch (error) {
     next(error);
   }
 });
 
-async function freeHostCode(tx: Prisma.TransactionClient) {
-  const used = new Set((await tx.treeholeStaff.findMany({ where: { hostCode: { not: null } }, select: { hostCode: true } })).map((row) => row.hostCode));
+/** 洞主编号同校内唯一，各校都从 01 排起。 */
+async function freeHostCode(tx: Prisma.TransactionClient, schoolId: string) {
+  const used = new Set((await tx.treeholeStaff.findMany({ where: { schoolId, hostCode: { not: null } }, select: { hostCode: true } })).map((row) => row.hostCode));
   for (let code = 1; code <= 99; code += 1) {
     const value = String(code).padStart(2, "0");
     if (!used.has(value)) return value;
@@ -429,7 +438,7 @@ async function freeHostCode(tx: Prisma.TransactionClient) {
 
 async function ensureAdminRemains(tx: Prisma.TransactionClient, viewer: TreeholeViewer, changingStaffId: number) {
   if (viewer.isSiteAdmin) return;
-  const others = await tx.treeholeStaff.count({ where: { enabled: true, isAdmin: true, id: { not: changingStaffId } } });
+  const others = await tx.treeholeStaff.count({ where: { schoolId: viewer.schoolId, enabled: true, isAdmin: true, id: { not: changingStaffId } } });
   if (!others) throw Errors.badRequest("至少要保留一名在任的核心管理员");
 }
 
@@ -447,16 +456,16 @@ treeholeAdminRouter.post("/staff", validate(createStaffSchema), async (req, res,
     const body = req.body as z.infer<typeof createStaffSchema>;
     if (!body.isHost && !body.isAdmin) throw Errors.badRequest("请至少选择洞主或核心管理员中的一项");
     const user = await prisma.user.findUnique({
-      where: { schoolId_username: { schoolId: resolveSchoolId(req.user?.schoolId), username: body.username } },
+      where: { schoolId_username: { schoolId: viewer.schoolId, username: body.username } },
       select: { id: true, status: true, role: true },
     });
     if (!user || ["deleted", "deleting", "banned"].includes(user.status) || user.role === "bot") throw Errors.notFound("没有找到这个账号，请对方先登录一次药大拾间");
     const staff = await prisma.$transaction(async (tx) => {
       const existing = await tx.treeholeStaff.findUnique({ where: { userId: user.id } });
       const hostCode = body.isHost
-        ? (body.hostCode ? normalizeHostCode(body.hostCode) : existing?.hostCode || await freeHostCode(tx))
+        ? (body.hostCode ? normalizeHostCode(body.hostCode) : existing?.hostCode || await freeHostCode(tx, viewer.schoolId))
         : existing?.hostCode ?? null;
-      const data = { isHost: body.isHost, isAdmin: body.isAdmin, hostCode, enabled: true };
+      const data = { schoolId: viewer.schoolId, isHost: body.isHost, isAdmin: body.isAdmin, hostCode, enabled: true };
       const saved = existing
         ? await tx.treeholeStaff.update({ where: { id: existing.id }, data, include: STAFF_INCLUDE })
         : await tx.treeholeStaff.create({ data: { userId: user.id, ...data }, include: STAFF_INCLUDE });
@@ -488,14 +497,14 @@ treeholeAdminRouter.patch("/staff/:id", validate(updateStaffSchema), async (req,
     const body = req.body as z.infer<typeof updateStaffSchema>;
     const staffId = parseTreeholeId(req.params.id, "人员编号");
     const staff = await prisma.$transaction(async (tx) => {
-      const existing = await tx.treeholeStaff.findUnique({ where: { id: staffId } });
+      const existing = await tx.treeholeStaff.findFirst({ where: { id: staffId, schoolId: viewer.schoolId } });
       if (!existing) throw Errors.notFound("人员不存在");
       const losingAdmin = existing.isAdmin && existing.enabled && (body.isAdmin === false || body.enabled === false);
       if (losingAdmin) await ensureAdminRemains(tx, viewer, staffId);
       const isHost = body.isHost ?? existing.isHost;
       let hostCode = existing.hostCode;
       if (body.hostCode !== undefined && body.hostCode !== "") hostCode = normalizeHostCode(body.hostCode);
-      if (isHost && !hostCode) hostCode = await freeHostCode(tx);
+      if (isHost && !hostCode) hostCode = await freeHostCode(tx, viewer.schoolId);
       const saved = await tx.treeholeStaff.update({
         where: { id: staffId },
         data: {
@@ -541,7 +550,7 @@ treeholeAdminRouter.put("/staff/:id/shifts", validate(shiftsSchema), async (req,
       throw Errors.badRequest((error as Error).message);
     }
     const staff = await prisma.$transaction(async (tx) => {
-      const existing = await tx.treeholeStaff.findUnique({ where: { id: staffId } });
+      const existing = await tx.treeholeStaff.findFirst({ where: { id: staffId, schoolId: viewer.schoolId } });
       if (!existing) throw Errors.notFound("人员不存在");
       await tx.treeholeShift.deleteMany({ where: { staffId } });
       if (shifts.length) await tx.treeholeShift.createMany({ data: shifts.map((shift) => ({ staffId, ...shift })) });
@@ -561,6 +570,7 @@ treeholeAdminRouter.get("/rooms", async (_req, res, next) => {
     const viewer = viewerOf(res);
     requireTreeholeAdmin(viewer);
     const rooms = await prisma.treeholeRoom.findMany({
+      where: { schoolId: viewer.schoolId },
       orderBy: [{ status: "asc" }, { lastMessageAt: "desc" }],
       include: {
         members: { where: { status: "active" }, select: { role: true } },
@@ -568,7 +578,7 @@ treeholeAdminRouter.get("/rooms", async (_req, res, next) => {
         _count: { select: { messages: true, applications: true } },
       },
     });
-    const pending = await prisma.treeholeRoomApplication.groupBy({ by: ["roomId"], where: { status: "pending" }, _count: { _all: true } });
+    const pending = await prisma.treeholeRoomApplication.groupBy({ by: ["roomId"], where: { status: "pending", room: { schoolId: viewer.schoolId } }, _count: { _all: true } });
     const pendingMap = new Map(pending.map((row) => [row.roomId, row._count._all]));
     const label = await staffLabels(rooms.flatMap((room) => room.proposal?.signatures.map((sig) => sig.staffId) ?? []));
     ok(res, rooms.map((room) => ({
@@ -609,14 +619,14 @@ treeholeAdminRouter.get("/stats", validate(statsSchema, "query"), async (req, re
     const { days } = req.query as unknown as z.infer<typeof statsSchema>;
     const since = new Date(Date.now() - days * 86_400_000);
     const [sessions, cases, openCases, activeSessions, hosts, rooms, roomMessages, applications] = await Promise.all([
-      prisma.treeholeSession.findMany({ where: { createdAt: { gte: since } }, select: { createdAt: true, mode: true, tag: true, hostId: true, status: true } }),
-      prisma.treeholeCrisisCase.findMany({ where: { createdAt: { gte: since } }, select: { urgency: true, status: true } }),
-      prisma.treeholeCrisisCase.count({ where: { status: { not: "closed" } } }),
-      prisma.treeholeSession.count({ where: { status: "active" } }),
-      prisma.treeholeStaff.findMany({ where: { isHost: true, hostCode: { not: null } }, include: { shifts: true } }),
-      prisma.treeholeRoom.findMany({ select: { id: true, name: true, category: true, status: true, members: { where: { status: "active", role: "visitor" }, select: { id: true } } } }),
-      prisma.treeholeRoomMessage.groupBy({ by: ["roomId"], where: { createdAt: { gte: since }, kind: { not: "notice" } }, _count: { _all: true } }),
-      prisma.treeholeRoomApplication.groupBy({ by: ["status"], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+      prisma.treeholeSession.findMany({ where: { createdAt: { gte: since }, ...sessionsOfSchool(viewer.schoolId) }, select: { createdAt: true, mode: true, tag: true, hostId: true, status: true } }),
+      prisma.treeholeCrisisCase.findMany({ where: { createdAt: { gte: since }, ...casesOfSchool(viewer.schoolId) }, select: { urgency: true, status: true } }),
+      prisma.treeholeCrisisCase.count({ where: { status: { not: "closed" }, ...casesOfSchool(viewer.schoolId) } }),
+      prisma.treeholeSession.count({ where: { status: "active", ...sessionsOfSchool(viewer.schoolId) } }),
+      prisma.treeholeStaff.findMany({ where: { schoolId: viewer.schoolId, isHost: true, hostCode: { not: null } }, include: { shifts: true } }),
+      prisma.treeholeRoom.findMany({ where: { schoolId: viewer.schoolId }, select: { id: true, name: true, category: true, status: true, members: { where: { status: "active", role: "visitor" }, select: { id: true } } } }),
+      prisma.treeholeRoomMessage.groupBy({ by: ["roomId"], where: { createdAt: { gte: since }, kind: { not: "notice" }, room: { schoolId: viewer.schoolId } }, _count: { _all: true } }),
+      prisma.treeholeRoomApplication.groupBy({ by: ["status"], where: { createdAt: { gte: since }, room: { schoolId: viewer.schoolId } }, _count: { _all: true } }),
     ]);
     const byHost = new Map<number, number>();
     const daily = new Map<string, number>();
@@ -686,7 +696,7 @@ treeholeAdminRouter.get("/audit", validate(auditSchema, "query"), async (req, re
     const viewer = viewerOf(res);
     requireTreeholeAdmin(viewer);
     const query = req.query as unknown as z.infer<typeof auditSchema>;
-    const where: Prisma.TreeholeAuditLogWhereInput = query.action ? { action: { startsWith: query.action } } : {};
+    const where: Prisma.TreeholeAuditLogWhereInput = { schoolId: viewer.schoolId, ...(query.action ? { action: { startsWith: query.action } } : {}) };
     const [total, rows] = await Promise.all([
       prisma.treeholeAuditLog.count({ where }),
       prisma.treeholeAuditLog.findMany({ where, orderBy: { id: "desc" }, take: 50, skip: (query.page - 1) * 50 }),
@@ -712,7 +722,7 @@ treeholeAdminRouter.get("/config", async (_req, res, next) => {
   try {
     const viewer = viewerOf(res);
     requireTreeholeAdmin(viewer);
-    ok(res, await loadTreeholeConfig());
+    ok(res, await loadTreeholeConfig(viewerOf(res).schoolId));
   } catch (error) {
     next(error);
   }
@@ -733,8 +743,8 @@ treeholeAdminRouter.put("/config", validate(configSchema), async (req, res, next
   try {
     const viewer = viewerOf(res);
     requireTreeholeAdmin(viewer);
-    const before = await loadTreeholeConfig();
-    const saved = await saveTreeholeConfig(req.body);
+    const before = await loadTreeholeConfig(viewerOf(res).schoolId);
+    const saved = await saveTreeholeConfig(req.body, viewer.schoolId);
     const changed = Object.keys(saved).filter((key) => (saved as any)[key] !== (before as any)[key]);
     await writeTreeholeAudit({ actor: viewer, action: "config.update", targetType: "config", detail: { changed, open: saved.open } });
     ok(res, saved);

@@ -3036,10 +3036,12 @@ model WorkshopPlacement {
 // 洞主和核心管理员是树洞自己的身份，与站点 role 无关；站点管理员只能任免人员，看不到会话内容。
 model TreeholeStaff {
   id                    Int       @id @default(autoincrement())
+  // 所属学校，与账号的学校一致。会话、危机个案、揭示申请都经由洞主归属学校。
+  schoolId              String    @default("cpu")
   userId                Int       @unique
   isHost                Boolean   @default(false)
   isAdmin               Boolean   @default(false)
-  hostCode              String?   @unique // 两位洞主编号，例如 "01"；宣泄室虚拟 ID 取它做前缀
+  hostCode              String? // 两位洞主编号，例如 "01"，同校内唯一；宣泄室虚拟 ID 取它做前缀
   intro                 String    @default("")
   enabled               Boolean   @default(true)
   presenceOverride      String? // online / offline；手动上下线，优先于排班
@@ -3050,6 +3052,9 @@ model TreeholeStaff {
   user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   shifts   TreeholeShift[]
   sessions TreeholeSession[]
+
+  @@unique([schoolId, hostCode])
+  @@index([hostCode])
 }
 
 model TreeholeShift {
@@ -3200,6 +3205,7 @@ model TreeholeRevealApproval {
 
 model TreeholeRoom {
   id            Int       @id @default(autoincrement())
+  schoolId      String    @default("cpu")
   name          String
   category      String // praise 夸夸 / vent 倾诉 / cry 哭哭 / relax 解压 / other
   intro         String    @default("")
@@ -3215,12 +3221,14 @@ model TreeholeRoom {
   applications TreeholeRoomApplication[]
   proposal     TreeholeRoomProposal?
 
+  @@index([schoolId, status, lastMessageAt])
   @@index([status, lastMessageAt])
 }
 
 // 新建宣泄室要至少三名洞主联名；第三人签名时自动建群，签名的洞主都成为群管理员。
 model TreeholeRoomProposal {
   id         Int      @id @default(autoincrement())
+  schoolId   String   @default("cpu")
   name       String
   category   String
   intro      String   @default("")
@@ -3233,6 +3241,7 @@ model TreeholeRoomProposal {
   room       TreeholeRoom?                   @relation(fields: [roomId], references: [id], onDelete: SetNull)
   signatures TreeholeRoomProposalSignature[]
 
+  @@index([schoolId, status, createdAt])
   @@index([status, createdAt])
 }
 
@@ -3308,6 +3317,7 @@ model TreeholeRoomMessage {
 // 树洞的后台查阅、溯源、人员和群管理操作都记在这里，永久保留。
 model TreeholeAuditLog {
   id          Int      @id @default(autoincrement())
+  schoolId    String   @default("cpu")
   actorUserId Int
   actorLabel  String
   action      String
@@ -3316,6 +3326,7 @@ model TreeholeAuditLog {
   detail      String   @default("{}")
   createdAt   DateTime @default(now())
 
+  @@index([schoolId, createdAt])
   @@index([createdAt])
   @@index([action, createdAt])
   @@index([targetType, targetId])

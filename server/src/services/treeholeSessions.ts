@@ -35,8 +35,8 @@ export async function loadSessionFor(sessionId: number, viewer: TreeholeViewer) 
     isHost: viewer.isHost,
     isAdmin: viewer.isAdmin,
   }) : null;
-  // 看不到的会话一律按不存在处理，不暴露会话是否存在。
-  if (!session || !role) throw Errors.notFound("会话不存在");
+  // 看不到的会话一律按不存在处理，不暴露会话是否存在；外校的会话也一样。
+  if (!session || !role || session.host.schoolId !== viewer.schoolId) throw Errors.notFound("会话不存在");
   return { session, role };
 }
 

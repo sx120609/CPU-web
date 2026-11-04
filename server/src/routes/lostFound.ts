@@ -23,6 +23,7 @@ import {
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../services/forumStats";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { requestSchoolId } from "../schools/modules";
 import { boardSlugKey } from "../schools/forumScope";
 import {
   canViewLostFoundRaw,
@@ -144,10 +145,14 @@ function imageContent(images: string[]) {
   return images.map((url, index) => `![失物图片 ${index + 1}](${url})`).join("\n");
 }
 
-/** 失物招领还没按学校隔离，板块只建在默认学校。 */
-async function ensureBoard() {
+/** 失物信息挂在本校“失物招领”板块的帖子上，经由板块归属学校。 */
+function itemsOfSchool(schoolId: string) {
+  return { topic: { board: { schoolId } } };
+}
+
+async function ensureBoard(schoolId: string) {
   return prisma.board.upsert({
-    where: boardSlugKey(DEFAULT_SCHOOL_ID, BOARD_SLUG),
+    where: boardSlugKey(schoolId, BOARD_SLUG),
     update: {
       name: "失物招领",
       description: "校园失物信息与认领互助",
@@ -155,7 +160,7 @@ async function ensureBoard() {
       color: "#0f8f7b",
     },
     create: {
-      schoolId: DEFAULT_SCHOOL_ID,
+      schoolId,
       slug: BOARD_SLUG,
       name: "失物招领",
       description: "校园失物信息与认领互助",
@@ -273,15 +278,17 @@ async function notify(userId: number, title: string, content: string, link: stri
   }).catch(() => null);
 }
 
-lostFoundRouter.get("/meta", async (_req, res, next) => {
+lostFoundRouter.get("/meta", async (req, res, next) => {
   try {
+    const schoolId = requestSchoolId(req);
     const campuses = await prisma.lostFoundItem.findMany({
-      where: { status: { in: [...PUBLIC_STATUSES] } },
+      where: { status: { in: [...PUBLIC_STATUSES] }, ...itemsOfSchool(schoolId) },
       distinct: ["campus"],
       select: { campus: true },
       orderBy: { campus: "asc" },
     });
-    const campusOptions = Array.from(new Set([...CAMPUSES, ...campuses.map((item) => item.campus).filter(Boolean)]));
+    const presetCampuses = schoolId === DEFAULT_SCHOOL_ID ? CAMPUSES : [];
+    const campusOptions = Array.from(new Set([...presetCampuses, ...campuses.map((item) => item.campus).filter(Boolean)]));
     ok(res, { campuses: campusOptions, kinds: KINDS, statuses: PUBLIC_STATUSES });
   } catch (error) { next(error); }
 });
@@ -299,7 +306,7 @@ lostFoundRouter.get("/items", async (req, res, next) => {
     const to = req.query.to ? new Date(String(req.query.to)) : null;
     const where: any = {
       status: status || { in: [...PUBLIC_STATUSES] },
-      topic: { hidden: false },
+      topic: { hidden: false, board: { schoolId: requestSchoolId(req) } },
     };
     if (kind) where.kind = kind;
     if (campus) where.campus = campus;
@@ -338,7 +345,7 @@ lostFoundRouter.get("/items", async (req, res, next) => {
 lostFoundRouter.get("/items/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const item = await prisma.lostFoundItem.findUnique({ where: { id }, include: itemInclude });
+    const item = await prisma.lostFoundItem.findFirst({ where: { id, ...itemsOfSchool(requestSchoolId(req)) }, include: itemInclude });
     if (!item) throw Errors.notFound("失物信息不存在");
     const canInspect = item.publisherId === req.user?.userId
       || isStaff(req.user?.role, req.user?.lostFoundRole);
@@ -395,7 +402,7 @@ lostFoundRouter.post("/items", authRequired, validate(itemInputSchema), async (r
     await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
     const input = req.body as z.infer<typeof itemInputSchema>;
-    const board = await ensureBoard();
+    const board = await ensureBoard(requestSchoolId(req));
     const content = itemContent(input);
     const metadata = {
       lostFoundItem: true,
@@ -480,7 +487,7 @@ lostFoundRouter.post("/items", authRequired, validate(itemInputSchema), async (r
 lostFoundRouter.patch("/items/:id/status", authRequired, validate(ownerStatusSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const item = await prisma.lostFoundItem.findUnique({ where: { id }, include: { topic: true } });
+    const item = await prisma.lostFoundItem.findFirst({ where: { id, ...itemsOfSchool(requestSchoolId(req)) }, include: { topic: true } });
     if (!item) throw Errors.notFound("失物信息不存在");
     if (
       item.publisherId !== req.user!.userId
@@ -506,7 +513,7 @@ lostFoundRouter.post("/items/:id/claims", authRequired, validate(claimInputSchem
   try {
     const itemId = Number(req.params.id);
     const claimantId = req.user!.userId;
-    const item = await prisma.lostFoundItem.findUnique({ where: { id: itemId } });
+    const item = await prisma.lostFoundItem.findFirst({ where: { id: itemId, ...itemsOfSchool(requestSchoolId(req)) } });
     if (!item || item.status !== "active") throw Errors.notFound("该信息已不可认领");
     if (item.publisherId === claimantId) throw Errors.badRequest("不能认领自己发布的信息");
     const input = req.body as z.infer<typeof claimInputSchema>;
@@ -524,7 +531,7 @@ lostFoundRouter.post("/items/:id/claims", authRequired, validate(claimInputSchem
 lostFoundRouter.patch("/claims/:id", authRequired, validate(claimStatusSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const claim = await prisma.lostFoundClaim.findUnique({ where: { id }, include: { item: { include: { topic: true } }, claimant: { select: publisherSelect } } });
+    const claim = await prisma.lostFoundClaim.findFirst({ where: { id, item: itemsOfSchool(requestSchoolId(req)) }, include: { item: { include: { topic: true } }, claimant: { select: publisherSelect } } });
     if (!claim) throw Errors.notFound("认领申请不存在");
     const status = req.body.status as typeof CLAIM_STATUSES[number];
     const staff = isStaff(req.user!.role, req.user!.lostFoundRole);
@@ -595,7 +602,7 @@ lostFoundRouter.get("/admin/items", authRequired, async (req, res, next) => {
     if (!isStaff(req.user!.role, req.user!.lostFoundRole)) throw Errors.forbidden("需要失物招领管理权限");
     const q = String(req.query.q || "").trim().slice(0, 100);
     const status = ITEM_STATUSES.includes(req.query.status as any) ? String(req.query.status) : "";
-    const where: any = {};
+    const where: any = { ...itemsOfSchool(requestSchoolId(req)) };
     if (status) where.status = status;
     if (q) where.OR = [
       { itemName: { contains: q, mode: "insensitive" } },
@@ -623,9 +630,11 @@ lostFoundRouter.post("/admin/import", authRequired, validate(bulkImportSchema), 
   try {
     if (!isStaff(req.user!.role, req.user!.lostFoundRole)) throw Errors.forbidden("需要失物招领管理权限");
     const input = req.body.items as Array<z.infer<typeof importedItemSchema>>;
-    const board = await ensureBoard();
+    const schoolId = requestSchoolId(req);
+    const board = await ensureBoard(schoolId);
     const candidates = await prisma.lostFoundItem.findMany({
       where: {
+        ...itemsOfSchool(schoolId),
         OR: input.map((item) => ({
           kind: item.kind,
           itemName: item.itemName,
@@ -731,7 +740,7 @@ lostFoundRouter.patch("/admin/items/:id", authRequired, validate(adminItemSchema
   try {
     if (!isStaff(req.user!.role, req.user!.lostFoundRole)) throw Errors.forbidden("需要失物招领管理权限");
     const id = Number(req.params.id);
-    const current = await prisma.lostFoundItem.findUnique({ where: { id }, include: { topic: true } });
+    const current = await prisma.lostFoundItem.findFirst({ where: { id, ...itemsOfSchool(requestSchoolId(req)) }, include: { topic: true } });
     if (!current) throw Errors.notFound("失物信息不存在");
     const status = (req.body.status || current.status) as typeof ITEM_STATUSES[number];
     const pinned = req.body.pinned ?? current.pinned;

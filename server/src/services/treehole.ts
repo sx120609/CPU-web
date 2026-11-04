@@ -10,10 +10,16 @@ import {
   resolveHostPresence,
   TREEHOLE_CONSENT_VERSION,
 } from "./treeholePolicy";
+import { DEFAULT_SCHOOL_ID, resolveSchoolId } from "../schools/registry";
 
 // 艾绒树洞的数据访问：身份、配置、权限、通知、私有图片和审计日志。规则说明见 docs/treehole.md。
 
 export const TREEHOLE_CONFIG_KEY = "treehole.config";
+
+/** 每所学校各自的树洞配置（开放状态、心理中心电话等）；默认学校沿用原来的键。 */
+function treeholeConfigKey(schoolId: string) {
+  return schoolId === DEFAULT_SCHOOL_ID ? TREEHOLE_CONFIG_KEY : `${TREEHOLE_CONFIG_KEY}.${schoolId}`;
+}
 
 export type TreeholeConfig = {
   open: boolean;
@@ -58,8 +64,8 @@ export function normalizeTreeholeConfig(raw: unknown): TreeholeConfig {
   return config;
 }
 
-export async function loadTreeholeConfig(store: Pick<typeof prisma, "siteSetting"> = prisma) {
-  const row = await store.siteSetting.findUnique({ where: { key: TREEHOLE_CONFIG_KEY } });
+export async function loadTreeholeConfig(schoolId: string = DEFAULT_SCHOOL_ID, store: Pick<typeof prisma, "siteSetting"> = prisma) {
+  const row = await store.siteSetting.findUnique({ where: { key: treeholeConfigKey(schoolId) } });
   if (!row) return { ...DEFAULT_TREEHOLE_CONFIG };
   try {
     return normalizeTreeholeConfig(JSON.parse(row.value));
@@ -68,11 +74,12 @@ export async function loadTreeholeConfig(store: Pick<typeof prisma, "siteSetting
   }
 }
 
-export async function saveTreeholeConfig(config: TreeholeConfig) {
+export async function saveTreeholeConfig(config: TreeholeConfig, schoolId: string = DEFAULT_SCHOOL_ID) {
   const value = JSON.stringify(normalizeTreeholeConfig(config));
+  const key = treeholeConfigKey(schoolId);
   await prisma.siteSetting.upsert({
-    where: { key: TREEHOLE_CONFIG_KEY },
-    create: { key: TREEHOLE_CONFIG_KEY, value },
+    where: { key },
+    create: { key, value },
     update: { value },
   });
   return normalizeTreeholeConfig(JSON.parse(value));
@@ -93,6 +100,8 @@ export type TreeholeStaffWithShifts = TreeholeStaff & { shifts: TreeholeShift[] 
 
 export type TreeholeViewer = {
   userId: number;
+  /** 所属学校：只看得到、只能接触本校的洞主、会话、宣泄室和管理数据。 */
+  schoolId: string;
   siteRole: string;
   staff: TreeholeStaffWithShifts | null;
   isHost: boolean;
@@ -100,11 +109,15 @@ export type TreeholeViewer = {
   isSiteAdmin: boolean;
 };
 
-export async function loadTreeholeViewer(user: { userId: number; role?: string | null }): Promise<TreeholeViewer> {
-  const staff = await prisma.treeholeStaff.findUnique({ where: { userId: user.userId }, include: { shifts: true } });
+export async function loadTreeholeViewer(user: { userId: number; role?: string | null; schoolId?: string | null }): Promise<TreeholeViewer> {
+  const schoolId = resolveSchoolId(user.schoolId);
+  const found = await prisma.treeholeStaff.findUnique({ where: { userId: user.userId }, include: { shifts: true } });
+  // 人员记录跟着账号建，学校理应一致；不一致时（数据被手工改过）不认这个身份。
+  const staff = found && found.schoolId === schoolId ? found : null;
   const enabled = Boolean(staff?.enabled);
   return {
     userId: user.userId,
+    schoolId,
     siteRole: String(user.role || "user"),
     staff,
     isHost: enabled && Boolean(staff?.isHost && staff.hostCode),
@@ -194,6 +207,7 @@ export function auditActorLabel(viewer: TreeholeViewer) {
 export async function writeTreeholeAudit(input: AuditInput, store: Pick<typeof prisma, "treeholeAuditLog"> = prisma) {
   await store.treeholeAuditLog.create({
     data: {
+      schoolId: input.actor.schoolId,
       actorUserId: input.actor.userId,
       actorLabel: auditActorLabel(input.actor),
       action: input.action,

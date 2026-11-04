@@ -37,7 +37,7 @@ const MESSAGE_PAGE = 50;
 
 async function loadRoomFor(roomId: number, viewer: TreeholeViewer) {
   const room = await prisma.treeholeRoom.findUnique({ where: { id: roomId } });
-  if (!room) throw Errors.notFound("宣泄室不存在");
+  if (!room || room.schoolId !== viewer.schoolId) throw Errors.notFound("宣泄室不存在");
   const member = await prisma.treeholeRoomMember.findFirst({ where: { roomId, userId: viewer.userId, status: "active" } });
   // 洞主被停用后不再是群管理员，也不能再进群。
   const usableMember = member && (member.role === "visitor" || viewer.isHost) ? member : null;
@@ -230,7 +230,7 @@ treeholeRoomRouter.post("/rooms/:id/enter", async (req, res, next) => {
     const member = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK}::int, ${roomId}::int)`;
       const room = await tx.treeholeRoom.findUnique({ where: { id: roomId } });
-      if (!room || room.status !== "active") throw Errors.notFound("这个宣泄室已经关闭");
+      if (!room || room.schoolId !== viewer.schoolId || room.status !== "active") throw Errors.notFound("这个宣泄室已经关闭");
       const existing = await tx.treeholeRoomMember.findFirst({ where: { roomId, userId: viewer.userId, status: "active" } });
       if (existing) return existing;
       // 进入宣泄室的洞主自动成为群管理员。
@@ -424,7 +424,7 @@ treeholeRoomRouter.post("/room-applications", validate(applySchema), async (req,
     const application = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK}::int, ${roomId}::int)`;
       const room = await tx.treeholeRoom.findUnique({ where: { id: roomId } });
-      if (!room || room.status !== "active") throw Errors.badRequest("这个宣泄室已经关闭");
+      if (!room || room.schoolId !== viewer.schoolId || room.status !== "active") throw Errors.badRequest("这个宣泄室已经关闭");
       const joined = await tx.treeholeRoomMember.findFirst({ where: { roomId, userId: viewer.userId, status: "active" }, select: { id: true } });
       if (joined) throw Errors.conflict("你已经在这个宣泄室里了");
       const pending = await tx.treeholeRoomApplication.findFirst({ where: { roomId, visitorId: viewer.userId, status: "pending" }, select: { id: true } });
@@ -551,9 +551,9 @@ treeholeRoomRouter.post("/room-proposals", validate(proposalSchema), async (req,
     const pendingMine = await prisma.treeholeRoomProposal.count({ where: { proposerId: staff.id, status: "pending" } });
     if (pendingMine >= 3) throw Errors.badRequest("你已经发起了 3 个还没建成的宣泄室提议");
     const proposal = await prisma.$transaction(async (tx) => {
-      const created = await tx.treeholeRoomProposal.create({ data: { name: body.name, category: body.category, intro: body.intro, proposerId: staff.id } });
+      const created = await tx.treeholeRoomProposal.create({ data: { schoolId: viewer.schoolId, name: body.name, category: body.category, intro: body.intro, proposerId: staff.id } });
       await tx.treeholeRoomProposalSignature.create({ data: { proposalId: created.id, staffId: staff.id } });
-      const others = await tx.treeholeStaff.findMany({ where: { enabled: true, isHost: true, hostCode: { not: null }, id: { not: staff.id } }, select: { userId: true } });
+      const others = await tx.treeholeStaff.findMany({ where: { schoolId: viewer.schoolId, enabled: true, isHost: true, hostCode: { not: null }, id: { not: staff.id } }, select: { userId: true } });
       await notifyTreehole(others.map((row) => row.userId), {
         title: "新的宣泄室联名提议",
         content: `${hostDisplayName(staff.hostCode)} 提议新建「${body.name}」，需要 ${TREEHOLE_ROOM_FOUNDERS_REQUIRED} 名洞主联名。`,
@@ -578,13 +578,13 @@ treeholeRoomRouter.post("/room-proposals/:id/sign", async (req, res, next) => {
     const result = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PROPOSAL_LOCK}::int, ${proposalId}::int)`;
       const proposal = await tx.treeholeRoomProposal.findUnique({ where: { id: proposalId }, include: { signatures: true } });
-      if (!proposal || proposal.status !== "pending") throw Errors.notFound("这个提议已经结束");
+      if (!proposal || proposal.schoolId !== viewer.schoolId || proposal.status !== "pending") throw Errors.notFound("这个提议已经结束");
       if (proposal.signatures.some((sig) => sig.staffId === staff.id)) throw Errors.conflict("你已经联名过了");
       await tx.treeholeRoomProposalSignature.create({ data: { proposalId, staffId: staff.id } });
       const signerIds = [...proposal.signatures.map((sig) => sig.staffId), staff.id];
-      const signers = await tx.treeholeStaff.findMany({ where: { id: { in: signerIds }, enabled: true, isHost: true, hostCode: { not: null } } });
+      const signers = await tx.treeholeStaff.findMany({ where: { id: { in: signerIds }, schoolId: viewer.schoolId, enabled: true, isHost: true, hostCode: { not: null } } });
       if (signers.length < TREEHOLE_ROOM_FOUNDERS_REQUIRED) return { created: false, roomId: null, signatures: signers.length };
-      const room = await tx.treeholeRoom.create({ data: { name: proposal.name, category: proposal.category, intro: proposal.intro } });
+      const room = await tx.treeholeRoom.create({ data: { schoolId: proposal.schoolId, name: proposal.name, category: proposal.category, intro: proposal.intro } });
       for (const signer of signers) {
         await tx.treeholeRoomMember.create({ data: { roomId: room.id, userId: signer.userId, role: "host", staffId: signer.id, alias: hostDisplayName(signer.hostCode) } });
       }
@@ -615,7 +615,7 @@ treeholeRoomRouter.post("/room-proposals/:id/cancel", async (req, res, next) => 
   try {
     const viewer = viewerOf(res);
     const proposal = await prisma.treeholeRoomProposal.findUnique({ where: { id: parseTreeholeId(req.params.id, "提议编号") } });
-    if (!proposal || proposal.status !== "pending") throw Errors.notFound("这个提议已经结束");
+    if (!proposal || proposal.schoolId !== viewer.schoolId || proposal.status !== "pending") throw Errors.notFound("这个提议已经结束");
     if (proposal.proposerId !== viewer.staff?.id && !viewer.isAdmin) throw Errors.forbidden("只有发起人可以撤回提议");
     await prisma.treeholeRoomProposal.update({ where: { id: proposal.id }, data: { status: "cancelled" } });
     ok(res, { cancelled: true });

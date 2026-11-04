@@ -71,7 +71,7 @@ treeholeRouter.get("/me", async (req, res, next) => {
   try {
     const viewer = viewerOf(res);
     const [config, consent, user] = await Promise.all([
-      loadTreeholeConfig(),
+      loadTreeholeConfig(viewerOf(res).schoolId),
       hasCurrentConsent(viewer.userId),
       prisma.user.findUnique({ where: { id: viewer.userId }, select: { studentSso: true } }),
     ]);
@@ -147,7 +147,7 @@ treeholeRouter.post("/consent", validate(consentSchema), async (req, res, next) 
 treeholeRouter.get("/hosts", async (_req, res, next) => {
   try {
     const hosts = await prisma.treeholeStaff.findMany({
-      where: { enabled: true, isHost: true, hostCode: { not: null } },
+      where: { schoolId: viewerOf(res).schoolId, enabled: true, isHost: true, hostCode: { not: null } },
       include: { shifts: true },
       orderBy: { hostCode: "asc" },
     });
@@ -232,9 +232,9 @@ const createSessionSchema = z.object({
   imageId: z.number().int().positive().nullable().optional().default(null),
 });
 
-async function pickAsyncHost(excludeUserId: number) {
+async function pickAsyncHost(excludeUserId: number, schoolId: string) {
   const hosts = await prisma.treeholeStaff.findMany({
-    where: { enabled: true, isHost: true, hostCode: { not: null }, userId: { not: excludeUserId } },
+    where: { schoolId, enabled: true, isHost: true, hostCode: { not: null }, userId: { not: excludeUserId } },
     include: { shifts: true, _count: { select: { sessions: { where: { status: "active" } } } } },
   });
   if (!hosts.length) return null;
@@ -250,7 +250,7 @@ treeholeRouter.post("/sessions", validate(createSessionSchema), async (req, res,
     const viewer = viewerOf(res);
     const body = req.body as z.infer<typeof createSessionSchema>;
     await requireConsent(viewer.userId);
-    const config = await loadTreeholeConfig();
+    const config = await loadTreeholeConfig(viewerOf(res).schoolId);
     const staffMember = viewer.isHost || viewer.isAdmin;
     if (!config.open && !staffMember) throw Errors.forbidden("树洞暂未开放，开放后会在这里通知大家");
     if (config.studentOnly && !staffMember) {
@@ -265,10 +265,10 @@ treeholeRouter.post("/sessions", validate(createSessionSchema), async (req, res,
     let host;
     if (body.hostId) {
       host = await prisma.treeholeStaff.findUnique({ where: { id: body.hostId }, include: { shifts: true } });
-      if (!host || !host.enabled || !host.isHost || !host.hostCode) throw Errors.badRequest("这位洞主暂时无法接待，请换一位");
+      if (!host || host.schoolId !== viewer.schoolId || !host.enabled || !host.isHost || !host.hostCode) throw Errors.badRequest("这位洞主暂时无法接待，请换一位");
       if (host.userId === viewer.userId) throw Errors.badRequest("不能选择自己作为洞主");
     } else if (body.mode === "async") {
-      host = await pickAsyncHost(viewer.userId);
+      host = await pickAsyncHost(viewer.userId, viewer.schoolId);
       if (!host) throw Errors.badRequest("暂时还没有可以接待的洞主");
     } else {
       throw Errors.badRequest("请选择一位在岗的洞主");
@@ -321,7 +321,7 @@ treeholeRouter.get("/sessions/:id", async (req, res, next) => {
   try {
     const viewer = viewerOf(res);
     const { session, role } = await loadSessionFor(parseTreeholeId(req.params.id, "会话编号"), viewer);
-    const config = await loadTreeholeConfig();
+    const config = await loadTreeholeConfig(viewerOf(res).schoolId);
     const rows = await prisma.treeholeMessage.findMany({ where: { sessionId: session.id }, orderBy: { id: "desc" }, take: MESSAGE_PAGE + 1 });
     const hasMore = rows.length > MESSAGE_PAGE;
     const messages = rows.slice(0, MESSAGE_PAGE).reverse();
@@ -330,7 +330,7 @@ treeholeRouter.get("/sessions/:id", async (req, res, next) => {
       await writeTreeholeAudit({ actor: viewer, action: "session.view", targetType: "session", targetId: session.id, detail: { alias: session.alias } });
     }
     const roomsForInvite = role === "host"
-      ? await prisma.treeholeRoom.findMany({ where: { status: "active" }, select: { id: true, name: true, category: true }, orderBy: { id: "asc" } })
+      ? await prisma.treeholeRoom.findMany({ where: { schoolId: viewer.schoolId, status: "active" }, select: { id: true, name: true, category: true }, orderBy: { id: "asc" } })
       : [];
     ok(res, {
       session: serializeSession(session, role, config),
@@ -348,7 +348,7 @@ treeholeRouter.get("/sessions/:id/messages", validate(pageSchema, "query"), asyn
     const viewer = viewerOf(res);
     const { session, role } = await loadSessionFor(parseTreeholeId(req.params.id, "会话编号"), viewer);
     const query = req.query as unknown as z.infer<typeof pageSchema>;
-    const config = await loadTreeholeConfig();
+    const config = await loadTreeholeConfig(viewerOf(res).schoolId);
     let messages: SessionMessageRow[];
     let hasMore = false;
     if (query.before) {
@@ -589,7 +589,7 @@ treeholeRouter.post("/sessions/:id/room-invites", validate(inviteSchema), async 
     if (role !== "host") throw Errors.forbidden("只有接待这次会话的洞主可以推荐宣泄室");
     if (session.status !== "active") throw Errors.badRequest("这次倾诉已经结束了");
     const room = await prisma.treeholeRoom.findUnique({ where: { id: req.body.roomId } });
-    if (!room || room.status !== "active") throw Errors.badRequest("这个宣泄室已关闭");
+    if (!room || room.schoolId !== viewer.schoolId || room.status !== "active") throw Errors.badRequest("这个宣泄室已关闭");
     const message = await prisma.$transaction(async (tx) => {
       const created = await tx.treeholeMessage.create({
         data: { sessionId: session.id, sender: "host", kind: "room-invite", content: room.name, roomId: room.id },
@@ -610,12 +610,12 @@ treeholeRouter.get("/host/overview", async (_req, res, next) => {
   try {
     const viewer = viewerOf(res);
     const staff = requireTreeholeHost(viewer);
-    const config = await loadTreeholeConfig();
+    const config = await loadTreeholeConfig(viewerOf(res).schoolId);
     const [active, ended, rooms, proposals] = await Promise.all([
       listSessionSummaries({ hostId: staff.id, status: "active" }, "host", config, { take: 100 }),
       listSessionSummaries({ hostId: staff.id, status: "ended" }, "host", config, { take: 30 }),
       prisma.treeholeRoom.findMany({
-        where: { status: "active" },
+        where: { schoolId: viewer.schoolId, status: "active" },
         orderBy: { lastMessageAt: "desc" },
         include: {
           members: { where: { status: "active" }, select: { id: true, userId: true, role: true, readId: true } },
@@ -623,7 +623,7 @@ treeholeRouter.get("/host/overview", async (_req, res, next) => {
         },
       }),
       prisma.treeholeRoomProposal.findMany({
-        where: { status: "pending" },
+        where: { schoolId: viewer.schoolId, status: "pending" },
         orderBy: { id: "desc" },
         include: { signatures: true },
       }),
@@ -729,7 +729,7 @@ treeholeRouter.get("/host/sessions", validate(hostSessionsSchema, "query"), asyn
     const viewer = viewerOf(res);
     const staff = requireTreeholeHost(viewer);
     const query = req.query as unknown as z.infer<typeof hostSessionsSchema>;
-    const config = await loadTreeholeConfig();
+    const config = await loadTreeholeConfig(viewerOf(res).schoolId);
     const where = { hostId: staff.id, status: query.status };
     const [total, list] = await Promise.all([
       prisma.treeholeSession.count({ where }),

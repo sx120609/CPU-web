@@ -32,6 +32,7 @@ export const directMessageRouter = Router();
 
 const directUserSelect = {
   id: true,
+  schoolId: true,
   nickname: true,
   avatar: true,
   role: true,
@@ -164,12 +165,13 @@ async function requireDirectMessageTarget(senderId: number, recipientId: number)
   if (senderId === recipientId) throw Errors.badRequest("不能与自己私聊");
   await ensureNoUserBlock(senderId, recipientId);
   const [sender, recipient] = await Promise.all([
-    prisma.user.findUnique({ where: { id: senderId }, select: { id: true, nickname: true, role: true, status: true, mutedUntil: true } }),
+    prisma.user.findUnique({ where: { id: senderId }, select: { id: true, schoolId: true, nickname: true, role: true, status: true, mutedUntil: true } }),
     prisma.user.findUnique({ where: { id: recipientId }, select: directUserSelect }),
   ]);
   if (!sender) throw Errors.unauthorized();
   await ensureUserCanSpeak(senderId);
-  if (!recipient || ["banned", "deleting", "deleted"].includes(recipient.status)) throw Errors.notFound("用户不存在或暂时无法接收私聊");
+  // 私信只在同校同学之间。
+  if (!recipient || recipient.schoolId !== sender.schoolId || ["banned", "deleting", "deleted"].includes(recipient.status)) throw Errors.notFound("用户不存在或暂时无法接收私聊");
   if (recipient.role === "bot") throw Errors.badRequest("不能向系统账号发起私聊");
   return { sender, recipient };
 }
@@ -488,7 +490,7 @@ directMessageRouter.get("/with/:userId", async (req, res, next) => {
     if (counterpartId === userId) throw Errors.badRequest("不能与自己私聊");
     await ensureNoUserBlock(userId, counterpartId);
     const counterpart = await prisma.user.findUnique({ where: { id: counterpartId }, select: directUserSelect });
-      if (!counterpart || ["banned", "deleting", "deleted"].includes(counterpart.status)) throw Errors.notFound("用户不存在或暂时无法接收私聊");
+      if (!counterpart || counterpart.schoolId !== requestSchoolId(req) || ["banned", "deleting", "deleted"].includes(counterpart.status)) throw Errors.notFound("用户不存在或暂时无法接收私聊");
     if (counterpart.role === "bot") throw Errors.badRequest("不能向系统账号发起私聊");
     const remarkByUserId = await loadDirectMessageRemarks(userId, [counterpartId]);
     const counterpartRemark = remarkByUserId.get(counterpartId) || null;

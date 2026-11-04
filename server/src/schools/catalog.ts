@@ -58,7 +58,7 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
   {
     key: "lostFound",
     label: "失物招领",
-    isolation: "pending",
+    isolation: "school",
     routes: ["/lost-found"],
     pages: ["/lost-found"],
     tools: ["lost_found"],
@@ -66,12 +66,12 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
   {
     key: "treehole",
     label: "艾绒树洞",
-    isolation: "pending",
+    isolation: "school",
     routes: ["/treehole"],
     pages: ["/treehole"],
     tools: ["treehole"],
   },
-  { key: "directMessage", label: "私信", isolation: "pending", routes: ["/direct-messages"] },
+  { key: "directMessage", label: "私信", isolation: "school", routes: ["/direct-messages"] },
   { key: "market", label: "二手市场", isolation: "pending", routes: [], pages: ["/forum/b/market"] },
   {
     key: "workshop",
