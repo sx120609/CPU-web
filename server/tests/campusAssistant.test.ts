@@ -1986,3 +1986,22 @@ test("云端历史会话不会继续展示已经保存的受限问答", () => {
   assert.match(String(messages[3]?.content), /不适合在本站展开/);
   assert.equal(messages[4]?.content, "怎么查课表？");
 });
+
+test("拾间AI 按提问人的学校介绍自己、推荐入口", async () => {
+  const { assistantSchoolOf, listCampusAssistantActions } = await import("../src/services/campusAssistant");
+  const features = Object.fromEntries(["forum", "market", "coursereview", "electric", "assistantEntry", "sponsor", "forumLoginRequired"].map((key) => [key, true])) as never;
+  const njmu = assistantSchoolOf({ schoolId: "njmu" });
+  assert.equal(njmu.brandName, "南医拾间");
+  const ids = listCampusAssistantActions({ features, forumAccessEnabled: true, loggedIn: true, schoolId: "njmu" }).map((item) => item.id);
+  for (const id of ["jwxt", "schedule", "forum", "library", "announcements"]) assert.ok(ids.includes(id), id);
+  for (const id of ["desktop-client", "unified-auth", "dorm-electric", "voicehub", "department-contacts", "wechat-bind"]) assert.ok(!ids.includes(id), id);
+  const cpuIds = listCampusAssistantActions({ features, forumAccessEnabled: true, loggedIn: true }).map((item) => item.id);
+  assert.ok(cpuIds.includes("desktop-client"));
+  assert.ok(!cpuIds.includes("library"));
+
+  const prompt = buildSystemPrompt([], true, "deepseek-v4", undefined, njmu);
+  assert.match(prompt, /你是“南医拾间”的 AI 助手“拾间AI”，面向南京医科大学学生/);
+  assert.match(prompt, /只提供网页版/);
+  assert.doesNotMatch(prompt, /中国药科大学|药大拾间|App Store/);
+  assert.match(buildSystemPrompt([], true, "deepseek-v4"), /面向中国药科大学学生/);
+});

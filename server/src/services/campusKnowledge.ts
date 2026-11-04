@@ -1,3 +1,4 @@
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 /**
  * 拾间AI 的资料检索入口：学校事务资料、同步的学校公告、论坛帖子三类合在一起，
  * 统一编号（R1、R2…）交给模型，模型回答时报告用到了哪几条，服务端据此附上来源。
@@ -137,6 +138,8 @@ export async function retrieveCampusKnowledgeForQueries(queries: string[], optio
 
 export async function retrieveCampusKnowledge(query: string, options: {
   audience: ForumKnowledgeAudience;
+  /** 只查这所学校的公告和帖子；学校资料库（学生手册、规章等）目前只有默认学校的。 */
+  schoolId?: string;
   limits?: CampusKnowledgeLimits;
   excludeTopicIds?: number[];
   /** 后台任务等论坛索引建好；对话请求不等，并给数据库查询设上限。 */
@@ -155,12 +158,14 @@ export async function retrieveCampusKnowledge(query: string, options: {
         limit,
         excludeTopicIds: options.excludeTopicIds,
         waitForIndex: options.waitForIndex,
+        schoolId: options.schoolId,
         repliesPerTopic: options.forumReplies,
       }), options.forumTimeoutMs ?? 0, [] as ForumKnowledgeHit[])
     : Promise.resolve([] as ForumKnowledgeHit[]);
   let schoolDocs: SchoolDocHit[] = [];
   try {
-    schoolDocs = limits.schoolDocs > 0 ? await searchSchoolDocs(text, { limit: limits.schoolDocs }) : [];
+    const ownsSchoolDocs = !options.schoolId || options.schoolId === DEFAULT_SCHOOL_ID;
+    schoolDocs = limits.schoolDocs > 0 && ownsSchoolDocs ? await searchSchoolDocs(text, { limit: limits.schoolDocs }) : [];
   } catch (error) {
     console.warn("[campus-knowledge] school document search failed", error instanceof Error ? error.message : error);
   }

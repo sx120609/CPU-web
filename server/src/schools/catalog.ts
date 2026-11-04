@@ -84,7 +84,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     pages: ["/workshop", "/services/tools/yaoda-can-fly/workshop"],
     tools: ["workshop"],
   },
-  { key: "assistant", label: "拾间AI", isolation: "school", implementedFor: ["cpu"], routes: [] },
+  // 拾间AI：提示词、入口和资料按提问人的学校（services/campusAssistant.ts），学校资料库只有药大。
+  { key: "assistant", label: "拾间AI", isolation: "school", implementedFor: ["cpu", "njmu"], routes: [] },
   {
     key: "games",
     label: "小游戏",

@@ -33,7 +33,7 @@ import { detectLoginClient } from "../utils/loginClient";
 import { isCampusAssistantDestination, shouldHideHarmonyAssistant } from "../utils/nativeAssistantAccess";
 import { readCachedDepartmentContactSearch, searchDepartmentContactsWithAi } from "../services/departmentContactSearch";
 import { isDepartmentContactCampus } from "../services/departmentContacts";
-import { requestSchoolId, requireSchoolModule } from "../schools/modules";
+import { applySchoolToSiteFeatures, requestSchoolId, requireSchoolModule } from "../schools/modules";
 
 export const searchRouter = Router();
 
@@ -98,18 +98,20 @@ searchRouter.get("/", async (req, res, next) => {
       req.user?.studentId,
     );
     const forumAccessEnabled = await resolveForumAccess(userId, role);
-    const features = getFeatures();
+    const schoolId = requestSchoolId(req);
+    // 站点开关和这所学校的功能开关取交集，拾间AI 推荐的入口也按学校来。
+    const features = applySchoolToSiteFeatures(getFeatures(), schoolId);
     const assistantContext = {
       features,
       forumAccessEnabled,
       loggedIn: Boolean(userId),
+      schoolId,
     };
     const searchableBoardTypes = servicesOnly ? [] : ["announce"];
     if (!servicesOnly && forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question");
     if (!servicesOnly && forumAccessEnabled && features.market) searchableBoardTypes.push("market");
     if (!servicesOnly && forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
 
-    const schoolId = requestSchoolId(req);
     const cacheParts = [
       "retired-boards-v2",
       schoolId,
@@ -286,9 +288,10 @@ searchRouter.post(
         message: req.body.message,
         history: req.body.history,
         context: {
-          features: getFeatures(),
+          features: applySchoolToSiteFeatures(getFeatures(), requestSchoolId(req)),
           forumAccessEnabled,
           loggedIn: true,
+          schoolId: requestSchoolId(req),
         },
         usage: {
           createdById: userId,
@@ -356,9 +359,10 @@ searchRouter.post(
           message: req.body.message,
           history: req.body.history,
           context: {
-            features: getFeatures(),
+            features: applySchoolToSiteFeatures(getFeatures(), requestSchoolId(req)),
             forumAccessEnabled,
             loggedIn: true,
+            schoolId: requestSchoolId(req),
           },
           usage: {
             createdById: userId,
@@ -445,7 +449,7 @@ searchRouter.post(
           message: req.body.message,
           history: req.body.history,
           personal: req.body.personal,
-          context: { features: getFeatures(), forumAccessEnabled, loggedIn: true },
+          context: { features: applySchoolToSiteFeatures(getFeatures(), requestSchoolId(req)), forumAccessEnabled, loggedIn: true, schoolId: requestSchoolId(req) },
           usage: { createdById: userId, pointCost: quotaReservation?.source === "points" ? 1 : 0 },
           signal: controller.signal,
         }, (delta) => {

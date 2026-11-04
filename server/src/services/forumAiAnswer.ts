@@ -1,3 +1,4 @@
+import { applySchoolToSiteFeatures, isSchoolModuleEnabled } from "../schools/modules";
 /**
  * 提问帖的“拾间AI 参考回答”：帖子公开后在后台检索学校文件、公告和往期帖子，
  * 模型判断资料确实能回答、且自评置信度达到后台设定的门槛时，才在帖子下面展示。
@@ -11,8 +12,10 @@ import { runWithDistributedLock } from "./cache";
 import { scheduleForumBackgroundTask } from "./forumSubmission";
 import { groundDepartmentContactResponse } from "./departmentContactsAssistant";
 import {
+  assistantSchoolOf,
   isCampusAssistantPublicTopicRestricted,
   listCampusAssistantKnowledgeEntries,
+  localizeAssistantText,
   normalizeCampusAssistantAnswerText,
   searchCampusAssistantActions,
 } from "./campusAssistant";
@@ -65,8 +68,8 @@ export function isForumAiAnswerCandidate(topic: {
   author?: { role?: string | null } | null;
 }) {
   if (topic.hidden) return false;
-  // 拾间AI 的知识库（学校资料、公告、往期帖子）只有默认学校的，外校帖子不作答。
-  if (topic.board.schoolId && topic.board.schoolId !== DEFAULT_SCHOOL_ID) return false;
+  // 资料（公告、往期帖子）按帖子所在学校查；这所学校没开拾间AI 就不作答。
+  if (!isSchoolModuleEnabled(topic.board.schoolId ?? DEFAULT_SCHOOL_ID, "assistant")) return false;
   if (!ANSWER_BOARD_TYPES.has(topic.board.type)) return false;
   if (SKIPPED_BOARD_SLUGS.has(topic.board.slug) || isRetiredBoardSlug(topic.board.slug)) return false;
   if (topic.author?.role === "bot") return false;
@@ -163,17 +166,19 @@ function searchBigrams(value: string) {
  * 站内功能说明（课表、电费、教务查询等入口）也可以回答“怎么查电费”“这门课在哪上”这类帖子。
  * 标题常常只有几个字，所以连同正文开头一起匹配；一个入口有多条说明时，挑和帖子用词最接近的几条。
  */
-export function siteKnowledgeItems(title: string, content: string, startRef: number): AnswerItem[] {
+export function siteKnowledgeItems(title: string, content: string, startRef: number, schoolId: string = DEFAULT_SCHOOL_ID): AnswerItem[] {
   const query = `${title}\n${knowledgePlainText(content).slice(0, 200)}`;
+  const school = assistantSchoolOf({ schoolId });
   const actions = searchCampusAssistantActions(query, {
-    features: getFeatures(),
+    features: applySchoolToSiteFeatures(getFeatures(), schoolId),
     forumAccessEnabled: true,
     loggedIn: true,
+    schoolId,
   }, 2);
   const queryGrams = searchBigrams(query);
   const items: AnswerItem[] = [];
   for (const action of actions) {
-    const facts = listCampusAssistantKnowledgeEntries([action.id])
+    const facts = listCampusAssistantKnowledgeEntries([action.id], school)
       .map((fact, index) => {
         let overlap = 0;
         for (const gram of searchBigrams(fact.fact)) if (queryGrams.has(gram)) overlap += 1;
@@ -188,10 +193,10 @@ export function siteKnowledgeItems(title: string, content: string, startRef: num
       ref: `R${startRef + items.length}`,
       kind: "site",
       title: action.label,
-      where: "药大拾间功能说明",
+      where: `${school.brandName}功能说明`,
       date: null,
       excerpt: facts.map((fact) => fact.fact).join("\n").slice(0, 1200),
-      source: { title: `药大拾间 · ${action.label}`, url: action.url },
+      source: { title: `${school.brandName} · ${action.label}`, url: action.url },
     });
   }
   return items;
@@ -213,9 +218,9 @@ export const FORUM_AI_ANSWER_SYSTEM_PROMPT = [
   '只输出一个 JSON 对象：{"isQuestion":true,"answerable":true,"confidence":0,"answer":"","citations":["R1"],"reason":"一句话说明判断依据"}',
 ].join("\n");
 
-export function buildForumAiAnswerMessages(post: { boardName: string; title: string; content: string }, items: AnswerItem[], now = new Date()) {
+export function buildForumAiAnswerMessages(post: { boardName: string; title: string; content: string }, items: AnswerItem[], now = new Date(), schoolId: string = DEFAULT_SCHOOL_ID) {
   return [
-    { role: "system" as const, content: FORUM_AI_ANSWER_SYSTEM_PROMPT },
+    { role: "system" as const, content: localizeAssistantText(FORUM_AI_ANSWER_SYSTEM_PROMPT, assistantSchoolOf({ schoolId })) },
     {
       role: "user" as const,
       content: JSON.stringify({
@@ -365,13 +370,15 @@ export async function processForumAiAnswer(topicId: number, requestAi: typeof re
   try {
     // 标题通常就是问题本身；正文的背景描述会稀释匹配，所以标题单独再查一遍。
     const query = `${topic.title}\n${knowledgePlainText(topic.content).slice(0, 400)}`;
+    const schoolId = topic.board.schoolId ?? DEFAULT_SCHOOL_ID;
     const knowledge = await retrieveCampusKnowledgeForQueries([topic.title, query], {
+      schoolId,
       audience: { forum: true, coursereview: true },
       excludeTopicIds: [topicId],
       waitForIndex: true,
       limits: { schoolDocs: 5, announcements: 2, forum: 4 },
     });
-    const items: AnswerItem[] = [...knowledge, ...siteKnowledgeItems(topic.title, topic.content, knowledge.length + 1)];
+    const items: AnswerItem[] = [...knowledge, ...siteKnowledgeItems(topic.title, topic.content, knowledge.length + 1, schoolId)];
     if (!items.length) {
       await finish(topicId, { status: "skipped", reason: "没有检索到相关资料" });
       return;
@@ -380,7 +387,7 @@ export async function processForumAiAnswer(topicId: number, requestAi: typeof re
       boardName: topic.board.name,
       title: topic.title,
       content: topic.content,
-    }, items), {
+    }, items, new Date(), schoolId), {
       model: config.assistantModel,
       fallbackModels: "",
       maxTokens: 1_500,

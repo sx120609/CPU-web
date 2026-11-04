@@ -4,7 +4,7 @@ import { Errors } from "../utils/response";
 import { verifyToken } from "../utils/jwt";
 import { broadcastSiteSettingsReload } from "../services/runtimeBroadcast";
 import { invalidateSiteSettingCaches } from "../services/cacheInvalidation";
-import { SCHOOL_MODULES, findSchoolModule, type SchoolModuleDefinition } from "./catalog";
+import { SCHOOL_MODULES, findSchoolModule, schoolModulePageMap, type SchoolModuleDefinition } from "./catalog";
 import { DEFAULT_SCHOOL_ID, findSchool, getSchool, resolveSchoolId, type SchoolProfile } from "./registry";
 
 const SETTING_KEY = "school.modules.v1";
@@ -155,4 +155,23 @@ export function applySchoolToSiteFeatures<T extends Record<string, boolean>>(fea
 /** /api 下的路径前缀归哪个功能管，供挂载时套守卫。 */
 export function schoolModuleForRoute(path: string) {
   return SCHOOL_MODULES.find((module) => module.routes.includes(path))?.key;
+}
+
+/**
+ * 站内某个地址（页面路径或 /services/tools/<slug> 小工具）对这所学校是否开着。
+ * 不归任何功能管的地址视为开着；给拾间AI 这类按地址推荐入口的地方用，和网页 utils/schoolModules.ts 的判断一致。
+ */
+export function isSchoolPathEnabled(schoolId: string | null | undefined, url: string) {
+  const path = String(url || "").split(/[?#]/u)[0];
+  if (!path.startsWith("/")) return true;
+  const map = schoolModulePageMap();
+  const tool = path.match(/^\/services\/tools\/([^/]+)/u)?.[1];
+  if (tool) {
+    const owner = map.tools.find((item) => item.slug === tool);
+    if (owner) return isSchoolModuleEnabled(schoolId, owner.module);
+  }
+  const page = map.pages
+    .filter((item) => path === item.prefix || path.startsWith(`${item.prefix}/`))
+    .sort((a, b) => b.prefix.length - a.prefix.length)[0];
+  return page ? isSchoolModuleEnabled(schoolId, page.module) : true;
 }
