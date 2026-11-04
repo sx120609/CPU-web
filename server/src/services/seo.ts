@@ -3,11 +3,23 @@ import { ConcurrencyGate, TtlLru } from "../utils/loadShield";
 import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "./retiredBoards";
 import { enabledBoardTypes, getSiteOrigin, isBoardTypeEnabled, isFeatureOn } from "./siteSettings";
-import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { DEFAULT_SCHOOL_ID, findSchool, getSchool, listSchools } from "../schools/registry";
 import { boardSlugKey } from "../schools/forumScope";
 
 /** 搜索引擎看到的是默认学校的站点，只收录它的板块和帖子。 */
 const SEO_SCHOOL_ID = DEFAULT_SCHOOL_ID;
+
+/**
+ * 网址里带不出学校的页面（板块 /forum/b/<slug>、各功能页）按默认学校给标题；
+ * 帖子、创意工坊作品的编号全站唯一，按内容自己所在的学校给品牌，只收录已开放学校的内容。
+ */
+function seoSchoolOpen(schoolId: string | null | undefined) {
+  return schoolId === DEFAULT_SCHOOL_ID || Boolean(findSchool(schoolId)?.enabled);
+}
+
+function openSeoSchoolIds() {
+  return listSchools().filter((school) => seoSchoolOpen(school.id)).map((school) => school.id);
+}
 
 // 主站是单页应用：搜索引擎和聊天软件的链接预览只看得到服务端返回的 index.html。
 // 这里按路径给它换上该页自己的标题、描述、canonical 和结构化数据，私人页面标 noindex。
@@ -228,9 +240,9 @@ export function resolveSiteOrigin() {
   return (getSiteOrigin() || FALLBACK_ORIGIN).replace(/\/+$/, "");
 }
 
-export function documentTitle(title: string | null | undefined) {
+export function documentTitle(title: string | null | undefined, brandName: string = SITE_NAME) {
   const text = String(title || "").trim();
-  return text ? `${text} · ${SITE_NAME}` : SITE_HOME_TITLE;
+  return text ? `${text} · ${brandName}` : SITE_HOME_TITLE;
 }
 
 export function normalizeSeoPath(pathname: string) {
@@ -282,7 +294,7 @@ type TopicSeoRecord = {
   content: string;
   createdAt: Date;
   updatedAt: Date;
-  board: { slug: string; name: string; type: string; feedDepartment: string | null };
+  board: { schoolId: string; slug: string; name: string; type: string; feedDepartment: string | null };
 };
 
 type BoardSeoRecord = { slug: string; name: string; description: string | null; type: string };
@@ -290,6 +302,7 @@ type BoardSeoRecord = { slug: string; name: string; description: string | null; 
 type WorkshopSeoRecord = {
   id: string;
   updatedAt: Date;
+  author?: { schoolId: string } | null;
   publishedVersion: { name: string; description: string } | null;
 };
 
@@ -334,7 +347,7 @@ async function loadTopic(id: number) {
         board: { select: { schoolId: true, slug: true, name: true, type: true, feedDepartment: true } },
       },
     });
-    if (!topic || topic.hidden || !topic.board || topic.board.schoolId !== SEO_SCHOOL_ID || isRetiredBoardSlug(topic.board.slug)) return null;
+    if (!topic || topic.hidden || !topic.board || !seoSchoolOpen(topic.board.schoolId) || isRetiredBoardSlug(topic.board.slug)) return null;
     const { title, content } = sanitizeLostFoundTopicFields(topic);
     return { id: topic.id, title, content, createdAt: topic.createdAt, updatedAt: topic.updatedAt, board: topic.board };
   }));
@@ -349,8 +362,8 @@ async function loadBoard(slug: string) {
 
 async function loadWorkshopWork(id: string) {
   return workshopCache.load(id, DYNAMIC_CACHE_TTL_MS, () => lookupGate.run(() => prisma.workshopWork.findFirst({
-    where: { id, disabled: false, author: { schoolId: SEO_SCHOOL_ID }, publishedVersion: { is: { status: "APPROVED" } } },
-    select: { id: true, updatedAt: true, publishedVersion: { select: { name: true, description: true } } },
+    where: { id, disabled: false, author: { schoolId: { in: openSeoSchoolIds() } }, publishedVersion: { is: { status: "APPROVED" } } },
+    select: { id: true, updatedAt: true, author: { select: { schoolId: true } }, publishedVersion: { select: { name: true, description: true } } },
   })));
 }
 
@@ -363,7 +376,7 @@ async function resolveDynamicPage(path: string, origin: string): Promise<PageSeo
     const text = plainText(topic.content);
     const announce = topic.board.type === "announce";
     return {
-      title: documentTitle(topic.title),
+      title: documentTitle(topic.title, getSchool(topic.board.schoolId).brandName),
       description: truncateText(text, 120) || `${topic.board.name} · ${topic.title}`,
       path: `/forum/topic/${topic.id}`,
       index: true,
@@ -398,9 +411,10 @@ async function resolveDynamicPage(path: string, origin: string): Promise<PageSeo
     const work = /^[0-9a-f-]{36}$/i.test(id) ? await loadWorkshopWork(id) : null;
     if (!work?.publishedVersion) return privatePageSeo(path, "作品详情");
     const name = work.publishedVersion.name.trim() || "作品详情";
-    const description = truncateText(plainText(work.publishedVersion.description), 120) || `药大拾间创意工坊作品「${name}」。`;
+    const brandName = getSchool(work.author?.schoolId).brandName;
+    const description = truncateText(plainText(work.publishedVersion.description), 120) || `${brandName}创意工坊作品「${name}」。`;
     return {
-      title: documentTitle(name),
+      title: documentTitle(name, brandName),
       description,
       path: `/workshop/${work.id}`,
       index: true,
@@ -549,13 +563,13 @@ async function collectSitemapEntries(): Promise<SitemapEntry[]> {
       orderBy: [{ type: "asc" }, { order: "asc" }],
     }),
     prisma.topic.findMany({
-      where: { hidden: false, board: { schoolId: SEO_SCHOOL_ID, type: { in: boardTypes }, ...visibleBoardSlugFilter() } },
+      where: { hidden: false, board: { schoolId: { in: openSeoSchoolIds() }, type: { in: boardTypes }, ...visibleBoardSlugFilter() } },
       select: { id: true, updatedAt: true },
       orderBy: { id: "desc" },
       take: SITEMAP_TOPIC_LIMIT,
     }),
     prisma.workshopWork.findMany({
-      where: { disabled: false, author: { schoolId: SEO_SCHOOL_ID }, publishedVersion: { is: { status: "APPROVED" } } },
+      where: { disabled: false, author: { schoolId: { in: openSeoSchoolIds() } }, publishedVersion: { is: { status: "APPROVED" } } },
       select: { id: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
       take: SITEMAP_WORKSHOP_LIMIT,

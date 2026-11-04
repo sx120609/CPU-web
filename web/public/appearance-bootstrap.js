@@ -58,7 +58,20 @@
     // 服务端给搜索引擎的页面标题（「论坛 · 药大拾间」），网页加载前先换成上次的学校。
     document.title = document.title.replace(/ · 药大拾间$/, ` · ${brandName}`);
   }
+  // 「了解我们」「社区规范」这类说明页（body 标了 data-school-brand）把品牌和校名换成上次的学校；
+  // 用户协议、隐私政策是法律文本，不标这个属性，原样显示。
+  const swapPageBrand = () => {
+    if (!document.body || !document.body.hasAttribute("data-school-brand")) return;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.nodeValue || "";
+      if (text.indexOf("药大拾间") < 0 && text.indexOf("中国药科大学") < 0) continue;
+      node.nodeValue = text.split("药大拾间").join(brandName).split("中国药科大学").join(schoolName || "本校");
+    }
+    document.title = document.title.split("药大拾间").join(brandName);
+  };
   const apply = () => {
+    swapPageBrand();
     const screen = document.getElementById("boot-screen");
     if (!screen) return;
     screen.setAttribute("aria-label", `${brandName}正在启动`);

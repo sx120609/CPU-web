@@ -55,6 +55,7 @@ test("public pages get their own title and description", () => {
   const download = resolveStaticPageSeo("/downloads")!;
   assert.equal(download.path, "/download");
   assert.equal(documentTitle("课表"), "课表 · 药大拾间");
+  assert.equal(documentTitle("课表", "南医拾间"), "课表 · 南医拾间");
 });
 
 test("personal, account and unknown pages are not indexed", () => {

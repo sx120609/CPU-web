@@ -24,7 +24,7 @@
     <!-- 开场 -->
     <section id="thx-hero" class="thx-hero thx-tone-dark" data-thx-section>
       <div ref="heroBodyEl" class="thx-hero-body">
-        <p class="thx-hero-eyebrow thx-rise">{{ thanksHero.eyebrow }}</p>
+        <p class="thx-hero-eyebrow thx-rise">{{ brandText(thanksHero.eyebrow) }}</p>
         <h1 class="thx-hero-title">{{ thanksHero.title }}</h1>
         <p class="thx-hero-lead thx-rise" style="--thx-delay: 240ms">{{ thanksHero.lead }}</p>
         <div class="thx-actions thx-rise" style="--thx-delay: 380ms">
@@ -176,7 +176,7 @@
         <button class="thx-pill" type="button" @click="shareSite">帮我们分享</button>
         <button class="thx-pill thx-pill--ghost" type="button" @click="celebrate">放一束烟花</button>
       </div>
-      <p class="thx-sign">{{ thanksFinale.sign }}</p>
+      <p class="thx-sign">{{ brandText(thanksFinale.sign) }}</p>
     </section>
   </div>
 </template>
@@ -204,6 +204,7 @@ import {
   thanksTools,
   type ThanksIcon,
 } from "./credits";
+import { useSiteStore } from "@/stores/site";
 
 const ICONS: Record<ThanksIcon, Component> = {
   calendar: Calendar,
@@ -215,6 +216,9 @@ const ICONS: Record<ThanksIcon, Component> = {
 };
 const REFRESH_MS = 20_000;
 // CI 构建时从 GitHub 查到的提交数；没有就用 credits.ts 里手动维护的数
+// 致谢页的品牌和分享文案跟着当前学校（拾间品牌下各校共用这一页）。
+const brandSite = useSiteStore();
+const brandText = (text: string) => text.replaceAll("药大拾间", brandSite.brandName);
 const COMMIT_COUNT = Number(import.meta.env.VITE_CPU_COMMIT_COUNT) || thanksHero.commitsFallback;
 const BOARD_COLLAPSED = 10;
 
@@ -354,7 +358,7 @@ async function shareSite() {
   const url = new URL(thanksShare.path, window.location.origin).href;
   if (typeof navigator.share === "function") {
     try {
-      await navigator.share({ title: thanksShare.title, text: thanksShare.text, url });
+      await navigator.share({ title: brandText(thanksShare.title), text: brandText(thanksShare.text), url });
       return;
     } catch (error) {
       // 用户自己关掉分享面板不算失败；其他情况退回复制
@@ -362,7 +366,7 @@ async function shareSite() {
     }
   }
   try {
-    await copyText(`${thanksShare.text} ${url}`);
+    await copyText(`${brandText(thanksShare.text)} ${url}`);
     ElMessage.success("推荐语和链接已复制，去粘贴给朋友吧");
   } catch {
     ElMessage.error("复制失败，请手动复制地址栏里的链接");
