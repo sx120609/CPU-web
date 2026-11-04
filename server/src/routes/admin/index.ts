@@ -2219,7 +2219,7 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
 adminRouter.get("/overview", modOrAbove, async (req, res, next) => {
   try {
     const { dateKey: todayDateKey, start: todayStart, end: todayEnd } = getChinaDayRange();
-    // 账号、论坛、登录都按后台当前学校算；客户端装机数是全站运维数据，只给平台管理员看。
+    // 账号、论坛、登录、客户端使用人数都按后台当前学校算。
     const schoolId = adminSchoolId(req);
     const userOfSchool = { user: { schoolId } };
     await backfillAdminDailyLoginsFromLastLogin(30).catch((error) => {
@@ -2258,13 +2258,13 @@ adminRouter.get("/overview", modOrAbove, async (req, res, next) => {
       }),
       prisma.schoolFeedSource.count({ where: { enabled: true, board: { schoolId } } }),
       prisma.board.count({ where: { schoolId } }),
-      prisma.user.count({ where: { usedIosClient: true } }),
-      prisma.user.count({ where: { usedIosNativeClient: true } }),
-      prisma.user.count({ where: { usedIosPwaClient: true } }),
-      prisma.user.count({ where: { usedIosClient: true, usedIosNativeClient: false, usedIosPwaClient: false } }),
-      prisma.user.count({ where: { usedAndroidClient: true } }),
-      prisma.user.count({ where: { usedHarmonyClient: true } }),
-      prisma.user.count({ where: { usedDesktopClient: true } }),
+      prisma.user.count({ where: { schoolId, usedIosClient: true } }),
+      prisma.user.count({ where: { schoolId, usedIosNativeClient: true } }),
+      prisma.user.count({ where: { schoolId, usedIosPwaClient: true } }),
+      prisma.user.count({ where: { schoolId, usedIosClient: true, usedIosNativeClient: false, usedIosPwaClient: false } }),
+      prisma.user.count({ where: { schoolId, usedAndroidClient: true } }),
+      prisma.user.count({ where: { schoolId, usedHarmonyClient: true } }),
+      prisma.user.count({ where: { schoolId, usedDesktopClient: true } }),
       prisma.adminDailyLogin.count({ where: { dateKey: todayDateKey, client: "desktop", ...userOfSchool } }),
       prisma.adminDailyLogin.count({ where: { dateKey: todayDateKey, client: "ios-native", ...userOfSchool } }),
       prisma.adminDailyLogin.count({ where: { dateKey: todayDateKey, client: "ios-pwa", ...userOfSchool } }),

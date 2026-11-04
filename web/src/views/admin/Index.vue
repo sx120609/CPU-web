@@ -424,6 +424,8 @@ watch(tab, (next) => {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
+  /* 和图表同一行的小卡片不跟着图表拉高。 */
+  align-items: start;
 }
 .ov-card {
   background: var(--cpu-card);
