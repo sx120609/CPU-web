@@ -29,6 +29,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     key: "academic",
     label: "教务与课表",
     isolation: "school",
+    // 教务登录和解析目前只有药大的实现；接入新学校的教务驱动后加上该校。
+    implementedFor: ["cpu"],
     routes: ["/jwxt", "/schedule-shares", "/couple"],
     pages: ["/jwxt", "/schedule"],
   },

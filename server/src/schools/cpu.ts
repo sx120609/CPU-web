@@ -7,6 +7,7 @@ export const cpuSchool: SchoolProfile = {
   shortName: "药大",
   brandName: "药大拾间",
   academicSystem: "qiangzhi-jsxsd",
+  ssoLogin: true,
   hosts: {
     sso: "id.cpu.edu.cn",
     jwxt: "jsxsd.cpu.edu.cn",

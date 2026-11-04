@@ -8,6 +8,7 @@ const school: SchoolInfo = {
   name: "Demo",
   shortName: "Demo",
   brandName: "Demo",
+  ssoLogin: false,
   modules: ["forum", "campus3d"],
   pages: [
     { prefix: "/forum", module: "forum" },

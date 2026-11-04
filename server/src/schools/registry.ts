@@ -20,6 +20,8 @@ export type SchoolProfile = {
   /** 站点在这所学校的名字，例如「药大拾间」 */
   brandName: string;
   academicSystem: AcademicSystemKind;
+  /** 能否用学校统一身份认证登录（要有该校的教务登录实现）；不能的学校只用站内账号登录。 */
+  ssoLogin: boolean;
   /** 学校自己的系统域名，只用于展示和排查；请求地址仍在各自的客户端里。 */
   hosts: Record<string, string>;
   defaultPeriods: readonly SchoolPeriod[];

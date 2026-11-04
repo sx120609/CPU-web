@@ -41,7 +41,7 @@ test("another school cannot open features that are not yet split by school or no
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("games")!), true);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("assistant")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("dormElectric")!), false);
-  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("academic")!), true);
+  assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("academic")!), false);
   assert.equal(isSchoolModuleAvailable(otherSchool, byKey.get("vip")!), true);
 });
 
@@ -53,6 +53,10 @@ test("requests resolve their school from the hydrated user, then the token, then
   assert.equal(requestSchoolId(request({ bearer: "not-a-token" })), DEFAULT_SCHOOL_ID);
   assert.equal(requestSchoolId(request({ user: { schoolId: "cpu" }, bearer: token("not-registered") })), "cpu");
   assert.equal(resolveSchoolId(undefined), DEFAULT_SCHOOL_ID);
+  // 访客在登录页选的学校只在没有令牌时生效，未登记的学校按默认学校。
+  const guestWithChoice = { headers: { "x-cpu-school": "cpu" } } as unknown as Request;
+  assert.equal(requestSchoolId(guestWithChoice), "cpu");
+  assert.equal(requestSchoolId({ headers: { "x-cpu-school": "nowhere" } } as unknown as Request), DEFAULT_SCHOOL_ID);
 });
 
 test("module guards let the default school through and reject unknown module keys", async () => {

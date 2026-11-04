@@ -339,6 +339,22 @@ export function getCsrfToken() {
   return cookieValue("__Host-cpu-csrf") || cookieValue("cpu-csrf");
 }
 
+const SCHOOL_CHOICE_KEY = "cpu-school-choice";
+
+/** 未登录时在登录页选的学校；登录后以账号的学校为准，服务端不再看这个值。 */
+export function getSchoolChoice() {
+  try { return localStorage.getItem(SCHOOL_CHOICE_KEY) || ""; } catch { return ""; }
+}
+
+export function setSchoolChoice(schoolId: string) {
+  try {
+    if (schoolId) localStorage.setItem(SCHOOL_CHOICE_KEY, schoolId);
+    else localStorage.removeItem(SCHOOL_CHOICE_KEY);
+  } catch {
+    // 存不下时只影响下次打开的默认学校。
+  }
+}
+
 const instance: AxiosInstance = axios.create({
   baseURL: "/api",
   timeout: 15000,
@@ -354,6 +370,8 @@ instance.interceptors.request.use(async (config) => {
   const csrf = getCsrfToken();
   if (csrf) config.headers["X-CSRF-Token"] = csrf;
   config.headers["X-CPU-Client"] = detectAnalyticsClient();
+  const schoolChoice = getSchoolChoice();
+  if (schoolChoice) config.headers["X-CPU-School"] = schoolChoice;
   return config;
 });
 

@@ -1,5 +1,13 @@
 <template>
-  <AuthShell title="使用学校统一认证登录" :subtitle="loginHint" @home="goHome">
+  <AuthShell :title="ssoAvailable ? '使用学校统一认证登录' : '登录'" :subtitle="loginHint" @home="goHome">
+      <div v-if="schools.length > 1" class="school-picker">
+        <span class="school-picker-label">学校</span>
+        <el-select :model-value="site.school?.id" size="large" class="school-picker-select" :disabled="switchingSchool" @change="chooseSchool">
+          <el-option v-for="item in schools" :key="item.id" :label="item.name" :value="item.id" />
+        </el-select>
+      </div>
+
+      <template v-if="ssoAvailable">
       <p class="auth-notice">
         <el-icon aria-hidden="true"><InfoFilled /></el-icon>
         <span>学号 / 工号仅用于识别身份并关联账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。</span>
@@ -54,9 +62,10 @@
           </el-button>
         </el-form-item>
       </el-form>
+      </template>
 
-      <!-- 站内独立账号：新生 / 毕业生 / 站务 / 管理员 -->
-      <details class="dev-fallback">
+      <!-- 站内独立账号：新生 / 毕业生 / 站务 / 管理员；学校不支持统一认证时这是唯一入口，默认展开 -->
+      <details class="dev-fallback" :open="!ssoAvailable">
         <summary><AppIcon name="key" /> 其他方式登录</summary>
         <div class="dev-tip">
           适用于暂时无法使用统一认证的账号，例如新生、毕业生或站务账号。
@@ -95,6 +104,8 @@ import { loadCreds } from "@/utils/credCrypto";
 import { isOAuthAuthorizationRedirect, isServerHandledRedirect, resolveLoginRedirect } from "@/utils/redirect";
 import PrivacyConsent from "@/components/common/PrivacyConsent.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
+import { siteApi, type SchoolSummary } from "@/api/site";
+import { setSchoolChoice } from "@/api/request";
 
 const router = useRouter();
 const route = useRoute();
@@ -113,6 +124,10 @@ const rules: FormRules = {
 };
 
 const dev = reactive({ username: "", password: "", loading: false });
+const schools = ref<SchoolSummary[]>([]);
+const switchingSchool = ref(false);
+// 学校信息还没拉到时按支持统一认证处理，单校站点的登录页保持原样。
+const ssoAvailable = computed(() => site.school?.ssoLogin !== false);
 
 const loginHint = computed(() => {
   const uses: string[] = [];
@@ -135,15 +150,34 @@ onMounted(async () => {
     form.password = savedCreds.password;
     remember.value = true;
   }
-  // 准备 CAS 登录页（拿 lt/execution + 验证码）
-  // 失败时显式回显，避免移动端用户看到一个能填但提交失败的表单
+  void siteApi.schools().then((list) => { schools.value = list; }).catch(() => undefined);
+  if (!site.loaded) await site.fetch();
+  await prepareSso();
+  // 登录页只准备统一认证表单，不自动提交已保存的学校凭据。
+});
+
+/** 准备 CAS 登录页（拿 lt/execution + 验证码）；失败时显式回显，避免移动端用户看到一个能填但提交失败的表单。 */
+async function prepareSso() {
+  if (!ssoAvailable.value) return;
   try {
     await auth.ssoBegin();
   } catch (e: any) {
     auth.ssoError = "统一认证暂时不可用，请稍后再试。若你无法使用统一认证，可展开下方“其他方式登录”。";
   }
-  // 登录页只准备统一认证表单，不自动提交已保存的学校凭据。
-});
+}
+
+async function chooseSchool(schoolId: string) {
+  if (!schoolId || schoolId === site.school?.id) return;
+  switchingSchool.value = true;
+  try {
+    setSchoolChoice(schoolId);
+    await site.fetch(true);
+    auth.ssoError = "";
+    await prepareSso();
+  } finally {
+    switchingSchool.value = false;
+  }
+}
 
 async function reloadCaptcha() {
   if (auth.ssoLoading || captchaRefreshing.value) return;
@@ -295,6 +329,20 @@ async function onDevSubmit() {
   outline-offset: 2px;
 }
 
+.school-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.school-picker-label {
+  flex: none;
+  color: var(--cpu-text-secondary);
+  font-size: 14px;
+}
+.school-picker-select {
+  flex: 1;
+}
 .dev-fallback {
   margin-top: 16px;
   padding: 0 14px;

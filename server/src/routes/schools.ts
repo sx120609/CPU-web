@@ -13,6 +13,7 @@ function publicSchool(school: SchoolProfile) {
     shortName: school.shortName,
     brandName: school.brandName,
     academicSystem: school.academicSystem,
+    ssoLogin: school.ssoLogin,
     periods: school.defaultPeriods,
   };
 }

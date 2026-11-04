@@ -99,7 +99,8 @@ export async function saveSchoolModuleOverrides(schoolId: string, input: unknown
 
 /**
  * 请求属于哪所学校。挂载层的守卫跑在各路由自己的鉴权之前，所以没有 req.user 时
- * 直接验令牌签名取 schoolId，不查库；旧令牌和访客都按默认学校。
+ * 直接验令牌签名取 schoolId，不查库；旧令牌按默认学校。访客按网页选的学校
+ * （X-CPU-School 请求头），没选过的按默认学校。
  */
 export function requestSchoolId(req: Request): string {
   if (req.user?.schoolId) return resolveSchoolId(req.user.schoolId);
@@ -112,7 +113,8 @@ export function requestSchoolId(req: Request): string {
       // 令牌无效时交给后面的鉴权去回 401，这里只决定按哪所学校的开关放行。
     }
   }
-  return DEFAULT_SCHOOL_ID;
+  const chosen = req.headers?.["x-cpu-school"];
+  return resolveSchoolId(typeof chosen === "string" ? chosen.trim() : null);
 }
 
 export function requireSchoolModule(key: string) {

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { signToken } from "../utils/jwt";
@@ -17,12 +17,16 @@ import { isCookieAuthRequest, issueBrowserSession, revokeBrowserSession, updateB
 import { scheduleWidgetSessions } from "../services/scheduleWidgetSession";
 import { nicknameSetupRequired, normalizeNicknameSubmission, scheduleNicknameReview } from "../services/nicknameReview";
 import { requestCancellation } from "../utils/requestCancellation";
+import { findSchool, getSchool } from "../schools/registry";
+import { requestSchoolId } from "../schools/modules";
 
 export const authRouter = Router();
 
 const loginSchema = z.object({
   username: z.string().min(1, "请输入用户名"),
   password: z.string().min(1, "请输入密码"),
+  /** 登录页选的学校；不传时按请求所属学校（默认学校）。 */
+  schoolId: z.string().trim().max(32).optional(),
 });
 
 const registerSchema = z.object({
@@ -55,8 +59,8 @@ authRouter.post("/login", validate(loginSchema), passwordLoginLimit, async (req,
   try {
     const { username, password } = req.body;
     await releaseExpiredMutes();
-    // 站内账号目前只开在默认学校；登录页加上选校后从请求里取。
-    const user = await prisma.user.findUnique({ where: { schoolId_username: { schoolId: DEFAULT_SCHOOL_ID, username } } });
+    const school = findSchool(req.body.schoolId) ?? getSchool(requestSchoolId(req));
+    const user = await prisma.user.findUnique({ where: { schoolId_username: { schoolId: school.id, username } } });
     if (!user) throw Errors.badRequest("用户名或密码错误");
     if (user.studentSso) throw Errors.badRequest("该账号已绑定学校认证，请用「学校账号登录」入口");
     const ok2 = await verifyPassword(password, user.passwordHash);
@@ -147,9 +151,15 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
 // ============ 学校 SSO 登录（主路径）============
 
 /** 第一步：拿登录页 + 可能的验证码 */
+/** 统一身份认证只对接了有教务登录实现的学校。 */
+function ensureSchoolSsoLogin(req: Request) {
+  if (!getSchool(requestSchoolId(req)).ssoLogin) throw Errors.forbidden("本校暂不支持统一身份认证登录，请用站内账号登录");
+}
+
 authRouter.post("/sso-begin", async (req, res, next) => {
   const cancellation = requestCancellation(req, res);
   try {
+    ensureSchoolSsoLogin(req);
     const r = await beginLogin(cancellation.signal);
     ok(res, r);
   } catch (e) { next(e); } finally { cancellation.dispose(); }
@@ -204,6 +214,7 @@ authRouter.post(
       }
 
       // 学号 = username，在所属学校内唯一。教务登录目前只接了默认学校的系统。
+      ensureSchoolSsoLogin(req);
       const schoolId = DEFAULT_SCHOOL_ID;
       const studentId = String(r.authenticatedUsername || username || "").trim();
       if (!studentId) throw Errors.server("登录节点未返回认证账号");
