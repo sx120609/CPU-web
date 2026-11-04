@@ -29,8 +29,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     key: "academic",
     label: "教务与课表",
     isolation: "school",
-    // 教务登录和解析目前只有药大的实现；接入新学校的教务驱动后加上该校。
-    implementedFor: ["cpu"],
+    // 有教务驱动的学校：药大（强智 jsxsd）、南医（正方 V9，见 schools/njmu）。
+    implementedFor: ["cpu", "njmu"],
     routes: ["/jwxt", "/schedule-shares", "/couple"],
     pages: ["/jwxt", "/schedule"],
   },

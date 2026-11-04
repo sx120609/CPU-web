@@ -161,6 +161,11 @@ export interface SsoLoginResult {
   error?: string;
   needCaptcha?: boolean;
   captcha?: { image: string; pendingId: string };
+  /** 南医统一认证：这台设备第一次登录，要扫学校给的二维码。 */
+  needMfa?: boolean;
+  mfa?: { pendingId: string; qrImage: string };
+  /** 扫码轮询的状态；done 时本响应就是登录结果。 */
+  mfaStatus?: "waiting" | "scanned" | "expired" | "failed";
 }
 
 export const authApi = {
@@ -173,6 +178,10 @@ export const authApi = {
       | { pendingId: string; credentials: AgentEncryptedLoginCredentials; remember?: boolean },
     options?: RequestOptions,
   ) => request.post<SsoLoginResult>("/auth/sso-login", p, options),
+  ssoMfaPoll: (p: { pendingId: string; remember?: boolean }, options?: RequestOptions) =>
+    request.post<SsoLoginResult>("/auth/sso-mfa/poll", p, options),
+  ssoMfaRefresh: (pendingId: string) =>
+    request.post<{ qrImage: string }>("/auth/sso-mfa/refresh", { pendingId }, { suppressErrorMessage: true }),
   logout: (options?: RequestOptions) => request.post<{ ok: true }>("/auth/logout", undefined, {
     suppressAuthRedirect: true,
     suppressAuthMessage: true,

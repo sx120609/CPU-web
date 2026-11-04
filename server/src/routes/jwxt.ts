@@ -61,6 +61,7 @@ import {
   sessionStats,
   isRemoteMode,
 } from "../services/jwxtTransport";
+import { requestSchoolId } from "../schools/modules";
 
 export const jwxtRouter = Router();
 
@@ -607,9 +608,9 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
 });
 
 /** 第一步：获取登录页（拿 lt/execution + 可能的验证码） */
-jwxtRouter.post("/begin-login", async (_req, res, next) => {
+jwxtRouter.post("/begin-login", async (req, res, next) => {
   try {
-    const r = await beginLogin();
+    const r = await beginLogin(undefined, requestSchoolId(req));
     ok(res, r);
   } catch (e) { next(e); }
 });
@@ -625,9 +626,10 @@ jwxtRouter.post(
   })),
   async (req, res, next) => {
     try {
+      const schoolId = requestSchoolId(req);
       let pendingId = String(req.body.pendingId || "");
       if (pendingId.length < 8) {
-        const fresh = await beginLogin();
+        const fresh = await beginLogin(undefined, schoolId);
         if (fresh.needCaptcha) {
           return ok(res, {
             ok: false,
@@ -646,12 +648,14 @@ jwxtRouter.post(
         }
         return ok(res, { token: r.token });
       }
-      // 失败：可能是要重新输验证码
+      // 失败：可能是要重新输验证码，南医的新设备还要短信二次验证（走 /auth/sso-mfa）。
+      const mfa = r.needMfa ? { needMfa: true, mfa: r.mfa } : {};
       return ok(res, {
         ok: false,
         error: r.error,
         needCaptcha: r.needCaptcha ?? false,
         captcha: r.captcha,
+        ...mfa,
       });
     } catch (e) { next(e); }
   }

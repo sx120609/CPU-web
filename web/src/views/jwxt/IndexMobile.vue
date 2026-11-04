@@ -267,6 +267,7 @@ const {
   reauthorizeBusy,
   availableDataTabs,
   showExtraTabs,
+  showRoomsTab,
   academicDataUnavailable,
   showDataShell,
   usingSavedCredentialRecovery,
@@ -298,7 +299,8 @@ const tabMeta: Record<MobileTab, { label: string; icon: unknown }> = {
 const visibleTabs = computed(() => {
   const names: MobileTab[] = availableDataTabs.value
     .filter((name): name is Exclude<DataTab, "schedule"> => name !== "schedule");
-  if (showExtraTabs.value) names.push("selection", "rooms");
+  if (showExtraTabs.value) names.push("selection");
+  if (showRoomsTab.value) names.push("rooms");
   return names.map((name) => ({ name, ...tabMeta[name] }));
 });
 

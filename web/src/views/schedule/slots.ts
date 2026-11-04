@@ -15,7 +15,22 @@ export const smallSlots = [
   { no: 12, start: "21:15", end: "22:00" },
 ];
 
-export const MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
+export let MAX_SMALL_SLOT = smallSlots[smallSlots.length - 1]?.no ?? 10;
+
+/**
+ * 换成所在学校的作息（南医一天 19 节）。在课表页渲染前调用一次；原生壳不调用，保持上面的默认作息。
+ * smallSlots 原地替换、MAX_SMALL_SLOT 是活绑定，引用它们的模块都会看到新值。
+ */
+export function useSchoolSlots(periods: ReadonlyArray<{ no: number; start: string; end: string }>) {
+  const next = periods
+    .filter((item) => Number.isInteger(item.no) && item.no >= 1 && /^\d{2}:\d{2}$/.test(item.start) && /^\d{2}:\d{2}$/.test(item.end))
+    .map((item) => ({ no: item.no, start: item.start, end: item.end }))
+    .sort((a, b) => a.no - b.no);
+  if (!next.length || next.some((item, index) => item.no !== index + 1)) return false;
+  smallSlots.splice(0, smallSlots.length, ...next);
+  MAX_SMALL_SLOT = next[next.length - 1].no;
+  return true;
+}
 
 export function clampSlot(value: number) {
   return Math.max(1, Math.min(MAX_SMALL_SLOT, Number(value) || 1));

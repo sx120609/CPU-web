@@ -256,6 +256,9 @@ export interface LoginAttempt {
   /** 当 needCaptcha = true 时，captcha 字段给出验证码图片 base64 + pending 引用 */
   needCaptcha?: boolean;
   captcha?: { image: string; pendingId: string };
+  /** 南医统一认证在新设备上要扫码二次验证（药大没有这一步）。 */
+  needMfa?: boolean;
+  mfa?: { pendingId: string; qrImage: string };
 }
 
 /**

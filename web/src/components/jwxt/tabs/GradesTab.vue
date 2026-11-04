@@ -9,7 +9,8 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent } from "vue";
+import { computed, defineAsyncComponent } from "vue";
+import { useZhengfangAcademic } from "@/utils/academicSystem";
 import JwxtSubViews from "@/components/jwxt/JwxtSubViews.vue";
 import type { RecordKind } from "@/components/jwxt/records/recordCards";
 
@@ -19,10 +20,12 @@ const TranscriptPane = defineAsyncComponent(() => import("@/components/jwxt/reco
 
 defineProps<{ data: unknown; loading?: boolean; active?: boolean }>();
 
-const views = [
+const zhengfang = useZhengfangAcademic();
+const views = computed(() => [
   { key: "courses", label: "课程成绩" },
   { key: "level-exams", label: "等级考试" },
-  { key: "transcript", label: "成绩单" },
-];
+  // 成绩单 PDF 来自药大的电子证明平台。
+  ...(zhengfang.value ? [] : [{ key: "transcript", label: "成绩单" }]),
+]);
 const levelExamSources: Array<{ kind: RecordKind }> = [{ kind: "level-exams" }];
 </script>

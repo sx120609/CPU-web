@@ -390,7 +390,8 @@ export function recordGroups(
 // ============ 空教室 ============
 
 export interface FreeRoomSlot { name: string; periods: string; start: string; end: string }
-export interface FreeRoom { name: string; type?: string; seats?: number; examSeats?: number; states: string[] }
+/** building：学校给了楼名就用（南医）；没给时按教室号推断。 */
+export interface FreeRoom { name: string; building?: string; type?: string; seats?: number; examSeats?: number; states: string[] }
 
 /** “A104”“D106-1”归到 A 楼、D 楼，其余（礼堂、体育馆等）归到“其他”。 */
 export function roomBuilding(name: string) {
@@ -398,8 +399,12 @@ export function roomBuilding(name: string) {
   return match ? `${match[1].toUpperCase()} 楼` : "其他";
 }
 
+export function roomBuildingOf(room: FreeRoom) {
+  return room.building?.trim() || roomBuilding(room.name);
+}
+
 export function roomBuildings(rooms: FreeRoom[]) {
-  const names = Array.from(new Set(rooms.map((room) => roomBuilding(room.name))));
+  const names = Array.from(new Set(rooms.map(roomBuildingOf)));
   return names.sort((a, b) => Number(a === "其他") - Number(b === "其他") || a.localeCompare(b));
 }
 
@@ -418,7 +423,7 @@ export function filterRooms(rooms: FreeRoom[], options: RoomFilter) {
   const slots = options.slots ?? [];
   const keyword = (options.keyword ?? "").trim().toLowerCase();
   return rooms.filter((room) => {
-    if (options.building && roomBuilding(room.name) !== options.building) return false;
+    if (options.building && roomBuildingOf(room) !== options.building) return false;
     if (options.minSeats && (room.seats ?? 0) < options.minSeats) return false;
     if (options.type && room.type !== options.type) return false;
     if (keyword && !room.name.toLowerCase().includes(keyword)) return false;
@@ -450,7 +455,7 @@ export interface RoomBuildingGroup { name: string; rooms: FreeRoom[] }
 export function groupRoomsByBuilding(rooms: FreeRoom[]): RoomBuildingGroup[] {
   const groups = new Map<string, FreeRoom[]>();
   for (const room of rooms) {
-    const name = roomBuilding(room.name);
+    const name = roomBuildingOf(room);
     groups.set(name, [...(groups.get(name) ?? []), room]);
   }
   return roomBuildings(rooms).map((name) => ({ name, rooms: groups.get(name) ?? [] }));

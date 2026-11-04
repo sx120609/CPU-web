@@ -93,7 +93,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
+import { SCHOOL_MFA_VERIFIED_EVENT } from "@/utils/schoolMfa";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { InfoFilled, Lock, Refresh, User } from "@element-plus/icons-vue";
@@ -219,6 +220,13 @@ function finishLoginRedirect() {
   }
   void router.replace(target);
 }
+
+// 学校要求短信验证时，验证弹窗完成登录后回到这里接着跳转。
+function onSchoolMfaVerified() {
+  finishLoginRedirect();
+}
+window.addEventListener(SCHOOL_MFA_VERIFIED_EVENT, onSchoolMfaVerified);
+onBeforeUnmount(() => window.removeEventListener(SCHOOL_MFA_VERIFIED_EVENT, onSchoolMfaVerified));
 
 function goHome() {
   router.replace("/home");

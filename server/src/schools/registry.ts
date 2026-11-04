@@ -1,4 +1,5 @@
 import { cpuSchool } from "./cpu";
+import { njmuSchool } from "./njmu/profile";
 
 /** 一节课的时间。学校档案里给的是默认作息，后台在 SchedulePeriodConfig 里改过的以后台为准。 */
 export type SchoolPeriod = {
@@ -9,7 +10,7 @@ export type SchoolPeriod = {
 };
 
 /** 教务系统类型。同一类型的学校共用一套登录和解析代码，只换学校配置。 */
-export type AcademicSystemKind = "qiangzhi-jsxsd";
+export type AcademicSystemKind = "qiangzhi-jsxsd" | "zhengfang-v9";
 
 /**
  * 拾间品牌下的一所学校。名称、品牌名、标语、是否开放存在 School 表里，后台可改；
@@ -51,7 +52,7 @@ export type SchoolRow = {
 export const DEFAULT_SCHOOL_ID = "cpu";
 
 /** 有代码实现的学校；School 表里没有它们的行时也照样可用。 */
-export const BUILTIN_SCHOOLS: ReadonlyMap<string, SchoolProfile> = new Map([cpuSchool].map((school) => [school.id, school]));
+export const BUILTIN_SCHOOLS: ReadonlyMap<string, SchoolProfile> = new Map([cpuSchool, njmuSchool].map((school) => [school.id, school]));
 
 let schools: ReadonlyMap<string, SchoolProfile> = BUILTIN_SCHOOLS;
 

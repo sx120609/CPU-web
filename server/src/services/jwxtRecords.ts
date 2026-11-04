@@ -711,6 +711,8 @@ export interface FreeRoomSlot {
 
 export interface FreeRoomRow {
   name: string;
+  /** 教学楼名；药大教务不给，网页按教室号推断。 */
+  building?: string;
   type?: string;
   seats?: number;
   examSeats?: number;

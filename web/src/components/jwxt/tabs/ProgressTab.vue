@@ -10,7 +10,8 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent } from "vue";
+import { computed, defineAsyncComponent } from "vue";
+import { useZhengfangAcademic } from "@/utils/academicSystem";
 import JwxtSubViews from "@/components/jwxt/JwxtSubViews.vue";
 import type { RecordKind } from "@/components/jwxt/records/recordCards";
 
@@ -20,12 +21,16 @@ const RecordPane = defineAsyncComponent(() => import("@/components/jwxt/records/
 defineProps<{ data: unknown; loading?: boolean; active?: boolean }>();
 
 type Source = { kind: RecordKind; label?: string };
-const views = [
-  { key: "overview", label: "完成情况" },
-  { key: "audit", label: "毕业审核" },
-  { key: "retake", label: "重修" },
-  { key: "status", label: "学籍" },
-];
+const zhengfang = useZhengfangAcademic();
+// 南医只有完成情况（学分统计和学业体检单）。
+const views = computed(() => (zhengfang.value
+  ? [{ key: "overview", label: "完成情况" }]
+  : [
+    { key: "overview", label: "完成情况" },
+    { key: "audit", label: "毕业审核" },
+    { key: "retake", label: "重修" },
+    { key: "status", label: "学籍" },
+  ]));
 const auditSources: Source[] = [{ kind: "graduation-audit" }];
 const retakeSources: Source[] = [{ kind: "retake-options" }];
 // 转专业计划放在学籍里：都是学籍处的事，数据量也都不大。

@@ -1,7 +1,7 @@
 <template>
   <!-- 一个标签里的几个相关视图（例如 成绩：课程成绩 / 等级考试 / 成绩单）。打开过的视图保持挂载，切回来不丢筛选。 -->
   <div class="sub-views">
-    <div class="sub-switch" role="tablist" :aria-label="label" :style="{ '--sub-count': views.length }">
+    <div v-if="views.length > 1" class="sub-switch" role="tablist" :aria-label="label" :style="{ '--sub-count': views.length }">
       <button
         v-for="view in views"
         :id="`${idPrefix}-tab-${view.key}`"

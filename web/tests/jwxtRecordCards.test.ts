@@ -120,3 +120,14 @@ test("rooms are listed building by building with the catch-all group last", () =
     ["其他", ["千人礼堂"]],
   ]);
 });
+
+test("学校给了楼名时按楼名分组（南医），没给时按教室号推断", async () => {
+  const { groupRoomsByBuilding, filterRooms } = await import("../src/components/jwxt/records/recordCards");
+  const rooms = [
+    { name: "博学楼A205", building: "博学楼", states: [""] },
+    { name: "明达楼413", building: "明达楼", states: [""] },
+    { name: "A104", states: [""] },
+  ];
+  assert.deepEqual(groupRoomsByBuilding(rooms).map((group) => `${group.name}:${group.rooms.length}`).sort(), ["A 楼:1", "博学楼:1", "明达楼:1"].sort());
+  assert.deepEqual(filterRooms(rooms, { building: "明达楼" }).map((room) => room.name), ["明达楼413"]);
+});

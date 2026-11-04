@@ -6,10 +6,18 @@ import * as loginPool from "./ssoLoginPool";
 import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
 import { ConcurrencyGate, ConcurrencyGateFullError } from "../utils/loadShield";
 import { Errors } from "../utils/response";
+import * as njmu from "../schools/njmu/driver";
+import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 
 type Transport = typeof local;
 
-function queryImpl(): Transport {
+/** 教务令牌和登录 pendingId 的前缀说明它属于哪所学校的驱动；药大的没有前缀。 */
+export function schoolIdForJwxtToken(token: string | null | undefined) {
+  return njmu.isNjmuToken(token) ? "njmu" : DEFAULT_SCHOOL_ID;
+}
+
+function queryImpl(token?: string | null): Transport {
+  if (njmu.isNjmuToken(token)) return njmu as unknown as Transport;
   if (agentRemote.isJwxtAgentQueryMode()) return agentRemote as unknown as Transport;
   if (config.jwxtProxyUrl) return remote as unknown as Transport;
   return local;
@@ -32,7 +40,8 @@ async function throughSsoLoginGate<T>(task: () => Promise<T>, signal?: AbortSign
   }
 }
 
-export function beginLogin(signal?: AbortSignal): ReturnType<typeof local.beginLogin> {
+export function beginLogin(signal?: AbortSignal, schoolId: string = DEFAULT_SCHOOL_ID): ReturnType<typeof local.beginLogin> {
+  if (schoolId === "njmu") return throughSsoLoginGate(() => njmu.beginLogin(signal), signal) as ReturnType<typeof local.beginLogin>;
   return throughSsoLoginGate(() => (loginPool.isDedicatedSsoLoginPool()
     ? loginPool.beginLogin(signal)
     : queryImpl().beginLogin()) as ReturnType<typeof local.beginLogin>, signal);
@@ -40,6 +49,10 @@ export function beginLogin(signal?: AbortSignal): ReturnType<typeof local.beginL
 
 export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials }, signal?: AbortSignal) {
   return throughSsoLoginGate(async () => {
+    if (njmu.isNjmuToken(args.pendingId)) {
+      if ("credentials" in args) throw Errors.badRequest("南医统一认证不支持加密登录凭据");
+      return njmu.submitLogin(args, signal);
+    }
     if (loginPool.isPooledPendingId(args.pendingId)) return loginPool.submitLogin(args);
     if ("credentials" in args) {
       if (!agentRemote.isJwxtAgentQueryMode()) throw new Error("当前登录节点不支持加密登录凭据");
@@ -49,20 +62,20 @@ export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pe
   }, signal);
 }
 
-export function logout(token: string) { return queryImpl().logout(token); }
-export function getStatus(token: string | undefined | null) { return queryImpl().getStatus(token); }
+export function logout(token: string) { return queryImpl(token).logout(token); }
+export function getStatus(token: string | undefined | null) { return queryImpl(token).getStatus(token); }
 export function sessionStats() { return queryImpl().sessionStats(); }
-export function getSchedule(token: string, args?: Parameters<typeof local.getSchedule>[1]) { return queryImpl().getSchedule(token, args); }
-export function getGrades(token: string, args?: Parameters<typeof local.getGrades>[1]) { return queryImpl().getGrades(token, args); }
-export function getMidtermGrades(token: string, args?: Parameters<typeof local.getMidtermGrades>[1]) { return queryImpl().getMidtermGrades(token, args); }
-export function getExams(token: string, args?: Parameters<typeof local.getExams>[1]) { return queryImpl().getExams(token, args); }
-export function getCalendar(token: string, args?: Parameters<typeof local.getCalendar>[1]) { return queryImpl().getCalendar(token, args); }
-export function getProgress(token: string) { return queryImpl().getProgress(token); }
-export function getPyfa(token: string) { return queryImpl().getPyfa(token); }
-export function getRecords(token: string, args: Parameters<typeof local.getRecords>[1]) { return queryImpl().getRecords(token, args); }
-export function getIApps(token: string) { return queryImpl().getIApps(token); }
+export function getSchedule(token: string, args?: Parameters<typeof local.getSchedule>[1]) { return queryImpl(token).getSchedule(token, args); }
+export function getGrades(token: string, args?: Parameters<typeof local.getGrades>[1]) { return queryImpl(token).getGrades(token, args); }
+export function getMidtermGrades(token: string, args?: Parameters<typeof local.getMidtermGrades>[1]) { return queryImpl(token).getMidtermGrades(token, args); }
+export function getExams(token: string, args?: Parameters<typeof local.getExams>[1]) { return queryImpl(token).getExams(token, args); }
+export function getCalendar(token: string, args?: Parameters<typeof local.getCalendar>[1]) { return queryImpl(token).getCalendar(token, args); }
+export function getProgress(token: string) { return queryImpl(token).getProgress(token); }
+export function getPyfa(token: string) { return queryImpl(token).getPyfa(token); }
+export function getRecords(token: string, args: Parameters<typeof local.getRecords>[1]) { return queryImpl(token).getRecords(token, args); }
+export function getIApps(token: string) { return queryImpl(token).getIApps(token); }
 export function getPortalNotices(token: string, args?: Parameters<typeof local.getPortalNotices>[1]) {
-  return queryImpl().getPortalNotices(token, args);
+  return queryImpl(token).getPortalNotices(token, args);
 }
 export async function getIAppIcon(path: string) {
   if (agentRemote.hasRemoteJwxtAgent()) {
@@ -76,6 +89,17 @@ export async function getIAppIcon(path: string) {
   return local.getIAppIcon(path);
 }
 export function getGraduateSchedule(token: string, args?: Parameters<typeof local.getGraduateSchedule>[1]) {
-  return queryImpl().getGraduateSchedule(token, args);
+  return queryImpl(token).getGraduateSchedule(token, args);
 }
-export function debugSnapshot(token: string) { return queryImpl().debugSnapshot(token); }
+export function debugSnapshot(token: string) { return queryImpl(token).debugSnapshot(token); }
+
+/** 南医统一认证在新设备上的扫码二次验证（药大没有这一步）。 */
+export function pollNjmuMfa(pendingId: string, signal?: AbortSignal) {
+  if (!njmu.isNjmuToken(pendingId)) throw Errors.badRequest("验证已过期，请重新登录");
+  return njmu.pollMfa(pendingId, signal);
+}
+
+export function refreshNjmuMfaQr(pendingId: string, signal?: AbortSignal) {
+  if (!njmu.isNjmuToken(pendingId)) throw Errors.badRequest("验证已过期，请重新登录");
+  return throughSsoLoginGate(() => njmu.refreshMfaQr(pendingId, signal), signal);
+}

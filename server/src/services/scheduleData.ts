@@ -72,7 +72,7 @@ export function createScheduleDataService(dependencies: Partial<Dependencies> = 
       { refresh: query.refresh },
     );
     const upstreamCalendar = calendarAtDate(snapshot.parsed, deps.now());
-    const config = await getScheduleTermConfig(upstreamCalendar.currentSemester || semester);
+    const config = await getScheduleTermConfig(upstreamCalendar.currentSemester || semester, transport.schoolIdForJwxtToken(token));
     const parsed = applyScheduleTermConfig(upstreamCalendar, config, deps.now());
     if (semester && parsed.currentWeek > 0) {
       await deps.cache("jwxt-calendar", currentKey, CALENDAR_TTL_MS, async () => snapshot, { refresh: true });

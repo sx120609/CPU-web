@@ -15,7 +15,7 @@ import { DEFAULT_SCHOOL_ID, applySchoolRows, findSchool, getSchool, resolveSchoo
 import { ensureCanManageSchool, isPlatformAdmin } from "../src/schools/store";
 import { signToken } from "../src/utils/jwt";
 
-const otherSchool: SchoolProfile = { ...getSchool(DEFAULT_SCHOOL_ID), id: "njmu", defaultModules: SCHOOL_MODULE_KEYS };
+const otherSchool: SchoolProfile = { ...getSchool(DEFAULT_SCHOOL_ID), id: "example", defaultModules: SCHOOL_MODULE_KEYS };
 
 function request(init: { user?: Record<string, unknown>; bearer?: string; siteToken?: string }) {
   return {
@@ -81,21 +81,21 @@ test("every guarded route prefix is mounted exactly as listed", () => {
 test("schools created in the admin are local-account schools with every isolated feature on", () => {
   applySchoolRows([
     { id: "cpu", name: "中国药科大学", shortName: "药大", brandName: "药大拾间", tagline: "", enabled: true },
-    { id: "njmu", name: "南京医科大学", shortName: "南医", brandName: "南医拾间", tagline: "", enabled: false },
+    { id: "example", name: "示例大学", shortName: "示例", brandName: "示例拾间", tagline: "", enabled: false },
   ], SCHOOL_MODULE_KEYS);
   try {
-    const njmu = findSchool("njmu")!;
-    assert.equal(njmu.brandName, "南医拾间");
-    assert.equal(njmu.ssoLogin, false);
-    assert.equal(njmu.academicSystem, null);
-    assert.equal(resolveSchoolId("njmu"), "njmu");
+    const example = findSchool("example")!;
+    assert.equal(example.brandName, "示例拾间");
+    assert.equal(example.ssoLogin, false);
+    assert.equal(example.academicSystem, null);
+    assert.equal(resolveSchoolId("example"), "example");
     assert.equal(getSchool("cpu").ssoLogin, true);
-    assert.ok(getEnabledSchoolModules("njmu").includes("forum"));
-    assert.ok(!getEnabledSchoolModules("njmu").includes("academic"));
+    assert.ok(getEnabledSchoolModules("example").includes("forum"));
+    assert.ok(!getEnabledSchoolModules("example").includes("academic"));
   } finally {
     applySchoolRows([], SCHOOL_MODULE_KEYS);
   }
-  assert.equal(findSchool("njmu"), null);
+  assert.equal(findSchool("example"), null);
   assert.equal(getSchool("cpu").brandName, "药大拾间");
 });
 
@@ -107,4 +107,25 @@ test("only default-school admins manage every school; other admins manage their 
   assert.doesNotThrow(() => ensureCanManageSchool({ role: "admin", schoolId: "njmu" }, "njmu"));
   assert.throws(() => ensureCanManageSchool({ role: "admin", schoolId: "njmu" }, "cpu"));
   assert.throws(() => ensureCanManageSchool({ role: "mod", schoolId: "njmu" }, "njmu"));
+});
+
+test("南医是带教务驱动的内置学校：统一认证登录、教务可开，名称以 School 表为准", () => {
+  const byKey = new Map(SCHOOL_MODULES.map((module) => [module.key, module]));
+  const njmu = getSchool("njmu");
+  assert.equal(njmu.id, "njmu");
+  assert.equal(njmu.ssoLogin, true);
+  assert.equal(njmu.academicSystem, "zhengfang-v9");
+  assert.equal(njmu.enabled, false);
+  assert.equal(njmu.defaultPeriods.length, 15);
+  assert.equal(isSchoolModuleAvailable(njmu, byKey.get("academic")!), true);
+  assert.equal(isSchoolModuleAvailable(njmu, byKey.get("announcements")!), false);
+  assert.ok(getEnabledSchoolModules("njmu").includes("academic"));
+  applySchoolRows([{ id: "njmu", name: "南京医科大学", shortName: "南医", brandName: "南医拾间", tagline: "南医校园互助", enabled: true }], SCHOOL_MODULE_KEYS);
+  try {
+    assert.equal(getSchool("njmu").tagline, "南医校园互助");
+    assert.equal(getSchool("njmu").enabled, true);
+    assert.equal(getSchool("njmu").ssoLogin, true);
+  } finally {
+    applySchoolRows([], SCHOOL_MODULE_KEYS);
+  }
 });

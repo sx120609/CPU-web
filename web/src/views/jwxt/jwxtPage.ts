@@ -3,6 +3,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { jwxtApi } from "@/api/jwxt";
 import { loadCreds } from "@/utils/credCrypto";
 import {
@@ -39,6 +40,9 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
     password: [{ required: true, message: "请输入密码" }],
   };
   const isGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
+  const site = useSiteStore();
+  // 南医（正方）只接了课表和成绩；学业进度、培养方案、选课、空教室是药大教务独有的。
+  const academicFeatureLimited = computed(() => site.school?.academicSystem === "zhengfang-v9");
   const showScheduleTab = computed(() => layout.value === "desktop");
   const tab = ref<JwxtTab>(showScheduleTab.value ? "schedule" : "grades");
   const schedule = ref<any>(null);
@@ -69,11 +73,14 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
     if (isGraduateIdentity.value && !auth.academicIdentityUnavailable) {
       return showScheduleTab.value ? ["schedule"] : [];
     }
+    if (academicFeatureLimited.value) return showScheduleTab.value ? ["schedule", "grades", "progress"] : ["grades", "progress"];
     return showScheduleTab.value
       ? ["schedule", "grades", /* "midterm", */ "progress", "pyfa"]
       : ["grades", /* "midterm", */ "progress", "pyfa"];
   });
-  const showExtraTabs = computed(() => availableDataTabs.value.includes("grades"));
+  const showExtraTabs = computed(() => !academicFeatureLimited.value && availableDataTabs.value.includes("grades"));
+  // 南医没有选课数据，但有空教室。
+  const showRoomsTab = computed(() => availableDataTabs.value.includes("grades"));
   const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
   const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
   const academicDataUnavailable = computed(() => Boolean(
@@ -108,14 +115,18 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
       : "登录后会根据这次实际读取到的数据自动选择可用入口。移动端课表请从单独课表入口查看。"
   ));
   const schoolSystemLink = computed(() => (
-    !auth.academicIdentityResolved
+    academicFeatureLimited.value
+      ? "https://jwpt.njmu.edu.cn/sso/jzlogin"
+      : !auth.academicIdentityResolved
       ? "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
       : isGraduateIdentity.value
         ? "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk"
         : "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
   ));
   const schoolSystemLabel = computed(() => (
-    !auth.academicIdentityResolved
+    academicFeatureLimited.value
+      ? "前往学校教务系统原站"
+      : !auth.academicIdentityResolved
       ? "前往学校统一认证原站"
       : isGraduateIdentity.value ? "前往研究生管理系统原站" : "前往学校教务系统原站"
   ));
@@ -225,7 +236,7 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
       return;
     }
     if (tab.value === "selection" || tab.value === "rooms") {
-      if (!showExtraTabs.value) tab.value = firstVisibleTab();
+      if (!(tab.value === "rooms" ? showRoomsTab.value : showExtraTabs.value)) tab.value = firstVisibleTab();
       return;
     }
     if (!availableDataTabs.value.includes(tab.value as DataTab)) {
@@ -544,7 +555,9 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
     snapResult,
     isDev,
     availableDataTabs,
+    academicFeatureLimited,
     showExtraTabs,
+    showRoomsTab,
     hasJwxtTabs,
     academicDataUnavailable,
     showDataShell,

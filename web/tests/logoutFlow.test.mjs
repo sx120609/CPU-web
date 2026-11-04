@@ -20,6 +20,6 @@ test("explicit logout cannot trigger saved-credential recovery", () => {
 });
 
 test("a late SSO response cannot replace a revoked browser session", () => {
-  assert.match(serverAuth, /if \(req\.browserSession\)[\s\S]*updateBrowserSession\(req, res, \{ siteToken, jwxtToken: r\.token \}\)/u);
+  assert.match(serverAuth, /if \(req\.browserSession\)[\s\S]*updateBrowserSession\(req, res, \{ siteToken, jwxtToken: token \}\)/u);
   assert.match(serverAuth, /if \(!sessionEstablished\)[\s\S]*登录会话已取消/u);
 });

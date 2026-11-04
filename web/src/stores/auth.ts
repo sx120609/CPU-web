@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useSiteStore } from "./site";
-import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
+import { authApi, type UserInfo, type RegisterPayload, type SsoLoginResult } from "@/api/auth";
 import { clearToken, COOKIE_SESSION_MARKER, getToken, hasAuthPresence, setToken } from "@/api/request";
 import { jwxtApi, setJwxtToken, clearJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
 import { clearCreds, saveCreds } from "@/utils/credCrypto";
@@ -24,6 +24,8 @@ const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
 
 let autoSsoLoginInFlight: Promise<boolean> | null = null;
 let pendingSsoLoginAbortController: AbortController | null = null;
+/** 等短信验证时暂存账号，验证通过后按用户的选择保存；不进 Pinia 状态，免得被调试工具看到。 */
+let pendingMfaCredentials: { username: string; password: string; remember: boolean } | null = null;
 
 function isAcademicDataUnavailableError(error: unknown) {
   const candidate = error as {
@@ -90,6 +92,10 @@ export const useAuthStore = defineStore("auth", {
     ssoCredentialPublicKey: "",
     ssoError: "",
     ssoLoading: false,
+    /** 学校要求扫码二次验证（南医新设备）。弹窗见 SchoolMfaDialog.vue。 */
+    ssoNeedMfa: false,
+    ssoMfaPendingId: "",
+    ssoMfaQr: "",
     _pendingSsoBegin: null as Promise<void> | null,
     _pendingSsoLogin: null as Promise<boolean> | null,
     _pendingFetchMe: null as Promise<void> | null,
@@ -348,35 +354,16 @@ export const useAuthStore = defineStore("auth", {
             this.ssoCaptchaImage = r.captcha.image;
             this.ssoNeedCaptcha = true;
           }
+          // 后台静默恢复不弹短信验证，等用户自己登录时再验证。
+          if (r.needMfa && r.mfa && !options?.silent) {
+            pendingMfaCredentials = { username, password, remember };
+            this.ssoMfaPendingId = r.mfa.pendingId;
+            this.ssoMfaQr = r.mfa.qrImage || "";
+            this.ssoNeedMfa = true;
+          }
           return false;
         }
-        const authToken = r.sessionAuthenticated ? COOKIE_SESSION_MARKER : (r.siteToken || "");
-        this.applyAuthenticatedSession(authToken, r.user);
-        // Cookie 会话只保留不含秘密的内存标记；兼容响应中的旧 token 也仅留在内存。
-        if (r.jwxtAuthenticated || r.jwxtToken) {
-          clearJwxtToken();
-          setJwxtToken(r.jwxtAuthenticated ? JWXT_COOKIE_SESSION_MARKER : (r.jwxtToken || ""));
-        }
-        // 记住凭据（本地加密，下次自动登录）
-        if (remember) {
-          try { await saveCreds(username, password); } catch { /* ignore */ }
-        } else {
-          clearCreds();
-        }
-        this.ssoNeedCaptcha = false;
-        this.ssoCaptchaImage = "";
-        this.ssoPendingId = "";
-        this.ssoPendingIssuedAt = 0;
-        this.ssoCredentialPublicKey = "";
-        this.academicIdentityResolved = false;
-        await this.detectAcademicIdentity({
-          force: true,
-          silent: true,
-          fallback: this.academicIdentity,
-        });
-        // No academic entry for a new student is not a failed site login.
-        // Keep the station session, JWXT session marker, and saved credentials;
-        // the JWXT store only pauses background recovery until data is available.
+        await this.finishSsoLogin(r, { username, password, remember });
         return true;
         } catch (error) {
           if (this.sessionVersion !== requestSessionVersion) return false;
@@ -393,6 +380,79 @@ export const useAuthStore = defineStore("auth", {
         if (pendingSsoLoginAbortController === abortController) pendingSsoLoginAbortController = null;
         if (this._pendingSsoLogin === task) this._pendingSsoLogin = null;
       }
+    },
+
+    /** 学校登录成功后：建立站内会话、记下教务会话标记、按需保存账号。 */
+    async finishSsoLogin(r: SsoLoginResult, credentials: { username: string; password: string; remember: boolean }) {
+        const { username, password, remember } = credentials;
+        const authToken = r.sessionAuthenticated ? COOKIE_SESSION_MARKER : (r.siteToken || "");
+        this.applyAuthenticatedSession(authToken, r.user!);
+        // Cookie 会话只保留不含秘密的内存标记；兼容响应中的旧 token 也仅留在内存。
+        if (r.jwxtAuthenticated || r.jwxtToken) {
+          clearJwxtToken();
+          setJwxtToken(r.jwxtAuthenticated ? JWXT_COOKIE_SESSION_MARKER : (r.jwxtToken || ""));
+        }
+        // 记住凭据（本地加密，下次自动登录）
+        if (remember) {
+          try { await saveCreds(username, password); } catch { /* ignore */ }
+        } else {
+          clearCreds();
+        }
+        this.ssoNeedMfa = false;
+        this.ssoMfaPendingId = "";
+        this.ssoMfaQr = "";
+        this.ssoNeedCaptcha = false;
+        this.ssoCaptchaImage = "";
+        this.ssoPendingId = "";
+        this.ssoPendingIssuedAt = 0;
+        this.ssoCredentialPublicKey = "";
+        this.academicIdentityResolved = false;
+        await this.detectAcademicIdentity({
+          force: true,
+          silent: true,
+          fallback: this.academicIdentity,
+        });
+        // No academic entry for a new student is not a failed site login.
+        // Keep the station session, JWXT session marker, and saved credentials;
+        // the JWXT store only pauses background recovery until data is available.
+    },
+
+    /** 换一张二维码（过期或用户点刷新）。 */
+    async ssoRefreshMfaQr() {
+      if (!this.ssoMfaPendingId) throw new Error("验证已过期，请重新登录");
+      const r = await authApi.ssoMfaRefresh(this.ssoMfaPendingId);
+      this.ssoMfaQr = r.qrImage;
+    },
+
+    /** 查一次扫码状态；手机上确认后这次调用就完成登录并返回 done。 */
+    async ssoPollMfa(): Promise<"waiting" | "scanned" | "expired" | "failed" | "done"> {
+      const credentials = pendingMfaCredentials;
+      if (!this.ssoMfaPendingId || !credentials) {
+        this.ssoError = "验证已过期，请重新登录";
+        return "failed";
+      }
+      const requestSessionVersion = this.sessionVersion;
+      const r = await authApi.ssoMfaPoll(
+        { pendingId: this.ssoMfaPendingId, remember: credentials.remember },
+        { suppressAuthRedirect: true, suppressAuthMessage: true, suppressErrorMessage: true, timeout: 60_000 },
+      );
+      if (this.sessionVersion !== requestSessionVersion) return "failed";
+      if (r.mfaStatus === "waiting" || r.mfaStatus === "scanned" || r.mfaStatus === "expired") return r.mfaStatus;
+      if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
+        this.ssoError = r.error || "验证失败，请重新登录";
+        return "failed";
+      }
+      pendingMfaCredentials = null;
+      this.ssoError = "";
+      await this.finishSsoLogin(r, credentials);
+      return "done";
+    },
+
+    cancelSsoMfa() {
+      pendingMfaCredentials = null;
+      this.ssoNeedMfa = false;
+      this.ssoMfaPendingId = "";
+      this.ssoMfaQr = "";
     },
 
     /** Background recovery shares one school SSO submission. */

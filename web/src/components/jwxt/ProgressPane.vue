@@ -26,7 +26,7 @@
         />
         <div class="overall-detail">
           <span class="dim-pill must">
-            必修 {{ earnedMustFinal.toFixed(1) }} / {{ mustRequiredFinal.toFixed(1) }}
+            必修 {{ earnedMustFinal.toFixed(1) }}<template v-if="mustRequiredFinal > 0"> / {{ mustRequiredFinal.toFixed(1) }}</template>
           </span>
           <span class="dim-pill opt">
             选修 {{ parsed.totals.earnedOpt.toFixed(1) }}<span v-if="parsed.totals.requiredOpt > 0"> / {{ parsed.totals.requiredOpt.toFixed(1) }}</span>
@@ -37,6 +37,40 @@
         </div>
       </div>
     </div>
+
+    <!-- 学业体检（南医教务的学业体检单）：绩点、四级、不及格课程和毕业／学位条件 -->
+    <section v-if="checkup" class="checkup-card" aria-label="学业体检">
+      <header class="checkup-head">
+        <h3>学业体检</h3>
+        <span v-if="checkup.asOf" class="checkup-asof">截至 {{ checkup.asOf }}</span>
+      </header>
+      <div class="checkup-stats">
+        <div v-for="item in checkupStats" :key="item.label" class="checkup-stat" :class="{ 'is-warn': item.warn }">
+          <span class="checkup-value">{{ item.value }}</span>
+          <span class="checkup-label">{{ item.label }}</span>
+        </div>
+      </div>
+      <div v-if="checkup.failed?.length" class="checkup-failed">
+        <h4>不及格课程</h4>
+        <ul>
+          <li v-for="row in checkup.failed" :key="`${row.semester}-${row.courseCode || row.courseName}`">
+            <span>{{ row.courseName }}</span>
+            <span class="checkup-meta">{{ [row.semester, row.attr, row.credits !== undefined ? `${row.credits} 学分` : "", row.bestScore ? `最高 ${row.bestScore}` : ""].filter(Boolean).join(" · ") }}</span>
+          </li>
+        </ul>
+      </div>
+      <details v-if="checkup.graduationRules?.length || checkup.degreeRules?.length" class="checkup-rules">
+        <summary>毕业与学位条件</summary>
+        <template v-if="checkup.graduationRules?.length">
+          <h4>毕业基本要求</h4>
+          <p v-for="(rule, index) in checkup.graduationRules" :key="`g-${index}`">{{ rule }}</p>
+        </template>
+        <template v-if="checkup.degreeRules?.length">
+          <h4>学位授予基本条件</h4>
+          <p v-for="(rule, index) in checkup.degreeRules" :key="`d-${index}`">{{ rule }}</p>
+        </template>
+      </details>
+    </section>
 
     <!-- 课程体系学分卡片 -->
     <div v-if="summaryCards.length" class="summary">
@@ -163,6 +197,23 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 const props = defineProps<{ data: any; loading?: boolean }>();
 const parsed = ref<any>(props.data?.parsed ?? null);
 const loading = ref(props.loading ?? false);
+
+/** 南医学业体检单里的数字；药大的学业数据没有这一块。 */
+const checkup = computed(() => parsed.value?.checkup ?? null);
+const checkupStats = computed(() => {
+  const value = checkup.value;
+  if (!value) return [];
+  const fixed = (n: unknown, digits = 2) => (typeof n === "number" ? n.toFixed(digits) : "—");
+  return [
+    { label: "核心课程绩点", value: fixed(value.coreGpa), warn: typeof value.coreGpa === "number" && value.coreGpa < 2 },
+    { label: "必修课程绩点", value: fixed(value.requiredGpa), warn: false },
+    { label: "学业总评", value: fixed(value.overallScore), warn: false },
+    { label: "四级成绩", value: typeof value.cet4 === "number" ? String(Math.round(value.cet4)) : "—", warn: typeof value.cet4 === "number" && value.cet4 < 425 },
+    { label: "不及格必修", value: typeof value.failedCount === "number" ? `${value.failedCount} 门` : "—", warn: Number(value.failedCount) > 0 },
+    { label: "任选课学分", value: typeof value.electiveCredits === "number" ? String(value.electiveCredits) : "—", warn: false },
+    { label: "处分记录", value: typeof value.punishments === "number" ? `${value.punishments} 次` : "—", warn: Number(value.punishments) > 0 },
+  ];
+});
 
 const isMobile = ref(false);
 let mql: MediaQueryList | null = null;
@@ -312,6 +363,23 @@ function scoreColor(s: string) {
   padding: 10px 12px;
 }
 .data-note > :last-child { margin-left: auto; }
+
+/* 学业体检 */
+.checkup-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.checkup-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.checkup-head h3 { margin: 0; font-size: var(--cpu-fs-m); font-weight: 600; }
+.checkup-asof { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
+.checkup-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.checkup-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--cpu-radius-m); background: var(--cpu-bg-soft, rgba(127, 127, 127, 0.08)); }
+.checkup-value { font-size: var(--cpu-fs-l); font-weight: 600; font-variant-numeric: tabular-nums; }
+.checkup-label { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
+.checkup-stat.is-warn .checkup-value { color: var(--cpu-accent); }
+.checkup-failed h4, .checkup-rules h4 { margin: 8px 0 4px; font-size: var(--cpu-fs-s); font-weight: 600; }
+.checkup-failed ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.checkup-failed li { display: flex; justify-content: space-between; gap: 8px; font-size: var(--cpu-fs-s); }
+.checkup-meta { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
+.checkup-rules summary { cursor: pointer; color: var(--cpu-primary); font-size: var(--cpu-fs-s); }
+.checkup-rules p { margin: 2px 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 
 /* 顶部总览大卡 */
 .overall {

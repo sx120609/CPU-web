@@ -61,6 +61,10 @@ export type SchoolSummary = {
   brandName: string;
   tagline: string;
   ssoLogin: boolean;
+  /** 教务系统类型：药大 qiangzhi-jsxsd，南医 zhengfang-v9；没有教务对接时为 null。 */
+  academicSystem?: string | null;
+  /** 这所学校的默认作息（节次从 1 起连续编号）。 */
+  periods?: Array<{ no: number; name: string; start: string; end: string }>;
 };
 
 /** 当前访问者所属学校：开着哪些功能，以及网页路径、服务卡片各归哪个功能。 */

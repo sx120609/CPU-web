@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { DEFAULT_TOP_NAVIGATION, siteApi, type FeatureMap, type PublicSiteConfig, type SchoolInfo, type TopNavigationItem } from "@/api/site";
 import { isSchoolPathEnabled, isSchoolToolEnabled } from "@/utils/schoolModules";
 import { setDocumentBrand } from "@/utils/documentTitle";
+import { useSchoolSlots } from "@/views/schedule/slots";
 
 /**
  * 站点级开关：默认关闭可选功能，拉到后台真实开关后再展示入口。
@@ -49,6 +50,7 @@ export const useSiteStore = defineStore("site", {
           if (schoolResult.status === "fulfilled") {
             this.school = schoolResult.value;
             setDocumentBrand(this.brandName, this.schoolName);
+            if (schoolResult.value.periods?.length) useSchoolSlots(schoolResult.value.periods);
           }
           if (configResult.status === "fulfilled") {
             this.siteOrigin = configResult.value.siteOrigin || "";

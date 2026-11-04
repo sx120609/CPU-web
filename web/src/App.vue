@@ -6,6 +6,7 @@
     <AndroidUpdateDialog />
     <IosUpdateDialog />
     <LegacyDomainMigrationDialog />
+    <SchoolMfaDialog />
     <el-dialog
       v-model="dataAuthOpen"
       title="数据授权安全协议"
@@ -173,6 +174,7 @@ import IosUpdateDialog from "@/components/install/IosUpdateDialog.vue";
 import ExtensionHost from "@/views/workshop/ExtensionHost.vue";
 import SmartPostTaskIndicator from "@/components/forum/SmartPostTaskIndicator.vue";
 import LegacyDomainMigrationDialog from "@/components/common/LegacyDomainMigrationDialog.vue";
+import SchoolMfaDialog from "@/components/common/SchoolMfaDialog.vue";
 import { detectInAppBrowser, isWechatServiceClient, shouldAutoSuggestExternalBrowser } from "@/utils/inAppBrowser";
 import { copyText } from "@/utils/userGroup";
 
