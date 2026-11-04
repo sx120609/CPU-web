@@ -56,7 +56,7 @@ export const useSiteStore = defineStore("site", {
             setDocumentBrand(this.brandName, this.schoolName, this.schoolShortName, this.school?.id === "cpu");
             // 下次打开时启动画面先显示这所学校的品牌（public/appearance-bootstrap.js 读取）。
             try {
-              window.localStorage.setItem("cpu-school-brand-v1", JSON.stringify({ brandName: this.brandName, schoolName: this.schoolName }));
+              window.localStorage.setItem("cpu-school-brand-v1", JSON.stringify({ schoolId: this.school?.id, brandName: this.brandName, schoolName: this.schoolName }));
             } catch { /* 无痕模式等存不了就算了 */ }
             if (schoolResult.value.periods?.length) useSchoolSlots(schoolResult.value.periods);
           }

@@ -26,6 +26,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue';
 import DOMPurify from 'dompurify';
+import { useSiteStore } from '@/stores/site';
+import { localizeSchoolDocument } from '@/utils/schoolText';
 
 const props = defineProps<{ modelValue: boolean; document: 'privacy' | 'terms' }>();
 const emit = defineEmits<{ (event: 'update:modelValue', value: boolean): void }>();
@@ -36,6 +38,7 @@ const content = ref('');
 const loading = ref(false);
 const loadError = ref(false);
 let request: AbortController | null = null;
+const site = useSiteStore();
 
 async function loadDocument(document: PolicyDocument) {
   request?.abort();
@@ -50,6 +53,7 @@ async function loadDocument(document: PolicyDocument) {
     if (!response.ok) throw new Error('Policy document unavailable');
     const page = new DOMParser().parseFromString(await response.text(), 'text/html');
     const documentBody = page.querySelector('article') || page.querySelector('main') || page.body;
+    localizeSchoolDocument(documentBody, { id: site.school?.id, brandName: site.brandName, schoolName: site.schoolName });
     if (!currentRequest.signal.aborted) {
       content.value = DOMPurify.sanitize(documentBody.innerHTML, {
         USE_PROFILES: { html: true },

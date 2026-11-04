@@ -60,8 +60,20 @@
   }
   // 「了解我们」「社区规范」这类说明页（body 标了 data-school-brand）把品牌和校名换成上次的学校；
   // 用户协议、隐私政策是法律文本，不标这个属性，原样显示。
+  // 标了 data-school-only 的段落只给对应学校看：药大独有的说明在外校去掉，外校的补充说明（默认 hidden）在本校显示。
+  const schoolId = typeof brand.schoolId === "string" ? brand.schoolId : (brandName === "药大拾间" ? "cpu" : "");
+  const applySchoolOnly = () => {
+    if (!schoolId) return;
+    const scoped = document.querySelectorAll("[data-school-only]");
+    for (let index = 0; index < scoped.length; index++) {
+      const element = scoped[index];
+      if (element.getAttribute("data-school-only") === schoolId) element.removeAttribute("hidden");
+      else element.parentNode && element.parentNode.removeChild(element);
+    }
+  };
   const swapPageBrand = () => {
     if (!document.body || !document.body.hasAttribute("data-school-brand")) return;
+    applySchoolOnly();
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const text = node.nodeValue || "";

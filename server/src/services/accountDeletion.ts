@@ -13,9 +13,10 @@ import { deleteCoupleDataForUser } from "./coupleSchedule";
 import { deleteDormDataForUser } from "./dormSchedule";
 import { eraseWorkshopAccountData, lockWorkshopAuthor, revokeWorkshopAccountWorks } from "./workshopAccountDeletion";
 import { removeWorkshopPackage } from "./workshopPackage";
+import { forgetNjmuDevice } from "../schools/njmu/client";
 
 export const ACCOUNT_DELETION_CONFIRMATION = "删除我的账户";
-type DeletionPayload = { username: string; tokens: string[]; sessionKeys: string[]; mediaPaths: string[]; receipt: string; workshopPackageKeys?: string[] };
+type DeletionPayload = { username: string; schoolId?: string; tokens: string[]; sessionKeys: string[]; mediaPaths: string[]; receipt: string; workshopPackageKeys?: string[] };
 function receiptHash(receipt: string) { return createHash("sha256").update(receipt).digest("hex"); }
 function encryptPayload(userId: number, payload: DeletionPayload) { return encryptJwxtSensitiveJson("account-deletion", String(userId), payload); }
 function decodePayload(job: { userId: number; encryptedPayload: string | null }) {
@@ -42,7 +43,7 @@ export async function requestAccountDeletion(userId: number, currentJwxtToken?: 
     await tx.oAuthAccessToken.deleteMany({ where: { userId } });
     await tx.oAuthAuthorizationCode.deleteMany({ where: { userId } });
     if (sessions.tokens.length) await tx.accountRevokedCredential.createMany({ data: sessions.tokens.map((token) => ({ tokenHash: credentialHash(token) })), skipDuplicates: true });
-    return tx.accountDeletionJob.create({ data: { userId, receiptHash: receiptHash(receipt), encryptedPayload: encryptPayload(userId, { ...sessions, username: user.username, mediaPaths: [], receipt }) } });
+    return tx.accountDeletionJob.create({ data: { userId, receiptHash: receiptHash(receipt), encryptedPayload: encryptPayload(userId, { ...sessions, username: user.username, schoolId: user.schoolId, mediaPaths: [], receipt }) } });
   });
   return { id: job.id, receipt, status: job.status, createdAt: job.createdAt };
 }
@@ -183,7 +184,7 @@ async function eraseVoiceHub(jobId: string, receipt: string) {
   if (!response.ok || !(await response.json() as { deleted?: boolean }).deleted) throw new Error("VoiceHub account cleanup not confirmed");
 }
 
-type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void>; deleteWorkshopPackage?: typeof removeWorkshopPackage };
+type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void>; deleteWorkshopPackage?: typeof removeWorkshopPackage; forgetSchoolDevice?: typeof forgetNjmuDevice };
 export async function processAccountDeletion(id: string, dependencies: CleanupDependencies = { deleteMedia: deleteMediaAsset, deleteSessions: deleteAccountSessions, deleteVoiceHub: eraseVoiceHub, purgeMedia: purgeAccountMediaCaches }) {
   let job = await prisma.accountDeletionJob.findUnique({ where: { id } });
   if (!job || job.status === "completed") return;
@@ -201,6 +202,8 @@ export async function processAccountDeletion(id: string, dependencies: CleanupDe
     }
     cleanupStep = "sessions";
     await dependencies.deleteSessions(payload.tokens, payload.sessionKeys);
+    cleanupStep = "school-device";
+    if (payload.schoolId === "njmu") await (dependencies.forgetSchoolDevice ?? forgetNjmuDevice)(payload.username);
     cleanupStep = "workshop";
     for (const packageKey of payload.workshopPackageKeys ?? []) {
       await (dependencies.deleteWorkshopPackage ?? removeWorkshopPackage)(packageKey);

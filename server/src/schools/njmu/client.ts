@@ -263,6 +263,12 @@ async function saveDevice(username: string, fingerprint: string, jar: CookieJar)
   await setEphemeralValue(deviceKey(username), encryptJwxtSensitiveJson("njmu-device", username, record), DEVICE_TTL_MS).catch(() => undefined);
 }
 
+/** 删除账号时调用：清掉这个学号的可信设备指纹和长期 cookie（隐私政策承诺删号时一并清除）。 */
+export async function forgetNjmuDevice(username: string) {
+  if (!username) return;
+  await deleteEphemeralValue(deviceKey(username));
+}
+
 async function rememberDevice(username: string, jar: CookieJar) {
   const device = await loadDevice(username);
   await saveDevice(username, jar.value(AUTH_HOST, "MULTIFACTOR_BROWSER_FINGERPRINT") || device.fingerprint, jar);
