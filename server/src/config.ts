@@ -474,6 +474,9 @@ export const config = {
   noAiOAuthClientId: String(process.env.NOAI_OAUTH_CLIENT_ID ?? "no-ai").trim(),
   noAiOrigin: String(process.env.NOAI_ORIGIN ?? "https://noai.cputime.cn").trim().replace(/\/+$/, ""),
   noAiIntegrationSecret: String(process.env.NOAI_INTEGRATION_SECRET ?? "").trim(),
+  cpudateOAuthClientId: String(process.env.CPUDATE_OAUTH_CLIENT_ID ?? "cpudate").trim(),
+  cpudateOrigin: String(process.env.CPUDATE_ORIGIN ?? "").trim().replace(/\/+$/, ""),
+  cpudateIntegrationSecret: String(process.env.CPUDATE_INTEGRATION_SECRET ?? "").trim(),
   oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),
 };
 

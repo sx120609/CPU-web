@@ -6,7 +6,10 @@ export function isShopOAuthClient(clientId: string) {
 }
 
 export function isServiceOAuthClientId(clientId: string) {
-  return clientId === config.shopOAuthClientId || clientId === config.payOAuthClientId || clientId === config.noAiOAuthClientId;
+  return clientId === config.shopOAuthClientId
+    || clientId === config.payOAuthClientId
+    || clientId === config.noAiOAuthClientId
+    || clientId === config.cpudateOAuthClientId;
 }
 
 export function serviceOAuthClient(clientId: string) {
@@ -16,6 +19,10 @@ export function serviceOAuthClient(clientId: string) {
   }
   if (clientId === config.noAiOAuthClientId && config.noAiIntegrationSecret.length >= 32) {
     return { secret: config.noAiIntegrationSecret, callback: `${config.noAiOrigin}/api/auth/cputime/callback` };
+  }
+  // CPU Date uses a fixed callback path; only its origin is configurable.
+  if (clientId === config.cpudateOAuthClientId && config.cpudateIntegrationSecret.length >= 32) {
+    return { secret: config.cpudateIntegrationSecret, callback: `${config.cpudateOrigin}/auth/sso/callback` };
   }
   return null;
 }
