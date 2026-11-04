@@ -329,6 +329,22 @@ router.beforeEach(async (to) => {
     return true;
   }
   // 课表和教务页必须先渲染本地缓存；站内会话探测放到后台，不能阻塞路由首屏。
+  // 按学校开关的功能：本校没开的页面不让进，管理员也一样（数据本来就不属于本校）。
+  // 放在课表等直出页之前，但从不等待：学校信息还没到时先放行，拉到后若当前页不可用再退回首页。
+  const schoolSite = useSiteStore();
+  if (schoolSite.loaded) {
+    if (!schoolSite.pathEnabled(to.path)) {
+      ElMessage.info("本校暂未开放这个功能");
+      return { name: "home", replace: true };
+    }
+  } else {
+    void schoolSite.fetch().then(() => router.isReady()).then(() => {
+      if (schoolSite.pathEnabled(router.currentRoute.value.path)) return;
+      ElMessage.info("本校暂未开放这个功能");
+      void router.replace({ name: "home" });
+    });
+  }
+
   if (to.name && CACHE_FIRST_EDUCATION_ROUTES.has(String(to.name))) {
     applyRouteTitle(to);
     if (!auth.ready) void auth.fetchMe({ probe: true });
@@ -386,21 +402,6 @@ router.beforeEach(async (to) => {
     const target = to.fullPath.slice(LEGACY_FILE_COLLECTION_SUBMIT_PREFIX.length);
     window.location.replace(`/services/tools/filestore/submit/${target}`);
     return false;
-  }
-
-  // 按学校开关的功能：本校没开的页面不让进，管理员也一样（数据本来就不属于本校）。
-  // 首次进入不等学校信息，免得拖慢首屏；拉到后若当前页不可用再退回首页。
-  if (site.loaded) {
-    if (!site.pathEnabled(to.path)) {
-      ElMessage.info("本校暂未开放这个功能");
-      return { name: "home", replace: true };
-    }
-  } else {
-    void site.fetch().then(() => {
-      if (site.pathEnabled(router.currentRoute.value.path)) return;
-      ElMessage.info("本校暂未开放这个功能");
-      void router.replace({ name: "home" });
-    });
   }
 
   // 功能开关 gate：admin / mod 不受限（便于在关闭期间巡查）

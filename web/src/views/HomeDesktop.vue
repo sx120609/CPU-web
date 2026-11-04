@@ -12,7 +12,7 @@
         <el-button v-if="site.features.market && showForumContent" @click="$router.push('/market')">
           <AppIcon name="market" />二手交流
         </el-button>
-        <el-button v-else-if="!auth.forumHidden" type="primary" @click="$router.push('/announcements')">
+        <el-button v-else-if="!auth.forumHidden && site.pathEnabled('/announcements')" type="primary" @click="$router.push('/announcements')">
           <el-icon><Bell /></el-icon>看校园公告
         </el-button>
         <el-button v-if="!auth.isLoggedIn" @click="$router.push('/login')">{{ loginActionText }}</el-button>
@@ -99,7 +99,7 @@
 
       <!-- 右：公告、服务 -->
       <div class="col-right">
-        <section v-if="!nativeForumRestricted" class="home-block">
+        <section v-if="!nativeForumRestricted && site.pathEnabled('/announcements')" class="home-block">
           <div class="block-head">
             <h3>校园公告</h3>
             <span class="block-note">学校公开信息</span>

@@ -130,6 +130,7 @@ const switchingSchool = ref(false);
 const ssoAvailable = computed(() => site.school?.ssoLogin !== false);
 
 const loginHint = computed(() => {
+  if (!ssoAvailable.value) return "本校使用站内账号登录，账号由本校管理员开通。";
   const uses: string[] = [];
   if (site.features.forum) uses.push("发帖");
   if (site.features.coursereview) uses.push("课评");
