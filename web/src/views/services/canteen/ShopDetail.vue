@@ -240,7 +240,7 @@ function formatTime(value: string) {
 .sd-bar em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
 .sd-actions { display: flex; gap: 6px; }
 .sd-act { height: 28px; padding: 0 12px; border: 1px solid var(--cpu-border); border-radius: 999px; background: transparent; color: var(--cpu-text-secondary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-s); }
-.sd-act:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); }
+@media (hover: hover) { .sd-act:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); } }
 .sd-act.is-on { border-color: var(--cpu-text-muted); background: var(--cpu-surface-subtle); color: var(--cpu-text); }
 .sd-tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--cpu-border-soft); }
 .sd-tabs button { margin-bottom: -1px; padding: 6px 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--cpu-text-secondary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-m); }
@@ -270,4 +270,7 @@ function formatTime(value: string) {
 .sd-link { padding: 0; border: 0; background: none; color: var(--cpu-primary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-xs); }
 .sd-link.is-danger { color: var(--cpu-danger); }
 .sd-more { justify-self: center; height: 28px; padding: 0 14px; border: 1px solid var(--cpu-border); border-radius: 999px; background: transparent; color: var(--cpu-text-secondary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-s); }
+@media (pointer: coarse) {
+  .sd-form textarea { font-size: 16px; }
+}
 </style>

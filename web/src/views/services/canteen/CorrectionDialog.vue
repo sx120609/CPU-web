@@ -87,4 +87,7 @@ async function submit() {
 .cd-text { display: block; box-sizing: border-box; width: 100%; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--cpu-border); border-radius: var(--cpu-radius-m); background: var(--cpu-surface); color: var(--cpu-text); font: inherit; font-size: var(--cpu-fs-s); line-height: 1.6; resize: vertical; }
 .cd-text:focus { outline: 2px solid var(--cpu-primary); outline-offset: -1px; }
 .cd-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.5; }
+@media (pointer: coarse) {
+  .cd-text { font-size: 16px; }
+}
 </style>

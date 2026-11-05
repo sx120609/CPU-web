@@ -80,7 +80,7 @@
           </template>
           <template v-else-if="result.candidates.length">
             <h2 class="cp-draw-title">选择困难？交给运气。</h2>
-            <p class="cp-draw-sub">从 {{ result.candidates.length }} 家里随机抽一家{{ filters.preferRated ? "，高分店概率更高" : "" }}。</p>
+            <p class="cp-draw-sub">从 {{ result.candidates.length }} 家里随机抽一家：每个食堂机会相等，最近抽到的先不重复{{ filters.preferRated ? "，高分店概率更高" : "" }}。</p>
             <button type="button" class="cp-btn is-primary is-big" @click="draw">帮我选一家</button>
           </template>
           <template v-else>
@@ -163,8 +163,8 @@
         </div>
       </div>
     </aside>
-    <el-drawer v-else v-model="drawerOpen" direction="btt" size="80%" :with-header="false" class="cp-drawer" append-to-body>
-      <div class="cp-drawer-body">
+    <el-drawer v-else v-model="drawerOpen" direction="btt" size="80%" :with-header="false" class="cp-drawer" :style="drawerStyle" append-to-body>
+      <div class="cp-drawer-body" @focusin="revealFocused">
         <button type="button" class="cp-drawer-close" aria-label="关闭" @click="drawerOpen = false">×</button>
         <ShopDetail
           v-if="selectedShop"
@@ -296,6 +296,8 @@ const drawn = computed(() => (drawnId.value ? catalog.value.find(drawnId.value) 
 const rolling = ref(false);
 const rollingName = ref("");
 let rollTimer: ReturnType<typeof setTimeout> | null = null;
+/** 这次打开页面以来抽到的店，最近的在前。 */
+const recentDraws: string[] = [];
 
 function prefersReducedMotion() {
   try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
@@ -303,8 +305,10 @@ function prefersReducedMotion() {
 
 function draw() {
   const pool = result.value.candidates;
-  const picked = pickShop(pool, ratings.value, filters.preferRated, drawn.value?.id);
+  const picked = pickShop(pool, ratings.value, filters.preferRated, recentDraws);
   if (!picked) return;
+  recentDraws.unshift(picked.id);
+  recentDraws.splice(5);
   if (rollTimer) clearTimeout(rollTimer);
   const finish = () => {
     rolling.value = false;
@@ -412,6 +416,24 @@ const selectedShop = computed(() => (selectedId.value ? catalog.value.find(selec
 const missingShop = computed(() => Boolean(selectedId.value && !selectedShop.value));
 const drawerOpen = ref(false);
 
+/* 手机键盘弹出时，可见区域变矮；抽屉跟着抬到键盘上方并缩短，输入框滚进可见范围。 */
+const keyboardInset = ref(0);
+const drawerStyle = computed(() => keyboardInset.value > 0
+  ? { bottom: `${keyboardInset.value}px`, maxHeight: `calc(100% - ${keyboardInset.value}px - 12px)` }
+  : undefined);
+function updateKeyboardInset() {
+  const viewport = window.visualViewport;
+  if (!viewport) return;
+  const covered = window.innerHeight - viewport.height - viewport.offsetTop;
+  keyboardInset.value = covered > 80 ? Math.round(covered) : 0;
+}
+function revealFocused(event: FocusEvent) {
+  const target = event.target as HTMLElement | null;
+  if (!target || !/^(TEXTAREA|INPUT)$/.test(target.tagName)) return;
+  // 等键盘把可见区域缩完再滚。
+  for (const delay of [120, 360]) setTimeout(() => target.scrollIntoView({ block: "nearest" }), delay);
+}
+
 function openDetail(id: string) {
   selectedId.value = id;
   if (!isWide.value) drawerOpen.value = true;
@@ -484,6 +506,8 @@ onMounted(async () => {
     updateWide();
     wideQuery.addEventListener("change", updateWide);
   } catch { /* 老浏览器按窄屏处理 */ }
+  window.visualViewport?.addEventListener("resize", updateKeyboardInset);
+  window.visualViewport?.addEventListener("scroll", updateKeyboardInset);
   await loadCatalog();
   await loadSummary();
   const shared = typeof route.query.shop === "string" ? route.query.shop : "";
@@ -498,6 +522,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   wideQuery?.removeEventListener("change", updateWide);
+  window.visualViewport?.removeEventListener("resize", updateKeyboardInset);
+  window.visualViewport?.removeEventListener("scroll", updateKeyboardInset);
   if (rollTimer) clearTimeout(rollTimer);
   if (pollTimer) clearInterval(pollTimer);
   followUps.forEach(clearTimeout);
@@ -506,10 +532,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.cp { display: grid; gap: 12px; color: var(--cpu-text); }
+.cp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; color: var(--cpu-text); }
 .cp.is-wide { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
-.cp-main { display: grid; gap: 12px; min-width: 0; }
-.cp-card { padding: 14px 16px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.cp-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.cp-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
 
 .cp-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 999px; background: var(--cpu-surface-subtle); justify-self: start; }
 .cp-tabs button { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--cpu-text-secondary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-m); }
@@ -525,7 +551,7 @@ onBeforeUnmount(() => {
 .cp-label { flex-shrink: 0; width: 28px; padding-top: 5px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .cp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .cp-chip { height: 28px; padding: 0 10px; border: 1px solid var(--cpu-border-soft); border-radius: 999px; background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-s); }
-.cp-chip:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); }
+@media (hover: hover) { .cp-chip:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); } }
 .cp-chip.is-on { border-color: var(--cpu-primary); background: var(--cpu-primary); color: var(--cpu-on-primary); }
 .cp-row--tools { flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 4px; }
 .cp-search { flex: 1 1 180px; min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--cpu-border); border-radius: var(--cpu-radius-m); background: var(--cpu-surface); color: var(--cpu-text); font: inherit; font-size: var(--cpu-fs-s); }
@@ -547,8 +573,10 @@ onBeforeUnmount(() => {
 .cp-draw-score { margin: 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .cp-draw-score b { color: var(--cpu-hue-amber-ink); }
 .cp-draw-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
-.cp-btn { height: 32px; padding: 0 14px; border: 1px solid var(--cpu-border); border-radius: 999px; background: var(--cpu-card); color: var(--cpu-text); cursor: pointer; font: inherit; font-size: var(--cpu-fs-m); }
-.cp-btn:hover:not(:disabled) { border-color: var(--cpu-primary); color: var(--cpu-primary); }
+.cp-btn { flex-shrink: 0; height: 32px; padding: 0 14px; white-space: nowrap; border: 1px solid var(--cpu-border); border-radius: 999px; background: var(--cpu-card); color: var(--cpu-text); cursor: pointer; font: inherit; font-size: var(--cpu-fs-m); }
+@media (hover: hover) {
+  .cp-btn:not(.is-primary):hover:not(:disabled) { border-color: var(--cpu-primary); color: var(--cpu-primary); }
+}
 .cp-btn:disabled { color: var(--cpu-text-muted); cursor: not-allowed; }
 .cp-btn.is-primary { border-color: var(--cpu-primary); background: var(--cpu-primary); color: var(--cpu-on-primary); font-weight: 600; }
 .cp-btn.is-primary:hover:not(:disabled) { background: var(--cpu-primary-dark); color: var(--cpu-on-primary); }
@@ -557,6 +585,7 @@ onBeforeUnmount(() => {
 
 .cp-history header, .cp-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cp-history h3, .cp-list-head h3 { margin: 0; font-size: var(--cpu-fs-m); }
+.cp-list-head > div { min-width: 0; }
 .cp-list-head p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.6; }
 .cp-history ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
 .cp-history li button { display: inline-flex; align-items: baseline; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--cpu-border-soft); border-radius: 999px; background: var(--cpu-surface-soft); color: var(--cpu-text); cursor: pointer; font: inherit; font-size: var(--cpu-fs-s); }
@@ -578,12 +607,12 @@ onBeforeUnmount(() => {
 .cp-list :deep(.cp-shop-score) { grid-area: score; align-self: center; padding-left: 8px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; }
 .cp-list :deep(.cp-shop-score b) { color: var(--cpu-hue-amber-ink); font-size: var(--cpu-fs-s); }
 .cp-list :deep(.cp-shop-toggle) { flex-shrink: 0; height: 24px; padding: 0 8px; border: 1px solid var(--cpu-border-soft); border-radius: 999px; background: transparent; color: var(--cpu-text-muted); cursor: pointer; font: inherit; font-size: var(--cpu-fs-xs); }
-.cp-list :deep(.cp-shop-toggle:hover) { border-color: var(--cpu-text-muted); color: var(--cpu-text); }
+@media (hover: hover) { .cp-list :deep(.cp-shop-toggle:hover) { border-color: var(--cpu-text-muted); color: var(--cpu-text); } }
 .cp-list :deep(.cp-shop.is-excluded .cp-shop-main) { opacity: .45; }
 .cp-list :deep(.cp-shop.is-excluded .cp-shop-name) { text-decoration: line-through; }
 .cp-list :deep(.cp-shop.is-excluded .cp-shop-toggle) { border-color: var(--cpu-primary); color: var(--cpu-primary); }
 
-.cp-corrections { display: grid; gap: 12px; }
+.cp-corrections { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .cp-corrections .cp-list-head { align-items: flex-start; }
 
 .cp-side { position: sticky; top: 76px; min-width: 0; }
@@ -601,4 +630,13 @@ onBeforeUnmount(() => {
   .cp-row--tools { flex-direction: row; }
   .cp-draw-name { font-size: 28px; }
 }
+/* iOS 输入框字号小于 16px 时聚焦会把整页放大。 */
+@media (pointer: coarse) {
+  .cp-search { font-size: 16px; }
+}
+</style>
+
+<style>
+/* 抽屉挂在 body 上，不在本组件的作用域里。 */
+.cp-drawer .el-drawer__body { overflow-y: auto; overscroll-behavior: contain; }
 </style>

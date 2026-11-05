@@ -136,9 +136,9 @@ defineExpose({ load });
 </script>
 
 <style scoped>
-.cc-list { display: grid; gap: 8px; }
+.cc-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .cc-empty { margin: 0; padding: 12px 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
-.cc-item { padding: 10px 12px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-m); background: var(--cpu-card); }
+.cc-item { min-width: 0; padding: 10px 12px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-m); background: var(--cpu-card); }
 .cc-item.is-dismissed, .cc-item.is-rejected, .cc-item.is-reverted { opacity: .7; }
 .cc-item header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cc-kind { padding: 1px 6px; border-radius: var(--cpu-radius-s); background: var(--cpu-hue-amber-bg); color: var(--cpu-hue-amber-ink); font-size: var(--cpu-fs-xs); font-weight: 600; }
@@ -148,18 +148,28 @@ defineExpose({ load });
 .cc-content { margin: 6px 0 0; font-size: var(--cpu-fs-s); line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
 .cc-note { margin: 6px 0 0; padding: 6px 8px; border-radius: var(--cpu-radius-s); background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 .cc-note b { margin-right: 6px; color: var(--cpu-text); }
-.cc-item footer { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.cc-item footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; }
 .cc-meta { flex: 1; min-width: 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-progress { width: 56px; height: 4px; border-radius: 999px; background: var(--cpu-surface-subtle); overflow: hidden; }
 .cc-progress i { display: block; height: 100%; background: var(--cpu-primary); }
 .cc-count { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; }
-.cc-vote { min-width: 40px; height: 26px; padding: 0 8px; border: 1px solid var(--cpu-border); border-radius: 999px; background: transparent; color: var(--cpu-text-secondary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-xs); }
-.cc-vote:hover:not(:disabled) { border-color: var(--cpu-primary); color: var(--cpu-primary); }
-.cc-vote.is-on { border-color: var(--cpu-primary); background: var(--cpu-primary); color: var(--cpu-on-primary); }
-.cc-vote.is-no.is-on { border-color: var(--cpu-text-muted); background: var(--cpu-text-muted); color: var(--cpu-card); }
+.cc-vote { flex-shrink: 0; min-width: 44px; height: 28px; padding: 0 10px; white-space: nowrap; border: 1px solid var(--cpu-border); border-radius: 999px; background: transparent; color: var(--cpu-text-secondary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-xs); }
+/* 触屏上点过的按钮会一直停在 hover，所以悬停样式只给鼠标，选中样式写死前景色。 */
+@media (hover: hover) {
+  .cc-vote:hover:not(:disabled):not(.is-on) { border-color: var(--cpu-primary); color: var(--cpu-primary); }
+}
+.cc-vote.is-on, .cc-vote.is-on:hover { border-color: var(--cpu-primary); background: var(--cpu-primary); color: var(--cpu-on-primary); font-weight: 600; }
+.cc-vote.is-no.is-on, .cc-vote.is-no.is-on:hover { border-color: var(--cpu-text-muted); background: var(--cpu-text-muted); color: var(--cpu-card); }
 .cc-vote:disabled { opacity: .6; cursor: wait; }
 .cc-mine { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
 .cc-admin { display: flex; gap: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--cpu-border-soft); }
 .cc-link { padding: 0; border: 0; background: none; color: var(--cpu-primary); cursor: pointer; font: inherit; font-size: var(--cpu-fs-xs); }
 .cc-link.is-danger { color: var(--cpu-danger); }
+
+/* 窄屏：作者和时间单独一行，投票条和按钮放下一行。 */
+@media (max-width: 560px) {
+  .cc-meta { flex-basis: 100%; }
+  .cc-progress { flex: 1; width: auto; }
+  .cc-item header { gap: 4px 6px; }
+}
 </style>

@@ -159,18 +159,33 @@ export function secureRandom() {
   }
 }
 
-/** 按权重抽一家；有多家可选时不会连续抽到同一家。 */
+/** 最近几次抽到的店先不再出；候选少时少避几家，避免变成固定顺序。 */
+export function recentDrawLimit(poolSize: number) {
+  return Math.min(5, Math.floor(poolSize / 2));
+}
+
+/**
+ * 按权重抽一家：先让参加抽签的每个食堂机会相等，再在食堂里按店平分
+ * （不然店多的二食堂会占六成以上）；最近抽到过的几家先跳过。
+ */
 export function pickShop(
   candidates: CanteenShop[],
   ratings: RatingMap,
   preferRated: boolean,
-  previousId?: string | null,
+  recentIds: string | null | readonly string[] = [],
   random: () => number = secureRandom,
 ) {
   let pool = candidates;
-  if (pool.length > 1 && previousId) pool = pool.filter((shop) => shop.id !== previousId);
+  const recent = typeof recentIds === "string" ? [recentIds] : recentIds ?? [];
+  const avoid = new Set(recent.slice(0, Math.max(1, recentDrawLimit(pool.length))));
+  if (pool.length > 1 && avoid.size) {
+    const fresh = pool.filter((shop) => !avoid.has(shop.id));
+    if (fresh.length) pool = fresh;
+  }
   if (!pool.length) return null;
-  const weights = pool.map((shop) => shopWeight(ratings[shop.id], preferRated));
+  const perCanteen = new Map<string, number>();
+  for (const shop of pool) perCanteen.set(shop.canteenId, (perCanteen.get(shop.canteenId) ?? 0) + 1);
+  const weights = pool.map((shop) => shopWeight(ratings[shop.id], preferRated) / perCanteen.get(shop.canteenId)!);
   const total = weights.reduce((sum, value) => sum + value, 0);
   let target = random() * total;
   for (let index = 0; index < pool.length; index += 1) {

@@ -59,6 +59,26 @@ test("draws never repeat the previous shop and weight high ratings only when ask
   assert.ok(shopWeight({ average: 5, count: 1 }, true) < shopWeight({ average: 5, count: 40 }, true));
 });
 
+test("each canteen gets an equal chance and recent picks are skipped", () => {
+  const pool = BASE_CANTEEN_INDEX.shops;
+  let seed = 7;
+  const random = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const counts = new Map<string, number>();
+  const runs = 20000;
+  for (let i = 0; i < runs; i += 1) {
+    const id = pickShop(pool, {}, false, [], random)!.canteenId;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  for (const value of counts.values()) assert.ok(Math.abs(value / runs - 0.5) < 0.02, `canteen share ${value / runs}`);
+  const recent = pool.slice(0, 5).map((shop) => shop.id);
+  for (let i = 0; i < 200; i += 1) assert.ok(!recent.includes(pickShop(pool, {}, false, recent, random)!.id));
+  // With four shops only the last two are held back, so the draw never becomes a fixed rotation.
+  const small = pool.slice(0, 4);
+  const seen = new Set<string>();
+  for (let i = 0; i < 200; i += 1) seen.add(pickShop(small, {}, false, [small[0].id, small[1].id, small[2].id], random)!.id);
+  assert.deepEqual([...seen].sort(), [small[2].id, small[3].id].sort());
+});
+
 test("saved settings survive reloads and invalid values are dropped", () => {
   const raw = JSON.stringify({
     filters: { canteens: ["canteen-1", "nope"], levels: [2, 9], categories: ["noodle", "bad"], query: "面", minRating: 4, avoidDays: 3, preferRated: true },
