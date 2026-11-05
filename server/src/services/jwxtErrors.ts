@@ -20,7 +20,34 @@ const SITE_AUTH_MESSAGES = new Set([
 ]);
 const UPSTREAM_STATUS = /^教务请求失败 \((401|403)\)$/u;
 
+/** 连不上学校：Node fetch 的网络错误。 */
+export const JWXT_UPSTREAM_UNREACHABLE_CODE = 5022;
+/** 学校回了认不出来的东西：维护页、拦截页当成 JSON 解析，或换票页里没有跳转地址。 */
+export const JWXT_UPSTREAM_UNREADABLE_CODE = 5023;
+const UPSTREAM_UNREACHABLE = /^fetch failed$|^socket hang up$|^other side closed$|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_/u;
+const UPSTREAM_UNREADABLE = /is not valid JSON|^Unexpected (token|end of JSON)|^教务未返回统一认证跳转地址$/u;
+
+/**
+ * 学校那头的临时故障原样抛上来就成了 500，客户端当成我们自己的错误。
+ * 本机抛的原始错误和 Agent 转回来的 500 都在这里改成 502。
+ */
+function classifyUpstreamFailure(error: unknown) {
+  const raw = error instanceof HttpError
+    ? (error.status === 500 ? error.message : "")
+    : (error instanceof Error ? error.message : "");
+  if (!raw) return null;
+  if (UPSTREAM_UNREACHABLE.test(raw)) {
+    return new HttpError(502, JWXT_UPSTREAM_UNREACHABLE_CODE, "暂时连不上学校教务系统，请稍后重试");
+  }
+  if (UPSTREAM_UNREADABLE.test(raw)) {
+    return new HttpError(502, JWXT_UPSTREAM_UNREADABLE_CODE, "学校教务系统暂时返回了无法识别的页面，请稍后重试");
+  }
+  return null;
+}
+
 export function classifyJwxtError(error: unknown): unknown {
+  const upstream = classifyUpstreamFailure(error);
+  if (upstream) return upstream;
   if (!(error instanceof HttpError) || error.status !== 401) return error;
   if (SITE_AUTH_MESSAGES.has(error.message)) return error;
   if (UPSTREAM_STATUS.test(error.message)) {

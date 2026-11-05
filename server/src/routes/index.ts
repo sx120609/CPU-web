@@ -15,6 +15,7 @@ import { messageRouter } from "./message";
 import { searchRouter } from "./search";
 import { jwxtRouter, markJwxtSessionUpstreamExpired } from "./jwxt";
 import { JWXT_AUTH_EXPIRED_CODE, classifyJwxtError, recordJwxtOutcome } from "../services/jwxtErrors";
+import { jwxtRecoveryPersonKey, noteJwxtAuthExpired } from "../services/jwxtRecoveryStats";
 import { HttpError } from "../utils/response";
 import { adminRouter } from "./admin";
 import { siteRouter } from "./site";
@@ -74,6 +75,7 @@ function jwxtErrorMapper(error: unknown, req: Request, res: Response, next: Next
   const mapped = classifyJwxtError(error);
   if (mapped instanceof Error) res.locals.jwxtErrorMessage = mapped.message;
   if (mapped instanceof HttpError && mapped.code === JWXT_AUTH_EXPIRED_CODE) {
+    noteJwxtAuthExpired(jwxtRecoveryPersonKey(req));
     void markJwxtSessionUpstreamExpired(req).finally(() => next(mapped));
     return;
   }

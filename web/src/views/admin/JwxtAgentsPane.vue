@@ -210,6 +210,35 @@
         </div>
         <el-button size="small" :loading="errorsLoading" @click="loadErrors">刷新</el-button>
       </div>
+      <div v-if="recovery" class="recovery">
+        <p class="recovery-title">
+          授权失效后恢复了没有
+          <span>按人计，同一人一阵子里的多个失效请求算一次；{{ recovery.windowMinutes }} 分钟内学校登录成功算恢复</span>
+        </p>
+        <p v-if="!recovery.episodes" class="error-empty">这段时间没有人遇到授权失效。</p>
+        <dl v-else class="recovery-grid">
+          <div>
+            <dt>失效</dt>
+            <dd><b>{{ recovery.episodes }}</b> 次 · {{ recovery.people }} 人<template v-if="recovery.pending"> · {{ recovery.pending }} 次还在等结果</template></dd>
+          </div>
+          <div>
+            <dt>已恢复</dt>
+            <dd>
+              <b>{{ recovery.recovered }}</b><template v-if="settledCount">（{{ percentOf(recovery.recovered, settledCount) }}）</template>
+              · 10 秒内 {{ recovery.recoveryDelays.under10s }} · 1 分钟内 {{ recovery.recoveryDelays.under1m }} · 5 分钟内 {{ recovery.recoveryDelays.under5m }} · 更久 {{ recovery.recoveryDelays.under15m }}
+            </dd>
+          </div>
+          <div>
+            <dt>没恢复</dt>
+            <dd :class="{ 'recovery-bad': recovery.unrecovered > 0 }">
+              <b>{{ recovery.unrecovered }}</b>
+              <template v-if="recovery.unrecovered">
+                · 没有尝试登录 {{ recovery.unrecoveredReasons.noAttempt }} · 学校要验证码 {{ recovery.unrecoveredReasons.captcha }} · 要扫码验证 {{ recovery.unrecoveredReasons.mfa }} · 账号或密码被拒 {{ recovery.unrecoveredReasons.failed }} · 登录请求出错 {{ recovery.unrecoveredReasons.error }}
+              </template>
+            </dd>
+          </div>
+        </dl>
+      </div>
       <p v-if="errorStats && !errorStats.kinds.length" class="error-empty">这段时间没有出错。</p>
       <ul v-else-if="errorStats" class="error-list">
         <li v-for="kind in errorStats.kinds" :key="`${kind.status}-${kind.code}-${kind.message}`">
@@ -393,6 +422,13 @@ async function load() {
 
 const errorStats = ref<JwxtErrorStats | null>(null);
 const errorsLoading = ref(false);
+// 旧服务端没有这一项。
+const recovery = computed(() => errorStats.value?.recovery ?? null);
+const settledCount = computed(() => (recovery.value ? recovery.value.recovered + recovery.value.unrecovered : 0));
+
+function percentOf(part: number, whole: number) {
+  return `${Math.round((part / whole) * 100)}%`;
+}
 
 async function loadErrors() {
   errorsLoading.value = true;
@@ -409,6 +445,8 @@ function errorKindLabel(kind: JwxtErrorStats["kinds"][number]) {
   if (kind.code === 4011) return "授权失效";
   if (kind.code === 4001) return "站内登录";
   if (kind.code === 5021) return "学校拒绝";
+  if (kind.code === 5022) return "连不上学校";
+  if (kind.code === 5023) return "学校页面异常";
   if (kind.status === 504) return "超时";
   if (kind.status === 503) return "暂不可用";
   if (kind.status >= 500) return "服务出错";
@@ -623,6 +661,16 @@ onMounted(load);
 
 <style scoped>
 .error-card { padding: 18px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: var(--cpu-surface); }
+.recovery { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: var(--cpu-surface-soft); }
+.recovery-title { margin: 0; color: var(--cpu-text); font-size: 13px; font-weight: 600; }
+.recovery-title span { margin-left: 8px; color: var(--cpu-text-secondary); font-size: 12px; font-weight: 400; }
+.recovery .error-empty { margin-top: 8px; }
+.recovery-grid { display: grid; gap: 6px; margin: 10px 0 0; }
+.recovery-grid div { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.recovery-grid dt { color: var(--cpu-text-secondary); font-size: 12px; }
+.recovery-grid dd { margin: 0; color: var(--cpu-text); font-size: 13px; overflow-wrap: anywhere; }
+.recovery-grid dd b { font-variant-numeric: tabular-nums; }
+.recovery-grid dd.recovery-bad b { color: var(--el-color-danger); }
 .error-empty { margin: 12px 0 0; color: var(--cpu-text-secondary); font-size: 13px; }
 .error-list { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
 .error-list li { display: grid; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid var(--cpu-border-soft); }

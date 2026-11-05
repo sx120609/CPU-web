@@ -1,3 +1,4 @@
+
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
@@ -27,6 +28,12 @@ import { requestCancellation } from "../utils/requestCancellation";
 import { findSchool, getSchool } from "../schools/registry";
 import { requestSchoolId } from "../schools/modules";
 import { schoolMfaGuideForToken } from "../schools/drivers";
+import {
+  jwxtRecoveryKeyForUser,
+  jwxtRecoveryPersonKey,
+  noteJwxtLoginOutcome,
+  schoolLoginFailureOutcome,
+} from "../services/jwxtRecoveryStats";
 
 export const authRouter = Router();
 
@@ -191,6 +198,7 @@ authRouter.post(
   })),
   async (req, res, next) => {
     const cancellation = requestCancellation(req, res);
+    const recoveryKey = jwxtRecoveryPersonKey(req);
     try {
       let { pendingId } = req.body;
       const { username, password, captcha, credentials, remember } = req.body;
@@ -202,6 +210,7 @@ authRouter.post(
         if (credentials) throw Errors.badRequest("加密登录会话已失效，请刷新后重试");
         const fresh = await beginLogin(cancellation.signal, requestedSchoolId);
         if (fresh.needCaptcha) {
+          noteJwxtLoginOutcome(recoveryKey, "captcha");
           return ok(res, {
             ok: false,
             error: "登录会话已刷新，请输入验证码",
@@ -217,9 +226,15 @@ authRouter.post(
       const r = credentials
         ? await submitLogin({ pendingId, credentials }, cancellation.signal)
         : await submitLogin({ pendingId, username, password, captcha }, cancellation.signal);
-      if (!r.ok || !r.token) return ok(res, failedSchoolLogin(r));
+      if (!r.ok || !r.token) {
+        noteJwxtLoginOutcome(recoveryKey, schoolLoginFailureOutcome(r));
+        return ok(res, failedSchoolLogin(r));
+      }
       await completeSchoolLogin(req, res, { token: r.token, studentId: String(r.authenticatedUsername || username || "").trim(), remember });
-    } catch (e) { next(e); } finally { cancellation.dispose(); }
+    } catch (e) {
+      noteJwxtLoginOutcome(recoveryKey, "error");
+      next(e);
+    } finally { cancellation.dispose(); }
   }
 );
 
@@ -256,7 +271,10 @@ authRouter.post(
       const result = await pollSchoolMfa(req.body.pendingId, cancellation.signal);
       if (result.status !== "done") return ok(res, { ok: false, mfaStatus: result.status });
       const r = result.attempt;
-      if (!r.ok || !r.token) return ok(res, { ...failedSchoolLogin(r), mfaStatus: "failed" });
+      if (!r.ok || !r.token) {
+        noteJwxtLoginOutcome(jwxtRecoveryPersonKey(req), schoolLoginFailureOutcome(r));
+        return ok(res, { ...failedSchoolLogin(r), mfaStatus: "failed" });
+      }
       await completeSchoolLogin(req, res, { token: r.token, studentId: String(r.authenticatedUsername || "").trim(), remember: req.body.remember });
     } catch (e) { next(e); } finally { cancellation.dispose(); }
   },
@@ -347,6 +365,7 @@ async function completeSchoolLogin(req: Request, res: Response, input: { token: 
     await scheduleWidgetSessions.recordLogin(user.id, studentId, token).catch(() => {
       console.warn("[schedule-widget] 登录成功，小组件会话同步暂时失败");
     });
+    noteJwxtLoginOutcome(jwxtRecoveryKeyForUser(user.id), "ok");
     ok(res, {
       ok: true,
       sessionAuthenticated: true,
@@ -358,6 +377,7 @@ async function completeSchoolLogin(req: Request, res: Response, input: { token: 
     await scheduleWidgetSessions.recordLogin(user.id, studentId, token).catch(() => {
       console.warn("[schedule-widget] 登录成功，小组件会话同步暂时失败");
     });
+    noteJwxtLoginOutcome(jwxtRecoveryKeyForUser(user.id), "ok");
     ok(res, {
       ok: true,
       siteToken,

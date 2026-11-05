@@ -1389,6 +1389,18 @@ export interface JwxtErrorStats {
     lastAt: string;
     paths: Array<{ path: string; count: number }>;
   }>;
+  /** 授权失效后有没有恢复；旧服务端没有。 */
+  recovery?: {
+    windowMinutes: number;
+    people: number;
+    episodes: number;
+    recovered: number;
+    unrecovered: number;
+    pending: number;
+    loginAttempts: number;
+    unrecoveredReasons: { noAttempt: number; captcha: number; mfa: number; failed: number; error: number };
+    recoveryDelays: { under10s: number; under1m: number; under5m: number; under15m: number };
+  };
 }
 
 export type SchoolModuleIsolation = "school" | "global" | "pending";

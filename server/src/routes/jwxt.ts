@@ -64,6 +64,7 @@ import {
 import { requestSchoolId } from "../schools/modules";
 import { getSchool } from "../schools/registry";
 import { schoolMfaGuideForToken } from "../schools/drivers";
+import { jwxtRecoveryPersonKey, noteJwxtLoginOutcome, schoolLoginFailureOutcome } from "../services/jwxtRecoveryStats";
 
 export const jwxtRouter = Router();
 
@@ -630,12 +631,14 @@ jwxtRouter.post(
     captcha: z.string().optional(),
   })),
   async (req, res, next) => {
+    const recoveryKey = jwxtRecoveryPersonKey(req);
     try {
       const schoolId = requestSchoolId(req);
       let pendingId = String(req.body.pendingId || "");
       if (pendingId.length < 8) {
         const fresh = await beginLogin(undefined, schoolId);
         if (fresh.needCaptcha) {
+          noteJwxtLoginOutcome(recoveryKey, "captcha");
           return ok(res, {
             ok: false,
             error: "登录会话已刷新，请输入验证码",
@@ -649,10 +652,13 @@ jwxtRouter.post(
       if (r.ok) {
         if (req.browserSession && isCookieAuthRequest(req)) {
           await updateBrowserSession(req, res, { jwxtToken: r.token });
+          noteJwxtLoginOutcome(recoveryKey, "ok");
           return ok(res, { ok: true, sessionAuthenticated: true });
         }
+        noteJwxtLoginOutcome(recoveryKey, "ok");
         return ok(res, { token: r.token });
       }
+      noteJwxtLoginOutcome(recoveryKey, schoolLoginFailureOutcome(r));
       // 失败：可能是要重新输验证码，有的学校新设备还要扫码二次验证（走 /auth/sso-mfa）。
       const mfa = r.needMfa && r.mfa ? { needMfa: true, mfa: { ...r.mfa, guide: schoolMfaGuideForToken(r.mfa.pendingId) } } : {};
       return ok(res, {

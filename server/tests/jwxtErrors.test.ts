@@ -4,6 +4,8 @@ import { HttpError, Errors } from "../src/utils/response";
 import {
   JWXT_AUTH_EXPIRED_CODE,
   JWXT_UPSTREAM_REFUSED_CODE,
+  JWXT_UPSTREAM_UNREACHABLE_CODE,
+  JWXT_UPSTREAM_UNREADABLE_CODE,
   classifyJwxtError,
   jwxtErrorStats,
   normalizeJwxtErrorMessage,
@@ -41,6 +43,28 @@ test("the school refusing a request is not a login expiry", () => {
     assert.equal(result.code, JWXT_UPSTREAM_REFUSED_CODE);
     assert.doesNotMatch(result.message, /失效|重新登录|重新授权/u);
   }
+});
+
+test("school-side network failures and unreadable pages become 502, not our own 500", () => {
+  const cases: Array<[unknown, number]> = [
+    [new TypeError("fetch failed"), JWXT_UPSTREAM_UNREACHABLE_CODE],
+    [new HttpError(500, 5000, "fetch failed"), JWXT_UPSTREAM_UNREACHABLE_CODE],
+    [Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }), JWXT_UPSTREAM_UNREACHABLE_CODE],
+    [new SyntaxError(`Unexpected token '<', "<HTML><HEA"... is not valid JSON`), JWXT_UPSTREAM_UNREADABLE_CODE],
+    [new HttpError(500, 5000, `Unexpected token '<', "\n<!DOCTYPE "... is not valid JSON`), JWXT_UPSTREAM_UNREADABLE_CODE],
+    [new Error("教务未返回统一认证跳转地址"), JWXT_UPSTREAM_UNREADABLE_CODE],
+  ];
+  for (const [error, code] of cases) {
+    const result = mapped(error);
+    assert.equal(result.status, 502);
+    assert.equal(result.code, code);
+    assert.doesNotMatch(result.message, /失效|重新登录|重新授权/u);
+  }
+  // 我们自己的 502/503 和其他 500 不改。
+  const parse = Errors.badGateway("学校教务暂时没有返回可识别的课表页面");
+  assert.equal(classifyJwxtError(parse), parse);
+  const own = new HttpError(500, 5000, "数据库写入失败");
+  assert.equal(classifyJwxtError(own), own);
 });
 
 test("non-401 errors pass through untouched", () => {
