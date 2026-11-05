@@ -358,7 +358,7 @@ object DormRules {
 
     /** What the invite sends: the code, where to type it, and the link that opens it. */
     fun invitation(code: String, origin: String): String =
-        "来加入我们的宿舍课表吧！宿舍码 $code（24 小时内有效）。在药大拾间「课表 → 更多 → 宿舍课表」里输入，" +
+        "来加入我们的宿舍课表吧！宿舍码 $code（24 小时内有效）。在拾间校园「课表 → 更多 → 宿舍课表」里输入，" +
             "或者打开 ${origin.trimEnd('/')}/schedule?dorm=1&code=$code 就能加入。"
 }
 

@@ -73,7 +73,7 @@ final class ApkUpdateController {
             cleanupCache();
             String name = sanitizeName(fileName);
             DownloadManager.Request request = new DownloadManager.Request(uri);
-            request.setTitle("药大拾间客户端更新");
+            request.setTitle("拾间校园客户端更新");
             request.setDescription("下载完成后可返回拾间继续安装");
             request.setMimeType("application/vnd.android.package-archive");
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);

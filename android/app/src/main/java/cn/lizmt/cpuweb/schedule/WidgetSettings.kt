@@ -245,7 +245,7 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
-                    if (!widgets.pin(selected)) activity.toast("请长按桌面空白处，在小组件里找到“药大拾间”的课表")
+                    if (!widgets.pin(selected)) activity.toast("请长按桌面空白处，在小组件里找到“拾间校园”的课表")
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
             ) { Text("添加“${selected.title} ${selected.size}”到桌面") }
@@ -270,7 +270,7 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
         }
         WidgetReliabilitySection(activity)
         Spacer(Modifier.height(14.dp))
-        Text("也可以长按桌面空白处，在“小组件”里找到“药大拾间”拖到桌面。",
+        Text("也可以长按桌面空白处，在“小组件”里找到“拾间校园”拖到桌面。",
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

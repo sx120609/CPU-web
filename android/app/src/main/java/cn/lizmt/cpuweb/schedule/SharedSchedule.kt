@@ -324,7 +324,7 @@ data class SharedSchedule(
 
         /** What the share sheet sends: the code, where to type it, and the link that opens it in a browser. */
         fun invitation(code: String, origin: String): String =
-            "我的课表分享码：$code\n在药大拾间「课表 → 更多 → 共享课表」里输入就能看，也可以直接打开：${origin.trimEnd('/')}/schedule/share/$code"
+            "我的课表分享码：$code\n在拾间校园「课表 → 更多 → 共享课表」里输入就能看，也可以直接打开：${origin.trimEnd('/')}/schedule/share/$code"
 
         /** "更新于 10月7日" from the server's ISO timestamp, in Beijing time. */
         fun updatedText(value: String): String? {

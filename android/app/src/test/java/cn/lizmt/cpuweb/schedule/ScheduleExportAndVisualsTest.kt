@@ -58,7 +58,7 @@ class ScheduleExportAndVisualsTest {
     @Test
     fun sharedTextListsTheSelectedWeek() {
         val text = ScheduleExport.text(loadedStore(withDates = true))
-        assertTrue(text.startsWith("药大拾间 · 2026-2027-1 第 2 周"))
+        assertTrue(text.startsWith("拾间校园 · 2026-2027-1 第 2 周"))
         assertTrue(text.contains("08:00–09:40 药物化学"))
     }
 

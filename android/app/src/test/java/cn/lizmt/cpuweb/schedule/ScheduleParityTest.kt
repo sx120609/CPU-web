@@ -691,7 +691,7 @@ class ScheduleParityTest {
     @Test
     fun theInvitationCarriesTheCodeAndTheLink() {
         assertEquals(
-            "我的课表分享码：ABCD2345\n在药大拾间「课表 → 更多 → 共享课表」里输入就能看，也可以直接打开：https://cputime.cn/schedule/share/ABCD2345",
+            "我的课表分享码：ABCD2345\n在拾间校园「课表 → 更多 → 共享课表」里输入就能看，也可以直接打开：https://cputime.cn/schedule/share/ABCD2345",
             SharedSchedule.invitation("ABCD2345", "https://cputime.cn/"),
         )
         assertEquals("更新于 10月7日", SharedSchedule.updatedText("2026-10-06T18:30:00.000Z"))

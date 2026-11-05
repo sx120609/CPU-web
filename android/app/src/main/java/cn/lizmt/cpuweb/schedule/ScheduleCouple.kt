@@ -205,7 +205,7 @@ object CoupleRules {
 
     /** What the invite sheet sends: the code, where to type it, and the link that opens the Web page with it filled in. */
     fun invitation(code: String, origin: String): String =
-        "我们来绑定情侣课表吧！邀请码 $code（24 小时内有效）。在药大拾间「课表 → 更多 → 情侣课表」里输入，" +
+        "我们来绑定情侣课表吧！邀请码 $code（24 小时内有效）。在拾间校园「课表 → 更多 → 情侣课表」里输入，" +
             "或者打开 ${origin.trimEnd('/')}/schedule?couple=1&code=$code 就能绑定。"
 }
 
