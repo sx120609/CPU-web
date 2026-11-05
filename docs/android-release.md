@@ -42,13 +42,13 @@ node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/verif
 
 ## 旧版强制更新期限
 
-`server/src/releases/android-update-policy.json` 定义本轮更新要求：Android V62（4.0.21）为最低受支持版本，所有更旧客户端共用 7 天（168 小时）期限，提示要求用户更新至当前已发布的最新版。上一轮是 2026-10 的 `android-security-v59`（V59，72 小时）。
+`server/src/releases/android-update-policy.json` 定义本轮更新要求：Android V59（4.0.18）为最低受支持版本，所有更旧客户端共用 72 小时期限。新版修复了大量 Bug 和安全问题，提示要求用户更新至当前已发布的最新版。
 
-服务首次启动此规则时，将起始时间写入已有 `SiteSetting` 表的 `android-update.<campaign>.starts-at`（本轮为 `android-update.android-v62.starts-at`），在接收请求前完成初始化。截止时间为该时间加 `gracePeriodHours`；重启、再次部署、设备重装或清除缓存均不延长期限，无需数据库结构迁移。后续普通版本发布不自动提高此轮最低版本或重开期限；要开新一轮，就在发布清单提升的同一提交里换一个新的 `campaign`、提高 `minimumVersionCode`（不能高于已发布版本，否则服务启动时报错）并设定 `gracePeriodHours`，期限从部署后服务首次启动这条规则时起算。
+服务首次启动此规则时，将起始时间写入已有 `SiteSetting` 表的 `android-update.android-security-v59.starts-at`，在接收请求前完成初始化。截止时间为该时间加 72 小时；重启、再次部署、设备重装或清除缓存均不延长期限，无需数据库结构迁移。后续普通版本发布不自动提高此轮最低版本或重开期限。
 
 版本接口返回 `updateRequirement` 和 `serverTime`，并禁止缓存。旧版在期限内可稍后更新；到期后弹窗不能通过“稍后”、遮罩或返回键关闭，安装、浏览器下载与复制链接仍可使用。网页以服务端时间和单调时钟判断截止时间，并在回到前台时重新检查。旧域名上的 2.x 客户端也显示本轮必需更新提示。
 
-服务端根据原生 `CPUWebScheduleApp/<versionCode>` UA 拦截到期旧版的 `/api` 请求，返回 HTTP 426 / `code: 4260`。版本查询、APK 下载、页面启动配置、健康检查、退出登录和隐私操作保留访问；网页、iOS、鸿蒙及达到最低版本的安卓客户端不受限制。此规则限制在线接口和更新弹窗，不能远程删除旧 APK 已缓存的离线课表，也不把 UA 视为可信设备认证。网页与服务端部署后生效，规则本身不需要重新签名或上传安装包。
+服务端根据原生 `CPUWebScheduleApp/<versionCode>` UA 拦截到期旧版的 `/api` 请求，返回 HTTP 426 / `code: 4260`。版本查询、APK 下载、页面启动配置、健康检查、退出登录和隐私操作保留访问；网页、iOS、鸿蒙及 V59 以上不受限制。此规则限制在线接口和更新弹窗，不能远程删除旧 APK 已缓存的离线课表，也不把 UA 视为可信设备认证。网页与服务端部署后生效，现有 V59 安装包无需重新签名或上传。
 
 ## 更新恢复行为
 

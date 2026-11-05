@@ -13,7 +13,7 @@ import java.util.TimeZone
  */
 object ScheduleExport {
     fun text(store: ScheduleStore): String {
-        val lines = mutableListOf("拾间校园 · ${store.semesterTitle()} 第 ${store.selectedWeek} 周")
+        val lines = mutableListOf("药大拾间 · ${store.semesterTitle()} 第 ${store.selectedWeek} 周")
         for (day in 1..7) {
             val blocks = store.blocksForDay(day)
             if (blocks.isEmpty()) continue

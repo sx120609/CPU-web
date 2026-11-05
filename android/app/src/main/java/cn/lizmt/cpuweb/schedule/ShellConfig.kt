@@ -10,7 +10,7 @@ import android.net.Uri
  */
 object AppConfig {
     const val PAYMENT_HOST = "pay.kaipay.cn"
-    const val APP_NAME = "拾间校园"
+    const val APP_NAME = "药大拾间"
 
     /**
      * The Web app is loaded at `/home` first. The native timetable is its own

@@ -48,7 +48,7 @@ data class NativeAuthState(
 /** What the Web router says about the visible page, for the native top bar. */
 data class WebHeaderState(
     val path: String = "/home",
-    val title: String = AppConfig.APP_NAME,
+    val title: String = "药大拾间",
     val back: Boolean = false,
     val pageNavigation: Boolean = false,
     val authenticated: Boolean = false,
@@ -333,7 +333,7 @@ class WebSession(
             "header" -> payload.optJSONObject("state")?.let { state ->
                 val next = WebHeaderState(
                     path = state.optString("path", "/home"),
-                    title = state.optString("title", AppConfig.APP_NAME),
+                    title = state.optString("title", "药大拾间"),
                     back = state.optBoolean("back", false),
                     pageNavigation = state.optBoolean("pageNavigation", false),
                     authenticated = state.optBoolean("authenticated", false),

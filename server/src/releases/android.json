@@ -1,34 +1,15 @@
 {
   "schemaVersion": 1,
-  "versionCode": 62,
-  "versionName": "4.0.21",
+  "versionCode": 61,
+  "versionName": "4.0.20",
   "packageName": "cn.lizmt.cpuweb",
-  "fileName": "CPU-Web-Android-V62.apk",
-  "size": 8423714,
-  "sha256": "89c4fd0479328ce29dbd94394ff84cf64e03ed929a0009aec597e2f7815f8f5c",
+  "fileName": "CPU-Web-Android-V61.apk",
+  "size": 12601806,
+  "sha256": "74933de47da50ef103e2950f1eee74ddbaf3abcd1d7172db4cf83117a8aba519",
   "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
-  "sourceCommit": "05200ae3c423243d51cc5349c7b78312abc8755c",
-  "buildRun": 41967043564,
+  "sourceCommit": "5a0125a560cf6f6db3ecf457809f713dd13606b6",
+  "buildRun": 40280947887,
   "notes": [
-    "应用改名为“拾间校园”，桌面图标下的名字随之更新，课表、账号和设置都不受影响。",
-    "以后可以在 App 里直接更新，只下载变化的部分；每次更新前后都会告诉你这次改了什么。",
-    "宿舍课表改成 App 内的原生页面：一周空闲一览、未来七天的共同空闲时段、谁有早八，宿舍码和成员也在这里管理。",
-    "课表的风格、配色、背景、显示和外观合并到一个“课表设置”里，“更多”菜单按用途分组，更清爽。",
-    "登录时可以选择学校，课表和小组件支持一天超过 12 节课。",
-    "桌面小组件跨天不再停在前一天，重启手机或改了时间后也会自动刷新。",
-    "小组件设置里新增“保持小组件准时”，一键打开省电和自启动设置。",
-    "课表格子里的日程改成和当前课表风格一致的样式。",
-    "修复编辑过的课程会和原来的课并排出现两次的问题。",
-    "第一次打开不再卡在启动画面；教务登录过期时自动恢复，不再频繁要求重新授权。",
-    "日程不再在手机通知栏提醒，改为站内通知和微信、QQ 提醒。"
-  ],
-  "patches": [
-    {
-      "fromVersionCode": 61,
-      "fromSha256": "74933de47da50ef103e2950f1eee74ddbaf3abcd1d7172db4cf83117a8aba519",
-      "fileName": "CPU-Web-Android-V61-V62.cpupatch",
-      "size": 3006629,
-      "sha256": "a9de75812849d5a5f9e344ce3e7ffc5c988c0264369a0a3be95af210226042e3"
-    }
+    "日程搬进课表：在课表里直接新建、修改和删除日程，点一下空白的课节就能添加。"
   ]
 }

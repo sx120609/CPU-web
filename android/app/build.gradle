@@ -29,7 +29,7 @@ dependencies {
 def defaultAppUrl = "https://cputime.cn/home"
 def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
 def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb").toString()
-def resolvedAppName = (project.findProperty("appName") ?: "拾间校园").toString()
+def resolvedAppName = (project.findProperty("appName") ?: "药大拾间").toString()
 def releaseStoreFile = (project.findProperty("releaseStoreFile") ?: "").toString()
 def releaseStorePassword = (project.findProperty("releaseStorePassword") ?: "").toString()
 def releaseKeyAlias = (project.findProperty("releaseKeyAlias") ?: "").toString()
@@ -47,8 +47,8 @@ android {
         applicationId resolvedApplicationId
         minSdk 24
         targetSdk 35
-        versionCode 62
-        versionName "4.0.21"
+        versionCode 63
+        versionName "4.0.22"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "boolean", "WEB_DEBUG", (project.findProperty("webDebug") == "true").toString()

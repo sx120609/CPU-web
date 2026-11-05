@@ -338,7 +338,7 @@ private fun NativeTopBar(
             } else {
                 Row(
                     Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onHome).padding(horizontal = 6.dp, vertical = 6.dp)
-                        .semantics { contentDescription = "${AppConfig.APP_NAME}，返回首页" },
+                        .semantics { contentDescription = "药大拾间，返回首页" },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Image(
@@ -352,7 +352,7 @@ private fun NativeTopBar(
                 text = header.title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (!header.back && (header.title == AppConfig.APP_NAME || header.title == "药大拾间")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                color = if (!header.back && header.title == "药大拾间") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 4.dp, end = 4.dp),
@@ -465,7 +465,7 @@ private fun WelcomeScreen(onContinue: () -> Unit) {
             modifier = Modifier.size(112.dp).scale(if (appeared) 1f else 0.9f).clip(RoundedCornerShape(28.dp)),
         )
         Spacer(Modifier.height(24.dp))
-        Text(AppConfig.APP_NAME, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text("药大拾间", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(9.dp))
         Text("你的校园信息助手", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(6.dp))
@@ -493,7 +493,7 @@ private fun LaunchWaiting() {
             modifier = Modifier.size(84.dp).clip(RoundedCornerShape(20.dp)),
         )
         Spacer(Modifier.height(18.dp))
-        Text(AppConfig.APP_NAME, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text("药大拾间", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(5.dp))
         Text("校园服务正在准备", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
