@@ -10,9 +10,6 @@ const mocks = {
   '@/api/jwxt': 'export const jwxtApi = globalThis.api;',
   '@/stores/auth': 'export const useAuthStore = () => globalThis.auth;',
   '@/stores/jwxt': 'export const useJwxtStore = () => globalThis.jwxt;',
-  '@/stores/site': 'export const useSiteStore = () => globalThis.site;',
-  '@/api/site': 'export const siteApi = { schools: async () => globalThis.schoolList };',
-  '@/api/request': 'export const setSchoolChoice = id => { globalThis.schoolChoice = id; };',
   './clientInfo': 'export const isNativeScheduleShell = () => globalThis.native; export const isIosNextNativeShell = isNativeScheduleShell;',
 };
 const bundle = await build({
@@ -33,9 +30,6 @@ function setup({ ready = true, loggedIn = true, storage = new Map(), session } =
   const context = vm.createContext({ localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, Error,
     sessionStorage: session && { getItem: k => session.get(k) ?? null, setItem: (k, v) => session.set(k, v), removeItem: k => session.delete(k) }, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)), native: true, window: { CPUTimeNative: { authChanged() {} } },
     auth: { ready, user: loggedIn ? { id: 1 } : null, academicIdentity: 'undergraduate', isLoggedIn: loggedIn },
-    site: { school: { id: 'cpu', ssoLogin: true }, brandName: '药大拾间', schoolName: '中国药科大学', async fetch() {} },
-    schoolList: [{ id: 'cpu', name: '中国药科大学', shortName: '药大', brandName: '药大拾间', ssoLogin: true },
-      { id: 'njmu', name: '南京医科大学', shortName: '南医', brandName: '南医拾间', ssoLogin: true }],
     jwxt: { isLoggedIn: true, hydrate() {}, async ensureSession() { return this.isLoggedIn; }, withSessionRetry: fn => fn() },
     api: { async schedule() { return { parsed: sample() }; }, async calendar() { return { parsed: null }; },
       async getScheduleEdits() { return { edits: { hidden: [], custom: [] } }; },
@@ -704,44 +698,88 @@ test('a returned refresh superseded while sign-in settles is fetched again, unfo
   }
 });
 
-test('native login lists schools, switches the school choice and hands scan verification to the native page', async () => {
+test('native login hands scan verification and the scan guide to the native page', async () => {
   const ctx = setup({ loggedIn: false });
   const bridge = ctx.window.CPUTimeNative;
-  const listed = await bridge.nativeLoginSchools();
-  assert.deepEqual(listed.schools.map(item => item.id), ['cpu', 'njmu']);
-  assert.equal(listed.current.id, 'cpu');
-
-  let begun = 0;
+  const guide = { kind: 'qr', app: { name: 'ScanApp', androidPackage: 'example.scan' } };
   Object.assign(ctx.auth, {
-    ssoBegin: async () => { begun += 1; },
-    cancelSsoMfa() { this.ssoNeedMfa = false; this.ssoMfaNative = false; this.ssoMfaQr = ''; },
+    cancelSsoMfa() { this.ssoNeedMfa = false; this.ssoMfaNative = false; this.ssoMfaQr = ''; this.ssoMfaGuide = null; },
+    ssoLogin: async () => {
+      Object.assign(ctx.auth, { ssoNeedMfa: true, ssoMfaQr: 'data:image/png;base64,AA==', ssoMfaGuide: guide, ssoError: 'scan needed' });
+      return false;
+    },
   });
-  ctx.site.fetch = async () => { ctx.site.school = { id: ctx.schoolChoice, ssoLogin: true }; ctx.site.brandName = '南医拾间'; };
-  const chosen = await bridge.nativeChooseSchool('njmu');
-  assert.equal(ctx.schoolChoice, 'njmu');
-  assert.equal(begun, 1);
-  assert.equal(chosen.school.id, 'njmu');
-  assert.equal(chosen.school.brandName, '南医拾间');
+  bridge.__loginSchool = () => ({ id: 'school-b', name: 'School B', brandName: 'B 拾间', ssoLogin: true });
 
-  ctx.auth.ssoLogin = async () => {
-    Object.assign(ctx.auth, { ssoNeedMfa: true, ssoMfaQr: 'data:image/png;base64,AA==', ssoError: '这台设备第一次登录，需要扫码验证' });
-    return false;
-  };
   const native = await bridge.nativeSsoLogin('u', 'p', '', true, { nativeMfa: true });
   assert.equal(ctx.auth.ssoMfaNative, true);
   assert.equal(native.needMfa, true);
   assert.equal(native.mfaQr, 'data:image/png;base64,AA==');
+  assert.equal(native.mfaGuide.app.androidPackage, 'example.scan');
   assert.equal(native.error, '');
+  assert.equal(native.school.brandName, 'B 拾间');
 
   ctx.auth.ssoPollMfa = async () => 'scanned';
   assert.equal((await bridge.nativeMfaPoll()).status, 'scanned');
-  ctx.auth.ssoPollMfa = async () => { ctx.auth.ssoError = '扫码验证没有通过'; return 'failed'; };
+  ctx.auth.ssoPollMfa = async () => { ctx.auth.ssoError = 'rejected'; return 'failed'; };
   const failed = await bridge.nativeMfaPoll();
   assert.equal(failed.status, 'failed');
-  assert.equal(failed.error, '扫码验证没有通过');
+  assert.equal(failed.error, 'rejected');
   assert.equal(ctx.auth.ssoNeedMfa, false);
 
   // An older shell passes no options: the Web dialog keeps handling the scan.
   await bridge.nativeSsoLogin('u', 'p', '', true);
   assert.equal(ctx.auth.ssoMfaNative, false);
+  assert.equal((await bridge.nativeSsoLogin('u', 'p', '', true)).needMfa, false);
+});
+
+const schoolsBundle = await build({
+  entryPoints: [`${webRoot}/utils/nativeLoginSchools.ts`], bundle: true, write: false,
+  format: 'iife', globalName: 'schools', platform: 'browser', alias: { '@': webRoot },
+  plugins: [{ name: 'school-mocks', setup(builder) {
+    const schoolMocks = {
+      '@/stores/auth': 'export const useAuthStore = () => globalThis.auth;',
+      '@/stores/site': 'export const useSiteStore = () => globalThis.site;',
+      '@/api/site': 'export const siteApi = { schools: async () => globalThis.schoolList };',
+      '@/api/request': 'export const setSchoolChoice = id => { globalThis.schoolChoice = id; };',
+      './clientInfo': 'export const isNativeScheduleShell = () => true;',
+    };
+    builder.onResolve({ filter: /.*/ }, args => args.path in schoolMocks ? { path: args.path, namespace: 'school-mock' } : undefined);
+    builder.onLoad({ filter: /.*/, namespace: 'school-mock' }, args => ({ contents: schoolMocks[args.path], loader: 'js' }));
+  } }],
+});
+
+test('native login lists every configured school and switches the school choice', async () => {
+  let begun = 0;
+  const context = vm.createContext({
+    window: { CPUTimeNative: { nativeLoginBegin: async () => { begun += 1; return { ok: true, school: context.window.CPUTimeNative.__loginSchool() }; } } },
+    auth: { cancelSsoMfa() { this.cancelled = true; }, ssoError: 'old' },
+    site: { loaded: true, school: { id: 'school-a', ssoLogin: true }, brandName: 'A 拾间', schoolName: 'School A',
+      async fetch() { this.school = { id: context.schoolChoice, ssoLogin: context.schoolChoice !== 'school-c' }; this.brandName = `${context.schoolChoice} 拾间`; } },
+    schoolList: [
+      { id: 'school-a', name: 'School A', shortName: 'A', brandName: 'A 拾间', ssoLogin: true },
+      { id: 'school-b', name: 'School B', shortName: 'B', brandName: 'B 拾间', ssoLogin: true },
+      { id: 'school-c', name: 'School C', shortName: 'C', brandName: 'C 拾间', ssoLogin: false },
+    ],
+  });
+  vm.runInContext(schoolsBundle.outputFiles[0].text, context);
+  context.schools.installNativeLoginSchools();
+  const bridge = context.window.CPUTimeNative;
+
+  const listed = await bridge.nativeLoginSchools();
+  assert.deepEqual(listed.schools.map(item => item.id), ['school-a', 'school-b', 'school-c']);
+  assert.equal(listed.schools[2].ssoLogin, false);
+  assert.equal(listed.current.id, 'school-a');
+
+  const chosen = await bridge.nativeChooseSchool('school-b');
+  assert.equal(context.schoolChoice, 'school-b');
+  assert.equal(context.auth.cancelled, true);
+  assert.equal(context.auth.ssoError, '');
+  assert.equal(begun, 1);
+  assert.equal(chosen.school.brandName, 'school-b 拾间');
+
+  // A school without SSO login does not start an SSO challenge.
+  const plain = await bridge.nativeChooseSchool('school-c');
+  assert.equal(begun, 1);
+  assert.equal(plain.school.ssoLogin, false);
 });

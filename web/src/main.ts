@@ -8,6 +8,7 @@ import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, installNativeAppearanceBridge, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
 import { installIosNextScheduleBridge } from "./utils/iosNextScheduleBridge";
+import { installNativeLoginSchools } from "./utils/nativeLoginSchools";
 import { installNativeAgendaBridge } from "./utils/nativeAgendaBridge";
 import { installNativeDormBridge } from "./utils/nativeDormBridge";
 import {
@@ -482,6 +483,7 @@ watch(() => useAuthStore().user?.id, () => {
   }
 }, { flush: "sync" });
 installIosNextScheduleBridge(router, { reportRefreshFailures: isIosNativeApp() });
+installNativeLoginSchools();
 installNativeAgendaBridge(router);
 installNativeDormBridge(router);
 installJwxtDataPrewarmTriggers();

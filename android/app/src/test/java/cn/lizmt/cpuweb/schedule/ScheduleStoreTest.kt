@@ -474,6 +474,28 @@ class ScheduleStoreTest {
         // A gap means the table is incomplete: keep the default twelve.
         assertEquals(12, mergeSuppliedPeriods((1..12).map(::period) + period(14)).size)
         assertEquals(12, mergeSuppliedPeriods((1..30).map(::period).filter { it.number != 5 }).size)
+        // A complete table from the bridge is the school's own: any length, no default padding.
+        assertEquals(9, mergeSuppliedPeriods((1..9).map(::period), complete = true).size)
+        assertEquals(15, mergeSuppliedPeriods((1..15).map(::period), complete = true).size)
+        assertEquals(12, mergeSuppliedPeriods((2..9).map(::period), complete = true).size)
+    }
+
+    @Test
+    fun aSchoolWithFewerPeriodsDrawsOnlyItsOwnRows() = runTest {
+        val cells = JSONArray().put(JSONObject().put("day", 1).put("bigSlot", 5).put("courses", JSONArray()
+            .put(course("Late seminar", 9, 10, listOf(3)))))
+        val calendar = JSONObject().put("currentWeek", 3).put("weeks", JSONArray().put(
+            JSONObject().put("week", 3).put("days", JSONArray((14..20).map { "2026-09-$it" }))))
+        val periods = JSONArray((1..10).map {
+            JSONObject().put("number", it).put("startTime", String.format("%02d:10", 7 + it)).put("endTime", String.format("%02d:50", 7 + it))
+        })
+        val raw = JSONObject(snapshot(cells = cells)).put("calendar", calendar).put("periods", periods)
+            .put("periodsComplete", true).toString()
+        val store = store(mutableListOf(raw))
+        advanceUntilIdle()
+        assertEquals(10, store.slotCount)
+        assertEquals("17:50", store.periodTime(10).endTime)
+        assertEquals(10, store.blocksForDay(1).single().endSlot)
     }
 
     @Test

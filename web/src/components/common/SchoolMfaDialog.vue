@@ -16,7 +16,7 @@
     @update:model-value="(value: boolean) => { if (!value) cancel(); }"
   >
     <div class="mfa-body">
-      <p class="mfa-lead">学校统一认证要求这台设备先扫码验证一次。用手机微信扫描下面的二维码，并在手机上确认。验证后这台设备会被记住。</p>
+      <p class="mfa-lead">{{ lead }}</p>
       <div class="mfa-qr" :class="{ 'is-dim': state !== 'waiting' }">
         <img v-if="auth.ssoMfaQr" :src="auth.ssoMfaQr" alt="学校统一认证二维码" />
         <div v-if="state === 'scanned'" class="mfa-qr-overlay">已扫描，请在手机上确认</div>
@@ -35,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { SCHOOL_MFA_VERIFIED_EVENT } from "@/utils/schoolMfa";
@@ -43,6 +43,9 @@ import { SCHOOL_MFA_VERIFIED_EVENT } from "@/utils/schoolMfa";
 type QrState = "waiting" | "scanned" | "expired" | "done";
 
 const auth = useAuthStore();
+// 用哪个 App 扫由学校给；没给就只说「用手机扫描」。
+const lead = computed(() => auth.ssoMfaGuide?.hint
+  || `学校统一认证要求这台设备先扫码验证一次。用手机${auth.ssoMfaGuide?.app?.name || ""}扫描下面的二维码，并在手机上确认。验证后这台设备会被记住。`);
 const state = ref<QrState>("waiting");
 const message = ref("");
 const refreshing = ref(false);

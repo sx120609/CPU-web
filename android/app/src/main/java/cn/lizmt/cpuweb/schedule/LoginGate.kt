@@ -117,6 +117,7 @@ fun LoginGate(activity: MainActivity) {
     var switchingSchool by remember { mutableStateOf(false) }
     // 学校要求新设备扫码二次验证时，表单换成二维码。
     var mfaQr by remember { mutableStateOf("") }
+    var mfaGuide by remember { mutableStateOf<MfaGuide?>(null) }
     var mfaState by remember { mutableStateOf("") }
     var mfaRevision by remember { mutableIntStateOf(0) }
     val brandName = school?.brandName ?: AppConfig.APP_NAME
@@ -156,6 +157,7 @@ fun LoginGate(activity: MainActivity) {
     }
 
     fun leaveMfa() {
+        mfaGuide = null
         mfaQr = ""
         mfaState = ""
         errorMessage = ""
@@ -249,6 +251,7 @@ fun LoginGate(activity: MainActivity) {
                 statusMessage = "登录成功，正在进入$brandName…"
             } else if (response.needMfa && response.mfaQr.isNotEmpty()) {
                 errorMessage = ""
+                mfaGuide = response.mfaGuide
                 mfaQr = response.mfaQr
                 mfaState = "waiting"
                 mfaRevision += 1
@@ -284,13 +287,15 @@ fun LoginGate(activity: MainActivity) {
             Spacer(Modifier.height(28.dp))
 
             if (mfaQr.isNotEmpty()) {
+                val appName = mfaGuide?.appName.orEmpty()
                 MfaPanel(
                     qr = mfaQr,
                     state = mfaState,
+                    guide = mfaGuide,
                     onSave = {
-                        if (activity.saveImageData(mfaQr, "统一认证二维码.png") && !activity.openWeChat()) {
-                            activity.toast("已保存到相册，请在微信「扫一扫」里从相册选择这张图")
-                        }
+                        val saved = activity.saveImageData(mfaQr, "统一认证二维码.png")
+                        val opened = saved && activity.openApp(mfaGuide?.androidPackage.orEmpty())
+                        if (saved && !opened && appName.isNotEmpty()) activity.toast("已保存到相册，请在$appName「扫一扫」里从相册选择这张图")
                     },
                     onRefresh = ::refreshMfa,
                     onCancel = ::leaveMfa,
@@ -430,15 +435,18 @@ private fun Messages(errorMessage: String, statusMessage: String) {
 }
 
 /**
- * 学校统一认证的扫码二次验证（南医：新设备第一次登录时要求）。二维码要用微信扫，
- * 而用户手里多半就是这台手机，所以给「保存并打开微信」：在微信「扫一扫 → 相册」里识别。
+ * 学校统一认证的扫码二次验证（有的学校新设备第一次登录时要求）。用哪个 App 扫由学校给（[guide]）；
+ * 用户手里多半就是这台手机，所以给「保存二维码并打开 xx」：在那个 App 的「扫一扫 → 相册」里识别。
  */
 @Composable
-private fun MfaPanel(qr: String, state: String, onSave: () -> Unit, onRefresh: () -> Unit, onCancel: () -> Unit) {
+private fun MfaPanel(qr: String, state: String, guide: MfaGuide?, onSave: () -> Unit, onRefresh: () -> Unit, onCancel: () -> Unit) {
+    val appName = guide?.appName.orEmpty()
+    val scanner = appName.ifEmpty { "手机" }
     Text("扫码验证", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(6.dp))
     Text(
-        "学校统一认证要求这台设备先验证一次：用微信扫描下面的二维码，并在微信里确认。验证后这台设备会被记住。",
+        guide?.hint?.takeIf { it.isNotEmpty() }
+            ?: "学校统一认证要求这台设备先验证一次：用${scanner}扫描下面的二维码，并在手机上确认。验证后这台设备会被记住。",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(16.dp))
@@ -449,7 +457,7 @@ private fun MfaPanel(qr: String, state: String, onSave: () -> Unit, onRefresh: (
         ) {
             CaptchaImage(qr, Modifier.size(200.dp), ContentScale.Fit, "学校统一认证二维码")
             val overlay = when (state) {
-                "scanned" -> "已扫描，请在微信里确认"
+                "scanned" -> "已扫描，请在手机上确认"
                 "expired" -> "二维码已失效，点「换一张」"
                 "done" -> "验证通过，正在登录…"
                 else -> ""
@@ -469,10 +477,13 @@ private fun MfaPanel(qr: String, state: String, onSave: () -> Unit, onRefresh: (
     Button(
         onClick = onSave, enabled = state != "done" && state != "expired",
         shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
-    ) { Text("保存二维码并打开微信", fontWeight = FontWeight.SemiBold) }
+    ) {
+        val canOpen = appName.isNotEmpty() && guide?.androidPackage.orEmpty().isNotEmpty()
+        Text(if (canOpen) "保存二维码并打开$appName" else "保存二维码", fontWeight = FontWeight.SemiBold)
+    }
     Spacer(Modifier.height(6.dp))
     Text(
-        "在微信「扫一扫」右上角选「相册」，选这张二维码；也可以用另一台手机的微信直接扫屏幕。",
+        "在${scanner}的「扫一扫」里从相册选这张二维码；也可以用另一台手机直接扫屏幕。",
         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(8.dp))

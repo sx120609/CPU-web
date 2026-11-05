@@ -110,6 +110,8 @@ data class ScheduleSnapshot(
     val source: String?,
     val fetchedAt: Long,
     val periods: List<SchedulePeriod>,
+    /** 网页桥给的是本校完整作息表（服务端按学校补全）：照用，不拿药大的默认作息去补。 */
+    val periodsComplete: Boolean = false,
     val data: ScheduleResult?,
     val calendar: ScheduleCalendar?,
     val authenticated: Boolean,
@@ -153,11 +155,13 @@ const val SLOT_COUNT = 12
 const val MAX_SLOT_COUNT = 20
 
 /**
- * 把下发的作息并进默认的十二节：旧版桥只给前十一节，缺的节次用默认时间补上；
- * 从第 1 节起连续超过十二节（南医 15 节）时，多出的节次接在后面。
+ * 一天的作息表。新版网页桥给的是本校完整的作息表（[complete]，服务端按学校补全），从第 1 节起连续就照用，
+ * 几节都行；旧版桥只给前十一节，缺的节次用默认时间补上，从第 1 节起连续超过十二节时多出的接在后面。
  */
-fun mergeSuppliedPeriods(supplied: List<SchedulePeriod>): List<SchedulePeriod> {
-    val byNumber = supplied.filter { it.number in 1..MAX_SLOT_COUNT }.associateBy { it.number }
+fun mergeSuppliedPeriods(supplied: List<SchedulePeriod>, complete: Boolean = false): List<SchedulePeriod> {
+    val valid = supplied.filter { it.number in 1..MAX_SLOT_COUNT }.sortedBy { it.number }
+    if (complete && valid.isNotEmpty() && valid.withIndex().all { (index, period) -> period.number == index + 1 }) return valid
+    val byNumber = valid.associateBy { it.number }
     val last = generateSequence(1) { it + 1 }.takeWhile { it in byNumber }.lastOrNull() ?: 0
     val extra = (SLOT_COUNT + 1..last).mapNotNull { byNumber[it] }
     return BUNDLED_PERIODS.map { byNumber[it.number] ?: it } + extra
@@ -180,6 +184,7 @@ object ScheduleJson {
             source = json.optStringOrNull("source"),
             fetchedAt = fetchedAt,
             periods = parsePeriods(json.optJSONArray("periods")),
+            periodsComplete = json.optBoolean("periodsComplete", false),
             data = json.optJSONObject("data")?.let(::parseResult),
             calendar = json.optJSONObject("calendar")?.let(::parseCalendar),
             authenticated = auth?.optBoolean("authenticated", false) ?: false,

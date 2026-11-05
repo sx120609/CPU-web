@@ -804,7 +804,7 @@ class ScheduleStore(
         clearFallback()
         calendar = snapshot.calendar
         // Keep supplied period times when an older bridge only knows eleven slots.
-        periods = mergeSuppliedPeriods(snapshot.periods)
+        periods = mergeSuppliedPeriods(snapshot.periods, snapshot.periodsComplete)
         if (selectedSemester.isEmpty()) selectedSemester = data.currentSemester
         if (selectedWeek.isEmpty()) {
             selectedWeek = data.currentWeek.ifEmpty { snapshot.calendar?.currentWeek?.takeIf { it > 0 }?.toString().orEmpty() }

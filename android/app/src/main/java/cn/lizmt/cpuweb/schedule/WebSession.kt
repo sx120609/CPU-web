@@ -69,7 +69,23 @@ data class NativeLoginResponse(
     /** 扫码轮询的状态：waiting / scanned / expired / failed / done / retry。 */
     val status: String = "",
     val school: LoginSchool? = null,
+    val mfaGuide: MfaGuide? = null,
 )
+
+/** 学校给的扫码说明（服务端 schools/drivers.ts 的 SchoolMfaGuide）：用哪个 App 扫、怎么说。 */
+data class MfaGuide(val appName: String, val androidPackage: String, val hint: String) {
+    companion object {
+        fun parse(json: JSONObject?): MfaGuide? {
+            if (json == null) return null
+            val app = json.optJSONObject("app")
+            return MfaGuide(
+                appName = app?.optString("name").orEmpty().trim(),
+                androidPackage = app?.optString("androidPackage").orEmpty().trim(),
+                hint = json.optString("hint").trim(),
+            )
+        }
+    }
+}
 
 /** 原生登录页可选的学校；[brandName] 用在欢迎语和「正在进入…」。 */
 data class LoginSchool(
@@ -639,6 +655,7 @@ class WebSession(
                     mfaQr = payload.optString("mfaQr", ""),
                     status = payload.optString("status", ""),
                     school = LoginSchool.parse(payload.optJSONObject("school")),
+                    mfaGuide = MfaGuide.parse(payload.optJSONObject("mfaGuide")),
                 )
             }
             if (attempt < 79) delay(125)

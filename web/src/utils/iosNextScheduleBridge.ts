@@ -2,9 +2,6 @@ import { watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
-import { useSiteStore } from "@/stores/site";
-import { siteApi, type SchoolSummary } from "@/api/site";
-import { setSchoolChoice } from "@/api/request";
 import type { Router } from "vue-router";
 import { isNativeScheduleShell } from "./clientInfo";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState, courseEditKey } from "./scheduleEdits";
@@ -322,17 +319,6 @@ export function nativeScheduleAuthInfo() {
   };
 }
 
-/** 当前学校的显示信息，原生登录页的标题、欢迎语和「正在进入…」跟着它走。 */
-function nativeLoginSchool() {
-  const site = useSiteStore();
-  return {
-    id: String(site.school?.id || ""),
-    name: site.schoolName,
-    brandName: site.brandName,
-    ssoLogin: site.school?.ssoLogin !== false,
-  };
-}
-
 /**
  * Expose the Web auth state machine to the native login surface. Keeping the
  * actual SSO and cookie work in the Web store means native login follows the
@@ -357,45 +343,13 @@ export function installIosNativeAuthBridge(authStore?: any) {
       captchaImage: String(auth.ssoCaptchaImage || ""),
       needMfa,
       mfaQr: needMfa ? String(auth.ssoMfaQr || "") : "",
+      // 用哪个 App 扫、怎么说，由学校给（服务端 schools/drivers.ts 的 SchoolMfaGuide）。
+      mfaGuide: needMfa ? auth.ssoMfaGuide ?? null : null,
       account: info.account,
       canAccessAdmin: info.canAccessAdmin,
-      school: nativeLoginSchool(),
+      // 学校选择在 nativeLoginSchools.ts（只随线上网页安装，不进原生壳自带的兜底脚本）。
+      school: typeof host.CPUTimeNative.__loginSchool === "function" ? host.CPUTimeNative.__loginSchool() : null,
     };
-  };
-
-  /**
-   * 多学校：原生登录页的学校选择。选中的学校写进和网页登录页同一个
-   * cpu-school-choice，之后的统一认证请求都带上它（api/request.ts 的 X-CPU-School）。
-   */
-  host.CPUTimeNative.nativeLoginSchools = async () => {
-    const list = await siteApi.schools().catch(() => [] as SchoolSummary[]);
-    return {
-      current: nativeLoginSchool(),
-      schools: list.map((item) => ({
-        id: item.id,
-        name: item.name,
-        shortName: item.shortName,
-        brandName: item.brandName,
-        ssoLogin: item.ssoLogin !== false,
-      })),
-    };
-  };
-  host.CPUTimeNative.nativeChooseSchool = async (schoolId: string) => {
-    const site = useSiteStore();
-    const id = String(schoolId || "").trim();
-    if (id && id !== site.school?.id) {
-      auth.cancelSsoMfa();
-      setSchoolChoice(id);
-      await site.fetch(true).catch(() => undefined);
-      auth.ssoError = "";
-    }
-    if (site.school?.ssoLogin === false) return result(true);
-    try {
-      await auth.ssoBegin({ silent: true });
-      return result(true);
-    } catch (error) {
-      return result(false, error instanceof Error ? error.message : "统一认证暂时不可用，请稍后再试。");
-    }
   };
   /** 查一次扫码状态：waiting / scanned / expired / failed / done（done 时已经登录）。 */
   host.CPUTimeNative.nativeMfaPoll = async () => {
@@ -833,16 +787,19 @@ export function installIosNextScheduleBridge(
     }
     return [...grouped.values()].sort((left, right) => left.bigSlot - right.bigSlot || left.day - right.day);
   };
-  const bundledPeriods = smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
+  // 现取：smallSlots 在站点信息拉到后才换成本校作息（stores/site.ts 的 useSchoolSlots）。
+  const bundledPeriods = () => smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
   const periodsForCalendar = (calendar: CalendarResult | null) => {
     const configured = (calendar?.periods ?? [])
       .filter(period => Number.isInteger(period.id) && period.id > 0 && period.start && period.end)
       .map(period => ({ number: period.id, startTime: period.start, endTime: period.end }));
-    return configured.length ? configured : bundledPeriods;
+    return configured.length ? configured : bundledPeriods();
   };
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
     version: 1, source: "jwxt", completeSemester: Boolean(entry.complete), fetchedAt: entry.createdAt,
     periods: periodsForCalendar(entry.calendar),
+    // 校历里的作息表服务端已按本校补全；原生壳据此照用，不再拿默认学校的作息去补。
+    periodsComplete: Boolean(entry.calendar?.periods?.length),
     data: { ...edited(entry, entry.complete ?? data), currentWeek: week || (entry.calendar?.currentWeek
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
     calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
@@ -958,6 +915,7 @@ export function installIosNextScheduleBridge(
         const calendar = buildGraduateFallbackCalendar(data);
         const expanded = extendScheduleWeeksToCalendar(data, calendar) ?? data;
         return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(), periods: periodsForCalendar(calendar),
+          periodsComplete: Boolean(calendar?.periods?.length),
           data: { ...expanded, currentWeek: week || (calendar?.currentWeek ? String(calendar.currentWeek) : data.currentWeek),
             cells: nativeCells(data.currentSemester, expanded.cells) }, calendar,
           auth: { authenticated: true, identity: "graduate", account: accountKey() } };

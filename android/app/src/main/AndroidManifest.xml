@@ -21,11 +21,6 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
-    <!-- 登录页扫码验证时打开微信识别二维码（Android 11 起要声明才能找到微信）。 -->
-    <queries>
-        <package android:name="com.tencent.mm" />
-    </queries>
-
     <application
         android:name=".CpuApplication"
         android:allowBackup="false"
