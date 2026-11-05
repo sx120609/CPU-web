@@ -6,7 +6,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { jwxtApi } from "@/api/jwxt";
 import { loadCreds } from "@/utils/credCrypto";
-import { EXTERNAL_ACADEMIC_LINKS, isExternalAcademicSystem } from "@/utils/academicSystem";
+import { useAcademicPortals, useAcademicViews } from "@/utils/academicSystem";
 import {
   isJwxtTabCacheStale,
   normalizeJwxtTabData,
@@ -42,8 +42,10 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
   };
   const isGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
   const site = useSiteStore();
-  // 外校（南医正方、南中医树维）接了课表、成绩、学业完成情况和空教室；培养方案、选课等是药大教务独有的。
-  const academicFeatureLimited = computed(() => isExternalAcademicSystem(site.school?.academicSystem));
+  // 标签按学校档案里的教务视图清单显示（schools/registry.ts 的 ACADEMIC_VIEWS），不按学校名判断。
+  const academicViews = useAcademicViews();
+  const academicPortals = useAcademicPortals();
+  const showPyfaTab = computed(() => academicViews.value.has("pyfa"));
   const showScheduleTab = computed(() => layout.value === "desktop");
   const tab = ref<JwxtTab>(showScheduleTab.value ? "schedule" : "grades");
   const schedule = ref<any>(null);
@@ -74,14 +76,19 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
     if (isGraduateIdentity.value && !auth.academicIdentityUnavailable) {
       return showScheduleTab.value ? ["schedule"] : [];
     }
-    if (academicFeatureLimited.value) return showScheduleTab.value ? ["schedule", "grades", "progress"] : ["grades", "progress"];
-    return showScheduleTab.value
-      ? ["schedule", "grades", /* "midterm", */ "progress", "pyfa"]
-      : ["grades", /* "midterm", */ "progress", "pyfa"];
+    const views = academicViews.value;
+    const tabs: DataTab[] = [];
+    if (showScheduleTab.value && views.has("schedule")) tabs.push("schedule");
+    if (views.has("grades")) tabs.push("grades");
+    if (views.has("progress")) tabs.push("progress");
+    if (views.has("pyfa")) tabs.push("pyfa");
+    return tabs;
   });
-  const showExtraTabs = computed(() => !academicFeatureLimited.value && availableDataTabs.value.includes("grades"));
-  // 南医没有选课数据，但有空教室。
-  const showRoomsTab = computed(() => availableDataTabs.value.includes("grades"));
+  const showExtraTabs = computed(() => academicViews.value.has("selection") && availableDataTabs.value.includes("grades"));
+  const showRoomsTab = computed(() => (
+    (academicViews.value.has("freeRooms") || academicViews.value.has("timetableSearch"))
+    && availableDataTabs.value.includes("grades")
+  ));
   const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
   const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
   const academicDataUnavailable = computed(() => Boolean(
@@ -115,21 +122,13 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
       ? "登录后会根据这次实际读取到的数据自动选择可用入口，不需要手动切换。本科生默认显示完整教务，研究生当前显示课表。"
       : "登录后会根据这次实际读取到的数据自动选择可用入口。移动端课表请从单独课表入口查看。"
   ));
+  // 原站入口来自学校档案；有研究生系统的学校，识别出研究生身份后换成研究生入口。
+  const showGraduatePortal = computed(() => Boolean(academicPortals.value?.graduate) && isGraduateIdentity.value);
   const schoolSystemLink = computed(() => (
-    academicFeatureLimited.value
-      ? EXTERNAL_ACADEMIC_LINKS[site.school?.academicSystem ?? ""] ?? "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
-      : !auth.academicIdentityResolved
-      ? "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
-      : isGraduateIdentity.value
-        ? "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk"
-        : "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
+    showGraduatePortal.value ? academicPortals.value!.graduate! : academicPortals.value?.undergraduate ?? ""
   ));
   const schoolSystemLabel = computed(() => (
-    academicFeatureLimited.value
-      ? "前往学校教务系统原站"
-      : !auth.academicIdentityResolved
-      ? "前往学校统一认证原站"
-      : isGraduateIdentity.value ? "前往研究生管理系统原站" : "前往学校教务系统原站"
+    showGraduatePortal.value ? "前往研究生管理系统原站" : "前往学校教务系统原站"
   ));
   const sessionSubText = computed(() => {
     if (!jwxt.isLoggedIn) {
@@ -556,7 +555,7 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
     snapResult,
     isDev,
     availableDataTabs,
-    academicFeatureLimited,
+    showPyfaTab,
     showExtraTabs,
     showRoomsTab,
     hasJwxtTabs,

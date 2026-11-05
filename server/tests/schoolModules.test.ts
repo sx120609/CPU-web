@@ -11,7 +11,7 @@ import {
   requireSchoolModule,
   schoolModuleForRoute,
 } from "../src/schools/modules";
-import { DEFAULT_SCHOOL_ID, applySchoolRows, findSchool, getSchool, resolveSchoolId, type SchoolProfile } from "../src/schools/registry";
+import { ACADEMIC_VIEWS, BUILTIN_SCHOOLS, DEFAULT_SCHOOL_ID, applySchoolRows, findSchool, getSchool, resolveSchoolId, type SchoolProfile } from "../src/schools/registry";
 import { adminSchoolId, ensureCanManageSchool, isPlatformAdmin } from "../src/schools/store";
 import { signToken } from "../src/utils/jwt";
 
@@ -167,4 +167,23 @@ test("后台切换学校只对平台管理员生效", () => {
   // 不存在的学校按自己学校。
   const unknown = { user: { role: "admin", schoolId: "cpu" }, headers: { "x-admin-school": "nowhere" } } as unknown as Request;
   assert.equal(adminSchoolId(unknown), "cpu");
+});
+
+test("每所有教务对接的内置学校都在档案里列出教务视图和原站入口", () => {
+  for (const school of BUILTIN_SCHOOLS.values()) {
+    if (!school.academicSystem) {
+      assert.deepEqual(school.academicViews, [], `${school.id} 没有教务对接，不该有教务视图`);
+      continue;
+    }
+    assert.ok(school.academicViews.length > 0, `${school.id} 没列教务视图`);
+    for (const view of school.academicViews) assert.ok(ACADEMIC_VIEWS.includes(view), `${school.id} 的 ${view} 不在 ACADEMIC_VIEWS 里`);
+    assert.match(school.academicPortals?.undergraduate ?? "", /^https?:\/\//u, `${school.id} 没给教务原站入口`);
+  }
+  // 后台新建的学校没有教务对接。
+  applySchoolRows([{ id: "demo", name: "示例大学", shortName: "示例", brandName: "示例拾间", tagline: "", enabled: true }], SCHOOL_MODULE_KEYS);
+  try {
+    assert.deepEqual(getSchool("demo").academicViews, []);
+  } finally {
+    applySchoolRows([], SCHOOL_MODULE_KEYS);
+  }
 });

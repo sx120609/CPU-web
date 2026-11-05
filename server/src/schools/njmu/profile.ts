@@ -28,5 +28,7 @@ export const njmuSchool: SchoolProfile = {
   },
   // 南医一天 15 节；作息接口多给的第 16–19 节只用来挂未排时间的学时（见 parser.ts 的 ZF_LAST_TEACHING_PERIOD）。
   defaultPeriods: PERIODS.slice(0, 15).map(([start, end], index) => ({ no: index + 1, name: `第${index + 1}节`, start, end })),
+  academicViews: ["schedule", "grades", "levelExams", "exams", "progress", "freeRooms"],
+  academicPortals: { undergraduate: "https://jwpt.njmu.edu.cn/sso/jzlogin" },
   defaultModules: SCHOOL_MODULE_KEYS,
 };

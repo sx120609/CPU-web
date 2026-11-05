@@ -7,17 +7,17 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useExternalAcademic } from "@/utils/academicSystem";
+import { useAcademicViews } from "@/utils/academicSystem";
 import JwxtSubViews from "@/components/jwxt/JwxtSubViews.vue";
 import FreeRoomsPane from "@/components/jwxt/records/FreeRoomsPane.vue";
 import TimetableSearchPane from "@/components/jwxt/records/TimetableSearchPane.vue";
 
 defineProps<{ active?: boolean }>();
 
-const externalAcademic = useExternalAcademic();
-// 全校课表检索是药大教务独有的。
+// 子视图按学校档案里的教务视图清单显示。
+const academicViews = useAcademicViews();
 const views = computed(() => [
-  { key: "free", label: "空教室" },
-  ...(externalAcademic.value ? [] : [{ key: "search", label: "课表检索" }]),
+  ...(academicViews.value.has("freeRooms") ? [{ key: "free", label: "空教室" }] : []),
+  ...(academicViews.value.has("timetableSearch") ? [{ key: "search", label: "课表检索" }] : []),
 ]);
 </script>

@@ -14,6 +14,8 @@ function publicSchool(school: SchoolProfile) {
     brandName: school.brandName,
     tagline: school.tagline,
     academicSystem: school.academicSystem,
+    academicViews: school.academicViews,
+    academicPortals: school.academicPortals ?? null,
     ssoLogin: school.ssoLogin,
     periods: school.defaultPeriods,
   };

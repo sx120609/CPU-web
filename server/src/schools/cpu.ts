@@ -31,5 +31,14 @@ export const cpuSchool: SchoolProfile = {
     { no: 11, name: "第11节", start: "20:20", end: "21:05" },
     { no: 12, name: "第12节", start: "21:15", end: "22:00" },
   ],
+  // 药大教务的考试接口各学期都是空的，不列考试安排。
+  academicViews: [
+    "schedule", "grades", "levelExams", "transcript", "progress", "graduationAudit", "retake", "studentStatus",
+    "pyfa", "selection", "freeRooms", "timetableSearch",
+  ],
+  academicPortals: {
+    undergraduate: "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp",
+    graduate: "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk",
+  },
   defaultModules: SCHOOL_MODULE_KEYS,
 };

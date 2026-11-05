@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from "vue";
-import { useExternalAcademic } from "@/utils/academicSystem";
+import { useAcademicViews } from "@/utils/academicSystem";
 import JwxtSubViews from "@/components/jwxt/JwxtSubViews.vue";
 import type { RecordKind } from "@/components/jwxt/records/recordCards";
 
@@ -22,14 +22,13 @@ const ExamsPane = defineAsyncComponent(() => import("@/components/jwxt/ExamsPane
 
 defineProps<{ data: unknown; loading?: boolean; active?: boolean }>();
 
-const externalAcademic = useExternalAcademic();
+// 子视图按学校档案里的教务视图清单显示。
+const academicViews = useAcademicViews();
 const views = computed(() => [
   { key: "courses", label: "课程成绩" },
-  { key: "level-exams", label: "等级考试" },
-  // 考试安排：药大教务的考试接口各学期都是空的，只给外校（南医、南中医有真实安排）。
-  ...(externalAcademic.value ? [{ key: "exams", label: "考试安排" }] : []),
-  // 成绩单 PDF 来自药大的电子证明平台。
-  ...(externalAcademic.value ? [] : [{ key: "transcript", label: "成绩单" }]),
+  ...(academicViews.value.has("levelExams") ? [{ key: "level-exams", label: "等级考试" }] : []),
+  ...(academicViews.value.has("exams") ? [{ key: "exams", label: "考试安排" }] : []),
+  ...(academicViews.value.has("transcript") ? [{ key: "transcript", label: "成绩单" }] : []),
 ]);
 const levelExamSources: Array<{ kind: RecordKind }> = [{ kind: "level-exams" }];
 </script>

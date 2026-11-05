@@ -26,5 +26,7 @@ export const njucmSchool: SchoolProfile = {
     jwxt: "jwgl.njucm.edu.cn",
   },
   defaultPeriods: PERIODS.map(([start, end], index) => ({ no: index + 1, name: `第${index + 1}节`, start, end })),
+  academicViews: ["schedule", "grades", "levelExams", "exams", "progress", "freeRooms"],
+  academicPortals: { undergraduate: "https://jwgl.njucm.edu.cn/student/sso/login" },
   defaultModules: SCHOOL_MODULE_KEYS,
 };

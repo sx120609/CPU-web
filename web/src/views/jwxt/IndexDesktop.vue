@@ -200,7 +200,7 @@
           <template #label><AppIcon name="school" /> 学业完成情况</template>
           <ProgressTab :data="progress" :loading="tabLoading" :active="tab === 'progress'" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity && !academicFeatureLimited" name="pyfa" lazy>
+        <el-tab-pane v-if="!isGraduateIdentity && showPyfaTab" name="pyfa" lazy>
           <template #label><AppIcon name="course" /> 培养方案</template>
           <PyfaPane :data="pyfa" :loading="tabLoading" />
         </el-tab-pane>
@@ -275,7 +275,7 @@ const {
   snapping,
   snapResult,
   isDev,
-  academicFeatureLimited,
+  showPyfaTab,
   showExtraTabs,
   showRoomsTab,
   hasJwxtTabs,

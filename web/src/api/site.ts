@@ -61,8 +61,12 @@ export type SchoolSummary = {
   brandName: string;
   tagline: string;
   ssoLogin: boolean;
-  /** 教务系统类型：药大 qiangzhi-jsxsd，南医 zhengfang-v9，南中医 shuwei-eams；没有教务对接时为 null。 */
+  /** 教务系统类型（例如 qiangzhi-jsxsd、zhengfang-v9、shuwei-eams）；没有教务对接时为 null。 */
   academicSystem?: string | null;
+  /** 这所学校教务页有哪些视图（服务端 schools/registry.ts 的 ACADEMIC_VIEWS）；旧服务端不给。 */
+  academicViews?: string[];
+  /** 教务页「前往原站」的入口。 */
+  academicPortals?: { undergraduate: string; graduate?: string } | null;
   /** 这所学校的默认作息（节次从 1 起连续编号）。 */
   periods?: Array<{ no: number; name: string; start: string; end: string }>;
 };

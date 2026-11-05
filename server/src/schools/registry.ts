@@ -10,6 +10,27 @@ export type SchoolPeriod = {
   end: string;
 };
 
+/**
+ * 教务页上的视图：主标签（课表、成绩、学业完成情况、培养方案、选课、教室）和其中的子视图。
+ * 每所学校在档案里列出自己接了哪些，网页只按这份清单显示，不按学校名判断。
+ */
+export const ACADEMIC_VIEWS = [
+  "schedule",
+  "grades",
+  "levelExams",
+  "exams",
+  "transcript",
+  "progress",
+  "graduationAudit",
+  "retake",
+  "studentStatus",
+  "pyfa",
+  "selection",
+  "freeRooms",
+  "timetableSearch",
+] as const;
+export type AcademicView = typeof ACADEMIC_VIEWS[number];
+
 /** 教务系统类型。同一类型的学校共用一套登录和解析代码，只换学校配置。 */
 export type AcademicSystemKind = "qiangzhi-jsxsd" | "zhengfang-v9" | "shuwei-eams";
 
@@ -34,6 +55,10 @@ export type SchoolProfile = {
   ssoLogin: boolean;
   /** 学校自己的系统域名，只用于展示和排查；请求地址仍在各自的客户端里。 */
   hosts: Record<string, string>;
+  /** 教务页显示哪些视图（见 ACADEMIC_VIEWS）；没有教务对接的学校为空。 */
+  academicViews: readonly AcademicView[];
+  /** 教务页「前往原站」的入口：本科教务，以及有研究生系统的学校的研究生入口。 */
+  academicPortals?: { undergraduate: string; graduate?: string };
   defaultPeriods: readonly SchoolPeriod[];
   /** 这所学校默认开着哪些功能；没列出的功能默认关闭。 */
   defaultModules: readonly string[];
@@ -61,7 +86,7 @@ let schools: ReadonlyMap<string, SchoolProfile> = BUILTIN_SCHOOLS;
 export function schoolFromRow(row: SchoolRow, allModules: readonly string[]): SchoolProfile {
   const builtin = BUILTIN_SCHOOLS.get(row.id);
   return {
-    ...(builtin ?? { academicSystem: null, ssoLogin: false, hosts: {}, defaultPeriods: [], defaultModules: allModules }),
+    ...(builtin ?? { academicSystem: null, ssoLogin: false, hosts: {}, academicViews: [], defaultPeriods: [], defaultModules: allModules }),
     id: row.id,
     name: row.name,
     shortName: row.shortName,
