@@ -1,4 +1,4 @@
-# 药大拾间 HarmonyOS App
+# 拾间校园 HarmonyOS App
 
 这是与新版 iOS 客户端采用同一结构的 HarmonyOS Stage 模型应用：ArkUI 原生五栏外壳与原生课表负责高频交互，其他校园模块继续使用同一个 ArkWeb 实例加载现有站点。课表外观按网页版重绘，数据与缓存沿用 `ios_next` 的共享课表桥。最低 HarmonyOS 6.0（API 20），目标 HarmonyOS 6.1.1（API 24）。
 
@@ -41,9 +41,9 @@
 
 ## 基础信息
 
-- 应用名：药大拾间
+- 应用名：拾间校园（App 内按所选学校显示品牌，例如药大拾间、南医拾间）
 - 包名：`cn.lizmt.cpuweb`
-- 版本：`3.0.10 (30)`
+- 版本：`3.1.0 (31)`
 - 默认打开原生课表；后台会话入口：`https://cputime.cn/home`
 
 ## 构建

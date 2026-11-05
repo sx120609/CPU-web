@@ -327,7 +327,7 @@ export class HarmonyBridge {
         return refreshAllScheduleForms(this.context as common.UIAbilityContext)
           .then(() => {
             this.widgetConfigurationHandler?.(true);
-            this.toast('配置已保存，请长按桌面上的药大拾间图标，添加“课表”卡片');
+            this.toast('配置已保存，请长按桌面上的拾间校园图标，添加“课表”卡片');
           });
       })
       .catch(() => {
