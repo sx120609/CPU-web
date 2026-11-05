@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { jwxtApi } from "@/api/jwxt";
 import { loadCreds } from "@/utils/credCrypto";
+import { EXTERNAL_ACADEMIC_LINKS, isExternalAcademicSystem } from "@/utils/academicSystem";
 import {
   isJwxtTabCacheStale,
   normalizeJwxtTabData,
@@ -41,8 +42,8 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
   };
   const isGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
   const site = useSiteStore();
-  // 南医（正方）只接了课表和成绩；学业进度、培养方案、选课、空教室是药大教务独有的。
-  const academicFeatureLimited = computed(() => site.school?.academicSystem === "zhengfang-v9");
+  // 外校（南医正方、南中医树维）接了课表、成绩、学业完成情况和空教室；培养方案、选课等是药大教务独有的。
+  const academicFeatureLimited = computed(() => isExternalAcademicSystem(site.school?.academicSystem));
   const showScheduleTab = computed(() => layout.value === "desktop");
   const tab = ref<JwxtTab>(showScheduleTab.value ? "schedule" : "grades");
   const schedule = ref<any>(null);
@@ -116,7 +117,7 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
   ));
   const schoolSystemLink = computed(() => (
     academicFeatureLimited.value
-      ? "https://jwpt.njmu.edu.cn/sso/jzlogin"
+      ? EXTERNAL_ACADEMIC_LINKS[site.school?.academicSystem ?? ""] ?? "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
       : !auth.academicIdentityResolved
       ? "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp"
       : isGraduateIdentity.value

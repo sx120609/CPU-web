@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from "vue";
-import { useZhengfangAcademic } from "@/utils/academicSystem";
+import { useExternalAcademic } from "@/utils/academicSystem";
 import JwxtSubViews from "@/components/jwxt/JwxtSubViews.vue";
 import type { RecordKind } from "@/components/jwxt/records/recordCards";
 
@@ -21,9 +21,9 @@ const RecordPane = defineAsyncComponent(() => import("@/components/jwxt/records/
 defineProps<{ data: unknown; loading?: boolean; active?: boolean }>();
 
 type Source = { kind: RecordKind; label?: string };
-const zhengfang = useZhengfangAcademic();
-// 南医只有完成情况（学分统计和学业体检单）。
-const views = computed(() => (zhengfang.value
+const externalAcademic = useExternalAcademic();
+// 外校只有完成情况（南医：学分统计和学业体检单；南中医：培养方案完成情况）。
+const views = computed(() => (externalAcademic.value
   ? [{ key: "overview", label: "完成情况" }]
   : [
     { key: "overview", label: "完成情况" },

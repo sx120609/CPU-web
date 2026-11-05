@@ -7,17 +7,17 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useZhengfangAcademic } from "@/utils/academicSystem";
+import { useExternalAcademic } from "@/utils/academicSystem";
 import JwxtSubViews from "@/components/jwxt/JwxtSubViews.vue";
 import FreeRoomsPane from "@/components/jwxt/records/FreeRoomsPane.vue";
 import TimetableSearchPane from "@/components/jwxt/records/TimetableSearchPane.vue";
 
 defineProps<{ active?: boolean }>();
 
-const zhengfang = useZhengfangAcademic();
+const externalAcademic = useExternalAcademic();
 // 全校课表检索是药大教务独有的。
 const views = computed(() => [
   { key: "free", label: "空教室" },
-  ...(zhengfang.value ? [] : [{ key: "search", label: "课表检索" }]),
+  ...(externalAcademic.value ? [] : [{ key: "search", label: "课表检索" }]),
 ]);
 </script>

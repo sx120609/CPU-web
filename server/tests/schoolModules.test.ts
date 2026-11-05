@@ -135,6 +135,20 @@ test("南医是带教务驱动的内置学校：统一认证登录、教务可�
   }
 });
 
+test("南中医是带教务驱动的内置学校：树维教务、统一认证登录，没有图书馆", () => {
+  const byKey = new Map(SCHOOL_MODULES.map((module) => [module.key, module]));
+  const njucm = getSchool("njucm");
+  assert.equal(njucm.id, "njucm");
+  assert.equal(njucm.ssoLogin, true);
+  assert.equal(njucm.academicSystem, "shuwei-eams");
+  assert.equal(njucm.enabled, false);
+  assert.equal(njucm.defaultPeriods.length, 12);
+  assert.equal(isSchoolModuleAvailable(njucm, byKey.get("academic")!), true);
+  assert.equal(isSchoolModuleAvailable(njucm, byKey.get("announcements")!), true);
+  assert.equal(isSchoolModuleAvailable(njucm, byKey.get("library")!), false);
+  assert.ok(getEnabledSchoolModules("njucm").includes("academic"));
+});
+
 test("后台切换学校只对平台管理员生效", () => {
   const withHeader = (user: Record<string, unknown> | undefined, bearer?: string) => ({
     user,

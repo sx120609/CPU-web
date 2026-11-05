@@ -29,8 +29,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     key: "academic",
     label: "教务与课表",
     isolation: "school",
-    // 有教务驱动的学校：药大（强智 jsxsd）、南医（正方 V9，见 schools/njmu）。
-    implementedFor: ["cpu", "njmu"],
+    // 有教务驱动的学校：药大（强智 jsxsd）、南医（正方 V9，见 schools/njmu）、南中医（树维，见 schools/njucm）。
+    implementedFor: ["cpu", "njmu", "njucm"],
     routes: ["/jwxt", "/schedule-shares", "/couple"],
     pages: ["/jwxt", "/schedule"],
   },
@@ -38,8 +38,8 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     key: "announcements",
     label: "学校公告",
     isolation: "school",
-    // 药大的公告爬虫源，南医的教务处、学校通知、学工处、科研院、要闻（schools/njmu/feeds.ts）。
-    implementedFor: ["cpu", "njmu"],
+    // 药大的公告爬虫源，南医（schools/njmu/feeds.ts）和南中医（schools/njucm/feeds.ts）的教务处、学校通知、要闻等栏目。
+    implementedFor: ["cpu", "njmu", "njucm"],
     routes: ["/announcements"],
     pages: ["/announcements"],
   },
@@ -86,7 +86,7 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     tools: ["workshop"],
   },
   // 拾间AI：提示词、入口和资料按提问人的学校（services/campusAssistant.ts），学校资料库只有药大。
-  { key: "assistant", label: "拾间AI", isolation: "school", implementedFor: ["cpu", "njmu"], routes: [] },
+  { key: "assistant", label: "拾间AI", isolation: "school", implementedFor: ["cpu", "njmu", "njucm"], routes: [] },
   {
     key: "games",
     label: "小游戏",

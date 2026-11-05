@@ -1,4 +1,5 @@
 import { njmuDriver } from "./njmu/schoolDriver";
+import { njucmDriver } from "./njucm/schoolDriver";
 
 /**
  * 接入一所学校时，把这所学校跟上游打交道的部分登记成一个驱动；路由、会话、课表缓存、
@@ -53,7 +54,7 @@ export interface SchoolDriver {
   forgetAccount?(username: string): Promise<void>;
 }
 
-const SCHOOL_DRIVERS: readonly SchoolDriver[] = [njmuDriver];
+const SCHOOL_DRIVERS: readonly SchoolDriver[] = [njmuDriver, njucmDriver];
 
 export function schoolDriverForToken(token: string | null | undefined): SchoolDriver | undefined {
   if (!token) return undefined;
