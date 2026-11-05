@@ -41,6 +41,12 @@ test('Harmony login lets the user pick a school and shows the school scan step n
   assert.match(loginSource, /`登录\$\{this\.brandName\}，继续查看你的校园信息`/);
   assert.match(loginSource, /SaveButton\(/);
   assert.doesNotMatch(loginSource, /微信|南医|南京医科/);
+  // The live site never installs native bridges for this shell (no CPUTimeNative/ in its user agent),
+  // so the bundled bridge has to install the login functions itself, before anyone signs in.
+  const entrySource = readFileSync(new URL('../bridge/entry.ts', import.meta.url), 'utf8');
+  assert.match(entrySource, /installIosNativeAuthBridge\(useAuthStore\(\)\);\s*installNativeLoginSchools\(\);/);
+  const bundle = readFileSync(new URL('../entry/src/main/resources/rawfile/NativeWebCompatibility.js', import.meta.url), 'utf8');
+  for (const name of ['nativeLoginSchools', 'nativeChooseSchool', 'nativeMfaPoll', 'cpu-school-choice']) assert.ok(bundle.includes(name), name);
 });
 
 test('Harmony daily schedule keeps a dedicated seven-day pager and external date strip', () => {

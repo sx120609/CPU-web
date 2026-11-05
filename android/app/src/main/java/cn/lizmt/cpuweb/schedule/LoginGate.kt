@@ -123,7 +123,14 @@ fun LoginGate(activity: MainActivity) {
     val brandName = school?.brandName ?: AppConfig.APP_NAME
 
     LaunchedEffect(Unit) {
-        val list = web.nativeLoginSchools() ?: return@LaunchedEffect
+        // 页面刚加载（或刚刷新）时桥还没装好；旧版网页一直没有，最多等十秒。
+        var list: LoginSchools? = null
+        for (attempt in 0 until 20) {
+            list = web.nativeLoginSchools()?.takeIf { it.schools.isNotEmpty() }
+            if (list != null) break
+            delay(500)
+        }
+        if (list == null) return@LaunchedEffect
         schools = list.schools
         if (school == null) school = list.current
         if (list.current?.ssoLogin == false) {

@@ -570,10 +570,16 @@ export struct NativeLoginGate {
     }
   }
 
-  private async loadSchools(): Promise<void> {
+  /** 页面刚加载（或刚刷新）时桥还没装好，学校列表要等一会儿；旧版网页一直没有，最多等十秒。 */
+  private async loadSchools(attempt: number = 0): Promise<void> {
+    const revision = this.mfaRevision;
     const response = await this.onLoadSchools();
-    this.schools = response.schools;
-    if (!this.schoolId) this.applySchool(response.school);
+    if (response.schools.length) {
+      this.schools = response.schools;
+      if (!this.schoolId) this.applySchool(response.school);
+      return;
+    }
+    if (attempt < 20 && revision === this.mfaRevision) setTimeout(() => void this.loadSchools(attempt + 1), 500);
   }
 
   private async chooseSchool(index: number): Promise<void> {

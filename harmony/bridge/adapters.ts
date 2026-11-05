@@ -5,6 +5,27 @@ export function liveApp(): any {
 }
 export function useAuthStore(): any { return liveApp()?.config.globalProperties.$pinia?._s.get("auth"); }
 export function useJwxtStore(): any { return liveApp()?.config.globalProperties.$pinia?._s.get("jwxt"); }
+export function useSiteStore(): any { return liveApp()?.config.globalProperties.$pinia?._s.get("site"); }
+
+/** The login page's school list (same endpoint as the site's api/site.ts). */
+export const siteApi = {
+  async schools() {
+    const response = await fetch("/api/schools", { credentials: "same-origin", headers: { "X-CPU-Client": "harmony-app" } });
+    const body = await response.json();
+    if (!response.ok || (typeof body.code === "number" && body.code !== 0)) throw new Error(body.message || "学校列表暂时不可用");
+    return Array.isArray(body.data) ? body.data : [];
+  },
+};
+
+/** Same key as the site's api/request.ts: every request after this carries X-CPU-School. */
+export function setSchoolChoice(schoolId: string) {
+  try {
+    if (schoolId) localStorage.setItem("cpu-school-choice", schoolId);
+    else localStorage.removeItem("cpu-school-choice");
+  } catch {
+    // Only the next launch's default school is affected.
+  }
+}
 export function isNativeScheduleShell() { return /CPUWebHarmonyApp\//i.test(navigator.userAgent); }
 
 export function watch(getter: () => unknown, callback: () => void) {

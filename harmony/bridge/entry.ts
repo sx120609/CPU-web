@@ -1,5 +1,6 @@
-import { installIosNextScheduleBridge } from "../../web/src/utils/iosNextScheduleBridge";
-import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore } from "./adapters";
+import { installIosNativeAuthBridge, installIosNextScheduleBridge } from "../../web/src/utils/iosNextScheduleBridge";
+import { installNativeLoginSchools } from "../../web/src/utils/nativeLoginSchools";
+import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore, useSiteStore } from "./adapters";
 import { installHarmonyEditor } from './editor';
 import { installHarmonySharing } from './sharing';
 import { installHarmonyCouple } from './couple';
@@ -13,10 +14,19 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   installHarmonySharing();
   installHarmonyCouple();
   let attempts = 0;
+  let loginInstalled = false;
   const install = () => {
     const host = window as any;
     installHarmonyNavigation();
     installHarmonyHeader();
+    // The live site does not install native bridges for this shell (its user
+    // agent has no CPUTimeNative/), so the login page's school choice and
+    // scan verification come from this bundle, for guests too.
+    if (!loginInstalled && useAuthStore() && useSiteStore()) {
+      loginInstalled = true;
+      installIosNativeAuthBridge(useAuthStore());
+      installNativeLoginSchools();
+    }
     if (typeof host.CPUTimeNativeScheduleFetch === "function") {
       host.CPUTimeNative.ready?.();
       return;
