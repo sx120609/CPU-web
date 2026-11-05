@@ -127,7 +127,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="公开认证说明" required>
-          <el-input v-model="grantForm.approvedLabel" maxlength="30" show-word-limit :placeholder="grantForm.type === 'individual' ? '例如：校园摄影创作者' : '例如：中国药科大学轮滑协会'" />
+          <el-input v-model="grantForm.approvedLabel" maxlength="30" show-word-limit :placeholder="grantForm.type === 'individual' ? '例如：校园摄影创作者' : '例如：学校轮滑协会'" />
           <p class="dialog-help">昵称旁显示 X 式蓝色认证勾，完整说明显示在悬停提示和个人主页。</p>
         </el-form-item>
         <el-form-item label="核验依据（用户可见）" required>

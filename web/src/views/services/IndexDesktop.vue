@@ -91,7 +91,7 @@
     </section>
 
     <!-- 未登录的兜底：少量基础外链 -->
-    <section v-if="!jwxt.isLoggedIn && campusPortal" class="svc-d-section" aria-labelledby="svc-d-links-title">
+    <section v-if="!jwxt.isLoggedIn && publicServiceLinks.length" class="svc-d-section" aria-labelledby="svc-d-links-title">
       <header class="svc-d-section-head">
         <h2 id="svc-d-links-title" class="pk-h2">公开入口</h2>
         <span class="pk-muted">在新页面打开</span>
@@ -115,7 +115,7 @@ import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import ToolCardDesktop from "./components/ToolCardDesktop.vue";
 import { canOfferDesktopClient, hidesClientDownloads } from "@/utils/clientInfo";
-import { publicServiceLinks, useInjectedServicesPage } from "./servicesPage";
+import { useInjectedServicesPage } from "./servicesPage";
 import "@/styles/page-kit.css";
 
 const {
@@ -127,6 +127,7 @@ const {
   visibleTools,
   academicDataUnavailable,
   campusPortal,
+  publicServiceLinks,
   clientApps,
   libraryAvailable,
   loadToolMetas,

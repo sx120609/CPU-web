@@ -53,7 +53,7 @@ async function loadDocument(document: PolicyDocument) {
     if (!response.ok) throw new Error('Policy document unavailable');
     const page = new DOMParser().parseFromString(await response.text(), 'text/html');
     const documentBody = page.querySelector('article') || page.querySelector('main') || page.body;
-    localizeSchoolDocument(documentBody, { id: site.school?.id, brandName: site.brandName, schoolName: site.schoolName });
+    localizeSchoolDocument(documentBody, { id: site.school?.id, isDefault: site.isDefaultSchool, brandName: site.brandName, schoolName: site.schoolName });
     if (!currentRequest.signal.aborted) {
       content.value = DOMPurify.sanitize(documentBody.innerHTML, {
         USE_PROFILES: { html: true },

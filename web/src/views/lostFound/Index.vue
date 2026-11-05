@@ -186,9 +186,10 @@
           <el-form-item label="物品名称" required><el-input v-model="publishForm.itemName" maxlength="80" placeholder="例如：蓝色校园卡套" /></el-form-item>
         </div>
         <el-form-item label="校区" required>
-          <div class="choice-tabs campus-tabs" role="radiogroup" aria-label="校区">
+          <div v-if="campusOptions.length" class="choice-tabs campus-tabs" role="radiogroup" aria-label="校区">
             <button data-cpu-button="option" v-for="campus in campusOptions" :key="campus" type="button" :class="{ active: publishForm.campus === campus }" @click="publishForm.campus = campus">{{ campus }}</button>
           </div>
+          <el-input v-else v-model="publishForm.campus" maxlength="40" placeholder="例如：主校区" />
         </el-form-item>
         <div class="two-cols location-time-row">
           <el-form-item label="具体地点" required><el-input v-model="publishForm.location" maxlength="100" placeholder="教学楼、食堂、操场等" /></el-form-item>
@@ -272,6 +273,7 @@ import { lostFoundApi, type LostFoundClaim, type LostFoundClaimStatus, type Lost
 import { uploadApi } from "@/api/topic";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { normalizeImageUploadError, prepareForumImageUpload } from "@/utils/imageUpload";
 import { openImageGallery } from "@/utils/imageViewer";
 import { useMobileLayout } from "@/utils/mobileLayout";
@@ -287,14 +289,15 @@ const page = ref(1);
 const pageSize = 18;
 const total = ref(0);
 const mobileFiltersOpen = ref(false);
-const campusOptions = ["江宁校区", "玄武门校区"] as const;
-type CampusOption = typeof campusOptions[number];
+// 校区选项来自学校档案；学校没给时让发布者自己填。
+const site = useSiteStore();
+const campusOptions = computed(() => site.campuses);
 const filters = reactive<{ q: string; kind: string; campus: string; location: string; dates: string[]; status: string }>({ q: "", kind: "", campus: "", location: "", dates: [], status: "" });
 const publishOpen = ref(false);
 const submitting = ref(false);
 const uploading = ref(false);
 const uploadProgress = ref(0);
-const publishForm = reactive({ kind: "found" as LostFoundKind, itemName: "", description: "", campus: "江宁校区" as CampusOption, location: "", storageLocation: "", happenedAt: "", contact: "", images: [] as string[] });
+const publishForm = reactive({ kind: "found" as LostFoundKind, itemName: "", description: "", campus: "", location: "", storageLocation: "", happenedAt: "", contact: "", images: [] as string[] });
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detail = ref<LostFoundItem | null>(null);
@@ -334,7 +337,7 @@ async function loadItems() { loading.value = true; try { const result = await lo
 function applyFilters() { page.value = 1; void loadItems(); }
 function resetMobileFilters() { Object.assign(filters, { campus: "", location: "", dates: [], status: "" }); mobileFiltersOpen.value = false; applyFilters(); }
 function ensureLogin() { if (auth.isLoggedIn) return true; router.push({ name: "login", query: { redirect: route.fullPath } }); return false; }
-function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const campus = campusOptions.includes(filters.campus as CampusOption) ? filters.campus as CampusOption : "江宁校区"; Object.assign(publishForm, { kind, itemName: "", description: "", campus, location: "", storageLocation: "", happenedAt: dayjs().format("YYYY-MM-DDTHH:mm:ss"), contact: "", images: [] }); publishOpen.value = true; }
+function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const campus = campusOptions.value.includes(filters.campus) ? filters.campus : campusOptions.value[0] ?? ""; Object.assign(publishForm, { kind, itemName: "", description: "", campus, location: "", storageLocation: "", happenedAt: dayjs().format("YYYY-MM-DDTHH:mm:ss"), contact: "", images: [] }); publishOpen.value = true; }
 function openPublishImages(index: number) { openImageGallery(publishForm.images.map((src, imageIndex) => ({ src, title: `物品图片 ${imageIndex + 1}` })), index, { className: "cpu-lost-found-image-viewer" }); }
 function openLostFoundImages(index: number) { if (!detail.value) return; openImageGallery(detail.value.images.map((image) => ({ src: image.url, title: detail.value?.itemName || "失物招领图片" })), index, { className: "cpu-lost-found-image-viewer" }); }
 

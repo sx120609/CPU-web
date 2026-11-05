@@ -109,18 +109,25 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
         ? "通过学校统一认证查看研究生课表，信息会整理成更方便阅读的样子。"
         : "通过学校统一认证连接研究生入口，移动端课表请使用单独课表页。"
       : showScheduleTab.value
-        ? "通过学校统一认证查看课表、成绩和培养方案，信息会整理成更方便阅读的样子。"
-        : "通过学校统一认证查看成绩和培养方案，移动端课表请使用单独课表页。"
+        ? `通过学校统一认证查看课表、成绩和${showPyfaTab.value ? "培养方案" : "学业情况"}，信息会整理成更方便阅读的样子。`
+        : `通过学校统一认证查看成绩和${showPyfaTab.value ? "培养方案" : "学业情况"}，移动端课表请使用单独课表页。`
   ));
+  // 本科生 / 研究生两种入口只在有研究生系统的学校里讲。
   const loginCardHintText = computed(() => (
-    showScheduleTab.value
-      ? "登录后会自动识别你可用的教务入口。本科生会显示完整教务数据，研究生当前会直接进入课表。"
-      : "登录后会自动识别你可用的教务入口。本科生会显示成绩等教务数据，课表请使用移动端单独入口。"
+    site.hasGraduatePortal
+      ? showScheduleTab.value
+        ? "登录后会自动识别你可用的教务入口。本科生会显示完整教务数据，研究生当前会直接进入课表。"
+        : "登录后会自动识别你可用的教务入口。本科生会显示成绩等教务数据，课表请使用移动端单独入口。"
+      : showScheduleTab.value
+        ? "登录后会显示你的课表、成绩等教务数据。"
+        : "登录后会显示你的成绩等教务数据，课表请使用移动端单独入口。"
   ));
   const scopeTipText = computed(() => (
-    showScheduleTab.value
+    showScheduleTab.value && site.hasGraduatePortal
       ? "登录后会根据这次实际读取到的数据自动选择可用入口，不需要手动切换。本科生默认显示完整教务，研究生当前显示课表。"
-      : "登录后会根据这次实际读取到的数据自动选择可用入口。移动端课表请从单独课表入口查看。"
+      : showScheduleTab.value
+        ? "登录后会根据这次实际读取到的数据显示可用的教务内容。"
+        : "登录后会根据这次实际读取到的数据自动选择可用入口。移动端课表请从单独课表入口查看。"
   ));
   // 原站入口来自学校档案；有研究生系统的学校，识别出研究生身份后换成研究生入口。
   const showGraduatePortal = computed(() => Boolean(academicPortals.value?.graduate) && isGraduateIdentity.value);

@@ -1,4 +1,4 @@
-import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { DEFAULT_SCHOOL_ID, PLATFORM_BRAND } from "../schools/registry";
 import crypto from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import QRCode from "qrcode";
@@ -1064,9 +1064,9 @@ export async function sendWechatTemplateTestMessage(openId: string, userId?: num
   const notification = {
     id: Number(String(createdAt.getTime()).slice(-8)),
     title: "微信通知通道正常",
-    content: "这是一条来自药大拾间的模板通知测试。",
+    content: `这是一条来自${PLATFORM_BRAND}的模板通知测试。`,
     createdAt,
-    source: "药大拾间",
+    source: PLATFORM_BRAND,
   };
   const link = wechatSettingsUrl();
   try {
@@ -1547,7 +1547,7 @@ async function bindWechatIdentity(
       if (!token || token.usedAt || token.expiresAt <= new Date()) throw Errors.badRequest("微信绑定二维码已失效");
     }
     const conflicting = await tx.wechatBinding.findUnique({ where: { openId } });
-    if (conflicting && conflicting.userId !== userId) throw Errors.conflict("该微信已经绑定其他药大拾间账号");
+    if (conflicting && conflicting.userId !== userId) throw Errors.conflict(`该微信已经绑定其他${PLATFORM_BRAND}账号`);
     const current = await tx.wechatBinding.findUnique({ where: { userId } });
     if (current) {
       await tx.wechatBinding.update({
@@ -1678,7 +1678,7 @@ export function buildWechatRoutedTemplateNotificationPayload(
     template_id: config.workOrderTemplateId,
     url: link || undefined,
     data: {
-      thing2: { value: "药大拾间" },
+      thing2: { value: PLATFORM_BRAND },
       thing3: { value: wechatWorkOrderType(notification) },
       thing4: { value: limitText(notification.title || "站内通知", 20) },
       character_string5: { value: `SJ${Math.max(0, Number(notification.id) || 0)}` },
@@ -1699,11 +1699,11 @@ export function buildWechatRoutedTemplateNotificationPayload(
       template_id: config.paymentSuccessTemplateId,
       url: link || undefined,
       data: {
-        thing9: { value: "药大拾间" },
+        thing9: { value: PLATFORM_BRAND },
         thing10: { value: orderType },
         thing11: { value: limitText(amount ? `${item} ¥${amount}` : item, 20) },
         thing12: { value: limitText(notification.title || "订单支付成功", 20) },
-        thing13: { value: "药大拾间用户" },
+        thing13: { value: `${PLATFORM_BRAND}用户` },
       },
     };
   }
@@ -1736,7 +1736,7 @@ export function buildWechatTemplateNotificationPayload(
     data[config.templateContentField] = { value: contentValue };
   }
   if (config.templateTimeField) data[config.templateTimeField] = { value: formatWechatTime(notification.createdAt) };
-  if (config.templateRemarkField) data[config.templateRemarkField] = { value: limitText(notification.source || "药大拾间", 20) };
+  if (config.templateRemarkField) data[config.templateRemarkField] = { value: limitText(notification.source || PLATFORM_BRAND, 20) };
   return { touser: openId, template_id: config.notificationTemplateId, url: link || undefined, data };
 }
 
@@ -1916,7 +1916,7 @@ function renderWechatHelp(bound: boolean, siteOrigin = normalizedSiteOrigin()) {
 
 function renderNotificationText(notification: any, link: string) {
   return [
-    `【${notification.source || "药大拾间"}】${notification.title}`,
+    `【${notification.source || PLATFORM_BRAND}】${notification.title}`,
     notification.content,
     link ? `查看：${link}` : null,
   ].filter(Boolean).join("\n\n");

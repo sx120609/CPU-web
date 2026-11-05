@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { PLATFORM_BRAND } from "../schools/registry";
 import { runWithDistributedLock } from "./cache";
 import { amountCentsToMoney, moneyToAmountCents } from "./epay";
 
@@ -51,7 +52,7 @@ const DEFAULT_CATEGORIES: SponsorCategoryConfig[] = [
   },
   {
     id: "general",
-    title: "支持药大拾间",
+    title: `支持${PLATFORM_BRAND}`,
     description: "用于服务器、校园服务与长期维护。",
     goalAmount: null,
     deadline: null,
@@ -331,7 +332,7 @@ export function formatSponsorOrder(order: any) {
     amount: amountCentsToMoney(order.amountCents),
     amountCents: order.amountCents,
     categoryId: order.categoryId ?? "general",
-    categoryTitle: order.categoryTitle ?? "支持药大拾间",
+    categoryTitle: order.categoryTitle ?? `支持${PLATFORM_BRAND}`,
     assistantPointsAwarded: order.assistantPointsAwarded ?? 0,
     message: order.message ?? "",
     displayMode: order.displayMode ?? "public",
@@ -397,7 +398,7 @@ export function formatSponsorWallOrder(order: any) {
     id: order.id,
     amount: amountCentsToMoney(order.amountCents),
     categoryId: order.categoryId ?? "general",
-    categoryTitle: order.categoryTitle ?? "支持药大拾间",
+    categoryTitle: order.categoryTitle ?? `支持${PLATFORM_BRAND}`,
     message: order.message ?? "",
     paidAt: order.paidAt,
     user: anonymous ? null : {

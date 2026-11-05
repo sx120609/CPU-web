@@ -177,7 +177,8 @@ const canManageUsers = computed(() => isCoreStaff.value
   || auth.user?.voiceHubRole === "super_admin"
   || auth.user?.lostFoundRole === "super_admin");
 const canManageLostFound = computed(() => isCoreStaff.value || !!auth.user?.lostFoundRole);
-const canOpenVoiceHub = computed(() => (auth.isMod || !!auth.user?.voiceHubRole) && managedSchoolId.value === "cpu");
+// 药苑之声这类按学校开关的功能：正在管理的学校开着才给入口。
+const canOpenVoiceHub = computed(() => (auth.isMod || !!auth.user?.voiceHubRole) && managedSchoolHasModule("voicehub"));
 const adminIdentityLabel = computed(() => {
   const labels: string[] = [];
   if (auth.user?.role === "admin") labels.push("站点超级管理员");
@@ -193,10 +194,16 @@ const adminIdentityLabel = computed(() => {
 const isPlatformAdmin = computed(() => auth.isAdmin && auth.user?.platformAdmin !== false);
 
 // 平台管理员在这里切换正在管理的学校；后台的统计、用户、帖子、公告、AI 等按这所学校读写。
-const managedSchools = ref<Array<{ id: string; brandName: string }>>([]);
-const managedSchoolId = computed(() => adminSchool.value || auth.user?.schoolId || "cpu");
+const managedSchools = ref<Array<{ id: string; brandName: string; modules: string[] }>>([]);
+const ownSchoolId = computed(() => auth.user?.schoolId || site.school?.id || "");
+const managedSchoolId = computed(() => adminSchool.value || ownSchoolId.value);
+function managedSchoolHasModule(key: string) {
+  const managed = managedSchools.value.find((item) => item.id === managedSchoolId.value);
+  if (managed) return managed.modules.includes(key);
+  return managedSchoolId.value === site.school?.id && (site.school?.modules ?? []).includes(key);
+}
 function switchManagedSchool(value: string) {
-  setAdminSchool(value === (auth.user?.schoolId || "cpu") ? "" : value);
+  setAdminSchool(value === ownSchoolId.value ? "" : value);
   // 各个面板各自缓存了数据，整页重新载入最稳。
   window.location.reload();
 }
@@ -355,7 +362,7 @@ onMounted(() => {
   if (isCoreStaff.value) loadOverview();
   if (isPlatformAdmin.value) {
     adminApi.schools({ cacheTtlMs: 0 }).then((result) => {
-      managedSchools.value = result.schools.map((item) => ({ id: item.id, brandName: item.brandName }));
+      managedSchools.value = result.schools.map((item) => ({ id: item.id, brandName: item.brandName, modules: item.modules.filter((module) => module.enabled).map((module) => module.key) }));
       // 管理的学校被删掉或从未存在时回到自己学校。
       if (adminSchool.value && !result.schools.some((item) => item.id === adminSchool.value)) setAdminSchool("");
     }).catch(() => undefined);

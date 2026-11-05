@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { PLATFORM_BRAND } from "../schools/registry";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { authRequired } from "../middleware/auth";
@@ -59,7 +60,7 @@ async function buildSponsorPayment(order: any, req: any) {
   if (!callbacks.notifyUrl || !callbacks.returnUrl) throw Errors.badRequest("请先在后台基础配置中设置网站域名");
   return buildEpaySubmitPayload({
     outTradeNo: order.outTradeNo,
-    name: `赞助：${order.categoryTitle || "药大拾间"}`,
+    name: `赞助：${order.categoryTitle || PLATFORM_BRAND}`,
     money: amountCentsToMoney(order.amountCents),
     type: order.payType,
     notifyUrl: callbacks.notifyUrl,
@@ -449,7 +450,7 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
           category: "system",
           level: "normal",
           title: "赞助已到账",
-          content: `感谢为“${paidOrder.categoryTitle || "药大拾间"}”赞助 ¥${amountCentsToMoney(paidOrder.amountCents)}，你的支持已经记录在个人资料中${awardedPoints > 0 ? `，并获得 ${awardedPoints} 个 AI 点数` : ""}。`,
+          content: `感谢为“${paidOrder.categoryTitle || PLATFORM_BRAND}”赞助 ¥${amountCentsToMoney(paidOrder.amountCents)}，你的支持已经记录在个人资料中${awardedPoints > 0 ? `，并获得 ${awardedPoints} 个 AI 点数` : ""}。`,
           link: "/profile",
           source: "赞助",
           payload: JSON.stringify({
@@ -470,7 +471,7 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
             category: "system",
             level: "weak",
             title: "收到一笔赞助",
-            content: `订单 ${paidOrder.outTradeNo} 已为“${paidOrder.categoryTitle || "药大拾间"}”支付 ¥${amountCentsToMoney(paidOrder.amountCents)}。`,
+            content: `订单 ${paidOrder.outTradeNo} 已为“${paidOrder.categoryTitle || PLATFORM_BRAND}”支付 ¥${amountCentsToMoney(paidOrder.amountCents)}。`,
             link: "/admin",
             source: "赞助",
             payload: JSON.stringify({ type: "sponsor-admin", outTradeNo: paidOrder.outTradeNo, categoryId: paidOrder.categoryId }),

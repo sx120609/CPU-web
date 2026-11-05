@@ -166,7 +166,7 @@ export const router = createRouter({
     { path: "/register", name: "register", component: () => import("@/views/Register.vue"), meta: { public: true, title: "注册" } },
     { path: "/thanks", name: "thanks", component: () => import("@/views/thanks/Index.vue"), meta: { public: true, title: "致谢" } },
     // 药大拾间 NEXT invitation (invite-only builds); the code in the link unlocks the download.
-    { path: "/next", name: "next-invite", component: () => import("@/views/NextInvite.vue"), meta: { public: true, title: "药大拾间 NEXT" } },
+    { path: "/next", name: "next-invite", component: () => import("@/views/NextInvite.vue"), meta: { public: true, title: "NEXT 测试版" } },
     {
       path: "/",
       component: MainLayout,
@@ -334,14 +334,17 @@ router.beforeEach(async (to) => {
   // 按学校开关的功能：本校没开的页面不让进，管理员也一样（数据本来就不属于本校）。
   // 放在课表等直出页之前，但从不等待：学校信息还没到时先放行，拉到后若当前页不可用再退回首页。
   const schoolSite = useSiteStore();
+  // 客户端下载页、NEXT 邀请页只给拾间 App 服务的学校（学校档案的 clientApps）。
+  const clientAppPage = (path: string) => /^\/(?:downloads?|next)(?:\/|$)/.test(path);
+  const schoolAllows = (path: string) => schoolSite.pathEnabled(path) && (!clientAppPage(path) || schoolSite.clientAppsAvailable);
   if (schoolSite.loaded) {
-    if (!schoolSite.pathEnabled(to.path)) {
+    if (!schoolAllows(to.path)) {
       ElMessage.info("本校暂未开放这个功能");
       return { name: "home", replace: true };
     }
   } else {
     void schoolSite.fetch().then(() => router.isReady()).then(() => {
-      if (schoolSite.pathEnabled(router.currentRoute.value.path)) return;
+      if (schoolAllows(router.currentRoute.value.path)) return;
       ElMessage.info("本校暂未开放这个功能");
       void router.replace({ name: "home" });
     });

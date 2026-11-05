@@ -40,5 +40,16 @@ export const cpuSchool: SchoolProfile = {
     undergraduate: "https://jwxt.cpu.edu.cn/jsxsd/sso.jsp",
     graduate: "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk",
   },
+  clientApps: true,
+  campuses: ["江宁校区", "玄武门校区"],
+  userGroup: { qq: "704825850", joinUrl: "https://qm.qq.com/q/oVRbeagLXq" },
+  publicLinks: [
+    { name: "图书馆", icon: "course", url: "http://lib.cpu.edu.cn" },
+    { name: "馆藏检索", icon: "search", url: "http://opac.cpu.edu.cn" },
+    { name: "融合门户", icon: "school", url: "https://i.cpu.edu.cn" },
+    { name: "教务处", icon: "document", url: "http://jwc.cpu.edu.cn" },
+    { name: "校园新闻", icon: "announcement", url: "http://news.cpu.edu.cn" },
+    { name: "就业平台", icon: "work", url: "https://cpu.91job.org.cn/sub-station/home/10316" },
+  ],
   defaultModules: SCHOOL_MODULE_KEYS,
 };

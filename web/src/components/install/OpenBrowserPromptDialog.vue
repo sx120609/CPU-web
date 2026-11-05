@@ -78,9 +78,9 @@
         <p class="muted">请在 Safari 中继续；微信 / QQ 内置浏览器不支持添加到主屏幕，也可能拦截 App Store 跳转。</p>
       </template>
 
-      <p class="support-note">
+      <p v-if="userGroupQq" class="support-note">
         仍有疑问，建议
-        <button data-cpu-button="text" type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        <button data-cpu-button="text" type="button" @click="openUserGroup">加入用户 QQ 群 {{ userGroupQq }}</button>
         咨询。
       </p>
     </div>
@@ -98,7 +98,8 @@ import { computed, onBeforeUnmount, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { detectInAppBrowser, shouldAutoSuggestExternalBrowser } from "@/utils/inAppBrowser";
 import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell, isIosNativeApp } from "@/utils/clientInfo";
-import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
+import { copyText, openUserGroup, useUserGroupQq } from "@/utils/userGroup";
+const userGroupQq = useUserGroupQq();
 
 const open = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());

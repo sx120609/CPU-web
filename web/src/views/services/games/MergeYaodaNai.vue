@@ -127,8 +127,8 @@
             <article v-for="achievement in achievements" :key="achievement.code" :class="{ unlocked: achievement.unlocked }">
               <span class="achievement-icon">{{ achievement.icon }}</span>
               <span class="achievement-copy">
-                <b>{{ achievement.title }}</b>
-                <small>{{ achievement.description }}</small>
+                <b>{{ st(achievement.title) }}</b>
+                <small>{{ st(achievement.description) }}</small>
                 <i><em :style="{ width: achievementPercent(achievement) + '%' }"></em></i>
               </span>
               <strong>{{ achievement.unlocked ? "已达成" : achievement.progress + "/" + achievement.target }}</strong>

@@ -418,7 +418,7 @@ export function buildScheduleWidgetPayload(
       .sort((a, b) => a.date.localeCompare(b.date))[0]?.courses ?? [];
 
   return {
-    title: options.title || "药大课表",
+    title: options.title || "课表",
     // 整周小组件按这份作息画节次（药大 12 节，南医 15 节）。
     periods: widgetSlotsForCalendar(effectiveCalendar).map((slot) => ({ number: slot.no, startTime: slot.start, endTime: slot.end })),
     generatedAt: now.toISOString(),

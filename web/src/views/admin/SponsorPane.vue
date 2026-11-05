@@ -161,7 +161,7 @@
           </div>
           <div class="record-meta">
             <span>金额：¥{{ row.amount }}</span>
-            <span>类别：{{ row.categoryTitle || "支持药大拾间" }}</span>
+            <span>类别：{{ row.categoryTitle || "支持拾间" }}</span>
             <span>方式：{{ row.payType || "—" }}</span>
             <span>展示：{{ row.displayMode }}</span>
             <span>留言：{{ row.message || "—" }}</span>
@@ -254,7 +254,7 @@ const config = reactive<SponsorConfig>({
     },
     {
       id: "general",
-      title: "支持药大拾间",
+      title: "支持拾间",
       description: "用于服务器、校园服务与长期维护。",
       goalAmount: null,
       deadline: null,

@@ -27,7 +27,7 @@
     </div>
 
     <div v-else-if="platform === 'harmony'" class="content">
-      <p>建议前往华为应用市场安装 <b>药大拾间鸿蒙原生版</b>。</p>
+      <p>建议前往华为应用市场安装 <b>{{ site.brandName }}鸿蒙原生版</b>。</p>
       <ul class="bullets">
         <li>打开应用详情页，按应用市场提示完成安装</li>
         <li>登录原有账号即可使用，后续通过应用市场更新</li>
@@ -37,7 +37,7 @@
 
     <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
-      <p>建议安装 <b>药大拾间 Android 原生客户端</b>，支持 Android 7.0 及以上的手机、平板。</p>
+      <p>建议安装 <b>{{ site.brandName }} Android 原生客户端</b>，支持 Android 7.0 及以上的手机、平板。</p>
       <p class="migration-note">若手机里还保留 2.x 旧版，确认新版可用后可手动卸载旧版。</p>
       <ul class="bullets">
         <li>原生周／日课表，支持课程编辑、离线查看和桌面小组件</li>
@@ -51,7 +51,7 @@
     <!-- iOS 优先推荐原生客户端，保留主屏幕兼容版入口；系统过旧时直接给出主屏幕步骤。 -->
     <div v-else-if="platform === 'ios'" class="content">
       <template v-if="iosAppInstallable">
-        <p><b>药大拾间 iOS 原生版已上线</b>，推荐前往 App Store 下载。</p>
+        <p><b>{{ site.brandName }} iOS 原生版已上线</b>，推荐前往 App Store 下载。</p>
         <p class="muted">登录原有账号即可使用；需要 iOS / iPadOS {{ IOS_APP_MIN_MAJOR_VERSION }}.0 或更高版本。</p>
         <p class="muted">iOS 15–16 使用网页兼容界面，原生课表与小组件需 iOS 17 或更高版本。</p>
       </template>
@@ -120,9 +120,9 @@
       </div>
     </div>
 
-    <p v-if="!isStandalone && !isNativeApp" class="support-note">
+    <p v-if="!isStandalone && !isNativeApp && userGroupQq" class="support-note">
       仍有疑问，建议
-      <button data-cpu-button="text" type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+      <button data-cpu-button="text" type="button" @click="openUserGroup">加入用户 QQ 群 {{ userGroupQq }}</button>
       咨询。
     </p>
 
@@ -159,7 +159,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import DesktopClientDownloadCard from "@/components/install/DesktopClientDownloadCard.vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
-import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
+import { openUserGroup, useUserGroupQq } from "@/utils/userGroup";
+import { useSiteStore } from "@/stores/site";
+const userGroupQq = useUserGroupQq();
+const site = useSiteStore();
 import {
   ANDROID_APP_DOWNLOAD_URL,
   IOS_APP_MIN_MAJOR_VERSION,
@@ -306,9 +309,9 @@ function dismissDialog() {
   open.value = false;
 }
 
-/** 父组件主动调用：手动打开 install 引导（任何平台都打开） */
+/** 父组件主动调用：手动打开 install 引导（任何平台都打开）；拾间 App 不服务本校时不打开。 */
 function openDialog() {
-  if (disposed) return;
+  if (disposed || !site.clientAppsAvailable) return;
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   open.value = true;
@@ -316,7 +319,7 @@ function openDialog() {
 
 /** 父组件主动调用：安卓和鸿蒙显示对应客户端下载提示，其他平台走系统安装/手动引导 */
 async function requestInstall() {
-  if (disposed) return;
+  if (disposed || !site.clientAppsAvailable) return;
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   if (platform.value === "android" || platform.value === "harmony") {
@@ -338,7 +341,7 @@ async function requestInstall() {
  *  - 页面就绪后立即提示，避免用户先开始操作却错过引导
  */
 function autoPromptIfEligible() {
-  if (disposed) return;
+  if (disposed || !site.clientAppsAvailable) return;
   detectStandalone();
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
@@ -347,7 +350,7 @@ function autoPromptIfEligible() {
   open.value = true;
 }
 
-const canShow = computed(() => !isStandalone.value && !isNativeApp.value);
+const canShow = computed(() => site.clientAppsAvailable && !isStandalone.value && !isNativeApp.value);
 
 defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platform, isStandalone, isNativeApp });
 </script>

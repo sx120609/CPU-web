@@ -54,7 +54,7 @@
         <ul>
           <li>切换上方<b>学期</b>或<b>类型</b>（期末/期中/期初）重新查询</li>
           <li>
-            <a href="https://jwxt.cpu.edu.cn/jsxsd/sso.jsp" target="_blank" rel="noopener noreferrer">
+            <a v-if="academicPortals?.undergraduate" :href="academicPortals.undergraduate" target="_blank" rel="noopener noreferrer">
               去学校教务系统原站
             </a>
             查看是否有数据
@@ -140,6 +140,7 @@ import { ElDialog, ElDrawer, ElMessage } from "element-plus";
 import { Calendar } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
+import { useAcademicPortals } from "@/utils/academicSystem";
 import { useFormFactor } from "@/utils/formFactor";
 import { saveWeekIcs } from "@/views/schedule/icsExport";
 import {
@@ -156,6 +157,7 @@ import {
 
 const props = defineProps<{ data: any; loading?: boolean }>();
 const jwxt = useJwxtStore();
+const academicPortals = useAcademicPortals();
 const formFactor = useFormFactor();
 const compact = computed(() => formFactor.value.compact);
 

@@ -1,5 +1,5 @@
 <template>
-  <aside v-if="visible" class="ios-app-recommendation" aria-labelledby="ios-app-recommendation-title">
+  <aside v-if="visible && site.clientAppsAvailable" class="ios-app-recommendation" aria-labelledby="ios-app-recommendation-title">
     <img class="app-icon" src="/favicon.svg" alt="" width="40" height="40" />
     <div class="copy">
       <strong id="ios-app-recommendation-title">{{ headline }}</strong>
@@ -29,13 +29,16 @@
 import { ref } from "vue";
 import { Close } from "@element-plus/icons-vue";
 import { IOS_APP_STORE_URL, isLikelyIpadDevice, shouldRecommendIosApp } from "@/utils/clientInfo";
+import { useSiteStore } from "@/stores/site";
+
+const site = useSiteStore();
 
 const DISMISSED_KEY = "cpu-ios-app-recommendation-dismissed-at";
 const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
 const visible = ref(shouldRecommendIosApp() && !recentlyDismissed());
 // The app is universal; say so, and on an iPad name the iPad directly.
 const isIpad = isLikelyIpadDevice();
-const headline = isIpad ? "药大拾间 iPad 版已上线" : "药大拾间 iPhone 与 iPad 原生版已上线";
+const headline = isIpad ? `${site.brandName} iPad 版已上线` : `${site.brandName} iPhone 与 iPad 原生版已上线`;
 const closeLabel = isIpad ? "关闭 iPad 版下载推荐，7 天内不再提示" : "关闭 iPhone 与 iPad 版下载推荐，7 天内不再提示";
 
 function recentlyDismissed() {

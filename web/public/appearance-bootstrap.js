@@ -82,6 +82,19 @@
     }
     document.title = document.title.split("药大拾间").join(brandName);
   };
+  // 添加到主屏幕时的名字：iOS 读这两个 meta，安卓读 manifest（服务端按 ?school= 换成本校品牌）。
+  const setInstallBrand = () => {
+    const metas = document.querySelectorAll('meta[name="apple-mobile-web-app-title"], meta[name="application-name"]');
+    for (let index = 0; index < metas.length; index++) metas[index].setAttribute("content", brandName);
+    const manifest = document.querySelector('link[rel="manifest"]');
+    if (manifest && schoolId) {
+      const href = manifest.getAttribute("href") || "/manifest-v3.webmanifest";
+      const url = new URL(href, window.location.origin);
+      url.searchParams.set("school", schoolId);
+      manifest.setAttribute("href", url.pathname + url.search);
+    }
+  };
+  setInstallBrand();
   const apply = () => {
     swapPageBrand();
     const screen = document.getElementById("boot-screen");

@@ -29,7 +29,7 @@
 
         <address class="footer-col footer-contact">
           <h2>联系</h2>
-          <a :href="USER_QQ_GROUP_JOIN_URL" target="_blank" rel="noopener noreferrer">QQ 用户群 {{ USER_QQ_GROUP }}</a>
+          <a v-if="site.userGroupQq" :href="site.userGroupJoinUrl" target="_blank" rel="noopener noreferrer">QQ 用户群 {{ site.userGroupQq }}</a>
           <a href="mailto:sl@qiuxieit.cn">sl@qiuxieit.cn</a>
           <p>深圳市南山区高新南九道51号航空航天大厦1号楼2302</p>
         </address>
@@ -54,7 +54,6 @@
 <script setup lang="ts">
 import { useSiteStore } from "@/stores/site";
 import { hidesClientDownloads } from "@/utils/clientInfo";
-import { USER_QQ_GROUP, USER_QQ_GROUP_JOIN_URL } from "@/utils/userGroup";
 import { APP_FILING_NUMBER, APP_FILING_URL } from "../../../../shared/appFiling";
 
 // appFiling：已备案的移动端壳内显示 APP 备案号；compact：旧 Flutter 壳只保留备案号一行；

@@ -1412,6 +1412,8 @@ export interface AdminSchool {
   enabled: boolean;
   academicSystem: string | null;
   ssoLogin: boolean;
+  /** 默认学校不能关闭。 */
+  isDefault?: boolean;
   modules: AdminSchoolModuleState[];
 }
 

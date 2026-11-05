@@ -291,7 +291,7 @@
                 v-model="dormNameDraft"
                 class="name-input"
                 maxlength="24"
-                placeholder="例如 江宁 3-402"
+                placeholder="例如 3 号楼 402"
                 aria-label="宿舍名"
                 @focus="nameEditing = true"
                 @blur="saveName"

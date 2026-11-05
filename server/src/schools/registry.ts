@@ -59,6 +59,14 @@ export type SchoolProfile = {
   academicViews: readonly AcademicView[];
   /** 教务页「前往原站」的入口：本科教务，以及有研究生系统的学校的研究生入口。 */
   academicPortals?: { undergraduate: string; graduate?: string };
+  /** 拾间的手机 App、桌面端是否服务这所学校：下载页、安装提示、原生版推荐只给为 true 的学校。 */
+  clientApps: boolean;
+  /** 本校校区，失物招领、二手发布时给的选项；为空时只能自己填。 */
+  campuses: readonly string[];
+  /** 用户交流 QQ 群；没有就不显示。 */
+  userGroup?: { qq: string; joinUrl: string };
+  /** 没登录教务时服务页给游客的公开校园入口（图书馆、教务处、新闻网等）。 */
+  publicLinks: ReadonlyArray<{ name: string; icon: string; url: string }>;
   defaultPeriods: readonly SchoolPeriod[];
   /** 这所学校默认开着哪些功能；没列出的功能默认关闭。 */
   defaultModules: readonly string[];
@@ -74,6 +82,9 @@ export type SchoolRow = {
   enabled: boolean;
 };
 
+/** 拾间平台本身的品牌：赞助、微信服务号、文件收集这类全平台共用的东西用它，不用某一所学校的品牌。 */
+export const PLATFORM_BRAND = "拾间";
+
 /** 历史数据全部属于药大：没有 schoolId 的旧令牌、旧行和访客都按药大处理。 */
 export const DEFAULT_SCHOOL_ID = "cpu";
 
@@ -86,7 +97,7 @@ let schools: ReadonlyMap<string, SchoolProfile> = BUILTIN_SCHOOLS;
 export function schoolFromRow(row: SchoolRow, allModules: readonly string[]): SchoolProfile {
   const builtin = BUILTIN_SCHOOLS.get(row.id);
   return {
-    ...(builtin ?? { academicSystem: null, ssoLogin: false, hosts: {}, academicViews: [], defaultPeriods: [], defaultModules: allModules }),
+    ...(builtin ?? { academicSystem: null, ssoLogin: false, hosts: {}, academicViews: [], clientApps: false, campuses: [], publicLinks: [], defaultPeriods: [], defaultModules: allModules }),
     id: row.id,
     name: row.name,
     shortName: row.shortName,

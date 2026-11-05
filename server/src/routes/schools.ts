@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { ok } from "../utils/response";
-import { getSchool, listSchools, type SchoolProfile } from "../schools/registry";
+import { DEFAULT_SCHOOL_ID, getSchool, listSchools, type SchoolProfile } from "../schools/registry";
 import { getEnabledSchoolModules, requestSchoolId } from "../schools/modules";
 import { schoolModulePageMap } from "../schools/catalog";
 
@@ -17,6 +17,14 @@ function publicSchool(school: SchoolProfile) {
     academicViews: school.academicViews,
     academicPortals: school.academicPortals ?? null,
     ssoLogin: school.ssoLogin,
+    /** 默认学校：历史数据和没有学校的访客都归它。网页只用来决定是否原样显示写给它的文字。 */
+    isDefault: school.id === DEFAULT_SCHOOL_ID,
+    clientApps: school.clientApps,
+    /** 有融合门户（教务登录后能列出校内应用）的学校。 */
+    campusPortal: Boolean(school.hosts.portal),
+    campuses: school.campuses,
+    userGroup: school.userGroup ?? null,
+    publicLinks: school.publicLinks,
     periods: school.defaultPeriods,
   };
 }

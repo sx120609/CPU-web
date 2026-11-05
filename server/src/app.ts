@@ -34,6 +34,7 @@ import { startProfileReviewPoller } from "./services/profileReview";
 import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
+import { createSchoolManifestHandler } from "./services/schoolManifest";
 import { authOptional } from "./middleware/auth";
 import { createAdmissionControl } from "./middleware/admissionControl";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
@@ -203,6 +204,8 @@ export function createApp(options: { workers?: boolean } = {}) {
     if (dist) {
       console.log(`📦 静态资源目录: ${dist}`);
       app.use("/assets", createWebStaticCosHandler(dist));
+      // 带学校参数的 manifest 换成那所学校的品牌，要在静态文件之前接住。
+      app.get("/manifest-v3.webmanifest", createSchoolManifestHandler(dist));
       app.use(createWebStaticPublicCosHandler(dist));
       const webStaticIndexHandler = createWebStaticIndexHandler(dist, undefined, (html, req) => applyPageSeo(html, req.path));
       app.get(["/", "/index.html"], webStaticIndexHandler);

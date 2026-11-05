@@ -67,6 +67,18 @@ export type SchoolSummary = {
   academicViews?: string[];
   /** 教务页「前往原站」的入口。 */
   academicPortals?: { undergraduate: string; graduate?: string } | null;
+  /** 默认学校（历史数据和访客都归它）。 */
+  isDefault?: boolean;
+  /** 拾间的手机 App、桌面端是否服务这所学校。 */
+  clientApps?: boolean;
+  /** 有融合门户（教务登录后能列出校内应用）。 */
+  campusPortal?: boolean;
+  /** 本校校区（失物、二手发布时的选项）。 */
+  campuses?: string[];
+  /** 用户交流 QQ 群。 */
+  userGroup?: { qq: string; joinUrl: string } | null;
+  /** 游客的公开校园入口。 */
+  publicLinks?: Array<{ name: string; icon: string; url: string }>;
   /** 这所学校的默认作息（节次从 1 起连续编号）。 */
   periods?: Array<{ no: number; name: string; start: string; end: string }>;
 };

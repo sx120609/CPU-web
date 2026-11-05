@@ -307,6 +307,7 @@ import {
   Close,
   Coin,
   CopyDocument,
+  Calendar,
   Delete,
   EditPen,
   Expand,
@@ -329,6 +330,7 @@ import {
   type CampusAssistantSource,
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { getFormFactor } from "@/utils/formFactor";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
 import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
@@ -427,11 +429,16 @@ const dockedHistoryMedia = typeof window !== "undefined" && window.matchMedia
 const wideViewport = ref(Boolean(dockedHistoryMedia?.matches));
 const historyDocked = computed(() => !embedded && wideViewport.value);
 
-const welcomePrompts = [
-  { text: "宿舍电费在哪里查？", hint: "校园服务", icon: Lightning },
-  { text: "怎么打开药苑之声？", hint: "站内功能", icon: Headset },
+// 示例问题只举本校开着的功能，最后一条固定讲 AI 额度。
+const site = useSiteStore();
+const welcomePrompts = computed(() => [
+  ...[
+    ...(site.moduleEnabled("dormElectric") ? [{ text: "宿舍电费在哪里查？", hint: "校园服务", icon: Lightning }] : []),
+    ...(site.moduleEnabled("voicehub") ? [{ text: "怎么打开药苑之声？", hint: "站内功能", icon: Headset }] : []),
+    ...(site.moduleEnabled("academic") ? [{ text: "课表怎么导出到手机日历？", hint: "课表", icon: Calendar }] : []),
+  ].slice(0, 2),
   { text: "AI 额度怎么计算？", hint: "使用说明", icon: Coin },
-];
+]);
 const welcomeGreeting = computed(() => {
   const name = auth.user?.nickname?.trim();
   return name ? `${name}，想了解点什么？` : "想了解点什么？";

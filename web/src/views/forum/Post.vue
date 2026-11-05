@@ -200,7 +200,7 @@
                     v-model="meta.location"
                     maxlength="80"
                     show-word-limit
-                    placeholder="例如：江宁校区图书馆门口；建议选择公开场所"
+                    placeholder="例如：图书馆门口；建议选择公开场所"
                   />
                 </el-form-item>
               </div>
@@ -520,6 +520,7 @@ import { boardApi, type Board } from "@/api/board";
 import { forumAdsApi } from "@/api/forumAds";
 import { topicApi, type SmartPostOperation, type SmartPostQuotaEstimate, type TopicSubmissionResponse } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { useSmartPostJobStore } from "@/stores/smartPostJob";
 import { fmtDate } from "@/utils/format";
 import { prepareForumTopicTitle } from "@/utils/forumContent";
@@ -538,6 +539,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const site = useSiteStore();
 const smartPost = useSmartPostJobStore();
 const isMobileLayout = useMobileLayout();
 const nativePageChrome = isNativeScheduleShell();
@@ -642,7 +644,8 @@ const SECOND_HAND_CATEGORIES = [
 ];
 const SECOND_HAND_CONDITIONS = ["全新未拆", "几乎全新", "使用良好", "明显使用痕迹"];
 const SECOND_HAND_TRADE_MODES = ["校内面交", "邮寄", "均可", "线上沟通"];
-const SECOND_HAND_CAMPUSES = ["江宁校区", "玄武门校区", "不限校区"];
+// 二手交易的校区选项来自学校档案，另加「不限校区」。
+const SECOND_HAND_CAMPUSES = computed(() => [...site.campuses, "不限校区"]);
 
 function normalizeExistingMarketMeta(metadata: Record<string, any>) {
   const rawKind = metadata.marketKind || metadata.listingType;
@@ -704,7 +707,9 @@ const meta = reactive<any>(defaultPostMeta());
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
 const isSecondHandPost = computed(() => boardType.value === "market" || form.boardSlug === "market");
-const requestedActivityTheme = computed(() => resolveCampusLifeActivityTheme(route.query.activity, route.query.theme));
+const requestedActivityTheme = computed(() => (
+  site.school?.id === CAMPUS_LIFE_ACTIVITY.schoolId ? resolveCampusLifeActivityTheme(route.query.activity, route.query.theme) : null
+));
 const activityTheme = computed(() => {
   if (form.boardSlug !== "life") return null;
   if (editingId.value) return resolveCampusLifeActivityTheme(meta.campaignId, meta.campaignTheme);

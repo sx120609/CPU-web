@@ -904,9 +904,9 @@
       <p class="widget-copy-message">
         同一脚本可添加多次：小号默认“临近课程”，中号默认“今日课程”，大号默认“两日课表”；在小组件 Parameter 中填写“当前/接下来”，可切换为双课程样式。
       </p>
-      <p class="support-note">
+      <p v-if="userGroupQq" class="support-note">
         仍有疑问，建议
-        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ userGroupQq }}</button>
         咨询。
       </p>
       <template #footer>
@@ -940,9 +940,9 @@
       <p class="widget-countdown">
         {{ widgetInstructionCountdown > 0 ? `请先阅读说明，${widgetInstructionCountdown} 秒后可继续。` : "已可继续打开 Scriptable。" }}
       </p>
-      <p class="support-note">
+      <p v-if="userGroupQq" class="support-note">
         仍有疑问，建议
-        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ userGroupQq }}</button>
         咨询。
       </p>
       <template #footer>
@@ -967,15 +967,15 @@
         <li>如果系统弹出添加小组件或卡片确认，请直接确认添加。</li>
         <li>如果没有弹出，请回到桌面，长按空白处，选择“小组件”“卡片”或类似入口。</li>
         <li>不同厂商叫法不同，部分系统会把入口放在“卡片”“插件”“服务卡片”等二级菜单里；一级菜单没有找到时，请进入这些二级菜单查找。</li>
-        <li>找到本软件对应的“药大课表小组件 / 卡片”，可选择 2x2、4x2 或 4x4 尺寸添加到桌面。</li>
+        <li>找到本软件对应的“{{ site.schoolShortName }}课表小组件 / 卡片”，可选择 2x2、4x2 或 4x4 尺寸添加到桌面。</li>
         <li>刚才的课表配置已保存，添加后会自动读取课程。</li>
       </ol>
       <p class="widget-countdown">
         部分国内系统会拦截 App 主动拉起小组件或卡片添加面板，手动添加是更稳定的方式。
       </p>
-      <p class="support-note">
+      <p v-if="userGroupQq" class="support-note">
         仍有疑问，建议
-        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ USER_QQ_GROUP }}</button>
+        <button type="button" @click="openUserGroup">加入用户 QQ 群 {{ userGroupQq }}</button>
         咨询。
       </p>
       <template #footer>
@@ -1247,7 +1247,7 @@ import {
 } from "@/utils/clientInfo";
 import { useFormFactor } from "@/utils/formFactor";
 import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
-import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
+import { copyText, openUserGroup, useUserGroupQq } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import { mergeSemesters, readKnownSemesters, rememberSemesters } from "@/views/schedule/knownSemesters";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
@@ -1414,6 +1414,7 @@ import type {
 } from "@/views/schedule/types";
 
 const site = useSiteStore();
+const userGroupQq = useUserGroupQq();
 
 const auth = useAuthStore();
 const couple = useCoupleOverlay(() => auth.user?.id);
@@ -1815,7 +1816,9 @@ const academicDataUnavailable = computed(() => Boolean(
   jwxt.isLoggedIn && auth.user?.studentSso && auth.academicIdentityUnavailable,
 ));
 const scheduleLoginScopeText = computed(() => (
-  "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
+  site.hasGraduatePortal
+    ? "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
+    : "登录后会自动读取你本学期的课表。"
 ));
 type WidgetMenuPlatform = "ios" | "ios-native" | "harmony" | "android" | "android-old";
 interface AndroidWidgetBridge {

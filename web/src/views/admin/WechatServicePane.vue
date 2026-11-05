@@ -393,7 +393,7 @@ async function toggleBinding(row: any, value: string | number | boolean) {
 
 async function sendCustomerTest(row: any) {
   const result = await ElMessageBox.prompt("这条消息会通过服务号客服接口发送给该用户。", "发送测试消息", {
-    inputValue: "这是一条来自药大拾间的服务号接入测试消息。",
+    inputValue: "这是一条来自拾间的服务号接入测试消息。",
     inputValidator: (value) => value.trim().length > 0 || "请输入消息内容",
   }).catch(() => null);
   if (!result) return;

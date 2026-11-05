@@ -112,7 +112,7 @@ test("formatted sponsor orders preserve category snapshots and legacy fallback",
   assert.equal(current.categoryId, "app-store-2026");
   assert.equal(current.categoryTitle, "App Store 首年上架计划");
   assert.equal(legacy.categoryId, "general");
-  assert.equal(legacy.categoryTitle, "支持药大拾间");
+  assert.equal(legacy.categoryTitle, "支持拾间");
 });
 
 test("sponsor ranking sorts by total amount and keeps anonymous support apart", () => {

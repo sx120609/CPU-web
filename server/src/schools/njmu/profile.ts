@@ -30,5 +30,12 @@ export const njmuSchool: SchoolProfile = {
   defaultPeriods: PERIODS.slice(0, 15).map(([start, end], index) => ({ no: index + 1, name: `第${index + 1}节`, start, end })),
   academicViews: ["schedule", "grades", "levelExams", "exams", "progress", "freeRooms"],
   academicPortals: { undergraduate: "https://jwpt.njmu.edu.cn/sso/jzlogin" },
+  clientApps: false,
+  campuses: ["江宁校区", "五台校区"],
+  publicLinks: [
+    { name: "图书馆", icon: "course", url: "https://lib.njmu.edu.cn" },
+    { name: "教务处", icon: "document", url: "https://jxglc.njmu.edu.cn" },
+    { name: "学校官网", icon: "announcement", url: "https://www.njmu.edu.cn" },
+  ],
   defaultModules: SCHOOL_MODULE_KEYS,
 };

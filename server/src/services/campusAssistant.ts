@@ -89,7 +89,8 @@ export function assistantSchoolOf(context: Pick<CampusAssistantContext, "schoolI
   return { id: school.id, name: school.name, shortName: school.shortName, brandName: school.brandName };
 }
 
-const DEFAULT_ASSISTANT_SCHOOL: AssistantSchool = { id: DEFAULT_SCHOOL_ID, name: "中国药科大学", shortName: "药大", brandName: "药大拾间" };
+/** 没说明学校时按默认学校；提示词和入口原本就是写给它的。 */
+const DEFAULT_ASSISTANT_SCHOOL: AssistantSchool = assistantSchoolOf(undefined);
 
 /** 写给药大的说明换成当前学校的名字；药大自己原样返回。小游戏名等说法和网页显示一致，也换成本校简称。 */
 export function localizeAssistantText(text: string, school: AssistantSchool = DEFAULT_ASSISTANT_SCHOOL) {
@@ -107,6 +108,8 @@ const DEFAULT_SCHOOL_ONLY_ACTION_IDS = new Set(["desktop-client", "unified-auth"
 
 type CampusAssistantKnowledge = {
   id?: string;
+  /** 只对这些学校成立（写的是这几所学校的校区、电话、系统入口等）；不填对所有学校成立。 */
+  schoolIds?: readonly string[];
   relatedActionIds: string[];
   fact: string;
   source?: string;
@@ -123,6 +126,9 @@ export type CampusAssistantKnowledgeEntry = {
 };
 
 const SITE_KNOWLEDGE_VERIFIED_AT = "2026-07-27";
+
+/** 讲药大自己的校区、电话、系统入口、教务视图和拾间客户端的资料只对药大成立，别的学校的拾间AI 不能拿来回答。 */
+const DEFAULT_SCHOOL_FACTS: readonly string[] = [DEFAULT_SCHOOL_ID];
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 const CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT = 8;
@@ -633,6 +639,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、外观等设置；微信服务号绑定请使用消息中心的设置页，QQBot 将逐步退出身份绑定功能。拾间AI不会读取或代查用户的课表、成绩、考试、学业进度、账号额度或站内消息；涉及本人数据时应引导用户进入对应页面自行查看。",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "jwxt-overview-2026-10",
     relatedActionIds: ["jwxt"],
     fact: "教务数据：本科生账号可查看“成绩”“学业”“培养方案”“选课”“教室”几组内容，电脑端另有课表标签，手机端课表在单独的课表页；研究生账号目前只提供课表。课程成绩可按学期和课程性质筛选，会显示教务系统返回的平时、期中、期末分项，并提供自定义 GPA 选择。单独的“期中成绩”标签目前暂时停用。这些内容都是只读查询，具体结果始终以页面实时数据和学校教务系统为准。",
@@ -641,6 +648,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-12",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "jwxt-transcript-2026-10",
     relatedActionIds: ["jwxt"],
     fact: "成绩单与等级考试：教务数据的“成绩”分为“课程成绩”“等级考试”“成绩单”三个视图。“成绩单”显示教务系统自己统计的平均成绩、平均学分绩和所修学分，并可下载学校电子证明平台生成的中文或英文成绩单；这里下载的是不带电子签章的预览件，需要带签章、可验真的正式件，或在读证明、预计毕业证明时，要到电子证明平台（dzpzstu.cpu.edu.cn）申请，平台会发到登记的邮箱。电子证明平台打不开时可以改下“教务系统导出的成绩单”，版式简陋，只适合自己核对。",
@@ -649,6 +657,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-12",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "jwxt-progress-selection-2026-10",
     relatedActionIds: ["jwxt"],
     fact: "学业与选课记录：教务数据的“学业”分为“完成情况”“毕业审核”“重修”“学籍”，学籍里还能看到转专业计划；“选课”分为“本学期课程”“选课记录”（含选课轮次）和“教材”。站内只展示这些记录，不能在站内选课、退课、报名重修或申请转专业，办理仍需前往学校教务系统。",
@@ -657,6 +666,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-12",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "jwxt-rooms-2026-10",
     relatedActionIds: ["jwxt"],
     fact: "空教室与课表检索：教务数据的“教室”分为“空教室”和“课表检索”。空教室可选今天、明天、后天或指定日期，再按时段、教学楼、最少座位数、教室类型和教室号筛选，并可按教学楼、空闲时长或座位数排序，适合找自习教室。课表检索可按课程、教师、教室或班级查询某个学期的排课，结果可在“课表”网格和“列表”之间切换。数据来自教务系统的排课，教室的实际使用情况以现场为准。",
@@ -697,6 +707,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-12",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "schedule-widgets-2026-10",
     relatedActionIds: ["schedule", "desktop-client"],
     fact: "课表小组件：Android 原生客户端在课表“更多 → 桌面课表小组件”里预览、选择主题并添加；iOS 原生客户端在 iOS 17 及以上提供课表小组件；鸿蒙原生客户端也提供课表卡片。使用 Safari 主屏幕版的 iPhone 可在课表页按提示导入 Scriptable 课表小组件。原生客户端的小组件读取客户端本机保存的课表，课表有变化后打开一次客户端即可更新。",
@@ -788,6 +799,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "成绩表核对：发起者上传带学号字段的 Excel 后，学生登录并按本人学号查看对应记录；它与学校教务成绩页面不是同一功能。",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     relatedActionIds: ["desktop-client"],
     fact: "药大拾间客户端：统一下载页位于“/download”，会按当前设备推荐版本，汇总 Android 原生客户端（Android 7.0 及以上，APK 安装包）、鸿蒙原生客户端（在华为应用市场安装和更新：https://appgallery.huawei.com/app/detail?id=cn.lizmt.cpuweb，系统兼容性以应用市场为准）、iPhone/iPad App Store 原生客户端（https://apps.apple.com/cn/app/id6811073406，需要 iOS / iPadOS 15.0 或更高版本，其中 15–16 使用网页兼容界面，17 及以上支持原生课表与小组件）、Windows 10/11 64 位客户端和 Apple Silicon（M1 及后续 M 系列）macOS 客户端。Windows 和 macOS 桌面客户端内置校园网自动联网工具，可用于自动连接校园网；同时包含“药大拾间·学习通助手”和桌面常驻能力。旧的“CPU 网络连接助手”已停止作为独立产品宣传，相关自动联网能力已经整合到桌面客户端；Intel Mac 暂不支持。Android 客户端低于 V59（4.0.18）的旧版必须更新：弹出更新提示后有三天期限，期限过后旧版的在线功能停用（已保存的离线课表仍可查看），可在弹窗里直接安装，或用浏览器下载最新安装包覆盖安装。",
     source: "药大拾间客户端下载页与客户端功能说明",
@@ -795,6 +807,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-17",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "client-recommendation-priority",
     // The system prompt already carries this rule for every question; keeping
     // it off "schedule" leaves room for the timetable's own entries.
@@ -813,6 +826,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-08-18",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "client-download-entry-2026-08",
     relatedActionIds: ["desktop-client", "schedule"],
     fact: "客户端下载入口：可在 https://cputime.cn/download 下载客户端，也可以在课表页顶部点击下载按钮进入客户端下载页。",
@@ -821,6 +835,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-08-17",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "account-lock-recovery-2026-08",
     relatedActionIds: ["home", "profile", "jwxt", "unified-auth"],
     fact: "账号安全提示：如果遇到“账户锁定10分钟”，请使用统一身份认证入口的“找回密码”功能并修改为强密码；不要继续使用默认密码。普通的单次“密码错误”先按统一认证入口的找回密码流程处理，不要直接拨电话；只有账号持续处于锁定状态时，才在工作时间拨打 025-86185448，告知工作人员账号因使用默认密码被锁定，请求核实和处理；电话中不要透露密码本身。",
@@ -829,6 +844,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-08-17",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "site-login-troubleshooting-2026-08",
     relatedActionIds: ["home", "profile", "campus-assistant", "unified-auth"],
     fact: "拾间登录排查：如果拾间无法正常登录，先打开学校统一身份认证入口 https://i.cpu.edu.cn，确认该页面是否可以正常登录。若 i.cpu.edu.cn 也无法正常登录，并提示“账户被锁定”，请在工作时间拨打 025-86185448，并向工作人员说明：“我是新生，使用默认密码登录 i.cpu.edu.cn，但是登录不进去，系统提示账户被锁定。麻烦帮我解锁账户并修改/重置密码。”若 i.cpu.edu.cn 可以正常登录但拾间仍无法正常登录，请把完整报错截图发到 QQ 用户群，以便进一步排查。不要在群里或向 AI 发送密码。",
@@ -837,6 +853,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-08-17",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "jwxt-account-creation-2026-08",
     relatedActionIds: ["jwxt", "services"],
     fact: "教务处入口无反应时，首先确认是否已经创建教务账号；尚未创建账号会导致教务处相关页面没有正常响应。",
@@ -845,6 +862,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-08-17",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "learning-platform-scope-2026-08",
     relatedActionIds: ["desktop-client", "campus-assistant", "services"],
     fact: "网课与安全教育支持：药大拾间桌面客户端已提供超星学习通、知到智慧树、智慧职教 / MOOC、职教云、中国大学 MOOC 和雨课堂的多平台网课助手；学习通另有药大拾间专用助手，支持视频、章节任务、作业和考试辅助，解题效果受题型、页面和上游服务影响，不保证每次都能正常使用。安全微伴可使用 QQ 用户群群文件中的安全微伴助手程序，安全微伴账号和密码均为学号。用户询问刷课或网课助手时，应先说明这些实际可用的平台和入口，不要笼统回复“不能协助自动刷课、代答或绕过学习要求”；具体使用方式和最新说明建议加入 QQ 用户群（704825850）了解详情。",
@@ -857,10 +875,12 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "需求反馈：用于提交功能建议、使用问题和校园工具需求，提交后由站点维护者在后台处理。",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     relatedActionIds: ["messages", "wechat-bind", "campus-assistant"],
     fact: "拾小间微信服务号：服务号名称为“拾小间”，微信号为 cputimecn。用户可通过微信搜索名称或微信号关注。登录药大拾间后打开 https://cputime.cn/messages?tab=settings，可在微信内直接授权或扫描专属二维码绑定；微信绑定不再生成、输入或发送绑定码，授权完成后页面会自动确认。绑定后可接收已开启的站内通知，并可在微信内主动同意一次性订阅提醒。用户可直接向服务号发送文字、语音或图片使用拾间AI：AI回答通过微信客服接口以和 QQBot 相同风格的图片发送，生图请求会直接发送真实生成图片，回答后只提供一个可点击的相关入口，不再额外发送快捷菜单。服务号自定义菜单包含课表、教务、校园服务、论坛、失物招领、消息中心和个人中心等入口；已绑定用户可从菜单查询今日、明日、本周和下周课表，也可发送“后天课表”“下下周课表”“第N周课表”或“下周三课表”等指令查询对应范围。课表以站内同款的节次网格和彩色课程块图片发送。课表查询会读取最近同步的教务会话；若尚未同步或会话失效，应先在微信内登录教务并打开一次课表。“帮助”“状态”“绑定”等固定指令仍使用简短文字回复。QQBot 将逐步退出身份绑定功能。",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "qqbot-daily-assistant-2026-08",
     relatedActionIds: ["campus-assistant", "messages"],
     fact: "QQBot 日常问答：私聊可以直接发送文字或图片咨询。群聊里要先叫到拾间AI才会回答：@拾间AI、直接喊名字（如“拾间AI，……”）或引用它发过的消息都可以；只 @ 不带问题时，它会把你的下一条消息当作问题。引用别人的消息再 @拾间AI 提问，被引用的内容会一并交给它。回答后同一个人 3 分钟内可以不 @ 继续追问，连续追问几轮后需要重新 @；@ 或引用其他群友的消息不会被当成在问它。管理员也可以在后台按群开启主动回答，此时只回答明确的内容问题，同一个群每分钟最多主动回答一次，已有群友回应时会让开，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。用户连续发送多条消息时，QQBot 会等待短暂停顿后合并为一轮回答，避免用户还没说完就连续回复。命令、语音、视频、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 AI 线路支持最近有限的对话上下文，服务端只保留最近几条消息，知识库事实优先。",
@@ -882,6 +902,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-17",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "service-tools-overview",
     relatedActionIds: ["services", "service-tools"],
     fact: "校园小工具：当前包括创意工坊、部门联系、需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、校历与地图、场馆预约、失物招领、药苑之声和综测填表工具。综测填表工具仅支持 Windows 10/11，下载后在本机整理材料并生成 Word；工具是否需要登录以入口上显示的状态为准。",
@@ -930,6 +951,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-17",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "desktop-client-install-safety",
     relatedActionIds: ["desktop-client"],
     fact: "桌面客户端安装：Windows 安装包尚未购买代码签名证书，SmartScreen 可能显示“未知发布者”，可核对来源后点“更多信息→仍要运行”；macOS 首次打开若提示无法验证开发者，应先尝试打开一次，再到“系统设置→隐私与安全性”选择“仍要打开”，无需关闭系统安全保护或运行终端绕过命令。",
@@ -940,6 +962,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "鸣谢墙与 AI 点数：鸣谢墙用于公开感谢支持站点建设的用户；符合当前赞助规则的记录可获得 AI 点数。具体兑换比例、到账结果和余额以赞助页面及个人账户实时显示为准。",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "cpu-school-profile-2026",
     relatedActionIds: ["home", "services"],
     fact: "学校概况：截至 2026 年 5 月的学校官网简介，中国药科大学始建于 1936 年，是教育部直属、国家“双一流”建设高校，是一所以药学为特色的多科性、研究型大学；现有玄武门、江宁两个校区。",
@@ -948,6 +971,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-07-27",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "cpu-campus-addresses-2026",
     relatedActionIds: ["home", "services"],
     fact: "校区地址：玄武门校区位于南京市鼓楼区童家巷 24 号，邮编 210009；江宁校区位于南京市江宁区龙眠大道 639 号，邮编 211198。",
@@ -956,6 +980,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-07-27",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "cpu-unified-auth",
     relatedActionIds: ["services", "jwxt", "profile", "unified-auth"],
     fact: "学校统一身份认证入口是 https://i.cpu.edu.cn，师生使用统一身份认证账号访问融合门户及已接入的校内系统。统一身份认证默认密码为身份证后六位；登录提示密码错误或需要修改密码时，建议优先去官网统一认证登录页使用“忘记密码”功能（即找回密码）修改为强密码，不建议优先使用“修改密码”入口，该入口可能存在学校系统问题。已绑定手机号或校外邮箱的账号可在线找回；完全未绑定找回方式时，需携有效证件到学校信息应用服务点现场处理。若后续出现“账户锁定10分钟”并且账号持续处于锁定状态，再在工作时间拨打 025-86185448 联系工作人员核实；普通密码错误不要直接拨打该电话。",
@@ -964,6 +989,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-07-27",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "cpu-campus-network",
     relatedActionIds: ["services", "desktop-client"],
     fact: "学校校园网：完成基本信息确认后会自动生成两校区免费校园网账号，用户名为 10 位学工号（统一身份认证账号）。官方自助服务平台可查询上网记录；故障可到江宁校区图书馆 7 楼现场报修，或拨打网络运维电话 025-86185450。",
@@ -972,6 +998,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-07-27",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "cpu-email-and-vpn",
     relatedActionIds: ["services"],
     fact: "校园邮箱与校外访问：学生邮箱入口为 mail.stu.cpu.edu.cn，用户名为 10 位学工号；邮箱密码独立于统一身份认证。校外访问部分校内资源可使用学校 WebVPN（vpn.cpu.edu.cn）或客户端 VPN，具体可用系统和登录要求以图书与信息中心最新说明为准。",
@@ -980,6 +1007,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-07-27",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "cpu-enterprise-wechat-access",
     relatedActionIds: ["services", "profile"],
     fact: "企业微信与门禁：统一身份认证账号生效后可按学校说明加入中国药科大学企业微信。校园大门门禁需在企业微信工作台的“人脸识别”中核对照片和学工号；宿舍门禁还要求在读状态且宿舍管理系统已分配住宿。",
@@ -988,6 +1016,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-07-27",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "cpu-calendar-2026-2027",
     relatedActionIds: ["school-calendar", "schedule"],
     fact: "2026-2027 学年校历：教务处于 2026 年 6 月 13 日发布。上学期为 2026 年 8 月 31 日至 2027 年 1 月 17 日，共 20 周；寒假为 2027 年 1 月 18 日至 2 月 21 日；下学期为 2027 年 2 月 22 日至 7 月 4 日，共 19 周；暑假自 2027 年 7 月 5 日起。二、三、四年级 8 月 31 日上课，新生 9 月 3 日报到、9 月 28 日上课；临时调整仍以学校最新通知为准。",
@@ -996,6 +1025,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-07-27",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "dorm-electric-official-details",
     relatedActionIds: ["dorm-electric"],
     fact: "宿舍用电补充说明：学校指南称企业微信和信息门户可查看宿舍剩余电量与购买记录；四人间低于 20 度、十人间低于 30 度时会向宿舍成员推送提醒。23:00 至次日 07:00 为夜间免打扰，晚间欠费不停电，次日 08:00 停电并推送信息。",
@@ -1092,6 +1122,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-10-12",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "qqbot-reminder-settings-2026-08",
     relatedActionIds: ["messages", "wechat-bind", "questionnaire", "file-collect", "grade-check"],
     fact: "QQBot 小工具提醒属于存量通知能力：已绑定用户可在消息中心“设置”里的“小工具提醒规则”选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒；QQBot 将逐步退出身份绑定功能，新用户应优先绑定微信服务号接收通知。这些提醒不会替用户填写问卷、上传文件或查看个人成绩。",
@@ -1116,6 +1147,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-08-21",
   },
   {
+    schoolIds: DEFAULT_SCHOOL_FACTS,
     id: "service-tool-login-status-2026-08",
     relatedActionIds: ["services", "service-tools"],
     fact: "校园小工具入口：打开“校园服务”可进入服务总览，打开“校园小工具”可查看创意工坊、部门联系、反馈、问卷、成绩表核对、文件收集、PDF 工具、校历与地图、场馆预约、失物招领、药苑之声和综测填表工具。综测填表工具需下载到 Windows 10/11 电脑使用；其余工具以卡片显示的“需登录”或“免登录”等标记为准。如果入口加载失败，先按页面提供的“重试”操作，不要把暂时的网络错误判断成工具下线。",
@@ -1220,7 +1252,7 @@ export function listCampusAssistantActions(context: CampusAssistantContext): Cam
     .filter((item) => !item.feature || context.features[item.feature])
     .filter((item) => !item.requireForumAccess || context.forumAccessEnabled)
     .filter((item) => isSchoolPathEnabled(school.id, item.url))
-    .filter((item) => isDefaultSchool || (!DEFAULT_SCHOOL_ONLY_ACTION_IDS.has(item.id) && item.owner !== "中国药科大学" && !/^https?:/u.test(item.url)))
+    .filter((item) => isDefaultSchool || (!DEFAULT_SCHOOL_ONLY_ACTION_IDS.has(item.id) && item.owner !== getSchool(DEFAULT_SCHOOL_ID).name && !/^https?:/u.test(item.url)))
     .map(({ keywords: _keywords, feature: _feature, requireForumAccess: _requireForumAccess, ...action }) => (isDefaultSchool ? action : {
       ...action,
       label: localizeAssistantText(action.label, school),
@@ -1229,9 +1261,15 @@ export function listCampusAssistantActions(context: CampusAssistantContext): Cam
     }));
 }
 
+/** 这条资料对这所学校成立吗（没写 schoolIds 的对所有学校成立）。 */
+function knowledgeAppliesTo(item: CampusAssistantKnowledge, school: AssistantSchool) {
+  return !item.schoolIds || item.schoolIds.includes(school.id);
+}
+
 export function listCampusAssistantKnowledgeEntries(actionIds: Iterable<string>, school: AssistantSchool = DEFAULT_ASSISTANT_SCHOOL): CampusAssistantKnowledgeEntry[] {
   const availableActionIds = new Set(actionIds);
   return CAMPUS_ASSISTANT_KNOWLEDGE
+    .filter((item) => knowledgeAppliesTo(item, school))
     .filter((item) => item.relatedActionIds.some((id) => availableActionIds.has(id)))
     .map((item, index) => ({
       id: item.id || `site-knowledge-${index + 1}`,
@@ -1247,8 +1285,11 @@ export function listCampusAssistantKnowledge(actionIds: Iterable<string>) {
 }
 
 /** 电话、邮箱核对的依据：knowledge 里写明的（如网络运维电话）和本次检索到的校园资料。 */
-export function campusAssistantGroundingText(knowledge: CampusKnowledgeItem[] | undefined) {
-  return [...CAMPUS_ASSISTANT_KNOWLEDGE.map((item) => item.fact), campusKnowledgeGroundingText(knowledge)].join("\n");
+export function campusAssistantGroundingText(knowledge: CampusKnowledgeItem[] | undefined, school: AssistantSchool = DEFAULT_ASSISTANT_SCHOOL) {
+  return [
+    ...CAMPUS_ASSISTANT_KNOWLEDGE.filter((item) => knowledgeAppliesTo(item, school)).map((item) => item.fact),
+    campusKnowledgeGroundingText(knowledge),
+  ].join("\n");
 }
 
 export function searchCampusAssistantActions(query: string, context: CampusAssistantContext, limit = 6) {
@@ -1345,13 +1386,13 @@ export async function askCampusAssistant(input: {
 
   try {
     if (isCampusAssistantModelIdentityQuestion(message)) {
-      const response = modelIdentityResponse(assistantModel);
+      const response = modelIdentityResponse(assistantModel, assistantSchoolOf(input.context));
       await finishAiReviewLogSuccess(logId, response.answer);
       return response;
     }
     const knowledge = await loadCampusAssistantKnowledge(message, input.history, input.context);
     webSearchRequested = webSearchRequested || shouldProactivelySearchWeb(message, deterministicActions, knowledge);
-    const grounding = campusAssistantGroundingText(knowledge);
+    const grounding = campusAssistantGroundingText(knowledge, assistantSchoolOf(input.context));
     let directoryContext: DepartmentContactToolContext | undefined;
     const generate = (toolContext?: DepartmentContactToolContext) => requestAiJson((model, activeProvider) => buildAssistantMessages(
       message,
@@ -1521,7 +1562,7 @@ async function repairCampusAssistantResponse(input: {
   images?: CampusAssistantImageInput[];
   signal?: AbortSignal;
 }): Promise<CampusAssistantResponse | null> {
-  const grounding = campusAssistantGroundingText(input.knowledge);
+  const grounding = campusAssistantGroundingText(input.knowledge, input.school);
   const repairInstructions = input.reason === "format"
     ? [
         "请重新完整回答上一条用户问题。上一版输出没有形成合法 JSON。只输出一个合法 JSON 对象，不要输出 Markdown、解释、思维过程或 JSON 之外的文字。",
@@ -1697,7 +1738,7 @@ export async function streamCampusAssistant(input: {
     if (response.answer) await onAnswerDelta(response.answer);
     return response;
   }
-  const grounding = campusAssistantGroundingText(knowledge);
+  const grounding = campusAssistantGroundingText(knowledge, assistantSchoolOf(input.context));
   let lastError: unknown = null;
   const started = await startAiReviewLog({
     kind: "campus-assistant",
@@ -1813,7 +1854,7 @@ export async function streamCampusAssistant(input: {
       }
       if (modelIdentityRequested) {
         // 回退线路可能换了模型，按实际应答的那一个回答。
-        const response = modelIdentityResponse(completed.result.result.provider.model?.trim() || model);
+        const response = modelIdentityResponse(completed.result.result.provider.model?.trim() || model, assistantSchoolOf(input.context));
         await finishAiReviewLogSuccess(logId, response.answer);
         return response;
       }
@@ -1878,10 +1919,10 @@ export function isCampusAssistantModelIdentityQuestion(message: string) {
 }
 
 /** 如实说出线路上实际使用的模型名称。 */
-function modelIdentityResponse(modelName: string): CampusAssistantResponse {
+function modelIdentityResponse(modelName: string, school: AssistantSchool): CampusAssistantResponse {
   const model = String(modelName || "").trim();
   return {
-    answer: `我是药大拾间的 AI 助手“拾间AI”，${model ? `当前使用的模型是 ${model}，` : ""}主要提供校园服务、站内功能和一般学习生活问答。`,
+    answer: `我是${school.brandName}的 AI 助手“拾间AI”，${model ? `当前使用的模型是 ${model}，` : ""}主要提供校园服务、站内功能和一般学习生活问答。`,
     actions: [],
     suggestions: [],
     fallback: false,

@@ -54,7 +54,7 @@
           <el-input v-model="schoolDialog.form.brandName" maxlength="20" :placeholder="`${schoolDialog.form.shortName || '简称'}拾间`" />
         </el-form-item>
         <el-form-item label="标语"><el-input v-model="schoolDialog.form.tagline" maxlength="40" placeholder="品牌名下面的一行小字，可不填" /></el-form-item>
-        <el-form-item v-if="platformAdmin && schoolDialog.form.id !== 'cpu'" label="开放">
+        <el-form-item v-if="platformAdmin && !schoolDialog.isDefault" label="开放">
           <el-switch v-model="schoolDialog.form.enabled" />
           <span class="hint switch-hint">开放后会出现在登录页的学校列表里</span>
         </el-form-item>
@@ -107,7 +107,7 @@ const savingSchool = ref("");
 const savingKey = ref("");
 
 const emptySchoolForm = () => ({ id: "", name: "", shortName: "", brandName: "", tagline: "", enabled: false });
-const schoolDialog = reactive({ visible: false, creating: false, saving: false, form: emptySchoolForm() });
+const schoolDialog = reactive({ visible: false, creating: false, saving: false, isDefault: false, form: emptySchoolForm() });
 const emptyAccountForm = () => ({ username: "", nickname: "", password: "", role: "admin" as "admin" | "user" });
 const accountDialog = reactive({ visible: false, saving: false, schoolId: "", schoolName: "", form: emptyAccountForm() });
 
@@ -144,7 +144,7 @@ async function toggle(school: AdminSchool, module: AdminSchoolModuleState, enabl
 }
 
 function openCreate() {
-  Object.assign(schoolDialog, { visible: true, creating: true, saving: false, form: emptySchoolForm() });
+  Object.assign(schoolDialog, { visible: true, creating: true, saving: false, isDefault: false, form: emptySchoolForm() });
 }
 
 function openEdit(school: AdminSchool) {
@@ -152,6 +152,7 @@ function openEdit(school: AdminSchool) {
     visible: true,
     creating: false,
     saving: false,
+    isDefault: Boolean(school.isDefault),
     form: { id: school.id, name: school.name, shortName: school.shortName, brandName: school.brandName, tagline: school.tagline, enabled: school.enabled },
   });
 }
@@ -165,7 +166,7 @@ async function saveSchool() {
       shortName: form.shortName.trim(),
       brandName: form.brandName.trim() || `${form.shortName.trim()}拾间`,
       tagline: form.tagline.trim(),
-      ...(platformAdmin.value && form.id !== "cpu" ? { enabled: form.enabled } : {}),
+      ...(platformAdmin.value && !schoolDialog.isDefault ? { enabled: form.enabled } : {}),
     };
     if (schoolDialog.creating) await adminApi.createSchool({ id: form.id.trim(), ...fields });
     else await adminApi.updateSchool(form.id, fields);

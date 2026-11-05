@@ -2351,6 +2351,8 @@ function adminSchoolView(school: SchoolProfile) {
     enabled: school.enabled,
     academicSystem: school.academicSystem,
     ssoLogin: school.ssoLogin,
+    /** 默认学校不能关闭（历史数据和访客都归它）。 */
+    isDefault: school.id === DEFAULT_SCHOOL_ID,
     modules: getSchoolModuleStates(school.id),
   };
 }

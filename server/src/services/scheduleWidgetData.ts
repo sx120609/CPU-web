@@ -1,6 +1,8 @@
 import { scheduleData, scheduleDate, type ScheduleDataService } from "./scheduleData";
 import { buildScheduleWidgetPayload, resolveScheduleWidgetPreviewWeeks } from "./scheduleWidget";
 import { Errors } from "../utils/response";
+import { schoolIdForJwxtToken } from "./jwxtTransport";
+import { getSchool } from "../schools/registry";
 
 export async function loadScheduleWidgetData(
   token: string,
@@ -57,7 +59,8 @@ export async function loadScheduleWidgetData(
     ...buildScheduleWidgetPayload(
       applyEdits(current.parsed), current.calendar, requestedWeek, now,
       Object.fromEntries(previews.map(({ week, data }) => [week, applyEdits(data.parsed)])),
-      { title: options.title },
+      // 没起名字的小组件叫「<本校简称>课表」，学校由教务令牌认出。
+      { title: options.title || `${getSchool(schoolIdForJwxtToken(token)).shortName}课表` },
     ),
     stale: snapshots.some((item) => item.stale),
     cachedAt: syncedAt,

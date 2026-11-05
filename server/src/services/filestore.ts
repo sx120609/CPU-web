@@ -1,4 +1,5 @@
 import express, { type Request, type RequestHandler, type Response } from "express";
+import { PLATFORM_BRAND } from "../schools/registry";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -46,7 +47,7 @@ import { isPlatformAdmin } from "../schools/store";
 
 const MOUNT_PATH = "/filestore";
 const APP_PATH = "/services/tools/filestore";
-const FILESTORE_SITE_TITLE_DEFAULT = "药大拾间文件收集";
+const FILESTORE_SITE_TITLE_DEFAULT = `${PLATFORM_BRAND}文件收集`;
 const FILESTORE_SITE_TITLE_KEY = "filestore.siteTitle";
 const FILESTORE_SITE_URL_KEY = "filestore.siteUrl";
 const FILESTORE_TEMPLATE_VISIBILITY = "filestore-global";

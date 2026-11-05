@@ -9,12 +9,14 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useSiteStore } from "@/stores/site";
 
 const props = withDefaults(defineProps<{ name?: string | null }>(), {
   name: "",
 });
 
-const resolvedName = computed(() => String(props.name || "").trim() || "药大同学");
+const site = useSiteStore();
+const resolvedName = computed(() => String(props.name || "").trim() || `${site.schoolShortName}同学`);
 const parts = computed(() => resolvedName.value
   .split(/([♂♀⚧]\uFE0F?)/u)
   .filter(Boolean)

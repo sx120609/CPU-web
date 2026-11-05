@@ -20,6 +20,7 @@ import {
 import { publicAvatarValue } from "../utils/publicAvatar";
 import { withCache } from "../services/cache";
 import { requestSchoolId } from "../schools/modules";
+import { getSchool } from "../schools/registry";
 
 export const yaodaFlightRouter = Router();
 
@@ -89,7 +90,7 @@ async function loadLeaderboard(schoolId: string, currentUserId?: number, newlyUn
     return {
       rank: lastRank,
       userId: row.userId,
-      name: publicFlightName(user.nickname),
+      name: publicFlightName(user.nickname, getSchool(schoolId).shortName),
       avatar: publicAvatarValue(user),
       bestScore: row.bestScore,
       games: row.games,

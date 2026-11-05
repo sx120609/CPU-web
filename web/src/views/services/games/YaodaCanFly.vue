@@ -13,9 +13,9 @@
 
       <section v-if="screen === 'menu'" class="menu-screen">
         <button data-cpu-button="surface" type="button" class="corner-back" aria-label="返回小游戏" @click="router.push(MINI_GAMES_PATH)">←</button>
-        <img class="menu-emblem" :src="cpuEmblem" alt="中国药科大学校标" />
+        <img v-if="emblemSrc" class="menu-emblem" :src="emblemSrc" :alt="`${site.schoolName}校标`" />
         <h1>{{ st('药大人能飞') }}</h1>
-        <p class="menu-tagline">💊 点击起飞 · 穿越药苑 · 兴药为民</p>
+        <p class="menu-tagline">{{ site.isDefaultSchool ? "💊 点击起飞 · 穿越药苑 · 兴药为民" : "💊 点击起飞 · 穿越校园" }}</p>
         <div class="best-score-box">
           <span>最高分</span>
           <strong>{{ displayBest }}</strong>
@@ -127,8 +127,8 @@
             <article v-for="achievement in achievements" :key="achievement.code" :class="{ unlocked: achievement.unlocked }">
               <span class="achievement-icon">{{ achievement.icon }}</span>
               <span class="achievement-copy">
-                <b>{{ achievement.title }}</b>
-                <small>{{ achievement.description }}</small>
+                <b>{{ st(achievement.title) }}</b>
+                <small>{{ st(achievement.description) }}</small>
                 <i><em :style="{ width: achievementPercent(achievement) + '%' }"></em></i>
               </span>
               <strong>{{ achievement.unlocked ? "已达成" : achievement.progress + "/" + achievement.target }}</strong>
@@ -151,7 +151,7 @@
         </div>
 
         <div v-else class="panel-scroll flight-settings-panel">
-          <img :src="cpuEmblem" alt="中国药科大学校标" />
+          <img v-if="emblemSrc" :src="emblemSrc" :alt="`${site.schoolName}校标`" />
           <div class="setting-row">
             <span><b>游戏音效</b><small>起飞、得分与碰撞提示音</small></span>
             <button data-cpu-button="surface" type="button" :class="{ active: soundEnabled }" @click="toggleSound">{{ soundEnabled ? "开启" : "关闭" }}</button>
@@ -170,6 +170,7 @@
 
 <script setup lang="ts">
 import { useSchoolText } from "@/utils/schoolText";
+import { useSiteStore } from "@/stores/site";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
@@ -191,6 +192,9 @@ import {
 
 // 外校显示成本校简称（见 utils/schoolText.ts）。
 const st = useSchoolText();
+// 包里带的校标和校训是默认学校的；别的学校不显示校标，机身上写本校简称。
+const site = useSiteStore();
+const emblemSrc = computed(() => (site.isDefaultSchool ? cpuEmblem : ""));
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";
@@ -270,7 +274,7 @@ onMounted(() => {
   bestScore.value = readNumber(STORAGE_PREFIX + ":best");
   history.value = readHistory();
   soundEnabled.value = readBoolean(STORAGE_PREFIX + ":sound", true);
-  emblemImage.src = cpuEmblem;
+  if (emblemSrc.value) emblemImage.src = emblemSrc.value;
   emblemImage.addEventListener("load", drawScene);
   window.addEventListener("keydown", handleKeydown);
   document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -585,7 +589,7 @@ function drawPlayer(context: CanvasRenderingContext2D) {
     context.font = "900 12px sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText("CPU", 0, 0);
+    context.fillText(site.isDefaultSchool ? "CPU" : site.schoolShortName.slice(0, 3), 0, 0);
   }
   context.restore();
 }

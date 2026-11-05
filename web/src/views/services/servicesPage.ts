@@ -27,9 +27,9 @@ export function useServiceTools() {
   // 外校把「药大奶」「药大主题」这类说法换成本校简称（utils/schoolText.ts）。
   const localizeTool = (tool: ServiceTool): ServiceTool => ({
     ...tool,
-    name: schoolizeText(tool.name, site.school?.id, site.schoolShortName),
-    summary: schoolizeText(tool.summary, site.school?.id, site.schoolShortName),
-    description: schoolizeText(tool.description, site.school?.id, site.schoolShortName),
+    name: schoolizeText(tool.name, site.isDefaultSchool, site.schoolShortName),
+    summary: schoolizeText(tool.summary, site.isDefaultSchool, site.schoolShortName),
+    description: schoolizeText(tool.description, site.isDefaultSchool, site.schoolShortName),
   });
   const visibleTools = computed(() => serviceTools.filter((tool) => (
     toolAccessMap.value[tool.slug]?.isVisible !== false
@@ -160,14 +160,17 @@ export function useServicesPage() {
     disposed = true;
   });
 
-  // 校园应用（融合门户）、公开入口、客户端下载都是药大自己的。
+  // 校园应用（融合门户）、公开入口、客户端下载都按学校档案给。
   const campusPortal = computed(() => site.campusPortalAvailable);
+  /** 游客的公开校园入口（学校档案的 publicLinks）。 */
+  const publicServiceLinks = computed(() => site.publicLinks);
   const clientApps = computed(() => site.clientAppsAvailable);
   const libraryAvailable = computed(() => site.pathEnabled("/library"));
   return {
     ...tools,
     jwxt,
     campusPortal,
+    publicServiceLinks,
     clientApps,
     libraryAvailable,
     electricOpen,
@@ -234,16 +237,6 @@ export function toolBadgeTone(tool: ServiceTool, loginRequired: boolean) {
   if (tool.badge) return tool.badgeType === "success" ? "open" : "info";
   return loginRequired ? "login" : "open";
 }
-
-// 游客与未登录教务时的兜底公开入口。
-export const publicServiceLinks = [
-  { name: "图书馆", icon: "course", url: "http://lib.cpu.edu.cn" },
-  { name: "馆藏检索", icon: "search", url: "http://opac.cpu.edu.cn" },
-  { name: "融合门户", icon: "school", url: "https://i.cpu.edu.cn" },
-  { name: "教务处", icon: "document", url: "http://jwc.cpu.edu.cn" },
-  { name: "校园新闻", icon: "announcement", url: "http://news.cpu.edu.cn" },
-  { name: "就业平台", icon: "work", url: "https://cpu.91job.org.cn/sub-station/home/10316" },
-];
 
 function normalizeToolsError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;

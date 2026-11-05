@@ -8,7 +8,7 @@
     <section class="preview-card">
       <div class="preview-head"><strong>实时预览</strong><small>以当前管理员身份预览可见项；灰色项目代表已停用</small></div>
       <div class="nav-preview">
-        <span class="preview-brand">药大拾间</span>
+        <span class="preview-brand">{{ site.brandName }}</span>
         <span v-for="item in items.filter((entry) => entry.primary)" :key="item.id" :class="{ disabled: !item.enabled }">{{ item.label }}</span>
         <span v-if="items.some((entry) => !entry.primary)" class="more">更多<el-icon><ArrowDown /></el-icon></span>
       </div>

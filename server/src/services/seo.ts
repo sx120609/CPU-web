@@ -8,6 +8,8 @@ import { boardSlugKey } from "../schools/forumScope";
 
 /** 搜索引擎看到的是默认学校的站点，只收录它的板块和帖子。 */
 const SEO_SCHOOL_ID = DEFAULT_SCHOOL_ID;
+/** 收录页面用的校名、简称、品牌都取这所学校的档案。 */
+const SEO_SCHOOL = getSchool(SEO_SCHOOL_ID);
 
 /**
  * 网址里带不出学校的页面（板块 /forum/b/<slug>、各功能页）按默认学校给标题；
@@ -25,10 +27,10 @@ function openSeoSchoolIds() {
 // 这里按路径给它换上该页自己的标题、描述、canonical 和结构化数据，私人页面标 noindex。
 // 前端新增公开页面时要在 STATIC_PAGES 或 resolveDynamicPage 里登记，否则按未知路径处理（noindex）。
 
-export const SITE_NAME = "药大拾间";
-export const SITE_HOME_TITLE = "药大拾间 · 中国药科大学校园互助与服务平台";
-export const SITE_HOME_DESCRIPTION = "药大拾间是面向中国药科大学同学的校园互助与服务平台，提供课表与教务数据查询、教务处和学工处等部门通知汇总、校园论坛、失物招领、校园小工具和小游戏。";
-const SITE_KEYWORDS = "药大拾间,中国药科大学,药大,CPU,课表,教务系统,校园公告,校园论坛,失物招领";
+export const SITE_NAME = `${SEO_SCHOOL.brandName}`;
+export const SITE_HOME_TITLE = `${SEO_SCHOOL.brandName} · ${SEO_SCHOOL.name}校园互助与服务平台`;
+export const SITE_HOME_DESCRIPTION = `${SEO_SCHOOL.brandName}是面向${SEO_SCHOOL.name}同学的校园互助与服务平台，提供课表与教务数据查询、教务处和学工处等部门通知汇总、校园论坛、失物招领、校园小工具和小游戏。`;
+const SITE_KEYWORDS = `${SEO_SCHOOL.brandName},${SEO_SCHOOL.name},${SEO_SCHOOL.shortName},CPU,课表,教务系统,校园公告,校园论坛,失物招领`;
 const FALLBACK_ORIGIN = "https://cputime.cn";
 const SITE_IMAGE_PATH = "/icon-512-v3.png";
 
@@ -75,7 +77,7 @@ type StaticPage = {
   sitemap?: boolean;
 };
 
-const GAME_DESCRIPTION = "药大主题的轻量小游戏，打开网页就能玩，登录后成绩计入全校排行。";
+const GAME_DESCRIPTION = `${SEO_SCHOOL.shortName}主题的轻量小游戏，打开网页就能玩，登录后成绩计入全校排行。`;
 
 const STATIC_PAGES: Record<string, StaticPage> = {
   "/": { title: null, description: SITE_HOME_DESCRIPTION, sitemap: true },
@@ -83,99 +85,99 @@ const STATIC_PAGES: Record<string, StaticPage> = {
   "/index.html": { title: null, description: SITE_HOME_DESCRIPTION, canonical: "/" },
   "/announcements": {
     title: "校园公告",
-    description: "汇总中国药科大学教务处、学工处、研究生院等部门的最新通知公告，可按部门筛选，第一时间查看。",
+    description: `汇总${SEO_SCHOOL.name}教务处、学工处、研究生院等部门的最新通知公告，可按部门筛选，第一时间查看。`,
     sitemap: true,
   },
   "/services": {
     title: "校园服务",
-    description: "药大拾间的校园服务入口：课表、教务数据、日程、失物招领、校历与地图、PDF 工具和小游戏。",
+    description: `${SEO_SCHOOL.brandName}的校园服务入口：课表、教务数据、日程、失物招领、校历与地图、PDF 工具和小游戏。`,
     sitemap: true,
   },
   "/services/tools": {
     title: "校园小工具",
-    description: "中国药科大学校园小工具合集：PDF 工具、校历与地图、场馆预约、在线问卷、文件收集、综测填表等。",
+    description: `${SEO_SCHOOL.name}校园小工具合集：PDF 工具、校历与地图、场馆预约、在线问卷、文件收集、综测填表等。`,
     sitemap: true,
   },
   "/schedule": {
     title: "课表",
-    description: "导入中国药科大学教务系统课表，按周查看课程、上课时间和教室，网页与手机 App 同步。",
+    description: `导入${SEO_SCHOOL.name}教务系统课表，按周查看课程、上课时间和教室，网页与手机 App 同步。`,
     sitemap: true,
   },
   "/jwxt": {
     title: "教务数据",
-    description: "查询中国药科大学教务系统的成绩、绩点、考试安排、培养方案和空教室等数据。",
+    description: `查询${SEO_SCHOOL.name}教务系统的成绩、绩点、考试安排、培养方案和空教室等数据。`,
     sitemap: true,
   },
   "/download": {
     title: "客户端下载",
-    description: "下载药大拾间 iOS、安卓、鸿蒙和电脑客户端，课表、通知和校园服务随时可用。",
+    description: `下载${SEO_SCHOOL.brandName} iOS、安卓、鸿蒙和电脑客户端，课表、通知和校园服务随时可用。`,
     sitemap: true,
   },
-  "/downloads": { title: "客户端下载", description: "下载药大拾间 iOS、安卓、鸿蒙和电脑客户端。", canonical: "/download" },
+  "/downloads": { title: "客户端下载", description: `下载${SEO_SCHOOL.brandName} iOS、安卓、鸿蒙和电脑客户端。`, canonical: "/download" },
   "/lost-found": {
     title: "失物招领",
-    description: "中国药科大学校园失物招领：按校区、地点和时间查找丢失物品与招领信息。",
+    description: `${SEO_SCHOOL.name}校园失物招领：按校区、地点和时间查找丢失物品与招领信息。`,
     sitemap: true,
   },
   "/workshop": {
     title: "创意工坊",
-    description: "药大同学制作的小游戏和实用网页工具，审核通过后向全校开放，也可以上传自己的作品。",
+    description: `${SEO_SCHOOL.shortName}同学制作的小游戏和实用网页工具，审核通过后向全校开放，也可以上传自己的作品。`,
     sitemap: true,
   },
   "/workshop/develop": {
     title: "工坊开发指南",
-    description: "为药大拾间创意工坊开发网页小游戏和工具：作品格式、运行环境、存档与排行榜接口。",
+    description: `为${SEO_SCHOOL.brandName}创意工坊开发网页小游戏和工具：作品格式、运行环境、存档与排行榜接口。`,
     sitemap: true,
   },
-  "/thanks": { title: "致谢", description: "感谢为药大拾间提供帮助、建议和支持的同学与朋友。", sitemap: true },
-  "/sponsor": { title: "支持药大拾间", description: "支持药大拾间的持续运营。" },
-  "/search": { title: "拾间AI", description: "药大拾间的 AI 助手，可以查询校园事务、部门联系方式和最新通知。" },
+  "/thanks": { title: "致谢", description: `感谢为${SEO_SCHOOL.brandName}提供帮助、建议和支持的同学与朋友。`, sitemap: true },
+  "/sponsor": { title: `支持${SEO_SCHOOL.brandName}`, description: `支持${SEO_SCHOOL.brandName}的持续运营。` },
+  "/search": { title: "拾间AI", description: `${SEO_SCHOOL.brandName}的 AI 助手，可以查询校园事务、部门联系方式和最新通知。` },
   "/agenda": { title: "日程", description: "记下课表以外的安排和待办，到点提醒，也显示在课表里。", index: false },
   "/forum": {
     title: "论坛",
-    description: "中国药科大学同学的校园论坛：学习交流、校园生活、二手交易和问答。",
+    description: `${SEO_SCHOOL.name}同学的校园论坛：学习交流、校园生活、二手交易和问答。`,
     access: "forum",
     sitemap: true,
   },
-  "/forum/hot": { title: "热榜", description: "药大拾间论坛热门讨论。", access: "forum", sitemap: true },
-  "/forum/latest": { title: "最新内容", description: "药大拾间论坛最新发布的帖子。", access: "forum", sitemap: true },
+  "/forum/hot": { title: "热榜", description: `${SEO_SCHOOL.brandName}论坛热门讨论。`, access: "forum", sitemap: true },
+  "/forum/latest": { title: "最新内容", description: `${SEO_SCHOOL.brandName}论坛最新发布的帖子。`, access: "forum", sitemap: true },
   "/forum/b/market": {
     title: "二手交流",
-    description: "中国药科大学校内二手交易：教材、数码、宿舍用品和票券。",
+    description: `${SEO_SCHOOL.name}校内二手交易：教材、数码、宿舍用品和票券。`,
     access: "market",
     sitemap: true,
   },
   "/coursereview": {
     title: "课程点评",
-    description: "中国药科大学课程与任课教师点评，选课前看看同学们的评价。",
+    description: `${SEO_SCHOOL.name}课程与任课教师点评，选课前看看同学们的评价。`,
     access: "coursereview",
     sitemap: true,
   },
   "/services/tools/games": { title: "小游戏", description: GAME_DESCRIPTION, sitemap: true },
-  "/services/tools/yaoda-can-fly": { title: "药大人能飞", description: GAME_DESCRIPTION, sitemap: true },
+  "/services/tools/yaoda-can-fly": { title: `药大人能飞`, description: GAME_DESCRIPTION, sitemap: true },
   "/services/tools/yaoda-can-fly/tomato-egg-noodles": { title: "番茄鸡蛋面", description: GAME_DESCRIPTION, sitemap: true },
-  "/services/tools/yaoda-can-fly/zombie-defense": { title: "药大人大战僵尸", description: GAME_DESCRIPTION, sitemap: true },
-  "/services/tools/yaoda-can-fly/yaoda-nai": { title: "合成药大奶", description: GAME_DESCRIPTION, sitemap: true },
-  "/services/tools/yaoda-can-fly/greedy-nailong": { title: "药大人能吃", description: GAME_DESCRIPTION, sitemap: true },
-  "/services/tools/yaoda-can-fly/yaoda-mines": { title: "清扫药大雷", description: GAME_DESCRIPTION, sitemap: true },
+  "/services/tools/yaoda-can-fly/zombie-defense": { title: `药大人大战僵尸`, description: GAME_DESCRIPTION, sitemap: true },
+  "/services/tools/yaoda-can-fly/yaoda-nai": { title: `合成药大奶`, description: GAME_DESCRIPTION, sitemap: true },
+  "/services/tools/yaoda-can-fly/greedy-nailong": { title: `药大人能吃`, description: GAME_DESCRIPTION, sitemap: true },
+  "/services/tools/yaoda-can-fly/yaoda-mines": { title: `清扫药大雷`, description: GAME_DESCRIPTION, sitemap: true },
   "/services/tools/voicehub": {
     title: "药苑之声",
-    description: "中国药科大学校园广播站点歌：提交歌曲、参与投票、查看播出排期。",
+    description: `${SEO_SCHOOL.name}校园广播站点歌：提交歌曲、参与投票、查看播出排期。`,
     sitemap: true,
   },
   "/services/tools/assessment-form": {
     title: "综测填表工具",
-    description: "中国药科大学本科生综合素质测评材料整理工具：本机填写项目和附件，一键生成排版完成的 Word。",
+    description: `${SEO_SCHOOL.name}本科生综合素质测评材料整理工具：本机填写项目和附件，一键生成排版完成的 Word。`,
     sitemap: true,
   },
   "/services/tools/department_contacts": {
     title: "部门联系",
-    description: "按部门、校区或办事需求查找中国药科大学各部门的公开联系方式。",
+    description: `按部门、校区或办事需求查找${SEO_SCHOOL.name}各部门的公开联系方式。`,
     sitemap: true,
   },
   "/services/tools/canteen_picker": {
-    title: "药大今天吃什么",
-    description: "按食堂、楼层和品类筛选中国药科大学食堂门店，随机选择并查看公开评分与评论。",
+    title: `药大今天吃什么`,
+    description: `按食堂、楼层和品类筛选${SEO_SCHOOL.name}食堂门店，随机选择并查看公开评分与评论。`,
     sitemap: true,
   },
   "/services/tools/pdf_tools": {
@@ -185,12 +187,12 @@ const STATIC_PAGES: Record<string, StaticPage> = {
   },
   "/services/tools/school_calendar": {
     title: "校历与地图",
-    description: "查看中国药科大学官方校历和校园地图，支持大图浏览与地图下载。",
+    description: `查看${SEO_SCHOOL.name}官方校历和校园地图，支持大图浏览与地图下载。`,
     sitemap: true,
   },
   "/services/tools/venue_reservation": {
     title: "场馆预约",
-    description: "进入中国药科大学智慧场馆预约系统，微信内直接打开，其他设备扫码。",
+    description: `进入${SEO_SCHOOL.name}智慧场馆预约系统，微信内直接打开，其他设备扫码。`,
     sitemap: true,
   },
   "/services/tools/questionnaire": { title: "在线问卷", description: "发布和填写问卷，查看结果统计并导出。" },
@@ -203,7 +205,7 @@ const STATIC_PAGES: Record<string, StaticPage> = {
 const PRIVATE_PAGES: Array<[RegExp, string]> = [
   [/^\/login$/, "登录"],
   [/^\/register$/, "注册"],
-  [/^\/next$/, "药大拾间 NEXT"],
+  [/^\/next$/, `${SEO_SCHOOL.brandName} NEXT`],
   [/^\/post(?:\/|$)/, "发帖"],
   [/^\/messages(?:\/|$)/, "消息中心"],
   [/^\/profile(?:\/|$)/, "我的"],
@@ -399,9 +401,11 @@ async function resolveDynamicPage(path: string, origin: string): Promise<PageSeo
     const slug = boardMatch[1];
     const board = /^[\w-]{1,64}$/.test(slug) ? await loadBoard(slug) : null;
     if (!board || !boardTypeOpen(board.type)) return privatePageSeo(path, "板块");
+    // 板块网址按默认学校解析（见 SEO_SCHOOL_ID），校名和品牌取这所学校的，不写死。
+    const school = getSchool(SEO_SCHOOL_ID);
     const description = board.type === "announce"
-      ? `${board.name}：中国药科大学${board.name.replace(/通知$/, "")}发布的最新通知公告，由药大拾间自动同步整理。`
-      : board.description?.trim() || `药大拾间论坛「${board.name}」板块。`;
+      ? `${board.name}：${school.name}${board.name.replace(/通知$/, "")}发布的最新通知公告，由${school.brandName}自动同步整理。`
+      : board.description?.trim() || `${school.brandName}论坛「${board.name}」板块。`;
     return { title: documentTitle(board.name), description, path: `/forum/b/${board.slug}`, index: true };
   }
 

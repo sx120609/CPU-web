@@ -151,7 +151,7 @@ import IServiceMobilePane from "@/components/jwxt/IServiceMobilePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { hidesClientDownloads } from "@/utils/clientInfo";
 import ToolRowMobile from "./components/ToolRowMobile.vue";
-import { publicServiceLinks, useInjectedServicesPage } from "./servicesPage";
+import { useInjectedServicesPage } from "./servicesPage";
 
 const router = useRouter();
 const {
@@ -164,6 +164,7 @@ const {
   visibleTools,
   academicDataUnavailable,
   campusPortal,
+  publicServiceLinks,
   clientApps,
   libraryAvailable,
   loadToolMetas,
@@ -208,7 +209,7 @@ const shortcuts = computed(() => [
 const matchedShortcuts = computed(() => shortcuts.value.filter((item) => matches(item.title, item.sub)));
 const matchedTools = computed(() => visibleTools.value.filter((tool) => matches(tool.name, tool.summary, tool.category, tool.description)));
 // 已登录教务时完整应用列表里已包含这些入口，不再重复展示。
-const matchedLinks = computed(() => (jwxt.isLoggedIn || !campusPortal.value ? [] : publicServiceLinks.filter((link) => matches(link.name))));
+const matchedLinks = computed(() => (jwxt.isLoggedIn ? [] : publicServiceLinks.value.filter((link) => matches(link.name))));
 const hasMatches = computed(() => Boolean(
   matchedShortcuts.value.length
   || matchedTools.value.length

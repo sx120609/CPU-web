@@ -371,7 +371,7 @@ test("routes sponsor notifications back through the verified work-order template
     payload: JSON.stringify({ type: "reply" }),
   }, "https://cputime.cn/forum/topic/1");
   assert.equal(reply?.template_id, "work-order-template");
-  assert.equal(reply?.data.thing2.value, "药大拾间");
+  assert.equal(reply?.data.thing2.value, "拾间");
   assert.equal(reply?.data.thing3.value, "回复通知");
   assert.equal(reply?.data.thing4.value, "有人回复了你的评论");
   assert.equal(reply?.data.character_string5.value, "SJ42");

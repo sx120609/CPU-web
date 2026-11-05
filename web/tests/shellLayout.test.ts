@@ -54,9 +54,9 @@ test("the shell uses the shared classifier instead of its own orientation and to
   assert.match(layout, /<MobileTabbar\s+v-if="showWebTabbar"/u);
 });
 
-test("the PC tools button is only offered where the desktop client can be installed", () => {
+test("the PC tools button is only offered where the desktop client can be installed and serves the school", () => {
   assert.match(script, /const desktopToolsOffered = canOfferDesktopClient\(\);/u);
-  assert.match(script, /const showToolsFab = computed\(\(\) => showFloatingActions\.value && desktopToolsOffered\);/u);
+  assert.match(script, /const showToolsFab = computed\(\(\) => showFloatingActions\.value && desktopToolsOffered && site\.clientAppsAvailable\);/u);
   assert.match(layout, /'layout-root--no-tools-fab': !showToolsFab/u);
 });
 

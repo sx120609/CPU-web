@@ -169,7 +169,7 @@
         'main--mobile-chat': mobileChatChrome,
       }"
     >
-      <IosAppRecommendation v-if="route.name === 'home'" style="--ios-app-recommendation-max-width: 1120px" />
+      <IosAppRecommendation v-if="route.name === 'home' && site.clientAppsAvailable" style="--ios-app-recommendation-max-width: 1120px" />
       <router-view v-slot="{ Component }">
         <transition name="page-route" :css="!auth.forumHidden && (!useIosRouteTransition || (iosRouteTransitionEnabled && !useIosNextShell))"
           @before-leave="freezeRoutePage" @after-leave="releaseRoutePage" @leave-cancelled="releaseRoutePage">
@@ -496,7 +496,8 @@ const assistantEntryVisible = computed(() => site.features.assistantEntry
   && !shouldHideHarmonyAssistant(auth.isLoggedIn, auth.user?.username));
 // PC 小工具只对真正的 Windows / macOS 桌面有用：桌面客户端里已是独立标签页，iPad、手机和各 App 壳都装不了。
 const desktopToolsOffered = canOfferDesktopClient();
-const showToolsFab = computed(() => showFloatingActions.value && desktopToolsOffered);
+// 桌面小工具推的是拾间桌面端，只给拾间 App 服务的学校。
+const showToolsFab = computed(() => showFloatingActions.value && desktopToolsOffered && site.clientAppsAvailable);
 const desktopForumRouteNames = new Set(["forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
 const mobileForumRouteNames = new Set(["home", ...desktopForumRouteNames]);
 // Pages, the router and this shell share one classifier, so the phone tree always gets phone chrome.

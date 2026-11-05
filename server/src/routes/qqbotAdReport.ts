@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { PLATFORM_BRAND } from "../schools/registry";
 import { Router, type Request, type Response } from "express";
 import { prisma } from "../prisma";
 import { grantQqGroupAdWhitelist, verifyQqBotGroupAdminIdentity, verifyQqBotGroupManager } from "../services/qqbot";
@@ -34,7 +35,7 @@ qqBotAdReportRouter.get("/:token", async (req, res, next) => {
 qqBotAdReportRouter.post("/:token", async (req, res, next) => {
   try {
     if (String(req.headers["sec-fetch-site"] || "").toLowerCase() === "cross-site") {
-      return renderState(res, 403, "请求已拦截", "请回到药大拾间页面重新打开管理员处理链接。");
+      return renderState(res, 403, "请求已拦截", `请回到${PLATFORM_BRAND}页面重新打开管理员处理链接。`);
     }
     if (!req.user) return redirectToLogin(req, res);
     const context = await loadReportContext(req.params.token);
@@ -351,7 +352,7 @@ function renderState(
 }
 
 function pageShell(title: string, body: string) {
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · 药大拾间</title><style>
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · ${PLATFORM_BRAND}</title><style>
   :root{color-scheme:light dark;--bg:#f5f8f7;--card:#fff;--text:#172033;--muted:#6d7b91;--line:#dce6e3;--brand:#4d917d;--brand-soft:#e9f3f0;--danger:#c54c4c}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif;display:grid;place-items:center;padding:24px}.shell{width:min(620px,100%);background:var(--card);border:1px solid var(--line);border-radius:24px;padding:32px;box-shadow:0 24px 70px rgba(33,70,61,.12)}.eyebrow{display:inline-block;color:var(--brand);font-size:14px;font-weight:700;letter-spacing:.08em}h1{font-size:28px;margin:10px 0 8px}.lead{color:var(--muted);line-height:1.75;margin:0 0 24px}.card{border:1px solid var(--line);border-radius:18px;background:var(--brand-soft);padding:4px 20px}dl{margin:0}dl div{display:grid;grid-template-columns:105px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}dl div:last-child{border-bottom:0}dt{color:var(--muted)}dd{margin:0;word-break:break-word}.actions{display:grid;gap:18px;margin-top:22px}.action-section{display:grid;gap:10px}.action-section h2{font-size:14px;color:var(--muted);margin:0}.action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.action-grid>button{width:100%}button,.button-link{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}.primary,.button-link{background:var(--brand);border-color:var(--brand);color:white}.danger{border-color:#e8b8b8;color:var(--danger)}.mute-action{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--line);border-radius:12px;color:var(--muted);grid-column:1/-1}.mute-action input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--text);font:inherit}.mute-action button{padding:8px 12px}.hint{font-size:13px;color:var(--muted);line-height:1.7;margin:18px 0 0}.state{text-align:center}.state-icon{display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:#fff2df;color:#b9781f;font-size:32px;font-weight:800}.state.success .state-icon{background:var(--brand-soft);color:var(--brand)}@media(max-width:560px){body{padding:14px}.shell{padding:24px 20px;border-radius:20px}h1{font-size:24px}dl div{grid-template-columns:1fr;gap:5px}.action-grid{grid-template-columns:1fr}.mute-action{grid-template-columns:auto 1fr}.mute-action button{grid-column:1/-1}}@media(prefers-color-scheme:dark){:root{--bg:#091713;--card:#10231e;--text:#edf7f4;--muted:#a4b9b2;--line:#29433b;--brand:#69ad99;--brand-soft:#17352d;--danger:#ff9696}.shell{box-shadow:none}.state-icon{background:#3b2c17}}
   </style></head><body><main class="shell">${body}</main></body></html>`;
 }

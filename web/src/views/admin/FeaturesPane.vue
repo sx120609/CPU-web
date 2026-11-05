@@ -332,7 +332,7 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
 ];
 
 const learningPlatformMeta: Array<{ key: LearningPlatformKey; title: string; desc: string }> = [
-  { key: "chaoxing", title: "超星学习通", desc: "继续使用药大拾间专用学习通助手。" },
+  { key: "chaoxing", title: "超星学习通", desc: "继续使用拾间专用学习通助手。" },
   { key: "zhihuishu", title: "知到智慧树", desc: "共享课、视频与作业。" },
   { key: "icve", title: "智慧职教 / MOOC", desc: "职教课程、视频与测验。" },
   { key: "zjy", title: "职教云", desc: "职教云课程与作业。" },

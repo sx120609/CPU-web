@@ -28,5 +28,12 @@ export const njucmSchool: SchoolProfile = {
   defaultPeriods: PERIODS.map(([start, end], index) => ({ no: index + 1, name: `第${index + 1}节`, start, end })),
   academicViews: ["schedule", "grades", "levelExams", "exams", "progress", "freeRooms"],
   academicPortals: { undergraduate: "https://jwgl.njucm.edu.cn/student/sso/login" },
+  clientApps: false,
+  campuses: ["仙林校区", "汉中门校区"],
+  publicLinks: [
+    { name: "教务处", icon: "document", url: "https://jwc.njucm.edu.cn" },
+    { name: "学校官网", icon: "school", url: "https://www.njucm.edu.cn" },
+    { name: "新闻网", icon: "announcement", url: "https://xyw.njucm.edu.cn" },
+  ],
   defaultModules: SCHOOL_MODULE_KEYS,
 };

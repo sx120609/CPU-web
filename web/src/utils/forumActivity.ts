@@ -2,6 +2,8 @@ export const CAMPUS_LIFE_ACTIVITY_ID = "campus-life-2026";
 
 export const CAMPUS_LIFE_ACTIVITY = {
   id: CAMPUS_LIFE_ACTIVITY_ID,
+  /** 办活动的学校：奖金和评选只在这所学校的论坛里，别的学校打开活动链接时按普通发帖处理。 */
+  schoolId: "cpu",
   title: "药大校园生活图鉴",
   shortTitle: "一起写下药大的日常",
   intro: "食堂、周边、校园此刻和每一种普通日常，都值得被同学看见。不知道属于哪一类，也可以使用日常分享参与评比。也欢迎其他平台的优秀创作者，带着原创内容来到药大拾间。",

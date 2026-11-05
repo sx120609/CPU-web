@@ -336,5 +336,5 @@ test("schedule widget follows the calendar's period table and falls back to the 
   const legacy = buildScheduleWidgetPayload({ currentSemester: "2026-2027-1", cells }, calendarFor(3, days), "3", WEDNESDAY_1302_CHINA);
   assert.equal(legacy.periods.length, 12);
   assert.equal(legacy.weekDays[2].courses[0].endTime, "20:10");
-  assert.equal(legacy.title, "药大课表");
+  assert.equal(legacy.title, "课表");
 });

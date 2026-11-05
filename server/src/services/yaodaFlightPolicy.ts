@@ -113,12 +113,13 @@ export function validateYaodaFlightResult(input: {
   return null;
 }
 
-export function publicFlightName(nickname: string | null | undefined) {
+/** 排行榜上的名字；没设昵称时叫「<本校简称>同学」。 */
+export function publicFlightName(nickname: string | null | undefined, schoolShortName = "") {
   const normalized = String(nickname || "")
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim()
     .slice(0, 24);
-  return normalized || "药大同学";
+  return normalized || `${schoolShortName}同学`;
 }
 
 export function yaodaFlightAchievementProgress(

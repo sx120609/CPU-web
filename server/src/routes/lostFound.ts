@@ -22,7 +22,7 @@ import {
 } from "../services/imageModeration";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../services/forumStats";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
-import { DEFAULT_SCHOOL_ID } from "../schools/registry";
+import { getSchool } from "../schools/registry";
 import { requestSchoolId } from "../schools/modules";
 import { boardSlugKey } from "../schools/forumScope";
 import {
@@ -38,7 +38,6 @@ lostFoundRouter.use((_req, res, next) => {
 });
 
 const KINDS = ["found", "lost"] as const;
-const CAMPUSES = ["江宁校区", "玄武门校区"] as const;
 const PUBLIC_STATUSES = ["active", "claimed"] as const;
 const ITEM_STATUSES = ["reviewing", "active", "claimed", "closed", "hidden"] as const;
 const CLAIM_STATUSES = ["pending", "accepted", "rejected", "withdrawn"] as const;
@@ -287,7 +286,7 @@ lostFoundRouter.get("/meta", async (req, res, next) => {
       select: { campus: true },
       orderBy: { campus: "asc" },
     });
-    const presetCampuses = schoolId === DEFAULT_SCHOOL_ID ? CAMPUSES : [];
+    const presetCampuses = getSchool(schoolId).campuses;
     const campusOptions = Array.from(new Set([...presetCampuses, ...campuses.map((item) => item.campus).filter(Boolean)]));
     ok(res, { campuses: campusOptions, kinds: KINDS, statuses: PUBLIC_STATUSES });
   } catch (error) { next(error); }

@@ -136,7 +136,8 @@ const loginHint = computed(() => {
   if (site.features.forum) uses.push("发帖");
   if (site.features.coursereview) uses.push("课评");
   uses.push("消息通知");
-  return `完成统一认证后会自动创建站内账号，可用于${uses.join("、")}。教务数据会在登录后自动识别你可用的本科生 / 研究生入口。`;
+  const academic = site.hasGraduatePortal ? "教务数据会在登录后自动识别你可用的本科生 / 研究生入口。" : "教务数据会在登录后自动读取。";
+  return `完成统一认证后会自动创建站内账号，可用于${uses.join("、")}。${academic}`;
 });
 
 onMounted(async () => {

@@ -112,9 +112,18 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
       "/services/tools/grade-checks",
       "/services/tools/file-collections",
       "/services/tools/filestore",
-      "/services/tools/assessment-form",
     ],
-    tools: ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools", "assessment-form"],
+    tools: ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools"],
+  },
+  // 综测填表工具按药大的综测表和宿舍分规则做，别的学校用不了。
+  {
+    key: "assessmentForm",
+    label: "综测填表",
+    isolation: "school",
+    implementedFor: ["cpu"],
+    routes: [],
+    pages: ["/services/tools/assessment-form"],
+    tools: ["assessment-form"],
   },
   // 图书馆「我的借阅」：南医统一认证换票进图书馆（schools/njmu/library.ts）。
   { key: "library", label: "图书馆借阅", isolation: "school", implementedFor: ["njmu"], routes: ["/library"], pages: ["/library"] },
