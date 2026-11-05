@@ -7,8 +7,9 @@ import { createAndroidUpdateRequirementLoader, ANDROID_UPDATE_START_KEY } from "
 import { androidVersionFromUserAgent, createAndroidUpdateGate } from "../src/middleware/androidUpdate";
 import { createAndroidReleaseHandler } from "../src/routes/androidDownload";
 import { publishedAndroidRelease } from "../src/services/androidRelease";
+import policy from "../src/releases/android-update-policy.json";
 
-test("rollout grants exactly 72 hours and survives concurrent reads and process restarts", async () => {
+test("rollout grants exactly the policy's grace period and survives concurrent reads and process restarts", async () => {
   let stored: string | undefined;
   let reads = 0;
   let now = Date.parse("2026-10-13T08:00:00Z");
@@ -25,9 +26,9 @@ test("rollout grants exactly 72 hours and survives concurrent reads and process 
   const [first, second] = await Promise.all([load(), load()]);
   assert.deepEqual(first, second);
   assert.equal(reads, 1);
-  assert.equal(Date.parse(first.deadlineAt) - Date.parse(first.startsAt), 72 * 3_600_000);
-  assert.equal(first.minimumVersionCode, 59);
-  now += 5 * 24 * 3_600_000;
+  assert.equal(Date.parse(first.deadlineAt) - Date.parse(first.startsAt), policy.gracePeriodHours * 3_600_000);
+  assert.equal(first.minimumVersionCode, policy.minimumVersionCode);
+  now += (policy.gracePeriodHours + 48) * 3_600_000;
   assert.deepEqual(await createAndroidUpdateRequirementLoader(dependencies)(), first);
 });
 
@@ -42,7 +43,8 @@ test("failed initialization is retried without silently granting a new grace per
     },
   });
   await assert.rejects(load(), /database unavailable/);
-  assert.equal((await load()).deadlineAt, "2026-10-15T08:00:00.000Z");
+  assert.equal((await load()).deadlineAt,
+    new Date(Date.parse("2026-10-12T08:00:00Z") + policy.gracePeriodHours * 3_600_000).toISOString());
 });
 
 test("native version detection excludes other platforms and ordinary Android browsers", () => {

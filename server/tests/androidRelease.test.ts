@@ -12,7 +12,7 @@ test("release metadata rejects changed identity, certificate and inconsistent fi
 
 test("enterprise readback detects truncated and same-size corrupted files", () => {
   const bytes = Buffer.alloc(70000,42);
-  const release={...publishedAndroidRelease,size:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex")};
+  const release={...publishedAndroidRelease,patches:undefined,size:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex")};
   verifyAndroidReleaseBytes(bytes,release);
   assert.throws(()=>verifyAndroidReleaseBytes(bytes.subarray(1),release));
   bytes[0]=0;

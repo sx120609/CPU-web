@@ -16,8 +16,8 @@
 
       <div v-if="requirementState !== 'none' || updateRequired" class="update-requirement" role="status">
         <p>{{ latestRelease.updateRequirement?.message || '最新版修复了大量 Bug 和安全问题，请及时更新。' }}</p>
-        <p v-if="updateRequired">三天更新期限已到，请更新至最新版后继续使用在线功能。</p>
-        <p v-else>请在 {{ deadlineLabel }}（北京时间）前更新至最新版，三天期限结束后将停止旧版在线功能。</p>
+        <p v-if="updateRequired">更新期限已到，请更新至最新版后继续使用在线功能。</p>
+        <p v-else>请在 {{ deadlineLabel }}（北京时间）前更新至最新版，到期后旧版将停用在线功能。</p>
       </div>
 
       <div v-if="showVersionStep" class="update-versions" :aria-label="`当前版本 ${currentVersionShort}，新版本 ${latestRelease.versionName}`">
