@@ -6,7 +6,7 @@ const storage = new LocalStorage();
 @Component
 struct ScheduleCard {
   @LocalStorageProp('state') private state: string = 'loading';
-  @LocalStorageProp('title') private title: string = '药大课表';
+  @LocalStorageProp('title') private title: string = '课表';
   @LocalStorageProp('subtitle') private subtitle: string = '正在同步课程';
   @LocalStorageProp('leftTitle') private leftTitle: string = '';
   @LocalStorageProp('rightTitle') private rightTitle: string = '';

@@ -419,7 +419,7 @@ function loadingBinding(
   return {
     layout: formLayout(formName, dimension),
     state: 'loading',
-    title: '药大课表',
+    title: '课表',
     subtitle: '正在同步课程',
     leftTitle: '',
     rightTitle: '',
@@ -763,7 +763,7 @@ function readyBinding(
   return {
     layout,
     state: 'ready',
-    title: normalizedText(payload.title) || '药大课表',
+    title: normalizedText(payload.title) || '课表',
     subtitle: '',
     leftTitle: dayTitle(today),
     rightTitle: dayTitle(right.day),

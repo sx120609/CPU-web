@@ -167,7 +167,7 @@ export interface SsoLoginResult {
     pendingId: string;
     qrImage: string;
     /** 学校给的扫码说明：用哪个 App 扫（原生登录页据此保存二维码并打开它）。 */
-    guide?: { kind: string; app?: { name: string; androidPackage?: string; iosUrl?: string }; hint?: string } | null;
+    guide?: { kind: string; app?: { name: string; androidPackage?: string; url?: string }; hint?: string } | null;
   };
   /** 扫码轮询的状态；done 时本响应就是登录结果。 */
   mfaStatus?: "waiting" | "scanned" | "expired" | "failed";

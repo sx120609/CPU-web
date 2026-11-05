@@ -18,8 +18,8 @@ export type SchoolMfaGuide = {
   app?: {
     name: string;
     androidPackage?: string;
-    /** iOS 上打开它的 URL，例如 weixin://（直接 open，不用先 canOpenURL，原生不用为每个 App 登记）。 */
-    iosUrl?: string;
+    /** 鸿蒙和 iOS 上打开它的链接，例如 weixin://（直接打开，不用先查询，原生不用为每个 App 登记）。 */
+    url?: string;
   };
   /** 二维码上方的说明；不填用通用说明。 */
   hint?: string;

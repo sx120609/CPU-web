@@ -34,7 +34,7 @@ import {
 } from '../common/HarmonyBridge';
 import { restoreNativeScheduleCache } from '../schedule/NativeScheduleCache';
 import { NativeWebHeader, NativeWebHeaderState } from '../common/NativeWebHeader';
-import { NativeLoginGate, NativeLoginResponse } from '../common/NativeLoginGate';
+import { NativeLoginGate, NativeLoginResponse, emptyNativeLoginResponse, parseNativeLoginResponse } from '../common/NativeLoginGate';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeScheduleSemester, NativeScheduleSnapshot, NativeScheduleStore,
   SCHEDULE_ROW_HEIGHT_MAX, SCHEDULE_ROW_HEIGHT_MIN, SCHEDULE_ROW_HEIGHT_STEP, scheduleNormalizedRowHeight,
@@ -629,30 +629,11 @@ struct Index {
   }
 
   private emptyNativeLoginResponse(error: string): NativeLoginResponse {
-    return { ok: false, needCaptcha: false, captchaImage: '', error, account: '', canAccessAdmin: false };
+    return emptyNativeLoginResponse(error);
   }
 
   private parseNativeLoginResponse(raw: string): NativeLoginResponse {
-    try {
-      // ArkWeb can serialize a JavaScript string result once more before it
-      // reaches runJavaScript(). Native login intentionally returns JSON so
-      // unwrap that transport layer before reading its fields.
-      let decoded = JSON.parse(String(raw || '{}')) as string | NativeLoginResponse;
-      if (typeof decoded === 'string') {
-        decoded = JSON.parse(decoded) as NativeLoginResponse;
-      }
-      const value = decoded as NativeLoginResponse;
-      return {
-        ok: value?.ok === true,
-        needCaptcha: value?.needCaptcha === true,
-        captchaImage: value?.captchaImage || '',
-        error: value?.error || '',
-        account: value?.account || '',
-        canAccessAdmin: value?.canAccessAdmin === true
-      };
-    } catch (_) {
-      return this.emptyNativeLoginResponse('登录服务返回了无法识别的结果，请重试');
-    }
+    return parseNativeLoginResponse(raw);
   }
 
   private acceptNativeLoginResult(id: string, payload: string): void {
@@ -671,13 +652,13 @@ struct Index {
     this.pendingNativeLoginRequests.clear();
   }
 
-  private runNativeLogin(expression: string): Promise<NativeLoginResponse> {
+  private runNativeLogin(expression: string, timeoutMs: number = 15000): Promise<NativeLoginResponse> {
     const id = `native-login-${++this.nativeLoginRequestSequence}`;
     const requestId = JSON.stringify(id);
     return new Promise<NativeLoginResponse>((resolve) => {
       const timeoutId = setTimeout(() => {
         this.acceptNativeLoginResult(id, '{"ok":false,"error":"登录服务响应超时，请重试"}');
-      }, 15000);
+      }, timeoutMs);
       this.pendingNativeLoginRequests.set(id, { resolve, timeoutId });
       const script = `
         (() => {
@@ -713,7 +694,7 @@ struct Index {
     const code = JSON.stringify(captcha);
     const keep = remember ? 'true' : 'false';
     return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeSsoLogin === 'function'
-      ? window.CPUTimeNative.nativeSsoLogin(${user}, ${secret}, ${code}, ${keep})
+      ? window.CPUTimeNative.nativeSsoLogin(${user}, ${secret}, ${code}, ${keep}, { nativeMfa: true })
       : { ok: false, error: '登录服务尚未就绪，请稍候重试' }`).then((response: NativeLoginResponse) => {
       if (response.ok) {
         this.webHeader.authenticated = true;
@@ -721,6 +702,45 @@ struct Index {
       }
       return response;
     });
+  }
+
+  /** 多学校：可选学校（网页还是旧版时 schools 为空，登录页不显示学校选择）。 */
+  private nativeLoginSchools(): Promise<NativeLoginResponse> {
+    return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeLoginSchools === 'function'
+      ? window.CPUTimeNative.nativeLoginSchools().then(list => ({ ok: true, school: list.current, schools: list.schools }))
+      : { ok: false, schools: [] }`);
+  }
+
+  private nativeChooseSchool(schoolId: string): Promise<NativeLoginResponse> {
+    const id = JSON.stringify(schoolId);
+    return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeChooseSchool === 'function'
+      ? window.CPUTimeNative.nativeChooseSchool(${id})
+      : { ok: false, error: '登录服务尚未就绪，请稍候重试' }`, 45000);
+  }
+
+  /** 查一次扫码状态；服务端最长挂 60 秒。done 时网页已经登录。 */
+  private nativeMfaPoll(): Promise<NativeLoginResponse> {
+    return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeMfaPoll === 'function'
+      ? window.CPUTimeNative.nativeMfaPoll()
+      : { ok: false, status: 'failed', error: '验证已过期，请重新登录' }`, 75000).then((response: NativeLoginResponse) => {
+      if (response.status === 'done') {
+        this.webHeader.authenticated = true;
+        this.resolveAuthenticated(true);
+      }
+      return response;
+    });
+  }
+
+  private nativeMfaRefresh(): Promise<NativeLoginResponse> {
+    return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeMfaRefresh === 'function'
+      ? window.CPUTimeNative.nativeMfaRefresh()
+      : { ok: false, error: '验证已过期，请重新登录' }`, 30000);
+  }
+
+  private nativeMfaCancel(): void {
+    void this.runNativeLogin(`typeof window.CPUTimeNative?.nativeMfaCancel === 'function'
+      ? window.CPUTimeNative.nativeMfaCancel()
+      : { ok: true }`, 8000);
   }
 
   private nativeAccountLogin(username: string, password: string): Promise<NativeLoginResponse> {
@@ -1412,7 +1432,14 @@ struct Index {
           onBegin: () => this.nativeLoginBegin(),
           onSsoLogin: (username: string, password: string, captcha: string, remember: boolean) => this.nativeSsoLogin(username, password, captcha, remember),
           onAccountLogin: (username: string, password: string) => this.nativeAccountLogin(username, password),
-          onOpenPolicy: (path: string) => this.bridge.openExternalUrl(`https://cputime.cn${path}`)
+          onOpenPolicy: (path: string) => this.bridge.openExternalUrl(`https://cputime.cn${path}`),
+          onLoadSchools: () => this.nativeLoginSchools(),
+          onChooseSchool: (schoolId: string) => this.nativeChooseSchool(schoolId),
+          onMfaPoll: () => this.nativeMfaPoll(),
+          onMfaRefresh: () => this.nativeMfaRefresh(),
+          onMfaCancel: () => this.nativeMfaCancel(),
+          onSaveQr: (dataUrl: string) => this.bridge.commitImageSave(dataUrl, '统一认证二维码.png'),
+          onOpenScanApp: (url: string) => this.bridge.openAppLink(url)
         })
       }
         }

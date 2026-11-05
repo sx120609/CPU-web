@@ -11,7 +11,7 @@ export const njmuDriver: SchoolDriver = {
   beginLogin: (signal) => academic.beginLogin(signal),
   submitLogin: (args, signal) => academic.submitLogin(args, signal),
   mfa: {
-    guide: { kind: "qr", app: { name: "微信", androidPackage: "com.tencent.mm", iosUrl: "weixin://" } },
+    guide: { kind: "qr", app: { name: "微信", androidPackage: "com.tencent.mm", url: "weixin://" } },
     poll: (pendingId, signal) => academic.pollMfa(pendingId, signal),
     refreshQr: (pendingId, signal) => academic.refreshMfaQr(pendingId, signal),
   },

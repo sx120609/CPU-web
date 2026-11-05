@@ -13,7 +13,7 @@
    - `ownsToken`：本校的教务令牌和登录 pendingId 都带本校前缀，靠它认出属于哪所学校。
    - `academic`：教务查询，函数签名和返回值跟 `services/jwxtFacade` 一致（课表、校历、成绩、考试等）。校历的 `periods` 给教务里的作息。
    - `beginLogin` / `submitLogin`：统一认证登录。要验证码时返回 `needCaptcha` 和验证码图片。
-   - `mfa`（可选）：新设备要扫码确认时填。`guide.app` 写用来扫码的 App 名称、安卓包名、iOS URL Scheme；原生登录页会显示「保存二维码并打开 <App>」。不填 `app` 时，登录页只显示二维码和通用说明。
+   - `mfa`（可选）：新设备要扫码确认时填。`guide.app` 写用来扫码的 App 名称、安卓包名、鸿蒙和 iOS 上打开它的链接（`url`）；原生登录页会显示「保存二维码并打开 <App>」。不填 `app` 时，登录页只显示二维码和通用说明。
    - `library`（可选）：图书馆借阅。
    - `forgetAccount`（可选）：删除账号时，清掉本校为这个学号保存的设备凭据等数据。
 3. **模块**：在 `schools/catalog.ts` 里，给本校已经实现的模块的 `implementedFor` 加上学校 `id`。

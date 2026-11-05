@@ -32,7 +32,7 @@ const COMPACT_NEXT_HEIGHT = 27;
 @Component
 export struct ScheduleCardView {
   @Prop state: string = 'loading';
-  @Prop title: string = '药大课表';
+  @Prop title: string = '课表';
   @Prop subtitle: string = '正在同步课程';
   @Prop leftTitle: string = '';
   @Prop rightTitle: string = '';

@@ -101,6 +101,18 @@ export class HarmonyBridge {
     }).catch(() => this.toast('无法打开系统浏览器'));
   }
 
+  /** 登录页扫码验证：打开学校指定的扫码 App（链接由学校给，例如 weixin://）；没装或打不开时返回 false。 */
+  async openAppLink(url: string): Promise<boolean> {
+    const target = (url ?? '').trim();
+    if (!target || !/^[a-z][a-z0-9+.-]*:\/\//i.test(target) || !this.context) return false;
+    try {
+      await this.context.openLink(target, { appLinkingOnly: false });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   downloadAndInstallApk(url: string, _fileName: string): boolean {
     if (!isHttpUrl(url)) return false;
     this.openExternalUrl(url);
@@ -315,7 +327,7 @@ export class HarmonyBridge {
         return refreshAllScheduleForms(this.context as common.UIAbilityContext)
           .then(() => {
             this.widgetConfigurationHandler?.(true);
-            this.toast('配置已保存，请长按桌面并添加“药大课表”卡片');
+            this.toast('配置已保存，请长按桌面上的药大拾间图标，添加“课表”卡片');
           });
       })
       .catch(() => {

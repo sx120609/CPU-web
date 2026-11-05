@@ -18,15 +18,29 @@ test('Harmony shell gates guest state with the same Web auth bridge used by iOS'
   assert.match(indexSource, /auth\.ssoBegin\(\{ silent: true \}\)/);
   assert.match(indexSource, /nativeLoginResult/);
   assert.match(indexSource, /window\.CPUHarmony\?\.nativeLoginResult\?\./);
-  assert.match(indexSource, /let decoded = JSON\.parse\(String\(raw \|\| '\{\}'\)\)/);
-  assert.match(indexSource, /typeof decoded === 'string'/);
-  assert.match(indexSource, /decoded = JSON\.parse\(decoded\)/);
+  assert.match(indexSource, /parseNativeLoginResponse\(raw\)/);
+  assert.match(loginSource, /let decoded = JSON\.parse\(String\(raw \|\| '\{\}'\)\)/);
+  assert.match(loginSource, /typeof decoded === 'string'/);
+  assert.match(loginSource, /decoded = JSON\.parse\(decoded\)/);
   assert.match(loginSource, /privacyAccepted/);
   assert.match(loginSource, /InputType\.Password/);
   assert.match(loginSource, /LongPressGesture/);
   assert.match(loginSource, /bridgeWarmupRetries/);
   assert.match(loginSource, /prepareSchoolLogin\(true\)/);
   assert.match(loginSource, /shouldRetryBridgeWarmup/);
+});
+
+test('Harmony login lets the user pick a school and shows the school scan step natively', () => {
+  // Schools, school choice and scan verification go through the shared Web bridge, never a school name.
+  assert.match(indexSource, /nativeSsoLogin\(\$\{user\}, \$\{secret\}, \$\{code\}, \$\{keep\}, \{ nativeMfa: true \}\)/);
+  for (const call of ['nativeLoginSchools', 'nativeChooseSchool', 'nativeMfaPoll', 'nativeMfaRefresh', 'nativeMfaCancel']) {
+    assert.ok(indexSource.includes(`window.CPUTimeNative.${call}(`), call);
+  }
+  assert.match(indexSource, /onOpenScanApp: \(url: string\) => this\.bridge\.openAppLink\(url\)/);
+  assert.match(loginSource, /Select\(this\.schoolOptions\(\)\)/);
+  assert.match(loginSource, /`登录\$\{this\.brandName\}，继续查看你的校园信息`/);
+  assert.match(loginSource, /SaveButton\(/);
+  assert.doesNotMatch(loginSource, /微信|南医|南京医科/);
 });
 
 test('Harmony daily schedule keeps a dedicated seven-day pager and external date strip', () => {
