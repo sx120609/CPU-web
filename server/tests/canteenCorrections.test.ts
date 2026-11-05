@@ -159,3 +159,41 @@ test("an AI patch aimed at a different shop is refused", async () => {
     invalidateCanteenCatalog();
   }
 });
+
+test("one correction can split a listing into two shops on the same floor, but not add shops elsewhere", async () => {
+  const store = fakeStore();
+  const row = (id: string) => ({
+    id, userId: 1, shopId: "2.1::掉渣饼卫孔记", kind: "其他", content: "掉渣饼和卫孔记面馆，是两家店", status: "approved",
+    agreeCount: 6, disagreeCount: 0, patch: "", aiNote: "", attempts: 0, lockedAt: null, resolvedAt: null, updatedAt: new Date(),
+  });
+  store.corrections.set("s1", row("s1"));
+  const saved = prisma.canteenCorrection;
+  (prisma as any).canteenCorrection = store.tx.canteenCorrection;
+  invalidateCanteenCatalog();
+  try {
+    canteenCorrectionAi.decide = async () => ({ decision: "apply", patches: [
+      { op: "rename", shopId: "2.1::掉渣饼卫孔记", name: "掉渣饼" },
+      { op: "add", floorCode: "2.1", name: "卫孔记面馆", tags: ["noodle"] },
+    ] });
+    await processApprovedCanteenCorrections();
+    const done = store.corrections.get("s1")!;
+    assert.equal(done.status, "applied");
+    assert.equal(done.shopId, "2.1::掉渣饼");
+    assert.match(done.aiNote, /改名为「掉渣饼」；二食堂一楼新增「卫孔记面馆」/);
+    invalidateCanteenCatalog();
+    const { index } = await getCanteenCatalog();
+    assert.equal(index.find("2.1::掉渣饼卫孔记")?.name, "掉渣饼");
+    assert.deepEqual(index.find("2.1::卫孔记面馆")?.tags, ["noodle"]);
+
+    store.corrections.set("s2", { ...row("s2"), shopId: "2.1::掉渣饼" });
+    canteenCorrectionAi.decide = async () => ({ decision: "apply", patches: [
+      { op: "rename", shopId: "2.1::掉渣饼", name: "掉渣饼老店" },
+      { op: "add", floorCode: "1.3", name: "另一家店", tags: ["rice"] },
+    ] });
+    await processApprovedCanteenCorrections();
+    assert.equal(store.corrections.get("s2")!.status, "rejected");
+  } finally {
+    (prisma as any).canteenCorrection = saved;
+    invalidateCanteenCatalog();
+  }
+});

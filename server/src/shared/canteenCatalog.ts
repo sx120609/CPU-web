@@ -337,11 +337,11 @@ export function applyCanteenPatch(canteens: Canteen[], patch: CanteenPatch): { c
   return { error: "不支持的修改" };
 }
 
-/** 依次套用全部已生效的修改；套不上的跳过（例如门店后来被别的修改删掉了）。 */
-export function buildCanteenCatalog(patches: CanteenPatch[], base: Canteen[] = BASE_CANTEENS) {
+/** 依次套用全部已生效的纠错；每条纠错的修改一起套用，套不上的整条跳过（例如门店后来被别的修改删掉了）。 */
+export function buildCanteenCatalog(groups: (CanteenPatch | CanteenPatch[])[], base: Canteen[] = BASE_CANTEENS) {
   let canteens = base;
-  for (const patch of patches) {
-    const result = applyCanteenPatch(canteens, patch);
+  for (const group of groups) {
+    const result = applyCanteenPatches(canteens, Array.isArray(group) ? group : [group]);
     if ("canteens" in result) canteens = result.canteens;
   }
   return indexCanteens(canteens);
@@ -369,6 +369,33 @@ export function parseCanteenPatch(value: unknown): CanteenPatch | null {
     }
     default: return null;
   }
+}
+
+/** 一条纠错最多带几条修改（例如拆店 = 改名 + 新增）。 */
+export const CANTEEN_PATCHES_MAX = 4;
+
+/** 解析一条纠错的全部修改：单条或数组；任意一条不合格就整体作废。 */
+export function parseCanteenPatches(value: unknown): CanteenPatch[] | null {
+  let data: any = value;
+  if (typeof value === "string") {
+    if (!value.trim()) return null;
+    try { data = JSON.parse(value); } catch { return null; }
+  }
+  const list = Array.isArray(data) ? data : [data];
+  if (!list.length || list.length > CANTEEN_PATCHES_MAX) return null;
+  const patches = list.map(parseCanteenPatch);
+  return patches.every(Boolean) ? patches as CanteenPatch[] : null;
+}
+
+/** 依次套用一组修改，任何一条套不上就整体失败。 */
+export function applyCanteenPatches(canteens: Canteen[], patches: CanteenPatch[]): { canteens: Canteen[] } | { error: string } {
+  let current = canteens;
+  for (const patch of patches) {
+    const result = applyCanteenPatch(current, patch);
+    if ("error" in result) return result;
+    current = result.canteens;
+  }
+  return { canteens: current };
 }
 
 /** 给人看的一句话描述，用修改前的目录找店名和楼层。 */
