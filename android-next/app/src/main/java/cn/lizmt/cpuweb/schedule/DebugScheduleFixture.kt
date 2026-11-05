@@ -44,6 +44,7 @@ object DebugScheduleFixture {
         "style" -> ScheduleSheet.Style
         "sharing" -> ScheduleSheet.Sharing
         "couple" -> ScheduleSheet.Couple
+        "widgets" -> ScheduleSheet.Widgets
         else -> null
     }
 

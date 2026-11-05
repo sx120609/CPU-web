@@ -75,7 +75,7 @@ adb shell am start -n cn.lizmt.cpuweb/cn.lizmt.cpuweb.schedule.MainActivity --ez
 | `--ei debugDay 4` | 选中星期几（1–7） |
 | `--es debugNow 09:00` | 固定“现在”，查看正在上、下一节等状态 |
 | `--es debugPriority 体育（羽毛球）` | 设置优先显示的课程，多个用逗号分隔，靠前的在上 |
-| `--es debugSheet sharing` | 启动后打开弹窗：`visual`（课表风格）、`display`（显示设置）、`style`（配色与背景）、`sharing`（共享课表）、`couple`（情侣课表）、`agenda`（日程与待办）、`agendaNew`（新建日程） |
+| `--es debugSheet sharing` | 启动后打开弹窗：`visual`（课表风格）、`display`（显示设置）、`style`（配色与背景）、`sharing`（共享课表）、`couple`（情侣课表）、`widgets`（桌面小组件）、`agenda`（日程与待办）、`agendaNew`（新建日程） |
 | `--es debugCouple active` | 情侣课表的假接口状态：`active`（已绑定，TA 的课表和自己的有重合、有撞课、有各自的课）、`pending`（邀请码等待接受），不传为未绑定 |
 | `--ez debugOverlapNotice true` | 示例课表里周三有两门课排在同一时段；带上它才弹「同一时间排了两门课」的提示（每处只弹一次，清数据后再看） |
 | `--es debugCoupleColors teal,amber` | 情侣课表里两人的颜色：先是自己的，再是 TA 的（`blue`、`pink`、`purple`、`teal`、`green`、`amber`、`orange`） |

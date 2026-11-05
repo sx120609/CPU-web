@@ -7,31 +7,13 @@ import android.os.Build
 import android.provider.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import java.time.LocalDate
-
-/** A number that changes each time the app comes back, so what the system settings decide is read again. */
-@Composable
-internal fun rememberResumeCount(): Int {
-    var count by remember { mutableIntStateOf(0) }
-    val owner = LocalLifecycleOwner.current
-    DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) count += 1 }
-        owner.lifecycle.addObserver(observer)
-        onDispose { owner.lifecycle.removeObserver(observer) }
-    }
-    return count
-}
 
 /** When the next class reminder fires, in the user's words. */
 internal fun nextCourseReminderText(context: Context): String {
@@ -83,7 +65,7 @@ internal fun ReminderCheckPage(activity: MainActivity) {
         Hairline()
         val brand = remember { VendorSettings.current() }
         ListRow(if (brand != null) "${brand.name}：允许自启动和后台运行" else "自启动和后台运行",
-            detail = brand?.steps ?: "打开系统的应用信息页", chevron = true) { VendorSettings.open(context, brand) }
+            detail = brand?.steps(context) ?: "打开系统的应用信息页", chevron = true) { VendorSettings.open(context, brand) }
     }
     Panel("手机拦不住的提醒", footer = "微信和 QQ 一般不会被手机厂商拦下。打开后，日程和上课提醒到点时，拾间的服务器也会发一条到你绑定的微信和 QQ。") {
         ReminderRelayRows(activity)

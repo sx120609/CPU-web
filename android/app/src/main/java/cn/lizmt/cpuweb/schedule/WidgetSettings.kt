@@ -277,10 +277,59 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
             }
             Spacer(Modifier.height(12.dp))
         }
+        WidgetReliabilitySection(activity)
+        Spacer(Modifier.height(16.dp))
         Text("手动添加", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(4.dp))
         Text("长按桌面空白处，选择“小组件”，找到“药大拾间”后拖到桌面。长按已添加的小组件可编辑设置；也可从这里编辑。课表只保存在本机，退出登录时删除。",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * Phones from Huawei, Honor, Xiaomi, OPPO, vivo and others stop apps in the
+ * background, which clears the alarms the widget redraws on, so it can stay on
+ * yesterday. The two switches that prevent it, each opening its system page.
+ */
+@Composable
+private fun WidgetReliabilitySection(activity: MainActivity) {
+    val resumed = rememberResumeCount()
+    val batteryFree = remember(resumed) { BatterySettings.unrestricted(activity) }
+    val brand = remember { VendorSettings.current() }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Text("保持小组件准时", style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(4.dp))
+    Text("华为、荣耀、小米、OPPO、vivo 等手机会停掉后台应用，小组件可能停在前一天。打开下面两项后，换日和上下课都会按时刷新。",
+        fontSize = 12.sp, color = muted)
+    Spacer(Modifier.height(6.dp))
+    ReliabilityRow(
+        "电池优化",
+        if (batteryFree) "已设为不限制" else "受限制：系统可能推迟或停掉小组件的刷新",
+        if (batteryFree) "不限制" else "去设置",
+        attention = !batteryFree,
+    ) { BatterySettings.open(activity) }
+    ReliabilityRow(
+        if (brand != null) "${brand.name}：允许自启动和后台运行" else "允许自启动和后台运行",
+        brand?.steps(activity) ?: "在系统的应用信息页里允许自启动、后台运行，并把耗电管理设为不限制。",
+        "去设置",
+        attention = false,
+    ) { VendorSettings.open(activity, brand) }
+}
+
+@Composable
+private fun ReliabilityRow(title: String, detail: String, action: String, attention: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 14.sp, color = if (attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(2.dp))
+            Text(detail, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(action, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
     }
 }
 
