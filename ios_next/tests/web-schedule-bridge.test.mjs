@@ -10,6 +10,9 @@ const mocks = {
   '@/api/jwxt': 'export const jwxtApi = globalThis.api;',
   '@/stores/auth': 'export const useAuthStore = () => globalThis.auth;',
   '@/stores/jwxt': 'export const useJwxtStore = () => globalThis.jwxt;',
+  '@/stores/site': 'export const useSiteStore = () => globalThis.site;',
+  '@/api/site': 'export const siteApi = { schools: async () => globalThis.schoolList };',
+  '@/api/request': 'export const setSchoolChoice = id => { globalThis.schoolChoice = id; };',
   './clientInfo': 'export const isNativeScheduleShell = () => globalThis.native; export const isIosNextNativeShell = isNativeScheduleShell;',
 };
 const bundle = await build({
@@ -30,6 +33,9 @@ function setup({ ready = true, loggedIn = true, storage = new Map(), session } =
   const context = vm.createContext({ localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, Error,
     sessionStorage: session && { getItem: k => session.get(k) ?? null, setItem: (k, v) => session.set(k, v), removeItem: k => session.delete(k) }, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)), native: true, window: { CPUTimeNative: { authChanged() {} } },
     auth: { ready, user: loggedIn ? { id: 1 } : null, academicIdentity: 'undergraduate', isLoggedIn: loggedIn },
+    site: { school: { id: 'cpu', ssoLogin: true }, brandName: '药大拾间', schoolName: '中国药科大学', async fetch() {} },
+    schoolList: [{ id: 'cpu', name: '中国药科大学', shortName: '药大', brandName: '药大拾间', ssoLogin: true },
+      { id: 'njmu', name: '南京医科大学', shortName: '南医', brandName: '南医拾间', ssoLogin: true }],
     jwxt: { isLoggedIn: true, hydrate() {}, async ensureSession() { return this.isLoggedIn; }, withSessionRetry: fn => fn() },
     api: { async schedule() { return { parsed: sample() }; }, async calendar() { return { parsed: null }; },
       async getScheduleEdits() { return { edits: { hidden: [], custom: [] } }; },
@@ -696,4 +702,46 @@ test('a returned refresh superseded while sign-in settles is fetched again, unfo
     assert.equal(pushed.length, 1);
     assert.ok(pushed[0].data);
   }
+});
+
+test('native login lists schools, switches the school choice and hands scan verification to the native page', async () => {
+  const ctx = setup({ loggedIn: false });
+  const bridge = ctx.window.CPUTimeNative;
+  const listed = await bridge.nativeLoginSchools();
+  assert.deepEqual(listed.schools.map(item => item.id), ['cpu', 'njmu']);
+  assert.equal(listed.current.id, 'cpu');
+
+  let begun = 0;
+  Object.assign(ctx.auth, {
+    ssoBegin: async () => { begun += 1; },
+    cancelSsoMfa() { this.ssoNeedMfa = false; this.ssoMfaNative = false; this.ssoMfaQr = ''; },
+  });
+  ctx.site.fetch = async () => { ctx.site.school = { id: ctx.schoolChoice, ssoLogin: true }; ctx.site.brandName = '南医拾间'; };
+  const chosen = await bridge.nativeChooseSchool('njmu');
+  assert.equal(ctx.schoolChoice, 'njmu');
+  assert.equal(begun, 1);
+  assert.equal(chosen.school.id, 'njmu');
+  assert.equal(chosen.school.brandName, '南医拾间');
+
+  ctx.auth.ssoLogin = async () => {
+    Object.assign(ctx.auth, { ssoNeedMfa: true, ssoMfaQr: 'data:image/png;base64,AA==', ssoError: '这台设备第一次登录，需要扫码验证' });
+    return false;
+  };
+  const native = await bridge.nativeSsoLogin('u', 'p', '', true, { nativeMfa: true });
+  assert.equal(ctx.auth.ssoMfaNative, true);
+  assert.equal(native.needMfa, true);
+  assert.equal(native.mfaQr, 'data:image/png;base64,AA==');
+  assert.equal(native.error, '');
+
+  ctx.auth.ssoPollMfa = async () => 'scanned';
+  assert.equal((await bridge.nativeMfaPoll()).status, 'scanned');
+  ctx.auth.ssoPollMfa = async () => { ctx.auth.ssoError = '扫码验证没有通过'; return 'failed'; };
+  const failed = await bridge.nativeMfaPoll();
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.error, '扫码验证没有通过');
+  assert.equal(ctx.auth.ssoNeedMfa, false);
+
+  // An older shell passes no options: the Web dialog keeps handling the scan.
+  await bridge.nativeSsoLogin('u', 'p', '', true);
+  assert.equal(ctx.auth.ssoMfaNative, false);
 });

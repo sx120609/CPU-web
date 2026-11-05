@@ -96,6 +96,8 @@ export const useAuthStore = defineStore("auth", {
     ssoNeedMfa: false,
     ssoMfaPendingId: "",
     ssoMfaQr: "",
+    /** 原生登录页自己显示二维码并轮询，网页的扫码弹窗不再弹出、也不再轮询。 */
+    ssoMfaNative: false,
     _pendingSsoBegin: null as Promise<void> | null,
     _pendingSsoLogin: null as Promise<boolean> | null,
     _pendingFetchMe: null as Promise<void> | null,
@@ -401,6 +403,7 @@ export const useAuthStore = defineStore("auth", {
         this.ssoNeedMfa = false;
         this.ssoMfaPendingId = "";
         this.ssoMfaQr = "";
+        this.ssoMfaNative = false;
         this.ssoNeedCaptcha = false;
         this.ssoCaptchaImage = "";
         this.ssoPendingId = "";
@@ -453,6 +456,7 @@ export const useAuthStore = defineStore("auth", {
       this.ssoNeedMfa = false;
       this.ssoMfaPendingId = "";
       this.ssoMfaQr = "";
+      this.ssoMfaNative = false;
     },
 
     /** Background recovery shares one school SSO submission. */

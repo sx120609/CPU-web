@@ -2,6 +2,9 @@ import { watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
+import { useSiteStore } from "@/stores/site";
+import { siteApi, type SchoolSummary } from "@/api/site";
+import { setSchoolChoice } from "@/api/request";
 import type { Router } from "vue-router";
 import { isNativeScheduleShell } from "./clientInfo";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState, courseEditKey } from "./scheduleEdits";
@@ -319,6 +322,17 @@ export function nativeScheduleAuthInfo() {
   };
 }
 
+/** 当前学校的显示信息，原生登录页的标题、欢迎语和「正在进入…」跟着它走。 */
+function nativeLoginSchool() {
+  const site = useSiteStore();
+  return {
+    id: String(site.school?.id || ""),
+    name: site.schoolName,
+    brandName: site.brandName,
+    ssoLogin: site.school?.ssoLogin !== false,
+  };
+}
+
 /**
  * Expose the Web auth state machine to the native login surface. Keeping the
  * actual SSO and cookie work in the Web store means native login follows the
@@ -334,14 +348,82 @@ export function installIosNativeAuthBridge(authStore?: any) {
 
   const result = (ok: boolean, error = "") => {
     const info = nativeScheduleAuthInfo();
+    const needMfa = Boolean(auth.ssoNeedMfa && auth.ssoMfaNative);
     return {
       ok,
-      error: error || String(auth.ssoError || ""),
+      // 要扫码时原生页显示二维码，不再把「需要扫码验证」当成登录失败显示。
+      error: needMfa ? "" : error || String(auth.ssoError || ""),
       needCaptcha: Boolean(auth.ssoNeedCaptcha),
       captchaImage: String(auth.ssoCaptchaImage || ""),
+      needMfa,
+      mfaQr: needMfa ? String(auth.ssoMfaQr || "") : "",
       account: info.account,
       canAccessAdmin: info.canAccessAdmin,
+      school: nativeLoginSchool(),
     };
+  };
+
+  /**
+   * 多学校：原生登录页的学校选择。选中的学校写进和网页登录页同一个
+   * cpu-school-choice，之后的统一认证请求都带上它（api/request.ts 的 X-CPU-School）。
+   */
+  host.CPUTimeNative.nativeLoginSchools = async () => {
+    const list = await siteApi.schools().catch(() => [] as SchoolSummary[]);
+    return {
+      current: nativeLoginSchool(),
+      schools: list.map((item) => ({
+        id: item.id,
+        name: item.name,
+        shortName: item.shortName,
+        brandName: item.brandName,
+        ssoLogin: item.ssoLogin !== false,
+      })),
+    };
+  };
+  host.CPUTimeNative.nativeChooseSchool = async (schoolId: string) => {
+    const site = useSiteStore();
+    const id = String(schoolId || "").trim();
+    if (id && id !== site.school?.id) {
+      auth.cancelSsoMfa();
+      setSchoolChoice(id);
+      await site.fetch(true).catch(() => undefined);
+      auth.ssoError = "";
+    }
+    if (site.school?.ssoLogin === false) return result(true);
+    try {
+      await auth.ssoBegin({ silent: true });
+      return result(true);
+    } catch (error) {
+      return result(false, error instanceof Error ? error.message : "统一认证暂时不可用，请稍后再试。");
+    }
+  };
+  /** 查一次扫码状态：waiting / scanned / expired / failed / done（done 时已经登录）。 */
+  host.CPUTimeNative.nativeMfaPoll = async () => {
+    try {
+      const status = await auth.ssoPollMfa();
+      if (status === "failed") {
+        const message = String(auth.ssoError || "验证失败，请重新登录");
+        auth.cancelSsoMfa();
+        return { ...result(false, message), status };
+      }
+      return { ...result(status === "done"), status };
+    } catch (error) {
+      // 网络抖动：原生页稍后再查，二维码保留。
+      return { ...result(false, error instanceof Error ? error.message : "暂时查不到扫码状态，正在重试"), status: "retry" };
+    }
+  };
+  host.CPUTimeNative.nativeMfaRefresh = async () => {
+    try {
+      await auth.ssoRefreshMfaQr();
+      return { ...result(true), status: "waiting" };
+    } catch (error) {
+      return { ...result(false, error instanceof Error ? error.message : "二维码刷新失败，请重新登录"), status: "retry" };
+    }
+  };
+  host.CPUTimeNative.nativeMfaCancel = async () => {
+    auth.cancelSsoMfa();
+    auth.ssoError = "";
+    return { ok: true };
   };
 
   host.CPUTimeNative.nativeLoginBegin = async () => {
@@ -357,7 +439,10 @@ export function installIosNativeAuthBridge(authStore?: any) {
     password: string,
     captcha: string,
     remember: boolean,
+    options?: { nativeMfa?: boolean },
   ) => {
+    // 旧版原生壳不传 options：扫码仍由网页弹窗处理（虽然被原生登录页挡住，至少提示文字照旧）。
+    auth.ssoMfaNative = Boolean(options?.nativeMfa);
     try {
       const ok = await auth.ssoLogin(
         String(username || ""),

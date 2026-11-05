@@ -4,7 +4,7 @@
     任何页面发起的学校登录都可能走到这一步，所以挂在 App 上；手机上确认后即完成登录。
   -->
   <el-dialog
-    :model-value="auth.ssoNeedMfa"
+    :model-value="auth.ssoNeedMfa && !auth.ssoMfaNative"
     title="扫码验证"
     width="min(360px, calc(100vw - 24px))"
     align-center

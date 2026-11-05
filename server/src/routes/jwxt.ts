@@ -62,6 +62,7 @@ import {
   isRemoteMode,
 } from "../services/jwxtTransport";
 import { requestSchoolId } from "../schools/modules";
+import { getSchool } from "../schools/registry";
 
 export const jwxtRouter = Router();
 
@@ -438,11 +439,14 @@ function scheduleEditsHash(edits: ReturnType<typeof emptyScheduleEdits>) {
 
 async function readUserWidgetPayload(userId: number, token: string, requestedWeek: string) {
   let editsHash = "";
+  // 小组件标题跟着用户所在学校：药大课表、南医课表。
+  const owner = await prisma.user.findUnique({ where: { id: userId }, select: { schoolId: true } }).catch(() => null);
+  const title = `${getSchool(owner?.schoolId).shortName || ""}课表`;
   const payload = await loadScheduleWidgetData(token, requestedWeek, async (semester) => {
     const { edits } = await readScheduleEditsForWidget(userId, semester);
     editsHash = scheduleEditsHash(edits);
     return (schedule) => ({ ...schedule, cells: applyScheduleEditsToCells(schedule.cells ?? [], edits) });
-  });
+  }, { title });
   return { ...payload, editsHash };
 }
 

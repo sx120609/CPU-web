@@ -301,3 +301,42 @@ test("widget dates require the matching school calendar and never infer the firs
   const matching = { ...calendarFor(1, ["2026-09-07"]), currentSemester: "2026-2027-1" };
   assert.equal(resolveScheduleWidgetCalendar(matching, parsed), matching);
 });
+
+test("schedule widget uses the timetable's own periods beyond the twelfth", () => {
+  const periods = Array.from({ length: 15 }, (_, index) => ({
+    id: index + 1,
+    name: `第${index + 1}节`,
+    start: `${String(7 + index).padStart(2, "0")}:30`,
+    end: `${String(8 + index).padStart(2, "0")}:10`,
+  }));
+  const payload = buildScheduleWidgetPayload(
+    { currentSemester: "2026-2027-1", cells: [{ day: 3, bigSlot: 7, courses: [course("Evening seminar", "1-16", "T", 13, 15)] }] },
+    { ...calendarFor(3, ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"]), periods },
+    "3",
+    WEDNESDAY_1302_CHINA,
+    {},
+    { title: "Test schedule" },
+  );
+  const evening = payload.weekDays[2].courses[0];
+  assert.equal(evening.startSlot, 13);
+  assert.equal(evening.endSlot, 15);
+  assert.equal(evening.startTime, "19:30");
+  assert.equal(evening.endTime, "22:10");
+  assert.equal(payload.periods.length, 15);
+  assert.equal(payload.title, "Test schedule");
+});
+
+test("schedule widget keeps the default twelfth period when the calendar lists eleven", () => {
+  const periods = Array.from({ length: 11 }, (_, index) => ({ id: index + 1, name: "", start: "08:00", end: "08:45" }));
+  const payload = buildScheduleWidgetPayload(
+    { currentSemester: "2026-2027-1", cells: [{ day: 3, bigSlot: 6, courses: [course("Late", "1-16", "T", 12, 12)] }] },
+    { ...calendarFor(3, ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"]), periods },
+    "3",
+    WEDNESDAY_1302_CHINA,
+  );
+  const late = payload.weekDays[2].courses[0];
+  assert.equal(late.startSlot, 12);
+  assert.equal(late.endTime, "22:00");
+  assert.equal(payload.periods.length, 12);
+  assert.equal(payload.title, "药大课表");
+});

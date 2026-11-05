@@ -6,7 +6,7 @@ export async function loadScheduleWidgetData(
   token: string,
   requestedWeek: string,
   prepareSchedule: (semester: string) => Promise<(schedule: any) => any>,
-  options: { service?: ScheduleDataService; now?: Date } = {},
+  options: { service?: ScheduleDataService; now?: Date; title?: string } = {},
 ) {
   const service = options.service ?? scheduleData;
   const now = options.now ?? new Date();
@@ -57,6 +57,7 @@ export async function loadScheduleWidgetData(
     ...buildScheduleWidgetPayload(
       applyEdits(current.parsed), current.calendar, requestedWeek, now,
       Object.fromEntries(previews.map(({ week, data }) => [week, applyEdits(data.parsed)])),
+      { title: options.title },
     ),
     stale: snapshots.some((item) => item.stale),
     cachedAt: syncedAt,

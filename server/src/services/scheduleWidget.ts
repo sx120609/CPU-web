@@ -90,9 +90,28 @@ export function scheduleWidgetFallbackPayload(payload?: string | null, requested
   };
 }
 
-// 默认学校的作息；接入第二所学校时改成按课表所属学校取。
-const SMALL_SLOTS = getDefaultSchool().defaultPeriods;
-const MAX_SMALL_SLOT = SMALL_SLOTS[SMALL_SLOTS.length - 1]?.no ?? 11;
+// 校历没带作息时按默认学校（药大）的十二节；南医等学校的校历自带作息（15 节）。
+const SMALL_SLOTS: ReadonlyArray<{ no: number; start: string; end: string }> = getDefaultSchool().defaultPeriods;
+
+/**
+ * 课表所属学校的作息：校历下发的节次时间盖过默认的十二节（药大有的校历只给前十一节），
+ * 从第 1 节起连续超过十二节时（南医 15 节）多出的节次接在后面。
+ */
+export function widgetSlotsForCalendar(calendar: any | null): ReadonlyArray<{ no: number; start: string; end: string }> {
+  const supplied = new Map<number, { no: number; start: string; end: string }>();
+  for (const item of Array.isArray(calendar?.periods) ? calendar.periods : []) {
+    const slot = { no: Number(item?.id), start: String(item?.start || ""), end: String(item?.end || "") };
+    if (Number.isInteger(slot.no) && slot.no >= 1 && slot.no <= 20 && /^\d{1,2}:\d{2}$/.test(slot.start) && /^\d{1,2}:\d{2}$/.test(slot.end)) {
+      supplied.set(slot.no, slot);
+    }
+  }
+  if (!supplied.size) return SMALL_SLOTS;
+  const merged = SMALL_SLOTS.map((slot) => supplied.get(slot.no) ?? slot);
+  for (let no = merged.length + 1; supplied.has(no) && merged.every((slot, index) => slot.no === index + 1); no += 1) {
+    merged.push(supplied.get(no)!);
+  }
+  return merged;
+}
 
 type WidgetCourse = {
   day: number;
@@ -109,7 +128,7 @@ type WidgetCourse = {
   custom: boolean;
 };
 
-function normalizeSlotRange(bigSlot: number, course: any) {
+function normalizeSlotRange(bigSlot: number, course: any, MAX_SMALL_SLOT: number) {
   const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
   const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
   const start = Number.isFinite(course?.startSlot) ? Number(course.startSlot) : fallbackStart;
@@ -243,6 +262,8 @@ function coursesForWeek(
 ) {
   if (week <= 0) return [] as WidgetCourse[];
   const courses: WidgetCourse[] = [];
+  const slots = widgetSlotsForCalendar(calendar);
+  const maxSlot = slots[slots.length - 1]?.no ?? 12;
   for (let targetDay = 1; targetDay <= 7; targetDay += 1) {
     const targetDate = calendarDays[targetDay - 1] || "";
     const adjustment = adjustmentForDate(adjustments, targetDate);
@@ -264,7 +285,7 @@ function coursesForWeek(
       if (Number(cell.day) !== sourceDay) continue;
       for (const course of cell.courses ?? []) {
         if (!courseMatchesWeek(course, sourceWeek)) continue;
-        const range = normalizeSlotRange(cell.bigSlot, course);
+        const range = normalizeSlotRange(cell.bigSlot, course, maxSlot);
         // 不按节次上的课用它自己的时间。
         const ownTime = courseCustomTime(course);
         courses.push({
@@ -273,8 +294,8 @@ function coursesForWeek(
           date: targetDate,
           startSlot: range.start,
           endSlot: range.end,
-          startTime: ownTime?.start ?? SMALL_SLOTS[range.start - 1]?.start ?? "",
-          endTime: ownTime?.end ?? SMALL_SLOTS[range.end - 1]?.end ?? "",
+          startTime: ownTime?.start ?? slots[range.start - 1]?.start ?? "",
+          endTime: ownTime?.end ?? slots[range.end - 1]?.end ?? "",
           name: String(course.name || ""),
           teacher: course.teacher || "",
           location: classroomOnly(course.location),
@@ -293,6 +314,7 @@ export function buildScheduleWidgetPayload(
   queryWeek = "",
   now = new Date(),
   schedulesByWeek: Record<number, any> = {},
+  options: { title?: string } = {},
 ) {
   const today = chinaDateParts(now);
   const todayDay = chinaDayOfWeek(today);
@@ -403,7 +425,9 @@ export function buildScheduleWidgetPayload(
       .sort((a, b) => a.date.localeCompare(b.date))[0]?.courses ?? [];
 
   return {
-    title: "药大课表",
+    title: options.title || "药大课表",
+    // 整周小组件按这份作息画节次（药大 12 节，南医 15 节）。
+    periods: widgetSlotsForCalendar(effectiveCalendar).map((slot) => ({ number: slot.no, startTime: slot.start, endTime: slot.end })),
     generatedAt: now.toISOString(),
     semester: parsed?.currentSemester || "",
     week,
