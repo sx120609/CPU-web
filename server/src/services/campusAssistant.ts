@@ -801,7 +801,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     schoolIds: DEFAULT_SCHOOL_FACTS,
     relatedActionIds: ["desktop-client"],
-    fact: "药大拾间客户端：统一下载页位于“/download”，会按当前设备推荐版本，汇总 Android 原生客户端（Android 7.0 及以上，APK 安装包）、鸿蒙原生客户端（在华为应用市场安装和更新：https://appgallery.huawei.com/app/detail?id=cn.lizmt.cpuweb，系统兼容性以应用市场为准）、iPhone/iPad App Store 原生客户端（https://apps.apple.com/cn/app/id6811073406，需要 iOS / iPadOS 15.0 或更高版本，其中 15–16 使用网页兼容界面，17 及以上支持原生课表与小组件）、Windows 10/11 64 位客户端和 Apple Silicon（M1 及后续 M 系列）macOS 客户端。Windows 和 macOS 桌面客户端内置校园网自动联网工具，可用于自动连接校园网；同时包含“药大拾间·学习通助手”和桌面常驻能力。旧的“CPU 网络连接助手”已停止作为独立产品宣传，相关自动联网能力已经整合到桌面客户端；Intel Mac 暂不支持。Android 客户端低于 V59（4.0.18）的旧版必须更新：弹出更新提示后有三天期限，期限过后旧版的在线功能停用（已保存的离线课表仍可查看），可在弹窗里直接安装，或用浏览器下载最新安装包覆盖安装。",
+    fact: "药大拾间客户端：统一下载页位于“/download”，会按当前设备推荐版本，汇总 Android 原生客户端（Android 7.0 及以上，APK 安装包）、鸿蒙原生客户端（在华为应用市场安装和更新：https://appgallery.huawei.com/app/detail?id=cn.lizmt.cpuweb，系统兼容性以应用市场为准）、iPhone/iPad App Store 原生客户端（https://apps.apple.com/cn/app/id6811073406，需要 iOS / iPadOS 15.0 或更高版本，其中 15–16 使用网页兼容界面，17 及以上支持原生课表与小组件）、Windows 10/11 64 位客户端和 Apple Silicon（M1 及后续 M 系列）macOS 客户端。Windows 和 macOS 桌面客户端内置校园网自动联网工具，可用于自动连接校园网；同时包含“药大拾间·学习通助手”和桌面常驻能力。旧的“CPU 网络连接助手”已停止作为独立产品宣传，相关自动联网能力已经整合到桌面客户端；Intel Mac 暂不支持。Android 客户端低于 V63（4.0.22）的旧版必须更新：弹出更新提示后有 7 天期限，期限过后旧版的在线功能停用（已保存的离线课表仍可查看），可在弹窗里直接安装，或用浏览器下载最新安装包覆盖安装。",
     source: "药大拾间客户端下载页与客户端功能说明",
     sourceRef: "https://cputime.cn/download",
     verifiedAt: "2026-10-17",
