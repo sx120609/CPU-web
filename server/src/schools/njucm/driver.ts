@@ -1,4 +1,6 @@
-import { Errors } from "../../utils/response";
+import crypto from "node:crypto";
+import { Errors, HttpError } from "../../utils/response";
+import { withCache } from "../../services/cache";
 import type { JwxtRecordsArgs } from "../../services/jwxtRecords";
 import { njucmSchool } from "./profile";
 import { jwJson, jwRequest, loadSession } from "./client";
@@ -66,12 +68,32 @@ type Context = {
 };
 
 /** 课表页的学期下拉：全校所有学期和当前学期（selected）。 */
-async function context(token: string): Promise<Context> {
+/** 学期列表全校一样（课表页有 250KB），各实例共用一份，一小时内不再取。 */
+const SEMESTERS_CACHE_TTL_MS = 60 * 60_000;
+
+async function loadContext(token: string): Promise<Context> {
   const { body } = await jwRequest(token, PATHS.courseTable);
   const semesters = parseEamsSemesters(body);
   const current = semesters.find((item) => item.selected) ?? semesters[0];
   if (!current) throw Errors.badGateway("南中医教务没有返回学期列表");
   return { semesters, current };
+}
+
+async function context(token: string): Promise<Context> {
+  return sharedWithCache("njucm-semesters", ["v1"], SEMESTERS_CACHE_TTL_MS, () => loadContext(token));
+}
+
+/**
+ * 全校共用的缓存：缓存为空时同时来的几个人会等同一次加载，加载用的是先到那个人的教务登录。
+ * 那个人的登录过期了，不能让后面的人跟着收到“请重新登录”，改用自己的登录再取一次。
+ */
+async function sharedWithCache<T>(domain: string, parts: Array<string | number>, ttlMs: number, loader: () => Promise<T>) {
+  try {
+    return await withCache(domain, parts, ttlMs, loader);
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 401) return loader();
+    throw error;
+  }
 }
 
 /** print-data 里学生的年级（入学年份）。 */
@@ -171,6 +193,23 @@ function campusOf(printData: Record<string, unknown> | null) {
 /** 仙林校区；从学生课表里认不出校区时用它。 */
 const DEFAULT_CAMPUS_ID = "5";
 
+/** 学生在哪个校区上课：每人一份，换学期前基本不变。 */
+const CAMPUS_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
+/** 空教室按校区和日期全校共用：同一天同一校区谁查都一样。过期后先给旧结果，后台再刷新。 */
+const FREE_ROOMS_CACHE_TTL_MS = 10 * 60_000;
+
+type StudentCampus = { campusId: string; periods: EamsPeriod[] };
+
+async function studentCampus(token: string, semester: EamsSemester): Promise<StudentCampus> {
+  const session = await loadSession(token);
+  const owner = crypto.createHash("sha256").update(`${session?.studentId ?? token}`).digest("hex").slice(0, 32);
+  // 课表没取到时按默认校区查这一次，但不记下来，下次再试。
+  return withCache("njucm-student-campus", [owner, semester.id], CAMPUS_CACHE_TTL_MS, async () => {
+    const printData = await loadPrintData(token, semester);
+    return { campusId: campusOf(printData), periods: periodsOf(printData) };
+  }).catch(() => ({ campusId: DEFAULT_CAMPUS_ID, periods: defaultPeriods() }));
+}
+
 async function loadFreeRooms(token: string, args: JwxtRecordsArgs) {
   const ctx = await context(token);
   const span = await semesterSpan(token, ctx.current);
@@ -180,9 +219,18 @@ async function loadFreeRooms(token: string, args: JwxtRecordsArgs) {
   const week = calendar.weeks.find((item) => item.days.includes(date));
   if (!week) throw Errors.badRequest("所选日期不在本学期的教学周内");
   const day = week.days.indexOf(date) + 1;
-  const printData = await loadPrintData(token, ctx.current).catch(() => null);
-  const periods = periodsOf(printData);
-  const campusId = Number(campusOf(printData));
+  const { campusId, periods } = await studentCampus(token, ctx.current);
+  const { slots, rooms } = await sharedWithCache(
+    "njucm-free-rooms",
+    [campusId, date],
+    FREE_ROOMS_CACHE_TTL_MS,
+    () => queryFreeRooms(token, Number(campusId), date, periods),
+  );
+  return { kind: "free-rooms" as const, semester: ctx.current.name, date, week: week.week, day, slots, rooms };
+}
+
+/** 按上课时段依次向学校查空闲教室（别对学校并发打一串请求），拼成每间教室各段的占用。 */
+async function queryFreeRooms(token: string, campusId: number, date: string, periods: EamsPeriod[]) {
   const results = [];
   // 依次查，别对学校并发打一串请求。
   for (const slot of EAMS_ROOM_SLOTS) {
@@ -199,8 +247,7 @@ async function loadFreeRooms(token: string, args: JwxtRecordsArgs) {
     });
     results.push({ slot, rows });
   }
-  const { slots, rooms } = mergeEamsFreeRooms(results, periods);
-  return { kind: "free-rooms" as const, semester: ctx.current.name, date, week: week.week, day, slots, rooms };
+  return mergeEamsFreeRooms(results, periods);
 }
 
 export async function getRecords(token: string, args: JwxtRecordsArgs) {
