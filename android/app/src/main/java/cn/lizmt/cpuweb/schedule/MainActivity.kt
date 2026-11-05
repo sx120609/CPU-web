@@ -55,6 +55,9 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private set
     lateinit var sharing: ScheduleSharing
     lateinit var couple: ScheduleCouple
+    lateinit var dorm: ScheduleDormRoom
+    /** A dorm code from a link (or empty) for the timetable to open 宿舍课表 with; null when nothing is asked. */
+    var dormRequest by mutableStateOf<String?>(null)
     lateinit var agenda: AgendaRemote
     /** What the timetable opens next: a 日程, a new one or 日程与待办; it clears the request when it shows it. */
     var agendaRequest by mutableStateOf<AgendaRequest?>(null)
@@ -139,6 +142,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         else ScheduleSharing(lifecycleScope, java.io.File(noBackupFilesDir, "shared-schedules.json"), { web.shares(it) })
         couple = if (debugFixture) ScheduleCouple(lifecycleScope, null, { DebugScheduleFixture.couple(it) })
         else ScheduleCouple(lifecycleScope, getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE), { web.couple(it) })
+        dorm = if (debugFixture) ScheduleDormRoom(lifecycleScope, null, { DebugScheduleFixture.dorm(it) })
+        else ScheduleDormRoom(lifecycleScope, getSharedPreferences(DORM_PREFS, MODE_PRIVATE), { web.dormRoom(it) })
         shell = ShellCoordinator(lifecycleScope, web, schedule)
         shell.onOpenDorm = { page -> openDormSchedule(page) }
         agenda =AgendaRemote(this, lifecycleScope) { web.agenda(it) }
@@ -181,6 +186,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                     // The saved shared timetables belong to the account whose timetable is on screen.
                     if (!debugFixture) sharing.adopt(schedule.accountScope)
                     couple.adopt(schedule.accountScope)
+                    dorm.adopt(schedule.accountScope)
                     delay(400)
                     widgets.syncLocalDays(schedule, web)
                     // The partner sees the term that is running now, edits included. Wait until
@@ -189,8 +195,9 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                         couple.refresh()
                         delay(4_000)
                         if (schedule.selectedSemester == schedule.currentSemesterValue()) couple.sync(schedule.completeSnapshot())
-                        // The dorm page uploads it when the user is in a dorm (it asks the server, not us).
-                        if (!debugFixture) offerDormSchedule()
+                        // Roommates see the same term; the dorm is asked at most every ten minutes.
+                        dorm.refresh()
+                        dorm.sync(currentTermSnapshot())
                     }
                 }
         }
@@ -271,22 +278,20 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     }
 
     /**
-     * The dorm timetable is the Web page `/dorm-schedule`. It is handed this
-     * term's timetable first, so its 立即同步 can upload what the grid shows.
+     * 宿舍课表 opens over the native timetable; a link's `?code=` fills in the
+     * join field. The Web page `/dorm-schedule` is no longer used here.
      */
     fun openDormSchedule(page: String = ScheduleDorm.PAGE) {
-        lifecycleScope.launch { offerDormSchedule() }
-        shell.openWeb(page, ShellTab.Services, replace = true)
+        dormRequest = ScheduleDorm.inviteCode(page.substringAfter("code=", "").substringBefore('&'))
+        shell.showSchedule()
     }
 
     /**
-     * Hands the Web page the term running now, edits included. Only that term:
-     * a past one the user is browsing must never replace it on the server.
+     * The term running now, edits included, complete. Only that term: a past
+     * one the user is browsing must never replace it on the server.
      */
-    private suspend fun offerDormSchedule() {
-        if (!web.authState.authenticated || schedule.selectedSemester != schedule.currentSemesterValue()) return
-        ScheduleDorm.offer(schedule.completeSnapshot())?.let { web.dorm(it) }
-    }
+    fun currentTermSnapshot(): ScheduleSnapshot? =
+        schedule.completeSnapshot()?.takeIf { schedule.selectedSemester == schedule.currentSemesterValue() }
 
     /**
      * 日程 reminders in the notification bar are gone: vendor systems on most phones here kill the
@@ -512,6 +517,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private const val PRIORITY_PREFS = "native_schedule_priorities"
         private const val KEY_PRIORITIES = "v1"
         private const val COUPLE_PREFS = "native_schedule_couple"
+        private const val DORM_PREFS = "native_schedule_dorm"
         private const val KEY_WELCOME_SEEN = "welcome_seen_v4"
         private const val KEY_AGENDA_REMINDERS_REMOVED = "agenda_reminders_removed"
         private const val REQUEST_WRITE_STORAGE = 2002

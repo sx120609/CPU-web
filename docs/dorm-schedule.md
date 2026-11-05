@@ -41,7 +41,8 @@
 | 客户端 | 入口与数据来源 |
 | --- | --- |
 | 网页、PWA、Electron 桌面端、旧 iOS 和 Flutter 网页壳 | 使用网页课表的「更多 → 宿舍课表」，同步网页当前学期课表。 |
-| Android、Android NEXT | 原生课表菜单打开 `/dorm-schedule`；`ScheduleDorm` / `WebSession.dorm` 传递原生完整课表，包含本地编辑与自定义起止时间。 |
+| Android | 原生界面：课表「更多 → 宿舍课表」打开 `ScheduleDormSheet`（一周、空闲、早八、宿舍四页）。`ScheduleDormRoom` 经 App 自带的页面桥 `CPUAndroidDorm`（`android/bridge/dorm.ts`）调用 `/api/dorm`，上传当前学期完整课表（含本地编辑与自定义起止时间），每位室友的快照按其自己的校历排出；空闲、早八和一周总表的计算是 `DormRules`，与 `dorm.ts`、`dormWeek.ts` 一致，由 `DormScheduleParityTest` 覆盖。邀请链接 `/schedule?dorm=1&code=…` 和 `/dorm-schedule?code=…` 打开原生界面并填好宿舍码。 |
+| Android NEXT | 原生课表菜单打开 `/dorm-schedule`；`ScheduleDorm` / `WebSession.dorm` 传递原生完整课表，包含本地编辑与自定义起止时间。 |
 | HarmonyOS | `NativeSchedulePage` 菜单经 `Index.ets` 打开宿舍页面；`ScheduleDorm.ets` 传递原生课表快照，返回到原生课表。 |
 | iOS NEXT | `NativeScheduleView` 菜单经 `NativeShellCoordinator` 打开宿舍页面；`NativeDormService` 读取原生完整学期快照，通过现有 WKWebView 会话提供给页面。 |
 

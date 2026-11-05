@@ -34,6 +34,9 @@ object DebugScheduleFixture {
     private var sheet = ""
     private var published = false
     private var coupleState = "none"
+    private var dormState = "none"
+    private var dormName = "6 栋 302"
+    private var dormMyColor = "teal"
     private var coupleMine = "blue"
     private var coupleTheirs = "pink"
     private var coupleAnniversary = "2025-05-20"
@@ -43,6 +46,7 @@ object DebugScheduleFixture {
         "sharing" -> ScheduleSheet.Sharing
         "couple" -> ScheduleSheet.Couple
         "widgets" -> ScheduleSheet.Widgets
+        "dorm" -> ScheduleSheet.Dorm()
         "agenda" -> ScheduleSheet.AgendaList
         "agendaNew" -> ScheduleSheet.AgendaEdit(newAgendaDraft(java.time.LocalDate.now().toString(), "14:00"))
         else -> null
@@ -94,6 +98,7 @@ object DebugScheduleFixture {
         published = intent.getBooleanExtra("debugPublished", false)
         suppressesOverlapNotice = !intent.getBooleanExtra("debugOverlapNotice", false)
         coupleState = intent.getStringExtra("debugCouple")?.takeIf { it == "active" || it == "pending" } ?: "none"
+        dormState = if (intent.getStringExtra("debugDorm") == "active") "active" else "none"
         // "debugCoupleColors teal,amber": the user's colour, then the partner's.
         intent.getStringExtra("debugCoupleColors")?.split(',')?.takeIf { it.size == 2 }?.let { (mine, theirs) ->
             coupleMine = mine.trim()
@@ -114,6 +119,47 @@ object DebugScheduleFixture {
             ))
             if (kind != "updated") activity.updateSheetOpen = true
         }
+    }
+
+    /**
+     * A stand-in for `/api/dorm`: the user and three roommates, each with part of the sample
+     * timetable so the free-time views have something to show; 小周 never synced.
+     */
+    fun dorm(payload: JSONObject): String {
+        val synced = JSONObject().put("semester", SEMESTER).put("syncedAt", "2026-10-08T01:30:00.000Z").put("changedAt", "2026-10-07T02:00:00.000Z")
+        val people = listOf(Triple(1, "阿青", dormMyColor), Triple(2, "小王", "pink"), Triple(3, "老李", "amber"), Triple(4, "小周", "purple"))
+        fun member(id: Int, name: String, color: String) = JSONObject().put("id", id).put("nickname", name).put("color", color)
+            .put("avatar", JSONObject.NULL).put("isOwner", id == 1).put("snapshot", if (id == 4) JSONObject.NULL else synced)
+        fun status(): JSONObject = if (dormState != "active") JSONObject().put("status", "none") else JSONObject().put("status", "active")
+            .put("id", 9).put("name", dormName).put("memberLimit", 6).put("isOwner", true).put("since", "2026-09-01T02:00:00.000Z")
+            .put("invite", JSONObject().put("code", "D6K3PQ").put("expiresAt", "2099-01-01T00:00:00.000Z").put("expired", false))
+            .put("me", member(1, "阿青", dormMyColor))
+            .put("members", JSONArray(people.map { (id, name, color) -> member(id, name, color) }))
+        val data: JSONObject = when (payload.optString("action")) {
+            "invite", "join" -> { dormState = "active"; status() }
+            "leave" -> { dormState = "none"; status() }
+            "settings" -> {
+                val body = payload.optJSONObject("body") ?: JSONObject()
+                if (body.has("myColor")) dormMyColor = body.optString("myColor")
+                if (body.has("name")) dormName = if (body.isNull("name")) "" else body.optString("name")
+                status()
+            }
+            "schedules" -> {
+                val snapshot = JSONObject(snapshot())
+                val cells = snapshot.getJSONObject("data").getJSONArray("cells")
+                fun cellsFor(id: Int) = JSONArray((0 until cells.length()).map { cells.getJSONObject(it) }.filterIndexed { index, cell ->
+                    when (id) { 2 -> index % 2 == 0; 3 -> cell.optInt("day") >= 3; else -> true }
+                })
+                JSONObject().put("members", JSONArray(people.map { (id, name, color) ->
+                    JSONObject().put("id", id).put("nickname", name).put("color", color).put("snapshot", if (id == 4) JSONObject.NULL else
+                        JSONObject(synced.toString()).put("schedule", JSONObject().put("cells", cellsFor(id)))
+                            .put("calendar", snapshot.getJSONObject("calendar")))
+                }))
+            }
+            "sync" -> JSONObject().put("changed", false)
+            else -> status()
+        }
+        return JSONObject().put("data", data).toString()
     }
 
     private fun shareDocument(code: String, owner: String): JSONObject {

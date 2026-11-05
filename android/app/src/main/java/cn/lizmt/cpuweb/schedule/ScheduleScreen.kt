@@ -92,6 +92,7 @@ sealed interface ScheduleSheet {
     data object Editor : ScheduleSheet
     data object Sharing : ScheduleSheet
     data object Couple : ScheduleSheet
+    data class Dorm(val code: String = "") : ScheduleSheet
     /** One 日程 in the editor; an empty id is a new one. */
     data class AgendaEdit(val draft: cn.lizmt.cpuweb.schedule.agenda.AgendaItem) : ScheduleSheet
     /** 日程与待办. */
@@ -159,6 +160,13 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     val style = activity.style
     val colors = LocalScheduleColors.current
     var sheet by remember { mutableStateOf<ScheduleSheet?>(if (store.readOnly) null else DebugScheduleFixture.initialSheet()) }
+    // A dorm link or the shell asks for 宿舍课表 over the timetable.
+    LaunchedEffect(activity.dormRequest, store.readOnly) {
+        val code = activity.dormRequest ?: return@LaunchedEffect
+        if (store.readOnly) return@LaunchedEffect
+        activity.dormRequest = null
+        sheet = ScheduleSheet.Dorm(code)
+    }
     val editor = remember(store) {
         CourseEditorModel({ activity.web.editCourse(it) }, activity.lifecycleScope) { semester, priorities ->
             priorities?.let { store.setPriorities(semester, it) }
@@ -329,8 +337,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                         MENU_DIVIDER,
                         ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
                         ("情侣课表" to { sheet = ScheduleSheet.Couple }).takeIf { !store.readOnly },
-                        // The dorm timetable is a Web page; Back returns here.
-                        ("宿舍课表" to { activity.openDormSchedule() }).takeIf { !store.readOnly },
+                        ("宿舍课表" to { sheet = ScheduleSheet.Dorm() }).takeIf { !store.readOnly },
                         MENU_DIVIDER,
                         "课表设置" to { sheet = ScheduleSheet.Settings },
                         ("桌面课表小组件" to { sheet = ScheduleSheet.Widgets }).takeIf { !store.readOnly },
@@ -410,6 +417,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
             sheet = null
         })
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
+        is ScheduleSheet.Dorm -> ScheduleDormSheet(activity, current.code, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
         ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
         is ScheduleSheet.AgendaEdit -> AgendaEditorSheet(activity.agenda, current.draft, onDismiss = { sheet = null })
         ScheduleSheet.AgendaList -> AgendaListSheet(
