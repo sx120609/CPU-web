@@ -245,7 +245,7 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
-                    if (!widgets.pin(selected)) activity.toast("请长按桌面空白处，在小组件中添加“药大课表”")
+                    if (!widgets.pin(selected)) activity.toast("请长按桌面空白处，在小组件里找到“药大拾间”的课表")
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
             ) { Text("添加“${selected.title} ${selected.size}”到桌面") }

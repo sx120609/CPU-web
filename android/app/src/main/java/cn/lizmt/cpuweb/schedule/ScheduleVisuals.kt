@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
 data class ScheduleCourseTone(val fill: Int, val border: Int, val text: Int, val highlight: Int = fill)
 
 /** Reserve the weekday header, gap and bottom inset; fit all timetable rows in portrait. */
-fun compactWeekRowHeight(availableHeight: Float): Float = max(34f, (availableHeight - 46f) / SLOT_COUNT)
+fun compactWeekRowHeight(availableHeight: Float, slots: Int = SLOT_COUNT): Float = max(34f, (availableHeight - 46f) / slots)
 
 /** The nine Web palettes in the order the palette picker shows them. */
 val SCHEDULE_THEME_ORDER = listOf("color-glass", "green", "blue", "teal", "indigo", "violet", "orange", "rose", "slate")

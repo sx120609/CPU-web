@@ -443,6 +443,40 @@ class ScheduleStoreTest {
     }
 
     @Test
+    fun fifteenPeriodTimetableKeepsEveningClassesInTheirOwnRows() = runTest {
+        val cells = JSONArray().put(JSONObject().put("day", 1).put("bigSlot", 7).put("courses", JSONArray()
+            .put(course("晚间研讨", 13, 15, listOf(3)))))
+        val calendar = JSONObject().put("currentWeek", 3).put("weeks", JSONArray().put(
+            JSONObject().put("week", 3).put("days", JSONArray((14..20).map { "2026-09-$it" }))))
+        val periods = JSONArray((1..15).map {
+            JSONObject().put("number", it).put("startTime", String.format("%02d:00", 7 + it)).put("endTime", String.format("%02d:45", 7 + it))
+        })
+        val raw = JSONObject(snapshot(cells = cells)).put("calendar", calendar).put("periods", periods).toString()
+        val store = store(mutableListOf(raw))
+        advanceUntilIdle()
+        assertEquals(15, store.slotCount)
+        val block = store.blocksForDay(1).single()
+        assertEquals(13, block.startSlot)
+        assertEquals(15, block.endSlot)
+        assertEquals("22:45", store.periodTime(15).endTime)
+        val days = store.widgetLocalRecord()!!.getJSONArray("days")
+        val monday = (0 until days.length()).map { days.getJSONObject(it) }.first { it.getString("date") == "2026-09-14" }
+        assertEquals("20:00", monday.getJSONArray("courses").getJSONObject(0).getString("startTime"))
+        assertEquals("22:45", monday.getJSONArray("courses").getJSONObject(0).getString("endTime"))
+    }
+
+    @Test
+    fun suppliedPeriodsOnlyExtendPastTwelveWhenContiguous() {
+        fun period(number: Int) = SchedulePeriod(number, "00:00", "00:45")
+        assertEquals(12, mergeSuppliedPeriods(emptyList()).size)
+        assertEquals(12, mergeSuppliedPeriods((1..11).map(::period)).size)
+        assertEquals(15, mergeSuppliedPeriods((1..15).map(::period)).size)
+        // A gap means the table is incomplete: keep the default twelve.
+        assertEquals(12, mergeSuppliedPeriods((1..12).map(::period) + period(14)).size)
+        assertEquals(12, mergeSuppliedPeriods((1..30).map(::period).filter { it.number != 5 }).size)
+    }
+
+    @Test
     fun weekTextCompressesRanges() {
         assertEquals("1-3、5、7-8周", ScheduleStore.weekText(listOf(1, 2, 3, 5, 7, 8)))
         assertEquals("01-02节", ScheduleStore.slotLabel(1, 2))

@@ -32,6 +32,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Numbers
@@ -42,6 +44,10 @@ import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -70,9 +76,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -101,6 +110,103 @@ fun LoginGate(activity: MainActivity) {
     var errorMessage by remember { mutableStateOf("") }
     var statusMessage by remember { mutableStateOf("") }
     var prepareRevision by remember { mutableIntStateOf(0) }
+    // 多学校：可选学校和当前学校（网页还是旧版时 schools 为空，不显示学校选择）。
+    var schools by remember { mutableStateOf(emptyList<LoginSchool>()) }
+    var school by remember { mutableStateOf<LoginSchool?>(null) }
+    var schoolMenu by remember { mutableStateOf(false) }
+    var switchingSchool by remember { mutableStateOf(false) }
+    // 学校要求新设备扫码二次验证时，表单换成二维码。
+    var mfaQr by remember { mutableStateOf("") }
+    var mfaState by remember { mutableStateOf("") }
+    var mfaRevision by remember { mutableIntStateOf(0) }
+    val brandName = school?.brandName ?: AppConfig.APP_NAME
+
+    LaunchedEffect(Unit) {
+        val list = web.nativeLoginSchools() ?: return@LaunchedEffect
+        schools = list.schools
+        if (school == null) school = list.current
+        if (list.current?.ssoLogin == false) {
+            accountUnlocked = true
+            schoolMode = false
+        }
+    }
+
+    fun chooseSchool(target: LoginSchool) {
+        schoolMenu = false
+        if (target.id == school?.id || switchingSchool || loading) return
+        switchingSchool = true
+        preparing = true
+        errorMessage = ""
+        statusMessage = ""
+        captcha = ""
+        scope.launch {
+            val response = web.nativeChooseSchool(target.id)
+            school = response.school ?: target
+            if (school?.ssoLogin == false) {
+                accountUnlocked = true
+                schoolMode = false
+            } else {
+                needCaptcha = response.needCaptcha
+                captchaImage = response.captchaImage
+                if (!response.ok && response.error.isNotEmpty()) errorMessage = response.error
+            }
+            preparing = false
+            switchingSchool = false
+        }
+    }
+
+    fun leaveMfa() {
+        mfaQr = ""
+        mfaState = ""
+        errorMessage = ""
+        scope.launch { web.nativeMfaCancel() }
+        prepareRevision += 1
+    }
+
+    // 轮询扫码结果：done 时网页已经登录，外壳收到登录状态后自己收起登录页。
+    LaunchedEffect(mfaRevision) {
+        if (mfaQr.isEmpty()) return@LaunchedEffect
+        while (mfaQr.isNotEmpty()) {
+            delay(if (mfaState == "retry") 4_000 else 2_000)
+            if (mfaState == "expired" || mfaState == "done") return@LaunchedEffect
+            val response = web.nativeMfaPoll()
+            if (mfaQr.isEmpty()) return@LaunchedEffect
+            when (response.status) {
+                "done" -> {
+                    mfaState = "done"
+                    password = ""
+                    captcha = ""
+                    statusMessage = "验证通过，正在进入$brandName…"
+                    return@LaunchedEffect
+                }
+                "waiting", "scanned", "expired", "retry" -> {
+                    mfaState = response.status
+                    errorMessage = if (response.status == "retry") response.error else ""
+                }
+                else -> {
+                    mfaQr = ""
+                    mfaState = ""
+                    errorMessage = response.error.ifBlank { "验证失败，请重新登录" }
+                    prepareRevision += 1
+                    return@LaunchedEffect
+                }
+            }
+        }
+    }
+
+    fun refreshMfa() {
+        scope.launch {
+            val response = web.nativeMfaRefresh()
+            if (response.ok && response.mfaQr.isNotEmpty()) {
+                mfaQr = response.mfaQr
+                mfaState = "waiting"
+                errorMessage = ""
+                mfaRevision += 1
+            } else {
+                errorMessage = response.error.ifBlank { "二维码刷新失败，请重新登录" }
+            }
+        }
+    }
 
     LaunchedEffect(schoolMode, prepareRevision) {
         errorMessage = ""
@@ -140,7 +246,12 @@ fun LoginGate(activity: MainActivity) {
             if (response.ok) {
                 password = ""
                 captcha = ""
-                statusMessage = "登录成功，正在进入药大拾间…"
+                statusMessage = "登录成功，正在进入$brandName…"
+            } else if (response.needMfa && response.mfaQr.isNotEmpty()) {
+                errorMessage = ""
+                mfaQr = response.mfaQr
+                mfaState = "waiting"
+                mfaRevision += 1
             } else {
                 needCaptcha = response.needCaptcha
                 if (response.captchaImage.isNotEmpty()) captchaImage = response.captchaImage
@@ -159,7 +270,7 @@ fun LoginGate(activity: MainActivity) {
                 .padding(horizontal = 24.dp, vertical = 28.dp),
         ) {
             Image(
-                painterResource(R.drawable.app_logo), contentDescription = "药大拾间",
+                painterResource(R.drawable.app_logo), contentDescription = brandName,
                 modifier = Modifier.size(58.dp).clip(RoundedCornerShape(17.dp)).combinedClickable(
                     onClick = {},
                     onLongClick = { accountUnlocked = true },
@@ -168,11 +279,55 @@ fun LoginGate(activity: MainActivity) {
             Spacer(Modifier.height(16.dp))
             Text("欢迎回来", fontSize = 32.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(7.dp))
-            Text("登录药大拾间，继续查看你的校园信息", style = MaterialTheme.typography.bodyMedium,
+            Text("登录$brandName，继续查看你的校园信息", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(28.dp))
 
-            if (accountUnlocked) {
+            if (mfaQr.isNotEmpty()) {
+                MfaPanel(
+                    qr = mfaQr,
+                    state = mfaState,
+                    onSave = {
+                        if (activity.saveImageData(mfaQr, "统一认证二维码.png") && !activity.openWeChat()) {
+                            activity.toast("已保存到相册，请在微信「扫一扫」里从相册选择这张图")
+                        }
+                    },
+                    onRefresh = ::refreshMfa,
+                    onCancel = ::leaveMfa,
+                )
+                Messages(errorMessage, statusMessage)
+                return@Column
+            }
+
+            if (schools.size > 1) {
+                Box {
+                    OutlinedButton(
+                        onClick = { schoolMenu = true }, enabled = !loading && !switchingSchool,
+                        shape = RoundedCornerShape(13.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    ) {
+                        Icon(Icons.Rounded.School, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(school?.name ?: "选择学校", modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                        if (switchingSchool) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Rounded.ExpandMore, contentDescription = "切换学校")
+                    }
+                    DropdownMenu(expanded = schoolMenu, onDismissRequest = { schoolMenu = false }) {
+                        schools.forEach { item ->
+                            val selected = item.id == school?.id
+                            DropdownMenuItem(
+                                text = { Text(item.name, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
+                                trailingIcon = {
+                                    if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = "当前学校", tint = MaterialTheme.colorScheme.primary)
+                                },
+                                onClick = { chooseSchool(item) },
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            if (accountUnlocked && school?.ssoLogin != false) {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     SegmentedButton(selected = schoolMode, onClick = { schoolMode = true },
                         shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("统一认证") }
@@ -249,23 +404,81 @@ fun LoginGate(activity: MainActivity) {
                 }
                 Text(if (preparing) "准备登录…" else if (schoolMode) "登录并继续" else "登录", fontWeight = FontWeight.SemiBold)
             }
-            if (errorMessage.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(errorMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
+            Messages(errorMessage, statusMessage)
+        }
+    }
+}
+
+@Composable
+private fun Messages(errorMessage: String, statusMessage: String) {
+    if (errorMessage.isNotBlank()) {
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(errorMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (statusMessage.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(statusMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/**
+ * 学校统一认证的扫码二次验证（南医：新设备第一次登录时要求）。二维码要用微信扫，
+ * 而用户手里多半就是这台手机，所以给「保存并打开微信」：在微信「扫一扫 → 相册」里识别。
+ */
+@Composable
+private fun MfaPanel(qr: String, state: String, onSave: () -> Unit, onRefresh: () -> Unit, onCancel: () -> Unit) {
+    Text("扫码验证", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(6.dp))
+    Text(
+        "学校统一认证要求这台设备先验证一次：用微信扫描下面的二维码，并在微信里确认。验证后这台设备会被记住。",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(16.dp))
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(220.dp).clip(RoundedCornerShape(14.dp)).background(Color.White),
+            contentAlignment = Alignment.Center,
+        ) {
+            CaptchaImage(qr, Modifier.size(200.dp), ContentScale.Fit, "学校统一认证二维码")
+            val overlay = when (state) {
+                "scanned" -> "已扫描，请在微信里确认"
+                "expired" -> "二维码已失效，点「换一张」"
+                "done" -> "验证通过，正在登录…"
+                else -> ""
             }
-            if (statusMessage.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(statusMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            if (overlay.isNotEmpty()) {
+                Box(
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(overlay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center, modifier = Modifier.padding(16.dp))
                 }
             }
         }
+    }
+    Spacer(Modifier.height(16.dp))
+    Button(
+        onClick = onSave, enabled = state != "done" && state != "expired",
+        shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+    ) { Text("保存二维码并打开微信", fontWeight = FontWeight.SemiBold) }
+    Spacer(Modifier.height(6.dp))
+    Text(
+        "在微信「扫一扫」右上角选「相册」，选这张二维码；也可以用另一台手机的微信直接扫屏幕。",
+        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.fillMaxWidth()) {
+        TextButton(onClick = onRefresh, enabled = state != "done", modifier = Modifier.weight(1f)) { Text("换一张") }
+        TextButton(onClick = onCancel, enabled = state != "done", modifier = Modifier.weight(1f)) { Text("返回登录") }
     }
 }
 
@@ -278,7 +491,12 @@ private fun PolicyLink(title: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CaptchaImage(source: String, modifier: Modifier) {
+private fun CaptchaImage(
+    source: String,
+    modifier: Modifier,
+    scale: ContentScale = ContentScale.Crop,
+    description: String = "验证码，点击刷新",
+) {
     val bitmap = remember(source) {
         if (!source.startsWith("data:")) null
         else runCatching {
@@ -288,7 +506,7 @@ private fun CaptchaImage(source: String, modifier: Modifier) {
     }
     Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
         if (bitmap != null) {
-            Image(bitmap, contentDescription = "验证码，点击刷新", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Image(bitmap, contentDescription = description, contentScale = scale, modifier = Modifier.fillMaxSize())
         } else {
             Icon(Icons.Rounded.Refresh, contentDescription = "刷新验证码", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -129,6 +129,9 @@ class CourseEditorModel(
     private var defaultWeek = 1
     private var cells: List<ScheduleCell> = emptyList()
     private var period: (Int) -> SchedulePeriod = { BUNDLED_PERIODS[(it - 1).coerceIn(0, BUNDLED_PERIODS.lastIndex)] }
+    /** 可选的节次数，跟着课表的作息走（南医 15 节）。 */
+    var slotCount by mutableStateOf(SLOT_COUNT)
+        private set
 
     data class HiddenCourse(val key: String, val label: String)
 
@@ -139,6 +142,7 @@ class CourseEditorModel(
         semester = store.selectedSemester
         cells = current.cells
         period = store::periodTime
+        slotCount = store.slotCount
         name = block?.course?.name.orEmpty()
         location = block?.course?.location.orEmpty()
         teacher = block?.course?.teacher.orEmpty()
@@ -160,7 +164,7 @@ class CourseEditorModel(
     fun prefill(selectedDay: Int, slot: Int) {
         val first = arrangements.firstOrNull() ?: return
         first.day = selectedDay
-        first.slots = (slot..(slot + 1).coerceAtMost(SLOT_COUNT)).toSet()
+        first.slots = (slot..(slot + 1).coerceAtMost(slotCount)).toSet()
     }
 
     /** A further meeting time, starting from the last one's weekday and weeks. */
@@ -185,7 +189,7 @@ class CourseEditorModel(
         preferred = false
     }
 
-    private fun periods() = (1..SLOT_COUNT).map(period)
+    private fun periods() = (1..slotCount).map(period)
 
     /** The periods the group is drawn on: its own in period mode, the ones its time overlaps in time mode. */
     fun drawnSlots(draft: ArrangementDraft): Set<Int> {
@@ -488,9 +492,9 @@ private fun ArrangementCard(model: CourseEditorModel, draft: ArrangementDraft, i
             Text("节次", style = MaterialTheme.typography.titleSmall)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
-                maxItemsInEachRow = 6, modifier = Modifier.fillMaxWidth(),
+                maxItemsInEachRow = if (model.slotCount % 6 == 0) 6 else 5, modifier = Modifier.fillMaxWidth(),
             ) {
-                (1..SLOT_COUNT).forEach { slot ->
+                (1..model.slotCount).forEach { slot ->
                     EditorChip(slot.toString(), slot in draft.slots, "第${slot}节", !model.busy, Modifier.weight(1f)) { draft.toggleSlot(slot) }
                 }
             }

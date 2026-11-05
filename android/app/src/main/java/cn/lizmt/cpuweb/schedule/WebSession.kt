@@ -63,7 +63,36 @@ data class NativeLoginResponse(
     val captchaImage: String,
     val error: String,
     val account: String,
+    /** 学校要求新设备扫码二次验证（南医）：原生登录页显示 [mfaQr] 并轮询。 */
+    val needMfa: Boolean = false,
+    val mfaQr: String = "",
+    /** 扫码轮询的状态：waiting / scanned / expired / failed / done / retry。 */
+    val status: String = "",
+    val school: LoginSchool? = null,
 )
+
+/** 原生登录页可选的学校；[brandName] 用在欢迎语和「正在进入…」。 */
+data class LoginSchool(
+    val id: String,
+    val name: String,
+    val brandName: String,
+    val ssoLogin: Boolean = true,
+) {
+    companion object {
+        fun parse(json: JSONObject?): LoginSchool? {
+            val id = json?.optString("id").orEmpty().trim()
+            if (json == null || id.isEmpty()) return null
+            return LoginSchool(
+                id = id,
+                name = json.optString("name").ifBlank { id },
+                brandName = json.optString("brandName").ifBlank { AppConfig.APP_NAME },
+                ssoLogin = json.optBoolean("ssoLogin", true),
+            )
+        }
+    }
+}
+
+data class LoginSchools(val current: LoginSchool?, val schools: List<LoginSchool>)
 
 /** Hooks the Activity provides: pickers, permissions and external intents. */
 interface WebSessionHost {
@@ -542,9 +571,36 @@ class WebSession(
         loginCall(
             "nativeSsoLogin",
             JSONObject().put("username", username).put("password", password).put("captcha", captcha).put("remember", remember),
-            "args.username,args.password,args.captcha,args.remember",
+            // nativeMfa：扫码二次验证由本页显示，网页的扫码弹窗不弹。
+            "args.username,args.password,args.captcha,args.remember,{nativeMfa:true}",
             retriesAfterLoss = false,
         )
+
+    /** 可选学校；网页还是旧版（没有这个桥）或只有一所学校时返回 null，登录页就不显示学校选择。 */
+    suspend fun nativeLoginSchools(): LoginSchools? {
+        val raw = call(
+            "var bridge=window.CPUTimeNative;if(!bridge||typeof bridge.nativeLoginSchools!=='function')return null;" +
+                "return await bridge.nativeLoginSchools();",
+            timeoutMs = 15_000,
+        ) ?: return null
+        val json = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        val list = json.optJSONArray("schools") ?: return null
+        val schools = (0 until list.length()).mapNotNull { LoginSchool.parse(list.optJSONObject(it)) }
+        return LoginSchools(LoginSchool.parse(json.optJSONObject("current")), schools)
+    }
+
+    /** 换学校并重新准备该校的统一认证（验证码等）。 */
+    suspend fun nativeChooseSchool(schoolId: String) =
+        loginCall("nativeChooseSchool", JSONObject().put("id", schoolId), "args.id", retriesAfterLoss = true)
+
+    /** 查一次扫码状态；服务端最长挂 60 秒。 */
+    suspend fun nativeMfaPoll() = loginCall("nativeMfaPoll", JSONObject(), "", retriesAfterLoss = false, timeoutMs = 75_000)
+
+    suspend fun nativeMfaRefresh() = loginCall("nativeMfaRefresh", JSONObject(), "", retriesAfterLoss = false, timeoutMs = 30_000)
+
+    suspend fun nativeMfaCancel() {
+        call("var bridge=window.CPUTimeNative;if(bridge&&typeof bridge.nativeMfaCancel==='function')await bridge.nativeMfaCancel();return true;", timeoutMs = 8_000)
+    }
 
     suspend fun nativeAccountLogin(username: String, password: String) =
         loginCall("nativeAccountLogin", JSONObject().put("username", username).put("password", password), "args.username,args.password", retriesAfterLoss = false)
@@ -554,13 +610,19 @@ class WebSession(
      * a timeout or a page load may already have reached the server, so a
      * credential submit is never replayed (its captcha is single-use anyway).
      */
-    private suspend fun loginCall(method: String, args: JSONObject, parameters: String, retriesAfterLoss: Boolean): NativeLoginResponse {
+    private suspend fun loginCall(
+        method: String,
+        args: JSONObject,
+        parameters: String,
+        retriesAfterLoss: Boolean,
+        timeoutMs: Long? = null,
+    ): NativeLoginResponse {
         val starting = "登录服务正在启动，请稍候再试。"
         val body = "var bridge=window.CPUTimeNative;if(!bridge||typeof bridge.$method!=='function')return {ok:false,error:'$starting'};" +
             "try{return await bridge.$method($parameters);}catch(_){return {ok:false,error:'登录暂时失败，请稍后再试。'};}"
         repeat(80) { attempt ->
             // A school SSO login may take up to 95 s through its redirects (Web auth store).
-            val outcome = invoke(body, args, if (retriesAfterLoss) 45_000 else 100_000)
+            val outcome = invoke(body, args, timeoutMs ?: if (retriesAfterLoss) 45_000 else 100_000)
             if (outcome == CallOutcome.Lost && !retriesAfterLoss) {
                 return NativeLoginResponse(false, false, "", "登录请求已中断，请确认登录状态后再试。", "")
             }
@@ -573,6 +635,10 @@ class WebSession(
                     captchaImage = payload.optString("captchaImage", ""),
                     error = payload.optString("error", if (payload.optBoolean("ok")) "" else "登录暂时失败，请稍后再试。"),
                     account = payload.optString("account", ""),
+                    needMfa = payload.optBoolean("needMfa", false),
+                    mfaQr = payload.optString("mfaQr", ""),
+                    status = payload.optString("status", ""),
+                    school = LoginSchool.parse(payload.optJSONObject("school")),
                 )
             }
             if (attempt < 79) delay(125)

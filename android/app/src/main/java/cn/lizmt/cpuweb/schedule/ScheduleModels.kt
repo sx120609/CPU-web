@@ -137,7 +137,7 @@ data class CourseBlock(
         .put("course", course.toJson())
 }
 
-/** The university's twelve small periods, used until the calendar supplies its own. */
+/** 药大的十二小节：教务还没下发作息时用它（别的学校的节数和时间跟着下发的作息走）。 */
 val BUNDLED_PERIODS: List<SchedulePeriod> = listOf(
     SchedulePeriod(1, "08:00", "08:45"), SchedulePeriod(2, "08:55", "09:40"),
     SchedulePeriod(3, "09:55", "10:40"), SchedulePeriod(4, "10:50", "11:35"),
@@ -148,6 +148,20 @@ val BUNDLED_PERIODS: List<SchedulePeriod> = listOf(
 )
 
 const val SLOT_COUNT = 12
+
+/** 一天最多画多少节（南医 15 节；再多就是作息数据有问题）。 */
+const val MAX_SLOT_COUNT = 20
+
+/**
+ * 把下发的作息并进默认的十二节：旧版桥只给前十一节，缺的节次用默认时间补上；
+ * 从第 1 节起连续超过十二节（南医 15 节）时，多出的节次接在后面。
+ */
+fun mergeSuppliedPeriods(supplied: List<SchedulePeriod>): List<SchedulePeriod> {
+    val byNumber = supplied.filter { it.number in 1..MAX_SLOT_COUNT }.associateBy { it.number }
+    val last = generateSequence(1) { it + 1 }.takeWhile { it in byNumber }.lastOrNull() ?: 0
+    val extra = (SLOT_COUNT + 1..last).mapNotNull { byNumber[it] }
+    return BUNDLED_PERIODS.map { byNumber[it.number] ?: it } + extra
+}
 val WEEKDAY_LABELS = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
 object ScheduleJson {

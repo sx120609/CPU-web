@@ -539,10 +539,11 @@ class ScheduleStore(
             cell.courses.filter { course ->
                 course.weekList.isEmpty() || weekNumber == null || course.weekList.contains(weekNumber)
             }.forEach { course ->
-                val fallbackStart = (cell.bigSlot * 2 - 1).coerceIn(1, SLOT_COUNT)
-                val fallbackEnd = (cell.bigSlot * 2).coerceIn(fallbackStart, SLOT_COUNT)
-                val startSlot = (course.startSlot ?: fallbackStart).coerceIn(1, SLOT_COUNT)
-                val endSlot = (course.endSlot ?: fallbackEnd).coerceIn(startSlot, SLOT_COUNT)
+                val slots = slotCount
+                val fallbackStart = (cell.bigSlot * 2 - 1).coerceIn(1, slots)
+                val fallbackEnd = (cell.bigSlot * 2).coerceIn(fallbackStart, slots)
+                val startSlot = (course.startSlot ?: fallbackStart).coerceIn(1, slots)
+                val endSlot = (course.endSlot ?: fallbackEnd).coerceIn(startSlot, slots)
                 val block = CourseBlock(day, cell.bigSlot, startSlot, endSlot, course)
                 val index = blocks.indexOfFirst { canMergeBlocks(it, block) }
                 if (index < 0) {
@@ -600,10 +601,11 @@ class ScheduleStore(
         val blocks = mutableListOf<CourseBlock>()
         source.cells.filter { it.day == day }.forEach { cell ->
             cell.courses.filter { it.weekList.isNotEmpty() && weekNumber !in it.weekList }.forEach { course ->
-                val fallbackStart = (cell.bigSlot * 2 - 1).coerceIn(1, SLOT_COUNT)
-                val fallbackEnd = (cell.bigSlot * 2).coerceIn(fallbackStart, SLOT_COUNT)
-                val startSlot = (course.startSlot ?: fallbackStart).coerceIn(1, SLOT_COUNT)
-                val endSlot = (course.endSlot ?: fallbackEnd).coerceIn(startSlot, SLOT_COUNT)
+                val slots = slotCount
+                val fallbackStart = (cell.bigSlot * 2 - 1).coerceIn(1, slots)
+                val fallbackEnd = (cell.bigSlot * 2).coerceIn(fallbackStart, slots)
+                val startSlot = (course.startSlot ?: fallbackStart).coerceIn(1, slots)
+                val endSlot = (course.endSlot ?: fallbackEnd).coerceIn(startSlot, slots)
                 val block = CourseBlock(day, cell.bigSlot, startSlot, endSlot, course)
                 val index = blocks.indexOfFirst { it.course.weekList == course.weekList && canMergeBlocks(it, block) }
                 if (index < 0) {
@@ -652,6 +654,9 @@ class ScheduleStore(
         val value = calendarWeek(week)?.days?.getOrNull(day - 1) ?: return false
         return value == todayKey()
     }
+
+    /** 一天的节数：药大 12 节，南医 15 节，跟着下发的作息走。 */
+    val slotCount: Int get() = periods.maxOfOrNull { it.number }?.coerceIn(1, MAX_SLOT_COUNT) ?: SLOT_COUNT
 
     fun periodTime(slot: Int): SchedulePeriod =
         periods.firstOrNull { it.number == slot } ?: BUNDLED_PERIODS[(slot - 1).coerceIn(0, BUNDLED_PERIODS.lastIndex)]
@@ -799,8 +804,7 @@ class ScheduleStore(
         clearFallback()
         calendar = snapshot.calendar
         // Keep supplied period times when an older bridge only knows eleven slots.
-        val suppliedPeriods = snapshot.periods.associateBy { it.number }
-        periods = BUNDLED_PERIODS.map { suppliedPeriods[it.number] ?: it }
+        periods = mergeSuppliedPeriods(snapshot.periods)
         if (selectedSemester.isEmpty()) selectedSemester = data.currentSemester
         if (selectedWeek.isEmpty()) {
             selectedWeek = data.currentWeek.ifEmpty { snapshot.calendar?.currentWeek?.takeIf { it > 0 }?.toString().orEmpty() }

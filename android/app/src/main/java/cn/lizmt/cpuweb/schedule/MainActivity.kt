@@ -350,6 +350,14 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
+    /** 登录页的扫码验证：二维码存进相册，再到微信「扫一扫 → 相册」里识别。 */
+    fun saveImageData(dataUrl: String, fileName: String): Boolean = legacyBridge.saveImage(dataUrl, fileName)
+
+    fun openWeChat(): Boolean {
+        val launch = packageManager.getLaunchIntentForPackage("com.tencent.mm") ?: return false
+        return runCatching { startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true }.getOrDefault(false)
+    }
+
     /** JWXT authorization lives on the Web 教务 page; it returns to the native timetable when done. */
     fun openAcademicAuthorization() {
         shell.openWeb("/jwxt?reauthorize=1&redirect=/schedule", ShellTab.Academic)

@@ -58,10 +58,10 @@ internal val StyledAxisWidth = 42.dp
 /** The breathing room between the panel and its first row and last column; the table's rules run along the edge. */
 internal fun styledPanelPadding(style: ScheduleVisualStyle): Dp = if (style == ScheduleVisualStyle.Table) 0.dp else 6.dp
 
-/** Fit the twelve periods, the date header and the panel padding in the visible height. */
-internal fun styledWeekRowHeight(availableHeight: Float, style: ScheduleVisualStyle): Float =
-    max(32f, (availableHeight - 6f - StyledHeaderHeight.value - (SLOT_COUNT - 1) * StyledSlotGap.value -
-        2 * styledPanelPadding(style).value) / SLOT_COUNT)
+/** Fit the day's periods (twelve at 药大), the date header and the panel padding in the visible height. */
+internal fun styledWeekRowHeight(availableHeight: Float, style: ScheduleVisualStyle, slots: Int = SLOT_COUNT): Float =
+    max(32f, (availableHeight - 6f - StyledHeaderHeight.value - (slots - 1) * StyledSlotGap.value -
+        2 * styledPanelPadding(style).value) / slots)
 
 /** One content surface of the styled timetable: a flat fill and a hairline. */
 @Composable

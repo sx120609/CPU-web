@@ -826,7 +826,7 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
     val selected = week == store.selectedWeek
     val scope = LocalScheduleStyle.current
     val classic = scope.style == ScheduleVisualStyle.Classic
-    val periods = (1..SLOT_COUNT).map(store::periodTime)
+    val periods = (1..store.slotCount).map(store::periodTime)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val height = maxHeight
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
@@ -936,7 +936,7 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                         } else {
                             StyledWeekGrid(
                                 days = days, periods = periods,
-                                rowHeight = (styledWeekRowHeight(height.value, scope.style) * context.rowScale).dp,
+                                rowHeight = (styledWeekRowHeight(height.value, scope.style, periods.size) * context.rowScale).dp,
                                 now = context.now, canAdd = store.canEdit,
                                 onCourse = { day, block -> context.onCourse(block, day.week) }, onAddSlot = context.onAddSlot,
                                 onDay = openDay, onOffWeek = context.onOffWeek,
@@ -1051,9 +1051,9 @@ private fun WeekGrid(
 ) {
     val colors = LocalScheduleColors.current
     val display = context.display
-    val stride = (compactWeekRowHeight(height.value) * context.rowScale).dp
+    val stride = (compactWeekRowHeight(height.value, store.slotCount) * context.rowScale).dp
     val cellColor = if (context.translucent) colors.cell.copy(alpha = if (colors.dark) 0.52f else 0.36f) else colors.cell
-    val periods = (1..SLOT_COUNT).map(store::periodTime)
+    val periods = (1..store.slotCount).map(store::periodTime)
     val nowY = if (days.any { it.today }) context.now?.let { nowPosition(it, periods, stride.value - 4f, 4f)?.first } else null
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1075,7 +1075,7 @@ private fun WeekGrid(
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Box(Modifier.width(38.dp)) {
-                Column { (1..SLOT_COUNT).forEach { SlotAxis(store, it, stride) } }
+                Column { (1..store.slotCount).forEach { SlotAxis(store, it, stride) } }
                 if (nowY != null) {
                     Box(Modifier.offset(y = nowY.dp - 8.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { ScheduleNowBadge(context.now ?: 0) }
                 }
@@ -1083,10 +1083,10 @@ private fun WeekGrid(
             days.forEach { day ->
                 // Days off are drawn faded so the holiday reads at a glance.
                 val dayCell = if (day.adjustmentKind == "off") cellColor.copy(alpha = cellColor.alpha * 0.45f) else cellColor
-                BoxWithConstraints(Modifier.weight(1f).height(stride * SLOT_COUNT)) {
+                BoxWithConstraints(Modifier.weight(1f).height(stride * store.slotCount)) {
                     val columnWidth = maxWidth
                     Column {
-                        (1..SLOT_COUNT).forEach { slot ->
+                        (1..store.slotCount).forEach { slot ->
                             Box(
                                 Modifier.fillMaxWidth().height(stride - 4.dp).clip(RoundedCornerShape(8.dp)).background(dayCell)
                                     .border(0.5.dp, colors.divider.copy(alpha = if (colors.dark) 0.65f else 0.6f), RoundedCornerShape(8.dp))
@@ -1203,22 +1203,22 @@ private fun DayTimeline(
     height: Dp,
 ) {
     val colors = LocalScheduleColors.current
-    val stride = max(52f, (height.value - 12f) / SLOT_COUNT).dp
+    val stride = max(52f, (height.value - 12f) / store.slotCount).dp
     val cellColor = if (context.translucent) colors.cell.copy(alpha = if (colors.dark) 0.52f else 0.36f) else colors.cell
-    val periods = (1..SLOT_COUNT).map(store::periodTime)
+    val periods = (1..store.slotCount).map(store::periodTime)
     val nowY = if (store.isToday(day, week)) context.now?.let { nowPosition(it, periods, stride.value - 4f, 4f)?.first } else null
     Row(Modifier.fillMaxWidth()) {
         Box(Modifier.width(38.dp)) {
-            Column { (1..SLOT_COUNT).forEach { SlotAxis(store, it, stride) } }
+            Column { (1..store.slotCount).forEach { SlotAxis(store, it, stride) } }
             if (nowY != null) {
                 Box(Modifier.offset(y = nowY.dp - 8.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { ScheduleNowBadge(context.now ?: 0) }
             }
         }
         Spacer(Modifier.width(10.dp))
-        BoxWithConstraints(Modifier.weight(1f).height(stride * SLOT_COUNT)) {
+        BoxWithConstraints(Modifier.weight(1f).height(stride * store.slotCount)) {
             val columnWidth = maxWidth
             Column {
-                (1..SLOT_COUNT).forEach { slot ->
+                (1..store.slotCount).forEach { slot ->
                     Box(
                         Modifier.fillMaxWidth().height(stride - 4.dp).clip(RoundedCornerShape(10.dp)).background(cellColor)
                             .border(0.5.dp, colors.divider, RoundedCornerShape(10.dp))
