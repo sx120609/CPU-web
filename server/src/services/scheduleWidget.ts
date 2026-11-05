@@ -94,23 +94,16 @@ export function scheduleWidgetFallbackPayload(payload?: string | null, requested
 const SMALL_SLOTS: ReadonlyArray<{ no: number; start: string; end: string }> = getDefaultSchool().defaultPeriods;
 
 /**
- * 课表所属学校的作息：校历下发的节次时间盖过默认的十二节（药大有的校历只给前十一节），
- * 从第 1 节起连续超过十二节时（南医 15 节）多出的节次接在后面。
+ * 课表所属学校的作息：scheduleData 已经按本校默认作息补全了校历里的作息表，这里照用；
+ * 只有旧缓存里的校历没带作息时才退回默认学校的。
  */
 export function widgetSlotsForCalendar(calendar: any | null): ReadonlyArray<{ no: number; start: string; end: string }> {
-  const supplied = new Map<number, { no: number; start: string; end: string }>();
-  for (const item of Array.isArray(calendar?.periods) ? calendar.periods : []) {
-    const slot = { no: Number(item?.id), start: String(item?.start || ""), end: String(item?.end || "") };
-    if (Number.isInteger(slot.no) && slot.no >= 1 && slot.no <= 20 && /^\d{1,2}:\d{2}$/.test(slot.start) && /^\d{1,2}:\d{2}$/.test(slot.end)) {
-      supplied.set(slot.no, slot);
-    }
-  }
-  if (!supplied.size) return SMALL_SLOTS;
-  const merged = SMALL_SLOTS.map((slot) => supplied.get(slot.no) ?? slot);
-  for (let no = merged.length + 1; supplied.has(no) && merged.every((slot, index) => slot.no === index + 1); no += 1) {
-    merged.push(supplied.get(no)!);
-  }
-  return merged;
+  const periods = (Array.isArray(calendar?.periods) ? calendar.periods : [])
+    .map((item: any) => ({ no: Number(item?.id), start: String(item?.start || ""), end: String(item?.end || "") }))
+    .filter((item: { no: number; start: string; end: string }) => /^\d{1,2}:\d{2}$/.test(item.start) && /^\d{1,2}:\d{2}$/.test(item.end))
+    .sort((a: { no: number }, b: { no: number }) => a.no - b.no);
+  const contiguous = periods.length > 0 && periods.length <= 20 && periods.every((item: { no: number }, index: number) => item.no === index + 1);
+  return contiguous ? periods : SMALL_SLOTS;
 }
 
 type WidgetCourse = {

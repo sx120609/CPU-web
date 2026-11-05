@@ -6,18 +6,19 @@ import * as loginPool from "./ssoLoginPool";
 import type { AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
 import { ConcurrencyGate, ConcurrencyGateFullError } from "../utils/loadShield";
 import { Errors } from "../utils/response";
-import * as njmu from "../schools/njmu/driver";
+import { schoolDriverFor, schoolDriverForToken } from "../schools/drivers";
 import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 
 type Transport = typeof local;
 
-/** 教务令牌和登录 pendingId 的前缀说明它属于哪所学校的驱动；药大的没有前缀。 */
+/** 教务令牌和登录 pendingId 的前缀说明它属于哪所学校的驱动（schools/drivers.ts）；药大的没有前缀。 */
 export function schoolIdForJwxtToken(token: string | null | undefined) {
-  return njmu.isNjmuToken(token) ? "njmu" : DEFAULT_SCHOOL_ID;
+  return schoolDriverForToken(token)?.schoolId ?? DEFAULT_SCHOOL_ID;
 }
 
 function queryImpl(token?: string | null): Transport {
-  if (njmu.isNjmuToken(token)) return njmu as unknown as Transport;
+  const driver = schoolDriverForToken(token);
+  if (driver) return driver.academic as Transport;
   if (agentRemote.isJwxtAgentQueryMode()) return agentRemote as unknown as Transport;
   if (config.jwxtProxyUrl) return remote as unknown as Transport;
   return local;
@@ -41,7 +42,8 @@ async function throughSsoLoginGate<T>(task: () => Promise<T>, signal?: AbortSign
 }
 
 export function beginLogin(signal?: AbortSignal, schoolId: string = DEFAULT_SCHOOL_ID): ReturnType<typeof local.beginLogin> {
-  if (schoolId === "njmu") return throughSsoLoginGate(() => njmu.beginLogin(signal), signal) as ReturnType<typeof local.beginLogin>;
+  const driver = schoolId === DEFAULT_SCHOOL_ID ? undefined : schoolDriverFor(schoolId);
+  if (driver) return throughSsoLoginGate(() => driver.beginLogin(signal), signal) as ReturnType<typeof local.beginLogin>;
   return throughSsoLoginGate(() => (loginPool.isDedicatedSsoLoginPool()
     ? loginPool.beginLogin(signal)
     : queryImpl().beginLogin()) as ReturnType<typeof local.beginLogin>, signal);
@@ -49,9 +51,10 @@ export function beginLogin(signal?: AbortSignal, schoolId: string = DEFAULT_SCHO
 
 export function submitLogin(args: Parameters<typeof local.submitLogin>[0] | { pendingId: string; credentials: AgentEncryptedLoginCredentials }, signal?: AbortSignal) {
   return throughSsoLoginGate(async () => {
-    if (njmu.isNjmuToken(args.pendingId)) {
-      if ("credentials" in args) throw Errors.badRequest("南医统一认证不支持加密登录凭据");
-      return njmu.submitLogin(args, signal);
+    const driver = schoolDriverForToken(args.pendingId);
+    if (driver) {
+      if ("credentials" in args) throw Errors.badRequest("本校统一认证不支持加密登录凭据");
+      return driver.submitLogin(args, signal);
     }
     if (loginPool.isPooledPendingId(args.pendingId)) return loginPool.submitLogin(args);
     if ("credentials" in args) {
@@ -93,13 +96,18 @@ export function getGraduateSchedule(token: string, args?: Parameters<typeof loca
 }
 export function debugSnapshot(token: string) { return queryImpl(token).debugSnapshot(token); }
 
-/** 南医统一认证在新设备上的扫码二次验证（药大没有这一步）。 */
-export function pollNjmuMfa(pendingId: string, signal?: AbortSignal) {
-  if (!njmu.isNjmuToken(pendingId)) throw Errors.badRequest("验证已过期，请重新登录");
-  return njmu.pollMfa(pendingId, signal);
+/** 学校统一认证在新设备上的扫码二次验证（南医有，药大没有）；哪所学校由 pendingId 的前缀定。 */
+function mfaDriver(pendingId: string) {
+  const mfa = schoolDriverForToken(pendingId)?.mfa;
+  if (!mfa) throw Errors.badRequest("验证已过期，请重新登录");
+  return mfa;
 }
 
-export function refreshNjmuMfaQr(pendingId: string, signal?: AbortSignal) {
-  if (!njmu.isNjmuToken(pendingId)) throw Errors.badRequest("验证已过期，请重新登录");
-  return throughSsoLoginGate(() => njmu.refreshMfaQr(pendingId, signal), signal);
+export function pollSchoolMfa(pendingId: string, signal?: AbortSignal) {
+  return mfaDriver(pendingId).poll(pendingId, signal);
+}
+
+export function refreshSchoolMfaQr(pendingId: string, signal?: AbortSignal) {
+  const mfa = mfaDriver(pendingId);
+  return throughSsoLoginGate(() => mfa.refreshQr(pendingId, signal), signal);
 }

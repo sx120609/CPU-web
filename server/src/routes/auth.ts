@@ -10,8 +10,8 @@ import { securityRateLimit } from "../middleware/securityRateLimit";
 import {
   beginLogin,
   logout as logoutJwxt,
-  pollNjmuMfa,
-  refreshNjmuMfaQr,
+  pollSchoolMfa,
+  refreshSchoolMfaQr,
   schoolIdForJwxtToken,
   submitLogin,
 } from "../services/jwxtTransport";
@@ -26,6 +26,7 @@ import { nicknameSetupRequired, normalizeNicknameSubmission, scheduleNicknameRev
 import { requestCancellation } from "../utils/requestCancellation";
 import { findSchool, getSchool } from "../schools/registry";
 import { requestSchoolId } from "../schools/modules";
+import { schoolMfaGuideForToken } from "../schools/drivers";
 
 export const authRouter = Router();
 
@@ -230,17 +231,18 @@ type SchoolLoginFailure = {
   mfa?: { pendingId: string; qrImage: string };
 };
 
-function failedSchoolLogin(r: SchoolLoginFailure) {
+export function failedSchoolLogin(r: SchoolLoginFailure) {
   return {
     ok: false,
     error: r.error,
     needCaptcha: r.needCaptcha ?? false,
     captcha: r.captcha,
-    ...(r.needMfa ? { needMfa: true, mfa: r.mfa } : {}),
+    // guide：用哪个 App 扫、怎么说，由学校驱动给（schools/drivers.ts）。
+    ...(r.needMfa && r.mfa ? { needMfa: true, mfa: { ...r.mfa, guide: schoolMfaGuideForToken(r.mfa.pendingId) } } : {}),
   };
 }
 
-// 南医统一认证在新设备上要扫码二次验证：网页显示学校给的二维码，轮询扫码状态，确认后完成登录。
+// 有的学校统一认证在新设备上要扫码二次验证：网页显示学校给的二维码，轮询扫码状态，确认后完成登录。
 const mfaPendingKey = (req: Request) => (typeof req.body?.pendingId === "string" ? `pending\0${req.body.pendingId.slice(0, 80)}` : undefined);
 
 authRouter.post(
@@ -251,7 +253,7 @@ authRouter.post(
     const cancellation = requestCancellation(req, res);
     try {
       ensureSchoolSsoLogin(req);
-      const result = await pollNjmuMfa(req.body.pendingId, cancellation.signal);
+      const result = await pollSchoolMfa(req.body.pendingId, cancellation.signal);
       if (result.status !== "done") return ok(res, { ok: false, mfaStatus: result.status });
       const r = result.attempt;
       if (!r.ok || !r.token) return ok(res, { ...failedSchoolLogin(r), mfaStatus: "failed" });
@@ -268,7 +270,7 @@ authRouter.post(
     const cancellation = requestCancellation(req, res);
     try {
       ensureSchoolSsoLogin(req);
-      ok(res, await refreshNjmuMfaQr(req.body.pendingId, cancellation.signal));
+      ok(res, await refreshSchoolMfaQr(req.body.pendingId, cancellation.signal));
     } catch (e) { next(e); } finally { cancellation.dispose(); }
   },
 );

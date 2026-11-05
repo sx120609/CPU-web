@@ -5,6 +5,8 @@ import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { buildRedisKey } from "./redis";
 import { Errors } from "../utils/response";
 import { applyScheduleTermConfig, getScheduleTermConfig } from "./scheduleTermConfig";
+import { getSchool } from "../schools/registry";
+import { completeSchoolPeriods } from "../schools/periods";
 
 const SCHEDULE_DATA_CACHE_REVISION = "schedule-data-v2";
 const SCHEDULE_TTL_MS = 5 * 60_000;
@@ -72,8 +74,11 @@ export function createScheduleDataService(dependencies: Partial<Dependencies> = 
       { refresh: query.refresh },
     );
     const upstreamCalendar = calendarAtDate(snapshot.parsed, deps.now());
-    const config = await getScheduleTermConfig(upstreamCalendar.currentSemester || semester, transport.schoolIdForJwxtToken(token));
-    const parsed = applyScheduleTermConfig(upstreamCalendar, config, deps.now());
+    const schoolId = transport.schoolIdForJwxtToken(token);
+    const config = await getScheduleTermConfig(upstreamCalendar.currentSemester || semester, schoolId);
+    const termCalendar = applyScheduleTermConfig(upstreamCalendar, config, deps.now());
+    // 每所学校都给完整的作息表（本校默认作息打底），课表、小组件、原生壳不再各自拿默认学校的时间去补。
+    const parsed = { ...termCalendar, periods: completeSchoolPeriods(termCalendar.periods, getSchool(schoolId).defaultPeriods) };
     if (semester && parsed.currentWeek > 0) {
       await deps.cache("jwxt-calendar", currentKey, CALENDAR_TTL_MS, async () => snapshot, { refresh: true });
     }

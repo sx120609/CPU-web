@@ -13,7 +13,7 @@ import { deleteCoupleDataForUser } from "./coupleSchedule";
 import { deleteDormDataForUser } from "./dormSchedule";
 import { eraseWorkshopAccountData, lockWorkshopAuthor, revokeWorkshopAccountWorks } from "./workshopAccountDeletion";
 import { removeWorkshopPackage } from "./workshopPackage";
-import { forgetNjmuDevice } from "../schools/njmu/client";
+import { schoolDriverFor } from "../schools/drivers";
 
 export const ACCOUNT_DELETION_CONFIRMATION = "删除我的账户";
 type DeletionPayload = { username: string; schoolId?: string; tokens: string[]; sessionKeys: string[]; mediaPaths: string[]; receipt: string; workshopPackageKeys?: string[] };
@@ -188,7 +188,7 @@ async function eraseVoiceHub(jobId: string, receipt: string) {
   if (!response.ok || !(await response.json() as { deleted?: boolean }).deleted) throw new Error("VoiceHub account cleanup not confirmed");
 }
 
-type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void>; deleteWorkshopPackage?: typeof removeWorkshopPackage; forgetSchoolDevice?: typeof forgetNjmuDevice };
+type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void>; deleteWorkshopPackage?: typeof removeWorkshopPackage; forgetSchoolDevice?: (username: string) => Promise<void> };
 export async function processAccountDeletion(id: string, dependencies: CleanupDependencies = { deleteMedia: deleteMediaAsset, deleteSessions: deleteAccountSessions, deleteVoiceHub: eraseVoiceHub, purgeMedia: purgeAccountMediaCaches }) {
   let job = await prisma.accountDeletionJob.findUnique({ where: { id } });
   if (!job || job.status === "completed") return;
@@ -207,7 +207,9 @@ export async function processAccountDeletion(id: string, dependencies: CleanupDe
     cleanupStep = "sessions";
     await dependencies.deleteSessions(payload.tokens, payload.sessionKeys);
     cleanupStep = "school-device";
-    if (payload.schoolId === "njmu") await (dependencies.forgetSchoolDevice ?? forgetNjmuDevice)(payload.username);
+    // 学校驱动给了 forgetAccount 的学校（例如南医的可信设备凭据）才有这一步。
+    const schoolForget = schoolDriverFor(payload.schoolId)?.forgetAccount;
+    if (schoolForget && payload.username) await (dependencies.forgetSchoolDevice ?? schoolForget)(payload.username);
     cleanupStep = "workshop";
     for (const packageKey of payload.workshopPackageKeys ?? []) {
       await (dependencies.deleteWorkshopPackage ?? removeWorkshopPackage)(packageKey);

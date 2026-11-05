@@ -63,6 +63,7 @@ import {
 } from "../services/jwxtTransport";
 import { requestSchoolId } from "../schools/modules";
 import { getSchool } from "../schools/registry";
+import { schoolMfaGuideForToken } from "../schools/drivers";
 
 export const jwxtRouter = Router();
 
@@ -652,8 +653,8 @@ jwxtRouter.post(
         }
         return ok(res, { token: r.token });
       }
-      // 失败：可能是要重新输验证码，南医的新设备还要短信二次验证（走 /auth/sso-mfa）。
-      const mfa = r.needMfa ? { needMfa: true, mfa: r.mfa } : {};
+      // 失败：可能是要重新输验证码，有的学校新设备还要扫码二次验证（走 /auth/sso-mfa）。
+      const mfa = r.needMfa && r.mfa ? { needMfa: true, mfa: { ...r.mfa, guide: schoolMfaGuideForToken(r.mfa.pendingId) } } : {};
       return ok(res, {
         ok: false,
         error: r.error,
