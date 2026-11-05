@@ -1,4 +1,4 @@
-export const APP_NAME = '拾间校园';
+export const APP_NAME = '药大拾间';
 export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCode=31&appVersionName=3.1.0';
 export const APP_HOST = 'cputime.cn';
 export const VERSION_CODE = 31;

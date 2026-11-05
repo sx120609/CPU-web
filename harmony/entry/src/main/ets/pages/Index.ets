@@ -2259,7 +2259,7 @@ struct Index {
           .fontColor($r('app.color.app_on_accent')).backgroundColor($r('app.color.app_accent'))
           .onClick(() => { this.widgetAutoSetupAttempted = true; this.configureScheduleWidget(); })
         Text('添加到桌面').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
-        Text('长按桌面的拾间校园图标，选择「卡片」，挑选样式后添加。')
+        Text('长按桌面的药大拾间图标，选择「卡片」，挑选样式后添加。')
           .fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
         Text('锁屏卡片').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
         Text('在支持的设备上，通过系统锁屏编辑页添加。')

@@ -425,7 +425,7 @@ function loadingBinding(
     rightTitle: '',
     primaryCourses: '[]',
     secondaryCourses: '[]',
-    footer: '打开拾间校园完成教务授权',
+    footer: '打开药大拾间完成教务授权',
     theme,
     accent: widgetThemeAccent(theme),
     semester: '',
@@ -906,10 +906,10 @@ async function contentFor(context: common.Context, dimension: number, formName: 
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === 'unconfigured') {
-      return { binding: messageBinding(dimension, theme, formName, 'unconfigured', '尚未配置课表', '打开拾间校园，在课表菜单中添加小组件'), refreshMinutes: 30 };
+      return { binding: messageBinding(dimension, theme, formName, 'unconfigured', '尚未配置课表', '打开药大拾间，在课表菜单中添加小组件'), refreshMinutes: 30 };
     }
     if (message === 'unauthorized') {
-      return { binding: messageBinding(dimension, theme, formName, 'unauthorized', '教务授权已失效', '打开拾间校园重新登录教务'), refreshMinutes: 30 };
+      return { binding: messageBinding(dimension, theme, formName, 'unauthorized', '教务授权已失效', '打开药大拾间重新登录教务'), refreshMinutes: 30 };
     }
     return { binding: messageBinding(dimension, theme, formName, 'failed', '暂时无法刷新', '请检查网络，卡片会自动重试'), refreshMinutes: 30 };
   }
