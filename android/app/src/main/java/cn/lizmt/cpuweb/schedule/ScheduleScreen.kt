@@ -87,12 +87,9 @@ sealed interface ScheduleSheet {
     data class QuickLook(val block: CourseBlock, val offWeek: Boolean = false, val partner: Boolean = false) : ScheduleSheet
     data class Overlap(val blocks: List<CourseBlock>) : ScheduleSheet
     data object WeekPicker : ScheduleSheet
-    data object Style : ScheduleSheet
-    data object VisualStyle : ScheduleSheet
-    data object Display : ScheduleSheet
+    data object Settings : ScheduleSheet
     data object Widgets : ScheduleSheet
     data object Editor : ScheduleSheet
-    data object Appearance : ScheduleSheet
     data object Sharing : ScheduleSheet
     data object Couple : ScheduleSheet
     /** One 日程 in the editor; an empty id is a new one. */
@@ -326,17 +323,17 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                                 store.calendarWeek(store.selectedWeek)?.days?.getOrNull(store.selectedDay - 1)?.takeIf { it.length == 10 }.orEmpty()))
                         }).takeIf { !store.readOnly && activity.agenda.available },
                         ("日程与待办" to { sheet = ScheduleSheet.AgendaList }).takeIf { !store.readOnly },
-                        "课表风格" to { sheet = ScheduleSheet.VisualStyle },
-                        "显示设置" to { sheet = ScheduleSheet.Display },
-                        ("课表配色与背景" to { sheet = ScheduleSheet.Style }).takeIf { !store.readOnly },
-                        ("桌面课表小组件" to { sheet = ScheduleSheet.Widgets }).takeIf { !store.readOnly },
+                        MENU_DIVIDER,
                         "分享所选周课表" to { shareSchedule(activity, store) },
                         "导出所选周日历" to { exportSchedule(activity, store) },
+                        MENU_DIVIDER,
                         ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
                         ("情侣课表" to { sheet = ScheduleSheet.Couple }).takeIf { !store.readOnly },
                         // The dorm timetable is a Web page; Back returns here.
                         ("宿舍课表" to { activity.openDormSchedule() }).takeIf { !store.readOnly },
-                        ("应用外观" to { sheet = ScheduleSheet.Appearance }).takeIf { !store.readOnly },
+                        MENU_DIVIDER,
+                        "课表设置" to { sheet = ScheduleSheet.Settings },
+                        ("桌面课表小组件" to { sheet = ScheduleSheet.Widgets }).takeIf { !store.readOnly },
                     ),
                 )
                 if (store.viewMode == "month") {
@@ -403,9 +400,8 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
             sheet = ScheduleSheet.QuickLook(it)
         }
         ScheduleSheet.WeekPicker -> WeekPickerSheet(store, onDismiss = { sheet = null })
-        ScheduleSheet.Style -> ScheduleStyleSheet(activity, onDismiss = { sheet = null })
-        ScheduleSheet.VisualStyle -> VisualStyleSheet(style, onDismiss = { sheet = null })
-        ScheduleSheet.Display -> DisplaySettingsSheet(style, onDismiss = { sheet = null })
+        ScheduleSheet.Settings -> ScheduleSettingsSheet(activity, store.readOnly,
+            onWidgets = { sheet = ScheduleSheet.Widgets }, onDismiss = { sheet = null })
         ScheduleSheet.Widgets -> WidgetSettingsSheet(activity, onDismiss = { sheet = null })
         ScheduleSheet.Editor -> CourseEditorSheet(editor, onDismiss = {
             // The sheet may already be hidden (Back), so it always goes away; a
@@ -413,7 +409,6 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
             if (!editor.busy) editor.cancel()
             sheet = null
         })
-        ScheduleSheet.Appearance -> AppearanceSheet(activity.appearance, onDismiss = { sheet = null })
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
         ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
         is ScheduleSheet.AgendaEdit -> AgendaEditorSheet(activity.agenda, current.draft, onDismiss = { sheet = null })
@@ -462,6 +457,9 @@ private fun ScheduleBackground(style: ScheduleStyleSettings) {
         )
     }
 }
+
+/** Separates groups in the 更多 menu. */
+private val MENU_DIVIDER: Pair<String, () -> Unit> = "" to {}
 
 @Composable
 private fun ScheduleToolbar(store: ScheduleStore, onToday: (() -> Unit)?, actions: List<Pair<String, () -> Unit>>) {
@@ -527,7 +525,16 @@ private fun ScheduleToolbar(store: ScheduleStore, onToday: (() -> Unit)?, action
                 }
             }
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                actions.forEach { (label, action) ->
+                // Groups are separated by MENU_DIVIDER; one at either end or next to another is dropped.
+                val items = actions.filterIndexed { index, item ->
+                    item !== MENU_DIVIDER || (index > 0 && index < actions.lastIndex && actions[index - 1] !== MENU_DIVIDER)
+                }.dropLastWhile { it === MENU_DIVIDER }
+                items.forEach { item ->
+                    val (label, action) = item
+                    if (item === MENU_DIVIDER) {
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                        return@forEach
+                    }
                     DropdownMenuItem(
                         text = { Text(label) },
                         enabled = label != "刷新课表" || store.status != ScheduleStatus.Loading,

@@ -39,9 +39,7 @@ object DebugScheduleFixture {
     private var coupleAnniversary = "2025-05-20"
 
     fun initialSheet(): ScheduleSheet? = when (sheet) {
-        "visual" -> ScheduleSheet.VisualStyle
-        "display" -> ScheduleSheet.Display
-        "style" -> ScheduleSheet.Style
+        "settings", "visual", "display", "style" -> ScheduleSheet.Settings
         "sharing" -> ScheduleSheet.Sharing
         "couple" -> ScheduleSheet.Couple
         "widgets" -> ScheduleSheet.Widgets

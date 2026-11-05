@@ -126,110 +126,11 @@ fun CourseQuickLookSheet(
     }
 }
 
-/**
- * Picks the timetable style. Every style shares the same course data and the
- * same tap-to-edit behaviour; a choice takes effect at once.
- */
-@Composable
-fun VisualStyleSheet(style: ScheduleStyleSettings, onDismiss: () -> Unit) {
-    ScheduleSheetContainer(onDismiss) {
-        SheetTitle("课表风格")
-        ScheduleVisualStyle.entries.forEach { option ->
-            val chosen = style.visualStyle == option
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { style.selectVisualStyle(option) }
-                    .semantics(mergeDescendants = true) { selected = chosen }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                StylePreview(option, style.palette)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(option.title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                    Text(option.subtitle, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (chosen) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text("课表风格不改变课程数据、课程配色或背景图片。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-/**
- * How the week view is drawn: row height, text size, what a card shows and
- * which days appear. Every change shows at once on the timetable behind.
- */
-@Composable
-fun DisplaySettingsSheet(style: ScheduleStyleSettings, onDismiss: () -> Unit) {
-    val meta = MaterialTheme.colorScheme.onSurfaceVariant
-    ScheduleSheetContainer(onDismiss) {
-        SheetTitle("显示设置")
-        Text("课程格子", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = meta)
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("格子高度", fontSize = 15.sp, modifier = Modifier.weight(1f))
-            Text("${style.rowHeight}%", fontSize = 13.sp, color = meta)
-        }
-        Slider(
-            value = style.rowHeight.toFloat(),
-            onValueChange = { style.updateRowHeight(it.toInt()) },
-            valueRange = ScheduleDisplayRules.ROW_HEIGHT_MIN.toFloat()..ScheduleDisplayRules.ROW_HEIGHT_MAX.toFloat(),
-            steps = (ScheduleDisplayRules.ROW_HEIGHT_MAX - ScheduleDisplayRules.ROW_HEIGHT_MIN) / ScheduleDisplayRules.ROW_HEIGHT_STEP - 1,
-            modifier = Modifier.semantics { contentDescription = "格子高度" },
-        )
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("文字大小", fontSize = 15.sp, modifier = Modifier.weight(1f))
-            Row(
-                Modifier.clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                ScheduleDisplayRules.TEXT_SIZES.forEach { (key, label) ->
-                    val chosen = style.textSize == key
-                    Text(
-                        label, fontSize = 13.sp, fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (chosen) MaterialTheme.colorScheme.primary else meta, textAlign = TextAlign.Center,
-                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                            .background(if (chosen) MaterialTheme.colorScheme.surface else Color.Transparent)
-                            .clickable { style.selectTextSize(key) }.semantics { selected = chosen }
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                    )
-                }
-            }
-        }
-        SettingSwitch("紧凑排版", "收紧卡片里的留白和字距，多放一行。", style.compactLayout) { style.updateCompactLayout(it) }
-        SettingSwitch("显示老师", "在教室下面多写一行任课老师。", style.showTeacher) { style.updateShowTeacher(it) }
-        SettingSwitch("显示非本周课程", "本周不上的课淡显在空着的节次里。", style.showOffWeek) { style.updateShowOffWeek(it) }
-        Spacer(Modifier.height(18.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(14.dp))
-        Text("课表网格", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = meta)
-        SettingSwitch("显示节次时间", "关闭后节次栏只写第几节。", style.showSlotTime) { style.updateShowSlotTime(it) }
-        SettingSwitch("高亮当前节次", "在今天这一列标出现在，日视图显示正在上和下一节。", style.showNowIndicator) { style.updateShowNowIndicator(it) }
-        SettingSwitch("显示回到本周按钮", "右上角回到今天的按钮。", style.showBackToWeek) { style.updateShowBackToWeek(it) }
-        SettingSwitch("显示周六", "关闭后，周六有课或补班时仍会显示。", style.showSaturday) { style.updateShowSaturday(it) }
-        SettingSwitch("显示周日", "关闭后，周日有课或补班时仍会显示。", style.showSunday) { style.updateShowSunday(it) }
-        SettingSwitch("周日排在首列", "第一列是周一前一天的那个周日。", style.sundayFirst, enabled = style.showSunday) { style.updateSundayFirst(it) }
-        Spacer(Modifier.height(8.dp))
-        TextButton(onClick = { style.resetDisplay() }, enabled = !style.displayIsDefault) { Text("恢复默认") }
-    }
-}
-
-@Composable
-private fun SettingSwitch(title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp)
-            Text(detail, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.width(10.dp))
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
-    }
-}
-
 private val PreviewSamples = listOf("高等数学" to 1, "大学英语" to 3, "药物化学" to 1)
 
 /** A thumbnail drawn with the real week components at full size, then scaled. */
 @Composable
-private fun StylePreview(style: ScheduleVisualStyle, palette: String) {
+internal fun StylePreview(style: ScheduleVisualStyle, palette: String) {
     val colors = LocalScheduleColors.current
     val rowHeight = 32.dp
     val slots = 4

@@ -67,13 +67,10 @@ internal fun AppUpdateSheet(activity: MainActivity, onDismiss: () -> Unit) {
                 checked = updates.installOnLeave && silentCapable,
                 enabled = silentCapable,
             ) { updates.changeInstallOnLeave(it) }
-            Text(
-                buildString {
-                    append("有增量包时只下载变化的部分，也可以选择下载完整安装包；两者都从企业盘下载，拾间会校验签名和指纹。")
-                    if (updates.silentAfterPermission) append("允许拾间“安装未知应用”后，以后的更新会在你离开拾间后自动装好。")
-                },
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (updates.silentAfterPermission) {
+                Text("允许拾间“安装未知应用”后，以后的更新会在你离开拾间后自动装好。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

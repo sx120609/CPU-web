@@ -266,7 +266,7 @@ private fun BoundContent(
             Text(status.anniversary.ifEmpty { "未设置" }.replace('-', '.'))
         }
     }
-    CoupleFootnote("课表里一个人一种颜色：你的课全是你选的颜色，TA 的课全是 TA 的颜色。颜色各选各的，双方看到的一样；选 TA 正在用的那个就是两人互换。")
+    CoupleFootnote("一人一种颜色，选 TA 正在用的就是互换。")
     Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onUnbind, enabled = !busy) { Text("解除绑定", color = MaterialTheme.colorScheme.error) }
@@ -287,7 +287,7 @@ private fun UnboundContent(
     var code by remember { mutableStateOf("") }
     val invite = pending?.takeIf { it.code.isNotEmpty() && !it.expired }
     Text(
-        "绑定后，TA 的课会和你的课显示在同一张课表里，两人都有空的时间一目了然。任何一方都可以随时解除，解除后双方的课表快照立即删除。",
+        "绑定后两人的课显示在同一张课表里，随时可以解除。",
         fontSize = 13.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     CoupleSection("邀请 TA")
@@ -299,7 +299,7 @@ private fun UnboundContent(
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = "邀请码 " + invite.code.toList().joinToString(" ") },
             )
         }
-        Text("24 小时内有效，TA 在「课表 → 更多 → 情侣课表」里输入。正在等待 TA 接受…", fontSize = 12.sp, lineHeight = 17.sp,
+        Text("24 小时内有效，TA 在「课表 → 更多 → 情侣课表」里输入。", fontSize = 12.sp, lineHeight = 17.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
         Spacer(Modifier.height(10.dp))
         Button(onClick = {
@@ -312,8 +312,6 @@ private fun UnboundContent(
             TextButton(onClick = onCancel, enabled = !busy) { Text("取消邀请") }
         }
     } else {
-        Text("生成一个邀请码发给 TA。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
         Button(onClick = onInvite, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("生成邀请码") }
     }
     CoupleSection("输入 TA 的邀请码")

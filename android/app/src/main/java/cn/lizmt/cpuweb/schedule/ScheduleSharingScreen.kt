@@ -197,7 +197,7 @@ fun ScheduleSharingSheet(activity: MainActivity, store: ScheduleStore, onDismiss
         }
         if (notice.isNotEmpty()) Text(notice, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
         if (error.isNotEmpty()) Text(error, fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
-        Footnote("分享会上传「$semesterLabel」的课程、上课时间、教室、老师和调休安排，自己添加和修改的课程也在内。拿到分享码的人不用登录就能查看。课表有变化时点「更新分享内容」，分享码不变。")
+        Footnote("拿到分享码的人不用登录就能看「$semesterLabel」的课表；课表变了点「更新分享内容」。")
 
         val others = sharing.mine.filter { it.semester != semester }
         if (others.isNotEmpty()) {
@@ -253,7 +253,6 @@ fun ScheduleSharingSheet(activity: MainActivity, store: ScheduleStore, onDismiss
             }
         }
         TextButton(onClick = { importing = true }) { Text("＋ 用分享码导入") }
-        Footnote("轻点打开对方的课表，只能查看。导入的课表只保存在这台设备上，对方更新后会自动换成新的。")
         }
     }
 }

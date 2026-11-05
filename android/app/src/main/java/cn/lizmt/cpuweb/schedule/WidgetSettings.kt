@@ -197,12 +197,10 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
     LaunchedEffect(Unit) { widgets.syncLocalDays(activity.schedule, activity.web) }
     ScheduleSheetContainer(onDismiss) {
         SheetTitle("桌面课表小组件")
-        Text(
-            if (widgets.ready) "小组件读取本机保存的课表，放假和调课安排与课表页一致，上下课时自动更新。"
-            else "加载本学期课表后，小组件会自动同步，可显示临近课程、今日课表或两日课表。",
-            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(14.dp))
+        if (!widgets.ready) {
+            Text("加载本学期课表后，小组件会自动同步。", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(14.dp))
+        }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             WidgetKind.entries.forEach { kind ->
                 val chosen = kind == selected
@@ -232,13 +230,11 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
         if (own == null) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "示例课程，同步后显示你的课表", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                "示例课程", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
-        Spacer(Modifier.height(16.dp))
-        Text("课程配色", style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.height(8.dp))
+        SettingsSection("配色")
         PaletteChoices(widgets.theme) { widgets.selectTheme(it) }
         Spacer(Modifier.height(16.dp))
         Button(
@@ -264,25 +260,18 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
             manager.getAppWidgetIds(ComponentName(activity, kind.provider)).map { kind to it }
         }
         if (installed.isNotEmpty()) {
-            Text("编辑桌面小组件", style = MaterialTheme.typography.titleSmall)
-            Text("每个小组件可以分别设置显示方式和课程信息。", fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SettingsSection("桌面上的小组件")
             installed.forEachIndexed { index, (kind, id) ->
-                androidx.compose.material3.TextButton(onClick = {
+                SettingsNavRow("${kind.title} ${kind.size}" + if (installed.size > 1) " · ${index + 1}" else "", value = "编辑") {
                     activity.startActivity(Intent(activity, ScheduleWidgetConfigureActivity::class.java)
                         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
-                }, modifier = Modifier.fillMaxWidth()) {
-                    Text("${kind.title} ${kind.size} · ${index + 1}")
                 }
             }
-            Spacer(Modifier.height(12.dp))
         }
         WidgetReliabilitySection(activity)
-        Spacer(Modifier.height(16.dp))
-        Text("手动添加", style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.height(4.dp))
-        Text("长按桌面空白处，选择“小组件”，找到“药大拾间”后拖到桌面。长按已添加的小组件可编辑设置；也可从这里编辑。课表只保存在本机，退出登录时删除。",
-            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(14.dp))
+        Text("也可以长按桌面空白处，在“小组件”里找到“药大拾间”拖到桌面。",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -297,11 +286,9 @@ private fun WidgetReliabilitySection(activity: MainActivity) {
     val batteryFree = remember(resumed) { BatterySettings.unrestricted(activity) }
     val brand = remember { VendorSettings.current() }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Text("保持小组件准时", style = MaterialTheme.typography.titleSmall)
+    SettingsSection("保持小组件准时")
+    Text("部分手机会停掉后台应用，小组件可能停在前一天。", fontSize = 12.sp, color = muted)
     Spacer(Modifier.height(4.dp))
-    Text("华为、荣耀、小米、OPPO、vivo 等手机会停掉后台应用，小组件可能停在前一天。打开下面两项后，换日和上下课都会按时刷新。",
-        fontSize = 12.sp, color = muted)
-    Spacer(Modifier.height(6.dp))
     ReliabilityRow(
         "电池优化",
         if (batteryFree) "已设为不限制" else "受限制：系统可能推迟或停掉小组件的刷新",
