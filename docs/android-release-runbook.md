@@ -49,7 +49,7 @@ Android SDK 通常在 `$env:LOCALAPPDATA/Android/Sdk`；本机已使用 `build-t
 1. 检查当前工作区、附属 worktree 的状态和远端 `main`。主工作区可能有其他任务未提交的改动，不能全量暂存或重置它们。复用合适的干净 worktree，并显式指定后续命令的工作目录。
 2. `git fetch origin main` 后查看新增提交及安卓差异。干净工作区可 `git merge --ff-only origin/main`；有本任务修改时先确认不会覆盖，不做强制重置。
 3. 同时读取 Gradle 候选版本和正式清单。若已有人提交了更高版本的候选包，例如“build Android Vxx release candidate”，先检查它的 CI，**不要再凭空加一版**。
-4. 若没有候选版本，再按本次改动递增 `versionCode` 和 `versionName`。正式包的 code 必须高于需要覆盖的已安装测试包；测试包用过一个 code 后，正式版可能需要跳号。
+4. 若没有候选版本，再按本次改动递增 `versionCode` 和 `versionName`。正式包的 code 必须高于需要覆盖的已安装测试包；测试包用过一个 code 后，正式版可能需要跳号。同一次提交在 `android/release-notes.json` 里写好这个 versionCode 的更新说明：给学生看的话，1 到 20 条、每条不超过 200 字，从上一版 `sourceCommit` 到本次的 `git log -- android/` 里挑用户能感知的新功能、修复和取消的功能，不写内部重构。`server/tests/androidReleaseNotes.test.ts` 在没有说明时会让 CI 失败。
 5. 对照 `git diff` 确认发布内容。如果没有未发布的安卓变化，先如实说明，不能把已有版本冒称新版。
 
 不要拿本地 `assembleRelease` 输出当正式包。它可以验证编译，但正式分发必须取 GitHub 制品。也不要把临时 `-PwebDebug=true`、测试 `appUrl`、测试包名或 App 名参数带进正式构建。
@@ -133,7 +133,7 @@ try {
 1. 打开已有登录会话中的发布目录，确认没有同名文件。上传签名 APK，不覆盖旧版、不创建同名副本、不修改目录分享权限。
 2. 浏览器工具支持文件上传时，先读取它的上传说明，使用文件选择器传绝对路径；完成后确认上传任务成功，而不是仅看“已选择文件”。没有该能力或会话失效时明确说明具体缺项，不通过提取 Cookie 绕过登录。
    同一份字节第一次上传到网盘时声明的类型，决定以后下载返回的类型；覆盖上传、删除后重新上传都不会改变（网盘按哈希秒传，沿用第一次的文件）。类型必须是 `application/vnd.android.package-archive`，否则浏览器下载后没有 `.apk` 后缀、系统不当它是安装包。浏览器工具交给页面的文件类型是 `application/octet-stream` 时，先在页面里用 `new File([file], file.name, { type: "application/vnd.android.package-archive" })` 重新包装，再交给网盘的上传框。上传后用分享的文件列表核对 `download_url` 返回的 `Content-Type`。
-3. 创建 `$outDir/candidate.json`，字段与 `server/src/releases/android.json` 一致：`schemaVersion`、`versionCode`、`versionName`、`packageName`、`fileName`、`size`、`sha256`、`certificateSha256`、`sourceCommit`、`buildRun`。后两项是 **APK 来源提交/Android run**，不是稍后发布清单提交的 SHA 或 Linux run。
+3. 创建 `$outDir/candidate.json`，字段与 `server/src/releases/android.json` 一致：`schemaVersion`、`versionCode`、`versionName`、`packageName`、`fileName`、`size`、`sha256`、`certificateSha256`、`sourceCommit`、`buildRun`、`notes`。`sourceCommit`、`buildRun` 是 **APK 来源提交/Android run**，不是稍后发布清单提交的 SHA 或 Linux run。
 
 ```powershell
 $published = Get-Content server/src/releases/android.json -Raw | ConvertFrom-Json
@@ -148,12 +148,13 @@ $candidate = [ordered]@{
     certificateSha256 = $published.certificateSha256
     sourceCommit = $sourceSha
     buildRun = [long]$apkRunId
+    notes = @((Get-Content android/release-notes.json -Raw -Encoding UTF8 | ConvertFrom-Json).$versionCode)
 }
 $candidatePath = [IO.Path]::GetFullPath((Join-Path $outDir 'candidate.json'))
 [IO.File]::WriteAllText($candidatePath, ($candidate | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 ```
 
-`$versionCode` / `$versionName` 取自实际候选 Gradle 文件。使用无 BOM 的 UTF-8，避免 Windows 文本编码导致 JSON 解析失败。候选清单可以另加 `notes`（最多 20 条、每条不超过 200 字），App 的“应用更新”面板和更新后的提示里会显示。
+`$versionCode` / `$versionName` 取自实际候选 Gradle 文件。使用无 BOM 的 UTF-8，避免 Windows 文本编码导致 JSON 解析失败。`notes` 必填，取自 `android/release-notes.json` 里同一 versionCode 的条目，网页更新弹窗、App 的“应用更新”面板和更新后的“更新完成”提示都显示它；发布清单的 `notes` 与该文件不一致时 CI 失败。
 
    接着为上一版生成增量包。底版必须是当时发布到企业盘的那个签名 APK（`web/public/downloads/` 里上一版的副本或企业盘原文件），逐字节相同：
 

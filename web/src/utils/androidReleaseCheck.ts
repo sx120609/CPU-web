@@ -2,6 +2,8 @@ import type { AndroidUpdateRequirement } from './androidUpdatePolicy';
 
 export type AndroidReleaseInfo = {
   versionCode: number; versionName: string; fileName: string;
+  /** What this release changes, for the update dialog; empty when the manifest has none. */
+  notes?: string[];
   updateRequirement?: AndroidUpdateRequirement;
   serverTime?: string;
 };
@@ -31,8 +33,12 @@ export async function fetchAndroidRelease(fetcher: typeof fetch = fetch): Promis
       || typeof requirement.message !== 'string' || !requirement.message.trim()
       || typeof value.serverTime !== 'string' || !Number.isFinite(Date.parse(value.serverTime))
     )) throw new Error('更新期限信息无效');
+    // Notes only describe the release; malformed entries are left out rather than failing the check.
+    const notes = Array.isArray(value.notes)
+      ? value.notes.filter((note: unknown): note is string => typeof note === 'string' && note.trim().length > 0).slice(0, 20)
+      : [];
     return {
-      versionCode: value.versionCode, versionName: value.versionName, fileName: value.fileName,
+      versionCode: value.versionCode, versionName: value.versionName, fileName: value.fileName, notes,
       ...(requirement !== undefined ? { updateRequirement: requirement, serverTime: value.serverTime } : {}),
     };
   } finally {

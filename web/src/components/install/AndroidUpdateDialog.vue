@@ -48,8 +48,14 @@
       <p v-else-if="promptKind === 'widget'" class="update-lead">
         当前客户端版本较低，更新后可使用桌面小组件。
       </p>
-      <p v-else-if="requirementState === 'none' && !updateRequired" class="update-lead">近期小版本更新频繁，建议持续追更，获得更好体验。</p>
       <p v-if="pendingUpdateUnsupported" class="update-lead">旧安装包无法满足本次更新要求，请在浏览器下载最新版。</p>
+
+      <section v-if="releaseNotes.length" class="update-changes" aria-label="更新内容">
+        <h3 class="update-changes-title">更新内容</h3>
+        <ul>
+          <li v-for="note in releaseNotes" :key="note">{{ note }}</li>
+        </ul>
+      </section>
 
       <ul v-if="notes.length" class="update-notes">
         <li v-for="note in notes" :key="note">{{ note }}</li>
@@ -184,6 +190,9 @@ const headline = computed(() => {
   if (promptKind.value === "install") return "下载 Android 客户端";
   return "发现新版本";
 });
+/** What the new version changes, from the live manifest; not shown for a first install or a saved package. */
+const releaseNotes = computed(() =>
+  promptKind.value === "install" || saveOnly.value ? [] : (latestRelease.value.notes ?? []));
 const notes = computed(() => {
   const list: string[] = [];
   if (showLegacyMigrationNote.value) list.push("从 2.x 升级到新版架构不会覆盖旧客户端；确认新版可用后，可手动卸载旧版。");
@@ -609,6 +618,48 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
   flex: none;
   color: var(--cpu-text);
   font-variant-numeric: tabular-nums;
+}
+
+.update-changes {
+  width: 100%;
+  margin: 16px 0 0;
+  text-align: left;
+}
+
+.update-changes-title {
+  margin: 0 0 8px;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+  font-weight: 600;
+}
+
+.update-changes ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-s);
+  line-height: 1.6;
+}
+
+.update-changes li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.update-changes li + li {
+  margin-top: 6px;
+}
+
+.update-changes li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.65em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cpu-primary, currentColor);
 }
 
 .update-notes {

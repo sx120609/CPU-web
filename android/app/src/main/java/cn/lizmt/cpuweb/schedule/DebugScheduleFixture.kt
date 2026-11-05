@@ -107,6 +107,15 @@ object DebugScheduleFixture {
             if (published) listOf(ShareMeta(OWN_CODE, "我", SEMESTER, friend.courseCount, updatedAt = "2026-10-07T02:00:00.000Z")) else emptyList(),
         )
         openSharedCode = if (intent.getBooleanExtra("debugShared", false)) FRIEND_CODE else null
+        // "debugUpdate available|ready|updated": the update sheet or 更新完成 with sample notes.
+        intent.getStringExtra("debugUpdate")?.let { kind ->
+            activity.updates.debugSample(kind, listOf(
+                "以后可以在 App 里直接更新，只下载变化的部分；每次更新前后都会告诉你这次改了什么。",
+                "桌面小组件跨天不再停在前一天，重启手机或改了时间后也会自动刷新。",
+                "小组件设置里新增“保持小组件准时”，一键打开省电和自启动设置。",
+            ))
+            if (kind != "updated") activity.updateSheetOpen = true
+        }
     }
 
     private fun shareDocument(code: String, owner: String): JSONObject {

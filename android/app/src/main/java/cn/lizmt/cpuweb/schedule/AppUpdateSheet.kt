@@ -178,24 +178,37 @@ private fun SettingRow(title: String, detail: String? = null, checked: Boolean, 
     }
 }
 
+/** What a release changes, under a heading, one item per line. */
 @Composable
-private fun ReleaseNotes(notes: List<String>) {
+private fun ReleaseNotes(notes: List<String>, heading: String = "更新内容") {
     if (notes.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        notes.take(8).forEach { note -> Text("· $note", style = MaterialTheme.typography.bodySmall) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(heading, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        notes.forEach { note ->
+            Row {
+                Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 8.dp))
+                Text(note, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
     }
 }
 
-/** Once, after the app has updated itself: the new version and what changed. */
+/** Once after an update, however it was installed: the new version and what it brings. */
 @Composable
 internal fun JustUpdatedDialog(update: AppUpdater.JustUpdated, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } },
-        title = { Text("已更新到 ${update.versionName}") },
+        title = { Text("更新完成") },
         text = {
-            if (update.notes.isEmpty()) Text("新版已经装好，课表和设置都保留着。")
-            else ReleaseNotes(update.notes)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    if (update.notes.isEmpty()) "已更新到 ${update.versionName}，课表和设置都保留着。" else "已更新到 ${update.versionName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                ReleaseNotes(update.notes, heading = "这次带来")
+            }
         },
     )
 }

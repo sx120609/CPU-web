@@ -14,6 +14,11 @@ test('checks the live manifest without HTTP cache and sees a later release', asy
   code = 48;
   assert.equal((await fetchAndroidRelease(fetcher)).versionCode, 48);
 });
+test('carries the release notes for the update dialog and drops malformed entries', async () => {
+  const read = (value: unknown) => fetchAndroidRelease((async () => new Response(JSON.stringify({ code: 0, data: value }))) as typeof fetch);
+  assert.deepEqual((await read({ ...release(62), notes: ['小组件准时换日', '', 3, '应用内更新'] })).notes, ['小组件准时换日', '应用内更新']);
+  assert.deepEqual((await read(release(62))).notes, []);
+});
 test('rejects failures and malformed manifests rather than claiming the installed app is latest', async () => {
   for (const value of [{...release(47),packageName:'other.app'}, {...release(47),versionCode:'47'}, {...release(47),fileName:'wrong.apk'}, {...release(47),versionName:null}]) {
     await assert.rejects(fetchAndroidRelease((async () => new Response(JSON.stringify({code:0,data:value}))) as typeof fetch));

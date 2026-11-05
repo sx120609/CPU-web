@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import cn.lizmt.cpuweb.schedule.update.ApkDelta
+import cn.lizmt.cpuweb.schedule.update.PatchInfo
 import cn.lizmt.cpuweb.schedule.update.ReleaseClient
 import cn.lizmt.cpuweb.schedule.update.ReleaseInfo
 import cn.lizmt.cpuweb.schedule.update.UpdateDownloader
@@ -118,6 +119,7 @@ class AppUpdater private constructor(private val context: Context) {
 
     init {
         restoreReady()
+        announceIfUpdated()
         rememberRunVersion()
     }
 
@@ -171,6 +173,19 @@ class AppUpdater private constructor(private val context: Context) {
     /** Debug builds only: show a sample state for screenshots. */
     internal fun debugShow(sample: UpdateState) {
         if (BuildConfig.DEBUG) state = sample
+    }
+
+    /** Debug builds only: `available`, `ready` or `updated` with [notes], and no real check over it. */
+    internal fun debugSample(kind: String, notes: List<String>) {
+        if (!BuildConfig.DEBUG) return
+        lastCheckedAt = System.currentTimeMillis()
+        val release = ReleaseInfo(installedVersion + 1, "4.0.21", "CPU-Web-Android-V${installedVersion + 1}.apk",
+            12_700_000, "0".repeat(64), notes, "", PatchInfo(installedVersion, "0".repeat(64), 1_400_000, "0".repeat(64), ""))
+        when (kind) {
+            "available" -> state = UpdateState.Available(release)
+            "ready" -> state = UpdateState.Ready(release, viaPatch = true, savedBytes = 11_300_000)
+            "updated" -> justUpdated = JustUpdated(release.versionName, notes)
+        }
     }
 
     fun dismissJustUpdated() {
@@ -480,24 +495,47 @@ class AppUpdater private constructor(private val context: Context) {
         runCatching { host.startActivity(confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
-    /**
-     * The package was replaced. Only a higher version than the one that last
-     * ran counts as an update worth announcing; a reinstall of the same build,
-     * or the first run after an old version without this updater (which shows
-     * its own introduction), does not.
-     */
+    /** The package was replaced; the first start of the new version announces it (see [announceIfUpdated]). */
     internal fun onPackageReplaced() {
-        val notes = prefs.getString(KEY_PENDING_NOTES, null)
         clearStaged()
-        val previous = previousRunVersion
-        if (previous <= 0 || installedVersion <= previous) {
-            prefs.edit().remove(KEY_PENDING_NOTES).apply()
+        announceIfUpdated()
+    }
+
+    /**
+     * Records "updated to X" once per version, with what changed. Checked on every start, not
+     * only on the package-replaced broadcast, which some phones do not deliver to a stopped app.
+     * The notes come from the release this app installed itself; after an update from the
+     * download page or an older version without this updater they are read from the server.
+     */
+    private fun announceIfUpdated() {
+        val pending = prefs.getString(KEY_PENDING_NOTES, null)
+        val info = runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+        // The welcome screen's flag: an install that was used before (and not one whose data was cleared).
+        val usedBefore = context.getSharedPreferences("native_shell", Context.MODE_PRIVATE).getBoolean("welcome_seen_v4", false)
+        val updated = info != null &&
+            isUpdateRun(previousRunVersion, installedVersion, info.firstInstallTime, info.lastUpdateTime, usedBefore)
+        if (!updated || prefs.getInt(KEY_ANNOUNCED_VERSION, 0) >= installedVersion) {
+            if (pending != null) prefs.edit().remove(KEY_PENDING_NOTES).apply()
             return
         }
+        val notes = pendingNotesFor(pending, installedVersion)
         val record = JSONObject().put("versionName", installedVersionName).put("versionCode", installedVersion)
-            .put("notes", runCatching { JSONArray(notes ?: "[]") }.getOrDefault(JSONArray()))
-        prefs.edit().putString(KEY_JUST_UPDATED, record.toString()).remove(KEY_PENDING_NOTES).apply()
+            .put("notes", JSONArray(notes))
+        prefs.edit().putString(KEY_JUST_UPDATED, record.toString()).putInt(KEY_ANNOUNCED_VERSION, installedVersion)
+            .remove(KEY_PENDING_NOTES).apply()
         post { justUpdated = readJustUpdated() }
+        if (notes.isEmpty()) scope.launch { fillNotesFromServer() }
+    }
+
+    private fun fillNotesFromServer() {
+        val release = runCatching { client.fetch(installedVersion, context.packageName) }.getOrNull() ?: return
+        val notes = release.notes.filter { it.isNotBlank() }
+        if (release.versionCode != installedVersion || notes.isEmpty()) return
+        val raw = prefs.getString(KEY_JUST_UPDATED, null) ?: return
+        val record = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        if (record.optInt("versionCode") != installedVersion) return
+        prefs.edit().putString(KEY_JUST_UPDATED, record.put("notes", JSONArray(notes)).toString()).apply()
+        post { if (justUpdated != null) justUpdated = readJustUpdated() }
     }
 
     private fun rememberRunVersion() {
@@ -508,7 +546,8 @@ class AppUpdater private constructor(private val context: Context) {
     @android.annotation.SuppressLint("ApplySharedPref")
     private fun rememberPendingNotes() {
         val release = readyRelease() ?: return
-        prefs.edit().putString(KEY_PENDING_NOTES, JSONArray(release.notes).toString()).commit()
+        val record = JSONObject().put("versionCode", release.versionCode).put("notes", JSONArray(release.notes))
+        prefs.edit().putString(KEY_PENDING_NOTES, record.toString()).commit()
     }
 
     // endregion
@@ -625,6 +664,23 @@ class AppUpdater private constructor(private val context: Context) {
     data class JustUpdated(val versionName: String, val notes: List<String>)
 
     companion object {
+        /**
+         * Whether this start follows an update: a higher version than the one that last ran or,
+         * on the first start of a version with this updater, an install that was [usedBefore] and
+         * that this build replaced (a fresh install has both times equal).
+         */
+        internal fun isUpdateRun(
+            previousRun: Int, installed: Int, firstInstallTime: Long, lastUpdateTime: Long, usedBefore: Boolean,
+        ): Boolean = if (previousRun > 0) installed > previousRun else usedBefore && lastUpdateTime > firstInstallTime
+
+        /** The notes saved before installing, when they belong to [installed]. */
+        internal fun pendingNotesFor(raw: String?, installed: Int): List<String> {
+            val record = runCatching { JSONObject(raw ?: return emptyList()) }.getOrNull() ?: return emptyList()
+            if (record.optInt("versionCode") != installed) return emptyList()
+            val notes = record.optJSONArray("notes") ?: return emptyList()
+            return (0 until notes.length()).map { notes.optString(it).trim() }.filter { it.isNotEmpty() }
+        }
+
         private const val TAG = "CpuAppUpdater"
         private const val PREFS = "native_update"
         private const val KEY_AUTO_CHECK = "auto_check"
@@ -637,6 +693,7 @@ class AppUpdater private constructor(private val context: Context) {
         private const val KEY_READY_SAVED = "ready_saved"
         private const val KEY_PENDING_NOTES = "pending_notes"
         private const val KEY_JUST_UPDATED = "just_updated"
+        private const val KEY_ANNOUNCED_VERSION = "announced_version"
         private const val KEY_BASE_SHA = "base_sha"
         private const val KEY_WAITING_PERMISSION = "waiting_permission"
         private const val KEY_LAST_RUN_VERSION = "last_run_version"
