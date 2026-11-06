@@ -219,6 +219,12 @@ struct Index {
       });
       restoreNativeScheduleCache(context, this.scheduleStore);
       this.restoreSharedSchedules(context);
+      // 冷启动先摆出本机缓存的课表，不等网页加载完、确认登录；网页随后回答未登录时照常换成登录页。
+      if (this.selectedTab === 2 && this.scheduleStore.result) {
+        this.scheduleMounted = true;
+        this.nativeScheduleVisible = true;
+        this.scheduleLayerVisible = true;
+      }
     }
     this.sharingModel.attach((request: ShareApiRequest) => this.shareApi(request),
       (raw: string) => this.persistSharedSchedules(raw));
