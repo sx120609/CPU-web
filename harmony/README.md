@@ -43,7 +43,7 @@
 
 - 应用名：药大拾间（与 APP 备案的服务名称一致；改名须先完成备案变更。App 内按所选学校显示品牌，例如南医拾间）
 - 包名：`cn.lizmt.cpuweb`
-- 版本：`3.1.0 (31)`
+- 版本：`3.1.1 (32)`
 - 默认打开原生课表；后台会话入口：`https://cputime.cn/home`
 
 ## 构建
@@ -61,7 +61,7 @@ node --test harmony/tests/*.test.mjs ios_next/tests/web-schedule-bridge.test.mjs
 
 1. 用 DevEco Studio 打开 `harmony` 目录。
 2. 登录当前“药大拾间”开发者账号，并为 `cn.lizmt.cpuweb` 配置签名证书。
-3. 锁屏卡片需在 AppGallery Connect 的“开放能力接入”开启“锁屏卡片”，并重新生成包含该能力的发布 Profile。
+3. 锁屏卡片需在 AppGallery Connect 的“开放能力管理”开通“锁屏卡片”（2026-09-04 已审核通过），发布 Profile 必须在开通之后生成，`.p7b` 里应含 `com.huawei.service.screenlock.form`。3.1.0 及以前的包用的是 2026-09-03 的 Profile，不含该能力，锁屏卡片列表里不出现本应用；3.1.1 起使用 2026-11-06 生成的“药大拾间发布Profile-锁屏卡片”。
 4. 执行 `Build Hap(s) / APP(s)`。
 
 当前开发机命令行构建：
