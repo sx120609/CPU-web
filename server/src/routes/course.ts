@@ -7,13 +7,14 @@ import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { securityRateLimit } from "../middleware/securityRateLimit";
-import { getGrades, getPyfa, getSchedule } from "../services/jwxtTransport";
+import { getGrades, getPyfa, getSchedule, schoolIdForJwxtToken } from "../services/jwxtTransport";
 import type { GradeRow, PyfaCourse, ScheduleResult } from "../services/jwxtParser";
 import { classifyJwxtError, JWXT_AUTH_EXPIRED_CODE } from "../services/jwxtErrors";
 import { invalidateCourseCaches } from "../services/cacheInvalidation";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureForumAccessEnabled, forumAccessErrorMessage, resolveForumAccess } from "../services/forumAccess";
 import { requestSchoolId } from "../schools/modules";
+import { resolveSchoolId } from "../schools/registry";
 import {
   ensureCourseTeacher,
   loadVisibleRatings,
@@ -355,6 +356,11 @@ courseRouter.post("/sync", authRequired, securityRateLimit("course-sync", 6, 10 
     const schoolId = requestSchoolId(req);
     const token = req.browserSession?.jwxtToken || String(req.headers["x-jwxt-token"] || "");
     if (!token) throw jwxtAuthExpired("请先授权教务");
+    const tokenSchoolId = schoolIdForJwxtToken(token);
+    // 个人课程导入必须同时属于账号学校和目标目录；管理员切校也不能跨校导入。
+    if (tokenSchoolId !== resolveSchoolId(req.user!.schoolId) || tokenSchoolId !== schoolId) {
+      throw Errors.forbidden("教务授权所属学校与当前账号或课程目录学校不一致，请切换到对应学校的账号后再导入");
+    }
 
     const [grades, pyfa, current] = await Promise.all([
       settle(() => getGrades(token, { semester: "" })),
