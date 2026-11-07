@@ -3121,6 +3121,8 @@ model TreeholeStaff {
   isAdmin               Boolean   @default(false)
   hostCode              String? // 两位洞主编号，例如 "01"，同校内唯一；宣泄室虚拟 ID 取它做前缀
   intro                 String    @default("")
+  // 洞主自定的昵称，例如“轻轻”，展示为“小艾绒［轻轻］”；空串时展示“小艾绒 01”
+  hostNickname          String    @default("")
   enabled               Boolean   @default(true)
   presenceOverride      String? // online / offline；手动上下线，优先于排班
   presenceOverrideUntil DateTime?

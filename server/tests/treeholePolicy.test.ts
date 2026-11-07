@@ -21,6 +21,8 @@ import {
   shanghaiClock,
   shouldNotifyCounterpart,
   treeholeSessionRole,
+  hostDisplayName,
+  normalizeHostNickname,
 } from "../src/services/treeholePolicy";
 
 // 2026-10-26 是周一。北京时间 19:30 = UTC 11:30。
@@ -200,4 +202,24 @@ test("booking status turns into expired or done once its time passes", () => {
 test("room members are shown as numbered classmates", () => {
   assert.equal(roomMemberAlias(7), "同学 07");
   assert.equal(roomMemberAlias(120), "同学 120");
+});
+
+test("hosts show their nickname in brackets, or their number without one", () => {
+  assert.equal(hostDisplayName("02", "轻轻"), "小艾绒［轻轻］");
+  assert.equal(hostDisplayName("02", ""), "小艾绒 02");
+  assert.equal(hostDisplayName("02"), "小艾绒 02");
+  assert.equal(hostDisplayName(null, null), "小艾绒");
+});
+
+test("host nicknames are trimmed to the part inside the brackets", () => {
+  assert.deepEqual(normalizeHostNickname("轻轻"), { value: "轻轻" });
+  assert.deepEqual(normalizeHostNickname(" 小艾绒［轻轻］ "), { value: "轻轻" });
+  assert.deepEqual(normalizeHostNickname("小艾绒[轻轻]"), { value: "轻轻" });
+  assert.deepEqual(normalizeHostNickname("【轻轻】"), { value: "轻轻" });
+  assert.deepEqual(normalizeHostNickname("小艾绒"), { value: "" });
+  assert.deepEqual(normalizeHostNickname(""), { value: "" });
+  assert.ok("error" in normalizeHostNickname("一二三四五六七八九"));
+  assert.ok("error" in normalizeHostNickname("12"));
+  assert.ok("error" in normalizeHostNickname("加我微信"));
+  assert.ok("error" in normalizeHostNickname("轻轻13812345678"));
 });

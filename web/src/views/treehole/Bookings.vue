@@ -62,7 +62,7 @@
           <div class="th-day-hosts">
             <div v-for="host in hostsOfDay" :key="host.id" class="th-day-host">
               <div class="th-day-host-head">
-                <span class="th-host-avatar" data-hue="violet">{{ host.code }}</span>
+                <span class="th-host-avatar" data-hue="violet">{{ hostAvatarText(host) }}</span>
                 <div class="th-row-copy">
                   <div class="th-row-title">{{ host.name }}<em v-if="host.mine" class="th-chip">我</em></div>
                   <div v-if="host.intro" class="th-row-preview">{{ host.intro }}</div>
@@ -130,6 +130,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { treeholeApi, type TreeholeBooking, type TreeholeSchedule, type TreeholeScheduleHost } from "@/api/treehole";
 import {
+  hostAvatarText,
   beijingDayKey,
   bookingDayLabel,
   bookingStatusLabel,

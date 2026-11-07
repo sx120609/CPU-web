@@ -10,7 +10,9 @@ import {
   loadTreeholeConfig,
   notifyTreehole,
   parseTreeholeId,
+  checkedHostNickname,
   presenceOf,
+  syncHostRoomAlias,
   requireTreeholeAdmin,
   requireTreeholeStaffManager,
   saveTreeholeConfig,
@@ -109,7 +111,7 @@ const caseListSchema = z.object({ status: z.enum(["open", "following", "closed",
 async function staffLabels(ids: Array<number | null | undefined>) {
   const unique = [...new Set(ids.filter((id): id is number => typeof id === "number"))];
   const rows = unique.length
-    ? await prisma.treeholeStaff.findMany({ where: { id: { in: unique } }, select: { id: true, hostCode: true, isHost: true, isAdmin: true, user: { select: { nickname: true } } } })
+    ? await prisma.treeholeStaff.findMany({ where: { id: { in: unique } }, select: { id: true, hostCode: true, hostNickname: true, isHost: true, isAdmin: true, user: { select: { nickname: true } } } })
     : [];
   // 后台只有核心管理员能看，人员名单本来就对他们公开，这里带上昵称方便分清是谁。
   const map = new Map(rows.map((row) => [row.id, `${staffLabel(row)}（${row.user.nickname || "未设置昵称"}）`]));
@@ -410,7 +412,8 @@ function serializeStaff(staff: Prisma.TreeholeStaffGetPayload<{ include: { shift
     isHost: staff.isHost,
     isAdmin: staff.isAdmin,
     hostCode: staff.hostCode,
-    name: staff.isHost && staff.hostCode ? hostDisplayName(staff.hostCode) : null,
+    hostNickname: staff.hostNickname,
+    name: staff.isHost && staff.hostCode ? hostDisplayName(staff.hostCode, staff.hostNickname) : null,
     intro: staff.intro,
     enabled: staff.enabled,
     online: presence.online,
@@ -497,6 +500,7 @@ const updateStaffSchema = z.object({
   hostCode: z.string().trim().max(2).optional(),
   enabled: z.boolean().optional(),
   intro: z.string().trim().max(80).optional(),
+  hostNickname: z.string().max(40).optional(),
 });
 
 treeholeAdminRouter.patch("/staff/:id", validate(updateStaffSchema), async (req, res, next) => {
@@ -514,6 +518,7 @@ treeholeAdminRouter.patch("/staff/:id", validate(updateStaffSchema), async (req,
       let hostCode = existing.hostCode;
       if (body.hostCode !== undefined && body.hostCode !== "") hostCode = normalizeHostCode(body.hostCode);
       if (isHost && !hostCode) hostCode = await freeHostCode(tx, viewer.schoolId);
+      const hostNickname = body.hostNickname !== undefined ? await checkedHostNickname(tx, viewer.schoolId, staffId, body.hostNickname) : undefined;
       const saved = await tx.treeholeStaff.update({
         where: { id: staffId },
         data: {
@@ -522,10 +527,12 @@ treeholeAdminRouter.patch("/staff/:id", validate(updateStaffSchema), async (req,
           hostCode,
           enabled: body.enabled ?? existing.enabled,
           ...(body.intro !== undefined ? { intro: body.intro } : {}),
+          ...(hostNickname !== undefined ? { hostNickname } : {}),
           ...(body.enabled === false ? { presenceOverride: null, presenceOverrideUntil: null } : {}),
         },
         include: STAFF_INCLUDE,
       });
+      if (hostNickname !== undefined || hostCode !== existing.hostCode) await syncHostRoomAlias(tx, saved);
       await writeTreeholeAudit({ actor: viewer, action: "staff.update", targetType: "staff", targetId: staffId, detail: { ...body, hostCode } }, tx);
       return saved;
     });
@@ -676,7 +683,7 @@ treeholeAdminRouter.get("/stats", validate(statsSchema, "query"), async (req, re
       hosts: hosts
         .map((host) => ({
           code: host.hostCode,
-          name: hostDisplayName(host.hostCode),
+          name: hostDisplayName(host.hostCode, host.hostNickname),
           enabled: host.enabled,
           online: presenceOf(host, now).online,
           sessions: byHost.get(host.id) ?? 0,

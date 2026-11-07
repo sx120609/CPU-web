@@ -168,8 +168,25 @@ export function normalizeHostCode(raw: string) {
   return value.padStart(2, "0");
 }
 
-export function hostDisplayName(hostCode: string | null | undefined) {
+export const TREEHOLE_HOST_NICKNAME_MAX = 8;
+
+/** 有昵称时展示“小艾绒［轻轻］”，没有时展示“小艾绒 01”。 */
+export function hostDisplayName(hostCode: string | null | undefined, nickname?: string | null) {
+  const name = String(nickname || "").trim();
+  if (name) return `小艾绒［${name}］`;
   return hostCode ? `小艾绒 ${hostCode}` : "小艾绒";
+}
+
+/** 整理洞主填的昵称：去掉多余的“小艾绒”前缀和括号，只留括号里的部分。不合规时返回错误文案。 */
+export function normalizeHostNickname(raw: string): { value: string } | { error: string } {
+  let value = String(raw || "").normalize("NFKC").replace(/\s+/gu, " ").trim();
+  value = value.replace(/^小艾绒\s*/u, "").replace(/^[\[［【(（「『〔]+/u, "").replace(/[\]］】)）」』〕]+$/u, "").trim();
+  if (!value) return { value: "" };
+  if ([...value].length > TREEHOLE_HOST_NICKNAME_MAX) return { error: `昵称最多 ${TREEHOLE_HOST_NICKNAME_MAX} 个字` };
+  if (/[\[\]［］【】<>]/u.test(value)) return { error: "昵称里不能有括号" };
+  if (/^\d+$/u.test(value)) return { error: "昵称不能只有数字" };
+  if (looksLikeContactExchange(value) || /\d{5,}/u.test(value)) return { error: "昵称里不能有联系方式" };
+  return { value };
 }
 
 /** 宣泄室次序编号：优先复用在群成员没有占用的最小号，没有空号就顺延。 */

@@ -243,6 +243,7 @@ export interface TreeholeHostOverview {
     id: number;
     code: string;
     name: string;
+    hostNickname: string;
     intro: string;
     isAdmin: boolean;
     presence: TreeholePresence;
@@ -326,6 +327,7 @@ export interface TreeholeStaffRow {
   isHost: boolean;
   isAdmin: boolean;
   hostCode: string | null;
+  hostNickname: string;
   name: string | null;
   intro: string;
   enabled: boolean;
@@ -423,7 +425,8 @@ export const treeholeApi = {
   hostOverview: () => request.get<TreeholeHostOverview>("/treehole/host/overview"),
   hostSessions: (params: { status: "active" | "ended"; page: number }) => request.get<Page<TreeholeSession>>("/treehole/host/sessions", params),
   setPresence: (action: "online" | "offline") => request.post<TreeholePresence>("/treehole/host/presence", { action }),
-  updateHostProfile: (intro: string) => request.patch<{ intro: string }>("/treehole/host/profile", { intro }),
+  updateHostProfile: (payload: { intro?: string; hostNickname?: string }) =>
+    request.patch<{ intro: string; hostNickname: string; name: string }>("/treehole/host/profile", payload),
 
   room: (id: number) => request.get<TreeholeRoomDetail>(`/treehole/rooms/${id}`),
   roomMessages: (id: number, params: { after?: number; before?: number }) =>
@@ -451,7 +454,7 @@ export const treeholeApi = {
   revealIdentity: (id: number) => request.get<TreeholeIdentity>(`/treehole/admin/reveals/${id}/identity`),
   staff: () => request.get<TreeholeStaffRow[]>("/treehole/admin/staff"),
   appointStaff: (payload: { username: string; isHost: boolean; isAdmin: boolean; hostCode: string }) => request.post<TreeholeStaffRow>("/treehole/admin/staff", payload),
-  updateStaff: (id: number, payload: Partial<{ isHost: boolean; isAdmin: boolean; hostCode: string; enabled: boolean; intro: string }>) => request.patch<TreeholeStaffRow>(`/treehole/admin/staff/${id}`, payload),
+  updateStaff: (id: number, payload: Partial<{ isHost: boolean; isAdmin: boolean; hostCode: string; hostNickname: string; enabled: boolean; intro: string }>) => request.patch<TreeholeStaffRow>(`/treehole/admin/staff/${id}`, payload),
   saveShifts: (id: number, shifts: TreeholeShift[]) => request.put<TreeholeStaffRow>(`/treehole/admin/staff/${id}/shifts`, { shifts }),
   adminRooms: () => request.get<TreeholeAdminRoom[]>("/treehole/admin/rooms"),
   stats: (days: number) => request.get<TreeholeStats>("/treehole/admin/stats", { days }),

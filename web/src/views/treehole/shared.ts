@@ -66,6 +66,12 @@ export function parseMinute(text: string) {
   return minute >= 0 && minute <= 24 * 60 ? minute : null;
 }
 
+/** 头像里的字：有昵称取昵称第一个字，没有就用编号。 */
+export function hostAvatarText(host: { code?: string | null; name: string }) {
+  const nickname = /［(.+)］/u.exec(host.name)?.[1];
+  return nickname ? [...nickname][0] : host.code || "艾";
+}
+
 export function shiftText(shift: TreeholeShift) {
   return `${WEEKDAYS[shift.weekday - 1]} ${minuteText(shift.startMinute)}–${minuteText(shift.endMinute)}`;
 }

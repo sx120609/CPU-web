@@ -50,7 +50,7 @@ function slotText(startAt: Date) {
   return BEIJING_FORMAT.format(startAt);
 }
 
-type BookingWithHost = Prisma.TreeholeBookingGetPayload<{ include: { host: { select: { id: true; hostCode: true; userId: true } } } }>;
+type BookingWithHost = Prisma.TreeholeBookingGetPayload<{ include: { host: { select: { id: true; hostCode: true; hostNickname: true; userId: true } } } }>;
 
 function serializeBooking(booking: BookingWithHost, as: "visitor" | "host" | "admin", place: string, now = new Date()) {
   return {
@@ -61,7 +61,7 @@ function serializeBooking(booking: BookingWithHost, as: "visitor" | "host" | "ad
     place,
     note: booking.note,
     // 学生看到的是小艾绒编号；小艾绒和后台看到的是这次预约的虚拟 ID，不是实名。
-    host: { id: booking.host.id, code: booking.host.hostCode || "", name: hostDisplayName(booking.host.hostCode) },
+    host: { id: booking.host.id, code: booking.host.hostCode || "", name: hostDisplayName(booking.host.hostCode, booking.host.hostNickname) },
     alias: as === "visitor" ? null : booking.alias,
     rejectReason: booking.rejectReason,
     cancelledBy: booking.cancelledBy,
@@ -72,7 +72,7 @@ function serializeBooking(booking: BookingWithHost, as: "visitor" | "host" | "ad
   };
 }
 
-const HOST_SELECT = { select: { id: true, hostCode: true, userId: true } } as const;
+const HOST_SELECT = { select: { id: true, hostCode: true, hostNickname: true, userId: true } } as const;
 
 async function ensureCanBook(viewer: TreeholeViewer) {
   await requireConsent(viewer.userId);
@@ -109,7 +109,7 @@ treeholeBookingRouter.get("/schedule", async (_req, res, next) => {
       hosts: hosts.map((host) => ({
         id: host.id,
         code: host.hostCode || "",
-        name: hostDisplayName(host.hostCode),
+        name: hostDisplayName(host.hostCode, host.hostNickname),
         intro: host.intro,
         online: presenceOf(host, now).online,
         mine: host.userId === viewer.userId,
@@ -259,7 +259,7 @@ treeholeBookingRouter.post("/bookings/:id/confirm", async (req, res, next) => {
     const config = await loadTreeholeConfig(viewer.schoolId);
     await notifyTreehole([booking.visitorId], {
       title: "线下倾诉预约成功",
-      content: `${hostDisplayName(booking.host.hostCode)} 确认了 ${slotText(booking.startAt)} 的预约，地点：${bookingPlaceOf(config)}。`,
+      content: `${hostDisplayName(booking.host.hostCode, booking.host.hostNickname)} 确认了 ${slotText(booking.startAt)} 的预约，地点：${bookingPlaceOf(config)}。`,
       link: "/treehole/bookings",
       type: "treehole-booking-confirmed",
       level: "strong",
@@ -320,7 +320,7 @@ treeholeBookingRouter.post("/bookings/:id/cancel", validate(reasonSchema), async
       }
       : {
         title: "线下倾诉预约被取消",
-        content: `${hostDisplayName(booking.host.hostCode)} 取消了 ${when} 的预约：${req.body.reason}。可以换个时间再约。`,
+        content: `${hostDisplayName(booking.host.hostCode, booking.host.hostNickname)} 取消了 ${when} 的预约：${req.body.reason}。可以换个时间再约。`,
         link: "/treehole/bookings",
         type: "treehole-booking-cancelled",
         level: "strong",

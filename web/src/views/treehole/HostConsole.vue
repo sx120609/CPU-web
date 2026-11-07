@@ -170,6 +170,17 @@
           </ul>
         </section>
         <section class="th-group">
+          <h2 class="th-h2">我的昵称</h2>
+          <p class="th-sub">同学看到的名字是“小艾绒［昵称］”，留空就显示“{{ `小艾绒 ${overview.profile.code}` }}”。最多 8 个字，不要用能认出你的名字。</p>
+          <div class="th-intro-form">
+            <el-input v-model="nickname" maxlength="8" show-word-limit placeholder="例如：轻轻">
+              <template #prepend>小艾绒［</template>
+              <template #append>］</template>
+            </el-input>
+            <el-button type="primary" :loading="savingNickname" @click="saveNickname">保存</el-button>
+          </div>
+        </section>
+        <section class="th-group">
           <h2 class="th-h2">对同学展示的简介</h2>
           <p class="th-sub">同学预约时会看到，例如擅长倾听的话题。不要写能认出你的信息。</p>
           <div class="th-intro-form">
@@ -241,6 +252,8 @@ const switching = ref(false);
 const claiming = ref<number | null>(null);
 const intro = ref("");
 const savingIntro = ref(false);
+const nickname = ref("");
+const savingNickname = ref(false);
 const endedSessions = ref<TreeholeSession[]>([]);
 const endedTotal = ref(0);
 const endedPage = ref(1);
@@ -289,6 +302,7 @@ async function load(silent = false) {
     overview.value = result;
     if (!silent) {
       intro.value = result.profile.intro;
+      nickname.value = result.profile.hostNickname;
       endedPage.value = 1;
       const page = await treeholeApi.hostSessions({ status: "ended", page: 1 });
       endedSessions.value = page.list;
@@ -371,10 +385,22 @@ async function cancelBooking(id: number) {
 async function saveIntro() {
   savingIntro.value = true;
   try {
-    await treeholeApi.updateHostProfile(intro.value.trim());
+    await treeholeApi.updateHostProfile({ intro: intro.value.trim() });
     ElMessage.success("已保存");
   } finally {
     savingIntro.value = false;
+  }
+}
+
+async function saveNickname() {
+  savingNickname.value = true;
+  try {
+    const saved = await treeholeApi.updateHostProfile({ hostNickname: nickname.value.trim() });
+    nickname.value = saved.hostNickname;
+    if (overview.value) overview.value.profile = { ...overview.value.profile, hostNickname: saved.hostNickname, name: saved.name };
+    ElMessage.success(`已保存，同学看到的是“${saved.name}”`);
+  } finally {
+    savingNickname.value = false;
   }
 }
 

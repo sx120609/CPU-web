@@ -7,6 +7,7 @@ import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import {
   hostDisplayName,
+  normalizeHostNickname,
   resolveHostPresence,
   TREEHOLE_CONSENT_VERSION,
 } from "./treeholePolicy";
@@ -161,9 +162,9 @@ export function requireTreeholeStaffManager(viewer: TreeholeViewer) {
   if (!viewer.isAdmin && !viewer.isSiteAdmin) throw Errors.forbidden("只有树洞核心管理员或站点管理员可以管理人员");
 }
 
-export function staffLabel(staff: Pick<TreeholeStaff, "hostCode" | "isHost" | "isAdmin"> | null | undefined) {
+export function staffLabel(staff: Pick<TreeholeStaff, "hostCode" | "hostNickname" | "isHost" | "isAdmin"> | null | undefined) {
   if (!staff) return "已移除的人员";
-  if (staff.isHost && staff.hostCode) return hostDisplayName(staff.hostCode);
+  if (staff.isHost && staff.hostCode) return hostDisplayName(staff.hostCode, staff.hostNickname);
   return staff.isAdmin ? "核心管理员" : "树洞人员";
 }
 
@@ -182,7 +183,7 @@ export function publicHost(staff: TreeholeStaffWithShifts, now = new Date()) {
   return {
     id: staff.id,
     code: staff.hostCode || "",
-    name: hostDisplayName(staff.hostCode),
+    name: hostDisplayName(staff.hostCode, staff.hostNickname),
     intro: staff.intro,
     online: presence.online,
     onlineUntil: presence.online ? presence.until : null,
@@ -352,4 +353,25 @@ export function parseTreeholeId(raw: unknown, label = "编号") {
   const id = Number(raw);
   if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest(`${label}不正确`);
   return id;
+}
+
+/** 校验并查重洞主昵称：同校在任洞主之间不能重名。返回整理后的昵称（空串表示不用昵称）。 */
+export async function checkedHostNickname(tx: Prisma.TransactionClient, schoolId: string, staffId: number, raw: string) {
+  const result = normalizeHostNickname(raw);
+  if ("error" in result) throw Errors.badRequest(result.error);
+  if (!result.value) return "";
+  const taken = await tx.treeholeStaff.findFirst({
+    where: { schoolId, id: { not: staffId }, enabled: true, hostNickname: { equals: result.value, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (taken) throw Errors.conflict("这个昵称已经有小艾绒在用了");
+  return result.value;
+}
+
+/** 洞主改名后，同步他在宣泄室里的群内名字。 */
+export async function syncHostRoomAlias(tx: Prisma.TransactionClient, staff: Pick<TreeholeStaff, "id" | "hostCode" | "hostNickname">) {
+  await tx.treeholeRoomMember.updateMany({
+    where: { staffId: staff.id, role: "host" },
+    data: { alias: hostDisplayName(staff.hostCode, staff.hostNickname) },
+  });
 }

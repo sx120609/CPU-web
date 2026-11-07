@@ -235,7 +235,7 @@ treeholeRoomRouter.post("/rooms/:id/enter", async (req, res, next) => {
       if (existing) return existing;
       // 进入宣泄室的洞主自动成为群管理员。
       const created = await tx.treeholeRoomMember.create({
-        data: { roomId, userId: viewer.userId, role: "host", staffId: staff.id, alias: hostDisplayName(staff.hostCode) },
+        data: { roomId, userId: viewer.userId, role: "host", staffId: staff.id, alias: hostDisplayName(staff.hostCode, staff.hostNickname) },
       });
       await postRoomNotice(tx, roomId, created.id, `${created.alias} 来到了宣泄室`);
       return created;
@@ -287,14 +287,14 @@ treeholeRoomRouter.get("/rooms/:id/members", async (req, res, next) => {
     if (!canModerate) throw Errors.forbidden("只有群管理员可以查看成员");
     const members = await prisma.treeholeRoomMember.findMany({ where: { roomId: room.id, status: "active" }, orderBy: [{ role: "asc" }, { seq: "asc" }, { id: "asc" }] });
     const recommenderIds = [...new Set(members.map((member) => member.recommendedById).filter((id): id is number => typeof id === "number"))];
-    const recommenders = recommenderIds.length ? await prisma.treeholeStaff.findMany({ where: { id: { in: recommenderIds } }, select: { id: true, hostCode: true } }) : [];
-    const recommenderCode = new Map(recommenders.map((row) => [row.id, row.hostCode]));
+    const recommenders = recommenderIds.length ? await prisma.treeholeStaff.findMany({ where: { id: { in: recommenderIds } }, select: { id: true, hostCode: true, hostNickname: true } }) : [];
+    const recommenderOf = new Map(recommenders.map((row) => [row.id, row]));
     ok(res, members.map((member) => ({
       id: member.id,
       alias: member.alias,
       role: member.role,
       seq: member.seq,
-      recommendedBy: member.recommendedById ? hostDisplayName(recommenderCode.get(member.recommendedById)) : null,
+      recommendedBy: member.recommendedById ? hostDisplayName(recommenderOf.get(member.recommendedById)?.hostCode, recommenderOf.get(member.recommendedById)?.hostNickname) : null,
       joinedAt: member.joinedAt,
       mine: member.userId === viewer.userId,
     })));
@@ -423,7 +423,7 @@ treeholeRoomRouter.post("/rooms", validate(createRoomSchema), async (req, res, n
         data: { schoolId: viewer.schoolId, name: body.name, category: body.category, intro: body.intro, createdById: staff.id },
       });
       const host = await tx.treeholeRoomMember.create({
-        data: { roomId: created.id, userId: viewer.userId, role: "host", staffId: staff.id, alias: hostDisplayName(staff.hostCode) },
+        data: { roomId: created.id, userId: viewer.userId, role: "host", staffId: staff.id, alias: hostDisplayName(staff.hostCode, staff.hostNickname) },
       });
       await postRoomNotice(tx, created.id, host.id, `${host.alias} 开设了「${created.name}」`);
       await writeTreeholeAudit({ actor: viewer, action: "room.create", targetType: "room", targetId: created.id, detail: { name: created.name, category: created.category } }, tx);
@@ -461,7 +461,7 @@ treeholeRoomRouter.post("/rooms/:id/join", validate(joinSchema), async (req, res
       // 洞主进来就是群管理员，和 /enter 相同。
       if (viewer.isHost && viewer.staff) {
         const host = await tx.treeholeRoomMember.create({
-          data: { roomId, userId: viewer.userId, role: "host", staffId: viewer.staff.id, alias: hostDisplayName(viewer.staff.hostCode) },
+          data: { roomId, userId: viewer.userId, role: "host", staffId: viewer.staff.id, alias: hostDisplayName(viewer.staff.hostCode, viewer.staff.hostNickname) },
         });
         await postRoomNotice(tx, roomId, host.id, `${host.alias} 来到了宣泄室`);
         return host;

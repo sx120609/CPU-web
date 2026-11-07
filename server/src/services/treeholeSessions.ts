@@ -62,7 +62,7 @@ export function serializeSession(session: SessionWithHost, role: TreeholeSession
     host: host && presence ? {
       id: host.id,
       code: host.hostCode || "",
-      name: hostDisplayName(host.hostCode),
+      name: hostDisplayName(host.hostCode, host.hostNickname),
       intro: host.intro,
       online: presence.online,
       available: host.enabled && host.isHost,

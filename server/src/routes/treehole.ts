@@ -13,7 +13,9 @@ import {
   loadTreeholeViewer,
   notifyTreehole,
   parseTreeholeId,
+  checkedHostNickname,
   presenceOf,
+  syncHostRoomAlias,
   publicHelpChannels,
   publicHost,
   readTreeholeImage,
@@ -350,7 +352,7 @@ treeholeRouter.post("/sessions/:id/claim", async (req, res, next) => {
     const session = await prisma.treeholeSession.findUniqueOrThrow({ where: { id: sessionId } });
     await notifyTreehole([session.visitorId], {
       title: "你的留言有小艾绒认领了",
-      content: `${hostDisplayName(staff.hostCode)} 认领了你的留言，回复后会提醒你。`,
+      content: `${hostDisplayName(staff.hostCode, staff.hostNickname)} 认领了你的留言，回复后会提醒你。`,
       link: `/treehole/session/${sessionId}`,
       type: "treehole-claimed",
       extra: { sessionId },
@@ -627,7 +629,7 @@ treeholeRouter.post("/sessions/:id/tag", validate(tagSchema), async (req, res, n
       const urgencyLabel = body.crisis!.urgency === "urgent" ? "紧急" : body.crisis!.urgency === "high" ? "较高" : "一般";
       await notifyTreehole(admins, {
         title: `树洞高危告警（${urgencyLabel}）`,
-        content: `${hostDisplayName(staff.hostCode)} 把一次会话标记为高危转介：${body.crisis!.crisisType}。请尽快进入后台评估。`,
+        content: `${hostDisplayName(staff.hostCode, staff.hostNickname)} 把一次会话标记为高危转介：${body.crisis!.crisisType}。请尽快进入后台评估。`,
         link: `/treehole/admin?tab=cases&case=${crisis.id}`,
         type: "treehole-crisis",
         level: "strong",
@@ -636,7 +638,7 @@ treeholeRouter.post("/sessions/:id/tag", validate(tagSchema), async (req, res, n
       if (body.crisis!.requestReveal) {
         await notifyTreehole(admins, {
           title: "树洞实名溯源审批申请",
-          content: `${hostDisplayName(staff.hostCode)} 申请溯源一位高危来访者，需要两名核心管理员同意。`,
+          content: `${hostDisplayName(staff.hostCode, staff.hostNickname)} 申请溯源一位高危来访者，需要两名核心管理员同意。`,
           link: `/treehole/admin?tab=cases&case=${crisis.id}`,
           type: "treehole-reveal-request",
           level: "strong",
@@ -717,7 +719,8 @@ treeholeRouter.get("/host/overview", async (_req, res, next) => {
       profile: {
         id: staff.id,
         code: staff.hostCode,
-        name: hostDisplayName(staff.hostCode),
+        name: hostDisplayName(staff.hostCode, staff.hostNickname),
+        hostNickname: staff.hostNickname,
         intro: staff.intro,
         isAdmin: viewer.isAdmin,
         presence: {
@@ -774,14 +777,29 @@ treeholeRouter.post("/host/presence", validate(presenceSchema), async (req, res,
   }
 });
 
-const profileSchema = z.object({ intro: z.string().trim().max(80, "简介最多 80 字") });
+const profileSchema = z.object({
+  intro: z.string().trim().max(80, "简介最多 80 字").optional(),
+  hostNickname: z.string().max(40).optional(),
+});
 
 treeholeRouter.patch("/host/profile", validate(profileSchema), async (req, res, next) => {
   try {
     const viewer = viewerOf(res);
     const staff = requireTreeholeHost(viewer);
-    await prisma.treeholeStaff.update({ where: { id: staff.id }, data: { intro: req.body.intro } });
-    ok(res, { intro: req.body.intro });
+    const body = req.body as z.infer<typeof profileSchema>;
+    const saved = await prisma.$transaction(async (tx) => {
+      const hostNickname = body.hostNickname !== undefined ? await checkedHostNickname(tx, viewer.schoolId, staff.id, body.hostNickname) : undefined;
+      const row = await tx.treeholeStaff.update({
+        where: { id: staff.id },
+        data: { ...(body.intro !== undefined ? { intro: body.intro } : {}), ...(hostNickname !== undefined ? { hostNickname } : {}) },
+      });
+      if (hostNickname !== undefined && hostNickname !== staff.hostNickname) {
+        await syncHostRoomAlias(tx, row);
+        await writeTreeholeAudit({ actor: viewer, action: "staff.nickname", targetType: "staff", targetId: staff.id, detail: { hostNickname } }, tx);
+      }
+      return row;
+    });
+    ok(res, { intro: saved.intro, hostNickname: saved.hostNickname, name: hostDisplayName(saved.hostCode, saved.hostNickname) });
   } catch (error) {
     next(error);
   }

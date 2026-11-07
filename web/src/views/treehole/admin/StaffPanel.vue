@@ -36,7 +36,10 @@
               <em v-if="row.isHost" class="th-chip is-brand">洞主</em>
               <em v-if="row.isAdmin" class="th-chip is-violet">核心管理员</em>
             </td>
-            <td>{{ row.hostCode || "—" }}</td>
+            <td>
+              <div>{{ row.hostCode || "—" }}</div>
+              <div v-if="row.hostNickname" class="th-muted">［{{ row.hostNickname }}］</div>
+            </td>
             <td>
               <em v-if="!row.enabled" class="th-chip">已停用</em>
               <span v-else-if="row.isHost"><span class="th-dot" :class="{ 'is-on': row.online }" /> {{ row.online ? "在岗" : "离岗" }}</span>
@@ -65,6 +68,10 @@
       <div v-if="edit.isHost" class="th-field">
         <label for="th-edit-code">洞主编号</label>
         <el-input id="th-edit-code" v-model="edit.hostCode" maxlength="2" placeholder="01–99" />
+      </div>
+      <div v-if="edit.isHost" class="th-field">
+        <label for="th-edit-nickname">昵称（显示为“小艾绒［昵称］”，留空显示编号）</label>
+        <el-input id="th-edit-nickname" v-model="edit.hostNickname" maxlength="8" show-word-limit placeholder="例如：轻轻" />
       </div>
       <div class="th-field">
         <label for="th-edit-intro">对来访者展示的简介</label>
@@ -113,7 +120,7 @@ const form = reactive({ username: "", isHost: true, isAdmin: false, hostCode: ""
 const editOpen = ref(false);
 const shiftsOpen = ref(false);
 const editing = ref<TreeholeStaffRow | null>(null);
-const edit = reactive({ isHost: false, isAdmin: false, hostCode: "", intro: "", enabled: true });
+const edit = reactive({ isHost: false, isAdmin: false, hostCode: "", hostNickname: "", intro: "", enabled: true });
 const shiftDraft = ref<Array<{ weekday: number; start: string; end: string }>>([]);
 
 async function load() {
@@ -134,7 +141,7 @@ async function appoint() {
 
 function openEdit(row: TreeholeStaffRow) {
   editing.value = row;
-  Object.assign(edit, { isHost: row.isHost, isAdmin: row.isAdmin, hostCode: row.hostCode || "", intro: row.intro, enabled: row.enabled });
+  Object.assign(edit, { isHost: row.isHost, isAdmin: row.isAdmin, hostCode: row.hostCode || "", hostNickname: row.hostNickname || "", intro: row.intro, enabled: row.enabled });
   editOpen.value = true;
 }
 
@@ -142,7 +149,7 @@ async function saveEdit() {
   if (!editing.value) return;
   saving.value = true;
   try {
-    await treeholeApi.updateStaff(editing.value.id, { ...edit, hostCode: edit.hostCode.trim(), intro: edit.intro.trim() });
+    await treeholeApi.updateStaff(editing.value.id, { ...edit, hostCode: edit.hostCode.trim(), hostNickname: edit.hostNickname.trim(), intro: edit.intro.trim() });
     editOpen.value = false;
     ElMessage.success("已保存");
     await load();
