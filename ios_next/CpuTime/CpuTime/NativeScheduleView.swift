@@ -64,6 +64,8 @@ struct NativeScheduleView: View {
         isBackgroundPreview: Bool = false
     ) {
         _store = ObservedObject(wrappedValue: store)
+        // The rows follow this timetable's own periods (15 at NJMU).
+        if !store.isReadOnly { ScheduleSlot.timetable = store }
         self.onDeviceSettings = onDeviceSettings
         self.onLogin = onLogin
         self.onDormSchedule = onDormSchedule
@@ -499,7 +501,7 @@ struct NativeScheduleView: View {
                 let start = course.startSlot ?? cell.bigSlot * 2 - 1, end = course.endSlot ?? cell.bigSlot * 2
                 func copy(_ name: String, _ start: Int, _ end: Int) -> NativeScheduleCourse {
                     NativeScheduleCourse(name: name, teacher: "陈老师", weeks: course.weeks, weekList: course.weekList,
-                                         location: "实验楼 \(301 + index)", startSlot: min(12, start), endSlot: min(12, end))
+                                         location: "实验楼 \(301 + index)", startSlot: min(ScheduleSlot.all.count, start), endSlot: min(ScheduleSlot.all.count, end))
                 }
                 switch index % 3 {
                 case 0: return copy(course.name, start, end)
@@ -2995,8 +2997,37 @@ struct ScheduleSlot {
     let start: String
     let end: String
 
-    static let all = NativeSchedulePeriod.bundledTimetable.map {
-        ScheduleSlot(number: $0.number, start: $0.startTime, end: $0.endTime)
+    /// The periods of the signed-in user's timetable, in order from 1. Schools
+    /// differ (NJMU has 15, CPU 12), so grids, editors and exports read this
+    /// instead of a fixed table. It is read from the timetable's latest
+    /// snapshot on every access, so a grid drawn for a new snapshot already has
+    /// that school's rows; a snapshot without periods keeps the built-in twelve.
+    static var all: [ScheduleSlot] {
+        let periods = timetable?.latestSnapshot?.periods ?? []
+        if let cached, cached.periods == periods { return cached.slots }
+        let next = slots(from: periods)
+        let value = next.isEmpty ? builtIn : next
+        cached = (periods, value)
+        return value
+    }
+
+    /// The user's own timetable (not a read-only shared one); set by the
+    /// timetable page that shows it.
+    static weak var timetable: NativeScheduleStore?
+    private static let builtIn = slots(from: NativeSchedulePeriod.bundledTimetable)
+    private static var cached: (periods: [NativeSchedulePeriod], slots: [ScheduleSlot])?
+
+    /// Periods numbered 1, 2, 3… without gaps: the grid code indexes by number.
+    static func slots(from periods: [NativeSchedulePeriod]) -> [ScheduleSlot] {
+        var byNumber: [Int: NativeSchedulePeriod] = [:]
+        for period in periods where (1...48).contains(period.number) && byNumber[period.number] == nil {
+            byNumber[period.number] = period
+        }
+        var result: [ScheduleSlot] = []
+        while let period = byNumber[result.count + 1] {
+            result.append(ScheduleSlot(number: period.number, start: period.startTime, end: period.endTime))
+        }
+        return result
     }
 
 }
@@ -3653,7 +3684,7 @@ private struct NativeCourseEditorSheet: View {
     }
 
     /// The bell schedule the editor's period chips show.
-    private static let periodClocks = ScheduleSlot.all.map { (number: $0.number, start: $0.start, end: $0.end) }
+    private static var periodClocks: [(number: Int, start: String, end: String)] { ScheduleSlot.all.map { (number: $0.number, start: $0.start, end: $0.end) } }
 
     var body: some View {
         NavigationStack {

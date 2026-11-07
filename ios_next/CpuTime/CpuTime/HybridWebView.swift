@@ -66,6 +66,46 @@ struct NativeLoginResponse: Sendable {
     let error: String
     let account: String
     let canAccessAdmin: Bool
+    /// The school asks this device to confirm the login by scanning `mfaQr`
+    /// (a `data:` image) in another app; the page polls `nativeMfaPoll`.
+    var needMfa = false
+    var mfaQr = ""
+    var mfaGuide: NativeMfaGuide?
+    /// `nativeMfaPoll`: waiting / scanned / expired / failed / done / retry.
+    var status = ""
+    /// The school the Web login currently signs in to (`X-CPU-School`).
+    var school: NativeLoginSchool?
+    /// Only `nativeLoginSchools` fills this; an older site leaves it empty.
+    var schools: [NativeLoginSchool] = []
+}
+
+/// One entry of `/api/schools` as the Web login bridge reports it.
+struct NativeLoginSchool: Sendable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let brandName: String
+    /// `false` for a school without unified-identity login: account login only.
+    let ssoLogin: Bool
+
+    init?(_ value: Any?) {
+        guard let raw = value as? [String: Any] else { return nil }
+        let id = String(describing: raw["id"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, id != "<null>" else { return nil }
+        self.id = id
+        let name = (raw["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        self.name = name.isEmpty ? id : name
+        let brand = (raw["brandName"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        self.brandName = brand.isEmpty ? "药大拾间" : brand
+        self.ssoLogin = raw["ssoLogin"] as? Bool ?? true
+    }
+}
+
+/// Which app scans a school's verification code (server `SchoolMfaGuide`).
+struct NativeMfaGuide: Sendable, Equatable {
+    let appName: String
+    /// A link that opens the scanning app, for example `weixin://`.
+    let appURL: String
+    let hint: String
 }
 
 struct NativeAssistantAction: Codable, Sendable, Identifiable {
@@ -1128,7 +1168,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             return JSON.stringify({ok: false, error: '登录服务正在启动，请稍候再试。'});
           }
           try {
-            return JSON.stringify(await bridge.nativeSsoLogin(username, password, captcha, remember));
+            // {nativeMfa: true}: this page shows a school's scan-to-verify QR
+            // code itself, so the Web scan dialog stays closed.
+            return JSON.stringify(await bridge.nativeSsoLogin(username, password, captcha, remember, {nativeMfa: true}));
           } catch (_) {
             return JSON.stringify({ok: false, error: '登录暂时失败，请稍后再试。'});
           }
@@ -1157,6 +1199,73 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           }
         })();
         """, arguments: ["username": username, "password": password])
+    }
+
+    /// The schools a user can sign in to, and the current choice. The live
+    /// site installs this for the native shell (`nativeLoginSchools.ts`); an
+    /// older page has none, and the login page then shows no school choice.
+    func nativeLoginSchools() async -> NativeLoginResponse {
+        await nativeLoginCall("""
+        return await (async () => {
+          const bridge = window.CPUTimeNative;
+          if (!bridge || typeof bridge.nativeLoginSchools !== 'function') {
+            return JSON.stringify({ok: false, error: '登录服务正在启动，请稍候再试。'});
+          }
+          try { return JSON.stringify({ok: true, error: '', ...(await bridge.nativeLoginSchools())}); }
+          catch (_) { return JSON.stringify({ok: false, error: '', schools: []}); }
+        })();
+        """, arguments: [:])
+    }
+
+    /// Switch the school the Web login uses and prepare its unified login
+    /// (captcha and so on); the answer has the same shape as `nativeLoginBegin`.
+    func nativeChooseSchool(id: String) async -> NativeLoginResponse {
+        await nativeLoginCall("""
+        return await (async () => {
+          const bridge = window.CPUTimeNative;
+          if (!bridge || typeof bridge.nativeChooseSchool !== 'function') {
+            return JSON.stringify({ok: false, error: '登录服务正在启动，请稍候再试。'});
+          }
+          try { return JSON.stringify(await bridge.nativeChooseSchool(schoolId)); }
+          catch (_) { return JSON.stringify({ok: false, error: '统一认证暂时不可用，请稍后再试。'}); }
+        })();
+        """, arguments: ["schoolId": id])
+    }
+
+    /// One look at the scan verification: `status` is waiting, scanned,
+    /// expired, failed, done (signed in) or retry (ask again shortly).
+    func nativeMfaPoll() async -> NativeLoginResponse {
+        await nativeMfaCall("nativeMfaPoll", fallback: "暂时查不到扫码状态，正在重试")
+    }
+
+    /// A fresh verification code after the old one expired.
+    func nativeMfaRefresh() async -> NativeLoginResponse {
+        await nativeMfaCall("nativeMfaRefresh", fallback: "二维码刷新失败，请重新登录")
+    }
+
+    func nativeMfaCancel() async {
+        _ = await nativeMfaCall("nativeMfaCancel", fallback: "")
+    }
+
+    /// The scan calls answer at once: a page without them (reloaded, or an
+    /// older site) is reported as a retry instead of waiting for the bridge.
+    private func nativeMfaCall(_ method: String, fallback: String) async -> NativeLoginResponse {
+        let view = makeWebView()
+        let value = try? await view.callAsyncJavaScript("""
+        return await (async () => {
+          const bridge = window.CPUTimeNative;
+          if (!bridge || typeof bridge[method] !== 'function') {
+            return JSON.stringify({ok: false, error: fallback, status: 'retry'});
+          }
+          try { return JSON.stringify(await bridge[method]()); }
+          catch (_) { return JSON.stringify({ok: false, error: fallback, status: 'retry'}); }
+        })();
+        """, arguments: ["method": method, "fallback": fallback], in: nil, contentWorld: .page)
+        guard value != nil else {
+            return NativeLoginResponse(ok: false, needCaptcha: false, captchaImage: "", error: fallback,
+                                       account: "", canAccessAdmin: false, status: "retry")
+        }
+        return Self.decodeNativeLoginResponse(value)
     }
 
     private func nativeLoginCall(
@@ -1224,13 +1333,25 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
                   let dictionary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             payload = dictionary
         }
+        let guide = payload["mfaGuide"] as? [String: Any]
+        let guideApp = guide?["app"] as? [String: Any]
         return NativeLoginResponse(
             ok: payload["ok"] as? Bool ?? false,
             needCaptcha: payload["needCaptcha"] as? Bool ?? false,
             captchaImage: payload["captchaImage"] as? String ?? "",
             error: payload["error"] as? String ?? "登录暂时失败，请稍后再试。",
             account: payload["account"] as? String ?? "",
-            canAccessAdmin: payload["canAccessAdmin"] as? Bool ?? false
+            canAccessAdmin: payload["canAccessAdmin"] as? Bool ?? false,
+            needMfa: payload["needMfa"] as? Bool ?? false,
+            mfaQr: payload["mfaQr"] as? String ?? "",
+            mfaGuide: guide == nil ? nil : NativeMfaGuide(
+                appName: (guideApp?["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                appURL: (guideApp?["url"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                hint: (guide?["hint"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            ),
+            status: payload["status"] as? String ?? "",
+            school: NativeLoginSchool(payload["school"] ?? payload["current"]),
+            schools: (payload["schools"] as? [Any] ?? []).compactMap(NativeLoginSchool.init)
         )
     }
 

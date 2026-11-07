@@ -1932,13 +1932,16 @@ public final class NativeScheduleStore: ObservableObject {
         let allWeeks = result.weeks.compactMap { Int($0.value) }
             .filter { $0 > 0 }
             .sorted()
+        // The school's own table: NJMU's periods 13–15 must not fold into 12.
+        let periods = latestSnapshot.map(\.periods).flatMap { $0.isEmpty ? nil : $0 }
+            ?? NativeSchedulePeriod.bundledTimetable
         return result.cells.flatMap { cell in
             cell.courses.map { course in
                 let range = NativeSchedulePeriod.normalizedRange(
                     bigSlot: cell.bigSlot,
                     startSlot: course.startSlot,
                     endSlot: course.endSlot,
-                    periods: NativeSchedulePeriod.bundledTimetable
+                    periods: periods
                 )
                 let name = normalizedChangeText(course.name)
                 let teacher = normalizedChangeText(course.teacher)

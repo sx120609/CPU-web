@@ -1,4 +1,5 @@
 import Combine
+import Photos
 import SwiftUI
 import UIKit
 import UserNotifications
@@ -97,6 +98,16 @@ struct ContentView: View {
         self.debugAssistant = false
         self.debugMockSchedule = false
         _scheduleStore = StateObject(wrappedValue: NativeScheduleStore())
+#endif
+    }
+
+    /// `CPU_DEBUG_LOGIN_GATE=1` shows the native login page even with a
+    /// session, to check the school choice and scan step against a site.
+    private var debugLoginGate: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.environment["CPU_DEBUG_LOGIN_GATE"] == "1"
+#else
+        false
 #endif
     }
 
@@ -290,7 +301,7 @@ struct ContentView: View {
                     hasSeenWelcome = true
                 }
             }
-        } else if shell.requiresLogin {
+        } else if shell.requiresLogin || debugLoginGate {
             LoginGateView(webSession: webSession)
         } else if !shell.isAuthResolved && scheduleStore.result == nil {
             LaunchWaitingView()
@@ -340,7 +351,16 @@ private enum NativeScheduleDebugFixture {
         timeFormatter.locale = Locale(identifier: "en_US_POSIX")
         timeFormatter.timeZone = calendarValue.timeZone
         timeFormatter.dateFormat = "HH:mm"
-        let periods = NativeSchedulePeriod.bundledTimetable.enumerated().map { index, period in
+        // `CPU_DEBUG_PERIODS=15` gives the fixture NJMU's fifteen periods, so
+        // rows 13–15 and a course in them can be checked without that school.
+        let njmuEvening = [
+            NativeSchedulePeriod(number: 13, startTime: "20:50", endTime: "21:35"),
+            NativeSchedulePeriod(number: 14, startTime: "21:40", endTime: "22:25"),
+            NativeSchedulePeriod(number: 15, startTime: "22:30", endTime: "23:15"),
+        ]
+        let fifteen = ProcessInfo.processInfo.environment["CPU_DEBUG_PERIODS"] == "15"
+        let table = NativeSchedulePeriod.bundledTimetable + (fifteen ? njmuEvening : [])
+        let periods = table.enumerated().map { index, period in
             switch index {
             case 0: return NativeSchedulePeriod(number: period.number, startTime: timeFormatter.string(from: liveStart), endTime: timeFormatter.string(from: liveEnd))
             case 1: return NativeSchedulePeriod(number: period.number, startTime: timeFormatter.string(from: liveEnd), endTime: timeFormatter.string(from: liveEnd))
@@ -423,6 +443,14 @@ private enum NativeScheduleDebugFixture {
                     ),
                 ])
             }
+        }
+        if fifteen {
+            cells.append(NativeScheduleCell(day: 2, bigSlot: 7, courses: [
+                NativeScheduleCourse(
+                    nativeId: "source:debug-evening", name: "医学伦理学", teacher: "周老师", weeks: "第 1 周", weekList: [1],
+                    location: "江宁校区 学海楼 201", startSlot: 13, endSlot: 15, sourceKey: "visual|evening|医学伦理学"
+                ),
+            ]))
         }
         if ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_OVERLAP"] == "1" {
             // One course across four Monday periods, on top of whatever is there.
@@ -597,7 +625,19 @@ private struct LoginGateView: View {
     @State private var isPreparing = true
     @State private var errorMessage = ""
     @State private var statusMessage = ""
+    /// Schools from `/api/schools`; a choice is shown only when there are two or more.
+    @State private var schools: [NativeLoginSchool] = []
+    @State private var school: NativeLoginSchool?
+    /// A school's scan-to-verify step (NJMU asks a new device once).
+    @State private var mfaQr = ""
+    @State private var mfaState = ""
+    @State private var mfaGuide: NativeMfaGuide?
+    @State private var mfaRevision = 0
+    @State private var requestRevision = 0
     @FocusState private var focusedField: NativeLoginFieldKind?
+
+    private var brandName: String { school?.brandName ?? "药大拾间" }
+    private var schoolHasSSO: Bool { school?.ssoLogin ?? true }
 
     var body: some View {
         ZStack {
@@ -613,10 +653,15 @@ private struct LoginGateView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                    if accountLoginUnlocked {
-                        modePicker
+                    if !mfaQr.isEmpty {
+                        mfaPanel
+                    } else {
+                        schoolPicker
+                        if accountLoginUnlocked && schoolHasSSO {
+                            modePicker
+                        }
+                        form
                     }
-                    form
                 }
                 .frame(maxWidth: 430)
                 .padding(.horizontal, 24)
@@ -626,6 +671,8 @@ private struct LoginGateView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .task { await prepareSchoolLogin() }
+        .task { await loadSchools() }
+        .onDisappear { mfaRevision += 1 }
 #if DEBUG
         // A debug run against a local server signs in with one of its seeded
         // accounts (`CPU_DEBUG_LOGIN_USER`, `CPU_DEBUG_LOGIN_PASSWORD`), so
@@ -635,7 +682,7 @@ private struct LoginGateView: View {
             guard let user = environment["CPU_DEBUG_LOGIN_USER"], !user.isEmpty,
                   let secret = environment["CPU_DEBUG_LOGIN_PASSWORD"], !secret.isEmpty else { return }
             let response = await webSession.nativeAccountLogin(username: user, password: secret)
-            statusMessage = response.ok ? "登录成功，正在进入药大拾间…" : ""
+            statusMessage = response.ok ? "登录成功，正在进入\(brandName)…" : ""
             if !response.ok { errorMessage = response.error }
         }
 #endif
@@ -664,12 +711,13 @@ private struct LoginGateView: View {
                         accountLoginUnlocked = true
                     }
                 }
+                .accessibilityLabel(brandName)
 
             VStack(alignment: .leading, spacing: 7) {
                 Text("欢迎回来")
                     .font(.system(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
-                Text("登录药大拾间，继续查看你的校园信息")
+                Text("登录\(brandName)，继续查看你的校园信息")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -686,6 +734,146 @@ private struct LoginGateView: View {
         .pickerStyle(.segmented)
         .tint(.cpuBrand)
         .padding(.bottom, 24)
+    }
+
+    /// The school to sign in to. Its unified login, captcha and scan step all
+    /// follow the choice, which the Web keeps in the same `cpu-school-choice`
+    /// as its own login page.
+    @ViewBuilder
+    private var schoolPicker: some View {
+        if schools.count > 1 {
+            Menu {
+                ForEach(schools) { option in
+                    Button {
+                        Task { await chooseSchool(option) }
+                    } label: {
+                        if option.id == school?.id {
+                            Label(option.name, systemImage: "checkmark")
+                        } else {
+                            Text(option.name)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 11) {
+                    Image(systemName: "building.columns")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20)
+                    Text(school?.name ?? "选择学校")
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.body)
+                .padding(.horizontal, 15)
+                .frame(minHeight: 52)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            // Keep the field's own colours instead of the menu's accent tint.
+            .buttonStyle(.plain)
+            .disabled(isLoading)
+            .accessibilityLabel("学校：\(school?.name ?? "未选择")")
+            .padding(.bottom, 14)
+        }
+    }
+
+    /// A school's scan verification: some schools ask a new device to confirm
+    /// its first login by scanning a code in another app (NJMU uses WeChat).
+    /// The user most likely holds this very phone, so the code is saved to
+    /// Photos first and the scanning app opened to pick it from the album.
+    private var mfaPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("扫码验证")
+                .font(.title3.weight(.bold))
+            Text(mfaGuide?.hint.isEmpty == false
+                 ? mfaGuide!.hint
+                 : "学校统一认证要求这台设备先验证一次：用\(scannerName)扫描下面的二维码，并在手机上确认。验证后这台设备会被记住。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ZStack {
+                NativeCaptchaImage(source: mfaQr, fit: true)
+                    .frame(width: 200, height: 200)
+                    .accessibilityLabel("学校统一认证二维码")
+                if let overlay = mfaOverlay {
+                    Text(overlay)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color(red: 23 / 255, green: 32 / 255, blue: 51 / 255))
+                        .multilineTextAlignment(.center)
+                        .padding(16)
+                        .frame(width: 220, height: 220)
+                        .background(Color.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+            .frame(width: 220, height: 220)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(maxWidth: .infinity)
+
+            Button {
+                Task { await saveMfaCode() }
+            } label: {
+                Label(mfaGuide?.appName.isEmpty == false ? "保存二维码并打开\(mfaGuide!.appName)" : "保存二维码到相册",
+                      systemImage: "square.and.arrow.down")
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 46)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.cpuBrand)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .disabled(mfaState == "done" || mfaState == "expired")
+
+            Text(mfaGuide?.appName.isEmpty == false
+                 ? "保存后会打开\(mfaGuide!.appName)，在「扫一扫」里从相册选这张二维码；也可以用另一台手机直接扫屏幕。"
+                 : "保存后在扫码 App 的「扫一扫」里从相册选这张二维码；也可以用另一台手机直接扫屏幕。")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Button("换一张") { Task { await refreshMfa() } }
+                    .frame(maxWidth: .infinity)
+                Button("返回登录") { leaveMfa() }
+                    .frame(maxWidth: .infinity)
+            }
+            .font(.subheadline.weight(.medium))
+            .tint(.cpuBrand)
+            .disabled(mfaState == "done")
+
+            if !errorMessage.isEmpty {
+                Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !statusMessage.isEmpty {
+                Label(statusMessage, systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var scannerName: String {
+        let name = mfaGuide?.appName ?? ""
+        return name.isEmpty ? "手机" : name
+    }
+
+    private var mfaOverlay: String? {
+        switch mfaState {
+        case "scanned": return "已扫描，请在手机上确认"
+        case "expired": return "二维码已失效，点「换一张」"
+        case "done": return "验证通过，正在登录…"
+        default: return nil
+        }
     }
 
     private var form: some View {
@@ -825,12 +1013,153 @@ private struct LoginGateView: View {
         // The login method probe below also waits for a cold WebView. The
         // navigation-ready flag can be cleared by the /login route transition
         // even though the injected auth methods are already available.
+        requestRevision += 1
+        let revision = requestRevision
         let response = await webSession.nativeLoginBegin()
-        guard mode == .school else { return }
+        guard mode == .school, revision == requestRevision else { return }
+        applySchool(response.school)
         needCaptcha = response.needCaptcha
         captchaImage = response.captchaImage
         if !response.ok && !response.error.isEmpty { errorMessage = response.error }
         isPreparing = false
+    }
+
+    /// The bridge call itself waits for a page that is still loading, so one
+    /// call is enough; an older site without the school list leaves it empty.
+    private func loadSchools() async {
+        let response = await webSession.nativeLoginSchools()
+        guard !response.schools.isEmpty else { return }
+        schools = response.schools
+        if school == nil { applySchool(response.school) }
+    }
+
+    private func applySchool(_ next: NativeLoginSchool?) {
+        guard let next else { return }
+        school = next
+        if !next.ssoLogin {
+            // Account login is the only way in for a school without unified login.
+            accountLoginUnlocked = true
+            mode = .account
+        } else if !accountLoginUnlocked {
+            mode = .school
+        }
+    }
+
+    private func chooseSchool(_ target: NativeLoginSchool) async {
+        guard target.id != school?.id, !isLoading else { return }
+        requestRevision += 1
+        let revision = requestRevision
+        isPreparing = true
+        errorMessage = ""
+        statusMessage = ""
+        captcha = ""
+        applySchool(target)
+        let response = await webSession.nativeChooseSchool(id: target.id)
+        guard revision == requestRevision else { return }
+        applySchool(response.school)
+        if mode == .school {
+            needCaptcha = response.needCaptcha
+            captchaImage = response.captchaImage
+            if !response.ok && !response.error.isEmpty { errorMessage = response.error }
+        }
+        isPreparing = false
+    }
+
+    private func startMfa(_ response: NativeLoginResponse) {
+        errorMessage = ""
+        statusMessage = ""
+        mfaQr = response.mfaQr
+        mfaGuide = response.mfaGuide
+        mfaState = "waiting"
+        mfaRevision += 1
+        pollMfa(revision: mfaRevision, after: .seconds(2))
+    }
+
+    /// Ask for the scan result every two seconds (four after a hiccup). On
+    /// `done` the Web is already signed in; the shell closes this page when
+    /// it hears the new account.
+    private func pollMfa(revision: Int, after delay: Duration) {
+        Task {
+            try? await Task.sleep(for: delay)
+            guard revision == mfaRevision, !mfaQr.isEmpty,
+                  mfaState != "expired", mfaState != "done" else { return }
+            let response = await webSession.nativeMfaPoll()
+            guard revision == mfaRevision, !mfaQr.isEmpty else { return }
+            switch response.status {
+            case "done":
+                mfaState = "done"
+                password = ""
+                captcha = ""
+                errorMessage = ""
+                statusMessage = "验证通过，正在进入\(brandName)…"
+            case "waiting", "scanned", "expired", "retry":
+                mfaState = response.status
+                errorMessage = response.status == "retry" ? response.error : ""
+                if response.status != "expired" {
+                    pollMfa(revision: revision, after: .seconds(response.status == "retry" ? 4 : 2))
+                }
+            default:
+                mfaQr = ""
+                mfaState = ""
+                errorMessage = response.error.isEmpty ? "验证失败，请重新登录" : response.error
+                await prepareSchoolLogin()
+            }
+        }
+    }
+
+    private func refreshMfa() async {
+        let response = await webSession.nativeMfaRefresh()
+        if response.ok && !response.mfaQr.isEmpty {
+            mfaQr = response.mfaQr
+            mfaState = "waiting"
+            errorMessage = ""
+            mfaRevision += 1
+            pollMfa(revision: mfaRevision, after: .seconds(2))
+        } else {
+            errorMessage = response.error.isEmpty ? "二维码刷新失败，请重新登录" : response.error
+        }
+    }
+
+    private func leaveMfa() {
+        mfaRevision += 1
+        mfaQr = ""
+        mfaState = ""
+        errorMessage = ""
+        statusMessage = ""
+        Task {
+            await webSession.nativeMfaCancel()
+            await prepareSchoolLogin()
+        }
+    }
+
+    private func saveMfaCode() async {
+        guard let image = NativeCaptchaImage.decode(mfaQr) else {
+            errorMessage = "保存二维码失败，可以截屏后再识别"
+            return
+        }
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            errorMessage = "没有相册写入权限，可以截屏后再识别"
+            return
+        }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+        } catch {
+            errorMessage = "保存二维码失败，可以截屏后再识别"
+            return
+        }
+        errorMessage = ""
+        let appName = mfaGuide?.appName ?? ""
+        if let link = mfaGuide?.appURL, let url = URL(string: link), !link.isEmpty,
+           await UIApplication.shared.open(url) {
+            statusMessage = "已保存到相册"
+        } else {
+            statusMessage = appName.isEmpty
+                ? "已保存到相册，请在扫码 App 的「扫一扫」里从相册选择"
+                : "已保存到相册，请在\(appName)「扫一扫」里从相册选择"
+        }
     }
 
     private func submit() {
@@ -870,10 +1199,12 @@ private struct LoginGateView: View {
             guard submittedMode == mode else { return }
             await MainActor.run {
                 isLoading = false
-                if response.ok {
+                if !response.ok && response.needMfa && !response.mfaQr.isEmpty {
+                    startMfa(response)
+                } else if response.ok {
                     password = ""
                     captcha = ""
-                    statusMessage = "登录成功，正在进入药大拾间…"
+                    statusMessage = "登录成功，正在进入\(brandName)…"
                 } else {
                     needCaptcha = response.needCaptcha
                     captchaImage = response.captchaImage
@@ -930,28 +1261,44 @@ private struct NativeLoginField: View {
 @available(iOS 17.0, *)
 private struct NativeCaptchaImage: View {
     let source: String
+    /// A scan-verification QR code: shown whole and unframed instead of
+    /// filling a captcha-sized box.
+    var fit = false
 
     var body: some View {
-        Group {
-            if let image = dataImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else if let url = URL(string: source), !source.isEmpty {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill() }
-                    else { placeholder }
+        if fit {
+            Group {
+                if let image = Self.decode(source) {
+                    Image(uiImage: image)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    placeholder
                 }
-            } else {
-                placeholder
             }
-        }
-        .clipped()
-        .background(Color(uiColor: .tertiarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        } else {
+            Group {
+                if let image = Self.decode(source) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else if let url = URL(string: source), !source.isEmpty {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image { image.resizable().scaledToFill() }
+                        else { placeholder }
+                    }
+                } else {
+                    placeholder
+                }
+            }
+            .clipped()
+            .background(Color(uiColor: .tertiarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+            }
         }
     }
 
@@ -962,7 +1309,8 @@ private struct NativeCaptchaImage: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var dataImage: UIImage? {
+    /// A `data:` image as the Web login sends captchas and scan codes.
+    static func decode(_ source: String) -> UIImage? {
         guard source.hasPrefix("data:"), let comma = source.firstIndex(of: ",") else { return nil }
         let payload = String(source[source.index(after: comma)...])
         guard let data = Data(base64Encoded: payload, options: [.ignoreUnknownCharacters]) else { return nil }

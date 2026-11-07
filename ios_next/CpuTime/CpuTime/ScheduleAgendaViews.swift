@@ -11,7 +11,7 @@ struct ScheduleAgendaContext {
     /// The timed items of a week column, beside the classes in `blocks`.
     func chips(date: String?, rowHeight: CGFloat, gap: CGFloat, blocks: [NativeScheduleCourseBlock]) -> [NativeAgendaChip] {
         guard let date, !items.isEmpty else { return [] }
-        return NativeAgendaRules.chips(items, date: date, rows: NativeSchedulePeriod.bundledTimetable, rowHeight: rowHeight, gap: gap,
+        return NativeAgendaRules.chips(items, date: date, rows: ScheduleSlot.all.map { NativeSchedulePeriod(number: $0.number, startTime: $0.start, endTime: $0.end) }, rowHeight: rowHeight, gap: gap,
                                        courses: blocks.map { $0.startSlot...max($0.startSlot, $0.endSlot) })
     }
 

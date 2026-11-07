@@ -482,7 +482,7 @@ struct ScheduleEntry: TimelineEntry {
         date: .now,
         state: .loaded(
             SchedulePayload(
-                title: "药大课表",
+                title: "课表",
                 generatedAt: nil,
                 cachedAt: nil,
                 semester: "2026-2027-1",
