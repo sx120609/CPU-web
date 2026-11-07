@@ -1,0 +1,94 @@
+{
+  "identifier": "6F3C2B1A-8D4E-4F5A-9B6C-7D8E9F0A1B2C",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "6.0",
+      "familyShareable": false,
+      "internalID": "6900000000",
+      "localizations": [
+        {
+          "description": "赞助拾间 ¥6，开通 VIP 并获得 AI 点数",
+          "displayName": "赞助 ¥6",
+          "locale": "zh_Hans"
+        }
+      ],
+      "productID": "cn.cputime.mobile.sponsor.6",
+      "referenceName": "赞助 ¥6",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "18.0",
+      "familyShareable": false,
+      "internalID": "6900000001",
+      "localizations": [
+        {
+          "description": "赞助拾间 ¥18，开通 VIP 并获得 AI 点数",
+          "displayName": "赞助 ¥18",
+          "locale": "zh_Hans"
+        }
+      ],
+      "productID": "cn.cputime.mobile.sponsor.18",
+      "referenceName": "赞助 ¥18",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "30.0",
+      "familyShareable": false,
+      "internalID": "6900000002",
+      "localizations": [
+        {
+          "description": "赞助拾间 ¥30，开通 VIP 并获得 AI 点数",
+          "displayName": "赞助 ¥30",
+          "locale": "zh_Hans"
+        }
+      ],
+      "productID": "cn.cputime.mobile.sponsor.30",
+      "referenceName": "赞助 ¥30",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "68.0",
+      "familyShareable": false,
+      "internalID": "6900000003",
+      "localizations": [
+        {
+          "description": "赞助拾间 ¥68，开通 VIP 并获得 AI 点数",
+          "displayName": "赞助 ¥68",
+          "locale": "zh_Hans"
+        }
+      ],
+      "productID": "cn.cputime.mobile.sponsor.68",
+      "referenceName": "赞助 ¥68",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "128.0",
+      "familyShareable": false,
+      "internalID": "6900000004",
+      "localizations": [
+        {
+          "description": "赞助拾间 ¥128，开通 VIP 并获得 AI 点数",
+          "displayName": "赞助 ¥128",
+          "locale": "zh_Hans"
+        }
+      ],
+      "productID": "cn.cputime.mobile.sponsor.128",
+      "referenceName": "赞助 ¥128",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {
+    "_applicationInternalID": "6811073406",
+    "_developerTeamID": "",
+    "_failTransactionsEnabled": false,
+    "_locale": "zh_Hans",
+    "_storefront": "CHN",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

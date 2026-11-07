@@ -26,6 +26,7 @@ function mainGuard(user) {
     applyRouteTitle: () => {},
     hidesNativeCommerce: () => false,
     hidesClientDownloads: () => false,
+    openNativeIosSponsor: () => false,
     isNativeScheduleShell: () => false,
     // 普通浏览器中不存在原生壳的内网限制账号，也不会隐藏小游戏入口。
     isNativeForumIntranetOnlyAccount: () => false,

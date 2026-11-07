@@ -10,6 +10,7 @@ import { topicApi } from "@/api/topic";
 import {
   hidesClientDownloads,
   hidesNativeCommerce,
+  openNativeIosSponsor,
   isLikelyIosDevice,
   isNativeForumIntranetOnlyAccount,
   isNativeScheduleShell,
@@ -307,9 +308,13 @@ export const router = createRouter({
 // Registered ahead of the guard below, so a layout flip while that guard awaits never cancels the navigation.
 installForumListLayoutSync(router, forumListRouteOptions);
 
-router.beforeEach(async (to) => {
+router.beforeEach(async (to, from) => {
   if (hidesClientDownloads() && /^\/downloads?(\/|$)/.test(to.path)) {
     return { path: "/services", replace: true };
+  }
+  // 新版 iOS App 用原生赞助页（Apple 内购）：/sponsor 链接打开它，网页留在原处。
+  if (/^\/(sponsor|sponsor-wall)(\/|$)/.test(to.path) && openNativeIosSponsor()) {
+    return from.matched.length ? false : { path: "/profile", replace: true };
   }
   if (hidesNativeCommerce() && /^\/(vip|sponsor|sponsor-wall)(\/|$)/.test(to.path)) {
     return { path: "/profile", replace: true };

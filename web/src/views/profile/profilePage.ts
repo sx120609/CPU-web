@@ -15,7 +15,7 @@ import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUploa
 import { preloadAvatar } from "@/utils/avatarPreview";
 import { withMediaRevision } from "@/utils/cdnMedia";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
-import { hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
+import { hasNativeIosSponsor, hidesNativeCommerce, openNativeIosSponsor, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
 
 interface ProfileViewCache {
   topics: any[];
@@ -153,6 +153,9 @@ export function useProfilePage() {
   const anonymousBoards = computed(() => boards.value.filter((board) => board.anonymousEnabled));
   const profileCacheKey = computed(() => user.value?.id ? `cpu-profile-view-v1:user-${user.value.id}` : "");
   const sponsorVisible = computed(() => !commerceHidden && (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0));
+  /** iOS App 的原生赞助（Apple 内购）：网页赞助表单不出现，只放一个打开原生页的入口。 */
+  const nativeSponsorVisible = computed(() => hasNativeIosSponsor() && (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0));
+  const openNativeSponsor = () => { openNativeIosSponsor(); };
   const anonymousStatusText = computed(() => {
     const state = user.value?.anonymousState;
     if (!state) return "—";
@@ -603,6 +606,8 @@ export function useProfilePage() {
     trustDetailsOpen,
     anonymousBoardsOpen,
     sponsorVisible,
+    nativeSponsorVisible,
+    openNativeSponsor,
     sponsorOptions,
     sponsorSubmitting,
     sponsorAmount,

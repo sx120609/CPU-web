@@ -172,6 +172,22 @@
       </div>
     </section>
 
+    <section v-if="nativeSponsorVisible" class="me-m-section" aria-labelledby="me-m-native-sponsor-title">
+      <header class="me-m-section-head">
+        <h2 id="me-m-native-sponsor-title" class="me-m-section-title">支持拾间</h2>
+      </header>
+      <div class="me-m-card me-m-sponsor">
+        <div class="me-m-sponsor-summary">
+          <div>
+            <small>已赞助</small>
+            <b>¥{{ formatMoney(user?.sponsorAmount) }}</b>
+          </div>
+          <el-button v-if="site.features.sponsor" type="primary" round @click="openNativeSponsor">去赞助</el-button>
+        </div>
+        <p class="me-m-sponsor-copy">通过 App Store 付款，赞助后开通 VIP 并获得 AI 点数，也可以在赞助墙留下一句话。</p>
+      </div>
+    </section>
+
     <section v-if="sponsorVisible" class="me-m-section" aria-labelledby="me-m-sponsor-title">
       <span id="sponsor" class="me-m-anchor" aria-hidden="true" />
       <header class="me-m-section-head">
@@ -528,6 +544,8 @@ const {
   avatarInputRef,
   vipStyleSaving,
   sponsorVisible,
+  nativeSponsorVisible,
+  openNativeSponsor,
   sponsorOptions,
   sponsorSubmitting,
   sponsorAmount,

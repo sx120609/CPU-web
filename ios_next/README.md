@@ -81,6 +81,17 @@ Debug 构建的 `CPU_DEBUG_SCHEDULE_ACTION` 还支持 `sharing`、`shared-view`�
 
 课表主体沿用 Web／安卓的主题色与课程色规则：课名按规范化空白、UTF-16 和 32 位溢出计算颜色，日／周／月视图共用配色。单色主题使用固定底色、边框及文字色；深色彩色课程使用浅色文字。`check-schedule-palette.sh` 直接读取 Web 配色函数，与 Swift 结果做跨端对照。
 
+### 赞助（App Store 内购）
+
+网页的易支付赞助在 iOS 里一直关着（Guideline 3.1.1：赞助会得到 AI 点数和 VIP，属于数字权益）。iOS 改用原生赞助页 `NativeSponsor.swift`，付款走 StoreKit 2 的消耗型商品 `cn.cputime.mobile.sponsor.6 / 18 / 30 / 68 / 128`（人民币档位，和服务端 `server/src/services/appleIap.ts`、本地测试配置 `CpuTime/StoreKit/Sponsor.storekit` 是同一组，`server/tests/appleIap.test.ts` 对照）。
+
+- 入口：网页「我的 → 支持拾间 → 去赞助」和站内 `/sponsor` 链接调用 `CPUTimeNative.openSponsor()`，App 在当前页面上弹出赞助页。旧版 App 没有这个方法，网页照旧不显示赞助。
+- 下单带服务端给的 `appAccountToken`（每个站内账号固定），购买成功后把 JWS 交易原文交给 `POST /api/payments/apple/sponsor/transactions`；服务端用 Apple Root CA - G3 校验签名链、包名和 App ID，确认 token 属于当前账号，再记一笔 `payType = iap` 的赞助订单。服务端确认后 App 才 `finish()` 交易；没交成功的交易在网页桥就绪和 `Transaction.updates` 里补交，所选类别、留言和展示方式按商品记在本机。
+- 权益和网页一致（VIP、赞助累计、赞助墙、类别进度、留言与展示方式），AI 点数按 App Store 结算后的 70% 计（¥6 → 840 点，网页 1200 点）。
+- 沙盒交易（审核、TestFlight）记为 `iap_sandbox` / `sandbox`：照样发 VIP 和点数，不进赞助墙、类别进度和赞助累计。服务端环境变量 `APPLE_IAP_ALLOW_SANDBOX=0` 可关掉。
+- 退款：App Store 服务器通知 V2 发到 `https://cputime.cn/api/payments/apple/notifications`，退款或撤销时订单标成 `refunded`，扣回赞助累计和还没用掉的点数；VIP 不收回。
+- Debug：`CPU_DEBUG_SPONSOR=mock` 启动后直接打开赞助页（示例数据，不连站点）；`CPU_DEBUG_SPONSOR=1` 打开真实赞助页。用 Xcode 运行并在 scheme 的 StoreKit Configuration 里选 `Sponsor.storekit` 可以在模拟器里走完本地购买，但本地交易不是 Apple 签名，服务端不会认；完整流程用沙盒账号在真机上测。
+
 ## Web 配套改动
 
 原生容器注入 `CPUTimeNative/1` UA 标识和 `window.CPUTimeNative`，网站只对这个新版容器隐藏 Web 底部标签栏，网页顶栏和页脚保留；普通浏览器、旧 iOS 客户端不受影响。

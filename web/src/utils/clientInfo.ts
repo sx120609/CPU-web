@@ -139,6 +139,21 @@ export function hidesNativeCommerce(ua = navigator.userAgent) {
 }
 
 /**
+ * 新版 iOS App 自带原生赞助页（Apple 内购，见 ios_next/CpuTime/CpuTime/NativeSponsor.swift）。
+ * 网页的易支付赞助在 iOS 里仍然不出现；能打开原生页时，个人中心和 /sponsor 链接交给它。
+ */
+export function hasNativeIosSponsor(ua = navigator.userAgent) {
+  if (!isIosNativeApp(ua) || typeof window === "undefined") return false;
+  return typeof (window as any).CPUTimeNative?.openSponsor === "function";
+}
+
+export function openNativeIosSponsor() {
+  if (!hasNativeIosSponsor()) return false;
+  (window as any).CPUTimeNative.openSponsor();
+  return true;
+}
+
+/**
  * 鸿蒙 App 里不出现“客户端下载”：AppGallery 审核（2026-10-23，3.0.9）不允许应用内引导下载安卓版、iOS 版
  * 或跳到其他应用市场。入口都隐藏，下载页本身在路由里改回校园服务。
  */

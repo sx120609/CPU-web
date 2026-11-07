@@ -340,6 +340,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     var onAgendaChanged: (() -> Void)?
     /// An /agenda link asked for one 日程, a new one or the list (`CPUTimeNative.openAgenda`, JSON).
     var onOpenAgenda: ((String) -> Void)?
+    /// 网页「我的 → 去赞助」或 /sponsor 链接要打开原生赞助页（`CPUTimeNative.openSponsor`）。
+    var onOpenSponsor: (() -> Void)?
     var onFailure: ((String) -> Void)?
 
     private var webView: WKWebView?
@@ -1036,7 +1038,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     }
 
     func liveActivityAPIRequest(path: String, method: String, body: [String: Any]?) async throws -> Data {
-        guard path.hasPrefix("/api/live-activities/") || path.hasPrefix("/api/app-clients/"),
+        guard path.hasPrefix("/api/live-activities/") || path.hasPrefix("/api/app-clients/")
+                || path.hasPrefix("/api/payments/apple/") || path == "/api/payments/sponsor/wall",
               let url = IOSNextWebConfiguration.routeURL(path) else { throw NativeAssistantError.unavailable }
         let host = url.host?.lowercased() ?? ""
         let cookies = await assistantCookies().filter { cookie in
@@ -1356,6 +1359,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             onAgendaChanged?()
         case "openAgenda":
             onOpenAgenda?(body["request"] as? String ?? "")
+        case "openSponsor":
+            onOpenSponsor?()
         case "networkError":
             serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或切换流量后重试。"
         default:
@@ -1728,6 +1733,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           });
           bridge.agendaChanged = () => post({type: 'agendaChanged'});
           bridge.openAgenda = request => post({type: 'openAgenda', request: String(request || '')});
+          bridge.openSponsor = () => post({type: 'openSponsor'});
           window.CPUTimeNative = bridge;
           // Keep native login usable while an older deployed Web bundle is
           // still being rolled out. Newer bundles replace these methods with

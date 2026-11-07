@@ -83,6 +83,8 @@ final class NativeShellCoordinator: ObservableObject {
         }
         webSession.onBridgeReady = { [weak self] in
             Task { await NativeAgendaService.shared.refresh(force: true) }
+            // 上次没交成功的赞助交易（断网、换号后又登回来）在登录态就绪后补交。
+            Task { await NativeSponsorService.shared.processUnfinished() }
             guard let self, self.selectedTab == .schedule else { return }
             self.requestScheduleLoad(force: false, refreshCached: true)
         }
@@ -97,6 +99,18 @@ final class NativeShellCoordinator: ObservableObject {
         webSession.onOpenAgenda = { request in
             NativeAgendaService.shared.openRequest(request)
         }
+        // 赞助走 App Store 内购：交易交给服务端用的是和实时活动同一条带登录态的请求。
+        NativeSponsorService.shared.setAPIRequest { [weak webSession] path, method, body in
+            guard let webSession else { throw NativeAssistantError.unavailable }
+            return try await webSession.liveActivityAPIRequest(path: path, method: method, body: body)
+        }
+        webSession.onOpenSponsor = {
+            NativeSponsorService.shared.present()
+        }
+        NativeSponsorService.shared.activate()
+#if DEBUG
+        NativeSponsorService.shared.debugPresentIfRequested()
+#endif
         webSession.onFailure = { [weak scheduleStore] message in
             scheduleStore?.reportBridgeFailure(message)
         }

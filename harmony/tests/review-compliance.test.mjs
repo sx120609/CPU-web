@@ -92,7 +92,7 @@ function loadMainRouteGuard({ user = null, hideGame = false, hideAssistant = fal
     router: { beforeEach: (callback) => { guard = callback; } },
     window: { location: { replace() {} } }, document: {},
     applyRouteTitle: () => {},
-    hidesNativeCommerce: () => false, hidesClientDownloads: () => false, isNativeScheduleShell: () => false,
+    hidesNativeCommerce: () => false, hidesClientDownloads: () => false, openNativeIosSponsor: () => false, isNativeScheduleShell: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, user, token: user ? 'session' : '', canAccessForum: true }),
     useSiteStore: () => ({ loaded: true, features: {}, pathEnabled: () => true }),
