@@ -251,3 +251,56 @@ export function errorText(error: unknown, fallback = "加载失败，请稍后�
   const anyError = error as { response?: { data?: { message?: string } }; message?: string };
   return anyError?.response?.data?.message || anyError?.message || fallback;
 }
+
+export function claimStatusLabel(value?: string, ended = false) {
+  if (ended) return "已结束";
+  if (value === "unclaimed") return "待认领";
+  if (value === "claimed") return "已认领";
+  if (value === "replied") return "已回复";
+  return "";
+}
+
+export function claimStatusTone(value?: string, ended = false) {
+  if (ended) return "";
+  if (value === "unclaimed") return "is-warn";
+  if (value === "replied") return "is-ok";
+  return "is-brand";
+}
+
+export function bookingStatusLabel(value: string) {
+  return ({
+    pending: "待确认",
+    confirmed: "已确认",
+    rejected: "未接受",
+    cancelled: "已取消",
+    expired: "已过期",
+    done: "已结束",
+  } as Record<string, string>)[value] ?? value;
+}
+
+export function bookingStatusTone(value: string) {
+  if (value === "pending") return "is-warn";
+  if (value === "confirmed") return "is-ok";
+  return "";
+}
+
+/** 预约时间：“11月9日 周一 19:00–19:30”，北京时间。 */
+export function bookingTimeText(startAt: string, endAt: string) {
+  const start = beijingParts(startAt);
+  const end = beijingParts(endAt);
+  return `${start.month}月${start.day}日 ${WEEKDAYS[start.weekday - 1]} ${start.time}–${end.time}`;
+}
+
+export function beijingDayKey(value: string | Date) {
+  const parts = beijingParts(value);
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+/** 预约表的日期标签：今天 / 明天 / 11月9日，加星期。 */
+export function bookingDayLabel(value: string | Date) {
+  const target = beijingParts(value);
+  const key = beijingDayKey(value);
+  if (key === beijingDayKey(new Date())) return { title: "今天", sub: WEEKDAYS[target.weekday - 1] };
+  if (key === beijingDayKey(new Date(Date.now() + 86_400_000))) return { title: "明天", sub: WEEKDAYS[target.weekday - 1] };
+  return { title: `${target.month}/${target.day}`, sub: WEEKDAYS[target.weekday - 1] };
+}

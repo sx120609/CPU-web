@@ -175,7 +175,7 @@ export const serviceTools: ServiceTool[] = [
   {
     slug: "treehole",
     name: "艾绒树洞",
-    summary: "匿名找朋辈志愿者倾诉，留言或实时聊天都可以",
+    summary: "匿名留言倾诉、预约线下一对一、按主题进宣泄室",
     description: "艾绒朋辈心理社的匿名倾听陪伴。不属于专业心理咨询，遇到危机会引导联系学校心理发展中心。",
     icon: "chat",
     status: "ready",

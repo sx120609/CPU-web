@@ -7,6 +7,7 @@ import { Errors, ok } from "../utils/response";
 import {
   claimTreeholeImage,
   imageSummaries,
+  loadTreeholeConfig,
   notifyTreehole,
   parseTreeholeId,
   requireConsent,
@@ -22,17 +23,16 @@ import {
   looksLikeContactExchange,
   nextRoomSeq,
   roomCategoryLabel,
-  roomVisitorAlias,
+  DEFAULT_ROOM_RULES,
+  roomMemberAlias,
   TREEHOLE_ROOM_CATEGORIES,
-  TREEHOLE_ROOM_FOUNDERS_REQUIRED,
 } from "../services/treeholePolicy";
 
-// 情绪宣泄室：多人实时聊天室。来访者只能经接待洞主推荐、群管理员审核进群，群内只显示虚拟 ID。
+// 主题宣泄室：多人实时聊天室。学生按主题找房间，读过保密与伦理须知后直接进入，群内只显示虚拟 ID。
 
 export const treeholeRoomRouter = Router();
 
 const ROOM_LOCK = -71001;
-const PROPOSAL_LOCK = -71002;
 const MESSAGE_PAGE = 50;
 
 async function loadRoomFor(roomId: number, viewer: TreeholeViewer) {
@@ -367,258 +367,115 @@ treeholeRoomRouter.post("/rooms/:id/messages/:messageId/recall", async (req, res
   }
 });
 
-// ---- 入群申请 ----
+// ---- 宣泄室列表、新建、进入 ----
 
-const applicationListSchema = z.object({ status: z.enum(["pending", "all"]).optional().default("pending") });
+const roomListSchema = z.object({ category: z.enum(TREEHOLE_ROOM_CATEGORIES).optional() });
 
-treeholeRoomRouter.get("/rooms/:id/applications", validate(applicationListSchema, "query"), async (req, res, next) => {
+// 学生按主题找宣泄室；洞主和核心管理员也用这个列表。
+treeholeRoomRouter.get("/rooms", validate(roomListSchema, "query"), async (req, res, next) => {
   try {
     const viewer = viewerOf(res);
-    const { room, canModerate } = await loadRoomFor(parseTreeholeId(req.params.id, "宣泄室编号"), viewer);
-    if (!canModerate) throw Errors.forbidden("只有群管理员可以审核入群申请");
-    const query = req.query as unknown as z.infer<typeof applicationListSchema>;
-    const applications = await prisma.treeholeRoomApplication.findMany({
-      where: { roomId: room.id, ...(query.status === "pending" ? { status: "pending" } : {}) },
-      orderBy: { id: "desc" },
+    const query = req.query as unknown as z.infer<typeof roomListSchema>;
+    const rooms = await prisma.treeholeRoom.findMany({
+      where: { schoolId: viewer.schoolId, status: "active", ...(query.category ? { category: query.category } : {}) },
+      orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
+      include: { members: { where: { status: "active" }, select: { userId: true, role: true, status: true } } },
       take: 200,
     });
-    const staffIds = [...new Set(applications.flatMap((row) => [row.recommendedById, row.reviewerId]).filter((id): id is number => typeof id === "number"))];
-    const staff = staffIds.length ? await prisma.treeholeStaff.findMany({ where: { id: { in: staffIds } }, select: { id: true, hostCode: true, isHost: true, isAdmin: true } }) : [];
-    const staffMap = new Map(staff.map((row) => [row.id, row]));
-    const sessions = await prisma.treeholeSession.findMany({ where: { id: { in: applications.map((row) => row.sessionId) } }, select: { id: true, alias: true } });
-    const sessionAlias = new Map(sessions.map((row) => [row.id, row.alias]));
-    ok(res, applications.map((application) => {
-      const reviewer = application.reviewerId ? staffMap.get(application.reviewerId) : null;
-      return {
-        id: application.id,
-        status: application.status,
-        note: application.note,
-        visitorAlias: sessionAlias.get(application.sessionId) ?? "来访者",
-        recommendedBy: hostDisplayName(staffMap.get(application.recommendedById)?.hostCode),
-        reviewer: reviewer ? (reviewer.isHost && reviewer.hostCode ? hostDisplayName(reviewer.hostCode) : "核心管理员") : null,
-        reviewedAt: application.reviewedAt,
-        rejectReason: application.rejectReason,
-        createdAt: application.createdAt,
-      };
-    }));
-  } catch (error) {
-    next(error);
-  }
-});
-
-const applySchema = z.object({
-  messageId: z.number().int().positive(),
-  note: z.string().trim().max(200, "留言最多 200 字").optional().default(""),
-});
-
-treeholeRoomRouter.post("/room-applications", validate(applySchema), async (req, res, next) => {
-  try {
-    const viewer = viewerOf(res);
-    await requireConsent(viewer.userId);
-    const invite = await prisma.treeholeMessage.findUnique({ where: { id: req.body.messageId }, include: { session: true } });
-    // 入口只有洞主在一对一会话里发来的推荐卡片，来访者不能自己搜群。
-    if (!invite || invite.kind !== "room-invite" || !invite.roomId || invite.session.visitorId !== viewer.userId) {
-      throw Errors.notFound("这条宣泄室推荐不存在");
-    }
-    const roomId = invite.roomId;
-    const application = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK}::int, ${roomId}::int)`;
-      const room = await tx.treeholeRoom.findUnique({ where: { id: roomId } });
-      if (!room || room.schoolId !== viewer.schoolId || room.status !== "active") throw Errors.badRequest("这个宣泄室已经关闭");
-      const joined = await tx.treeholeRoomMember.findFirst({ where: { roomId, userId: viewer.userId, status: "active" }, select: { id: true } });
-      if (joined) throw Errors.conflict("你已经在这个宣泄室里了");
-      const pending = await tx.treeholeRoomApplication.findFirst({ where: { roomId, visitorId: viewer.userId, status: "pending" }, select: { id: true } });
-      if (pending) throw Errors.conflict("申请已经提交，正在等待群管理员审核");
-      const created = await tx.treeholeRoomApplication.create({
-        data: { roomId, visitorId: viewer.userId, sessionId: invite.sessionId, recommendedById: invite.session.hostId, note: req.body.note },
-      });
-      const hosts = await roomHostUserIds(roomId, tx);
-      await notifyTreehole(hosts.length ? hosts : await treeholeAdminUserIds(tx), {
-        title: "新的宣泄室入群申请",
-        content: `有来访者申请加入「${room.name}」，请尽快审核。`,
-        link: `/treehole/room/${roomId}?panel=applications`,
-        type: "treehole-room-application",
-        extra: { roomId, applicationId: created.id },
-      }, tx);
-      return created;
+    const removed = await prisma.treeholeRoomMember.findMany({
+      where: { userId: viewer.userId, status: "removed", roomId: { in: rooms.map((room) => room.id) } },
+      select: { roomId: true },
     });
-    ok(res, { id: application.id, status: application.status });
-  } catch (error) {
-    next(error);
-  }
-});
-
-treeholeRoomRouter.post("/room-applications/:id/cancel", async (req, res, next) => {
-  try {
-    const viewer = viewerOf(res);
-    const updated = await prisma.treeholeRoomApplication.updateMany({
-      where: { id: parseTreeholeId(req.params.id, "申请编号"), visitorId: viewer.userId, status: "pending" },
-      data: { status: "cancelled" },
+    const removedRooms = new Set(removed.map((row) => row.roomId));
+    const config = await loadTreeholeConfig(viewer.schoolId);
+    ok(res, {
+      rules: config.roomRules || DEFAULT_ROOM_RULES,
+      categories: TREEHOLE_ROOM_CATEGORIES.map((value) => ({ value, label: roomCategoryLabel(value) })),
+      rooms: rooms.map((room) => ({
+        ...serializeRoom(room),
+        visitorCount: room.members.filter((member) => member.role === "visitor").length,
+        hostCount: room.members.filter((member) => member.role === "host").length,
+        joined: room.members.some((member) => member.userId === viewer.userId),
+        removed: removedRooms.has(room.id),
+        lastMessageAt: room.lastMessageAt,
+      })),
     });
-    if (!updated.count) throw Errors.notFound("申请不存在或已处理");
-    ok(res, { cancelled: true });
   } catch (error) {
     next(error);
   }
 });
 
-const reviewSchema = z.object({
-  approve: z.boolean(),
-  reason: z.string().trim().max(200).optional().default(""),
-});
-
-treeholeRoomRouter.post("/room-applications/:id/review", validate(reviewSchema), async (req, res, next) => {
-  try {
-    const viewer = viewerOf(res);
-    const body = req.body as z.infer<typeof reviewSchema>;
-    const applicationId = parseTreeholeId(req.params.id, "申请编号");
-    const existing = await prisma.treeholeRoomApplication.findUnique({ where: { id: applicationId } });
-    if (!existing) throw Errors.notFound("申请不存在");
-    const { room, canModerate } = await loadRoomFor(existing.roomId, viewer);
-    if (!canModerate) throw Errors.forbidden("只有这个宣泄室的群管理员可以审核");
-    if (!body.approve && body.reason.length < 2) throw Errors.badRequest("拒绝时请简单说明原因，来访者会看到");
-    const result = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK}::int, ${room.id}::int)`;
-      const application = await tx.treeholeRoomApplication.findUnique({ where: { id: applicationId } });
-      if (!application || application.status !== "pending") throw Errors.conflict("这条申请已经处理过了");
-      const freshRoom = await tx.treeholeRoom.findUnique({ where: { id: room.id } });
-      if (!freshRoom || freshRoom.status !== "active") throw Errors.badRequest("这个宣泄室已经关闭");
-      const reviewerId = viewer.staff?.id ?? null;
-      if (!body.approve) {
-        await tx.treeholeRoomApplication.update({ where: { id: application.id }, data: { status: "rejected", reviewerId, reviewedAt: new Date(), rejectReason: body.reason } });
-        await notifyTreehole([application.visitorId], {
-          title: "宣泄室申请未通过",
-          content: `加入「${room.name}」的申请没有通过：${body.reason}`,
-          link: "/treehole",
-          type: "treehole-room-application-result",
-          extra: { roomId: room.id, applicationId: application.id },
-        }, tx);
-        await writeTreeholeAudit({ actor: viewer, action: "room.application.reject", targetType: "room", targetId: room.id, detail: { applicationId: application.id, reason: body.reason } }, tx);
-        return { status: "rejected" as const, alias: null };
-      }
-      const already = await tx.treeholeRoomMember.findFirst({ where: { roomId: room.id, userId: application.visitorId, status: "active" }, select: { id: true } });
-      if (already) {
-        await tx.treeholeRoomApplication.update({ where: { id: application.id }, data: { status: "approved", reviewerId, reviewedAt: new Date() } });
-        return { status: "approved" as const, alias: null };
-      }
-      const recommender = await tx.treeholeStaff.findUnique({ where: { id: application.recommendedById }, select: { hostCode: true } });
-      const active = await tx.treeholeRoomMember.findMany({ where: { roomId: room.id, status: "active", role: "visitor" }, select: { seq: true } });
-      const seq = nextRoomSeq(active.map((row) => row.seq));
-      const alias = roomVisitorAlias(recommender?.hostCode || "00", seq);
-      const member = await tx.treeholeRoomMember.create({
-        data: {
-          roomId: room.id,
-          userId: application.visitorId,
-          role: "visitor",
-          seq,
-          alias,
-          recommendedById: application.recommendedById,
-          sessionId: application.sessionId,
-        },
-      });
-      await tx.treeholeRoomApplication.update({ where: { id: application.id }, data: { status: "approved", reviewerId, reviewedAt: new Date() } });
-      const welcome = await postRoomNotice(tx, room.id, member.id, `欢迎 ${alias} 加入宣泄室`);
-      await tx.treeholeRoomMember.update({ where: { id: member.id }, data: { readId: welcome.id - 1 } });
-      await notifyTreehole([application.visitorId], {
-        title: "宣泄室申请通过了",
-        content: `你已加入「${room.name}」，群里的虚拟 ID 是 ${alias}。`,
-        link: `/treehole/room/${room.id}`,
-        type: "treehole-room-application-result",
-        extra: { roomId: room.id, applicationId: application.id },
-      }, tx);
-      await writeTreeholeAudit({ actor: viewer, action: "room.application.approve", targetType: "room", targetId: room.id, detail: { applicationId: application.id, alias } }, tx);
-      return { status: "approved" as const, alias };
-    });
-    ok(res, result);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// ---- 新建宣泄室（洞主联名） ----
-
-const proposalSchema = z.object({
+const createRoomSchema = z.object({
   name: z.string().trim().min(2, "名称至少 2 个字").max(20, "名称最多 20 个字"),
   category: z.enum(TREEHOLE_ROOM_CATEGORIES),
   intro: z.string().trim().max(120, "简介最多 120 字").optional().default(""),
 });
 
-treeholeRoomRouter.post("/room-proposals", validate(proposalSchema), async (req, res, next) => {
+// 每位小艾绒都可以开设主题宣泄室，开设人和之后进来的小艾绒都是群管理员。
+treeholeRoomRouter.post("/rooms", validate(createRoomSchema), async (req, res, next) => {
   try {
     const viewer = viewerOf(res);
     const staff = requireTreeholeHost(viewer);
-    const body = req.body as z.infer<typeof proposalSchema>;
-    const pendingMine = await prisma.treeholeRoomProposal.count({ where: { proposerId: staff.id, status: "pending" } });
-    if (pendingMine >= 3) throw Errors.badRequest("你已经发起了 3 个还没建成的宣泄室提议");
-    const proposal = await prisma.$transaction(async (tx) => {
-      const created = await tx.treeholeRoomProposal.create({ data: { schoolId: viewer.schoolId, name: body.name, category: body.category, intro: body.intro, proposerId: staff.id } });
-      await tx.treeholeRoomProposalSignature.create({ data: { proposalId: created.id, staffId: staff.id } });
-      const others = await tx.treeholeStaff.findMany({ where: { schoolId: viewer.schoolId, enabled: true, isHost: true, hostCode: { not: null }, id: { not: staff.id } }, select: { userId: true } });
-      await notifyTreehole(others.map((row) => row.userId), {
-        title: "新的宣泄室联名提议",
-        content: `${hostDisplayName(staff.hostCode)} 提议新建「${body.name}」，需要 ${TREEHOLE_ROOM_FOUNDERS_REQUIRED} 名洞主联名。`,
-        link: "/treehole/host?tab=rooms",
-        type: "treehole-room-proposal",
-        level: "weak",
-        extra: { proposalId: created.id },
-      }, tx);
+    const body = req.body as z.infer<typeof createRoomSchema>;
+    takeTreeholeRate(`room-create:${viewer.userId}`, 5, 24 * 60 * 60_000, "今天开设的宣泄室有点多了");
+    const room = await prisma.$transaction(async (tx) => {
+      const created = await tx.treeholeRoom.create({
+        data: { schoolId: viewer.schoolId, name: body.name, category: body.category, intro: body.intro, createdById: staff.id },
+      });
+      const host = await tx.treeholeRoomMember.create({
+        data: { roomId: created.id, userId: viewer.userId, role: "host", staffId: staff.id, alias: hostDisplayName(staff.hostCode) },
+      });
+      await postRoomNotice(tx, created.id, host.id, `${host.alias} 开设了「${created.name}」`);
+      await writeTreeholeAudit({ actor: viewer, action: "room.create", targetType: "room", targetId: created.id, detail: { name: created.name, category: created.category } }, tx);
       return created;
     });
-    ok(res, { id: proposal.id });
+    ok(res, { id: room.id });
   } catch (error) {
     next(error);
   }
 });
 
-treeholeRoomRouter.post("/room-proposals/:id/sign", async (req, res, next) => {
+const joinSchema = z.object({ agree: z.literal(true, { errorMap: () => ({ message: "请先阅读并同意保密与伦理须知" }) }) });
+
+// 学生读过并同意保密与伦理须知后直接进入；被移出过的同一个宣泄室不能再进。
+treeholeRoomRouter.post("/rooms/:id/join", validate(joinSchema), async (req, res, next) => {
   try {
     const viewer = viewerOf(res);
-    const staff = requireTreeholeHost(viewer);
-    const proposalId = parseTreeholeId(req.params.id, "提议编号");
-    const result = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PROPOSAL_LOCK}::int, ${proposalId}::int)`;
-      const proposal = await tx.treeholeRoomProposal.findUnique({ where: { id: proposalId }, include: { signatures: true } });
-      if (!proposal || proposal.schoolId !== viewer.schoolId || proposal.status !== "pending") throw Errors.notFound("这个提议已经结束");
-      if (proposal.signatures.some((sig) => sig.staffId === staff.id)) throw Errors.conflict("你已经联名过了");
-      await tx.treeholeRoomProposalSignature.create({ data: { proposalId, staffId: staff.id } });
-      const signerIds = [...proposal.signatures.map((sig) => sig.staffId), staff.id];
-      const signers = await tx.treeholeStaff.findMany({ where: { id: { in: signerIds }, schoolId: viewer.schoolId, enabled: true, isHost: true, hostCode: { not: null } } });
-      if (signers.length < TREEHOLE_ROOM_FOUNDERS_REQUIRED) return { created: false, roomId: null, signatures: signers.length };
-      const room = await tx.treeholeRoom.create({ data: { schoolId: proposal.schoolId, name: proposal.name, category: proposal.category, intro: proposal.intro } });
-      for (const signer of signers) {
-        await tx.treeholeRoomMember.create({ data: { roomId: room.id, userId: signer.userId, role: "host", staffId: signer.id, alias: hostDisplayName(signer.hostCode) } });
+    await requireConsent(viewer.userId);
+    const config = await loadTreeholeConfig(viewer.schoolId);
+    const staffMember = viewer.isHost || viewer.isAdmin;
+    if (!config.open && !staffMember) throw Errors.forbidden("树洞暂未开放，开放后会在这里通知大家");
+    if (config.studentOnly && !staffMember) {
+      const user = await prisma.user.findUnique({ where: { id: viewer.userId }, select: { studentSso: true } });
+      if (!user?.studentSso) throw Errors.forbidden("宣泄室仅面向在校同学，请先用学校统一身份认证登录");
+    }
+    const roomId = parseTreeholeId(req.params.id, "宣泄室编号");
+    const member = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK}::int, ${roomId}::int)`;
+      const room = await tx.treeholeRoom.findUnique({ where: { id: roomId } });
+      if (!room || room.schoolId !== viewer.schoolId || room.status !== "active") throw Errors.notFound("这个宣泄室已经关闭");
+      const existing = await tx.treeholeRoomMember.findFirst({ where: { roomId, userId: viewer.userId, status: "active" } });
+      if (existing) return existing;
+      const removed = await tx.treeholeRoomMember.findFirst({ where: { roomId, userId: viewer.userId, status: "removed" }, select: { id: true } });
+      if (removed) throw Errors.forbidden("你已被管理员移出这个宣泄室，可以试试其他主题的宣泄室");
+      // 洞主进来就是群管理员，和 /enter 相同。
+      if (viewer.isHost && viewer.staff) {
+        const host = await tx.treeholeRoomMember.create({
+          data: { roomId, userId: viewer.userId, role: "host", staffId: viewer.staff.id, alias: hostDisplayName(viewer.staff.hostCode) },
+        });
+        await postRoomNotice(tx, roomId, host.id, `${host.alias} 来到了宣泄室`);
+        return host;
       }
-      await tx.treeholeRoomProposal.update({ where: { id: proposalId }, data: { status: "created", roomId: room.id } });
-      await notifyTreehole(signers.map((signer) => signer.userId), {
-        title: "宣泄室建好了",
-        content: `「${room.name}」已由 ${signers.length} 名洞主联名建成，你们都是群管理员。`,
-        link: `/treehole/room/${room.id}`,
-        type: "treehole-room-created",
-        extra: { roomId: room.id },
-      }, tx);
-      await writeTreeholeAudit({
-        actor: viewer,
-        action: "room.create",
-        targetType: "room",
-        targetId: room.id,
-        detail: { name: room.name, founders: signers.map((signer) => signer.hostCode) },
-      }, tx);
-      return { created: true, roomId: room.id, signatures: signers.length };
+      const active = await tx.treeholeRoomMember.findMany({ where: { roomId, status: "active", role: "visitor" }, select: { seq: true } });
+      const seq = nextRoomSeq(active.map((row) => row.seq));
+      const created = await tx.treeholeRoomMember.create({
+        data: { roomId, userId: viewer.userId, role: "visitor", seq, alias: roomMemberAlias(seq) },
+      });
+      const welcome = await postRoomNotice(tx, roomId, created.id, `欢迎 ${created.alias} 加入宣泄室`);
+      await tx.treeholeRoomMember.update({ where: { id: created.id }, data: { readId: welcome.id - 1 } });
+      return created;
     });
-    ok(res, result);
-  } catch (error) {
-    next(error);
-  }
-});
-
-treeholeRoomRouter.post("/room-proposals/:id/cancel", async (req, res, next) => {
-  try {
-    const viewer = viewerOf(res);
-    const proposal = await prisma.treeholeRoomProposal.findUnique({ where: { id: parseTreeholeId(req.params.id, "提议编号") } });
-    if (!proposal || proposal.schoolId !== viewer.schoolId || proposal.status !== "pending") throw Errors.notFound("这个提议已经结束");
-    if (proposal.proposerId !== viewer.staff?.id && !viewer.isAdmin) throw Errors.forbidden("只有发起人可以撤回提议");
-    await prisma.treeholeRoomProposal.update({ where: { id: proposal.id }, data: { status: "cancelled" } });
-    ok(res, { cancelled: true });
+    ok(res, { memberId: member.id, alias: member.alias });
   } catch (error) {
     next(error);
   }

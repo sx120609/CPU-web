@@ -39,18 +39,19 @@ import {
 import {
   generateVisitorAlias,
   hostDisplayName,
+  normalizeTopics,
   presenceOverrideFor,
   roomCategoryLabel,
   shouldNotifyCounterpart,
   treeholeSessionRole,
   TREEHOLE_CONSENT_VERSION,
   TREEHOLE_CRISIS_URGENCIES,
-  TREEHOLE_SESSION_MODES,
   TREEHOLE_PRESENCE_SEEN_MS,
   TREEHOLE_SESSION_TAGS,
 } from "../services/treeholePolicy";
 import { treeholeRoomRouter } from "./treeholeRooms";
 import { treeholeAdminRouter } from "./treeholeAdmin";
+import { treeholeBookingRouter } from "./treeholeBookings";
 
 // 艾绒树洞：来访者、洞主共用的一对一会话接口；宣泄室和后台在各自的文件里。
 
@@ -224,34 +225,22 @@ treeholeRouter.get("/images/:id", async (req, res, next) => {
   }
 });
 
-// ---- 一对一会话 ----
+// ---- 留言倾诉 ----
+// 学生的留言先进本校的待认领池；在岗的洞主自己认领能回答的留言再展开回复。
 
 const createSessionSchema = z.object({
-  mode: z.enum(TREEHOLE_SESSION_MODES),
-  hostId: z.number().int().positive().nullable().optional().default(null),
+  mode: z.literal("async").optional().default("async"),
+  topics: z.array(z.string().trim().max(10)).max(5).optional().default([]),
   content: z.string().trim().max(2000, "单条消息不能超过 2000 字").optional().default(""),
   imageId: z.number().int().positive().nullable().optional().default(null),
 });
-
-async function pickAsyncHost(excludeUserId: number, schoolId: string) {
-  const hosts = await prisma.treeholeStaff.findMany({
-    where: { schoolId, enabled: true, isHost: true, hostCode: { not: null }, userId: { not: excludeUserId } },
-    include: { shifts: true, _count: { select: { sessions: { where: { status: "active" } } } } },
-  });
-  if (!hosts.length) return null;
-  const now = new Date();
-  const ranked = hosts
-    .map((host) => ({ host, online: presenceOf(host, now).online, load: host._count.sessions, tiebreak: Math.random() }))
-    .sort((a, b) => Number(b.online) - Number(a.online) || a.load - b.load || a.tiebreak - b.tiebreak);
-  return ranked[0].host;
-}
 
 treeholeRouter.post("/sessions", validate(createSessionSchema), async (req, res, next) => {
   try {
     const viewer = viewerOf(res);
     const body = req.body as z.infer<typeof createSessionSchema>;
     await requireConsent(viewer.userId);
-    const config = await loadTreeholeConfig(viewerOf(res).schoolId);
+    const config = await loadTreeholeConfig(viewer.schoolId);
     const staffMember = viewer.isHost || viewer.isAdmin;
     if (!config.open && !staffMember) throw Errors.forbidden("树洞暂未开放，开放后会在这里通知大家");
     if (config.studentOnly && !staffMember) {
@@ -260,36 +249,24 @@ treeholeRouter.post("/sessions", validate(createSessionSchema), async (req, res,
     }
     if (!body.content && !body.imageId) throw Errors.badRequest("先说点什么吧");
     const open = await prisma.treeholeSession.findFirst({ where: { visitorId: viewer.userId, status: "active" }, select: { id: true } });
-    if (open) throw Errors.conflict("你还有一段正在进行的倾诉，可以继续聊，或者先结束它再开启新的");
-    takeTreeholeRate(`session:${viewer.userId}`, 6, 24 * 60 * 60_000, "今天开启的倾诉有点多了，可以继续之前的对话");
-
-    let host;
-    if (body.hostId) {
-      host = await prisma.treeholeStaff.findUnique({ where: { id: body.hostId }, include: { shifts: true } });
-      if (!host || host.schoolId !== viewer.schoolId || !host.enabled || !host.isHost || !host.hostCode) throw Errors.badRequest("这位洞主暂时无法接待，请换一位");
-      if (host.userId === viewer.userId) throw Errors.badRequest("不能选择自己作为洞主");
-    } else if (body.mode === "async") {
-      host = await pickAsyncHost(viewer.userId, viewer.schoolId);
-      if (!host) throw Errors.badRequest("暂时还没有可以接待的洞主");
-    } else {
-      throw Errors.badRequest("请选择一位在岗的洞主");
-    }
-    if (body.mode === "live" && !presenceOf(host).online) throw Errors.badRequest("这位洞主刚刚离岗了，可以选择其他在岗洞主，或改用留言倾诉");
+    if (open) throw Errors.conflict("你还有一条留言没有结束，可以接着在里面说，或者先结束它再写新的");
+    takeTreeholeRate(`session:${viewer.userId}`, 6, 24 * 60 * 60_000, "今天写的留言有点多了，可以接着之前的留言说");
 
     const session = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${-71000}::int, ${viewer.userId}::int)`;
       const active = await tx.treeholeSession.findFirst({ where: { visitorId: viewer.userId, status: "active" }, select: { id: true } });
-      if (active) throw Errors.conflict("你还有一段正在进行的倾诉，可以继续聊，或者先结束它再开启新的");
+      if (active) throw Errors.conflict("你还有一条留言没有结束，可以接着在里面说，或者先结束它再写新的");
       const now = new Date();
       const created = await tx.treeholeSession.create({
         data: {
+          schoolId: viewer.schoolId,
           visitorId: viewer.userId,
-          hostId: host!.id,
-          mode: body.mode,
+          hostId: null,
+          mode: "async",
+          topics: normalizeTopics(body.topics),
           alias: generateVisitorAlias(),
           visitorSeenAt: now,
           lastMessageAt: now,
-          hostNotifiedAt: now,
         },
       });
       const image = body.imageId ? await claimTreeholeImage(tx, body.imageId, viewer.userId) : null;
@@ -297,17 +274,120 @@ treeholeRouter.post("/sessions", validate(createSessionSchema), async (req, res,
         data: { sessionId: created.id, sender: "visitor", kind: image ? "image" : "text", content: body.content, imageId: image?.id ?? null },
       });
       await tx.treeholeSession.update({ where: { id: created.id }, data: { visitorReadId: first.id } });
-      await notifyTreehole([host!.userId], {
-        title: body.mode === "live" ? "有同学想和你实时聊聊" : "收到一条新的树洞留言",
-        content: `${created.alias} 选择了你，进入树洞查看。`,
-        link: `/treehole/session/${created.id}`,
-        type: "treehole-session-new",
-        level: body.mode === "live" ? "strong" : "normal",
-        extra: { sessionId: created.id },
-      }, tx);
       return created;
     });
+    // 只提醒此刻在岗的洞主；其他人上线后在工作台的待认领里能看到。
+    const hosts = await prisma.treeholeStaff.findMany({
+      where: { schoolId: viewer.schoolId, enabled: true, isHost: true, hostCode: { not: null }, userId: { not: viewer.userId } },
+      include: { shifts: true },
+    });
+    const now = new Date();
+    await notifyTreehole(hosts.filter((host) => presenceOf(host, now).online).map((host) => host.userId), {
+      title: "有新的树洞留言待认领",
+      content: "一条新留言进入了待认领，进入洞主工作台看看能不能接住它。",
+      link: "/treehole/host",
+      type: "treehole-pool-new",
+      level: "weak",
+      extra: { sessionId: session.id },
+    });
     ok(res, { id: session.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+function poolPreview(content: string, kind: string) {
+  if (kind === "image") return content ? `[图片] ${content.slice(0, 60)}` : "[图片]";
+  return content.replace(/\s+/gu, " ").slice(0, 120);
+}
+
+// 待认领池只给在岗的洞主看：先看留言开头和标签，决定接不接。
+treeholeRouter.get("/host/pool", async (_req, res, next) => {
+  try {
+    const viewer = viewerOf(res);
+    const staff = requireTreeholeHost(viewer);
+    const presence = presenceOf(staff);
+    const where = { schoolId: viewer.schoolId, hostId: null, status: "active", visitorId: { not: viewer.userId } };
+    const total = await prisma.treeholeSession.count({ where });
+    if (!presence.online) {
+      ok(res, { online: false, total, list: [] });
+      return;
+    }
+    const rows = await prisma.treeholeSession.findMany({
+      where,
+      orderBy: { createdAt: "asc" },
+      take: 50,
+      include: { messages: { where: { sender: "visitor" }, orderBy: { id: "asc" }, take: 1, select: { content: true, kind: true } } },
+    });
+    ok(res, {
+      online: true,
+      total,
+      list: rows.map((row) => ({
+        id: row.id,
+        alias: row.alias,
+        topics: row.topics,
+        createdAt: row.createdAt,
+        preview: row.messages[0] ? poolPreview(row.messages[0].content, row.messages[0].kind) : "",
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+treeholeRouter.post("/sessions/:id/claim", async (req, res, next) => {
+  try {
+    const viewer = viewerOf(res);
+    const staff = requireTreeholeHost(viewer);
+    if (!presenceOf(staff).online) throw Errors.badRequest("上线后才能认领留言");
+    const sessionId = parseTreeholeId(req.params.id, "留言编号");
+    const now = new Date();
+    const claimed = await prisma.treeholeSession.updateMany({
+      where: { id: sessionId, schoolId: viewer.schoolId, hostId: null, status: "active", visitorId: { not: viewer.userId } },
+      data: { hostId: staff.id, claimedAt: now, hostSeenAt: now, hostNotifiedAt: now },
+    });
+    if (!claimed.count) throw Errors.conflict("这条留言已经被其他小艾绒认领了");
+    const session = await prisma.treeholeSession.findUniqueOrThrow({ where: { id: sessionId } });
+    await notifyTreehole([session.visitorId], {
+      title: "你的留言有小艾绒认领了",
+      content: `${hostDisplayName(staff.hostCode)} 认领了你的留言，回复后会提醒你。`,
+      link: `/treehole/session/${sessionId}`,
+      type: "treehole-claimed",
+      extra: { sessionId },
+    });
+    ok(res, { id: sessionId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 认领了但还没回复，觉得自己接不住，可以放回待认领。
+treeholeRouter.post("/sessions/:id/release", async (req, res, next) => {
+  try {
+    const viewer = viewerOf(res);
+    const staff = requireTreeholeHost(viewer);
+    const released = await prisma.treeholeSession.updateMany({
+      where: { id: parseTreeholeId(req.params.id, "留言编号"), schoolId: viewer.schoolId, hostId: staff.id, firstReplyAt: null, status: "active" },
+      data: { hostId: null, claimedAt: null },
+    });
+    if (!released.count) throw Errors.badRequest("已经回复过的留言不能放回");
+    ok(res, { released: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const topicsSchema = z.object({ topics: z.array(z.string().trim().max(10)).max(5) });
+
+// 学生自己或接待洞主可以改留言标签。
+treeholeRouter.post("/sessions/:id/topics", validate(topicsSchema), async (req, res, next) => {
+  try {
+    const viewer = viewerOf(res);
+    const { session, role } = await loadSessionFor(parseTreeholeId(req.params.id, "留言编号"), viewer);
+    if (role === "admin") throw Errors.forbidden("核心管理员只能查阅");
+    const topics = normalizeTopics(req.body.topics);
+    await prisma.treeholeSession.update({ where: { id: session.id }, data: { topics } });
+    ok(res, { topics });
   } catch (error) {
     next(error);
   }
@@ -370,8 +450,9 @@ treeholeRouter.get("/sessions/:id/messages", validate(pageSchema, "query"), asyn
   }
 });
 
-function counterpartUserId(session: { visitorId: number; host: { userId: number } }, senderRole: "visitor" | "host") {
-  return senderRole === "visitor" ? session.host.userId : session.visitorId;
+/** 留言待认领时没有洞主可提醒，返回 null。 */
+function counterpartUserId(session: { visitorId: number; host: { userId: number } | null }, senderRole: "visitor" | "host") {
+  return senderRole === "visitor" ? session.host?.userId ?? null : session.visitorId;
 }
 
 function messageReminder(session: { id: number; alias: string }, senderRole: "visitor" | "host") {
@@ -394,7 +475,8 @@ async function remindIfStillUnread(sessionId: number, senderRole: "visitor" | "h
         where: { id: sessionId },
         data: senderRole === "visitor" ? { hostNotifiedAt: new Date() } : { visitorNotifiedAt: new Date() },
       });
-      await notifyTreehole([counterpartUserId(session, senderRole)], messageReminder(session, senderRole), tx);
+      const recipient = counterpartUserId(session, senderRole);
+      if (recipient) await notifyTreehole([recipient], messageReminder(session, senderRole), tx);
     });
   } catch (error) {
     console.warn("[treehole] delayed reminder failed", (error as Error)?.message);
@@ -432,10 +514,16 @@ treeholeRouter.post("/sessions/:id/messages", validate(sendSchema), async (req, 
           lastMessageAt: message.createdAt,
           ...(role === "visitor"
             ? { visitorReadId: message.id, visitorSeenAt: now, ...(notify ? { hostNotifiedAt: now } : {}) }
-            : { hostReadId: message.id, hostSeenAt: now, ...(notify ? { visitorNotifiedAt: now } : {}) }),
+            : {
+              hostReadId: message.id,
+              hostSeenAt: now,
+              ...(fresh.firstReplyAt ? {} : { firstReplyAt: now }),
+              ...(notify ? { visitorNotifiedAt: now } : {}),
+            }),
         },
       });
-      if (notify) await notifyTreehole([counterpartUserId(session, role)], messageReminder(session, role), tx);
+      const recipient = counterpartUserId(session, role);
+      if (notify && recipient) await notifyTreehole([recipient], messageReminder(session, role), tx);
       return { message, notify };
     });
     // 对方刚才还开着页面所以没提醒；若它其实已经离开，过一会儿仍没读到这条就补一条提醒。
@@ -474,7 +562,7 @@ treeholeRouter.post("/sessions/:id/contact", validate(contactSchema), async (req
     await prisma.$transaction(async (tx) => {
       await tx.treeholeSession.update({ where: { id: session.id }, data: { contact: req.body.contact, contactAt: new Date() } });
       await tx.treeholeMessage.create({ data: { sessionId: session.id, sender: "system", kind: "notice", content: "来访者自愿留下了联系方式，仅接待洞主和核心管理员可见。" } });
-      await notifyTreehole([session.host.userId], {
+      if (session.host) await notifyTreehole([session.host.userId], {
         title: "来访者留下了联系方式",
         content: `${session.alias} 自愿留下了联系方式，进入会话查看。`,
         link: `/treehole/session/${session.id}`,
@@ -612,28 +700,18 @@ treeholeRouter.get("/host/overview", async (_req, res, next) => {
     const viewer = viewerOf(res);
     const staff = requireTreeholeHost(viewer);
     const config = await loadTreeholeConfig(viewerOf(res).schoolId);
-    const [active, ended, rooms, proposals] = await Promise.all([
+    const now = new Date();
+    const [active, ended, rooms, poolCount, pendingBookings] = await Promise.all([
       listSessionSummaries({ hostId: staff.id, status: "active" }, "host", config, { take: 100 }),
       listSessionSummaries({ hostId: staff.id, status: "ended" }, "host", config, { take: 30 }),
       prisma.treeholeRoom.findMany({
         where: { schoolId: viewer.schoolId, status: "active" },
         orderBy: { lastMessageAt: "desc" },
-        include: {
-          members: { where: { status: "active" }, select: { id: true, userId: true, role: true, readId: true } },
-          _count: { select: { applications: { where: { status: "pending" } } } },
-        },
+        include: { members: { where: { status: "active" }, select: { id: true, userId: true, role: true, readId: true } } },
       }),
-      prisma.treeholeRoomProposal.findMany({
-        where: { schoolId: viewer.schoolId, status: "pending" },
-        orderBy: { id: "desc" },
-        include: { signatures: true },
-      }),
+      prisma.treeholeSession.count({ where: { schoolId: viewer.schoolId, hostId: null, status: "active", visitorId: { not: viewer.userId } } }),
+      prisma.treeholeBooking.count({ where: { hostId: staff.id, status: "pending", startAt: { gt: now } } }),
     ]);
-    const signerIds = [...new Set(proposals.flatMap((proposal) => [proposal.proposerId, ...proposal.signatures.map((sig) => sig.staffId)]))];
-    const signers = signerIds.length
-      ? await prisma.treeholeStaff.findMany({ where: { id: { in: signerIds } }, select: { id: true, hostCode: true } })
-      : [];
-    const signerCode = new Map(signers.map((row) => [row.id, row.hostCode]));
     const presence = presenceOf(staff);
     ok(res, {
       profile: {
@@ -666,22 +744,11 @@ treeholeRouter.get("/host/overview", async (_req, res, next) => {
           memberCount: room.members.filter((member) => member.role === "visitor").length,
           hostCount: room.members.filter((member) => member.role === "host").length,
           joined: Boolean(mine),
-          pendingApplications: mine ? room._count.applications : 0,
           lastMessageAt: room.lastMessageAt,
         };
       }),
-      proposals: proposals.map((proposal) => ({
-        id: proposal.id,
-        name: proposal.name,
-        category: proposal.category,
-        categoryLabel: roomCategoryLabel(proposal.category),
-        intro: proposal.intro,
-        proposer: hostDisplayName(signerCode.get(proposal.proposerId)),
-        signers: proposal.signatures.map((sig) => hostDisplayName(signerCode.get(sig.staffId))),
-        signed: proposal.signatures.some((sig) => sig.staffId === staff.id),
-        mine: proposal.proposerId === staff.id,
-        createdAt: proposal.createdAt,
-      })),
+      poolCount,
+      pendingBookings,
     });
   } catch (error) {
     next(error);
@@ -743,4 +810,5 @@ treeholeRouter.get("/host/sessions", validate(hostSessionsSchema, "query"), asyn
 });
 
 treeholeRouter.use("/", treeholeRoomRouter);
+treeholeRouter.use("/", treeholeBookingRouter);
 treeholeRouter.use("/admin", treeholeAdminRouter);

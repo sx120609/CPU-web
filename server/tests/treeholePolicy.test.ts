@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  bookingDisplayStatus,
+  bookingSlots,
+  claimStatusOf,
   currentShift,
+  isBookableSlot,
+  normalizeTopics,
+  roomMemberAlias,
   generateVisitorAlias,
   looksLikeContactExchange,
   nextRoomSeq,
@@ -135,4 +141,63 @@ test("counterpart reminders skip people who are reading and repeat at most every
   assert.equal(shouldNotifyCounterpart({ seenAt: ago(5 * 60_000), notifiedAt: ago(60_000) }, now), false);
   assert.equal(shouldNotifyCounterpart({ seenAt: ago(5 * 60_000), notifiedAt: ago(10 * 60_000) }, now), true);
   assert.equal(shouldNotifyCounterpart({ seenAt: ago(60 * 60_000), notifiedAt: ago(31 * 60_000) }, now), true);
+});
+
+test("unclaimed messages are only visible to the visitor and core admins", () => {
+  const session = { visitorId: 10, hostId: null };
+  assert.equal(treeholeSessionRole(session, { userId: 10, staffId: null, isHost: false, isAdmin: false }), "visitor");
+  assert.equal(treeholeSessionRole(session, { userId: 20, staffId: 3, isHost: true, isAdmin: false }), null);
+  assert.equal(treeholeSessionRole(session, { userId: 22, staffId: 5, isHost: false, isAdmin: true }), "admin");
+});
+
+test("message status goes from unclaimed to claimed to replied", () => {
+  assert.equal(claimStatusOf({ hostId: null, firstReplyAt: null }), "unclaimed");
+  assert.equal(claimStatusOf({ hostId: 3, firstReplyAt: null }), "claimed");
+  assert.equal(claimStatusOf({ hostId: 3, firstReplyAt: new Date() }), "replied");
+});
+
+test("message topics keep only known tags, at most three", () => {
+  assert.deepEqual(normalizeTopics(["情感", "情感", "随便写的", "学业压力", "家庭", "其他"]), ["情感", "学业压力", "家庭"]);
+  assert.deepEqual(normalizeTopics(undefined), []);
+});
+
+test("booking slots split each shift into 30-minute pieces in Beijing time", () => {
+  // 周一北京时间 08:00，排班周一 19:00–21:00 和周三 12:00–13:15。
+  const now = new Date("2026-10-26T00:00:00Z");
+  const slots = bookingSlots([eveningShift, { weekday: 3, startMinute: 12 * 60, endMinute: 13 * 60 + 15 }], now, { days: 7 });
+  assert.deepEqual(slots.map((slot) => slot.startAt.toISOString()), [
+    "2026-10-26T11:00:00.000Z",
+    "2026-10-26T11:30:00.000Z",
+    "2026-10-26T12:00:00.000Z",
+    "2026-10-26T12:30:00.000Z",
+    "2026-10-28T04:00:00.000Z",
+    "2026-10-28T04:30:00.000Z",
+  ]);
+  assert.equal(slots[0].endAt.getTime() - slots[0].startAt.getTime(), 30 * 60_000);
+});
+
+test("slots starting within the next hour cannot be booked", () => {
+  const now = new Date("2026-10-26T10:40:00Z"); // 北京时间 18:40
+  const slots = bookingSlots([eveningShift], now, { days: 1 });
+  assert.deepEqual(slots.map((slot) => slot.startAt.toISOString()), ["2026-10-26T12:00:00.000Z", "2026-10-26T12:30:00.000Z"]);
+  assert.equal(isBookableSlot([eveningShift], new Date("2026-10-26T11:30:00Z"), now), false);
+  assert.equal(isBookableSlot([eveningShift], new Date("2026-10-26T12:00:00Z"), now), true);
+  assert.equal(isBookableSlot([eveningShift], new Date("2026-10-26T12:10:00Z"), now), false);
+});
+
+test("booking status turns into expired or done once its time passes", () => {
+  const booking = { startAt: new Date("2026-10-26T11:00:00Z"), endAt: new Date("2026-10-26T11:30:00Z") };
+  const before = new Date("2026-10-26T10:00:00Z");
+  const during = new Date("2026-10-26T11:10:00Z");
+  const after = new Date("2026-10-26T12:00:00Z");
+  assert.equal(bookingDisplayStatus({ ...booking, status: "pending" }, before), "pending");
+  assert.equal(bookingDisplayStatus({ ...booking, status: "pending" }, during), "expired");
+  assert.equal(bookingDisplayStatus({ ...booking, status: "confirmed" }, during), "confirmed");
+  assert.equal(bookingDisplayStatus({ ...booking, status: "confirmed" }, after), "done");
+  assert.equal(bookingDisplayStatus({ ...booking, status: "cancelled" }, after), "cancelled");
+});
+
+test("room members are shown as numbered classmates", () => {
+  assert.equal(roomMemberAlias(7), "同学 07");
+  assert.equal(roomMemberAlias(120), "同学 120");
 });

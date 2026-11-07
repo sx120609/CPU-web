@@ -32,6 +32,16 @@
         <label for="th-config-emergency">紧急提示</label>
         <el-input id="th-config-emergency" v-model="form.emergencyNote" type="textarea" :rows="2" maxlength="200" show-word-limit />
       </div>
+
+      <h2 class="th-h2 th-config-title">线下倾诉与宣泄室</h2>
+      <div class="th-field">
+        <label for="th-config-place">线下倾诉地点</label>
+        <el-input id="th-config-place" v-model="form.bookingPlace" maxlength="120" placeholder="留空则用上面的机构名称和地点" />
+      </div>
+      <div class="th-field">
+        <label for="th-config-rules">宣泄室保密与伦理须知</label>
+        <el-input id="th-config-rules" v-model="form.roomRules" type="textarea" :rows="6" maxlength="1000" show-word-limit placeholder="一行一条。留空则用默认须知" />
+      </div>
       <div class="th-actions">
         <el-button type="primary" native-type="submit" :loading="saving">保存设置</el-button>
       </div>

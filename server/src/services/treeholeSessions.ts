@@ -9,6 +9,7 @@ import {
   type TreeholeViewer,
 } from "./treehole";
 import {
+  claimStatusOf,
   hostDisplayName,
   roomCategoryLabel,
   treeholeSessionRole,
@@ -36,12 +37,13 @@ export async function loadSessionFor(sessionId: number, viewer: TreeholeViewer) 
     isAdmin: viewer.isAdmin,
   }) : null;
   // 看不到的会话一律按不存在处理，不暴露会话是否存在；外校的会话也一样。
-  if (!session || !role || session.host.schoolId !== viewer.schoolId) throw Errors.notFound("会话不存在");
+  if (!session || !role || session.schoolId !== viewer.schoolId) throw Errors.notFound("会话不存在");
   return { session, role };
 }
 
 export function serializeSession(session: SessionWithHost, role: TreeholeSessionRole, config: TreeholeConfig, unread = 0) {
-  const presence = presenceOf(session.host);
+  const host = session.host;
+  const presence = host ? presenceOf(host) : null;
   const crisis = session.tag === "crisis";
   return {
     id: session.id,
@@ -53,15 +55,19 @@ export function serializeSession(session: SessionWithHost, role: TreeholeSession
     endedAt: session.endedAt,
     lastMessageAt: session.lastMessageAt,
     unread,
-    host: {
-      id: session.host.id,
-      code: session.host.hostCode || "",
-      name: hostDisplayName(session.host.hostCode),
-      intro: session.host.intro,
+    topics: session.topics,
+    claimStatus: claimStatusOf(session),
+    claimedAt: session.claimedAt,
+    // 留言待认领时还没有洞主
+    host: host && presence ? {
+      id: host.id,
+      code: host.hostCode || "",
+      name: hostDisplayName(host.hostCode),
+      intro: host.intro,
       online: presence.online,
-      available: session.host.enabled && session.host.isHost,
+      available: host.enabled && host.isHost,
       nextShiftAt: presence.nextShiftAt,
-    },
+    } : null,
     contact: session.contact,
     // 来访者只看到求助渠道，看不到“高危”“重点关注”这些标签。
     help: crisis ? publicHelpChannels(config) : null,

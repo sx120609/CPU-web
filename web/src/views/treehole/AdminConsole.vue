@@ -22,6 +22,7 @@
       </nav>
       <CasesPanel v-if="tab === 'cases'" :initial-case="initialCase" @changed="refreshOverview" />
       <SessionsPanel v-else-if="tab === 'sessions'" />
+      <BookingsPanel v-else-if="tab === 'bookings'" />
       <RoomsPanel v-else-if="tab === 'rooms'" />
       <StaffPanel v-else-if="tab === 'staff'" :core-admin="overview.isAdmin" />
       <StatsPanel v-else-if="tab === 'stats'" />
@@ -41,12 +42,13 @@ import CasesPanel from "./admin/CasesPanel.vue";
 import ConfigPanel from "./admin/ConfigPanel.vue";
 import RoomsPanel from "./admin/RoomsPanel.vue";
 import SessionsPanel from "./admin/SessionsPanel.vue";
+import BookingsPanel from "./admin/BookingsPanel.vue";
 import StaffPanel from "./admin/StaffPanel.vue";
 import StatsPanel from "./admin/StatsPanel.vue";
 import { errorText } from "./shared";
 import "./treehole.css";
 
-type TabKey = "cases" | "sessions" | "rooms" | "staff" | "stats" | "audit" | "config";
+type TabKey = "cases" | "sessions" | "bookings" | "rooms" | "staff" | "stats" | "audit" | "config";
 
 const route = useRoute();
 const router = useRouter();
@@ -61,7 +63,8 @@ const tabs = computed(() => {
   const counts = overview.value.counts;
   return [
     { key: "cases" as const, label: "高危工单", badge: (counts?.openCases ?? 0) + (counts?.pendingReveals ?? 0) },
-    { key: "sessions" as const, label: "会话日志", badge: 0 },
+    { key: "sessions" as const, label: "留言日志", badge: 0 },
+    { key: "bookings" as const, label: "预约记录", badge: 0 },
     { key: "rooms" as const, label: "宣泄室", badge: 0 },
     { key: "staff" as const, label: "人员与排班", badge: 0 },
     { key: "stats" as const, label: "数据统计", badge: 0 },

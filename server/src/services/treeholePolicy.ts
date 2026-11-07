@@ -6,8 +6,24 @@ export const TREEHOLE_CONSENT_VERSION = "2026-10-25";
 export const TREEHOLE_SESSION_MODES = ["async", "live"] as const;
 export const TREEHOLE_SESSION_TAGS = ["normal", "focus", "crisis"] as const;
 export const TREEHOLE_CRISIS_URGENCIES = ["normal", "high", "urgent"] as const;
-export const TREEHOLE_ROOM_CATEGORIES = ["praise", "vent", "cry", "relax", "other"] as const;
-export const TREEHOLE_ROOM_FOUNDERS_REQUIRED = 3;
+// 宣泄室主题。旧数据里还有 praise / vent / cry / relax，标签见 roomCategoryLabel。
+export const TREEHOLE_ROOM_CATEGORIES = ["study", "research", "social", "emotion", "family", "growth", "relax", "other"] as const;
+// 留言标签，学生提交时可选、洞主可改，后台按它统计。
+export const TREEHOLE_TOPICS = ["学业压力", "科研受阻", "情感", "人际关系", "家庭", "就业与未来", "身心健康", "其他"] as const;
+export const TREEHOLE_BOOKING_SLOT_MINUTES = 30;
+// 进宣泄室前要同意的保密与伦理须知；后台“设置”里可以改写。
+export const DEFAULT_ROOM_RULES = [
+  "这里只显示虚拟 ID。不要打听、猜测或透露任何人的真实身份。",
+  "群里听到的事留在群里：不截图、不转述、不外传。",
+  "不交换手机号、QQ、微信等联系方式，不私下加好友。",
+  "尊重每个人的感受，不评判、不说教、不嘲笑，不发广告和无关内容。",
+  "这里是同学间的互助陪伴，不能代替专业心理咨询。如果你或群里有人有伤害自己的想法，请马上联系小艾绒或学校心理发展中心。",
+  "违反须知的消息会被撤回，严重的会被移出宣泄室。",
+].join("\n");
+export const TREEHOLE_BOOKING_DAYS = 14;
+// 至少提前这么久预约；之后的档位才开放。
+export const TREEHOLE_BOOKING_LEAD_MINUTES = 60;
+export const TREEHOLE_BOOKING_ACTIVE_LIMIT = 2;
 export const TREEHOLE_REVEAL_APPROVALS_REQUIRED = 2;
 export const TREEHOLE_TEMP_ONLINE_MINUTES = 120;
 // 打开的对话页至少每 15 秒刷新一次“正在看”，35 秒没刷新就当已经离开。
@@ -128,11 +144,11 @@ export type TreeholeSessionRole = "visitor" | "host" | "admin";
  * 其他洞主、其他来访者、站点管理员都返回 null。洞主被停用后也看不到。
  */
 export function treeholeSessionRole(
-  session: { visitorId: number; hostId: number },
+  session: { visitorId: number; hostId: number | null },
   viewer: { userId: number; staffId: number | null; isHost: boolean; isAdmin: boolean },
 ): TreeholeSessionRole | null {
   if (session.visitorId === viewer.userId) return "visitor";
-  if (viewer.isHost && viewer.staffId !== null && session.hostId === viewer.staffId) return "host";
+  if (viewer.isHost && viewer.staffId !== null && session.hostId !== null && session.hostId === viewer.staffId) return "host";
   if (viewer.isAdmin) return "admin";
   return null;
 }
@@ -211,10 +227,79 @@ export function shouldNotifyCounterpart(input: { seenAt?: Date | null; notifiedA
 
 export function roomCategoryLabel(category: string) {
   switch (category) {
-    case "praise": return "夸夸室";
-    case "vent": return "倾诉室";
-    case "cry": return "哭哭室";
-    case "relax": return "解压室";
-    default: return "宣泄室";
+    case "study": return "学业焦虑";
+    case "research": return "科研受阻";
+    case "social": return "人际关系";
+    case "emotion": return "情感";
+    case "family": return "家庭";
+    case "growth": return "自我成长";
+    case "relax": return "解压放松";
+    case "praise": return "夸夸";
+    case "vent": return "倾诉";
+    case "cry": return "哭哭";
+    default: return "其他";
   }
+}
+
+/** 宣泄室里来访者的虚拟 ID，按群内次序编号，例如“同学 07”。 */
+export function roomMemberAlias(seq: number) {
+  return `同学 ${String(seq).padStart(2, "0")}`;
+}
+
+export function normalizeTopics(raw: readonly string[] | null | undefined) {
+  const allowed = new Set<string>(TREEHOLE_TOPICS);
+  return [...new Set((raw ?? []).map((item) => String(item).trim()).filter((item) => allowed.has(item)))].slice(0, 3);
+}
+
+export type TreeholeClaimStatus = "unclaimed" | "claimed" | "replied";
+
+/** 留言状态：没人认领 → 待认领；认领后洞主还没回 → 已认领；回过 → 已回复。 */
+export function claimStatusOf(session: { hostId: number | null; firstReplyAt: Date | null }): TreeholeClaimStatus {
+  if (session.hostId === null) return "unclaimed";
+  return session.firstReplyAt ? "replied" : "claimed";
+}
+
+export type BookingSlot = { startAt: Date; endAt: Date };
+
+/**
+ * 预约档位：把每周排班在接下来 days 天里展开，切成 slotMinutes 一档。
+ * 开始时间不足 leadMinutes 的档位不再开放；不够一整档的尾巴舍掉。
+ */
+export function bookingSlots(
+  shifts: TreeholeShiftLike[],
+  now: Date,
+  options: { days?: number; slotMinutes?: number; leadMinutes?: number } = {},
+): BookingSlot[] {
+  const days = options.days ?? TREEHOLE_BOOKING_DAYS;
+  const slotMinutes = options.slotMinutes ?? TREEHOLE_BOOKING_SLOT_MINUTES;
+  const earliest = now.getTime() + (options.leadMinutes ?? TREEHOLE_BOOKING_LEAD_MINUTES) * 60_000;
+  const clock = shanghaiClock(now);
+  const slots: BookingSlot[] = [];
+  for (let offset = 0; offset < days; offset += 1) {
+    const weekday = ((clock.weekday - 1 + offset) % 7) + 1;
+    const dayStart = clock.dayStartMs + offset * DAY_MS;
+    for (const shift of shifts) {
+      if (shift.weekday !== weekday) continue;
+      for (let minute = shift.startMinute; minute + slotMinutes <= shift.endMinute; minute += slotMinutes) {
+        const startAt = dayStart + minute * 60_000;
+        if (startAt < earliest) continue;
+        slots.push({ startAt: new Date(startAt), endAt: new Date(startAt + slotMinutes * 60_000) });
+      }
+    }
+  }
+  return slots.sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+}
+
+/** 这个开始时刻是不是该洞主排班里的一个可约档位（防止伪造时间）。 */
+export function isBookableSlot(shifts: TreeholeShiftLike[], startAt: Date, now: Date) {
+  return bookingSlots(shifts, now).some((slot) => slot.startAt.getTime() === startAt.getTime());
+}
+
+export type BookingDisplayStatus = "pending" | "confirmed" | "rejected" | "cancelled" | "expired" | "done";
+
+/** 待确认的预约过了开始时间算过期，已确认的过了结束时间算已结束。 */
+export function bookingDisplayStatus(booking: { status: string; startAt: Date; endAt: Date }, now: Date): BookingDisplayStatus {
+  if (booking.status === "pending" && booking.startAt <= now) return "expired";
+  if (booking.status === "confirmed" && booking.endAt <= now) return "done";
+  return booking.status as BookingDisplayStatus;
 }

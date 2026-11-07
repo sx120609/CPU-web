@@ -22,6 +22,7 @@ import {
 } from "../services/treehole";
 import { listSessionSummaries } from "../services/treeholeSessions";
 import {
+  bookingDisplayStatus,
   hostDisplayName,
   normalizeHostCode,
   normalizeShifts,
@@ -37,8 +38,8 @@ export const treeholeAdminRouter = Router();
 
 const REVEAL_LOCK = -71003;
 
-/** 后台数据只取管理员本校的：会话、工单、溯源都经由洞主归属学校。 */
-const sessionsOfSchool = (schoolId: string) => ({ host: { schoolId } });
+/** 后台数据只取管理员本校的：会话带学校，工单、溯源经由会话归属学校。 */
+const sessionsOfSchool = (schoolId: string) => ({ schoolId });
 const casesOfSchool = (schoolId: string) => ({ session: sessionsOfSchool(schoolId) });
 const revealsOfSchool = (schoolId: string) => ({ crisisCase: casesOfSchool(schoolId) });
 
@@ -69,6 +70,8 @@ const sessionListSchema = z.object({
   status: z.enum(["active", "ended"]).optional(),
   mode: z.enum(TREEHOLE_SESSION_MODES).optional(),
   hostId: z.coerce.number().int().positive().optional(),
+  claim: z.enum(["unclaimed", "claimed", "replied"]).optional(),
+  topic: z.string().trim().max(10).optional(),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
 });
 
@@ -83,6 +86,10 @@ treeholeAdminRouter.get("/sessions", validate(sessionListSchema, "query"), async
       ...(query.status ? { status: query.status } : {}),
       ...(query.mode ? { mode: query.mode } : {}),
       ...(query.hostId ? { hostId: query.hostId } : {}),
+      ...(query.claim === "unclaimed" ? { hostId: null } : {}),
+      ...(query.claim === "claimed" ? { hostId: { not: null }, firstReplyAt: null } : {}),
+      ...(query.claim === "replied" ? { firstReplyAt: { not: null } } : {}),
+      ...(query.topic ? { topics: { has: query.topic } } : {}),
     };
     const config = await loadTreeholeConfig(viewerOf(res).schoolId);
     const [total, list] = await Promise.all([
@@ -577,12 +584,10 @@ treeholeAdminRouter.get("/rooms", async (_req, res, next) => {
       include: {
         members: { where: { status: "active" }, select: { role: true } },
         proposal: { select: { proposerId: true, signatures: { select: { staffId: true } } } },
-        _count: { select: { messages: true, applications: true } },
+        _count: { select: { messages: true } },
       },
     });
-    const pending = await prisma.treeholeRoomApplication.groupBy({ by: ["roomId"], where: { status: "pending", room: { schoolId: viewer.schoolId } }, _count: { _all: true } });
-    const pendingMap = new Map(pending.map((row) => [row.roomId, row._count._all]));
-    const label = await staffLabels(rooms.flatMap((room) => room.proposal?.signatures.map((sig) => sig.staffId) ?? []));
+    const label = await staffLabels(rooms.flatMap((room) => [room.createdById, ...(room.proposal?.signatures.map((sig) => sig.staffId) ?? [])]));
     ok(res, rooms.map((room) => ({
       id: room.id,
       name: room.name,
@@ -596,10 +601,8 @@ treeholeAdminRouter.get("/rooms", async (_req, res, next) => {
       lastMessageAt: room.lastMessageAt,
       visitorCount: room.members.filter((member) => member.role === "visitor").length,
       hostCount: room.members.filter((member) => member.role === "host").length,
-      founders: room.proposal?.signatures.map((sig) => label(sig.staffId)) ?? [],
+      founders: room.createdById ? [label(room.createdById)] : room.proposal?.signatures.map((sig) => label(sig.staffId)) ?? [],
       messageCount: room._count.messages,
-      applicationCount: room._count.applications,
-      pendingApplications: pendingMap.get(room.id) ?? 0,
     })));
   } catch (error) {
     next(error);
@@ -620,20 +623,23 @@ treeholeAdminRouter.get("/stats", validate(statsSchema, "query"), async (req, re
     requireTreeholeAdmin(viewer);
     const { days } = req.query as unknown as z.infer<typeof statsSchema>;
     const since = new Date(Date.now() - days * 86_400_000);
-    const [sessions, cases, openCases, activeSessions, hosts, rooms, roomMessages, applications] = await Promise.all([
-      prisma.treeholeSession.findMany({ where: { createdAt: { gte: since }, ...sessionsOfSchool(viewer.schoolId) }, select: { createdAt: true, mode: true, tag: true, hostId: true, status: true } }),
+    const [sessions, cases, openCases, activeSessions, hosts, rooms, roomMessages, bookings] = await Promise.all([
+      prisma.treeholeSession.findMany({ where: { createdAt: { gte: since }, ...sessionsOfSchool(viewer.schoolId) }, select: { createdAt: true, mode: true, tag: true, hostId: true, status: true, topics: true, firstReplyAt: true } }),
       prisma.treeholeCrisisCase.findMany({ where: { createdAt: { gte: since }, ...casesOfSchool(viewer.schoolId) }, select: { urgency: true, status: true } }),
       prisma.treeholeCrisisCase.count({ where: { status: { not: "closed" }, ...casesOfSchool(viewer.schoolId) } }),
       prisma.treeholeSession.count({ where: { status: "active", ...sessionsOfSchool(viewer.schoolId) } }),
       prisma.treeholeStaff.findMany({ where: { schoolId: viewer.schoolId, isHost: true, hostCode: { not: null } }, include: { shifts: true } }),
       prisma.treeholeRoom.findMany({ where: { schoolId: viewer.schoolId }, select: { id: true, name: true, category: true, status: true, members: { where: { status: "active", role: "visitor" }, select: { id: true } } } }),
       prisma.treeholeRoomMessage.groupBy({ by: ["roomId"], where: { createdAt: { gte: since }, kind: { not: "notice" }, room: { schoolId: viewer.schoolId } }, _count: { _all: true } }),
-      prisma.treeholeRoomApplication.groupBy({ by: ["status"], where: { createdAt: { gte: since }, room: { schoolId: viewer.schoolId } }, _count: { _all: true } }),
+      prisma.treeholeBooking.findMany({ where: { schoolId: viewer.schoolId, startAt: { gte: since } }, select: { hostId: true, status: true, startAt: true, endAt: true } }),
     ]);
     const byHost = new Map<number, number>();
+    const bookingsByHost = new Map<number, number>();
+    const byTopic = new Map<string, number>();
     const daily = new Map<string, number>();
     for (const session of sessions) {
-      byHost.set(session.hostId, (byHost.get(session.hostId) ?? 0) + 1);
+      if (session.hostId !== null) byHost.set(session.hostId, (byHost.get(session.hostId) ?? 0) + 1);
+      for (const topic of session.topics.length ? session.topics : ["未标注"]) byTopic.set(topic, (byTopic.get(topic) ?? 0) + 1);
       const key = shanghaiDateKey(session.createdAt);
       daily.set(key, (daily.get(key) ?? 0) + 1);
     }
@@ -644,12 +650,18 @@ treeholeAdminRouter.get("/stats", validate(statsSchema, "query"), async (req, re
     }
     const roomActivity = new Map(roomMessages.map((row) => [row.roomId, row._count._all]));
     const now = new Date();
+    const bookingStates = bookings.map((booking) => bookingDisplayStatus(booking, now));
+    for (const booking of bookings) {
+      if (booking.status === "confirmed") bookingsByHost.set(booking.hostId, (bookingsByHost.get(booking.hostId) ?? 0) + 1);
+    }
     ok(res, {
       days,
       sessions: {
         total: sessions.length,
         async: sessions.filter((session) => session.mode === "async").length,
         live: sessions.filter((session) => session.mode === "live").length,
+        unclaimed: sessions.filter((session) => session.hostId === null && session.status === "active").length,
+        replied: sessions.filter((session) => session.firstReplyAt !== null).length,
         focus: sessions.filter((session) => session.tag === "focus").length,
         crisis: sessions.filter((session) => session.tag === "crisis").length,
         ended: sessions.filter((session) => session.status === "ended").length,
@@ -668,6 +680,7 @@ treeholeAdminRouter.get("/stats", validate(statsSchema, "query"), async (req, re
           enabled: host.enabled,
           online: presenceOf(host, now).online,
           sessions: byHost.get(host.id) ?? 0,
+          bookings: bookingsByHost.get(host.id) ?? 0,
         }))
         .sort((a, b) => String(a.code).localeCompare(String(b.code))),
       rooms: rooms.map((room) => ({
@@ -678,7 +691,14 @@ treeholeAdminRouter.get("/stats", validate(statsSchema, "query"), async (req, re
         members: room.members.length,
         messages: roomActivity.get(room.id) ?? 0,
       })).sort((a, b) => b.messages - a.messages),
-      applications: Object.fromEntries(applications.map((row) => [row.status, row._count._all])),
+      topics: [...byTopic.entries()].map(([topic, count]) => ({ topic, count })).sort((a, b) => b.count - a.count),
+      bookings: {
+        total: bookings.length,
+        pending: bookingStates.filter((state) => state === "pending").length,
+        confirmed: bookingStates.filter((state) => state === "confirmed" || state === "done").length,
+        done: bookingStates.filter((state) => state === "done").length,
+        cancelled: bookingStates.filter((state) => state === "cancelled" || state === "rejected" || state === "expired").length,
+      },
       daily: dailySeries,
     });
   } catch (error) {
@@ -739,6 +759,8 @@ const configSchema = z.object({
   centerHours: z.string().max(120),
   crisisGuide: z.string().max(400),
   emergencyNote: z.string().max(200),
+  bookingPlace: z.string().max(120).optional().default(""),
+  roomRules: z.string().max(1000).optional().default(""),
 });
 
 treeholeAdminRouter.put("/config", validate(configSchema), async (req, res, next) => {

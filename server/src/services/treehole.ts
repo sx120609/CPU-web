@@ -30,6 +30,8 @@ export type TreeholeConfig = {
   centerHours: string;
   crisisGuide: string;
   emergencyNote: string;
+  bookingPlace: string;
+  roomRules: string;
 };
 
 export const DEFAULT_TREEHOLE_CONFIG: TreeholeConfig = {
@@ -41,6 +43,8 @@ export const DEFAULT_TREEHOLE_CONFIG: TreeholeConfig = {
   centerHours: "",
   crisisGuide: "谢谢你愿意说出来。你的感受很重要，学校心理发展中心的老师可以给你更专业的陪伴，我们也会一直在这里。",
   emergencyNote: "如果你正处在危险之中，请立即拨打 110 或 120，或拨打全国心理援助热线 12356。",
+  bookingPlace: "",
+  roomRules: "",
 };
 
 const CONFIG_LIMITS: Record<Exclude<keyof TreeholeConfig, "open" | "studentOnly">, number> = {
@@ -50,6 +54,8 @@ const CONFIG_LIMITS: Record<Exclude<keyof TreeholeConfig, "open" | "studentOnly"
   centerHours: 120,
   crisisGuide: 400,
   emergencyNote: 200,
+  bookingPlace: 120,
+  roomRules: 1000,
 };
 
 export function normalizeTreeholeConfig(raw: unknown): TreeholeConfig {
@@ -85,6 +91,12 @@ export async function saveTreeholeConfig(config: TreeholeConfig, schoolId: strin
   return normalizeTreeholeConfig(JSON.parse(value));
 }
 
+/** 线下倾诉的地点：后台填了就用，没填用心理中心名称和地点。 */
+export function bookingPlaceOf(config: TreeholeConfig) {
+  if (config.bookingPlace) return config.bookingPlace;
+  return config.centerLocation ? `${config.centerName}（${config.centerLocation}）` : config.centerName;
+}
+
 export function publicHelpChannels(config: TreeholeConfig) {
   return {
     centerName: config.centerName,
@@ -93,6 +105,7 @@ export function publicHelpChannels(config: TreeholeConfig) {
     centerHours: config.centerHours,
     crisisGuide: config.crisisGuide,
     emergencyNote: config.emergencyNote,
+    bookingPlace: bookingPlaceOf(config),
   };
 }
 

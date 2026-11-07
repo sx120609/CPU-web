@@ -118,6 +118,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   await tx.treeholeConsent.deleteMany({ where: { userId } });
   await tx.treeholeRoomMember.updateMany({ where: { userId, status: "active" }, data: { status: "left", leftAt: new Date() } });
   await tx.treeholeRoomApplication.updateMany({ where: { visitorId: userId, status: "pending" }, data: { status: "cancelled" } });
+  await tx.treeholeBooking.updateMany({ where: { visitorId: userId, status: { in: ["pending", "confirmed"] }, startAt: { gt: new Date() } }, data: { status: "cancelled", cancelledBy: "visitor", cancelledAt: new Date() } });
   await tx.forumReport.deleteMany({ where: { OR: [{ reporterId: userId }, { targetAuthorId: userId }] } });
   await tx.canteenReview.deleteMany({ where: { userId } });
   // 已生效的门店纠错是公共目录的一部分，只解除关联；其余纠错和投票一并删除。

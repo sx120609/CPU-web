@@ -5,6 +5,10 @@ import instance, { request, type RequestOptions } from "./request";
 export const TREEHOLE_CONSENT_VERSION = "2026-10-25";
 
 export type TreeholeMode = "async" | "live";
+export type TreeholeClaimStatus = "unclaimed" | "claimed" | "replied";
+export type TreeholeBookingStatus = "pending" | "confirmed" | "rejected" | "cancelled" | "expired" | "done";
+
+export const TREEHOLE_TOPICS = ["学业压力", "科研受阻", "情感", "人际关系", "家庭", "就业与未来", "身心健康", "其他"];
 export type TreeholeTag = "normal" | "focus" | "crisis";
 export type TreeholeRole = "visitor" | "host" | "admin";
 
@@ -45,7 +49,11 @@ export interface TreeholeSession {
   endedAt: string | null;
   lastMessageAt: string;
   unread: number;
-  host: TreeholeHost;
+  topics: string[];
+  claimStatus: TreeholeClaimStatus;
+  claimedAt: string | null;
+  /** 留言待认领时为空 */
+  host: TreeholeHost | null;
   contact: string | null;
   help: TreeholeHelp | null;
   tag?: TreeholeTag;
@@ -179,6 +187,57 @@ export interface TreeholePresence {
   nextShiftAt: string | null;
 }
 
+export interface TreeholeBooking {
+  id: number;
+  startAt: string;
+  endAt: string;
+  status: TreeholeBookingStatus;
+  place: string;
+  note: string;
+  host: { id: number; code: string; name: string };
+  alias: string | null;
+  rejectReason: string | null;
+  cancelledBy: "visitor" | "host" | null;
+  cancelReason: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  cancellable: boolean;
+}
+
+export interface TreeholeScheduleHost {
+  id: number;
+  code: string;
+  name: string;
+  intro: string;
+  online: boolean;
+  mine: boolean;
+  shifts: TreeholeShift[];
+  slots: Array<{ startAt: string; endAt: string; available: boolean }>;
+}
+
+export interface TreeholeSchedule {
+  slotMinutes: number;
+  days: number;
+  place: string;
+  hosts: TreeholeScheduleHost[];
+}
+
+export interface TreeholePoolItem {
+  id: number;
+  alias: string;
+  topics: string[];
+  createdAt: string;
+  preview: string;
+}
+
+export interface TreeholeRoomCard extends TreeholeRoomInfo {
+  visitorCount: number;
+  hostCount: number;
+  joined: boolean;
+  removed: boolean;
+  lastMessageAt: string;
+}
+
 export interface TreeholeHostOverview {
   profile: {
     id: number;
@@ -191,8 +250,9 @@ export interface TreeholeHostOverview {
   };
   activeSessions: TreeholeSession[];
   endedSessions: TreeholeSession[];
-  rooms: Array<TreeholeRoomSummary & { memberCount: number; hostCount: number; joined: boolean; pendingApplications: number }>;
-  proposals: Array<{ id: number; name: string; category: string; categoryLabel: string; intro: string; proposer: string; signers: string[]; signed: boolean; mine: boolean; createdAt: string }>;
+  rooms: Array<TreeholeRoomSummary & { memberCount: number; hostCount: number; joined: boolean }>;
+  poolCount: number;
+  pendingBookings: number;
 }
 
 export interface TreeholeCrisisInput {
@@ -290,17 +350,16 @@ export interface TreeholeAdminRoom {
   hostCount: number;
   founders: Array<string | null>;
   messageCount: number;
-  applicationCount: number;
-  pendingApplications: number;
 }
 
 export interface TreeholeStats {
   days: number;
-  sessions: { total: number; async: number; live: number; focus: number; crisis: number; ended: number; activeNow: number };
+  sessions: { total: number; async: number; live: number; unclaimed: number; replied: number; focus: number; crisis: number; ended: number; activeNow: number };
+  topics: Array<{ topic: string; count: number }>;
+  bookings: { total: number; pending: number; confirmed: number; done: number; cancelled: number };
   cases: { total: number; urgent: number; high: number; openNow: number };
-  hosts: Array<{ code: string | null; name: string; enabled: boolean; online: boolean; sessions: number }>;
+  hosts: Array<{ code: string | null; name: string; enabled: boolean; online: boolean; sessions: number; bookings: number }>;
   rooms: Array<{ id: number; name: string; categoryLabel: string; status: string; members: number; messages: number }>;
-  applications: Record<string, number>;
   daily: Array<{ date: string; sessions: number }>;
 }
 
@@ -318,6 +377,8 @@ export interface TreeholeAuditRow {
 export interface TreeholeConfig extends TreeholeHelp {
   open: boolean;
   studentOnly: boolean;
+  bookingPlace: string;
+  roomRules: string;
 }
 
 type Page<T> = { total: number; page: number; size: number; list: T[] };
@@ -335,8 +396,21 @@ export const treeholeApi = {
   },
   imageBlob: (id: number) => instance.get<unknown, Blob>(`/treehole/images/${id}`, { responseType: "blob", suppressErrorMessage: true } as RequestOptions),
 
-  createSession: (payload: { mode: TreeholeMode; hostId: number | null; content: string; imageId: number | null }) =>
-    request.post<{ id: number }>("/treehole/sessions", payload),
+  createSession: (payload: { topics: string[]; content: string; imageId: number | null }) =>
+    request.post<{ id: number }>("/treehole/sessions", { mode: "async", ...payload }),
+  pool: () => request.get<{ online: boolean; total: number; list: TreeholePoolItem[] }>("/treehole/host/pool"),
+  claim: (id: number) => request.post<{ id: number }>(`/treehole/sessions/${id}/claim`),
+  release: (id: number) => request.post<{ released: boolean }>(`/treehole/sessions/${id}/release`),
+  setTopics: (id: number, topics: string[]) => request.post<{ topics: string[] }>(`/treehole/sessions/${id}/topics`, { topics }),
+
+  schedule: () => request.get<TreeholeSchedule>("/treehole/schedule"),
+  book: (payload: { hostId: number; startAt: string; note: string }) => request.post<TreeholeBooking>("/treehole/bookings", payload),
+  myBookings: () => request.get<TreeholeBooking[]>("/treehole/bookings/mine"),
+  hostBookings: () => request.get<{ upcoming: TreeholeBooking[]; past: TreeholeBooking[] }>("/treehole/host/bookings"),
+  confirmBooking: (id: number) => request.post<TreeholeBooking>(`/treehole/bookings/${id}/confirm`),
+  rejectBooking: (id: number, reason: string) => request.post<TreeholeBooking>(`/treehole/bookings/${id}/reject`, { reason }),
+  cancelBooking: (id: number, reason = "") => request.post<TreeholeBooking>(`/treehole/bookings/${id}/cancel`, { reason }),
+  adminBookings: (params: { status?: string; page: number }) => request.get<Page<TreeholeBooking>>("/treehole/admin/bookings", params),
   session: (id: number) => request.get<TreeholeSessionDetail>(`/treehole/sessions/${id}`),
   sessionMessages: (id: number, params: { after?: number; before?: number }) =>
     request.get<{ session: TreeholeSession; messages: TreeholeMessage[]; hasMore: boolean }>(`/treehole/sessions/${id}/messages`, params, quiet),
@@ -361,16 +435,12 @@ export const treeholeApi = {
   roomMembers: (id: number) => request.get<TreeholeRoomMember[]>(`/treehole/rooms/${id}/members`),
   removeMember: (roomId: number, memberId: number, reason: string) => request.post<{ removed: boolean }>(`/treehole/rooms/${roomId}/members/${memberId}/remove`, { reason }),
   recallRoomMessage: (roomId: number, messageId: number) => request.post<{ recalled: boolean }>(`/treehole/rooms/${roomId}/messages/${messageId}/recall`),
-  roomApplications: (roomId: number, status: "pending" | "all") => request.get<TreeholeRoomApplication[]>(`/treehole/rooms/${roomId}/applications`, { status }),
-  applyRoom: (messageId: number, note: string) => request.post<{ id: number; status: string }>("/treehole/room-applications", { messageId, note }),
-  cancelApplication: (id: number) => request.post<{ cancelled: boolean }>(`/treehole/room-applications/${id}/cancel`),
-  reviewApplication: (id: number, approve: boolean, reason = "") => request.post<{ status: string; alias: string | null }>(`/treehole/room-applications/${id}/review`, { approve, reason }),
-  proposeRoom: (payload: { name: string; category: string; intro: string }) => request.post<{ id: number }>("/treehole/room-proposals", payload),
-  signProposal: (id: number) => request.post<{ created: boolean; roomId: number | null; signatures: number }>(`/treehole/room-proposals/${id}/sign`),
-  cancelProposal: (id: number) => request.post<{ cancelled: boolean }>(`/treehole/room-proposals/${id}/cancel`),
+  rooms: (category?: string) => request.get<{ rules: string; categories: Array<{ value: string; label: string }>; rooms: TreeholeRoomCard[] }>("/treehole/rooms", category ? { category } : undefined),
+  createRoom: (payload: { name: string; category: string; intro: string }) => request.post<{ id: number }>("/treehole/rooms", payload),
+  joinRoom: (id: number) => request.post<{ memberId: number; alias: string }>(`/treehole/rooms/${id}/join`, { agree: true }),
 
   adminOverview: () => request.get<{ isAdmin: boolean; isSiteAdmin: boolean; counts: { openCases: number; pendingReveals: number; activeSessions: number; activeRooms: number } | null }>("/treehole/admin/overview"),
-  adminSessions: (params: { tag?: string; status?: string; mode?: string; page: number }) => request.get<Page<TreeholeSession>>("/treehole/admin/sessions", params),
+  adminSessions: (params: { tag?: string; status?: string; mode?: string; claim?: string; topic?: string; page: number }) => request.get<Page<TreeholeSession>>("/treehole/admin/sessions", params),
   adminCases: (status: string) => request.get<TreeholeCaseSummary[]>("/treehole/admin/cases", { status }),
   adminCase: (id: number) => request.get<TreeholeCaseDetail>(`/treehole/admin/cases/${id}`),
   addCaseNote: (id: number, content: string) => request.post<TreeholeCaseDetail>(`/treehole/admin/cases/${id}/notes`, { content }),

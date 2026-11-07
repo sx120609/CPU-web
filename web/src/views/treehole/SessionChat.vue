@@ -6,9 +6,10 @@
       </button>
       <div v-if="session" class="th-chat-title">
         <strong>
-          <template v-if="session.role === 'visitor'">
+          <template v-if="session.role === 'visitor' && session.host">
             <span class="th-dot" :class="{ 'is-on': session.host.online }" aria-hidden="true" />{{ session.host.name }}
           </template>
+          <template v-else-if="session.role === 'visitor'">等待小艾绒认领</template>
           <template v-else>{{ session.alias }}</template>
           <em v-if="session.role !== 'visitor' && session.tag && session.tag !== 'normal'" class="th-chip" :class="tagTone(session.tag)">{{ tagLabel(session.tag) }}</em>
         </strong>
@@ -45,6 +46,9 @@
     <div v-if="session && session.role !== 'visitor' && session.contact" class="th-help th-contact" role="note">
       <p>来访者自愿留下的联系方式：<strong>{{ session.contact }}</strong></p>
     </div>
+    <div v-if="session && session.role !== 'visitor' && session.topics.length" class="th-topics-bar">
+      <span v-for="topic in session.topics" :key="topic" class="th-chip">#{{ topic }}</span>
+    </div>
     <div v-if="session?.role === 'admin'" class="th-help th-contact" role="note">
       <p>你正以核心管理员身份查阅这段对话，查阅已记入操作日志。<router-link v-if="session.crisis" :to="`/treehole/admin?tab=cases&case=${session.crisis.id}`">查看高危工单</router-link></p>
     </div>
@@ -55,7 +59,7 @@
       <template v-else>
         <el-button v-if="hasMore" class="th-chat-more" text size="small" :loading="loadingOlder" @click="loadOlder">查看更早的消息</el-button>
         <div v-if="session && session.role === 'visitor' && !hasMore" class="th-system">
-          {{ session.mode === "live" ? "实时聊天" : "留言倾诉" }} · 你在这次对话里的虚拟 ID 是 {{ session.alias }}
+          {{ session.mode === "live" ? "实时聊天" : "留言倾诉" }} · 你在这条留言里的虚拟 ID 是 {{ session.alias }}
         </div>
         <template v-for="{ message, day, showAuthor, showTime } in lines" :key="message.id">
           <div v-if="day" class="th-day">{{ day }}</div>
@@ -67,14 +71,11 @@
                 <el-icon aria-hidden="true"><ChatLineRound /></el-icon>{{ message.room.name }}
                 <em class="th-chip is-brand">{{ message.room.categoryLabel }}</em>
               </div>
-              <p>{{ message.room.intro || "小艾绒推荐你加入这个情绪宣泄室。" }}</p>
+              <p>{{ message.room.intro || "小艾绒推荐你来这个主题宣泄室看看。" }}</p>
               <template v-if="session?.role === 'visitor'">
-                <el-button v-if="message.room.joined" size="small" type="primary" @click="router.push(`/treehole/room/${message.room.id}`)">进入宣泄室</el-button>
-                <span v-else-if="message.room.status !== 'active'" class="th-muted">这个宣泄室已关闭</span>
-                <span v-else-if="message.room.application?.status === 'pending'" class="th-muted">已申请，等待群管理员审核</span>
-                <el-button v-else size="small" type="primary" @click="applyRoom(message.id)">
-                  {{ message.room.application?.status === "rejected" ? "重新申请" : "申请加入" }}
-                </el-button>
+                <span v-if="message.room.status !== 'active'" class="th-muted">这个宣泄室已关闭</span>
+                <el-button v-else-if="message.room.joined" size="small" type="primary" @click="router.push(`/treehole/room/${message.room.id}`)">进入宣泄室</el-button>
+                <el-button v-else size="small" type="primary" @click="router.push({ path: '/treehole/rooms', query: { room: message.room.id } })">去看看</el-button>
               </template>
               <span v-else class="th-muted">已推荐给来访者</span>
             </div>
@@ -96,16 +97,37 @@
       <div v-if="session.status !== 'active'" class="th-chat-closed">这次倾诉已经结束{{ session.endedAt ? `（${timeText(session.endedAt)}）` : "" }}。</div>
       <div v-else-if="session.role === 'admin'" class="th-chat-closed">核心管理员只能查阅，不能在会话里发言。</div>
       <template v-else>
-        <div v-if="session.role === 'visitor' && !session.host.available" class="th-chat-closed">这位洞主暂时无法接待。你可以结束本次倾诉，再重新选择洞主。</div>
-        <div v-else-if="session.role === 'visitor' && !session.host.online" class="th-composer-hint">小艾绒暂时不在岗，{{ nextShiftText(session.host.nextShiftAt) }}，留言会在值班时被看到。</div>
+        <div v-if="session.role === 'visitor' && !session.host" class="th-composer-hint">留言已放进待认领，小艾绒值班时会认领并回复你。想补充什么可以接着写。</div>
+        <div v-else-if="session.role === 'visitor' && session.host && !session.host.available" class="th-chat-closed">这位小艾绒暂时无法接待。你可以结束这条留言，再写一条新的。</div>
+        <div v-else-if="session.role === 'visitor' && session.host && !session.host.online" class="th-composer-hint">小艾绒暂时不在岗，{{ nextShiftText(session.host.nextShiftAt) }}，值班时会看到你的消息。</div>
         <Composer :send="send" :draft-key="`session-${session.id}`" :placeholder="session.role === 'host' ? '温和地回应…' : '说说你的感受…'" @focus="onComposerFocus" />
       </template>
     </footer>
 
     <CrisisDialog v-model="crisisOpen" @submit="submitCrisis" />
 
+    <el-dialog v-model="topicsOpen" title="留言标签" width="min(92vw, 420px)" append-to-body>
+      <p class="th-sub">最多 3 个，方便统计和找到合适的小艾绒。</p>
+      <div class="th-topic-picker">
+        <button
+          v-for="topic in TREEHOLE_TOPICS"
+          :key="topic"
+          type="button"
+          class="th-topic"
+          :class="{ 'is-on': topicDraft.includes(topic) }"
+          @click="toggleTopic(topic)"
+        >
+          {{ topic }}
+        </button>
+      </div>
+      <template #footer>
+        <el-button @click="topicsOpen = false">取消</el-button>
+        <el-button type="primary" @click="saveTopics">保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="inviteOpen" title="推荐宣泄室" width="min(92vw, 420px)" append-to-body>
-      <p class="th-sub">来访者会收到一张卡片，提交申请后由该宣泄室的群管理员审核。</p>
+      <p class="th-sub">来访者会收到一张卡片，读过保密与伦理须知后就能进入。</p>
       <div v-if="!inviteRooms.length" class="th-empty"><p>还没有开放的宣泄室。</p></div>
       <div v-else class="th-rows th-invite-list">
         <button v-for="room in inviteRooms" :key="room.id" type="button" class="th-row" @click="sendInvite(room.id)">
@@ -125,6 +147,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowDown, ArrowLeft, ChatLineRound, MoreFilled } from "@element-plus/icons-vue";
 import {
   treeholeApi,
+  TREEHOLE_TOPICS,
   type TreeholeCrisisInput,
   type TreeholeMessage,
   type TreeholeSession,
@@ -133,7 +156,7 @@ import {
 import Composer from "./Composer.vue";
 import CrisisDialog from "./CrisisDialog.vue";
 import TreeholeImage from "./TreeholeImage.vue";
-import { chatLines, clockText, errorText, nextShiftText, tagLabel, tagTone, timeText, useChatScroll, usePolling } from "./shared";
+import { chatLines, claimStatusLabel, clockText, errorText, nextShiftText, tagLabel, tagTone, timeText, useChatScroll, usePolling } from "./shared";
 import "./treehole.css";
 
 const route = useRoute();
@@ -151,14 +174,17 @@ const crisisOpen = ref(false);
 const inviteOpen = ref(false);
 const helpExpanded = ref(typeof window !== "undefined" && window.innerWidth >= 640);
 const inviteRooms = ref<Array<{ id: number; name: string; categoryLabel: string }>>([]);
+const topicsOpen = ref(false);
+const topicDraft = ref<string[]>([]);
 
 const subtitle = computed(() => {
   const value = session.value;
   if (!value) return "";
   const mode = value.mode === "live" ? "实时聊天" : "留言倾诉";
-  if (value.role === "visitor") return `${mode} · ${value.host.online ? "在岗" : "离岗"}`;
-  if (value.role === "host") return `${mode} · ${value.status === "active" ? "进行中" : "已结束"}`;
-  return `${value.host.name} 接待 · ${mode}`;
+  const state = claimStatusLabel(value.claimStatus, value.status !== "active");
+  if (value.role === "visitor") return value.host ? `${mode} · ${state} · ${value.host.online ? "在岗" : "离岗"}` : `${mode} · ${state}`;
+  if (value.role === "host") return `${mode} · ${state}`;
+  return `${value.host ? `${value.host.name} 接待` : "待认领"} · ${mode}`;
 });
 
 type MenuItem = { command: string; label: string; disabled?: boolean; divided?: boolean };
@@ -167,8 +193,9 @@ const menuItems = computed<MenuItem[]>(() => {
   if (!value) return [];
   if (value.role === "visitor") {
     return [
+      { command: "topics", label: "修改标签" },
       { command: "contact", label: value.contact ? "修改留下的联系方式" : "自愿留下联系方式" },
-      ...(value.status === "active" ? [{ command: "end", label: "结束本次倾诉", divided: true }] : []),
+      ...(value.status === "active" ? [{ command: "end", label: "结束这条留言", divided: true }] : []),
     ];
   }
   if (value.role === "host") {
@@ -177,7 +204,9 @@ const menuItems = computed<MenuItem[]>(() => {
       { command: "tag:normal", label: `标记：${tagLabel("normal")}`, disabled: locked || value.tag === "normal" },
       { command: "tag:focus", label: `标记：${tagLabel("focus")}`, disabled: locked || value.tag === "focus" },
       { command: "tag:crisis", label: locked ? "已提交高危转介" : "标记：高危转介…", disabled: locked },
-      ...(value.status === "active" ? [{ command: "invite", label: "推荐宣泄室…", divided: true }] : []),
+      { command: "topics", label: "修改留言标签", divided: true },
+      ...(value.status === "active" ? [{ command: "invite", label: "推荐宣泄室…" }] : []),
+      ...(value.status === "active" && value.claimStatus === "claimed" ? [{ command: "release", label: "放回待认领" }] : []),
     ];
   }
   return [];
@@ -186,7 +215,7 @@ const menuItems = computed<MenuItem[]>(() => {
 const lastId = computed(() => messages.value.reduce((max, message) => Math.max(max, message.id), 0));
 
 function authorName(sender: string) {
-  if (sender === "host") return session.value?.host.name ?? "小艾绒";
+  if (sender === "host") return session.value?.host?.name ?? "小艾绒";
   if (sender === "visitor") return session.value?.alias ?? "来访者";
   return "";
 }
@@ -279,8 +308,24 @@ function goBack() {
 }
 
 async function onCommand(command: string) {
+  if (command === "topics") {
+    topicDraft.value = [...(session.value?.topics ?? [])];
+    topicsOpen.value = true;
+    return;
+  }
+  if (command === "release") {
+    const confirmed = await ElMessageBox.confirm("放回后其他在岗的小艾绒可以认领这条留言。", "放回待认领？", {
+      confirmButtonText: "放回",
+      cancelButtonText: "取消",
+    }).then(() => true, () => false);
+    if (!confirmed) return;
+    await treeholeApi.release(sessionId.value);
+    ElMessage.success("已放回待认领");
+    router.replace("/treehole/host");
+    return;
+  }
   if (command === "end") {
-    const confirmed = await ElMessageBox.confirm("结束后这次的虚拟 ID 会作废，对话记录仍会保留在你的历史里。想再聊时可以重新开始。", "结束本次倾诉？", {
+    const confirmed = await ElMessageBox.confirm("结束后这条留言的虚拟 ID 会作废，记录仍会保留在你的历史里。想再聊时可以重新写一条。", "结束这条留言？", {
       confirmButtonText: "结束",
       cancelButtonText: "再想想",
     }).then(() => true, () => false);
@@ -337,17 +382,17 @@ async function sendInvite(roomId: number) {
   await scrollToBottom();
 }
 
-async function applyRoom(messageId: number) {
-  const result = await ElMessageBox.prompt("可以简单说说想加入的原因（选填），群管理员审核时会看到。", "申请加入宣泄室", {
-    confirmButtonText: "提交申请",
-    cancelButtonText: "取消",
-    inputPlaceholder: "选填",
-    inputValidator: (value: string) => !value || value.length <= 200 || "最多 200 字",
-  }).catch(() => null);
-  if (!result) return;
-  await treeholeApi.applyRoom(messageId, String(result.value || "").trim());
-  ElMessage.success("申请已提交，审核结果会通知你");
-  await load();
+function toggleTopic(topic: string) {
+  if (topicDraft.value.includes(topic)) topicDraft.value = topicDraft.value.filter((item) => item !== topic);
+  else if (topicDraft.value.length < 3) topicDraft.value = [...topicDraft.value, topic];
+  else ElMessage.info("最多选 3 个标签");
+}
+
+async function saveTopics() {
+  const result = await treeholeApi.setTopics(sessionId.value, topicDraft.value);
+  if (session.value) session.value.topics = result.topics;
+  topicsOpen.value = false;
+  ElMessage.success("标签已更新");
 }
 
 watch(sessionId, load);
@@ -362,6 +407,13 @@ onMounted(load);
 }
 .th-help-guide { margin-top: 6px !important; }
 .th-help-emergency { margin-top: 6px !important; font-weight: 600; }
+.th-topics-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px 0;
+}
 .th-composer-hint {
   margin-bottom: 6px;
   color: var(--cpu-text-muted);

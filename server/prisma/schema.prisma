@@ -3130,6 +3130,7 @@ model TreeholeStaff {
   user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   shifts   TreeholeShift[]
   sessions TreeholeSession[]
+  bookings TreeholeBooking[]
 
   @@unique([schoolId, hostCode])
   @@index([hostCode])
@@ -3157,9 +3158,14 @@ model TreeholeConsent {
 
 model TreeholeSession {
   id                Int       @id @default(autoincrement())
+  // 所属学校。留言在被认领前没有洞主，靠这一列按学校进入待认领池。
+  schoolId          String    @default("cpu")
   visitorId         Int
-  hostId            Int // TreeholeStaff.id
-  mode              String // async 留言 / live 实时
+  hostId            Int? // TreeholeStaff.id；留言待认领时为空
+  mode              String // async 留言 / live 实时（已停止新建，旧会话仍可查看）
+  topics            String[]  @default([]) // 留言标签：学业压力、情感、人际关系……
+  claimedAt         DateTime?
+  firstReplyAt      DateTime? // 洞主第一次回复的时间；用来区分“已认领”和“已回复”
   alias             String // 本次会话的来访者虚拟 ID，结束后作废
   status            String    @default("active") // active / ended
   tag               String    @default("normal") // normal / focus / crisis
@@ -3178,12 +3184,13 @@ model TreeholeSession {
   updatedAt         DateTime  @updatedAt
 
   visitor  User                @relation("TreeholeVisitorSessions", fields: [visitorId], references: [id], onDelete: Restrict)
-  host     TreeholeStaff       @relation(fields: [hostId], references: [id], onDelete: Restrict)
+  host     TreeholeStaff?      @relation(fields: [hostId], references: [id], onDelete: Restrict)
   messages TreeholeMessage[]
   crisis   TreeholeCrisisCase?
 
   @@index([visitorId, lastMessageAt])
   @@index([hostId, status, lastMessageAt])
+  @@index([schoolId, hostId, status, createdAt])
   @@index([tag, createdAt])
   @@index([createdAt])
 }
@@ -3285,8 +3292,9 @@ model TreeholeRoom {
   id            Int       @id @default(autoincrement())
   schoolId      String    @default("cpu")
   name          String
-  category      String // praise 夸夸 / vent 倾诉 / cry 哭哭 / relax 解压 / other
+  category      String // 主题：study 学业焦虑 / research 科研受阻 / social 人际关系 …（见 treeholePolicy）
   intro         String    @default("")
+  createdById   Int? // 创建这个宣泄室的洞主（TreeholeStaff.id）
   status        String    @default("active") // active / closed
   closedAt      DateTime?
   closedById    Int? // 关闭人的 userId
@@ -3341,7 +3349,7 @@ model TreeholeRoomMember {
   role            String // host（群管理员）/ visitor
   staffId         Int?
   seq             Int? // 来访者进群次序编号；同一宣泄室在群成员不重复，退群后空出的号优先复用
-  alias           String // 群内虚拟 ID：推荐洞主编号 + 次序编号，例如 0167
+  alias           String // 群内虚拟 ID：“同学 07”（旧数据为推荐洞主编号 + 次序编号，例如 0167）
   recommendedById Int? // 推荐进群的洞主（TreeholeStaff.id）
   sessionId       Int? // 来访者从哪次一对一会话被推荐进群
   status          String    @default("active") // active / left / removed
@@ -3390,6 +3398,32 @@ model TreeholeRoomMessage {
   @@index([roomId, id])
   @@index([memberId])
   @@index([imageId])
+}
+
+// 预约线下一对一倾诉：按洞主排班切成 30 分钟一档，每档同时只能有一条待确认或已确认的预约。
+model TreeholeBooking {
+  id           Int       @id @default(autoincrement())
+  schoolId     String    @default("cpu")
+  visitorId    Int
+  hostId       Int // TreeholeStaff.id
+  alias        String // 预约同学的虚拟 ID
+  startAt      DateTime
+  endAt        DateTime
+  note         String    @default("") // 同学自愿写的简单说明
+  status       String    @default("pending") // pending / confirmed / rejected / cancelled
+  decidedAt    DateTime?
+  rejectReason String?
+  cancelledBy  String? // visitor / host
+  cancelReason String?
+  cancelledAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  host TreeholeStaff @relation(fields: [hostId], references: [id], onDelete: Restrict)
+
+  @@index([hostId, startAt])
+  @@index([visitorId, startAt])
+  @@index([schoolId, startAt])
 }
 
 // 树洞的后台查阅、溯源、人员和群管理操作都记在这里，永久保留。

@@ -9,13 +9,10 @@
         <span v-if="detail">{{ detail.visitorCount }} 位同学 · {{ detail.hostCount }} 位小艾绒<template v-if="detail.me"> · 我是 {{ detail.me.alias }}</template></span>
       </div>
       <el-dropdown v-if="detail" trigger="click" @command="onCommand">
-        <el-badge :value="pendingCount" :hidden="!detail.canModerate || !pendingCount" class="th-room-badge">
-          <el-button text :aria-label="pendingCount && detail.canModerate ? `更多操作，${pendingCount} 条入群申请待审核` : '更多操作'"><el-icon><MoreFilled /></el-icon></el-button>
-        </el-badge>
+        <el-button text aria-label="更多操作"><el-icon><MoreFilled /></el-icon></el-button>
         <template #dropdown>
           <el-dropdown-menu>
             <template v-if="detail.canModerate">
-              <el-dropdown-item command="applications">入群申请{{ pendingCount ? `（${pendingCount}）` : "" }}</el-dropdown-item>
               <el-dropdown-item command="members">成员管理</el-dropdown-item>
               <el-dropdown-item v-if="detail.room.status === 'active'" command="close">关闭宣泄室</el-dropdown-item>
             </template>
@@ -72,34 +69,6 @@
       <Composer v-else :send="send" :draft-key="`room-${detail.room.id}`" :max-length="1000" placeholder="在这里说出来，大家都在" @focus="onComposerFocus" />
     </footer>
 
-    <el-drawer v-model="applicationsOpen" title="入群申请" size="min(100vw, 420px)" append-to-body>
-      <el-radio-group v-model="applicationFilter" size="small" @change="loadApplications">
-        <el-radio-button value="pending">待审核</el-radio-button>
-        <el-radio-button value="all">全部记录</el-radio-button>
-      </el-radio-group>
-      <div v-if="!applications.length" class="th-empty"><p>{{ applicationFilter === "pending" ? "没有待审核的申请" : "还没有申请记录" }}</p></div>
-      <div v-else class="th-rows th-drawer-rows">
-        <div v-for="application in applications" :key="application.id" class="th-row th-application">
-          <div class="th-row-copy">
-            <div class="th-row-title">
-              {{ application.visitorAlias }}
-              <em class="th-chip" :class="statusTone(application.status)">{{ applicationStatus(application.status) }}</em>
-            </div>
-            <p class="th-meta"><span>{{ application.recommendedBy }} 推荐</span><span>{{ timeText(application.createdAt) }}</span></p>
-            <p v-if="application.note" class="th-text th-application-note">“{{ application.note }}”</p>
-            <p v-if="application.reviewer" class="th-meta">
-              <span>{{ application.reviewer }} 审核</span>
-              <span v-if="application.rejectReason">{{ application.rejectReason }}</span>
-            </p>
-          </div>
-          <div v-if="application.status === 'pending'" class="th-actions">
-            <el-button size="small" type="primary" @click="review(application.id, true)">通过</el-button>
-            <el-button size="small" @click="review(application.id, false)">拒绝</el-button>
-          </div>
-        </div>
-      </div>
-    </el-drawer>
-
     <el-drawer v-model="membersOpen" title="成员" size="min(100vw, 420px)" append-to-body>
       <div class="th-rows th-drawer-rows">
         <div v-for="member in members" :key="member.id" class="th-row">
@@ -125,7 +94,6 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowDown, ArrowLeft, MoreFilled } from "@element-plus/icons-vue";
 import {
   treeholeApi,
-  type TreeholeRoomApplication,
   type TreeholeRoomDetail,
   type TreeholeRoomMember,
   type TreeholeRoomMessage,
@@ -146,10 +114,6 @@ const loading = ref(true);
 const loadingOlder = ref(false);
 const error = ref("");
 const body = ref<HTMLElement | null>(null);
-const applicationsOpen = ref(false);
-const applicationFilter = ref<"pending" | "all">("pending");
-const applications = ref<TreeholeRoomApplication[]>([]);
-const pendingCount = ref(0);
 const membersOpen = ref(false);
 const members = ref<TreeholeRoomMember[]>([]);
 const rulesExpanded = ref(typeof window !== "undefined" && window.innerWidth >= 640);
@@ -202,21 +166,12 @@ async function load() {
     await scrollToBottom();
     stopResizeTracking();
     stopResizeTracking = scroller.keepBottomOnResize();
-    if (result.canModerate) await refreshPending();
-    if (route.query.panel === "applications" && result.canModerate) await openApplications();
   } catch (cause) {
     error.value = errorText(cause, "宣泄室不存在或你不在群里");
     loading.value = false;
   }
 }
 
-async function refreshPending() {
-  const list = await treeholeApi.roomApplications(roomId.value, "pending").catch(() => []);
-  pendingCount.value = list.length;
-  if (applicationFilter.value === "pending" && applicationsOpen.value) applications.value = list;
-}
-
-let pollCount = 0;
 async function poll() {
   if (!detail.value || loading.value) return;
   const settle = scroller.beforeIncoming();
@@ -231,8 +186,6 @@ async function poll() {
     messages.value = messages.value.map((message) => (recalled.has(message.id) ? { ...message, recalled: true, content: "", image: null } : message));
   }
   await settle(mergeMessages(result.messages));
-  pollCount += 1;
-  if (detail.value.canModerate && pollCount % 5 === 0) await refreshPending();
 }
 
 usePolling(poll, () => (detail.value?.room.status === "active" ? 3_000 : 30_000));
@@ -262,46 +215,10 @@ async function send(payload: { content: string; imageId: number | null }) {
 
 function goBack() {
   if (window.history.state?.back) router.back();
-  else router.push(detail.value?.me?.role === "host" ? "/treehole/host?tab=rooms" : detail.value?.me ? "/treehole" : "/treehole/admin?tab=rooms");
-}
-
-async function openApplications() {
-  applicationsOpen.value = true;
-  await loadApplications();
-}
-
-async function loadApplications() {
-  applications.value = await treeholeApi.roomApplications(roomId.value, applicationFilter.value);
-  if (applicationFilter.value === "pending") pendingCount.value = applications.value.length;
-}
-
-function applicationStatus(status: string) {
-  return { pending: "待审核", approved: "已通过", rejected: "已拒绝", cancelled: "已撤回" }[status] ?? status;
-}
-
-function statusTone(status: string) {
-  return status === "pending" ? "is-warn" : status === "approved" ? "is-ok" : "";
-}
-
-async function review(id: number, approve: boolean) {
-  let reason = "";
-  if (!approve) {
-    const result = await ElMessageBox.prompt("来访者会看到这条原因，请温和地说明。", "拒绝入群申请", {
-      confirmButtonText: "拒绝",
-      cancelButtonText: "取消",
-      inputValidator: (value: string) => (value && value.trim().length >= 2) || "请简单说明原因",
-    }).catch(() => null);
-    if (!result) return;
-    reason = String(result.value).trim();
-  }
-  const result = await treeholeApi.reviewApplication(id, approve, reason);
-  ElMessage.success(approve ? `已通过${result.alias ? `，群内虚拟 ID 为 ${result.alias}` : ""}` : "已拒绝");
-  await loadApplications();
-  await poll();
+  else router.push(detail.value?.me?.role === "host" ? "/treehole/host?tab=rooms" : detail.value?.me ? "/treehole/rooms" : "/treehole/admin?tab=rooms");
 }
 
 async function onCommand(command: string) {
-  if (command === "applications") return openApplications();
   if (command === "members") {
     members.value = await treeholeApi.roomMembers(roomId.value);
     membersOpen.value = true;
@@ -371,6 +288,4 @@ onMounted(load);
 .th-room-badge :deep(.el-badge__content) { top: 6px; }
 .th-recall { height: auto; padding: 0; font-size: var(--cpu-fs-xs); }
 .th-drawer-rows { margin-top: 12px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-m); overflow: hidden; }
-.th-application { flex-wrap: wrap; }
-.th-application-note { margin: 4px 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
 </style>

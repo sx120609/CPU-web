@@ -1,9 +1,17 @@
 <template>
   <section class="th-group th-group--flush">
     <div class="th-group-head">
-      <h2 class="th-h2">会话日志</h2>
+      <h2 class="th-h2">留言日志</h2>
       <div class="th-actions">
-        <el-select v-model="filters.tag" size="small" clearable placeholder="全部标签" class="th-filter" @change="reload">
+        <el-select v-model="filters.claim" size="small" clearable placeholder="全部进度" class="th-filter" @change="reload">
+          <el-option label="待认领" value="unclaimed" />
+          <el-option label="已认领" value="claimed" />
+          <el-option label="已回复" value="replied" />
+        </el-select>
+        <el-select v-model="filters.topic" size="small" clearable placeholder="全部标签" class="th-filter" @change="reload">
+          <el-option v-for="topic in TREEHOLE_TOPICS" :key="topic" :label="topic" :value="topic" />
+        </el-select>
+        <el-select v-model="filters.tag" size="small" clearable placeholder="全部风险" class="th-filter" @change="reload">
           <el-option label="普通情绪" value="normal" />
           <el-option label="重点关注" value="focus" />
           <el-option label="高危转介" value="crisis" />
@@ -27,9 +35,10 @@
             {{ session.alias }}
             <em class="th-chip">{{ session.mode === "live" ? "实时" : "留言" }}</em>
             <em v-if="session.tag && session.tag !== 'normal'" class="th-chip" :class="tagTone(session.tag)">{{ tagLabel(session.tag) }}</em>
-            <em v-if="session.status === 'ended'" class="th-chip">已结束</em>
+            <em class="th-chip" :class="claimStatusTone(session.claimStatus, session.status !== 'active')">{{ claimStatusLabel(session.claimStatus, session.status !== "active") }}</em>
+            <em v-for="topic in session.topics" :key="topic" class="th-chip">#{{ topic }}</em>
           </div>
-          <p class="th-meta"><span>{{ session.host.name }} 接待</span><span>开始于 {{ timeText(session.createdAt) }}</span><span>最近 {{ timeText(session.lastMessageAt) }}</span></p>
+          <p class="th-meta"><span>{{ session.host ? `${session.host.name} 接待` : "无人认领" }}</span><span>开始于 {{ timeText(session.createdAt) }}</span><span>最近 {{ timeText(session.lastMessageAt) }}</span></p>
         </div>
       </router-link>
     </div>
@@ -41,10 +50,10 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { treeholeApi, type TreeholeSession } from "@/api/treehole";
-import { tagLabel, tagTone, timeText } from "../shared";
+import { treeholeApi, TREEHOLE_TOPICS, type TreeholeSession } from "@/api/treehole";
+import { claimStatusLabel, claimStatusTone, tagLabel, tagTone, timeText } from "../shared";
 
-const filters = reactive<{ tag?: string; status?: string; mode?: string }>({});
+const filters = reactive<{ tag?: string; status?: string; mode?: string; claim?: string; topic?: string }>({});
 const list = ref<TreeholeSession[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -55,6 +64,8 @@ async function load() {
     ...(filters.tag ? { tag: filters.tag } : {}),
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.mode ? { mode: filters.mode } : {}),
+    ...(filters.claim ? { claim: filters.claim } : {}),
+    ...(filters.topic ? { topic: filters.topic } : {}),
   });
   list.value = result.list;
   total.value = result.total;

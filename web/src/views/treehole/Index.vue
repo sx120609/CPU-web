@@ -20,14 +20,14 @@
     </div>
 
     <template v-else-if="me">
-      <!-- 知情同意：不勾选不能使用倾诉和宣泄室 -->
+      <!-- 知情同意：不勾选不能留言、预约和进宣泄室 -->
       <section v-if="!me.consent.agreed" class="th-group th-consent">
         <h2 class="th-h2">进入树洞前，请先了解这些</h2>
         <ul>
           <li><strong>这是同学之间的朋辈陪伴</strong>，由艾绒朋辈心理社的志愿者“小艾绒”倾听，不等同于专业心理咨询。</li>
-          <li><strong>你全程匿名。</strong>每次倾诉都会生成新的虚拟 ID，洞主看不到你的学号、姓名和手机号；每段对话严格隔离。</li>
+          <li><strong>你全程匿名。</strong>每条留言、每次预约都会生成新的虚拟 ID，小艾绒看不到你的学号、姓名和手机号；每段对话严格隔离。</li>
           <li><strong>遇到危机情况</strong>，小艾绒会引导你联系学校心理发展中心，必要时转介给中心老师。</li>
-          <li><strong>对话记录会留存</strong>，只有你本人、接待你的洞主和社团核心管理员可以查看，用于陪伴跟进和危机追溯。</li>
+          <li><strong>记录会留存</strong>，只有你本人、回复你的小艾绒和社团核心管理员可以查看，用于陪伴跟进和危机追溯。</li>
           <li>只有在评估存在严重安全风险、需要线下干预时，经两名核心管理员共同审批，才会查看你在{{ site.brandName }}的账号信息，全程记录在案。</li>
         </ul>
         <el-checkbox v-model="agree">我已阅读并同意以上说明</el-checkbox>
@@ -44,51 +44,62 @@
           树洞仅面向在校同学，请先退出后用“学校账号登录”进入{{ site.brandName }}。
         </div>
 
-        <section v-if="activeSession" class="th-group th-group--flush">
+        <section v-if="me.canStart && me.eligible" class="th-start" aria-label="树洞服务">
+          <button type="button" class="th-start-card" @click="openMessage">
+            <span class="th-start-icon" data-hue="brand"><el-icon><EditPen /></el-icon></span>
+            <span class="th-start-copy">
+              <strong>
+                留言倾诉
+                <em v-if="activeSession" class="th-chip" :class="claimStatusTone(activeSession.claimStatus)">{{ claimStatusLabel(activeSession.claimStatus) }}</em>
+              </strong>
+              <span v-if="activeSession">你有一条留言还在进行中，点开接着说。</span>
+              <span v-else>写下想说的话，小艾绒值班时认领并回复你，回复后会提醒你。</span>
+            </span>
+            <el-icon class="th-start-arrow" aria-hidden="true"><ArrowRight /></el-icon>
+          </button>
+          <button type="button" class="th-start-card" @click="router.push('/treehole/bookings')">
+            <span class="th-start-icon" data-hue="violet"><el-icon><Calendar /></el-icon></span>
+            <span class="th-start-copy">
+              <strong>
+                预约线下 1 对 1 倾诉
+                <em v-if="upcomingBookings.length" class="th-chip is-ok">{{ upcomingBookings.length }} 个预约</em>
+              </strong>
+              <span>看值班表，挑一位小艾绒和时间，到心理发展中心当面聊。</span>
+            </span>
+            <el-icon class="th-start-arrow" aria-hidden="true"><ArrowRight /></el-icon>
+          </button>
+          <button type="button" class="th-start-card" @click="router.push('/treehole/rooms')">
+            <span class="th-start-icon" data-hue="amber"><el-icon><ChatLineRound /></el-icon></span>
+            <span class="th-start-copy">
+              <strong>主题宣泄室</strong>
+              <span>按困扰找到同主题的房间，和有相似经历的同学匿名聊聊。</span>
+            </span>
+            <el-icon class="th-start-arrow" aria-hidden="true"><ArrowRight /></el-icon>
+          </button>
+        </section>
+
+        <section v-if="upcomingBookings.length" class="th-group th-group--flush">
           <div class="th-group-head">
-            <h2 class="th-h2">正在进行的倾诉</h2>
+            <h2 class="th-h2">我的预约</h2>
+            <router-link class="th-muted" to="/treehole/bookings">全部预约</router-link>
           </div>
           <div class="th-rows">
-            <router-link class="th-row" :to="`/treehole/session/${activeSession.id}`">
-              <span class="th-dot" :class="{ 'is-on': activeSession.host.online }" aria-hidden="true" />
+            <router-link v-for="booking in upcomingBookings" :key="booking.id" class="th-row" to="/treehole/bookings">
               <div class="th-row-copy">
                 <div class="th-row-title">
-                  {{ activeSession.host.name }}
-                  <em class="th-chip">{{ activeSession.mode === "live" ? "实时聊天" : "留言倾诉" }}</em>
+                  {{ bookingTimeText(booking.startAt, booking.endAt) }}
+                  <em class="th-chip" :class="bookingStatusTone(booking.status)">{{ bookingStatusLabel(booking.status) }}</em>
                 </div>
-                <div class="th-row-preview">{{ activeSession.preview || "继续聊聊吧" }}</div>
+                <p class="th-meta"><span>{{ booking.host.name }}</span><span>{{ booking.place }}</span></p>
               </div>
-              <span v-if="activeSession.unread" class="th-badge">{{ activeSession.unread }}</span>
-              <span class="th-muted">{{ timeText(activeSession.lastMessageAt) }}</span>
             </router-link>
           </div>
         </section>
 
-        <section v-else-if="me.canStart && me.eligible" class="th-start">
-          <button type="button" class="th-start-card" @click="router.push({ path: '/treehole/new', query: { mode: 'async' } })">
-            <span class="th-start-icon" data-hue="brand"><el-icon><EditPen /></el-icon></span>
-            <span class="th-start-copy">
-              <strong>留言倾诉</strong>
-              <span>写下想说的话，可以配图。小艾绒会在值班时间回复你，对话会一直保留到你主动结束。</span>
-            </span>
-            <el-icon class="th-start-arrow" aria-hidden="true"><ArrowRight /></el-icon>
-          </button>
-          <button type="button" class="th-start-card" @click="router.push({ path: '/treehole/new', query: { mode: 'live' } })">
-            <span class="th-start-icon" data-hue="violet"><el-icon><ChatDotRound /></el-icon></span>
-            <span class="th-start-copy">
-              <strong>
-                实时聊天
-                <em v-if="onlineCount !== null" class="th-chip" :class="onlineCount ? 'is-ok' : ''">{{ onlineCount ? `${onlineCount} 位在岗` : "暂无在岗" }}</em>
-              </strong>
-              <span>从正在值班的小艾绒里选一位，马上开始一对一聊天。</span>
-            </span>
-            <el-icon class="th-start-arrow" aria-hidden="true"><ArrowRight /></el-icon>
-          </button>
-        </section>
-
-        <section v-if="me.rooms.length || me.applications.length" class="th-group th-group--flush">
+        <section v-if="me.rooms.length" class="th-group th-group--flush">
           <div class="th-group-head">
             <h2 class="th-h2">我的宣泄室</h2>
+            <router-link class="th-muted" to="/treehole/rooms">找更多主题</router-link>
           </div>
           <div class="th-rows">
             <router-link v-for="room in me.rooms" :key="room.id" class="th-row" :to="`/treehole/room/${room.id}`">
@@ -101,35 +112,27 @@
               </div>
               <span v-if="room.unread" class="th-badge">{{ room.unread > 99 ? "99+" : room.unread }}</span>
             </router-link>
-            <div v-for="application in me.applications" :key="`a${application.id}`" class="th-row">
-              <div class="th-row-copy">
-                <div class="th-row-title">
-                  {{ application.room.name }}
-                  <em class="th-chip" :class="application.status === 'pending' ? 'is-warn' : ''">
-                    {{ application.status === "pending" ? "等待审核" : "未通过" }}
-                  </em>
-                </div>
-                <p v-if="application.rejectReason" class="th-meta"><span>{{ application.rejectReason }}</span></p>
-              </div>
-              <el-button v-if="application.status === 'pending'" text size="small" @click="cancelApplication(application.id)">撤回申请</el-button>
-            </div>
           </div>
         </section>
 
-        <section v-if="pastSessions.length" class="th-group th-group--flush">
+        <section v-if="me.sessions.length" class="th-group th-group--flush">
           <div class="th-group-head">
-            <h2 class="th-h2">历史倾诉</h2>
+            <h2 class="th-h2">我的留言</h2>
             <span class="th-muted">只有你自己能看到这些记录</span>
           </div>
           <div class="th-rows">
-            <router-link v-for="session in pastSessions" :key="session.id" class="th-row" :to="`/treehole/session/${session.id}`">
+            <router-link v-for="session in me.sessions" :key="session.id" class="th-row" :to="`/treehole/session/${session.id}`">
               <div class="th-row-copy">
                 <div class="th-row-title">
-                  {{ session.host.name }}
-                  <em class="th-chip">{{ session.mode === "live" ? "实时聊天" : "留言倾诉" }}</em>
+                  {{ session.host ? session.host.name : "等待小艾绒认领" }}
+                  <em class="th-chip" :class="claimStatusTone(session.claimStatus, session.status !== 'active')">{{ claimStatusLabel(session.claimStatus, session.status !== "active") }}</em>
+                  <em v-if="session.mode === 'live'" class="th-chip">实时聊天</em>
                 </div>
-                <p class="th-meta"><span>当时的虚拟 ID {{ session.alias }}</span><span>{{ timeText(session.createdAt) }}</span></p>
+                <div class="th-row-preview">{{ session.preview || "（图片）" }}</div>
+                <p v-if="session.topics.length" class="th-meta"><span v-for="topic in session.topics" :key="topic">#{{ topic }}</span></p>
               </div>
+              <span v-if="session.unread" class="th-badge">{{ session.unread }}</span>
+              <span class="th-muted">{{ timeText(session.lastMessageAt) }}</span>
             </router-link>
           </div>
         </section>
@@ -153,40 +156,46 @@
 import { useSiteStore } from "@/stores/site";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
-import { ArrowRight, ChatDotRound, EditPen } from "@element-plus/icons-vue";
-import { treeholeApi, type TreeholeMe } from "@/api/treehole";
-import { errorText, timeText } from "./shared";
+import { ArrowRight, Calendar, ChatLineRound, EditPen } from "@element-plus/icons-vue";
+import { treeholeApi, type TreeholeBooking, type TreeholeMe } from "@/api/treehole";
+import {
+  bookingStatusLabel,
+  bookingStatusTone,
+  bookingTimeText,
+  claimStatusLabel,
+  claimStatusTone,
+  errorText,
+  timeText,
+} from "./shared";
 import "./treehole.css";
 
 const site = useSiteStore();
-
 const router = useRouter();
 const me = ref<TreeholeMe | null>(null);
+const bookings = ref<TreeholeBooking[]>([]);
 const loading = ref(false);
 const error = ref("");
 const agree = ref(false);
 const consenting = ref(false);
-const onlineCount = ref<number | null>(null);
 
 const activeSession = computed(() => me.value?.sessions.find((session) => session.status === "active") ?? null);
-const pastSessions = computed(() => me.value?.sessions.filter((session) => session.status !== "active") ?? []);
+const upcomingBookings = computed(() => bookings.value.filter((booking) => booking.status === "pending" || booking.status === "confirmed"));
 
 async function load() {
   loading.value = true;
   error.value = "";
   try {
     me.value = await treeholeApi.me();
-    if (me.value.consent.agreed && me.value.canStart && !activeSession.value) {
-      treeholeApi.hosts()
-        .then((result) => { onlineCount.value = result.hosts.filter((host) => host.online).length; })
-        .catch(() => undefined);
-    }
+    if (me.value.consent.agreed) bookings.value = await treeholeApi.myBookings().catch(() => []);
   } catch (cause) {
     error.value = errorText(cause);
   } finally {
     loading.value = false;
   }
+}
+
+function openMessage() {
+  router.push(activeSession.value ? `/treehole/session/${activeSession.value.id}` : "/treehole/new");
 }
 
 async function giveConsent() {
@@ -197,12 +206,6 @@ async function giveConsent() {
   } finally {
     consenting.value = false;
   }
-}
-
-async function cancelApplication(id: number) {
-  await treeholeApi.cancelApplication(id);
-  ElMessage.success("申请已撤回");
-  await load();
 }
 
 onMounted(load);
@@ -225,7 +228,7 @@ onMounted(load);
 }
 .th-start {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
 }
 .th-start-card {
@@ -246,7 +249,7 @@ onMounted(load);
 .th-start-card:hover { border-color: var(--cpu-primary); }
 .th-start-card:active { background: var(--cpu-surface-soft); }
 .th-start-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.th-start-copy strong { display: flex; align-items: center; gap: 8px; font-size: var(--cpu-fs-l); }
+.th-start-copy strong { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--cpu-fs-l); }
 .th-start-copy > span { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
 .th-start-arrow { flex: none; color: var(--cpu-text-muted); }
 .th-start-icon {

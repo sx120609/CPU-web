@@ -12,13 +12,11 @@
             {{ room.name }}
             <em class="th-chip is-brand">{{ room.categoryLabel }}</em>
             <em v-if="room.status === 'closed'" class="th-chip">已关闭</em>
-            <em v-if="room.pendingApplications" class="th-chip is-warn">{{ room.pendingApplications }} 条待审核</em>
           </div>
           <p class="th-meta">
-            <span>{{ room.visitorCount }} 位同学 · {{ room.hostCount }} 位洞主</span>
+            <span>{{ room.visitorCount }} 位同学 · {{ room.hostCount }} 位小艾绒</span>
             <span>{{ room.messageCount }} 条消息</span>
-            <span>{{ room.applicationCount }} 条入群申请</span>
-            <span v-if="room.founders.length">{{ room.founders.join("、") }} 联名创建</span>
+            <span v-if="room.founders.length">{{ room.founders.join("、") }} 开设</span>
             <span v-if="room.status === 'closed' && room.closeReason">关闭原因：{{ room.closeReason }}</span>
           </p>
         </div>
