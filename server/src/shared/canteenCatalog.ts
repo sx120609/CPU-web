@@ -135,7 +135,8 @@ export const BASE_CANTEENS: Canteen[] = [
     floor("2.1", "一楼", 1, [
       shop("袁记云饺", ["soup", "snack"]),
       shop("杂粮煎饼", ["snack"]),
-      shop("掉渣饼卫孔记", ["snack"]),
+      shop("掉渣饼", ["snack"], ["掉渣饼卫孔记"]),
+      shop("卫孔记面馆", ["noodle"]),
       shop("精品快餐", ["rice"]),
       shop("手工鲜包营养粥", ["soup", "snack"]),
       shop("亦鱼亦饭", ["rice"]),
