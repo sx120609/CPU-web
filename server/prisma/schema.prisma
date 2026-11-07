@@ -2530,6 +2530,8 @@ model QqBotConfig {
   qrCodeSendingEnabled Boolean  @default(false)
   notifyCategories    String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\",\"lost-found\",\"school-feed\",\"treehole\"]")
   superAdminQqIds     String   @default("[]")
+  /// Other bots in the same groups; 拾间AI never answers them.
+  peerBotQqIds        String   @default("[]")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

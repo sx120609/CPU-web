@@ -81,7 +81,7 @@ export type QqGroupAssistantSignals = {
 };
 
 export type QqGroupAssistantDecision =
-  | { action: "ignore"; reason: "unsupported" | "command" | "addressed-to-others" | "not-addressed" | "thanks" }
+  | { action: "ignore"; reason: "unsupported" | "command" | "addressed-to-others" | "not-addressed" | "thanks" | "peer-bot" }
   | { action: "summon"; trigger: "mention" | "name" | "reply-to-bot" }
   | { action: "answer"; trigger: Exclude<QqGroupAssistantTrigger, "proactive"> }
   /** Eligible for a proactive answer; the group's switch and the model's intent check decide. */

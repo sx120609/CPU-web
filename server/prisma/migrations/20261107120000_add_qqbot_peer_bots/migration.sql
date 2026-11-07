@@ -1,0 +1,1 @@
+ALTER TABLE "QqBotConfig" ADD COLUMN "peerBotQqIds" TEXT NOT NULL DEFAULT '[]';

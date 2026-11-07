@@ -36,6 +36,7 @@ const configPatchSchema = z.object({
   qrCodeSendingEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   superAdminQqIds: z.array(z.string().trim().min(5).max(20)).max(50).optional(),
+  peerBotQqIds: z.array(z.string().trim().min(5).max(20)).max(50).optional(),
 });
 
 qqBotAdminRouter.get("/config", async (_req, res, next) => {

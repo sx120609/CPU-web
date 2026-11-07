@@ -115,6 +115,21 @@
             />
             <div class="form-tip">超级管理员按 QQ 号识别，不依赖站内绑定。可跨群执行加群审核、禁言、踢出和授权维护。</div>
           </el-form-item>
+          <el-form-item label="其他机器人">
+            <el-select
+              v-model="form.peerBotQqIds"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              clearable
+              collapse-tags
+              collapse-tags-tooltip
+              :disabled="configDisabled"
+              placeholder="输入同群其他机器人的 QQ 号"
+            />
+            <div class="form-tip">这些 QQ 号在群里 @、叫名字、引用拾间AI 或提问时，拾间AI 都不接话，避免两个机器人来回对聊。广告过滤照常生效。</div>
+          </el-form-item>
         </el-form>
 
         <div class="actions cpu-button-row">
@@ -529,6 +544,7 @@ const form = reactive({
   qrCodeSendingEnabled: false,
   notifyCategories: ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed", "treehole"] as string[],
   superAdminQqIds: [] as string[],
+  peerBotQqIds: [] as string[],
 });
 
 const test = reactive({ qqId: "", groupId: "", message: "拾间 QQBot 测试消息" });
@@ -642,6 +658,7 @@ async function loadConfig() {
     qrCodeSendingEnabled: config.value.qrCodeSendingEnabled,
     notifyCategories: [...config.value.notifyCategories],
     superAdminQqIds: [...config.value.superAdminQqIds],
+    peerBotQqIds: [...(config.value.peerBotQqIds ?? [])],
   });
 }
 

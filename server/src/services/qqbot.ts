@@ -176,6 +176,7 @@ export type QqBotConfigView = {
   qrCodeSendingEnabled: boolean;
   notifyCategories: string[];
   superAdminQqIds: string[];
+  peerBotQqIds: string[];
   webhookPath: string;
   inboundWebSocketPath: string;
   createdAt: Date;
@@ -388,6 +389,11 @@ function readConfigBotQqId(config: any) {
   return String(config?.botQqId || "").trim();
 }
 
+/** Other bots sharing groups with 拾间AI, as configured by administrators. */
+function readConfigPeerBotQqIds(config: any) {
+  return normalizeQqBotQqIdList(parseStringArray(config?.peerBotQqIds || "", []));
+}
+
 export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConfigRaw>>): QqBotConfigView {
   return {
     id: config.id,
@@ -407,6 +413,7 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     qrCodeSendingEnabled: config.qrCodeSendingEnabled ?? false,
     notifyCategories: parseQqBotNotifyCategories(config.notifyCategories),
     superAdminQqIds: normalizeQqBotQqIdList(parseStringArray(config.superAdminQqIds || "", [])),
+    peerBotQqIds: readConfigPeerBotQqIds(config),
     webhookPath: "/api/qqbot/webhook",
     inboundWebSocketPath: QQBOT_INBOUND_WS_PATH,
     createdAt: config.createdAt,
@@ -529,6 +536,7 @@ export async function updateQqBotConfig(input: {
   qrCodeSendingEnabled?: boolean;
   notifyCategories?: string[];
   superAdminQqIds?: string[];
+  peerBotQqIds?: string[];
 }) {
   const current = await loadQqBotConfigRaw();
   const nextConnectionMode = normalizeQqBotConnectionMode(input.connectionMode ?? current.connectionMode);
@@ -561,6 +569,9 @@ export async function updateQqBotConfig(input: {
   }
   if (input.superAdminQqIds !== undefined) {
     data.superAdminQqIds = JSON.stringify(normalizeQqBotQqIdList(input.superAdminQqIds));
+  }
+  if (input.peerBotQqIds !== undefined) {
+    data.peerBotQqIds = JSON.stringify(normalizeQqBotQqIdList(input.peerBotQqIds));
   }
   const updated = await prisma.qqBotConfig.upsert({
     where: { id: CONFIG_ID },
@@ -2725,6 +2736,10 @@ async function planQqGroupAssistant(
   const nameCall = parseQqBotNameCall(context.messageText);
   if (selfId && qqId === selfId) {
     return { decision: { action: "ignore", reason: "not-addressed" }, question: nameCall.text, quoted: null };
+  }
+  // Two bots that answer each other's quotes and @s never stop on their own.
+  if (readConfigPeerBotQqIds(context.config).includes(qqId)) {
+    return { decision: { action: "ignore", reason: "peer-bot" }, question: nameCall.text, quoted: null };
   }
   const atTargets = collectQqAtTargets(rawMessage);
   const quotedId = extractReplyMessageId(rawMessage);

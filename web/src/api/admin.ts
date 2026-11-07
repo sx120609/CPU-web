@@ -1025,6 +1025,7 @@ export type QqBotConfig = {
   qrCodeSendingEnabled: boolean;
   notifyCategories: string[];
   superAdminQqIds: string[];
+  peerBotQqIds: string[];
   webhookPath: string;
   inboundWebSocketPath: string;
   createdAt: string;
@@ -1835,6 +1836,7 @@ export const adminApi = {
     qrCodeSendingEnabled: boolean;
     notifyCategories: string[];
     superAdminQqIds: string[];
+    peerBotQqIds: string[];
   }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),
   qqBotBindings: (params?: { q?: string }, options?: RequestOptions) => request.get<any[]>("/admin/qqbot/bindings", params, options),
   updateQqBotBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/qqbot/bindings/${id}`, payload),
