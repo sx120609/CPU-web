@@ -95,6 +95,7 @@ private enum AgendaText {
 }
 
 /// What 截图识别 reads for a new 日程: a picked screenshot, or a whole pasted notice.
+@available(iOS 17.0, *)
 enum NativeAgendaSource: Hashable, Identifiable {
     case photo(PhotosPickerItem)
     case text(String)
@@ -545,6 +546,8 @@ struct NativeAgendaListView: View {
                                 .tint(.cpuBrand)
                                 .disabled(adding || quickDraft == nil)
                         }
+                        // The line below starts under the text field, not under 添加.
+                        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
                         if let quickDraft {
                             Text(AgendaText.summary(quickDraft)).font(.caption).foregroundStyle(.secondary)
                         } else if !message.isEmpty {
@@ -555,7 +558,7 @@ struct NativeAgendaListView: View {
                                 Label("截图识别", systemImage: "text.viewfinder")
                                 Text("活动通知太长？选一张截图或粘贴整段通知，拾间AI 帮你填好时间、地点和注意事项")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.secondary) // grey, not a paler tint of the button
                             }
                         }
                     }
