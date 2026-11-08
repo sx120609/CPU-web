@@ -141,3 +141,37 @@ test('the timetable saves, deletes and reads sentences through the page', () => 
   assert.equal(store.agendaRelay, false);
   assert.deepEqual({ ...sent[5].payload }, { action: 'relay', on: false });
 });
+
+test('a screenshot goes through the page and comes back as items to review, never as the list', () => {
+  const store = { agendaItems: [item({ id: 'meeting00001', title: '组会', date: '2026-10-28' })], agendaAvailable: true, agendaRelay: false };
+  const sent = [];
+  const model = new NativeAgendaModel(store);
+  model.attach((id, payload) => sent.push({ id, payload: JSON.parse(payload) }), () => undefined, () => undefined);
+  let result;
+  model.extract('data:image/jpeg;base64,AAAA', '', (value) => { result = json(value); });
+  assert.deepEqual({ ...sent[0].payload }, { action: 'extract', image: 'data:image/jpeg;base64,AAAA' });
+  model.accept(sent[0].id, JSON.stringify({ message: '', items: [
+    { title: ' 学术讲座 ', date: '2026-11-12', start: '14:00', end: '13:00', location: '药学楼 101', note: '· 带学生证', remind: 30, repeat: 'none' },
+    { title: '', date: '2026-11-10' },
+    { title: '交材料', date: '11月20日', start: '09:00', remind: 30 },
+  ] }));
+  assert.deepEqual(result, [
+    { title: '学术讲座', date: '2026-11-12', start: '14:00', end: '', location: '药学楼 101', note: '· 带学生证', remind: 30, repeat: 'none' },
+    { title: '交材料', date: '', start: '', end: '', location: '', note: '', remind: -1, repeat: 'none' },
+  ]);
+  // The reply is the editor's alone: the timetable's list is untouched.
+  assert.equal(store.agendaItems.length, 1);
+
+  model.extract('', '一段通知', (value) => { result = value; });
+  assert.deepEqual({ ...sent[1].payload }, { action: 'extract', text: '一段通知' });
+  model.accept(sent[1].id, JSON.stringify({ items: [], message: '图片里没有活动安排' }));
+  assert.equal(result, '图片里没有活动安排');
+  // A site without "extract" answers with the agenda list.
+  model.extract('', '一段通知', (value) => { result = value; });
+  model.accept(sent[2].id, JSON.stringify({ authenticated: true, items: [item({ id: 'meeting00001', title: '组会' })] }));
+  assert.equal(result, '截图识别还没上线，稍后再试');
+  assert.equal(store.agendaItems.length, 1);
+  model.extract('', '一段通知', (value) => { result = value; });
+  model.accept(sent[3].id, '{"missing":true}');
+  assert.equal(result, '网页还没准备好，稍后再试');
+});

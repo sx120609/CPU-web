@@ -68,6 +68,8 @@ export interface NativeAgendaItem {
   done: boolean;
   doneDates: string[];
   createdAt: number;
+  /** "assistant" when 拾间AI filled it in (截图识别) and the user added it; the page defaults to "user". */
+  origin?: string;
 }
 
 export interface NativeCalendarWeek {

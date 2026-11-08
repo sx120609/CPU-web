@@ -499,7 +499,8 @@ class WebSession(
     /** One 日程 request (`CPUTimeNativeAgenda`, see web/src/utils/nativeAgendaBridge.ts); `{ missing: true }` on an older site. */
     suspend fun agenda(payload: JSONObject): String? = call(
         "var run=window.CPUTimeNativeAgenda;if(typeof run!=='function')return {missing:true};return await run(args.payload);",
-        JSONObject().put("payload", payload), 30_000,
+        // 截图识别 waits for 拾间AI to read the picture.
+        JSONObject().put("payload", payload), if (payload.optString("action") == "extract") 130_000 else 30_000,
     )
 
     /** One share-code request (`CPUAndroidShares`): the reply is `{ data }` or `{ error, status }`. */

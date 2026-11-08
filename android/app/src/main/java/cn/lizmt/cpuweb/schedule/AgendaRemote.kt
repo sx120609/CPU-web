@@ -10,6 +10,7 @@ import cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence
 import cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -116,6 +117,21 @@ class AgendaRemote(
         else Result.success(Unit)
     }
 
+    /**
+     * 截图识别: what 拾间AI reads from a notice screenshot (a `data:` URL) or a pasted
+     * notice, as new items for the editor to show; nothing is saved here.
+     */
+    suspend fun extract(image: String? = null, text: String? = null): Result<List<AgendaItem>> {
+        if (frozen) {
+            delay(1_200)
+            return AgendaExtract.parse(DEBUG_EXTRACT)
+        }
+        val payload = JSONObject().put("action", "extract")
+        if (image != null) payload.put("image", image)
+        if (!text.isNullOrBlank()) payload.put("text", text.trim().take(4_000))
+        return AgendaExtract.parse(request(payload))
+    }
+
     /** 微信和 QQ 也提醒: shown at once, then saved through the page. */
     fun updateRelay(on: Boolean) {
         relay = on
@@ -161,6 +177,19 @@ class AgendaRemote(
     companion object {
         private const val FILE = "agenda-cache.json"
         private const val UNREACHABLE = "没能保存，请检查网络后再试"
+
+        /** What the debug fixture "reads" from any screenshot. */
+        private val DEBUG_EXTRACT: String
+            get() {
+                val today = LocalDate.now()
+                return JSONObject().put("message", "").put("items", JSONArray()
+                    .put(JSONObject().put("title", "药学院学术讲座：AI 与新药发现").put("date", today.plusDays(4).toString())
+                        .put("start", "14:00").put("end", "16:00").put("location", "江宁校区 药学楼 101")
+                        .put("note", "· 携带学生证，提前 10 分钟签到\n· 计入第二课堂学分 0.5").put("remind", 30).put("repeat", "none"))
+                    .put(JSONObject().put("title", "讲座报名截止").put("date", today.plusDays(2).toString())
+                        .put("start", "18:00").put("note", "· 在“药大青年”小程序报名，名额 120 人").put("remind", 60).put("repeat", "none")))
+                    .toString()
+            }
 
         /** The account and items last read, for the timetable at start. */
         fun readCache(context: Context): Pair<String, List<AgendaItem>> {

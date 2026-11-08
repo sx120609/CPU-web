@@ -1,5 +1,9 @@
 package cn.lizmt.cpuweb.schedule
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,7 +49,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -67,13 +75,21 @@ import cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence
 import cn.lizmt.cpuweb.schedule.agenda.AgendaParser
 import cn.lizmt.cpuweb.schedule.agenda.AgendaRemind
 import cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
 /** What [MainActivity.openAgenda] asks the timetable to show: one item, a new one, or the [list]. */
-data class AgendaRequest(val id: String = "", val date: String = "", val start: String = "", val list: Boolean = false)
+data class AgendaRequest(
+    val id: String = "",
+    val date: String = "",
+    val start: String = "",
+    val list: Boolean = false,
+    /** A screenshot or notice shared to the app: a new item that 拾间AI fills from it. */
+    val source: AgendaSource? = null,
+)
 
 /** A blank 日程 on [date] (`yyyy-MM-dd`, empty for one without a day) starting at [start]. */
 internal fun newAgendaDraft(date: String, start: String = ""): AgendaItem =
@@ -97,10 +113,15 @@ internal fun agendaDayLabel(day: LocalDate, today: LocalDate = LocalDate.now(), 
  * editor. For a new one the first field reads what the user writes
  * (「周五 14:00 组会 @药学楼」) and fills the fields below until one is changed
  * by hand. Saving goes through the page and waits for its answer.
+ *
+ * A new one can also be filled from a screenshot or a pasted notice
+ * (截图识别, [source] when the list sheet already picked one): 拾间AI reads
+ * the time, place and what to bring; several items found are shown one at a
+ * time and can be added one by one or all at once.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, onDismiss: () -> Unit) {
+internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, source: AgendaSource? = null, onDismiss: () -> Unit) {
     val isNew = draft.id.isEmpty()
     var text by remember(draft) { mutableStateOf(draft.title) }
     var manual by remember(draft) { mutableStateOf(draft) }
@@ -110,6 +131,14 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, onDismis
     var pickingDate by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // 截图识别: what is being read ("截图" / "这段通知"), the items found and the one shown.
+    var extracting by remember { mutableStateOf("") }
+    var extracted by remember { mutableStateOf<List<AgendaItem>>(emptyList()) }
+    var pick by remember { mutableIntStateOf(0) }
+    var extractNote by remember { mutableStateOf("") }
+    var extractJob by remember { mutableStateOf<Job?>(null) }
+    val canExtract = isNew && remote.available
     val now = remember { LocalDateTime.now() }
     // What the text says, when it says more than a title: a day, a time, a repeat, a reminder or a place.
     val parsed = remember(text, touched) {
@@ -128,9 +157,63 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, onDismis
     }
     val date = AgendaItem.parseDate(shown.date)
 
+    /** Shows one item read from a screenshot; the text no longer steers the fields. */
+    fun show(item: AgendaItem) {
+        manual = item
+        text = item.title
+        touched = true
+    }
+
+    /** The editor as it would be saved now. */
+    fun current(): AgendaItem = shown.copy(title = shown.title.ifBlank { text }.trim())
+
+    fun choose(index: Int) {
+        if (index == pick || index !in extracted.indices) return
+        extracted = extracted.toMutableList().also { it[pick] = current() }
+        pick = index
+        show(extracted[index])
+    }
+
+    fun runExtract(what: String, read: suspend () -> Result<List<AgendaItem>>) {
+        extractJob?.cancel()
+        extracting = what
+        extractNote = ""
+        error = ""
+        extractJob = scope.launch {
+            read().onSuccess { items ->
+                extracted = items
+                pick = 0
+                show(items.first())
+                if (items.size == 1) extractNote = "已按${what}填好，看一下再添加"
+            }.onFailure { error = it.message.orEmpty().ifEmpty { "没能识别，稍后再试" } }
+            extracting = ""
+        }
+    }
+
+    fun extractImage(uri: Uri) = runExtract("截图") {
+        val image = AgendaExtract.imageDataUrl(context, uri) ?: return@runExtract Result.failure(IllegalStateException("这张图片读不出来，换一张试试"))
+        remote.extract(image = image)
+    }
+
+    fun extractText(notice: String) = runExtract("这段通知") { remote.extract(text = notice) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(::extractImage) }
+
+    // A shared screenshot can arrive before the page has said who is signed in: read it once that is known.
+    var sourceRead by remember(source) { mutableStateOf(false) }
+    LaunchedEffect(source, canExtract) {
+        if (!canExtract || sourceRead) return@LaunchedEffect
+        sourceRead = true
+        when (source) {
+            is AgendaSource.Image -> extractImage(source.uri)
+            is AgendaSource.Text -> extractText(source.text)
+            null -> Unit
+        }
+    }
+
     fun save() {
-        val item = shown.copy(title = shown.title.ifBlank { text }.trim(), id = draft.id, createdAt = draft.createdAt,
-            done = draft.done, doneDates = draft.doneDates, origin = draft.origin)
+        val item = current().copy(id = draft.id, createdAt = draft.createdAt,
+            done = draft.done, doneDates = draft.doneDates, origin = if (isNew) shown.origin else draft.origin)
         if (item.title.isEmpty()) {
             error = "先写个标题"
             return
@@ -138,8 +221,35 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, onDismis
         busy = true
         error = ""
         scope.launch {
-            remote.save(item).onSuccess { onDismiss() }.onFailure { error = it.message.orEmpty() }
+            remote.save(item).onSuccess {
+                // Several items read from a screenshot: go on to the next one.
+                if (extracted.size > 1) {
+                    val rest = extracted.filterIndexed { index, _ -> index != pick }
+                    extracted = rest
+                    pick = pick.coerceAtMost(rest.size - 1)
+                    show(rest[pick])
+                    extractNote = if (rest.size == 1) "已添加，还有「${rest[0].title}」" else "已添加，还剩 ${rest.size} 条"
+                } else onDismiss()
+            }.onFailure { error = it.message.orEmpty() }
             busy = false
+        }
+    }
+
+    fun saveAll() {
+        val all = extracted.toMutableList().also { it[pick] = current() }
+        busy = true
+        error = ""
+        scope.launch {
+            var failed = ""
+            val left = all.filter { item -> remote.save(item.copy(title = item.title.trim())).onFailure { failed = it.message.orEmpty() }.isFailure }
+            busy = false
+            if (left.isEmpty()) onDismiss()
+            else {
+                extracted = left
+                pick = 0
+                show(left[0])
+                error = failed.ifEmpty { "有 ${left.size} 条没能添加" }
+            }
         }
     }
 
@@ -182,6 +292,11 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, onDismis
                 OutlinedTextField(
                     value = text,
                     onValueChange = { value ->
+                        // A whole notice pasted in: 拾间AI sorts it out instead.
+                        if (canExtract && extracting.isEmpty() && value.length - text.length > AGENDA_NOTICE_PASTE_CHARS) {
+                            extractText(value)
+                            return@OutlinedTextField
+                        }
                         text = value.take(120)
                         if (touched) manual = manual.copy(title = text)
                     },
@@ -194,6 +309,14 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, onDismis
                 if (parsed != null) {
                     Text("会记作「${parsed.title}」，日期和时间已从文字里读出，可在下面修改",
                         fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (canExtract) {
+                    AgendaExtractBar(
+                        extracting = extracting, extracted = extracted, pick = pick, note = extractNote, enabled = !busy,
+                        onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        onCancel = { extractJob?.cancel(); extracting = "" },
+                        onChoose = ::choose, onSaveAll = ::saveAll,
+                    )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     AgendaField("日期", date?.let { agendaDayLabel(it, weekday = true) } ?: "不设日期", !busy, Modifier.weight(1f)) {
@@ -301,8 +424,18 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, onDismis
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AgendaListSheet(remote: AgendaRemote, onEdit: (AgendaItem) -> Unit, onNew: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun AgendaListSheet(
+    remote: AgendaRemote,
+    onEdit: (AgendaItem) -> Unit,
+    onNew: (String) -> Unit,
+    /** 截图识别: a new item filled from this screenshot or notice. */
+    onExtract: (AgendaSource) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val today = LocalDate.now()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let { onExtract(AgendaSource.Image(it)) }
+    }
     val scope = rememberCoroutineScope()
     var quick by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -334,7 +467,12 @@ internal fun AgendaListSheet(remote: AgendaRemote, onEdit: (AgendaItem) -> Unit,
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = quick, onValueChange = { quick = it.take(120) }, singleLine = true, enabled = !busy,
+                    value = quick, singleLine = true, enabled = !busy,
+                    onValueChange = { value ->
+                        // A whole notice pasted in: 拾间AI sorts it out in the editor.
+                        if (value.length - quick.length > AGENDA_NOTICE_PASTE_CHARS) onExtract(AgendaSource.Text(value))
+                        else quick = value.take(120)
+                    },
                     placeholder = { Text("一句话记下，例如「明天下午3点 实验报告」", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (!busy) quickAdd() }),
@@ -353,6 +491,20 @@ internal fun AgendaListSheet(remote: AgendaRemote, onEdit: (AgendaItem) -> Unit,
                 ).joinToString(" · ")
             } ?: message
             if (hint.isNotEmpty()) Text(hint, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    Modifier.heightIn(min = 36.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                        .clickable { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(Icons.Rounded.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Text("截图识别", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                }
+                Text("活动通知太长？选一张截图或粘贴整段通知，拾间AI 帮你填好时间、地点和注意事项",
+                    fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            }
 
             AgendaSection("待办") {
                 val todos = openTodos(remote.items, today)
@@ -506,13 +658,78 @@ private fun AgendaField(label: String, value: String, enabled: Boolean, modifier
 @Composable
 private fun AgendaChip(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    // Faded through the text colour, not Modifier.alpha: a chip turning enabled under an alpha
+    // layer (a date picked, or filled from a screenshot) kept drawing without its background.
+    val faded = !enabled && !selected
     Box(
         Modifier.heightIn(min = 36.dp).clip(RoundedCornerShape(10.dp))
             .background(if (selected) scheme.primary else scheme.surfaceContainerHigh)
-            .clickable(enabled = enabled, onClick = onClick).alpha(if (enabled || selected) 1f else 0.45f)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontSize = 13.sp, color = if (selected) scheme.onPrimary else scheme.onSurface)
+        Text(label, fontSize = 13.sp,
+            color = if (selected) scheme.onPrimary else scheme.onSurface.copy(alpha = if (faded) 0.4f else 1f))
+    }
+}
+
+/**
+ * 截图识别 in the editor: the button and a line on what it does; while 拾间AI
+ * reads, a spinner; when it found several items, one chip each and 全部添加.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AgendaExtractBar(
+    extracting: String,
+    extracted: List<AgendaItem>,
+    pick: Int,
+    note: String,
+    enabled: Boolean,
+    onPick: () -> Unit,
+    onCancel: () -> Unit,
+    onChoose: (Int) -> Unit,
+    onSaveAll: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .background(if (extracting.isNotEmpty()) scheme.primaryContainer else scheme.surfaceContainerHigh)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        when {
+            extracting.isNotEmpty() -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text("拾间AI 正在读$extracting，读出来的时间和地点会填在下面", fontSize = 12.sp, lineHeight = 16.sp,
+                    color = scheme.onPrimaryContainer, modifier = Modifier.weight(1f))
+                TextButton(onClick = onCancel) { Text("取消") }
+            }
+            extracted.size > 1 -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("识别出 ${extracted.size} 条，逐条看过再添加", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f))
+                    TextButton(onClick = onSaveAll, enabled = enabled) { Text("全部添加") }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    extracted.forEachIndexed { index, item ->
+                        AgendaChip(item.title, index == pick, enabled) { onChoose(index) }
+                    }
+                }
+                if (note.isNotEmpty()) Text(note, fontSize = 12.sp, color = scheme.onSurfaceVariant)
+            }
+            else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    Modifier.heightIn(min = 36.dp).clip(CircleShape).border(1.dp, scheme.primary, CircleShape)
+                        .clickable(enabled = enabled, onClick = onPick).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(Icons.Rounded.Image, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(18.dp))
+                    Text("截图识别", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = scheme.primary)
+                }
+                Text(note.ifEmpty { "选一张活动通知的截图，或把整段通知粘贴到上面，拾间AI 帮你填好" },
+                    fontSize = 12.sp, lineHeight = 16.sp, color = scheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            }
+        }
     }
 }

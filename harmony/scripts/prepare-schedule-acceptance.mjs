@@ -116,7 +116,7 @@ put('entry/src/main/ets/pages/ScheduleAcceptance.ets', `
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleStore, NativeScheduleRequest } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
-import { agendaDateOf, agendaDayNumber, AgendaReply, NativeAgendaDraft, NativeAgendaModel } from '../schedule/NativeAgenda';
+import { agendaDateOf, agendaDayNumber, AgendaReply, NativeAgendaDraft, NativeAgendaExtracted, NativeAgendaModel } from '../schedule/NativeAgenda';
 import { agendaToday, NativeAgendaEditor, NativeAgendaEditorModel } from '../schedule/NativeAgendaEditor';
 import { NativeAgendaItem } from '../schedule/NativeScheduleStore';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiData, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
@@ -133,6 +133,7 @@ import window from '@ohos.window';
 
 interface QaEditorReply { session?: string; hidden?: string[]; priority?: Record<string, number>; saved?: boolean; }
 interface QaAgendaRequest { action?: string; id?: string; date?: string; done?: boolean; on?: boolean; text?: string; data?: NativeAgendaItem; }
+interface QaExtractReply { items: NativeAgendaExtracted[]; message: string; }
 
 @Entry
 @Component
@@ -208,6 +209,7 @@ struct ScheduleAcceptance {
       if (this.panel === 'agenda') setTimeout(() => this.agendaEditor.openList(), 400);
       if (this.panel === 'agendaNew') setTimeout(() => this.agendaEditor.openNew(agendaToday(), '14:00'), 400);
       if (this.panel === 'agendaEdit') setTimeout(() => { if (this.agendaItems.length) this.agendaEditor.openItem(this.agendaItems[0]); }, 400);
+      if (this.panel === 'agendaExtract') setTimeout(() => { this.agendaEditor.openNew('', ''); this.agendaEditor.extractText('qa'); }, 400);
     } else {
       this.store.viewMode = this.mode;
       this.store.result = undefined;
@@ -297,6 +299,18 @@ struct ScheduleAcceptance {
     model.refresh(true);
   }
   private agendaApi(request: QaAgendaRequest): string {
+    if (request.action === 'extract') {
+      // What the stand-in "reads" from any screenshot or notice (截图识别).
+      const day = (offset: number): string => agendaDateOf(agendaDayNumber(agendaToday()) + offset);
+      const read: NativeAgendaExtracted[] = [
+        { title: '药学院学术讲座：AI 与新药发现', date: day(4), start: '14:00', end: '16:00', location: '江宁校区 药学楼 101',
+          note: '· 携带学生证，提前 10 分钟签到\\n· 计入第二课堂学分 0.5', remind: 30, repeat: 'none' },
+        { title: '讲座报名截止', date: day(2), start: '18:00', end: '', location: '', note: '· 在“药大青年”小程序报名，名额 120 人',
+          remind: 60, repeat: 'none' }
+      ];
+      const reply: QaExtractReply = { items: read, message: '' };
+      return JSON.stringify(reply);
+    }
     if (request.action === 'parse') {
       // A rough stand-in for the page's parseAgendaText: 明天, HH:MM and @place.
       let text = request.text ?? '';

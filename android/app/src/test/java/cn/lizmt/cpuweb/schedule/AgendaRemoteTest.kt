@@ -119,4 +119,32 @@ class AgendaRemoteTest {
         )
         assertEquals(listOf("late0001", "late0002", "undated01", "undated02"), openTodos(items, today).map { it.id })
     }
+
+    @Test
+    fun aScreenshotIsSentThroughThePageAndReadIntoNewItems() = runTest {
+        val sent = mutableListOf<JSONObject>()
+        var answer: String? = null
+        val remote = AgendaRemote(context, scope) { request -> sent += request; answer }
+        answer = JSONObject().put("message", "").put("items", JSONArray()
+            .put(JSONObject().put("title", "学术讲座").put("date", "2026-11-12").put("start", "14:00").put("end", "13:00")
+                .put("location", "药学楼 101").put("note", "· 带学生证").put("remind", 30).put("repeat", "none"))
+            .put(JSONObject().put("title", "").put("date", "2026-11-10"))).toString()
+        val items = remote.extract(image = "data:image/jpeg;base64,AAAA").getOrThrow()
+        assertEquals("extract", sent.last().getString("action"))
+        assertEquals("data:image/jpeg;base64,AAAA", sent.last().getString("image"))
+        assertEquals(1, items.size)
+        val lecture = items.single()
+        assertEquals("", lecture.id)
+        assertEquals("assistant", lecture.origin)
+        assertEquals(listOf("2026-11-12", "14:00", "", "药学楼 101", "· 带学生证", 30), listOf(lecture.date, lecture.start, lecture.end, lecture.location, lecture.note, lecture.remind))
+
+        answer = JSONObject().put("items", JSONArray()).put("message", "图片里没有活动安排").toString()
+        assertEquals("图片里没有活动安排", remote.extract(text = "随便一段话").exceptionOrNull()?.message)
+        assertEquals("随便一段话", sent.last().getString("text"))
+        // A site without "extract" answers with the agenda list: never taken as items read from the picture.
+        answer = JSONObject().put("authenticated", true).put("items", JSONArray().put(item("meeting00001", "组会", "2026-11-12", "15:00"))).toString()
+        assertTrue(remote.extract(text = "通知").isFailure)
+        answer = null
+        assertFalse(remote.extract(text = "通知").isSuccess)
+    }
 }

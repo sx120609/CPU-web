@@ -94,7 +94,7 @@ sealed interface ScheduleSheet {
     data object Couple : ScheduleSheet
     data class Dorm(val code: String = "") : ScheduleSheet
     /** One 日程 in the editor; an empty id is a new one. */
-    data class AgendaEdit(val draft: cn.lizmt.cpuweb.schedule.agenda.AgendaItem) : ScheduleSheet
+    data class AgendaEdit(val draft: cn.lizmt.cpuweb.schedule.agenda.AgendaItem, val source: AgendaSource? = null) : ScheduleSheet
     /** 日程与待办. */
     data object AgendaList : ScheduleSheet
     /** An empty period tapped: add a 日程 at its start (on [date]) or a course in it. */
@@ -242,7 +242,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                 asked.list -> ScheduleSheet.AgendaList
                 asked.id.isNotEmpty() -> activity.agenda.items.firstOrNull { it.id == asked.id }?.let { ScheduleSheet.AgendaEdit(it) }
                     ?: ScheduleSheet.AgendaList
-                else -> ScheduleSheet.AgendaEdit(newAgendaDraft(asked.date, asked.start))
+                else -> ScheduleSheet.AgendaEdit(newAgendaDraft(asked.date, asked.start), asked.source)
             }
         }
     }
@@ -419,11 +419,12 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
         is ScheduleSheet.Dorm -> ScheduleDormSheet(activity, current.code, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
         ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
-        is ScheduleSheet.AgendaEdit -> AgendaEditorSheet(activity.agenda, current.draft, onDismiss = { sheet = null })
+        is ScheduleSheet.AgendaEdit -> AgendaEditorSheet(activity.agenda, current.draft, current.source, onDismiss = { sheet = null })
         ScheduleSheet.AgendaList -> AgendaListSheet(
             activity.agenda,
             onEdit = { sheet = ScheduleSheet.AgendaEdit(it) },
             onNew = { sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(it)) },
+            onExtract = { sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(""), it) },
             onDismiss = { sheet = null },
         )
         is ScheduleSheet.AddChoice -> {

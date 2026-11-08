@@ -57,6 +57,24 @@ interface AgendaParseRequest {
   text: string;
 }
 
+interface AgendaExtractRequest {
+  action: string;
+  image?: string;
+  text?: string;
+}
+
+/** One item 拾间AI read from a screenshot or a pasted notice (截图识别), to prefill a new one. */
+export interface NativeAgendaExtracted {
+  title: string;
+  date: string;
+  start: string;
+  end: string;
+  location: string;
+  note: string;
+  remind: number;
+  repeat: string;
+}
+
 export interface AgendaReply {
   authenticated?: boolean;
   missing?: boolean;
@@ -66,6 +84,36 @@ export interface AgendaReply {
   saved?: NativeAgendaItem | null;
   error?: string;
   parsed?: NativeAgendaDraft;
+  /** 截图识别: why nothing was read. */
+  message?: string;
+}
+
+/**
+ * The bridge's answer to `extract`: the items read, made safe for the editor, or why there are none.
+ * A site without `extract` answers with the agenda list (it carries `authenticated`), which is never
+ * taken for items read from the picture.
+ */
+export function agendaExtracted(reply: AgendaReply | undefined): NativeAgendaExtracted[] | string {
+  if (!reply) return '拾间AI 没来得及回复，稍后再试';
+  if (reply.missing) return '网页还没准备好，稍后再试';
+  if (typeof reply.authenticated === 'boolean') return reply.authenticated ? '截图识别还没上线，稍后再试' : '登录后才能识别截图';
+  const raw = (reply.items ?? []) as Object[] as NativeAgendaExtracted[];
+  const text = (value: string): string => typeof value === 'string' ? value : '';
+  const items: NativeAgendaExtracted[] = [];
+  raw.forEach((entry: NativeAgendaExtracted) => {
+    const title = entry ? text(entry.title).trim() : '';
+    if (!title) return;
+    const date = agendaDayNumber(text(entry.date)) >= 0 ? entry.date : '';
+    const start = date && agendaMinutes(text(entry.start)) >= 0 ? entry.start : '';
+    const end = start && agendaMinutes(text(entry.end)) > agendaMinutes(start) ? entry.end : '';
+    items.push({
+      title: title.substring(0, 60), date: date, start: start, end: end,
+      location: text(entry.location).substring(0, 40), note: text(entry.note).substring(0, 1000),
+      remind: date && typeof entry.remind === 'number' ? entry.remind : -1,
+      repeat: date ? (text(entry.repeat) || 'none') : 'none',
+    });
+  });
+  return items.length ? items : (reply.message || '没有在里面找到时间和要做的事');
 }
 
 const DAY_MS = 86400000;
@@ -337,6 +385,18 @@ export class NativeAgendaModel {
   parse(text: string, done: (draft?: NativeAgendaDraft) => void): void {
     const request: AgendaParseRequest = { action: 'parse', text: text };
     const id = this.send(JSON.stringify(request), (reply: AgendaReply | undefined) => done(reply?.parsed));
+    if (id) this.parsing.add(id);
+  }
+
+  /**
+   * 截图识别: what 拾间AI reads from a screenshot (a `data:` URL) or a pasted notice. `done` gets the
+   * items for the editor to show, or why there are none; nothing is saved here.
+   */
+  extract(image: string, text: string, done: (result: NativeAgendaExtracted[] | string) => void): void {
+    const request: AgendaExtractRequest = { action: 'extract' };
+    if (image) request.image = image;
+    if (text.trim()) request.text = text.trim().substring(0, 4000);
+    const id = this.send(JSON.stringify(request), (reply: AgendaReply | undefined) => done(agendaExtracted(reply)));
     if (id) this.parsing.add(id);
   }
 

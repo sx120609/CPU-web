@@ -42,6 +42,12 @@ struct NativeAgendaDraft: Decodable, Equatable {
     var saysMore: Bool { !date.isEmpty || !start.isEmpty || remind >= 0 || repeatRule != "none" || !location.isEmpty }
 }
 
+/// Why 截图识别 has nothing to fill in.
+struct AgendaExtractError: Error, Equatable {
+    let message: String
+    init(_ message: String) { self.message = message }
+}
+
 /// The user's 日程 for the timetable. Requests go through the signed-in page (see
 /// `NativeScheduleStore.agenda`), so the app needs no sign-in of its own. A copy is kept in
 /// Application Support for the next start, and the reminders are local notifications.
@@ -197,8 +203,8 @@ final class NativeAgendaService: ObservableObject {
     }
 
     /// Adds `item` (an empty id makes a new one) or saves the edits to it, through the page.
-    /// Returns nil once it is stored, else why not.
-    func save(_ item: NativeAgendaItem) async -> String? {
+    /// `origin` "assistant" marks one 拾间AI filled in (截图识别). Returns nil once it is stored, else why not.
+    func save(_ item: NativeAgendaItem, origin: String? = nil) async -> String? {
 #if DEBUG
         if debugPinned {
             var stored = item
@@ -213,6 +219,7 @@ final class NativeAgendaService: ObservableObject {
         guard let body = try? JSONEncoder().encode(data),
               var payload = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return Self.unreachable }
         if item.id.isEmpty { payload.removeValue(forKey: "id") }
+        if let origin { payload["origin"] = origin }
         guard let reply = await request(["action": "save", "data": payload]) else { return Self.unreachable }
         return reply.saved?.value?.sanitized == nil ? (reply.error ?? Self.unreachable) : nil
     }
@@ -241,6 +248,83 @@ final class NativeAgendaService: ObservableObject {
               let request = String(data: body, encoding: .utf8),
               let raw = await store.agenda(request), let data = raw.data(using: .utf8) else { return nil }
         return (try? JSONDecoder().decode(ParseReply.self, from: data))?.parsed
+    }
+
+    /// 截图识别: what 拾间AI reads from a screenshot (a `data:` URL) or a pasted notice, as new
+    /// items for the editor to show (empty ids); nothing is saved here. Fails with why there are none.
+    func extract(image: String? = nil, text: String? = nil) async -> Result<[NativeAgendaItem], AgendaExtractError> {
+#if DEBUG
+        if debugPinned {
+            try? await Task.sleep(for: .milliseconds(1_200))
+            let today = NativeAgendaRules.dayNumber(NativeAgendaRules.today()) ?? 0
+            return .success([
+                NativeAgendaItem(id: "", title: "药学院学术讲座：AI 与新药发现", date: NativeAgendaRules.date(ofDay: today + 4),
+                                 start: "14:00", end: "16:00", location: "江宁校区 药学楼 101",
+                                 note: "· 携带学生证，提前 10 分钟签到\n· 计入第二课堂学分 0.5", remind: 30),
+                NativeAgendaItem(id: "", title: "讲座报名截止", date: NativeAgendaRules.date(ofDay: today + 2), start: "18:00",
+                                 note: "· 在“药大青年”小程序报名，名额 120 人", remind: 60),
+            ])
+        }
+#endif
+        var payload: [String: Any] = ["action": "extract"]
+        if let image { payload["image"] = image }
+        if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { payload["text"] = String(text.prefix(4_000)) }
+        guard let store, let body = try? JSONSerialization.data(withJSONObject: payload),
+              let request = String(data: body, encoding: .utf8) else { return .failure(AgendaExtractError("日程暂时不可用")) }
+        return Self.extracted(await store.agenda(request))
+    }
+
+    /// The bridge's `{ items, message }` as new items. A site without `extract` answers with the
+    /// agenda list (it carries `authenticated`), which is never taken for items read from the picture.
+    static func extracted(_ raw: String?) -> Result<[NativeAgendaItem], AgendaExtractError> {
+        struct Entry: Decodable {
+            let title: String?
+            let date: String?
+            let start: String?
+            let end: String?
+            let location: String?
+            let note: String?
+            let remind: Int?
+            let repeatRule: String?
+            enum CodingKeys: String, CodingKey {
+                case title, date, start, end, location, note, remind
+                case repeatRule = "repeat"
+            }
+        }
+        struct Lossy: Decodable {
+            let value: Entry?
+            init(from decoder: Decoder) throws { value = try? Entry(from: decoder) }
+        }
+        struct ExtractReply: Decodable {
+            let missing: Bool?
+            let authenticated: Bool?
+            let items: [Lossy]?
+            let message: String?
+        }
+        guard let raw, let data = raw.data(using: .utf8), let reply = try? JSONDecoder().decode(ExtractReply.self, from: data) else {
+            return .failure(AgendaExtractError("拾间AI 没来得及回复，稍后再试"))
+        }
+        if reply.missing == true { return .failure(AgendaExtractError("网页还没准备好，稍后再试")) }
+        if let authenticated = reply.authenticated {
+            return .failure(AgendaExtractError(authenticated ? "截图识别还没上线，稍后再试" : "登录后才能识别截图"))
+        }
+        let items = (reply.items ?? []).compactMap { $0.value }.compactMap { entry -> NativeAgendaItem? in
+            let title = (entry.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { return nil }
+            let date = entry.date.flatMap { NativeAgendaRules.dayNumber($0) == nil ? nil : $0 } ?? ""
+            let start = date.isEmpty ? "" : (entry.start.flatMap { NativeAgendaRules.minutes($0) == nil ? nil : $0 } ?? "")
+            let end = entry.end.flatMap { value -> String? in
+                guard let endMinutes = NativeAgendaRules.minutes(value), let startMinutes = NativeAgendaRules.minutes(start),
+                      endMinutes > startMinutes else { return nil }
+                return value
+            } ?? ""
+            return NativeAgendaItem(id: "", title: String(title.prefix(60)), date: date, start: start, end: end,
+                                    location: String((entry.location ?? "").prefix(40)), note: String((entry.note ?? "").prefix(1_000)),
+                                    remind: date.isEmpty ? -1 : (entry.remind ?? -1),
+                                    repeatRule: date.isEmpty ? "none" : (entry.repeatRule ?? "none"))
+        }
+        return items.isEmpty ? .failure(AgendaExtractError(reply.message?.isEmpty == false ? reply.message! : "没有在里面找到时间和要做的事"))
+            : .success(items)
     }
 
     /// Forgets the copy: signed out.

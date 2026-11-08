@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 // 日程 over the timetable: the editor for one item and 日程与待办 (a line to jot one down, the
@@ -93,12 +94,28 @@ private enum AgendaText {
     }
 }
 
+/// What 截图识别 reads for a new 日程: a picked screenshot, or a whole pasted notice.
+enum NativeAgendaSource: Hashable, Identifiable {
+    case photo(PhotosPickerItem)
+    case text(String)
+
+    var id: Self { self }
+}
+
+/// Pasting more than this into a title reads it as a whole notice for 拾间AI (截图识别).
+private let agendaNoticePasteChars = 60
+
 /// Adds or edits one 日程, with the fields of the Web editor. For a new one the first field reads
 /// what the user writes (「周五 14:00 组会 @药学楼」) and fills the fields below until one is changed
 /// by hand. Saving goes through the page and waits for its answer.
+///
+/// A new one can also be filled from a screenshot or a pasted notice (截图识别, `source` when 日程与待办
+/// already picked one): 拾间AI reads the time, place and what to bring; several items found are shown
+/// one at a time and can be added one by one or all at once.
 @available(iOS 17.0, *)
 struct NativeAgendaEditor: View {
     private let original: NativeAgendaItem
+    private let source: NativeAgendaSource?
     /// Pushed from 日程与待办: done goes back there instead of closing the sheet.
     private let onDone: (() -> Void)?
     @ObservedObject private var service = NativeAgendaService.shared
@@ -110,9 +127,20 @@ struct NativeAgendaEditor: View {
     @State private var saving = false
     @State private var errorMessage: String?
     @State private var confirmingDelete = false
+    // 截图识别: what is being read ("截图" / "这段通知"), the items found and the one shown.
+    @State private var extracting = ""
+    @State private var extracted: [NativeAgendaItem] = []
+    @State private var pick = 0
+    @State private var extractNote = ""
+    @State private var extractTask: Task<Void, Never>?
+    @State private var photo: PhotosPickerItem?
+    @State private var sourceRead = false
+    /// "assistant" once the fields came from 截图识别.
+    @State private var origin: String?
 
-    init(draft: NativeAgendaItem, onDone: (() -> Void)? = nil) {
+    init(draft: NativeAgendaItem, source: NativeAgendaSource? = nil, onDone: (() -> Void)? = nil) {
         original = draft
+        self.source = source
         self.onDone = onDone
         _item = State(initialValue: draft)
         _text = State(initialValue: draft.title)
@@ -162,6 +190,9 @@ struct NativeAgendaEditor: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            if isNew && service.available {
+                extractSection
             }
             Section {
                 Toggle("日期", isOn: binding({ !$0.date.isEmpty }) { item, on in
@@ -284,12 +315,139 @@ struct NativeAgendaEditor: View {
             guard !Task.isCancelled, !touched else { return }
             parsed = draft.flatMap { $0.saysMore ? $0 : nil }
         }
+        .onChange(of: text) { old, new in
+            // A whole notice pasted into a new item's title: 拾间AI sorts it out instead.
+            guard isNew, service.available, extracting.isEmpty, new.count - old.count > agendaNoticePasteChars else { return }
+            text = old
+            extractText(new)
+        }
+        .onChange(of: photo) { _, picked in
+            guard let picked else { return }
+            photo = nil
+            extractPhoto(picked)
+        }
+        .task(id: service.available) {
+            // A screenshot picked in 日程与待办: read it once the page has said who is signed in.
+            guard let source, !sourceRead, isNew, service.available else { return }
+            sourceRead = true
+            switch source {
+            case .photo(let picked): extractPhoto(picked)
+            case .text(let notice): extractText(notice)
+            }
+        }
+        .onDisappear { extractTask?.cancel() }
+    }
+
+    @ViewBuilder
+    private var extractSection: some View {
+        Section {
+            if !extracting.isEmpty {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("拾间AI 正在读\(extracting)，读出来的时间和地点会填在下面")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Button("取消", action: cancelExtract).buttonStyle(.borderless)
+                }
+            } else if extracted.count > 1 {
+                HStack {
+                    Text("识别出 \(extracted.count) 条，逐条看过再添加").font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 4)
+                    Button("全部添加", action: saveAll).buttonStyle(.borderless)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(extracted.indices, id: \.self) { index in
+                            Button { choose(index) } label: {
+                                Text(extracted[index].title).lineLimit(1)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(index == pick ? Color.cpuBrand : Color.secondary)
+                        }
+                    }
+                }
+                if !extractNote.isEmpty {
+                    Text(extractNote).font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                PhotosPicker(selection: $photo, matching: .images) {
+                    Label("截图识别", systemImage: "text.viewfinder")
+                }
+                Text(extractNote.isEmpty ? "选一张活动通知的截图，或把整段通知粘贴到上面，拾间AI 帮你填好" : extractNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The form as it would be saved now.
+    private func current() -> NativeAgendaItem {
+        var value = shown
+        value.title = (touched ? text : (parsed?.title ?? text)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value
+    }
+
+    /// Shows one item read from a screenshot; the text no longer steers the form.
+    private func show(_ value: NativeAgendaItem) {
+        item = value
+        text = value.title
+        parsed = nil
+        touched = true
+        origin = "assistant"
+    }
+
+    private func choose(_ index: Int) {
+        guard index != pick, extracted.indices.contains(index) else { return }
+        extracted[pick] = current()
+        pick = index
+        show(extracted[index])
+    }
+
+    private func cancelExtract() {
+        extractTask?.cancel()
+        extractTask = nil
+        extracting = ""
+    }
+
+    private func runExtract(_ what: String, _ read: @escaping () async -> Result<[NativeAgendaItem], AgendaExtractError>) {
+        extractTask?.cancel()
+        extracting = what
+        extractNote = ""
+        errorMessage = nil
+        extractTask = Task {
+            let result = await read()
+            guard !Task.isCancelled else { return }
+            extracting = ""
+            switch result {
+            case .success(let items):
+                extracted = items
+                pick = 0
+                show(items[0])
+                if items.count == 1 { extractNote = "已按\(what)填好，看一下再添加" }
+            case .failure(let error):
+                errorMessage = error.message
+            }
+        }
+    }
+
+    private func extractPhoto(_ picked: PhotosPickerItem) {
+        runExtract("截图") {
+            guard let data = try? await picked.loadTransferable(type: Data.self),
+                  let image = await Task.detached(operation: { NativeAgendaImage.dataURL(from: data) }).value else {
+                return .failure(AgendaExtractError("这张图片读不出来，换一张试试"))
+            }
+            return await NativeAgendaService.shared.extract(image: image)
+        }
+    }
+
+    private func extractText(_ notice: String) {
+        runExtract("这段通知") { await NativeAgendaService.shared.extract(text: notice) }
     }
 
     private func save() {
         guard !saving else { return }
-        var value = shown
-        value.title = (touched ? text : (parsed?.title ?? text)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = current()
         guard !value.title.isEmpty else {
             errorMessage = "先写个标题"
             return
@@ -297,9 +455,47 @@ struct NativeAgendaEditor: View {
         saving = true
         errorMessage = nil
         Task {
-            let error = await service.save(value)
+            let error = await service.save(value, origin: isNew ? origin : nil)
             saving = false
-            if let error { errorMessage = error } else { finish() }
+            if let error {
+                errorMessage = error
+            } else if extracted.count > 1 {
+                // Several items read from a screenshot: go on to the next one.
+                extracted.remove(at: pick)
+                pick = min(pick, extracted.count - 1)
+                show(extracted[pick])
+                extractNote = extracted.count == 1 ? "已添加，还有「\(extracted[0].title)」" : "已添加，还剩 \(extracted.count) 条"
+            } else {
+                finish()
+            }
+        }
+    }
+
+    /// Adds every item read, the one shown with its edits.
+    private func saveAll() {
+        guard !saving, !extracted.isEmpty else { return }
+        var all = extracted
+        all[pick] = current()
+        saving = true
+        errorMessage = nil
+        Task {
+            var left: [NativeAgendaItem] = []
+            var failure: String?
+            for entry in all {
+                if let error = await service.save(entry, origin: "assistant") {
+                    failure = error
+                    left.append(entry)
+                }
+            }
+            saving = false
+            if left.isEmpty {
+                finish()
+                return
+            }
+            extracted = left
+            pick = 0
+            show(left[0])
+            errorMessage = failure ?? "有 \(left.count) 条没能添加"
         }
     }
 
@@ -329,6 +525,9 @@ struct NativeAgendaListView: View {
     @State private var message = ""
     @State private var adding = false
     @State private var editing: NativeAgendaItem?
+    /// 截图识别 from the list: a new item that 拾间AI fills from this screenshot or notice.
+    @State private var extracting: NativeAgendaSource?
+    @State private var photo: PhotosPickerItem?
 
     var body: some View {
         NavigationStack {
@@ -350,6 +549,14 @@ struct NativeAgendaListView: View {
                             Text(AgendaText.summary(quickDraft)).font(.caption).foregroundStyle(.secondary)
                         } else if !message.isEmpty {
                             Text(message).font(.caption).foregroundStyle(.secondary)
+                        }
+                        PhotosPicker(selection: $photo, matching: .images) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Label("截图识别", systemImage: "text.viewfinder")
+                                Text("活动通知太长？选一张截图或粘贴整段通知，拾间AI 帮你填好时间、地点和注意事项")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     Section("待办") {
@@ -404,6 +611,20 @@ struct NativeAgendaListView: View {
             }
             .navigationDestination(item: $editing) { item in
                 NativeAgendaEditor(draft: item) { editing = nil }
+            }
+            .navigationDestination(item: $extracting) { source in
+                NativeAgendaEditor(draft: NativeAgendaItem(id: "", title: ""), source: source) { extracting = nil }
+            }
+            .onChange(of: photo) { _, picked in
+                guard let picked else { return }
+                photo = nil
+                extracting = .photo(picked)
+            }
+            .onChange(of: quick) { old, new in
+                // A whole notice pasted in: a new item that 拾间AI fills from it.
+                guard new.count - old.count > agendaNoticePasteChars else { return }
+                quick = old
+                extracting = .text(new)
             }
             .task(id: quick) {
                 let value = quick.trimmingCharacters(in: .whitespacesAndNewlines)

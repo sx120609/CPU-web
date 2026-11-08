@@ -46,6 +46,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 分享截图或通知到拾间：拾间AI 读成日程，填进课表里的日程编辑器。 -->
+            <intent-filter android:label="@string/share_to_agenda">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <activity android:name=".ScheduleWidgetConfigureActivity" android:exported="true">

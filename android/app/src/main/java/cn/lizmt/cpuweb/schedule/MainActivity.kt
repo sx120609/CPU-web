@@ -308,11 +308,35 @@ class MainActivity : ComponentActivity(), WebSessionHost {
 
     /** Widgets open the native timetable at the current week (or the week they showed). */
     private fun handleLaunchIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_SEND) {
+            sharedAgendaSource(intent)?.let { source ->
+                intent.action = null
+                agendaRequest = AgendaRequest(source = source)
+                shell.showSchedule()
+            }
+            return
+        }
         if (intent?.getBooleanExtra(EXTRA_OPEN_SCHEDULE, false) != true) return
         val semester = intent.getStringExtra(EXTRA_SEMESTER)?.takeIf { Regex("^\\d{4}-\\d{4}-[12]$").matches(it) }
         val week = intent.getStringExtra(EXTRA_WEEK)?.takeIf { it.toIntOrNull() in 1..64 }
         intent.removeExtra(EXTRA_OPEN_SCHEDULE)
         shell.openSchedule(semester, week)
+    }
+
+    /**
+     * A screenshot or notice shared to the app (分享 → 拾间, 记成日程): a new 日程 that
+     * 拾间AI fills from it. Text too short to be a notice becomes the title as it is.
+     */
+    private fun sharedAgendaSource(intent: Intent): AgendaSource? {
+        val type = intent.type.orEmpty()
+        if (type.startsWith("image/")) {
+            @Suppress("DEPRECATION")
+            val uri = if (android.os.Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+            else intent.getParcelableExtra(Intent.EXTRA_STREAM) as? android.net.Uri
+            return uri?.let { AgendaSource.Image(it) }
+        }
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+        return text.takeIf { it.isNotEmpty() }?.let { AgendaSource.Text(it.take(4_000)) }
     }
 
     /** Opens 应用更新; checking again unless something is already under way. */
