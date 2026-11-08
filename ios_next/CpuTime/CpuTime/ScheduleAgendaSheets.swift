@@ -209,10 +209,10 @@ struct NativeAgendaEditor: View {
                     }
                 })
                 if !shown.date.isEmpty {
-                    DatePicker("日期", selection: binding({ AgendaText.date($0.date) }) { item, value in
+                    AgendaDayPicker(title: "日期", selection: binding({ AgendaText.date($0.date) }) { item, value in
                         item.date = AgendaText.string(value)
                         if !item.until.isEmpty, item.until < item.date { item.until = "" }
-                    }, displayedComponents: .date)
+                    })
                     Toggle("设定时间", isOn: binding({ !$0.start.isEmpty }) { item, on in
                         item.start = on ? (item.start.isEmpty ? "09:00" : item.start) : ""
                         if !on { item.end = "" }
@@ -254,10 +254,10 @@ struct NativeAgendaEditor: View {
                             item.until = on ? item.date : ""
                         })
                         if !shown.until.isEmpty {
-                            DatePicker("重复到", selection: binding({ AgendaText.date($0.until) }) { item, value in
+                            AgendaDayPicker(title: "重复到", selection: binding({ AgendaText.date($0.until) }) { item, value in
                                 let until = AgendaText.string(value)
                                 item.until = until >= item.date ? until : item.date
-                            }, displayedComponents: .date)
+                            })
                         }
                     }
                 }
@@ -357,15 +357,22 @@ struct NativeAgendaEditor: View {
                     Spacer(minLength: 4)
                     Button("全部添加", action: saveAll).buttonStyle(.borderless)
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(extracted.indices, id: \.self) { index in
-                            Button { choose(index) } label: {
-                                Text(extracted[index].title).lineLimit(1)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(extracted.indices, id: \.self) { index in
+                                Button { choose(index) } label: {
+                                    Text(extracted[index].title).lineLimit(1)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(index == pick ? Color.cpuBrand : Color.secondary)
+                                .id(index)
                             }
-                            .buttonStyle(.bordered)
-                            .tint(index == pick ? Color.cpuBrand : Color.secondary)
                         }
+                    }
+                    // The item shown stays in view, not cut off at the edge.
+                    .onChange(of: pick) { _, index in
+                        withAnimation { proxy.scrollTo(index, anchor: .center) }
                     }
                 }
                 if !extractNote.isEmpty {
@@ -708,5 +715,26 @@ struct NativeAgendaListView: View {
                 quickDraft = nil
             }
         }
+    }
+}
+
+/// A day picker that reads 「2026年11月12日」 like the rest of the form. A compact picker added to
+/// a form already on screen (日期 switched on, or a day filled by 截图识别) labels itself
+/// 「2026/11/12」 until its day changes, so it shows the day after once and then the real one.
+@available(iOS 17.0, *)
+private struct AgendaDayPicker: View {
+    let title: String
+    @Binding var selection: Date
+    @State private var settled = false
+
+    var body: some View {
+        DatePicker(title, selection: Binding(get: { settled ? selection : selection.addingTimeInterval(86_400) },
+                                             set: { selection = $0 }),
+                   displayedComponents: .date)
+            .task {
+                // Once it has been laid out; changing the day in the same pass keeps the short label.
+                try? await Task.sleep(for: .milliseconds(100))
+                settled = true
+            }
     }
 }
