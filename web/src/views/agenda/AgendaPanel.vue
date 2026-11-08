@@ -23,9 +23,15 @@
             maxlength="120"
             placeholder="一句话记下，例如「明天下午3点 实验报告」"
             aria-label="一句话记下日程"
+            @paste="onQuickPaste"
           />
           <button type="submit" :disabled="!quickText.trim()">添加</button>
         </form>
+        <div v-if="extractAvailable" class="ap-shot">
+          <button type="button" @click="shotInput?.click()"><el-icon><Picture /></el-icon>截图识别</button>
+          <span>活动通知太长？选一张截图或粘贴整段通知，拾间AI 帮你填好时间、地点和注意事项</span>
+          <input ref="shotInput" type="file" accept="image/*" hidden @change="onShot" />
+        </div>
         <p v-if="quickPreview" class="ap-hint">{{ quickPreview }}</p>
 
         <section class="ap-card">
@@ -96,9 +102,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { Check, Plus } from "@element-plus/icons-vue";
+import { Check, Picture, Plus } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useAgendaStore } from "@/stores/agenda";
+import { useSiteStore } from "@/stores/site";
+import { shouldHideHarmonyAssistant } from "@/utils/clientInfo";
+import { AGENDA_NOTICE_PASTE_CHARS, pastedImage, pendingAgendaSource } from "./agendaExtract";
 import {
   agendaAddDays,
   agendaChinaClock,
@@ -179,6 +188,33 @@ function quickAdd() {
   ElMessage.success(saved.date ? `已添加到${shortDay(saved.date)}` : "已添加到待办");
 }
 
+// 截图识别在编辑器里做：这里只把截图或整段通知交过去，再打开新建。
+const site = useSiteStore();
+const shotInput = ref<HTMLInputElement | null>(null);
+const extractAvailable = computed(() => site.moduleEnabled("assistant")
+  && !shouldHideHarmonyAssistant(auth.isLoggedIn, auth.user?.username));
+
+function extractIn(source: { image?: File; text?: string }) {
+  pendingAgendaSource.value = source;
+  emit("create", "");
+}
+
+function onShot(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (file) extractIn({ image: file });
+}
+
+function onQuickPaste(event: ClipboardEvent) {
+  if (!extractAvailable.value) return;
+  const image = pastedImage(event);
+  const text = image ? "" : event.clipboardData?.getData("text/plain")?.trim() ?? "";
+  if (!image && text.length <= AGENDA_NOTICE_PASTE_CHARS) return;
+  event.preventDefault();
+  extractIn(image ? { image } : { text });
+}
+
 function onMedia() {
   narrow.value = Boolean(media?.matches);
 }
@@ -255,6 +291,34 @@ onBeforeUnmount(() => {
 .ap-quick button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.ap-shot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -4px 2px 0;
+}
+.ap-shot button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--cpu-primary);
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-card);
+  color: var(--cpu-primary-dark);
+  font: inherit;
+  font-size: var(--cpu-fs-s);
+  font-weight: 560;
+  cursor: pointer;
+}
+.ap-shot span {
+  min-width: 0;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.5;
 }
 .ap-hint {
   margin: -6px 2px 0;

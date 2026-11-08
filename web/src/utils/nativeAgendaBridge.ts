@@ -5,6 +5,7 @@ import { useAgendaStore } from "@/stores/agenda";
 import { isNativeScheduleShell } from "@/utils/clientInfo";
 import { nativeScheduleAccountKey } from "@/utils/iosNextScheduleBridge";
 import { parseAgendaText, type AgendaItem } from "@/utils/agenda";
+import { agendaExtractApi } from "@/api/agenda";
 
 /**
  * 原生 App 的课表里画日程用的入口：`window.CPUTimeNativeAgenda(request)`。
@@ -17,6 +18,10 @@ import { parseAgendaText, type AgendaItem } from "@/utils/agenda";
  * - `{ action: "remove", id }`：删掉一条（重复的整条删掉）。
  * - `{ action: "relay", on }`：打开或关掉「微信和 QQ 也提醒」。
  * - `{ action: "parse", text }`：把一句话读成日程的各项（不用登录），返回 `{ parsed }`。
+ * - `{ action: "extract", image?, text? }`：拾间AI 从截图（`data:image/…;base64,` 的 Data URL，
+ *   原生先压到宽 1280、高 4096 以内）或一整段通知文字里读出日程，返回 `{ items, message }`；
+ *   `items` 每条有 title/date/start/end/location/note/remind/repeat，交给原生编辑器预填，
+ *   用户看过再 save。读不出来时 `items` 为空、`message` 说原因。要登录，算一次拾间AI 用量。
  * - `{ action: "open", item?, date?, start? }`：旧版原生用的，打开网页的日程（有 item 时直接编辑
  *   那一条，没有时新建，带上日期和开始时间）。
  *
@@ -37,6 +42,7 @@ type AgendaRequest = {
   data?: Partial<AgendaItem>;
   on?: boolean;
   text?: string;
+  image?: string;
 };
 
 type AgendaReply = {
@@ -88,6 +94,17 @@ export function installNativeAgendaBridge(router: Router) {
       // 原生收到 missing 时保留已显示的日程，不会当成退出登录清空。
       if (!(await authSettled())) return { missing: true };
       if (!auth.isLoggedIn || !agenda.attach()) return reply();
+      if (request.action === "extract") {
+        const image = typeof request.image === "string" && request.image.startsWith("data:image/") ? request.image : undefined;
+        const text = typeof request.text === "string" ? request.text.trim().slice(0, 4000) : "";
+        if (!image && !text) return { items: [], message: "先选一张截图或粘贴通知文字" };
+        try {
+          const result = await agendaExtractApi.extract({ ...(image ? { image } : {}), ...(text ? { text } : {}) });
+          return { items: result.items, message: result.message };
+        } catch (error) {
+          return { items: [], message: error instanceof Error && error.message ? error.message : "拾间AI 暂时不可用" };
+        }
+      }
       switch (request.action) {
         case "toggle":
           if (request.id && typeof request.date === "string") agenda.setDone(request.id, request.date, request.done !== false);

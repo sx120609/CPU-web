@@ -20,9 +20,41 @@
           maxlength="120"
           :placeholder="isNew ? '写下要做的事，例如「周五 14:00 组会 @药学楼」' : '标题'"
           @input="onTextInput"
+          @paste="onTitlePaste"
           @keydown.enter.exact.prevent="submit"
         />
         <p v-if="parsedHint" class="ae-hint">{{ parsedHint }}</p>
+      </section>
+
+      <!-- 截图识别：活动通知截图或一长段通知文字，拾间AI 读出时间、地点和注意事项填进下面。 -->
+      <section v-if="isNew && extractAvailable" class="ae-extract" :class="{ busy: Boolean(extracting) }">
+        <template v-if="extracting">
+          <span class="ae-spinner" aria-hidden="true" />
+          <span class="ae-extract-tip">拾间AI 正在读{{ extracting }}，读出来的时间和地点会填在下面</span>
+          <button type="button" class="ae-link" @click="cancelExtract">取消</button>
+        </template>
+        <template v-else-if="extracted.length > 1">
+          <div class="ae-extract-head">
+            <span>识别出 {{ extracted.length }} 条，逐条看过再添加</span>
+            <button type="button" class="ae-link" @click="saveAll">全部添加</button>
+          </div>
+          <div class="ae-pills ae-extract-pills">
+            <button
+              v-for="(item, index) in extracted"
+              :key="index"
+              type="button"
+              :class="{ active: index === pick }"
+              @click="choose(index)"
+            >{{ item.title }}</button>
+          </div>
+        </template>
+        <template v-else>
+          <button type="button" class="ae-shot" @click="fileInput?.click()">
+            <el-icon><Picture /></el-icon>截图识别
+          </button>
+          <span class="ae-extract-tip">{{ extractNote || "选一张活动通知的截图，或把截图、整段通知直接粘贴到上面，拾间AI 帮你填好" }}</span>
+        </template>
+        <input ref="fileInput" type="file" accept="image/*" hidden @change="onFile" />
       </section>
 
       <section class="ae-card">
@@ -98,7 +130,20 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { Picture } from "@element-plus/icons-vue";
 import { useAgendaStore } from "@/stores/agenda";
+import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
+import { shouldHideHarmonyAssistant } from "@/utils/clientInfo";
+import type { AgendaExtractResult } from "@/api/agenda";
+import {
+  AGENDA_NOTICE_PASTE_CHARS,
+  agendaExtractError,
+  extractAgendaFromImage,
+  extractAgendaFromText,
+  pastedImage,
+  pendingAgendaSource,
+} from "./agendaExtract";
 import {
   AGENDA_REMIND_CHOICES,
   AGENDA_REPEAT_CHOICES,
@@ -128,6 +173,21 @@ const manual = ref<AgendaItem>(blank());
 // 改过下面任何一项以后，第一行就只是标题，不再左右下面的选择。
 const touched = ref(false);
 
+// 截图识别（见下面「截图识别」）。
+const auth = useAuthStore();
+const site = useSiteStore();
+const fileInput = ref<HTMLInputElement | null>(null);
+/** 正在读的是什么（"截图" / "这段通知"）；空表示没在读。 */
+const extracting = ref("");
+/** 截图里读出的几条；只有一条时编辑器直接填好，不显示列表。 */
+const extracted = ref<AgendaItem[]>([]);
+const pick = ref(0);
+const extractNote = ref("");
+let extractToken = 0;
+const extractAvailable = computed(() => auth.isLoggedIn
+  && site.moduleEnabled("assistant")
+  && !shouldHideHarmonyAssistant(auth.isLoggedIn, auth.user?.username));
+
 const isNew = computed(() => !props.draft?.id);
 const remindChoices = AGENDA_REMIND_CHOICES;
 
@@ -139,11 +199,21 @@ function blank(): AgendaItem {
 }
 
 watch(() => [props.open, props.draft] as const, ([open, draft]) => {
+  cancelExtract();
+  extracted.value = [];
+  pick.value = 0;
+  extractNote.value = "";
   if (!open) return;
   const base = { ...blank(), ...(draft ?? {}) } as AgendaItem;
   manual.value = base;
   text.value = base.title;
   touched.value = !isNew.value;
+  const source = pendingAgendaSource.value;
+  pendingAgendaSource.value = null;
+  if (isNew.value && source && extractAvailable.value) {
+    if (source.image) startImageExtract(source.image);
+    else if (source.text) startTextExtract(source.text);
+  }
   void nextTick(() => { if (isNew.value) titleInput.value?.focus(); });
 }, { immediate: true });
 
@@ -195,15 +265,127 @@ function toggleTime(on: boolean) {
   edit(on ? { start: shown.value.start || "09:00" } : { start: "", end: "" });
 }
 
+/** 编辑器里现在的样子，和保存时用的一样。 */
+function current(): AgendaItem {
+  return touched.value ? { ...manual.value, title: manual.value.title.trim() || text.value } : shown.value;
+}
+
 function submit() {
   if (!text.value.trim()) return;
-  const source = touched.value ? { ...manual.value, title: manual.value.title.trim() || text.value } : shown.value;
+  const source = current();
   const saved = agenda.save({ ...source, id: props.draft?.id || undefined, title: source.title.trim() });
   if (!saved) {
     ElMessage.warning(agenda.error || "先写个标题");
     return;
   }
   emit("saved", saved);
+  // 截图里读出几条时，添加一条后接着看下一条。
+  if (extracted.value.length > 1) {
+    const rest = extracted.value.filter((_, index) => index !== pick.value);
+    extracted.value = rest;
+    pick.value = Math.min(pick.value, rest.length - 1);
+    show(rest[pick.value]);
+    extractNote.value = rest.length === 1 ? `已添加，还有「${rest[0].title}」` : "";
+    ElMessage.success(`已添加，还剩 ${rest.length} 条`);
+    return;
+  }
+  emit("close");
+}
+
+// MARK: 截图识别
+
+function show(item: AgendaItem) {
+  manual.value = { ...item };
+  text.value = item.title;
+  touched.value = true;
+}
+
+function choose(index: number) {
+  if (index === pick.value || !extracted.value[index]) return;
+  extracted.value[pick.value] = current();
+  pick.value = index;
+  show(extracted.value[index]);
+}
+
+function cancelExtract() {
+  extractToken += 1;
+  extracting.value = "";
+}
+
+async function runExtract(what: string, task: () => Promise<AgendaExtractResult>) {
+  const token = ++extractToken;
+  extracting.value = what;
+  extractNote.value = "";
+  try {
+    const result = await task();
+    if (token !== extractToken || !props.open) return;
+    if (!result.items.length) {
+      ElMessage.warning(result.message || "没有在里面找到时间和要做的事");
+      return;
+    }
+    const items = result.items.map((item) => ({ ...blank(), ...item, origin: "assistant" as const }));
+    extracted.value = items;
+    pick.value = 0;
+    show(items[0]);
+    if (items.length === 1) extractNote.value = `已按${what}填好，看一下再添加`;
+  } catch (error) {
+    if (token === extractToken) ElMessage.warning(agendaExtractError(error));
+  } finally {
+    if (token === extractToken) extracting.value = "";
+  }
+}
+
+function startImageExtract(file: File) {
+  if (!file.type.startsWith("image/")) {
+    ElMessage.warning("请选择图片");
+    return;
+  }
+  void runExtract("截图", () => extractAgendaFromImage(file));
+}
+
+function startTextExtract(value: string) {
+  void runExtract("这段通知", () => extractAgendaFromText(value));
+}
+
+function onFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (file) startImageExtract(file);
+}
+
+/** 粘贴截图，或粘贴一整段通知（比标题长得多），交给拾间AI；一般的短句照常粘贴。 */
+function onTitlePaste(event: ClipboardEvent) {
+  if (!isNew.value || !extractAvailable.value || extracting.value) return;
+  const image = pastedImage(event);
+  if (image) {
+    event.preventDefault();
+    startImageExtract(image);
+    return;
+  }
+  const pasted = event.clipboardData?.getData("text/plain")?.trim() ?? "";
+  if (pasted.length > AGENDA_NOTICE_PASTE_CHARS) {
+    event.preventDefault();
+    startTextExtract(pasted);
+  }
+}
+
+function saveAll() {
+  extracted.value[pick.value] = current();
+  let count = 0;
+  for (const item of extracted.value) {
+    if (!item.title.trim()) continue;
+    const saved = agenda.save({ ...item, id: undefined, title: item.title.trim() });
+    if (saved) {
+      count += 1;
+      emit("saved", saved);
+    }
+  }
+  if (!count) {
+    ElMessage.warning(agenda.error || "没能添加");
+    return;
+  }
+  ElMessage.success(`已添加 ${count} 条`);
   emit("close");
 }
 
@@ -355,6 +537,75 @@ async function removeItem() {
 .ae-pills button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+.ae-extract {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  border-radius: var(--cpu-radius-m);
+  border: 1px dashed var(--cpu-border);
+  padding: 10px 14px;
+}
+.ae-extract.busy {
+  border-style: solid;
+  border-color: var(--cpu-primary);
+  background: var(--cpu-primary-soft);
+}
+.ae-shot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--cpu-primary);
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-card);
+  color: var(--cpu-primary-dark);
+  font: inherit;
+  font-size: var(--cpu-fs-s);
+  font-weight: 560;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ae-extract-tip {
+  flex: 1;
+  min-width: 0;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.5;
+}
+.ae-extract-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-s);
+  font-weight: 560;
+}
+.ae-extract-pills {
+  width: 100%;
+  padding-bottom: 0;
+}
+.ae-extract-pills button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ae-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid var(--cpu-primary-soft);
+  border-top-color: var(--cpu-primary);
+  border-radius: 50%;
+  animation: ae-spin 0.8s linear infinite;
+}
+@keyframes ae-spin {
+  to { transform: rotate(360deg); }
 }
 .ae-actions {
   display: flex;

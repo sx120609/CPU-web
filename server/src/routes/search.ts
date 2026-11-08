@@ -15,6 +15,7 @@ import {
   streamCampusAssistant,
 } from "../services/campusAssistant";
 import { isDataRequestOnly, personalContextSchema, streamPersonalAssistant } from "../services/personalAssistant";
+import { extractAgendaFromContent } from "../services/agendaExtract";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
@@ -393,6 +394,44 @@ searchRouter.post(
       streamCompleted = true;
       if (!res.writableEnded) res.end();
     }
+  },
+);
+
+/**
+ * 截图或粘贴的通知读成日程（课表的日程编辑器用）：返回要预填的几条，用户看过再存。
+ * 算一次拾间AI 用量；读不出来或拾间AI 没响应时退回。
+ */
+searchRouter.post(
+  "/assistant/agenda-extract",
+  securityRateLimit("campus-assistant", 20, 60_000),
+  validate(z.object({
+    image: z.string().max(12 * 1024 * 1024).regex(/^data:image\/(?:jpeg|jpg|png|webp);base64,/u).optional(),
+    text: z.string().trim().max(4000).optional(),
+  }).strict().refine((body) => Boolean(body.image || body.text), "先选一张截图或粘贴通知文字")),
+  async (req, res, next) => {
+    let reservation: CampusAssistantQuotaReservation | null = null;
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(new Error("AGENDA_EXTRACT_ABORTED")); };
+    req.on("aborted", abort); res.on("close", abort);
+    try {
+      const userId = req.user!.userId;
+      reservation = (await consumeCampusAssistantQuota(userId)).reservation;
+      const result = await extractAgendaFromContent({
+        image: req.body.image,
+        text: req.body.text,
+        signal: controller.signal,
+        usage: { createdById: userId, pointCost: reservation?.source === "points" ? 1 : 0 },
+      });
+      if ((result.fallback || !result.items.length) && reservation) {
+        await refundCampusAssistantQuota(userId, reservation);
+        reservation = null;
+      }
+      if (!controller.signal.aborted) ok(res, result);
+    } catch (error) {
+      if (reservation) await refundCampusAssistantQuota(req.user!.userId, reservation).catch(() => {});
+      if (controller.signal.aborted) return;
+      next(error instanceof Error && /^图片/u.test(error.message) ? Errors.badRequest(error.message) : error);
+    } finally { req.off("aborted", abort); res.off("close", abort); }
   },
 );
 
