@@ -10,6 +10,12 @@ struct ScheduleCourseQuickLook: View {
     var schedule: String? = nil
     /// 「小鹿的课」 above the name of a course that is the partner's.
     var ownerTitle: String? = nil
+    /// 日程 of this meeting: on its date, at its time or naming the course.
+    var related: [NativeAgendaOccurrence] = []
+    var onOpenAgenda: ((NativeAgendaOccurrence) -> Void)? = nil
+    var onToggleAgenda: ((NativeAgendaOccurrence) -> Void)? = nil
+    /// Adds a 日程 at this meeting; nil where 日程 are not available.
+    var onAddAgenda: (() -> Void)? = nil
     /// nil hides the edit button.
     var onEdit: (() -> Void)? = nil
     var onHeightChange: (CGFloat) -> Void = { _ in }
@@ -75,6 +81,11 @@ struct ScheduleCourseQuickLook: View {
                     }
                 }
 
+                if !related.isEmpty || onAddAgenda != nil {
+                    Divider()
+                    agendaSection
+                }
+
                 if course.orphaned {
                     Label("教务课表里已找不到这门课，请核对后保留或删除。", systemImage: "exclamationmark.triangle")
                         .font(.footnote)
@@ -96,6 +107,61 @@ struct ScheduleCourseQuickLook: View {
             .onPreferenceChange(ScheduleQuickLookHeightKey.self) { onHeightChange($0) }
         }
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    /// 这节课的日程: homework due, an exam, a note to self; and a button to add one.
+    private var agendaSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("这节课的日程", systemImage: "checklist")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.scheduleMeta)
+                Spacer()
+                if let onAddAgenda {
+                    Button(action: onAddAgenda) {
+                        Label("添加", systemImage: "plus")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(accent)
+                }
+            }
+            if related.isEmpty {
+                Text("还没有。作业、小测或要带的东西，记一笔就会在这里出现。")
+                    .font(.footnote)
+                    .foregroundStyle(.scheduleMeta)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(related) { entry in
+                HStack(spacing: 10) {
+                    Button { onToggleAgenda?(entry) } label: {
+                        Image(systemName: entry.done ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20))
+                            .foregroundStyle(entry.done ? accent : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(entry.done ? "\(entry.item.title)，已完成" : "完成\(entry.item.title)")
+                    Button { onOpenAgenda?(entry) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.item.title)
+                                .font(.body)
+                                .strikethrough(entry.done)
+                                .foregroundStyle(entry.done ? Color.secondary : Color.primary)
+                                .lineLimit(2)
+                            Text(entry.timeText)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.scheduleMeta)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(10)
+                .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
     }
 
     private var header: some View {

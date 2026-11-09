@@ -68,6 +68,8 @@ struct NativeScheduleView: View {
     @State private var weekTransitionToken = 0
     @State private var dayTransitionToken = 0
     @State private var monthAnchor = ""
+    /// The day the month's 当天安排 panel shows; nil for today or the month's first day.
+    @State private var monthFocusDate: String?
     @State private var selectedMonthDate = ""
     @State private var pendingMonthDay: String?
 
@@ -261,6 +263,7 @@ struct NativeScheduleView: View {
                             dayGrid(result)
                         } else {
                             monthCalendar(result)
+                            monthDayPanel(result)
                         }
                     } else if isUnauthorized {
                         authorizationState
@@ -882,13 +885,169 @@ struct NativeScheduleView: View {
                 guard let layer = coupleLayer else { return 0 }
                 return NativeScheduleMonthView.courseNames(Self.partnerBlocks(on: date, layer: layer) ?? []).count
             },
-            canOpenDay: { date in
-                guard let slot = monthDateIndex[date] else { return false }
-                return visibleDays(week: slot.week, result: result).contains(slot.day)
-            },
-            onOpenDay: openDayView,
-            onMoveMonth: { moveMonth($0) }
+            // A tap shows the day below; 日视图 there opens it.
+            canOpenDay: { _ in true },
+            onOpenDay: { date in withAnimation(.snappy(duration: 0.22)) { monthFocusDate = date } },
+            onMoveMonth: { moveMonth($0) },
+            selectedDate: monthPanelDate,
+            agendaCount: { date in agendaService.on(date).filter { !$0.done }.count }
         )
+    }
+
+    /// The day 当天安排 shows: the one tapped in this month, else today when it
+    /// is in this month, else the month's first day.
+    private var monthPanelDate: String? {
+        let anchor = monthAnchor.isEmpty ? (Self.todayDate ?? "") : monthAnchor
+        let month = String(anchor.prefix(7))
+        if let monthFocusDate, monthFocusDate.hasPrefix(month) { return monthFocusDate }
+        if let today = Self.todayDate, today.hasPrefix(month) { return today }
+        return month.count == 7 ? month + "-01" : nil
+    }
+
+    /// 当天安排: the chosen day's classes and 日程 under the month, each class
+    /// with the same tap and long press as on the grid.
+    @ViewBuilder
+    private func monthDayPanel(_ result: NativeScheduleResult) -> some View {
+        if let date = monthPanelDate {
+            let slot = monthDateIndex[date]
+            let courses = (slot.map { blocks(for: $0.day, week: $0.week, result: result) } ?? [])
+                .sorted { ($0.courseStartSlot, $0.lane) < ($1.courseStartSlot, $1.lane) }
+            let entries = agendaService.on(date)
+            let adjustment = store.calendar?.adjustments.first { $0.date == date }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(occurrenceDateText(date))
+                        .font(.headline)
+                    if let slot { Text("第 \(slot.week) 周").font(.subheadline).foregroundStyle(.secondary) }
+                    if let adjustment {
+                        Text(adjustment.kind == "off" ? "休" : "班")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .background(adjustment.kind == "off" ? Color.pink : Color.orange, in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    Spacer()
+                    if slot != nil {
+                        Button {
+                            openDayView(date)
+                        } label: {
+                            HStack(spacing: 2) {
+                                Text("日视图")
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                            }
+                            .font(.subheadline.weight(.medium))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.cpuBrand)
+                    }
+                }
+                if courses.isEmpty && entries.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: adjustment?.kind == "off" ? "sun.max" : "cup.and.saucer")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                        Text(adjustment?.kind == "off" ? "放假，没有课" : slot == nil ? "不在本学期内" : "这天没有课")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                ForEach(courses) { block in
+                    monthPanelCourse(block)
+                        .scheduleCourseInteractions(block)
+                        .onTapGesture {
+                            if let slot { selectCourse(block, day: slot.day, week: slot.week, result: result) }
+                        }
+                }
+                if agendaService.available && !isReadOnly {
+                    if !entries.isEmpty {
+                        Divider()
+                        ForEach(entries) { entry in monthPanelAgenda(entry) }
+                    }
+                    Button {
+                        agendaService.openNew(date: date)
+                    } label: {
+                        Label("添加日程", systemImage: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.cpuBrand)
+                    .padding(.top, 2)
+                }
+            }
+            .padding(16)
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+                NativeScheduleBackgroundSurface()
+                    .clipShape(shape)
+                    .overlay { shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1) }
+            }
+            .padding(.top, 12)
+            .animation(.snappy(duration: 0.22), value: date)
+        }
+    }
+
+    private func monthPanelCourse(_ block: NativeScheduleCourseBlock) -> some View {
+        let status = ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil)
+        let accent = NativeScheduleThemeColor.accent(for: block.course.name, palette: preferences.palette, scheme: colorScheme)
+        let partner = block.owner == .partner
+        return HStack(spacing: 12) {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(status.start(block)).font(.subheadline.weight(.semibold).monospacedDigit())
+                Text(status.end(block)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            .frame(width: 48, alignment: .trailing)
+            RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 4)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(block.course.name)
+                        .font(.body.weight(.semibold))
+                        .strikethrough(block.cancelledOccurrence != nil)
+                        .lineLimit(1)
+                    if partner, let layer = coupleLayer {
+                        Text(layer.partnerName.isEmpty ? "TA" : layer.partnerName)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.teal)
+                    }
+                }
+                Text([block.courseStartSlot == block.courseEndSlot ? "第 \(block.courseStartSlot) 节"
+                        : "第 \(block.courseStartSlot)–\(block.courseEndSlot) 节",
+                      ScheduleStyleTime.location(block.course.location)].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(accent.opacity(colorScheme == .dark ? 0.14 : 0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func monthPanelAgenda(_ entry: NativeAgendaOccurrence) -> some View {
+        HStack(spacing: 10) {
+            Button { agendaService.toggle(entry) } label: {
+                Image(systemName: entry.done ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 19))
+                    .foregroundStyle(entry.done ? Color.cpuBrand : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(entry.done ? "\(entry.item.title)，已完成" : "完成\(entry.item.title)")
+            Button { agendaService.open(entry) } label: {
+                HStack {
+                    Text(entry.item.title)
+                        .font(.subheadline.weight(.medium))
+                        .strikethrough(entry.done)
+                        .foregroundStyle(entry.done ? Color.secondary : Color.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(entry.timeText).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var monthDateIndex: [String: NativeScheduleMonthView.DaySlot] {
@@ -1880,7 +2039,10 @@ struct NativeScheduleView: View {
             // The partner's course can be looked at, not edited; nor can a
             // single moved meeting as a whole course.
             ownerTitle: block.owner == .partner ? coupleLayer?.ownerTitle
-                : block.course.occurrenceFrom.map { "调课 · 原定 \(occurrenceDateText($0))" }
+                : block.course.occurrenceFrom.map { "调课 · 原定 \(occurrenceDateText($0))" },
+            date: block.owner == .partner ? nil : shown.date,
+            startTime: ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil).start(block),
+            endTime: ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil).end(block)
         ))
     }
 
@@ -3489,6 +3651,10 @@ private struct SelectedCourse: Identifiable {
     var schedule: String? = nil
     /// 「小鹿的课」 for a course of the partner's, which cannot be edited here.
     var ownerTitle: String? = nil
+    /// The meeting's date and clock times, for the 日程 that belong to it.
+    var date: String? = nil
+    var startTime: String? = nil
+    var endTime: String? = nil
 }
 
 private struct AddCourseContext: Identifiable {
@@ -4123,6 +4289,22 @@ private struct NativeScheduleCourseCard: View {
 private struct NativeCourseQuickLookSheet: View {
     let selection: SelectedCourse
     @ObservedObject var store: NativeScheduleStore
+    @ObservedObject private var agenda = NativeAgendaService.shared
+    @Environment(\.dismiss) private var dismiss
+
+    /// The 日程 on this meeting's date that fall in its time or name the course.
+    private var relatedAgenda: [NativeAgendaOccurrence] {
+        guard let date = selection.date, !store.isReadOnly else { return [] }
+        let name = selection.course.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let start = selection.startTime.flatMap(NativeAgendaRules.minutes)
+        let end = selection.endTime.flatMap(NativeAgendaRules.minutes)
+        return agenda.on(date).filter { entry in
+            if name.count >= 2, entry.item.title.contains(name) || entry.item.note.contains(name) { return true }
+            guard let start, let end, let begins = NativeAgendaRules.minutes(entry.item.start) else { return false }
+            let ends = NativeAgendaRules.minutes(entry.item.end) ?? begins
+            return begins < end && ends >= start
+        }
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var editing = false
@@ -4138,6 +4320,17 @@ private struct NativeCourseQuickLookSheet: View {
                     course: selection.course,
                     schedule: selection.schedule,
                     ownerTitle: selection.ownerTitle,
+                    related: relatedAgenda,
+                    onOpenAgenda: { entry in
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { agenda.open(entry) }
+                    },
+                    onToggleAgenda: { agenda.toggle($0) },
+                    onAddAgenda: agenda.available && selection.date != nil && !store.isReadOnly ? {
+                        let date = selection.date, start = selection.startTime
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { agenda.openNew(date: date, start: start) }
+                    } : nil,
                     onEdit: store.isReadOnly || selection.ownerTitle != nil ? nil : {
                         withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) {
                             detent = .large

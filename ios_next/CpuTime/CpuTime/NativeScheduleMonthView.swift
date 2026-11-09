@@ -7,32 +7,40 @@ import SwiftUI
 /// 「+N」。点教学周内的一天进入那天的日视图。教学周信息保留在每行左侧的「周」栏
 /// 里，这样月历和学期周次仍能对上。
 
-/// 上下拖动月历换月：格子跟着手指走，拖过一段距离就翻到下一个月或上一个月，
+/// 上下或左右拖动月历换月：格子跟着手指走，拖过一段距离就翻到下一个月或上一个月，
 /// 新的一页从拖来的那一边滑进来；不够就弹回去。
 @available(iOS 17.0, *)
 struct ScheduleMonthSwipe: ViewModifier {
     let onMove: (Int) -> Void
     @State private var pull: CGFloat = 0
+    @State private var sideways: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
-            .offset(y: pull)
-            .opacity(1 - min(0.6, Double(abs(pull)) / 86))
+            .offset(x: sideways, y: pull)
+            .opacity(1 - min(0.6, Double(max(abs(pull), abs(sideways))) / 86))
             .contentShape(Rectangle())
             .highPriorityGesture(
                 DragGesture(minimumDistance: 12)
                     .onChanged { value in
-                        guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                        pull = value.translation.height * 0.55
+                        if abs(value.translation.height) > abs(value.translation.width) {
+                            pull = value.translation.height * 0.55
+                            sideways = 0
+                        } else {
+                            sideways = value.translation.width * 0.55
+                            pull = 0
+                        }
                     }
                     .onEnded { value in
-                        let distance = value.translation.height
-                        if abs(distance) >= 44, abs(distance) > abs(value.translation.width) {
+                        let vertical = abs(value.translation.height) > abs(value.translation.width)
+                        // Up or left is the next month, as on a wall calendar turned page by page.
+                        let distance = vertical ? value.translation.height : value.translation.width
+                        if abs(distance) >= 44 {
                             let delta = distance < 0 ? 1 : -1
                             onMove(delta)
-                            pull = delta > 0 ? 36 : -36
+                            if vertical { pull = delta > 0 ? 36 : -36 } else { sideways = delta > 0 ? 48 : -48 }
                         }
-                        withAnimation(.easeOut(duration: 0.22)) { pull = 0 }
+                        withAnimation(.easeOut(duration: 0.22)) { pull = 0; sideways = 0 }
                     }
             )
     }
@@ -56,6 +64,10 @@ struct NativeScheduleMonthView: View {
     let onOpenDay: (String) -> Void
     /// 上下拖动月历换月：1 是下一个月，-1 是上一个月。
     var onMoveMonth: (Int) -> Void = { _ in }
+    /// 下面「当天安排」正在看的日期，格子上加一圈。
+    var selectedDate: String? = nil
+    /// 日期 -> 这一天还没完成的日程条数，日期下面一个小点。
+    var agendaCount: (String) -> Int = { _ in 0 }
 
     struct DaySlot: Equatable {
         let week: Int
@@ -98,7 +110,9 @@ struct NativeScheduleMonthView: View {
     /// 一天的课名：同名的只算一门，按上课先后。
     static func courseNames(_ blocks: [NativeScheduleCourseBlock]) -> [String] {
         var seen = Set<String>()
-        return blocks.sorted { ($0.startSlot, $0.endSlot) < ($1.startSlot, $1.endSlot) }
+        // 停了的课不算这一天的课。
+        return blocks.filter { $0.cancelledOccurrence == nil }
+            .sorted { ($0.startSlot, $0.endSlot) < ($1.startSlot, $1.endSlot) }
             .map { $0.course.name.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
@@ -177,6 +191,7 @@ struct NativeScheduleMonthView: View {
             .frame(maxWidth: .infinity)
             .frame(height: rowHeight, alignment: .top)
             .opacity(day.inMonth ? 1 : 0.45)
+            .modifier(ScheduleMonthDayMarks(day: day))
             .overlay(alignment: .topTrailing) {
                 if let adjustment = day.adjustment {
                     Text(adjustment.kind == "off" ? "休" : "班")
@@ -246,6 +261,10 @@ struct NativeScheduleMonthView: View {
         let courses: [NativeScheduleCourseBlock]
         /// 情侣课表：TA 这一天有几门不同的课。
         var partnerCourses = 0
+        /// 下面「当天安排」正在看的这一天。
+        var selected = false
+        /// 这一天有几条还没完成的日程。
+        var agenda = 0
 
         var id: String { date }
     }
@@ -281,8 +300,38 @@ struct NativeScheduleMonthView: View {
                 isStatutoryHoliday: info?.isStatutoryHoliday ?? false,
                 adjustment: adjustments[key],
                 courses: slot.map { blocks($0.day, $0.week) } ?? [],
-                partnerCourses: partnerCourses(key)
+                partnerCourses: partnerCourses(key),
+                selected: key == selectedDate,
+                agenda: agendaCount(key)
             )
         }
+    }
+}
+
+/// 「当天安排」选中的那天加一圈主题色；有没完成的日程，日期右上角一个小点。
+@available(iOS 17.0, *)
+struct ScheduleMonthDayMarks: ViewModifier {
+    let day: NativeScheduleMonthView.Day
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if day.selected {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(Color.cpuBrand, lineWidth: 1.8)
+                        .padding(1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .top) {
+                if day.agenda > 0 {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 5, height: 5)
+                        .offset(x: 15, y: 4)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
     }
 }

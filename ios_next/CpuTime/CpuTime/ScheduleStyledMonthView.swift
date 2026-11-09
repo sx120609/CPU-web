@@ -156,6 +156,7 @@ struct ScheduleStyledMonthPage: View {
             .frame(maxWidth: .infinity)
             .frame(height: rowHeight, alignment: .top)
             .opacity(day.inMonth ? 1 : 0.45)
+            .modifier(ScheduleMonthDayMarks(day: day))
             .background {
                 switch style {
                 case .grid:
