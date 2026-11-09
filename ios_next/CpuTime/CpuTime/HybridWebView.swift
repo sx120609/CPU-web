@@ -1277,7 +1277,15 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         // mounted the Pinia auth store. Wait for the actual login method so a
         // cold launch does not turn that short race into “服务不可用”.
         var lastError: Error?
+        var startedPage = false
         for attempt in 0..<80 {
+            // Nothing can answer without a page: a first load that failed or
+            // was stopped leaves the view empty, so start the login page once.
+            if !startedPage, view.backForwardList.currentItem == nil, !view.isLoading,
+               let url = IOSNextWebConfiguration.routeURL("/login?redirect=/home") {
+                startedPage = true
+                view.load(URLRequest(url: url))
+            }
             do {
                 // Execute the call itself instead of probing through a second
                 // JavaScript invocation. On iOS 26 a page-route transition can
@@ -2255,8 +2263,12 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
 
         if IOSNextWebConfiguration.isTrusted(url) {
             // The login gate owns navigation: a link, a server redirect or a
-            // restored history entry must not replace the login page.
+            // restored history entry must not replace the login page. The
+            // web view's first load is not one of those: a first start shows
+            // the gate before the page has shown anything, and cancelling that
+            // load left the login form without a page behind it.
             if store?.blocksInternalNavigation == true,
+               webView.backForwardList.currentItem != nil,
                navigationAction.targetFrame?.isMainFrame != false,
                !ShellTab.isAuthPath(url.path) {
                 decisionHandler(.cancel)
