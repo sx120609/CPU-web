@@ -2116,6 +2116,16 @@ struct NativeScheduleView: View {
             }
         }
         var more: [ScheduleCourseMenuAction] = []
+        // 这次不显示实时活动, for a meeting still ahead while activities are on.
+        if NativeLiveActivityController.shared.isEnabled, let date = block.date, date >= (Self.todayDate ?? ""),
+           block.cancelledOccurrence == nil {
+            let key = NativeLiveActivityController.skipKey(date: date, course: block.course)
+            let skipped = NativeLiveActivityController.shared.skipped.contains(key)
+            more.append(ScheduleCourseMenuAction(skipped ? "恢复这次的实时活动" : "这次不显示实时活动",
+                                                 systemImage: skipped ? "bell" : "bell.slash") {
+                NativeLiveActivityController.shared.setSkipped(key, !skipped)
+            })
+        }
         if agendaService.available, let date = block.date {
             let start = ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil).start(block)
             more.append(ScheduleCourseMenuAction("在这节课加日程", systemImage: "calendar.badge.plus") {

@@ -46,7 +46,7 @@ private struct ScheduleLiveActivityWidget: Widget {
                     ScheduleLiveActivityLockScreen(state: state)
                 }
             }
-            .activityBackgroundTint(ScheduleLiveActivityPalette.surface)
+            .modifier(ScheduleLiveActivitySurface())
             .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             let state = context.state.resolvedForBroadcast(attributes: context.attributes)
@@ -3099,5 +3099,25 @@ private enum WidgetBackgroundImage {
         guard let image = UIImage(contentsOfFile: url.path) else { return nil }
         cache[name] = (modified, image)
         return image
+    }
+}
+
+/// The lock screen activity's background: the dark surface, or on iOS 26 and
+/// later, when 锁屏玻璃背景 is on in the app, dark-tinted glass that keeps the
+/// white text readable over any wallpaper.
+private struct ScheduleLiveActivitySurface: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *),
+           UserDefaults(suiteName: AppWidgetConfiguration.appGroup)?.bool(forKey: "cpu.liveActivity.glass") == true {
+            content
+                .background {
+                    ContainerRelativeShape().fill(.clear)
+                        .glassEffect(.regular.tint(.black.opacity(0.38)), in: ContainerRelativeShape())
+                }
+                .activityBackgroundTint(.clear)
+        } else {
+            content.activityBackgroundTint(ScheduleLiveActivityPalette.surface)
+        }
     }
 }

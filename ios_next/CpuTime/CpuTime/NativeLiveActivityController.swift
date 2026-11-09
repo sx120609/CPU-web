@@ -37,6 +37,31 @@ final class NativeLiveActivityController: ObservableObject {
     var timingMode: Attributes.TimingMode { Attributes.TimingMode(rawValue: defaults.string(forKey: "cpu.liveActivity.mode") ?? "whole") ?? .whole }
     func setLeadMinutes(_ value: Int) { defaults.set(Self.normalizedLead(value), forKey: Self.leadMinutesKey); reconfigure() }
     func setTimingMode(_ value: Attributes.TimingMode) { defaults.set(value.rawValue, forKey: "cpu.liveActivity.mode"); reconfigure() }
+    /// How early a cared-about classmate's or the partner's class shows; by default as early as the user's own.
+    var sharedLeadMinutes: Int {
+        Self.normalizedLead(defaults.object(forKey: "cpu.liveActivity.sharedLead") as? Int ?? leadMinutes)
+    }
+    var sharedLeadTime: TimeInterval { TimeInterval(sharedLeadMinutes * 60) }
+    func setSharedLeadMinutes(_ value: Int) { defaults.set(Self.normalizedLead(value), forKey: "cpu.liveActivity.sharedLead"); reconfigure() }
+    /// iOS 26 and later: the lock screen activity on glass. Read by the widget when it draws.
+    static let glassKey = "cpu.liveActivity.glass"
+    var glassBackground: Bool { defaults.bool(forKey: Self.glassKey) }
+    func setGlassBackground(_ value: Bool) { defaults.set(value, forKey: Self.glassKey); reconfigure() }
+    /// Single meetings the user said not to show (这次不显示实时活动), as "yyyy-MM-dd|source".
+    private static let skippedKey = "cpu.liveActivity.skipped"
+    var skipped: Set<String> { Set(defaults.stringArray(forKey: Self.skippedKey) ?? []) }
+    static func skipKey(date: String, course: NativeScheduleCourse) -> String {
+        "\(date)|\(course.nativeId ?? course.sourceKey ?? course.customId.map { "custom:\($0)" } ?? course.id)"
+    }
+    func setSkipped(_ key: String, _ value: Bool) {
+        var keys = skipped
+        if value { keys.insert(key) } else { keys.remove(key) }
+        // Only what is still ahead is worth keeping.
+        let today = String(ISO8601DateFormatter.string(from: now(), timeZone: TimeZone(identifier: "Asia/Shanghai") ?? .current,
+                                                        formatOptions: [.withFullDate]))
+        defaults.set(keys.filter { String($0.prefix(10)) >= today }.sorted(), forKey: Self.skippedKey)
+        reconfigure()
+    }
     var isEnabled: Bool { hasSharedStorage && (defaults.object(forKey: Self.enabledKey) as? Bool ?? true) }
     @Published private(set) var status: Status = .waiting
     @Published private(set) var isPreviewActive = false
@@ -533,8 +558,10 @@ final class NativeLiveActivityController: ObservableObject {
         // One timetable's classes. `label` names a timetable being cared about:
         // its conflicts and unsupported times are its publisher's business, so
         // they are skipped quietly instead of being reported to this user.
+        let skipped = self.skipped
         func collect(_ data: NativeScheduleResult, _ calendar: NativeScheduleCalendar, label: String?,
-                     named: Bool = true, scope: String = "") -> [Occurrence] {
+                     named: Bool = true, scope: String = "", lead: TimeInterval? = nil) -> [Occurrence] {
+            let lead = lead ?? leadTime
             var result: [Occurrence] = []
             for week in calendar.weeks {
                 for (dayIndex, day) in week.days.enumerated() {
@@ -552,6 +579,8 @@ final class NativeLiveActivityController: ObservableObject {
                                 continue
                             }
                             let source = course.nativeId ?? course.sourceKey ?? course.customId.map { "custom:\($0)" } ?? course.id
+                            // 这次不显示实时活动: left out of this day only.
+                            if label == nil, skipped.contains("\(day)|\(source)") { continue }
                             if let start = course.startSlot, let end = course.endSlot,
                                (byNumber[start] == nil || byNumber[end] == nil || start > end) {
                                 if label == nil, let midnight = date(day, time: "00:00", calendar: dateCalendar),
@@ -612,7 +641,7 @@ final class NativeLiveActivityController: ObservableObject {
                             result.append(Occurrence(id: record.id, supersedes: record.supersedes,
                                 name: named ? (label.map { "\($0)：\(course.name)" } ?? course.name) : course.name, teacher: course.teacher ?? "", location: ScheduleClassroom.only(course.location ?? ""),
                                 periodLabel: Self.periodLabel(start: numbers[0], end: numbers.last!), dateKey: day, week: week.week,
-                                weekRangeLabel: course.weeks, adjustmentNote: resolved.note, segments: segments, plannedStart: first.startAt.addingTimeInterval(-leadTime)))
+                                weekRangeLabel: course.weeks, adjustmentNote: resolved.note, segments: segments, plannedStart: first.startAt.addingTimeInterval(-lead)))
                         }
                         identityRecords[key] = records
                     }
@@ -626,7 +655,7 @@ final class NativeLiveActivityController: ObservableObject {
             // around one of the user's is shown in that activity, on a row of
             // its own; one that meets none gets an activity of its own.
             let label = partnerLabel?.trimmedNonEmpty ?? "TA"
-            let theirs = collect(theirData, theirCalendar, label: label, named: false, scope: "ta:")
+            let theirs = collect(theirData, theirCalendar, label: label, named: false, scope: "ta:", lead: sharedLeadTime)
             func clean(_ name: String) -> String { name.components(separatedBy: .whitespacesAndNewlines).joined() }
             for index in result.indices {
                 let own = result[index]
@@ -653,7 +682,7 @@ final class NativeLiveActivityController: ObservableObject {
             // The user's own class wins a clash: one activity shows at a time,
             // and the server rejects a plan whose classes overlap.
             let own = result
-            result += collect(theirData, theirCalendar, label: label).filter { theirs in
+            result += collect(theirData, theirCalendar, label: label, lead: sharedLeadTime).filter { theirs in
                 !own.contains { $0.start < theirs.end && theirs.start < $0.end }
             }
         }

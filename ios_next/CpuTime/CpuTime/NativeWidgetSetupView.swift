@@ -444,6 +444,18 @@ private struct LiveActivitySettingsSection: View {
                     Text("整堂计时").tag(ScheduleLiveActivityAttributes.TimingMode.whole)
                     Text("分节计时").tag(ScheduleLiveActivityAttributes.TimingMode.segmented)
                 }
+                if NativeCoupleService.shared.isActive || NativeScheduleSharingService.shared.library.cared != nil {
+                    Picker("TA 和关心的课表提前", selection: Binding(get: { controller.sharedLeadMinutes },
+                                                              set: { controller.setSharedLeadMinutes($0) })) {
+                        Text("15 分钟").tag(15)
+                        Text("30 分钟").tag(30)
+                        Text("1 小时").tag(60)
+                    }
+                }
+                if #available(iOS 26.0, *) {
+                    Toggle("锁屏玻璃背景", isOn: Binding(get: { controller.glassBackground },
+                                                     set: { controller.setGlassBackground($0) }))
+                }
                 if #available(iOS 26.0, *) { Text(controller.coverageStatus).font(.footnote).foregroundStyle(.secondary) }
                 ForEach(controller.conflicts) { conflict in
                     Picker("\(conflict.dateKey) 第 \(conflict.period) 节", selection: Binding(
