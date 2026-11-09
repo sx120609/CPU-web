@@ -1,16 +1,34 @@
 import Combine
 import Foundation
 
-/// The partner's timetable while it is drawn over the grid.
+/// Somebody else's timetable while it is drawn over the grid: the partner's
+/// (情侣课表), or a saved shared timetable the user chose to lay on top.
 @available(iOS 17.0, *)
 struct NativeCoupleLayer: Equatable {
+    enum Kind: Equatable { case couple, shared }
+
     let partner: NativeSharedSchedule
     let myColor: String
     let partnerColor: String
     let partnerName: String
+    var kind: Kind = .couple
+    /// Their school, when it is not the user's own: their bells differ, and
+    /// the quick look says whose they are.
+    var otherSchool: String? = nil
 
     /// "小鹿的课", for the quick look of a course of theirs.
-    var ownerTitle: String { "\(partnerName.isEmpty ? "TA " : partnerName)的课" }
+    var ownerTitle: String {
+        let owner = "\(partnerName.isEmpty ? "TA " : partnerName)的课"
+        return otherSchool.map { "\(owner) · \($0)" } ?? owner
+    }
+
+    /// The same layer told which school the user is at.
+    func comparing(school mine: String) -> NativeCoupleLayer {
+        var copy = self
+        let theirs = partner.calendar.school.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy.otherSchool = !theirs.isEmpty && theirs != mine.trimmingCharacters(in: .whitespacesAndNewlines) ? theirs : nil
+        return copy
+    }
 }
 
 /// The binding, the partner's snapshot and the upload of the user's own

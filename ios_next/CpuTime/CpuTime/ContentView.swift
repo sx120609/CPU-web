@@ -360,7 +360,10 @@ private enum NativeScheduleDebugFixture {
         ]
         let fifteen = ProcessInfo.processInfo.environment["CPU_DEBUG_PERIODS"] == "15"
         let table = NativeSchedulePeriod.bundledTimetable + (fifteen ? njmuEvening : [])
-        let periods = table.enumerated().map { index, period in
+        // The first periods follow the clock so a class is always running;
+        // `CPU_DEBUG_BELLS=school` keeps the school's own bells instead.
+        let schoolBells = ProcessInfo.processInfo.environment["CPU_DEBUG_BELLS"] == "school"
+        let periods = schoolBells ? table : table.enumerated().map { index, period in
             switch index {
             case 0: return NativeSchedulePeriod(number: period.number, startTime: timeFormatter.string(from: liveStart), endTime: timeFormatter.string(from: liveEnd))
             case 1: return NativeSchedulePeriod(number: period.number, startTime: timeFormatter.string(from: liveEnd), endTime: timeFormatter.string(from: liveEnd))

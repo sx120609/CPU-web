@@ -538,6 +538,10 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
     public let weeks: [NativeCalendarWeek]
     public let periods: [NativeSchedulePeriod]
     public let adjustments: [NativeScheduleAdjustment]
+    /// The school the timetable belongs to, by name; empty from an older site
+    /// or a share published before schools were named. Couple and shared
+    /// timetables compare it with the user's own.
+    public let school: String
 
     public init(
         source: NativeScheduleSource? = nil,
@@ -548,8 +552,10 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
         semesterEnd: String = "",
         weeks: [NativeCalendarWeek] = [],
         periods: [NativeSchedulePeriod] = [],
-        adjustments: [NativeScheduleAdjustment] = []
+        adjustments: [NativeScheduleAdjustment] = [],
+        school: String = ""
     ) {
+        self.school = school.trimmingCharacters(in: .whitespacesAndNewlines)
         self.source = source
         self.semesters = semesters
         self.currentSemester = currentSemester
@@ -562,7 +568,7 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, semesters, currentSemester, currentWeek, semesterStart, semesterEnd, weeks, periods, adjustments
+        case source, semesters, currentSemester, currentWeek, semesterStart, semesterEnd, weeks, periods, adjustments, school
     }
 
     public init(from decoder: Decoder) throws {
@@ -586,7 +592,8 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
             semesterEnd: try values.decodeIfPresent(String.self, forKey: .semesterEnd) ?? "",
             weeks: decodedWeeks,
             periods: try values.decodeIfPresent([NativeSchedulePeriod].self, forKey: .periods) ?? [],
-            adjustments: try values.decodeIfPresent([NativeScheduleAdjustment].self, forKey: .adjustments) ?? []
+            adjustments: try values.decodeIfPresent([NativeScheduleAdjustment].self, forKey: .adjustments) ?? [],
+            school: (try? values.decodeIfPresent(String.self, forKey: .school)) ?? ""
         )
     }
 }

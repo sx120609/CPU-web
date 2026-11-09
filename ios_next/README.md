@@ -55,7 +55,7 @@
 - 课程编辑页的「时间段」可以有多组上课时间（「添加上课时间」），每组各自选周次、星期和节次；节次是多选，可以不连续。周次面板多了「全部／单周／双周／清空」。保存时仍写成 Web、安卓共用的编辑数据：每一段连续节次一条，第一段沿用被编辑课程的标识（教务课程继续关联原课），其余各段是同名的自定义条目，所以其他端不用改就能读到。与已有课程在同一星期、节次相交且有共同周次时，编辑页给出重叠提示，但不拦截保存。
 - 「更多 → 导出本周日历文件」生成当前浏览周的 `.ics`：按调休解析后的实际课程导出，放假日不导出，补班日导出它实际要上的课，自定义课程的显式起止时间优先于节次时间。系统日历直写（设备设置里的 Apple 日历）保持不变。
 
-Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=paper`（只影响本次启动，不写入设置）、`CPU_DEBUG_SCHEDULE_NOW=14:00`（固定「现在」）、`CPU_DEBUG_SCHEDULE_ACTION=share-image|calendar|tools|course-sheet|course-editor`（课表加载后直接生成分享图、打开「Apple 日历」页或「更多」面板，或打开第一门课的速览／编辑页）。
+Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=paper`（只影响本次启动，不写入设置）、`CPU_DEBUG_SCHEDULE_NOW=14:00`（固定「现在」）、`CPU_DEBUG_SCHEDULE_ACTION=share-image|calendar|tools|overlay|overlay-picker|course-sheet|course-editor`（课表加载后直接生成分享图、打开「Apple 日历」页或「更多」面板、叠加一份南医作息的示例分享课表（`overlay-picker` 同时打开「叠加到我的课表」），或打开第一门课的速览／编辑页）、`CPU_DEBUG_BELLS=school`（示例课表用学校原本的作息，不把前三节挪到当前时间）。
 
 ### 重叠课程的显示优先级
 

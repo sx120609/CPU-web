@@ -12,6 +12,9 @@ struct NativeScheduleView: View {
     @ObservedObject private var store: NativeScheduleStore
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
     @ObservedObject private var couple = NativeCoupleService.shared
+    @ObservedObject private var sharing = NativeScheduleSharingService.shared
+    /// The share code of a saved timetable laid over the user's; empty for none.
+    @AppStorage("cpu.schedule.overlay.v1") private var overlayCode = ""
     @ObservedObject private var agendaService = NativeAgendaService.shared
     @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
     private let onDeviceSettings: () -> Void
@@ -34,6 +37,7 @@ struct NativeScheduleView: View {
     @State private var sharingPresented = false
     @State private var couplePresented = false
     @State private var calendarPresented = false
+    @State private var overlayPickerPresented = false
     /// An empty period tapped on the user's own timetable: a 日程 at its start, or a course in it.
     @State private var addChoice: ScheduleAddChoice?
     /// Two of the user's own courses in one period, to be pointed out once.
@@ -262,6 +266,28 @@ struct NativeScheduleView: View {
                             )]
                         )
                         if action == "sharing" { sharingPresented = true } else { viewedShare = sample }
+                    case "overlay", "overlay-picker":
+                        // A classmate at NJMU, whose bells differ from CPU's, laid on top.
+                        guard var sample = debugSharedSchedule(result) else { break }
+                        let bells: [(String, String)] = [
+                            ("08:00", "08:40"), ("08:50", "09:30"), ("09:40", "10:20"), ("10:30", "11:10"), ("11:20", "12:00"),
+                            ("12:10", "12:50"), ("14:00", "14:40"), ("14:50", "15:30"), ("15:40", "16:20"), ("16:30", "17:10"),
+                            ("17:20", "18:00"), ("18:10", "18:50"), ("19:00", "19:40"), ("19:50", "20:30"), ("20:40", "21:20"),
+                        ]
+                        let calendar = sample.calendar
+                        sample.calendar = NativeScheduleCalendar(
+                            source: calendar.source, semesters: calendar.semesters, currentSemester: calendar.currentSemester,
+                            currentWeek: calendar.currentWeek, semesterStart: calendar.semesterStart, semesterEnd: calendar.semesterEnd,
+                            weeks: calendar.weeks,
+                            periods: bells.enumerated().map { NativeSchedulePeriod(number: $0.offset + 1, startTime: $0.element.0, endTime: $0.element.1) },
+                            adjustments: calendar.adjustments, school: "南京医科大学"
+                        )
+                        sample.remark = "小林"
+                        NativeScheduleSharingService.shared.installDebugState(
+                            library: NativeSharedScheduleLibrary(account: "debug", schedules: [sample]), mine: []
+                        )
+                        overlayCode = sample.meta.code
+                        if action == "overlay-picker" { overlayPickerPresented = true }
                     case "style-picker":
                         stylePickerPresented = true
                     // With `CPU_DEBUG_AGENDA=1`: `agenda-edit` opens a sample 日程 in its editor,
@@ -430,6 +456,21 @@ struct NativeScheduleView: View {
         .sheet(item: $sharePayload) { payload in
             NativeActivityView(activityItems: payload.items)
                 .ignoresSafeArea()
+        }
+        .sheet(isPresented: $overlayPickerPresented) {
+            NativeScheduleOverlayPicker(
+                selection: $overlayCode,
+                openSharing: {
+                    overlayPickerPresented = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sharingPresented = true }
+                },
+                openCouple: {
+                    overlayPickerPresented = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $calendarPresented) {
             NavigationStack {
@@ -626,7 +667,7 @@ struct NativeScheduleView: View {
                     moveWeek(-1, result: result)
                 }
 
-                if isCoupleBound {
+                if showsOverlayLine {
                     // Bound: the week and its dates share the first line, and
                     // the partner's status takes the second. No extra row.
                     VStack(spacing: 3) {
@@ -651,7 +692,11 @@ struct NativeScheduleView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("选择周次")
-                        coupleStatusLine
+                        if let shared = overlayShared {
+                            sharedOverlayLine(shared)
+                        } else {
+                            coupleStatusLine
+                        }
                     }
                     .frame(maxWidth: .infinity, minHeight: 42)
                 } else {
@@ -937,6 +982,15 @@ struct NativeScheduleView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sharingPresented = true }
                         }
                         scheduleToolDivider
+                        scheduleToolRow(
+                            "叠加到我的课表",
+                            detail: overlayShared.map { "正在叠加 \($0.name)" } ?? "把同学的课并排放进你的课表",
+                            systemImage: "square.2.layers.3d.fill", tint: .teal
+                        ) {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { overlayPickerPresented = true }
+                        }
+                        scheduleToolDivider
                         scheduleToolRow("情侣课表", detail: "绑定后两人的课并排显示", systemImage: "heart.fill", tint: .pink) {
                             scheduleToolsPresented = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
@@ -1098,7 +1152,7 @@ struct NativeScheduleView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 // Bound to a partner, the words give their width to the status line.
-                let arrowOnly = isCoupleBound && viewMode != .month
+                let arrowOnly = showsOverlayLine && viewMode != .month
                 if systemName == "chevron.right" {
                     if !arrowOnly { Text(label) }
                     Image(systemName: systemName)
@@ -1110,7 +1164,7 @@ struct NativeScheduleView: View {
             .font(.caption.weight(.medium))
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .frame(minWidth: isCoupleBound && viewMode != .month ? 36 : 68, minHeight: 42)
+            .frame(minWidth: showsOverlayLine && viewMode != .month ? 36 : 68, minHeight: 42)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1392,17 +1446,45 @@ struct NativeScheduleView: View {
 
     /// The partner's timetable while it is drawn here. Somebody else's shared
     /// timetable is shown on its own.
-    private var coupleLayer: NativeCoupleLayer? { isReadOnly ? nil : couple.layer }
+    private var coupleLayer: NativeCoupleLayer? {
+        guard !isReadOnly else { return nil }
+        let school = store.calendar?.school ?? ""
+        if let shared = overlayShared {
+            let mine = couple.me?.color ?? "blue"
+            return NativeCoupleLayer(partner: shared, myColor: mine, partnerColor: mine == "teal" ? "amber" : "teal",
+                                     partnerName: shared.name, kind: .shared).comparing(school: school)
+        }
+        return couple.layer?.comparing(school: school)
+    }
+
+    /// The saved shared timetable laid over the user's, chosen in 叠加到我的课表.
+    /// It takes the place of the partner's while it is on.
+    private var overlayShared: NativeSharedSchedule? {
+        guard !isReadOnly, !overlayCode.isEmpty else { return nil }
+        return sharing.library.schedules.first { $0.meta.code == overlayCode }
+    }
 
     /// The partner's courses on `date`, laid out with their own calendar, so
     /// a make-up day or a different week numbering on their side still lands
     /// on the right column. Nil when the date is outside their term.
+    /// At another school their periods run to other bells: each course is
+    /// moved onto the user's periods by clock time (`ScheduleOverlayTiming`).
     private static func partnerBlocks(on date: String?, layer: NativeCoupleLayer) -> [NativeScheduleCourseBlock]? {
         guard let date, date.count == 10,
               let week = layer.partner.calendar.weeks.first(where: { $0.days.contains(date) }),
               let index = week.days.firstIndex(of: date) else { return nil }
-        return dayBlocks(day: index + 1, week: week.week, result: layer.partner.schedule,
-                         calendar: layer.partner.calendar, priorities: [:], idPrefix: "ta:")
+        let theirPeriods = layer.partner.calendar.periods.isEmpty
+            ? NativeSchedulePeriod.bundledTimetable : layer.partner.calendar.periods
+        let theirs = ScheduleOverlayTiming.periods(theirPeriods)
+        let blocks = dayBlocks(day: index + 1, week: week.week, result: layer.partner.schedule,
+                               calendar: layer.partner.calendar, priorities: [:], idPrefix: "ta:",
+                               slotCount: theirPeriods.map(\.number).max() ?? ScheduleSlot.all.count)
+        let mine = ScheduleSlot.all.compactMap { slot -> ScheduleOverlayTiming.Period? in
+            guard let start = ScheduleOverlayTiming.minutes(slot.start),
+                  let end = ScheduleOverlayTiming.minutes(slot.end) else { return nil }
+            return .init(number: slot.number, start: start, end: end)
+        }
+        return blocks.map { ScheduleOverlayTiming.remap($0, theirs: theirs, mine: mine) }
     }
 
     /// The user's courses of `date` as the week view draws them beside the
@@ -1475,6 +1557,53 @@ struct NativeScheduleView: View {
 
     /// Bound to a partner, and this is the user's own timetable.
     private var isCoupleBound: Bool { !isReadOnly && couple.isActive }
+
+    /// The week title has a second line: the partner's status, or the shared
+    /// timetable laid on top.
+    private var showsOverlayLine: Bool { isCoupleBound || overlayShared != nil }
+
+    /// The second line while a shared timetable is laid on top: whose it is,
+    /// and a button to take it off. Tapping the name opens the choice.
+    private func sharedOverlayLine(_ shared: NativeSharedSchedule) -> some View {
+        HStack(spacing: 6) {
+            Button {
+                overlayPickerPresented = true
+            } label: {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.teal).frame(width: 6, height: 6).accessibilityHidden(true)
+                    Text("叠加了 \(shared.name) 的课")
+                        .font(.caption)
+                        .foregroundStyle(navigatorSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if let school = coupleLayer?.otherSchool {
+                        Text(school)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.teal)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.teal.opacity(0.14), in: Capsule())
+                            .lineLimit(1)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("选择叠加的课表")
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { overlayCode = "" }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("不再叠加 \(shared.name) 的课表")
+        }
+        .frame(maxWidth: .infinity)
+    }
 
     /// The second line of the week title: what the partner is doing, the days
     /// together, and the switch for their courses in the grid. Tapping the
@@ -2735,8 +2864,12 @@ struct NativeScheduleView: View {
     /// The courses of one weekday of a timetable, placed in lanes. `calendar`
     /// resolves days off and make-up days. Also used for the partner's
     /// timetable of the couple view, with their own calendar.
+    /// `slotCount` is the number of periods the timetable's own bells have;
+    /// somebody else's timetable may have more than the user's.
     private static func dayBlocks(day: Int, week: Int?, result: NativeScheduleResult, calendar: NativeScheduleCalendar?,
-                                  priorities: [String: Int], idPrefix: String = "") -> [NativeScheduleCourseBlock] {
+                                  priorities: [String: Int], idPrefix: String = "",
+                                  slotCount: Int? = nil) -> [NativeScheduleCourseBlock] {
+        let slotCount = slotCount ?? ScheduleSlot.all.count
         var sourceDay = day
         var sourceWeek = week
         if let week,
@@ -2763,8 +2896,8 @@ struct NativeScheduleView: View {
                     }
                     let fallbackStart = cell.bigSlot * 2 - 1
                     let fallbackEnd = cell.bigSlot * 2
-                    var start = min(max(course.startSlot ?? fallbackStart, 1), ScheduleSlot.all.count)
-                    var end = min(max(course.endSlot ?? fallbackEnd, start), ScheduleSlot.all.count)
+                    var start = min(max(course.startSlot ?? fallbackStart, 1), slotCount)
+                    var end = min(max(course.endSlot ?? fallbackEnd, start), slotCount)
                     // The parser's explicit range comes from the course detail
                     // and remains authoritative even when JWXT repeats the
                     // same course under a neighbouring physical big-slot row.

@@ -2,6 +2,7 @@ import { watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
+import { useSiteStore } from "@/stores/site";
 import type { Router } from "vue-router";
 import { isNativeScheduleShell } from "./clientInfo";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState, courseEditKey } from "./scheduleEdits";
@@ -795,6 +796,11 @@ export function installIosNextScheduleBridge(
       .map(period => ({ number: period.id, startTime: period.start, endTime: period.end }));
     return configured.length ? configured : bundledPeriods();
   };
+  // 情侣课表和分享课表可能跨校：原生端用校名标出对方的作息来自哪所学校。
+  const withSchool = <T extends object | null | undefined>(calendar: T) => {
+    const school = useSiteStore().schoolName;
+    return calendar && school ? { ...calendar, school } : calendar;
+  };
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
     version: 1, source: "jwxt", completeSemester: Boolean(entry.complete), fetchedAt: entry.createdAt,
     periods: periodsForCalendar(entry.calendar),
@@ -802,7 +808,7 @@ export function installIosNextScheduleBridge(
     periodsComplete: Boolean(entry.calendar?.periods?.length),
     data: { ...edited(entry, entry.complete ?? data), currentWeek: week || (entry.calendar?.currentWeek
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
-    calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
+    calendar: withSchool(entry.calendar), auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
   });
   const loadWeek = (entry: SemesterEntry, week: string, epoch: number, background = false): Promise<ScheduleResult> => {
     const cached = entry.schedules.get(week);
@@ -917,7 +923,7 @@ export function installIosNextScheduleBridge(
         return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(), periods: periodsForCalendar(calendar),
           periodsComplete: Boolean(calendar?.periods?.length),
           data: { ...expanded, currentWeek: week || (calendar?.currentWeek ? String(calendar.currentWeek) : data.currentWeek),
-            cells: nativeCells(data.currentSemester, expanded.cells) }, calendar,
+            cells: nativeCells(data.currentSemester, expanded.cells) }, calendar: withSchool(calendar),
           auth: { authenticated: true, identity: "graduate", account: accountKey() } };
       }
       if (selection === selectionRevision) activeSemester = semester || "";

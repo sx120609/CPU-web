@@ -200,7 +200,8 @@ struct NativeSharedSchedule: Codable, Equatable, Identifiable, Sendable {
             semesterEnd: document.calendar.semesterEnd,
             weeks: weeks,
             periods: document.calendar.periods.filter { (1...48).contains($0.number) },
-            adjustments: document.calendar.adjustments.filter { $0.kind == "off" || $0.kind == "swap" }
+            adjustments: document.calendar.adjustments.filter { $0.kind == "off" || $0.kind == "swap" },
+            school: String(document.calendar.school.prefix(40))
         )
         let schedule = NativeScheduleResult(currentSemester: meta.semester, currentWeek: String(weeks[0].week), cells: cells)
         return NativeSharedSchedule(meta: meta, schedule: schedule, calendar: calendar, fetchedAt: fetchedAt)
@@ -261,7 +262,8 @@ struct NativeSharedSchedule: Codable, Equatable, Identifiable, Sendable {
         let shown = NativeScheduleCalendar(
             source: .shared, semesters: semesters, currentSemester: semesterValue, currentWeek: current,
             semesterStart: calendar.semesterStart, semesterEnd: calendar.semesterEnd,
-            weeks: calendar.weeks, periods: calendar.periods, adjustments: calendar.adjustments
+            weeks: calendar.weeks, periods: calendar.periods, adjustments: calendar.adjustments,
+            school: calendar.school
         )
         return NativeScheduleSnapshot(
             completeSemester: true, source: .shared, fetchedAt: fetchedAt, periods: calendar.periods,
@@ -327,6 +329,17 @@ struct NativeSharedSchedule: Codable, Equatable, Identifiable, Sendable {
             item["note"] = adjustment.note
             return item
         }
+        var calendarBody: [String: Any] = [
+            "currentSemester": semester,
+            "currentWeek": calendar.weeks[0].week,
+            "semesterStart": calendar.semesterStart,
+            "semesterEnd": calendar.semesterEnd,
+            "weeks": weeks,
+            "periods": periods,
+            "adjustments": adjustments,
+        ]
+        // A reader at another school sees whose bells these are.
+        if let school = calendar.school.trimmedNonEmpty { calendarBody["school"] = String(school.prefix(40)) }
         var body: [String: Any] = [
             "semester": semester,
             "schedule": [
@@ -337,15 +350,7 @@ struct NativeSharedSchedule: Codable, Equatable, Identifiable, Sendable {
                 "currentWeek": String(calendar.weeks[0].week),
                 "cells": cells,
             ] as [String: Any],
-            "calendar": [
-                "currentSemester": semester,
-                "currentWeek": calendar.weeks[0].week,
-                "semesterStart": calendar.semesterStart,
-                "semesterEnd": calendar.semesterEnd,
-                "weeks": weeks,
-                "periods": periods,
-                "adjustments": adjustments,
-            ] as [String: Any],
+            "calendar": calendarBody,
         ]
         if let ownerName = ownerName?.trimmedNonEmpty { body["ownerName"] = String(ownerName.prefix(40)) }
         return body
