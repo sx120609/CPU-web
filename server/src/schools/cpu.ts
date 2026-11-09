@@ -51,5 +51,7 @@ export const cpuSchool: SchoolProfile = {
     { name: "校园新闻", icon: "announcement", url: "http://news.cpu.edu.cn" },
     { name: "就业平台", icon: "work", url: "https://cpu.91job.org.cn/sub-station/home/10316" },
   ],
+  // 2026-11-16 建校 90 周年；校庆主题用到年底。
+  celebration: { founded: 1936, date: "2026-11-16", motto: "九秩华章 铸梦健康", until: "2027-01-01" },
   defaultModules: SCHOOL_MODULE_KEYS,
 };

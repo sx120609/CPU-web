@@ -1,0 +1,118 @@
+@use "sass:color";
+
+// 校庆主题（stores/siteTheme.ts 在 <html> 上写 data-cpu-theme="anniversary"）。
+// 这份样式不进首屏包：本校在校庆期内（或启动脚本已套上校庆主题）时由 stores/siteTheme.ts 按需加载。
+// 只换品牌色和页面底色：中国红做主色、金色做点缀，页面底色偏暖；结构、字号、圆角都不动。
+// 浅色主色 #b8232b 在白底上 6.3:1、暖灰底上 5.7:1；深色主色 #f0727a 在卡片底上 6:1。
+
+$anniversary-red: #b8232b;
+$anniversary-red-dark: #8f1a21;
+
+html[data-cpu-theme="anniversary"] {
+  --cpu-primary: #{$anniversary-red};
+  --cpu-primary-light: #d23b43;
+  --cpu-primary-dark: #{$anniversary-red-dark};
+  --cpu-primary-soft: #fbe8e7;
+  --cpu-on-primary: #ffffff;
+  --cpu-bg: #f5f2ef;
+  --cpu-surface-soft: #f8f5f2;
+  --cpu-surface-subtle: #efe9e5;
+  --cpu-border: #dcd4ce;
+  --cpu-border-soft: #e8e1dc;
+  --cpu-track: #e8e1dc;
+  --cpu-hue-brand-bg: #fbe3e1;
+  --cpu-hue-brand-ink: #9e1d25;
+  --cpu-button-primary: #{$anniversary-red};
+  --cpu-button-on-primary: #ffffff;
+  // 校庆专用：金色点缀（文字用深金，装饰用亮金）和横幅底色
+  --cpu-anniversary-gold: #d9a441;
+  --cpu-anniversary-gold-ink: #8a5a00;
+  --cpu-anniversary-ribbon: linear-gradient(90deg, #8f1a21 0%, #c8323a 45%, #d9a441 100%);
+  --cpu-anniversary-banner-bg: linear-gradient(120deg, #9e1d25 0%, #c0292f 58%, #c9532c 100%);
+  --cpu-anniversary-banner-ink: #fff7ea;
+  --el-color-primary: #{$anniversary-red};
+  --el-color-primary-light-3: #{color.mix(#ffffff, $anniversary-red, 30%)};
+  --el-color-primary-light-5: #{color.mix(#ffffff, $anniversary-red, 50%)};
+  --el-color-primary-light-7: #{color.mix(#ffffff, $anniversary-red, 70%)};
+  --el-color-primary-light-8: #{color.mix(#ffffff, $anniversary-red, 80%)};
+  --el-color-primary-light-9: #{color.mix(#ffffff, $anniversary-red, 90%)};
+  --el-color-primary-dark-2: #{color.mix(#000000, $anniversary-red, 20%)};
+}
+
+html[data-cpu-theme="anniversary"][data-theme="dark"] {
+  --cpu-primary: #f0727a;
+  --cpu-primary-light: #f7979d;
+  --cpu-primary-dark: #{$anniversary-red};
+  --cpu-primary-soft: rgba(240, 114, 122, 0.13);
+  --cpu-on-primary: #3a070b;
+  // 深色仍是中性深灰，和原生外壳一致；只把底色压一点暖意
+  --cpu-bg: #100e0e;
+  --cpu-surface-soft: #25211f;
+  --cpu-surface-subtle: #2d2826;
+  --cpu-border: #423a37;
+  --cpu-border-soft: #302a28;
+  --cpu-track: #25211f;
+  --cpu-hue-brand-bg: #3d181b;
+  --cpu-hue-brand-ink: #ff9ca1;
+  --cpu-button-primary: #f0727a;
+  --cpu-button-on-primary: #3a070b;
+  --cpu-anniversary-gold: #e8b34a;
+  --cpu-anniversary-gold-ink: #e8b34a;
+  --cpu-anniversary-ribbon: linear-gradient(90deg, #b8232b 0%, #e0545c 45%, #e8b34a 100%);
+  --cpu-anniversary-banner-bg: linear-gradient(120deg, #4a1216 0%, #6b1a20 60%, #6e2f19 100%);
+  --cpu-anniversary-banner-ink: #ffeede;
+  --el-color-primary: #f0727a;
+  --el-color-primary-light-3: #d9636b;
+  --el-color-primary-light-5: #b04a51;
+  --el-color-primary-light-7: rgba(240, 114, 122, 0.24);
+  --el-color-primary-light-8: rgba(240, 114, 122, 0.16);
+  --el-color-primary-light-9: rgba(240, 114, 122, 0.1);
+  --el-color-primary-dark-2: #ffa3a8;
+}
+
+// 顶栏下沿一条红金丝带。原生外壳会隐藏网页顶栏，这条线随之一起不见。
+html[data-cpu-theme="anniversary"] #app .topbar::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--cpu-anniversary-ribbon);
+  pointer-events: none;
+}
+
+/* 主题选项前的小色块（外观菜单、手机抽屉）：经典是青绿，校庆是红金，不随当前主题变色。 */
+.theme-swatch {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #086f63 0%, #2a9d8c 100%);
+}
+
+.theme-swatch[data-swatch="anniversary"] {
+  background: linear-gradient(135deg, #b8232b 0%, #b8232b 55%, #d9a441 100%);
+}
+
+.appearance-segmented .theme-swatch {
+  width: 12px;
+  height: 12px;
+  margin-right: 0;
+}
+
+/* 顶栏品牌名旁边的「90 周年」 */
+.brand-anniversary {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--cpu-anniversary-gold) 70%, transparent);
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}

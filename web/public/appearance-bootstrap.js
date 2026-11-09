@@ -12,6 +12,10 @@
   root.dataset.appearanceMode = mode;
   root.classList.toggle("dark", resolved === "dark");
   root.style.colorScheme = resolved;
+  // 站点主题（校庆等）：上次网页拿到学校信息后实际用的那个，stores/siteTheme.ts 写入。
+  try {
+    if (localStorage.getItem("cpu-site-theme-active-v1") === "anniversary") root.dataset.cpuTheme = "anniversary";
+  } catch {}
   const themeColor = document.querySelector("meta[name='theme-color']");
   if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#0e1012" : "#f8fafc");
 

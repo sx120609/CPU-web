@@ -117,6 +117,27 @@
       </div>
     </div>
 
+    <div v-if="siteTheme.anniversaryAvailable" class="cpu-card appearance-card">
+      <div class="appearance-copy">
+        <h3 class="cpu-section-title">站点主题</h3>
+        <p>校庆期间默认使用校庆主题，浅色和深色都适用；也可以换回经典的青绿配色。</p>
+      </div>
+      <div class="appearance-options is-two" role="radiogroup" aria-label="站点主题">
+        <button data-cpu-button="option"
+          v-for="item in siteThemeOptions"
+          :key="item.value"
+          type="button"
+          :class="{ active: siteTheme.theme === item.value }"
+          :aria-checked="siteTheme.theme === item.value"
+          role="radio"
+          @click="siteTheme.setTheme(item.value)"
+        >
+          <span class="theme-swatch" :data-swatch="item.value" aria-hidden="true"></span>
+          <span>{{ item.label }}</span>
+        </button>
+      </div>
+    </div>
+
     <div class="cpu-card wechat-bind-card">
       <div>
         <h3 class="cpu-section-title">绑定微信服务号</h3>
@@ -505,6 +526,7 @@ import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { isWechatBrowser } from "@/utils/wechatBridge";
 import WechatFollowDialog from "./components/WechatFollowDialog.vue";
+import { siteThemeOptions, useSiteThemeStore } from "@/stores/siteTheme";
 import {
   appearanceOptions,
   formatMoney,
@@ -516,6 +538,7 @@ import {
   vipThemeOptions,
 } from "./profilePage";
 
+const siteTheme = useSiteThemeStore();
 const {
   commerceHidden,
   nativeSponsorVisible,
@@ -829,12 +852,26 @@ const inWechat = isWechatBrowser();
   font-weight: 500;
 }
 .appearance-options button.active {
-  color: #05201c;
+  color: var(--cpu-on-primary);
   background: var(--cpu-primary);
 }
 .appearance-options button:not(.active):hover {
   color: var(--cpu-primary);
-  background: rgba(20, 143, 123, 0.1);
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+}
+.appearance-options.is-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.theme-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+  background: linear-gradient(135deg, #086f63 0%, #2a9d8c 100%);
+}
+.theme-swatch[data-swatch="anniversary"] {
+  background: linear-gradient(135deg, #b8232b 0%, #b8232b 55%, #d9a441 100%);
 }
 
 .sponsor-card {
@@ -1000,9 +1037,9 @@ const inWechat = isWechatBrowser();
 }
 .amount-grid button.active {
   border-color: var(--cpu-primary);
-  background: rgba(20, 143, 123, 0.12);
+  background: color-mix(in srgb, var(--cpu-primary) 12%, transparent);
   color: var(--cpu-primary);
-  box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.18);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cpu-primary) 18%, transparent);
 }
 .sponsor-pay-row {
   display: grid;
@@ -1125,7 +1162,7 @@ const inWechat = isWechatBrowser();
 }
 .sponsor-display-tabs button.active {
   background: var(--cpu-primary);
-  color: #05201c;
+  color: var(--cpu-on-primary);
 }
 .sponsor-display-tabs button:focus-visible {
   position: relative;

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { ok } from "../utils/response";
-import { DEFAULT_SCHOOL_ID, getSchool, listSchools, type SchoolProfile } from "../schools/registry";
+import { DEFAULT_SCHOOL_ID, activeCelebration, getSchool, listSchools, type SchoolProfile } from "../schools/registry";
 import { getEnabledSchoolModules, requestSchoolId } from "../schools/modules";
 import { schoolModulePageMap } from "../schools/catalog";
 
@@ -26,6 +26,8 @@ function publicSchool(school: SchoolProfile) {
     userGroup: school.userGroup ?? null,
     publicLinks: school.publicLinks,
     periods: school.defaultPeriods,
+    /** 校庆期内才给：网页据此提供并默认使用校庆主题。 */
+    celebration: activeCelebration(school),
   };
 }
 

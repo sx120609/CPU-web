@@ -1,5 +1,6 @@
 <template>
   <div class="home">
+    <AnniversaryBanner class="home-anniversary" />
     <section class="intro" aria-label="首页功能入口">
       <div class="intro-copy">
         <h1>{{ site.brandName }}</h1>
@@ -178,6 +179,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
+import AnniversaryBanner from "@/components/common/AnniversaryBanner.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
@@ -377,6 +379,7 @@ function normalizeHomeError(error: unknown) {
 /* 桌面首页：简短的站点介绍，下面两栏白色分组。分组标题在分组外，像设置页的小标题。 */
 .home { display: flex; max-width: 1120px; margin: 0 auto; flex-direction: column; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
 
+.home-anniversary { margin-bottom: 20px; }
 .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
 .intro h1 { margin: 0; font-size: var(--cpu-fs-xxl); font-weight: 700; line-height: 1.3; }
 .intro p { margin: 2px 0 0; color: var(--cpu-text-secondary); }

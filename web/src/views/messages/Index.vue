@@ -1354,9 +1354,9 @@ function normalizeMessageSettings(value: any) {
   display: grid;
   gap: 5px;
   padding: 12px;
-  border: 1px dashed rgba(20, 143, 123, 0.35);
+  border: 1px dashed color-mix(in srgb, var(--cpu-primary) 35%, transparent);
   border-radius: var(--cpu-radius-m);
-  background: rgba(20, 143, 123, 0.08);
+  background: color-mix(in srgb, var(--cpu-primary) 8%, transparent);
 }
 .qq-token-box strong {
   color: var(--cpu-primary);
@@ -1433,8 +1433,8 @@ function normalizeMessageSettings(value: any) {
   transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
 }
 .settings-action-row:hover {
-  border-color: rgba(20, 143, 123, 0.35);
-  background: rgba(20, 143, 123, 0.08);
+  border-color: color-mix(in srgb, var(--cpu-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--cpu-primary) 8%, transparent);
 }
 .settings-action-icon {
   display: inline-flex;
@@ -1444,7 +1444,7 @@ function normalizeMessageSettings(value: any) {
   width: 34px;
   height: 34px;
   border-radius: var(--cpu-radius-m);
-  background: rgba(20, 143, 123, 0.1);
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
   color: var(--cpu-primary);
 }
 .settings-action-copy {

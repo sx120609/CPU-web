@@ -63,7 +63,9 @@ export const useSiteStore = defineStore("site", {
     campuses: (state) => state.school?.campuses ?? [],
     userGroupQq: (state) => state.school?.userGroup?.qq ?? "",
     userGroupJoinUrl: (state) => state.school?.userGroup?.joinUrl ?? "",
-    publicLinks: (state) => state.school?.publicLinks ?? []
+    publicLinks: (state) => state.school?.publicLinks ?? [],
+    /** 本校正在校庆期内（服务端按 until 判断）；学校信息到之前没有。 */
+    celebration: (state) => state.school?.celebration ?? null,
   },
   actions: {
     async fetch(force = false): Promise<void> {

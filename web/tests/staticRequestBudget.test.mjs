@@ -11,7 +11,8 @@ import { gzipSync } from 'node:zlib'
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // 首屏由 index.html 直接引用的 JS（入口 + modulepreload）与 CSS 的 gzip 总量。
 // 2026-09 按路由拆包后实测约 245.5 KiB，预留约 15% 余量；超出时先检查是否有页面或大依赖被拉进了入口。
-const INITIAL_GZIP_BUDGET_BYTES = 283 * 1024
+// 2026-11-09 实测 282.8 KiB，站点主题（校庆）的切换和状态进入口后约 283.2 KiB，上限放到 284 KiB；主题样式本身按需加载。
+const INITIAL_GZIP_BUDGET_BYTES = 284 * 1024
 
 test('public image URLs stay on the page origin when built modules move to a CDN', async (t) => {
   const { build, loadConfigFromFile } = await import('vite')

@@ -681,7 +681,7 @@ onMounted(() => {
 .md :deep(li) { margin: 0.2em 0; }
 .md :deep(blockquote) {
   border-left: 3px solid var(--cpu-primary);
-  background: rgba(20, 143, 123, 0.1);
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
   padding: 6px 12px;
   color: var(--cpu-text-secondary);
   margin: 0.6em 0;

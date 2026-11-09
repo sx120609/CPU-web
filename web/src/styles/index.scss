@@ -157,7 +157,7 @@ html[data-theme="dark"] {
   --cpu-primary: #36d0b7;
   --cpu-primary-light: #5ee4cc;
   --cpu-primary-dark: #0f766e;
-  --cpu-primary-soft: rgba(54, 208, 183, 0.12);
+  --cpu-primary-soft: color-mix(in srgb, var(--cpu-primary) 12%, transparent);
   --cpu-gold: #fbbf24;
   --cpu-warn: #fb923c;
   --cpu-danger: #f87171;
@@ -218,9 +218,9 @@ html[data-theme="dark"] {
   --el-color-primary: var(--cpu-primary);
   --el-color-primary-light-3: #2ebba7;
   --el-color-primary-light-5: #1f8f81;
-  --el-color-primary-light-7: rgba(54, 208, 183, 0.24);
-  --el-color-primary-light-8: rgba(54, 208, 183, 0.16);
-  --el-color-primary-light-9: rgba(54, 208, 183, 0.10);
+  --el-color-primary-light-7: color-mix(in srgb, var(--cpu-primary) 24%, transparent);
+  --el-color-primary-light-8: color-mix(in srgb, var(--cpu-primary) 16%, transparent);
+  --el-color-primary-light-9: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
   --el-color-primary-dark-2: #7ff0dc;
   color-scheme: dark;
 }
@@ -317,7 +317,7 @@ canvas {
   height: 18px;
   background: var(--cpu-primary);
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(20, 143, 123, 0.2);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--cpu-primary) 20%, transparent);
 }
 
 .cpu-muted {
@@ -328,8 +328,8 @@ canvas {
 .el-button--primary {
   --el-button-bg-color: var(--cpu-primary);
   --el-button-border-color: var(--cpu-primary);
-  --el-button-hover-bg-color: #{$cpu-primary-light};
-  --el-button-hover-border-color: #{$cpu-primary-light};
+  --el-button-hover-bg-color: var(--cpu-primary-light);
+  --el-button-hover-border-color: var(--cpu-primary-light);
 }
 
 .el-menu-item.is-active,
@@ -572,18 +572,18 @@ html[data-cpu-ios-next]:not([data-cpu-android-native]) .el-overlay-message-box {
 
 html[data-theme="dark"] {
   .el-button--primary {
-    --el-button-text-color: #05201c;
-    --el-button-hover-text-color: #05201c;
+    --el-button-text-color: var(--cpu-on-primary);
+    --el-button-hover-text-color: var(--cpu-on-primary);
   }
 
   .el-button--primary.is-plain {
     --el-button-text-color: var(--cpu-primary);
-    --el-button-bg-color: rgba(54, 208, 183, 0.08);
-    --el-button-border-color: rgba(54, 208, 183, 0.45);
-    --el-button-hover-text-color: #05201c;
+    --el-button-bg-color: color-mix(in srgb, var(--cpu-primary) 8%, transparent);
+    --el-button-border-color: color-mix(in srgb, var(--cpu-primary) 45%, transparent);
+    --el-button-hover-text-color: var(--cpu-on-primary);
     --el-button-hover-bg-color: var(--cpu-primary);
     --el-button-hover-border-color: var(--cpu-primary);
-    --el-button-active-text-color: #05201c;
+    --el-button-active-text-color: var(--cpu-on-primary);
     --el-button-active-bg-color: var(--cpu-primary);
     --el-button-active-border-color: var(--cpu-primary);
   }
@@ -593,16 +593,16 @@ html[data-theme="dark"] {
     --el-button-bg-color: transparent;
     --el-button-border-color: transparent;
     --el-button-hover-text-color: var(--cpu-primary-light);
-    --el-button-hover-bg-color: rgba(54, 208, 183, 0.12);
+    --el-button-hover-bg-color: color-mix(in srgb, var(--cpu-primary) 12%, transparent);
     --el-button-hover-border-color: transparent;
     --el-button-active-text-color: var(--cpu-primary-light);
-    --el-button-active-bg-color: rgba(54, 208, 183, 0.16);
+    --el-button-active-bg-color: color-mix(in srgb, var(--cpu-primary) 16%, transparent);
     --el-button-active-border-color: transparent;
   }
 
   .el-button.is-text:not(.is-disabled):hover,
   .el-button.is-text:not(.is-disabled):focus {
-    background-color: rgba(54, 208, 183, 0.12);
+    background-color: color-mix(in srgb, var(--cpu-primary) 12%, transparent);
   }
 
   .el-input__wrapper,

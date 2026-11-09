@@ -1,5 +1,6 @@
 <template>
   <div class="home-stream">
+    <AnniversaryBanner compact />
     <section class="home-entry" aria-label="首页快捷入口">
       <SiteSearchBar
         :placeholder="showForumContent ? '搜索帖子或校园服务' : '搜索校园服务'"
@@ -102,6 +103,7 @@ import { ElMessage } from "element-plus";
 import type { Topic } from "@/api/topic";
 import { homeApi, type HomeFeedStream, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
+import AnniversaryBanner from "@/components/common/AnniversaryBanner.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";

@@ -156,6 +156,21 @@
           <span>{{ item.label }}</span>
         </button>
       </div>
+      <div v-if="siteTheme.anniversaryAvailable" class="me-m-segmented is-two" role="radiogroup" aria-label="站点主题">
+        <button
+          v-for="item in siteThemeOptions"
+          :key="item.value"
+          data-cpu-button="option"
+          type="button"
+          role="radio"
+          :class="{ active: siteTheme.theme === item.value }"
+          :aria-checked="siteTheme.theme === item.value"
+          @click="siteTheme.setTheme(item.value)"
+        >
+          <span class="theme-swatch" :data-swatch="item.value" aria-hidden="true"></span>
+          <span>{{ item.label }}主题</span>
+        </button>
+      </div>
     </section>
 
     <section v-if="user && !auth.forumHidden" class="me-m-section" aria-labelledby="me-m-community-title">
@@ -512,6 +527,7 @@ import { hidesClientDownloads } from "@/utils/clientInfo";
 import { isWechatBrowser } from "@/utils/wechatBridge";
 import ProfileRowMobile from "./components/ProfileRowMobile.vue";
 import WechatFollowDialog from "./components/WechatFollowDialog.vue";
+import { siteThemeOptions, useSiteThemeStore } from "@/stores/siteTheme";
 import {
   appearanceOptions,
   formatMoney,
@@ -523,6 +539,7 @@ import {
   vipThemeOptions,
 } from "./profilePage";
 
+const siteTheme = useSiteThemeStore();
 const {
   commerceHidden,
   auth,
@@ -949,6 +966,9 @@ async function dropAvatar() {
   cursor: pointer;
 }
 .me-m-segmented button.active { font-weight: 500; }
+.me-m-segmented.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.theme-swatch { flex: none; width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(135deg, #086f63 0%, #2a9d8c 100%); }
+.theme-swatch[data-swatch="anniversary"] { background: linear-gradient(135deg, #b8232b 0%, #b8232b 55%, #d9a441 100%); }
 .me-m-segmented button:disabled { cursor: not-allowed; opacity: .62; }
 .me-m-segmented.is-compact { border-radius: var(--cpu-radius-m); box-shadow: none; }
 .me-m-segmented.is-compact button { --cpu-button-radius: 7px; min-height: 34px; font-size: var(--cpu-fs-xs); }

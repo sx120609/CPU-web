@@ -6,6 +6,7 @@ import { useAuthStore } from "./stores/auth";
 import { useJwxtStore } from "./stores/jwxt";
 import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, installNativeAppearanceBridge, useAppearanceStore } from "./stores/appearance";
+import { useSiteThemeStore } from "./stores/siteTheme";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
 import { installIosNextScheduleBridge } from "./utils/iosNextScheduleBridge";
 import { installNativeLoginSchools } from "./utils/nativeLoginSchools";
@@ -474,6 +475,7 @@ app.use(createPinia());
 const appearanceStore = useAppearanceStore();
 appearanceStore.hydrate();
 installNativeAppearanceBridge(appearanceStore);
+useSiteThemeStore().install();
 useAuthStore().hydrate();
 watch(() => useAuthStore().user?.id, () => {
   useMessageStore().setNotices([]);

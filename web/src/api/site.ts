@@ -81,7 +81,11 @@ export type SchoolSummary = {
   publicLinks?: Array<{ name: string; icon: string; url: string }>;
   /** 这所学校的默认作息（节次从 1 起连续编号）。 */
   periods?: Array<{ no: number; name: string; start: string; end: string }>;
+  /** 校庆期内才有：建校年份、校庆日（北京时间 YYYY-MM-DD）、主题口号、校庆主题提供到哪天。 */
+  celebration?: SchoolCelebration | null;
 };
+
+export type SchoolCelebration = { founded: number; date: string; motto: string; until: string };
 
 /** 当前访问者所属学校：开着哪些功能，以及网页路径、服务卡片各归哪个功能。 */
 export type SchoolInfo = SchoolSummary & {

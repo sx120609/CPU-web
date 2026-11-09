@@ -5,8 +5,9 @@ from fontTools import subset
 ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "web"
 FONT_ROOT = WEB_ROOT / "src" / "assets" / "fonts"
-# 网页还会打包这些目录里的共享模块（如页脚备案号），其中的文字同样需要覆盖。
-SOURCE_ROOTS = (WEB_ROOT, ROOT / "shared", ROOT / "server" / "src" / "shared", ROOT / "server" / "src" / "releases")
+# 网页还会打包这些目录里的共享模块（如页脚备案号），其中的文字同样需要覆盖；
+# 学校档案（校名、校庆口号等）由服务端下发、在网页上显示，也要覆盖。
+SOURCE_ROOTS = (WEB_ROOT, ROOT / "shared", ROOT / "server" / "src" / "shared", ROOT / "server" / "src" / "releases", ROOT / "server" / "src" / "schools")
 SOURCE_EXTENSIONS = {".css", ".html", ".js", ".json", ".scss", ".ts", ".vue"}
 BASE_CHARACTERS = "".join(chr(value) for value in range(0x20, 0x7F)) + "\n\r\t，。！？：；、（）【】《》“”‘’·…—￥"
 
