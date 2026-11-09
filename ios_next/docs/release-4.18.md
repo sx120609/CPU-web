@@ -38,3 +38,26 @@ After the fix, both simulators load the school list without an error.
 Build 79 was archived from `93b638b1` plus that fix and the build-number bump; the agenda screenshot work on `main` is not in it. All targets carry 4.18 (79), and `check-legacy-linkage.py` passed (52 app and 7 widget ActivityKit imports are weak). The command-line upload failed again with 「App Store Connect access … is required」, so it was uploaded from Xcode's Organizer.
 
 Not exercised: a full sign-in with the review account, and a physical device.
+
+## Resubmitted as build 81
+
+4.18 was resubmitted on 2026-11-10 at 01:35 with build 81 and the five in-app purchases; all six items are 等待审核. App Review got a reply that the fault was in the app (the first page load cancelled at first launch) and that build 81 fixes it.
+
+Build 81 was archived from `8f36575d` plus the build-number bump. Since build 79 it carries:
+- the NapTable timetable port: the regrouped 更多 with Apple Calendar sync, a shared timetable laid over your own (aligned by clock time across schools), per-meeting 停课/调课, 找共同空闲, 日程 in the quick look and the month, light and dark backgrounds with framing, widget backgrounds, Live Activity options, Shortcuts, Control Center and Spotlight, the day share card, holiday fireworks and AlarmKit 上课闹钟;
+- the screenshot-to-agenda editor;
+- `8f36575d`: on a fresh install the login page no longer shows 网络连接失败. The first page goes on from /home to /login, and that navigation cut off the fallback's sso-begin request. Three fresh installs on the iPad simulator came up clean.
+
+`check-legacy-linkage.py` passed (52 app and 7 widget ActivityKit imports are weak), and AlarmKit and AppIntents link weakly. The upload was done from Xcode's Organizer; its first attempt failed authentication and the retry succeeded. The export compliance answer for build 81 is 「不属于上述的任意一种算法」, chosen with the user's authorization. Builds 79 and 80 were uploaded and are not used: 80 still had the login error.
+
+The site was deployed from `8bb30b78` before this submission, because single-meeting changes and the school name need it. 「此版本的新增内容」, as the user approved it:
+
+> · 登录时可以选择学校，南京医科大学、南京中医药大学的同学也能使用；需要扫码验证的学校可直接在 App 内完成验证。
+> · 长按课程可以只对这一次停课、调课，或在这节课加日程；截图也能识别成日程。
+> · 新增找共同空闲，可把同学或 TA 的课表叠加到自己的课表上，跨校也按实际时间对齐。
+> · 课表可整学期同步到 Apple 日历；月历显示当天安排；浅色、深色背景可分别设置和裁剪，小组件也能换背景。
+> · 新增快捷指令、控制中心按钮、在搜索里找课程，以及上课闹钟（iOS 26）。
+> · 新增 App 内赞助：在「我的」页点「支持拾间」，赞助后开通 VIP 并获得 AI 点数。
+> · 修复首次安装后无法登录、课程修改后与原课程同时显示、首次启动卡在启动画面，以及教务登录过期后反复提示授权的问题。
+
+Not exercised: a real sign-in with the review account, and a physical device.
