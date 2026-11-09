@@ -38,6 +38,7 @@ struct NativeScheduleView: View {
     @State private var couplePresented = false
     @State private var calendarPresented = false
     @State private var overlayPickerPresented = false
+    @State private var commonFreePresented = false
     /// 调整这一次: the meeting being moved, while its sheet is up.
     @State private var occurrenceEditor: NativeOccurrenceEditorContext?
     /// A cancelled meeting tapped: asks whether to put it back.
@@ -120,6 +121,14 @@ struct NativeScheduleView: View {
             .presentationDetents([.large])
         }
 #endif
+        .sheet(isPresented: $commonFreePresented) {
+            NativeCommonFreeView(
+                store: store,
+                createAgenda: agendaService.available ? { date, start in agendaService.openNew(date: date, start: start) } : nil
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(item: $occurrenceEditor) { context in
             NativeOccurrenceEditorSheet(
                 context: context,
@@ -413,6 +422,14 @@ struct NativeScheduleView: View {
                         )
                         overlayCode = sample.meta.code
                         if action == "overlay-picker" { overlayPickerPresented = true }
+                    case "common-free":
+                        // A saved classmate at NJMU to compare with.
+                        guard var sample = debugSharedSchedule(result) else { break }
+                        sample.remark = "小林"
+                        NativeScheduleSharingService.shared.installDebugState(
+                            library: NativeSharedScheduleLibrary(account: "debug", schedules: [sample]), mine: []
+                        )
+                        commonFreePresented = true
                     case "style-picker":
                         stylePickerPresented = true
                     // With `CPU_DEBUG_AGENDA=1`: `agenda-edit` opens a sample 日程 in its editor,
@@ -1084,6 +1101,11 @@ struct NativeScheduleView: View {
                         ) {
                             scheduleToolsPresented = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { overlayPickerPresented = true }
+                        }
+                        scheduleToolDivider
+                        scheduleToolRow("找共同空闲", detail: "和同学、TA 比一比哪天都有空", systemImage: "clock.badge.checkmark.fill", tint: .indigo) {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { commonFreePresented = true }
                         }
                         scheduleToolDivider
                         scheduleToolRow("情侣课表", detail: "绑定后两人的课并排显示", systemImage: "heart.fill", tint: .pink) {
