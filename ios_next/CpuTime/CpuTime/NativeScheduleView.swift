@@ -33,6 +33,7 @@ struct NativeScheduleView: View {
     @State private var stylePickerPresented = false
     @State private var sharingPresented = false
     @State private var couplePresented = false
+    @State private var calendarPresented = false
     /// An empty period tapped on the user's own timetable: a 日程 at its start, or a course in it.
     @State private var addChoice: ScheduleAddChoice?
     /// Two of the user's own courses in one period, to be pointed out once.
@@ -195,7 +196,7 @@ struct NativeScheduleView: View {
             }
             // `CPU_DEBUG_SCHEDULE_ACTION` runs one action once the timetable has
             // loaded, so its result can be checked without tapping through:
-            // `share-image`, `calendar-file`, `course-sheet`, `course-editor`, `style-picker`, `live-activity`,
+            // `share-image`, `calendar`, `tools`, `course-sheet`, `course-editor`, `style-picker`, `live-activity`,
             // `sharing` (the share-code page with sample state), `shared-view`
             // (a sample shared timetable, read-only), or against a real server
             // (see `connectDebugShareAPI`) `share-open`, `share-publish`, and
@@ -238,7 +239,8 @@ struct NativeScheduleView: View {
                     switch action {
                     case "couple": couplePresented = true
                     case "share-image": exportScheduleImage(result)
-                    case "calendar-file": exportWeekCalendarFile(result)
+                    case "calendar", "calendar-file": calendarPresented = true
+                    case "tools": scheduleToolsPresented = true
                     case "course-sheet", "course-editor":
                         let week = weekNumber(store.selectedWeek)
                         if let (day, block) = (1...7).lazy.compactMap({ day in
@@ -428,6 +430,21 @@ struct NativeScheduleView: View {
         .sheet(item: $sharePayload) { payload in
             NativeActivityView(activityItems: payload.items)
                 .ignoresSafeArea()
+        }
+        .sheet(isPresented: $calendarPresented) {
+            NavigationStack {
+                NativeScheduleCalendarView(store: store)
+                    .navigationTitle("Apple 日历")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { calendarPresented = false }
+                        }
+                    }
+            }
+            .tint(.cpuBrand)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $sharingPresented) {
             NativeScheduleSharingView(store: store) { schedule in
@@ -870,82 +887,91 @@ struct NativeScheduleView: View {
 
     private func scheduleToolsSheet(_ result: NativeScheduleResult) -> some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 14) {
-                scheduleToolsSection("课表") {
-                    scheduleToolRow("刷新课表", systemImage: "arrow.clockwise", disabled: isLoading) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 10) {
+                    scheduleToolTile("刷新", systemImage: "arrow.clockwise", tint: .cpuBrand, disabled: isLoading) {
                         scheduleToolsPresented = false
                         refresh()
                     }
                     if result.source != .graduate, !isReadOnly {
-                        scheduleToolRow("添加课程", systemImage: "plus") {
+                        scheduleToolTile("添加课程", systemImage: "plus", tint: .blue) {
                             scheduleToolsPresented = false
-                            presentAddCourse(
-                                day: selectedDay,
-                                week: Int(store.selectedWeek),
-                                startSlot: 1
-                            )
+                            presentAddCourse(day: selectedDay, week: Int(store.selectedWeek), startSlot: 1)
                         }
                     }
                     if !isReadOnly {
-                        scheduleToolRow("添加日程", systemImage: "calendar.badge.plus") {
+                        scheduleToolTile("添加日程", systemImage: "calendar.badge.plus", tint: .orange) {
                             scheduleToolsPresented = false
                             let date = viewMode == .day
                                 ? rawDayDate(selectedDay, week: weekNumber(store.selectedWeek), result: result) : nil
                             presentAgendaAfterTools { agendaService.openNew(date: date ?? NativeAgendaRules.today()) }
                         }
-                        scheduleToolRow("日程与待办", systemImage: "checklist") {
+                    }
+                    scheduleToolTile("分享图片", systemImage: "square.and.arrow.up", tint: .indigo) {
+                        scheduleToolsPresented = false
+                        exportScheduleImage(result)
+                    }
+                }
+
+                scheduleToolsSection("日历与日程") {
+                    scheduleToolRow(
+                        "同步到 Apple 日历", detail: "整学期写进系统日历，也能导出文件",
+                        systemImage: "calendar", tint: .red
+                    ) {
+                        scheduleToolsPresented = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { calendarPresented = true }
+                    }
+                    if !isReadOnly {
+                        scheduleToolDivider
+                        scheduleToolRow("日程与待办", detail: "作业、考试和自己的安排", systemImage: "checklist", tint: .orange) {
                             scheduleToolsPresented = false
                             presentAgendaAfterTools { agendaService.openList() }
                         }
                     }
                 }
 
-                scheduleToolsSection("设备与设置") {
-                    scheduleToolRow("课表风格", systemImage: "paintpalette") {
-                        scheduleToolsPresented = false
-                        DispatchQueue.main.async { stylePickerPresented = true }
-                    }
-                    if !isReadOnly {
-                        scheduleToolRow("背景自定义", systemImage: "photo") {
-                            scheduleToolsPresented = false
-                            DispatchQueue.main.async { backgroundEditorPresented = true }
-                        }
-                        scheduleToolRow("课表、设备与小组件", systemImage: "slider.horizontal.3") {
-                            scheduleToolsPresented = false
-                            DispatchQueue.main.async { onDeviceSettings() }
-                        }
-                    }
-                }
-
-                scheduleToolsSection("分享") {
-                    scheduleToolRow("分享本周课表", systemImage: "square.and.arrow.up") {
-                        scheduleToolsPresented = false
-                        exportScheduleImage(result)
-                    }
-                    scheduleToolRow("导出本周日历文件", systemImage: "calendar.badge.plus") {
-                        scheduleToolsPresented = false
-                        exportWeekCalendarFile(result)
-                    }
-                    if !isReadOnly {
-                        scheduleToolRow("共享课表", systemImage: "person.2") {
+                if !isReadOnly {
+                    scheduleToolsSection("一起看") {
+                        scheduleToolRow("共享课表", detail: "发分享码，或关心同学的课表", systemImage: "person.2.fill", tint: .blue) {
                             scheduleToolsPresented = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sharingPresented = true }
                         }
-                        scheduleToolRow("情侣课表", systemImage: "heart") {
+                        scheduleToolDivider
+                        scheduleToolRow("情侣课表", detail: "绑定后两人的课并排显示", systemImage: "heart.fill", tint: .pink) {
                             scheduleToolsPresented = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
                         }
                         if let onDormSchedule {
-                            scheduleToolRow("宿舍课表", systemImage: "bed.double") {
+                            scheduleToolDivider
+                            scheduleToolRow("宿舍课表", detail: "室友的课一目了然", systemImage: "bed.double.fill", tint: .teal) {
                                 scheduleToolsPresented = false
                                 onDormSchedule()
                             }
                         }
                     }
                 }
+
+                scheduleToolsSection("外观与设置") {
+                    scheduleToolRow("课表风格", systemImage: "paintpalette.fill", tint: .purple) {
+                        scheduleToolsPresented = false
+                        DispatchQueue.main.async { stylePickerPresented = true }
+                    }
+                    if !isReadOnly {
+                        scheduleToolDivider
+                        scheduleToolRow("背景", systemImage: "photo.fill", tint: .mint) {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.async { backgroundEditorPresented = true }
+                        }
+                        scheduleToolDivider
+                        scheduleToolRow("课表、设备与小组件", systemImage: "gearshape.fill", tint: .gray) {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.async { onDeviceSettings() }
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 8)
             .padding(.bottom, 18)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(GeometryReader { proxy in
@@ -970,42 +996,91 @@ struct NativeScheduleView: View {
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.leading, 4)
+                .padding(.leading, 6)
             VStack(spacing: 0, content: content)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.92),
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
-    private func scheduleToolRow(
+    private var scheduleToolDivider: some View {
+        Divider().padding(.leading, 58)
+    }
+
+    /// One of the quick actions across the top of 更多.
+    private func scheduleToolTile(
         _ title: String,
         systemImage: String,
+        tint: Color,
         disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            VStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(disabled ? Color(uiColor: .tertiaryLabel) : Color.cpuBrand)
-                    .frame(width: 24)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(disabled ? Color(uiColor: .tertiaryLabel) : tint)
+                    .frame(width: 46, height: 46)
+                    .background((disabled ? Color.gray : tint).opacity(0.14), in: Circle())
                 Text(title)
-                    .font(.body.weight(.medium))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(disabled ? Color(uiColor: .tertiaryLabel) : Color.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.92),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(NativeScheduleToolPressStyle())
+        .disabled(disabled)
+        .accessibilityLabel(title)
+    }
+
+    private func scheduleToolRow(
+        _ title: String,
+        detail: String? = nil,
+        systemImage: String,
+        tint: Color,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background((disabled ? Color.gray : tint).gradient,
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(disabled ? Color(uiColor: .tertiaryLabel) : Color.primary)
+                    if let detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 14)
-            .frame(minHeight: 48)
+            .frame(minHeight: detail == nil ? 50 : 60)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NativeScheduleToolPressStyle(highlight: true))
         .disabled(disabled)
     }
 
@@ -2335,24 +2410,6 @@ struct NativeScheduleView: View {
         Task { @MainActor in
             // Let the More sheet finish its dismissal before asking SwiftUI
             // to present the system share controller.
-            try? await Task.sleep(for: .milliseconds(350))
-            sharePayload = NativeScheduleSharePayload(items: [url])
-        }
-    }
-
-    /// Shares the viewed week as an `.ics` file. It carries the courses each
-    /// date actually runs: nothing on a day off, the swapped courses on a make-up day.
-    private func exportWeekCalendarFile(_ result: NativeScheduleResult) {
-        guard let week = Int(store.selectedWeek) ?? Int(result.currentWeek) else { return }
-        let days = (1...7).compactMap { day -> NativeScheduleICSExporter.Day? in
-            guard let date = rawDayDate(day, week: week, result: result) else { return nil }
-            return .init(date: date, blocks: blocks(for: day, week: week, result: result))
-        }
-        let ics = NativeScheduleICSExporter.make(week: week, days: days, clocks: ScheduleSlot.all)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("药大拾间-第\(week)周课表.ics")
-        guard (try? Data(ics.utf8).write(to: url, options: .atomic)) != nil else { return }
-        Task { @MainActor in
-            // Let the More sheet finish its dismissal before presenting the share sheet.
             try? await Task.sleep(for: .milliseconds(350))
             sharePayload = NativeScheduleSharePayload(items: [url])
         }
@@ -4491,6 +4548,18 @@ private enum NativeScheduleSharePresenter {
 private struct NativeScheduleSharePayload: Identifiable {
     let id = UUID()
     let items: [Any]
+}
+
+/// Rows dim while pressed; the top tiles shrink a little.
+private struct NativeScheduleToolPressStyle: ButtonStyle {
+    var highlight = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(highlight && configuration.isPressed ? Color.primary.opacity(0.06) : Color.clear)
+            .scaleEffect(!highlight && configuration.isPressed ? 0.95 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
 }
 
 private struct NativeActivityView: UIViewControllerRepresentable {
