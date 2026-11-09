@@ -1298,7 +1298,12 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
                     contentWorld: .page
                 )
                 let response = Self.decodeNativeLoginResponse(value)
-                if response.error != "登录服务正在启动，请稍候再试。" {
+                // A first start loads /home, which goes on to /login; a request
+                // the page made in between is cut off by that navigation and
+                // reads as a network failure. While the page is still loading,
+                // that is not an answer: ask again once it has settled.
+                let interrupted = response.error == "网络连接失败，请检查网络后重试。" && view.isLoading
+                if response.error != "登录服务正在启动，请稍候再试。" && !interrupted {
                     // A route transition can reset the navigation flag after
                     // the injected bridge has already survived in the page.
                     bridgeReady = true
