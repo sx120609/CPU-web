@@ -465,8 +465,9 @@ onBeforeUnmount(() => {
 .cl-synonyms { margin: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.7; overflow-wrap: anywhere; }
 .cl-note { margin: 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 
-:global(html[data-theme="dark"]) .cl-signal { background: rgb(217 119 6 / 18%); color: #fbbf24; }
-:global(html[data-theme="dark"]) .cl-signal.is-danger { background: var(--cpu-danger-soft); color: var(--cpu-danger); }
+/* 不能写成 :global(html[...]) .cl-signal：Vue 会把整条选择器当成 :global 里的部分，规则落到 <html> 上，深色模式下整页画布变红。 */
+html[data-theme="dark"] .cl-signal { background: rgb(217 119 6 / 18%); color: #fbbf24; }
+html[data-theme="dark"] .cl-signal.is-danger { background: var(--cpu-danger-soft); color: var(--cpu-danger); }
 .cl-foot { order: 2; padding: 4px 4px 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.7; }
 .cl-foot p { margin: 0; }
 .cl-foot a { color: var(--cpu-primary-dark); }
