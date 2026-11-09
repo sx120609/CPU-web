@@ -172,6 +172,8 @@ enum NativeWidgetLocalSchedule {
     }
 
     private static func write(_ record: Record?) {
+        // System search follows the same dated timetable.
+        NativeScheduleSpotlight.index(record)
         guard let url else { return }
         guard let record else {
             guard FileManager.default.fileExists(atPath: url.path) else { return }

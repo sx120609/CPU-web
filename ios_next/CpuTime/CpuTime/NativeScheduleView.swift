@@ -97,6 +97,17 @@ struct NativeScheduleView: View {
     /// of `mainBody` so its long modifier chain still type-checks.
     private func withExtraPresentations<Content: View>(_ content: Content) -> some View {
         content
+        // A course picked in system search: its next meeting in the shown week, else any.
+        .onReceive(NotificationCenter.default.publisher(for: NativeScheduleSpotlight.openNotification)) { note in
+            guard !isReadOnly, let name = note.object as? String, let result = store.result else { return }
+            let week = weekNumber(store.selectedWeek)
+            for day in 1...7 {
+                if let block = blocks(for: day, week: week, result: result).first(where: { $0.course.name == name && $0.cancelledOccurrence == nil }) {
+                    selectCourse(block, day: day, week: week, result: result)
+                    return
+                }
+            }
+        }
 #if DEBUG
         .sheet(item: $debugPreviewBlock) { block in
             VStack(spacing: 16) {

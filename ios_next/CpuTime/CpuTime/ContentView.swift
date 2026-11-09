@@ -1,6 +1,7 @@
 import Combine
 import Photos
 import SwiftUI
+import CoreSpotlight
 import UIKit
 import UserNotifications
 
@@ -131,6 +132,13 @@ struct ContentView: View {
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
                     let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    // The Control Center's 记一笔: a new 日程 at the class on now or next.
+                    if query.contains(where: { $0.name == "action" && $0.value == "agenda" }) {
+                        let target = ScheduleShortcutRouter.agendaTarget()
+                        try? await Task.sleep(for: .milliseconds(400))
+                        NativeAgendaService.shared.openNew(date: target.date, start: target.start)
+                        return
+                    }
                     var values: [String: String] = [:]
                     for item in query {
                         if let value = item.value { values[item.name] = value }
@@ -147,6 +155,31 @@ struct ContentView: View {
                     if webSession.bridgeReady {
                         await scheduleStore.load(semester: semester, week: week, force: false)
                     }
+                }
+            }
+            .onReceive(ScheduleShortcutRouter.shared.$pending) { action in
+                guard let action else { return }
+                ScheduleShortcutRouter.shared.pending = nil
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !shell.requiresLogin else { return }
+                    shell.userSelected(.schedule)
+                    if action == .agenda {
+                        let target = ScheduleShortcutRouter.agendaTarget()
+                        try? await Task.sleep(for: .milliseconds(400))
+                        NativeAgendaService.shared.openNew(date: target.date, start: target.start)
+                    }
+                }
+            }
+            .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                guard let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                      let name = NativeScheduleSpotlight.courseName(fromIdentifier: identifier) else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !shell.requiresLogin else { return }
+                    shell.userSelected(.schedule)
+                    try? await Task.sleep(for: .milliseconds(500))
+                    NotificationCenter.default.post(name: NativeScheduleSpotlight.openNotification, object: name)
                 }
             }
             .onAppear {

@@ -9,6 +9,11 @@ struct CPUWebWidgetBundle: WidgetBundle {
         TodayScheduleWidget()
         TwoDayScheduleWidget()
         liveActivity
+        // Control Center buttons.
+        if #available(iOS 18.0, *) {
+            ScheduleOpenControl()
+            ScheduleAgendaControl()
+        }
     }
 
     private var liveActivity: some Widget {
@@ -3119,5 +3124,33 @@ private struct ScheduleLiveActivitySurface: ViewModifier {
         } else {
             content.activityBackgroundTint(ScheduleLiveActivityPalette.surface)
         }
+    }
+}
+
+/// 控制中心「课表」: opens the timetable.
+@available(iOS 18.0, *)
+private struct ScheduleOpenControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "cn.cputime.control.schedule") {
+            ControlWidgetButton(action: OpenURLIntent(URL(string: "cputime-next://schedule")!)) {
+                Label("课表", systemImage: "calendar")
+            }
+        }
+        .displayName("课表")
+        .description("打开药大拾间的课表。")
+    }
+}
+
+/// 控制中心「记一笔」: a new 日程 at the class on now, or the next one today.
+@available(iOS 18.0, *)
+private struct ScheduleAgendaControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "cn.cputime.control.agenda") {
+            ControlWidgetButton(action: OpenURLIntent(URL(string: "cputime-next://schedule?action=agenda")!)) {
+                Label("记一笔", systemImage: "square.and.pencil")
+            }
+        }
+        .displayName("给这节课记一笔")
+        .description("新建日程，时间定在现在这节或下一节课。")
     }
 }
