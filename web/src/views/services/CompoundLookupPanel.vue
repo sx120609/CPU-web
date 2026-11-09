@@ -210,8 +210,11 @@ const experimentalRows = computed(() => {
 });
 
 function errorText(err: unknown) {
+  // 接口出错时 axios 抛的是 AxiosError，服务端给的中文提示在 response.data.message 里。
+  const server = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+  if (server) return server;
   const text = (err as { message?: string })?.message;
-  return text && !/^Request failed|Network Error/u.test(text) ? text : "查询失败，请检查网络后重试";
+  return text && !/^Request failed|Network Error|timeout/u.test(text) ? text : "查询失败，请检查网络后重试";
 }
 
 function syncUrl(value: string) {

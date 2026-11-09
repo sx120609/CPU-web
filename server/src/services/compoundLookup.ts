@@ -133,7 +133,29 @@ export function setCompoundFetcherForTests(next: Fetcher | null, interval = 0) {
   inflight.clear();
 }
 
-class UpstreamError extends Error {}
+class UpstreamError extends Error {
+  constructor(message: string) {
+    super(message);
+    upstreamFailures.note(message);
+  }
+}
+
+function describeFetchError(error: unknown) {
+  const cause = (error as { cause?: { code?: string; message?: string; errors?: Array<{ code?: string; address?: string }> } })?.cause;
+  const parts = cause?.errors?.map((item) => `${item.code ?? "?"} ${item.address ?? ""}`.trim());
+  return [(error as Error)?.name, cause?.code ?? cause?.message, parts?.length ? `(${parts.join(", ")})` : ""].filter(Boolean).join(" ");
+}
+
+class UpstreamFailureLog {
+  private last = 0;
+  note(message: string) {
+    // 失败原因写进服务日志，一分钟最多一条，免得刷屏。
+    if (Date.now() - this.last < 60_000) return;
+    this.last = Date.now();
+    console.warn(`[compound-lookup] ${message}`);
+  }
+}
+const upstreamFailures = new UpstreamFailureLog();
 
 /** 返回 null 表示 PubChem 明确说没有（404）。 */
 async function upstreamJson(url: string): Promise<unknown | null> {
@@ -148,7 +170,7 @@ async function upstreamJson(url: string): Promise<unknown | null> {
         headers: { Accept: "application/json", "User-Agent": "CPU-web compound lookup (+https://cputime.cn)" },
       });
     } catch (error) {
-      throw new UpstreamError(`PubChem unreachable: ${(error as Error).name}`);
+      throw new UpstreamError(`PubChem unreachable: ${describeFetchError(error)}`);
     }
     if (response.status === 404) return null;
     if (!response.ok) throw new UpstreamError(`PubChem ${response.status}`);
@@ -368,7 +390,7 @@ async function upstreamBinary(url: string): Promise<Buffer | null> {
     try {
       response = await fetcher(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: "image/png", "User-Agent": "CPU-web compound lookup (+https://cputime.cn)" } });
     } catch (error) {
-      throw new UpstreamError(`PubChem unreachable: ${(error as Error).name}`);
+      throw new UpstreamError(`PubChem unreachable: ${describeFetchError(error)}`);
     }
     if (response.status === 404) return null;
     if (!response.ok || !(response.headers.get("content-type") ?? "").startsWith("image/png")) throw new UpstreamError(`PubChem image ${response.status}`);

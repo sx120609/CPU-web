@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net";
 import { createApp, startAppWorkers } from "./app";
 import { getAndroidUpdateRequirement } from "./services/androidUpdateRequirement";
 import { waitForBackgroundOwnership } from "./utils/deploymentWorkers";
@@ -20,6 +21,10 @@ import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
 import { startAccountDeletionWorker } from "./services/accountDeletion";
 import { drainTopicViews } from "./services/topicViewCounter";
 import { backfillTreeholeNotifyCategories } from "./services/treeholeNotifyChannels";
+
+// Node 默认每个地址族只等 250ms：生产机到海外（如 PubChem）的 IPv4 握手常常超过这个时间，
+// 随后改试 IPv6，而本机没有 IPv6 路由，整次连接就失败了（curl 不受影响）。放宽到 2.5 秒。
+setDefaultAutoSelectFamilyAttemptTimeout(2_500);
 
 async function start() {
   const managedRelease = Boolean(process.env.CPU_WEB_RELEASE_SHA);
