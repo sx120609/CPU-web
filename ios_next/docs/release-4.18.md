@@ -22,3 +22,19 @@ The five consumables `cn.cputime.mobile.sponsor.{6,18,30,68,128}` (Apple IDs 683
 - `83b1667d`, `42b6448e`, `39228e37`, `450ce72a`: an edited course no longer shows beside its original, 日程 items are drawn in the timetable style, no frozen launch screen on a first start, and school login recovery without false re-authorization prompts.
 
 Not exercised: a real sandbox purchase on a device, and a physical device in general.
+
+## Rejected, then build 79
+
+On 2026-11-09 App Review rejected 4.18 (78) under Guideline 2.1(a): on an iPad Pro 11-inch (M4) with iPadOS 27.2 the reviewer could not sign in because of a "server timeout". Their screenshot, taken at 06:04 Pacific (22:04 Beijing time), shows the login page reporting 「登录服务启动超时，请稍后重试。」. That was not the server. The day's afternoon outage was hours earlier, and the evening deployment of `a708e35b` began at 22:10.
+
+The fault was in the app, and it hit every fresh install, on iPhone and iPad alike. Since `39228e37`, a first start without a session shows the login gate at once. The gate cancels any main-frame navigation to a path that is not a login page, and that included the web view's own first load of `/home`. The page therefore stayed on `about:blank` and the site app never started. Every native login call then waited 10 s for a bridge that could not appear. This was reproduced with fresh installs of a Release build on the iPad Pro 11-inch and iPhone 17 Pro simulators (iOS 27.0).
+
+`b26fb3a4` fixes it in two ways:
+- The gate now lets the web view's first load through. That is the load made while no history item exists yet.
+- A login call that finds no page and no load in progress starts the login page.
+
+After the fix, both simulators load the school list without an error.
+
+Build 79 was archived from `93b638b1` plus that fix and the build-number bump; the agenda screenshot work on `main` is not in it. All targets carry 4.18 (79), and `check-legacy-linkage.py` passed (52 app and 7 widget ActivityKit imports are weak). The command-line upload failed again with 「App Store Connect access … is required」, so it was uploaded from Xcode's Organizer.
+
+Not exercised: a full sign-in with the review account, and a physical device.
