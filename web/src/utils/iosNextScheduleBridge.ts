@@ -2,7 +2,6 @@ import { watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
-import { useSiteStore } from "@/stores/site";
 import type { Router } from "vue-router";
 import { isNativeScheduleShell } from "./clientInfo";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState, courseEditKey } from "./scheduleEdits";
@@ -803,8 +802,13 @@ export function installIosNextScheduleBridge(
     return configured.length ? configured : bundledPeriods();
   };
   // 情侣课表和分享课表可能跨校：原生端用校名标出对方的作息来自哪所学校。
+  // 读站点缓存的校名（stores/site.ts 写的 cpu-school-brand-v1），不引入站点 store，免得安卓、鸿蒙的桥把 pinia 打进去。
+  const schoolName = () => {
+    try { return String(JSON.parse(localStorage.getItem("cpu-school-brand-v1") || "null")?.schoolName || "").trim(); }
+    catch { return ""; }
+  };
   const withSchool = <T extends object | null | undefined>(calendar: T) => {
-    const school = useSiteStore().schoolName;
+    const school = schoolName();
     return calendar && school ? { ...calendar, school } : calendar;
   };
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
