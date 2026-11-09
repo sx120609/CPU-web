@@ -174,6 +174,10 @@ enum NativeWidgetLocalSchedule {
     private static func write(_ record: Record?) {
         // System search follows the same dated timetable.
         NativeScheduleSpotlight.index(record)
+        defer {
+            // So do the class alarms, once the file is written.
+            if NativeRoutineAlarms.shared.morningOn || NativeRoutineAlarms.shared.napOn { NativeRoutineAlarms.shared.refresh() }
+        }
         guard let url else { return }
         guard let record else {
             guard FileManager.default.fileExists(atPath: url.path) else { return }

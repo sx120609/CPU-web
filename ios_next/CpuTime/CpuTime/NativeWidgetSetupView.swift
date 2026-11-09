@@ -45,6 +45,13 @@ struct NativeDeviceSettingsView: View {
                         }
                     }
                     SettingsDestinationRow(
+                        title: "上课闹钟",
+                        detail: NativeRoutineAlarms.shared.morningOn || NativeRoutineAlarms.shared.napOn ? "已开启" : "早课和午休后叫醒你",
+                        systemImage: "alarm"
+                    ) {
+                        NativeRoutineAlarmSettingsPage()
+                    }
+                    SettingsDestinationRow(
                         title: "Apple 日历",
                         detail: "导入课程和管理提醒",
                         systemImage: "calendar.badge.plus"

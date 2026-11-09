@@ -21,6 +21,8 @@
 	<string>$(CPU_APP_GROUP_IDENTIFIER)</string>
 	<key>CPUAppURL</key>
 	<string>$(CPU_APP_URL)</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>用于在早课和午休后的第一节课前按时叫醒你。</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

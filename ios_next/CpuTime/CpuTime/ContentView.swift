@@ -249,6 +249,8 @@ struct ContentView: View {
                     Task { await NativeCoupleService.shared.refresh() }
                     // 日程 edited on another device or on the Web page.
                     Task { await NativeAgendaService.shared.refresh() }
+                    // Class alarms for the coming week, from the timetable as it is now.
+                    if NativeRoutineAlarms.shared.morningOn || NativeRoutineAlarms.shared.napOn { NativeRoutineAlarms.shared.refresh() }
                     if #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
                 }
             }
