@@ -11,7 +11,8 @@ test('native schedule keeps vertical scrolling native and exposes refresh in the
   assert.match(source, /ScrollView\(\.vertical\)/);
   assert.match(source, /\.scrollBounceBehavior\(\.basedOnSize, axes: \.vertical\)/);
   assert.doesNotMatch(source, /Button\(action: refresh\)/);
-  assert.match(source, /scheduleToolRow\("刷新课表", systemImage: "arrow\.clockwise"/);
+  // 更多 opens with quick actions; refreshing is the first.
+  assert.match(source, /scheduleToolTile\("刷新", systemImage: "arrow\.clockwise"/);
   assert.doesNotMatch(webSource, /UIRefreshControl|WebViewRefreshController/);
   assert.match(webSource, /func refreshCurrentPage\(\)/);
   assert.match(source, /TabView\(selection: \$weekPageSelection\)/);
