@@ -7,7 +7,7 @@
 ## 正常流程
 
 1. `flock` 串行化更新，拉取代码并验证精确 SHA 制品及各组件 SHA-256。
-2. 在 `.deploy/blue-green/releases/<sha>-<attempt>/` 提取源文件和制品，安装独立依赖、生成 Prisma 客户端。上传目录、运行数据、创意工坊作品包、VoiceHub 头像和备份继续共享；不会删除旧版本目录。
+2. 在 `.deploy/blue-green/releases/<sha>-<attempt>/` 提取源文件和制品，以硬链接放入 CI 预装的服务端依赖（见下文“服务端依赖”）。生产机不执行 `npm ci` 或 `prisma generate`。上传目录、运行数据、创意工坊作品包、VoiceHub 头像和备份继续共享；不会删除旧版本目录。
 3. 将网页资源同步到已配置的存储，保留本地旧哈希资源。先验证入口 JS/CSS 的 HTTP 状态和 Content-Type，再替换入口 HTML。
 4. 后端/VoiceHub 有变化时，在备用的本机端口启动新实例。后端必须完成配置加载、数据库检查及已配置 Redis 的可用性检查。`/api/ready` 返回就绪状态及实例完整 SHA。
 5. 保存恢复记录和 Nginx 原始配置，检查配置并平滑 reload。通过公网 `/api/ready` 核对新 SHA，并检查实际页面入口及资源。
@@ -18,7 +18,7 @@
 
 ## 前提与配置
 
-服务器需要 Node.js 24、PM2、Nginx、Git、tar、npm 和 util-linux 的 `flock`。更新不会在线升级 Node、杀掉 PM2 或安装操作系统依赖。执行用户需要管理现有 PM2 实例、写入所选 Nginx 配置并测试/reload Nginx 的权限。
+服务器需要 Node.js 24、PM2、Nginx、Git、tar、GNU coreutils 和 util-linux 的 `flock`。更新不会在线升级 Node、杀掉 PM2 或安装操作系统依赖。执行用户需要管理现有 PM2 实例、写入所选 Nginx 配置并测试/reload Nginx 的权限。
 
 | 变量 | 默认值/用途 |
 | --- | --- |
@@ -93,6 +93,16 @@ GitHub Actions 在 Ubuntu 24.04 / Node.js 24 下运行准备失败、配置冲�
 
 此流程消除的是正常部署停止唯一后端造成的空窗，不覆盖 CDN 停服、主机断电、数据库不兼容、外部网络故障等独立故障。
 
+
+### 服务端依赖
+
+`server/node_modules`（含生成好的 Prisma 客户端）只在 CI 中构建，生产机从不安装 npm 包。
+
+- **依赖键**：`server/package.json` 的依赖字段、`package-lock.json`、`.npmrc` 和 `prisma/schema.prisma` 的 SHA-256（`node ops/deploy/server-modules.mjs key server`）。脚本字段和行尾不影响依赖键。
+- **CI**：在 Ubuntu 24.04、Node.js 24 上按锁文件全新安装并生成 Prisma 客户端，删去 onnxruntime-node 中非 linux/x64 的库，以固定顺序、属主和时间打包。附件名为 `cpu-web-server-modules-<包的 SHA-256>.tar.gz`，同名附件内容必然相同，已存在时不重复上传。部署清单的 `serverModules` 记录依赖键、文件名、大小和 SHA-256。
+- **部署**：`deploy.sh update` 读取清单；本机 `.deploy/blue-green/server-modules/<依赖键>/` 已完整时不下载，否则按与部署包相同的镜像顺序续传下载并核对大小和 SHA-256。蓝绿脚本核对依赖键与本次源码一致后，以低 CPU、低 IO 优先级解包一次，再用 `cp -al` 硬链接进新版本目录。
+- 依赖未变的后端更新不下载、不解包，只建立硬链接。依赖仓库保留仍有版本目录链接的依赖集，其余在部署成功后删除。
+- 清单没有 `serverModules` 的旧制品一律拒绝部署，旧版本继续运行。
 
 ### 慢速产物下载
 

@@ -9,6 +9,7 @@ import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './ar
 import { atomicWrite, cutover, memoryHeadroomMb, probe, replaceConfig, replaceUpstream, runtimeEnvironment, selectPrunableReleases } from './blue-green-core.mjs'
 import { readGateway, assertSameGateway, waitForUpstreamIdle, awaitGatewayMigration } from './agent-gateway.mjs'
 import { prepareQqBotHandoff, verifyQqBotHandoff } from './qqbot-handoff.mjs'
+import { installServerModules, pruneServerModules, readServerModulesEntry, serverModulesKey } from './server-modules.mjs'
 
 const exec = promisify(execFile)
 const log = message => console.log(`[blue-green] ${message}`)
@@ -316,6 +317,9 @@ export async function deploy() {
       const current = JSON.parse(await readFile(stateFile, 'utf8'))
       const removed = await pruneReleases(path.join(stateDir, 'releases'), current, { keep: keepReleases, references: await processReferences() })
       if (removed.length) log(`Removed ${removed.length} old release(s): ${removed.join(', ')}`)
+      // Unpacked dependency sets that no remaining release links to.
+      const prunedModules = await pruneServerModules(stateDir, '')
+      if (prunedModules.length) log(`Removed ${prunedModules.length} unused prebuilt dependency set(s)`)
     } catch (error) {
       log(`Warning: old releases were not pruned: ${error.message}`)
     }
@@ -406,8 +410,8 @@ export async function deploy() {
   const serverChanged = !previous.id || touches(/^(server\/|desktop\/assets\/userscripts\/|ops\/deploy\/|deploy\.sh$)/)
   const voiceChanged = !previous.id || touches(/^voicehub\//)
   if (serverChanged || voiceChanged) {
-    // npm ci and a second instance run beside the live release; without room the host
-    // thrashes and every service stops answering (2026-10-21, 2026-10-27).
+    // A second instance runs beside the live release; without room the host thrashes and every
+    // service stops answering (2026-10-21, 2026-10-27). Dependencies are never installed here.
     const minimum = integer(process.env.DEPLOY_MIN_MEMORY_MB, 1536, 0, 1048576)
     const headroom = memoryHeadroomMb(await readFile('/proc/meminfo', 'utf8'))
     if (headroom !== null && headroom < minimum) {
@@ -472,8 +476,14 @@ export async function deploy() {
       }
     }
     log('Preparing isolated dependencies and verified GitHub artifacts; the active release is untouched')
-    await run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], { cwd: serverDir })
-    await run('npm', ['run', 'prisma:generate'], { cwd: serverDir })
+    // npm ci and prisma generate beside the live release stalled the whole host three times
+    // (2026-10-21, 2026-10-27, 2026-11-09). CI ships node_modules with the generated client instead.
+    const modules = readServerModulesEntry(manifest)
+    if (!modules) throw new Error('The artifact has no prebuilt server dependencies; this host does not install npm packages. No running process was changed')
+    await installServerModules({
+      stateDir, entry: modules, expectedKey: await serverModulesKey(serverDir),
+      archive: process.env.DEPLOY_SERVER_MODULES_ARCHIVE || '', serverDir, run, log,
+    })
     if (schemaChanged || force) {
       await run('npm', ['run', 'db:migrate'], { cwd: serverDir })
       await run('npm', ['run', 'db:cleanup-retired-boards'], { cwd: serverDir })

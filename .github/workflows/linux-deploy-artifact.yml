@@ -214,10 +214,15 @@ jobs:
           tar -C server -czf deploy-bundle/server-dist.tar.gz dist
           tar -C web -czf deploy-bundle/web-dist.tar.gz dist
           tar -C voicehub -czf deploy-bundle/voicehub-output.tar.gz .output
-          node ops/deploy/create-artifact-manifest.mjs "$GITHUB_SHA" deploy-bundle
+          # The production host never runs npm: server/node_modules (with the generated Prisma client)
+          # is built here from a clean lockfile install and shipped as a content-addressed asset.
+          node ops/deploy/server-modules.mjs pack server . > server-modules.json
+          cat server-modules.json
+          node ops/deploy/create-artifact-manifest.mjs "$GITHUB_SHA" deploy-bundle server-modules.json
           node ops/deploy/verify-artifact-manifest.mjs "$GITHUB_SHA" deploy-bundle
           node --test \
             ops/deploy/artifact-manifest.test.mjs \
+            ops/deploy/server-modules.test.mjs \
             ops/nginx/nginx-http-redirect.test.mjs \
             web/tests/staticRequestBudget.test.mjs
           tar -C deploy-bundle -czf cpu-web-linux-deploy.tar.gz \
@@ -232,6 +237,7 @@ jobs:
           path: |
             cpu-web-linux-deploy.tar.gz
             cpu-web-linux-deploy.tar.gz.sha256
+            cpu-web-server-modules-*.tar.gz
             android-release-verification.json
             cpu-web-waf-${{ github.sha }}.tar.gz
             cpu-web-waf-${{ github.sha }}.tar.gz.sha256
@@ -288,6 +294,16 @@ jobs:
               --prerelease --latest=false --title "Automated Linux deployment artifacts" \
               --notes "Verified production bundles, with immutable filenames bound to exact commit SHAs." \
               || gh release view deploy-artifacts --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+          # Prebuilt server dependencies are named by their SHA-256, so an existing asset is identical
+          # and is never replaced; upload it before the bundle that refers to it.
+          modules="$(ls cpu-web-server-modules-*.tar.gz)"
+          [ "$(printf '%s\n' "$modules" | wc -l)" = 1 ] || { echo "::error::expected exactly one server modules archive"; exit 1; }
+          if gh release view deploy-artifacts --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fqx "$modules"; then
+            echo "server dependencies $modules already published"
+          else
+            # A concurrent run may have published the same archive in the meantime.
+            gh release upload deploy-artifacts "$modules" --repo "$GITHUB_REPOSITORY"               || gh release view deploy-artifacts --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fqx "$modules"
           fi
           asset="cpu-web-linux-$GITHUB_SHA.tar.gz"
           cp cpu-web-linux-deploy.tar.gz "$asset"

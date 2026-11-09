@@ -22,7 +22,8 @@ export async function sha256File(filePath) {
   return hash.digest('hex')
 }
 
-export async function createArtifactManifest({ commit, directory }) {
+/** `serverModules` is the entry from `server-modules.mjs pack`; the archive itself travels as its own release asset. */
+export async function createArtifactManifest({ commit, directory, serverModules = null }) {
   const normalizedCommit = assertCommit(commit)
   const artifacts = {}
   for (const [component, file] of Object.entries(COMPONENT_FILES)) {
@@ -40,7 +41,8 @@ export async function createArtifactManifest({ commit, directory }) {
     platform: 'linux-x64',
     nodeMajor: Number(process.versions.node.split('.')[0]),
     createdAt: new Date().toISOString(),
-    artifacts
+    artifacts,
+    ...(serverModules ? { serverModules } : {})
   }
 }
 

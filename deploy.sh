@@ -1648,6 +1648,48 @@ download_ci_artifact() {
   return 1
 }
 
+# 服务端依赖（node_modules 与生成好的 Prisma 客户端）由 CI 预先装好，作为按内容命名的发布附件单独下载。
+# 生产机不再执行 npm ci / prisma generate：它们在线上版本旁边运行时曾三次拖垮整台机器。
+# 本机依赖仓库里已有同一依赖键时不下载；否则下载、按清单校验大小和 SHA-256，交给蓝绿脚本解包。
+prepare_server_modules() {
+  local manifest="$DEPLOY_ARTIFACT_DIR/manifest.json" info key file sha bytes cache_root destination base_url attempt
+  DEPLOY_SERVER_MODULES_ARCHIVE=""
+  info="$(node "$ROOT_DIR/ops/deploy/server-modules.mjs" manifest "$manifest")" \
+    || err "制品清单里的预装依赖条目无效，保留旧版本"
+  [ -n "$info" ] || err "该制品没有 CI 预装的服务端依赖（构建早于此机制）；生产机不再自行安装依赖，保留旧版本"
+  read -r key file sha bytes <<< "$info"
+  if [ -f "$ROOT_DIR/.deploy/blue-green/server-modules/$key/.complete" ]; then
+    log "Prebuilt server dependencies ${key:0:12} are already on this host; nothing to download"
+    return 0
+  fi
+  cache_root="$(artifact_cache_root)" || err "无法定位制品缓存目录"
+  mkdir -p "$cache_root"
+  destination="$cache_root/$file"
+  if [ -f "$destination" ] && node "$ROOT_DIR/ops/deploy/server-modules.mjs" verify "$manifest" "$destination" >/dev/null 2>&1; then
+    log "Using cached prebuilt server dependencies ${key:0:12}"
+    DEPLOY_SERVER_MODULES_ARCHIVE="$destination"
+    return 0
+  fi
+  for attempt in 1 2 3; do
+    for base_url in "$DEPLOY_ARTIFACT_URL" "$DEPLOY_ARTIFACT_FALLBACK_URL"; do
+      [ -n "$base_url" ] || continue
+      # 附件名里已有 SHA-256，传入它作为下载键，不会追加破坏镜像缓存的查询参数。
+      if fetch_ci_artifact_release_transport "$sha" "$attempt" "$destination.part" "${base_url%/*}/$file" "$DEPLOY_ARTIFACT_RELEASE_TIMEOUT_SECONDS" \
+        && node "$ROOT_DIR/ops/deploy/server-modules.mjs" verify "$manifest" "$destination.part"; then
+        mv "$destination.part" "$destination"
+        log "Prebuilt server dependencies ${key:0:12} downloaded and verified ($bytes bytes)"
+        DEPLOY_SERVER_MODULES_ARCHIVE="$destination"
+        return 0
+      fi
+      # 校验失败的完整文件不能续传，删掉重下；未完成的部分保留续传。
+      if [ -f "$destination.part" ] && [ "$(stat -c %s "$destination.part" 2>/dev/null || echo 0)" -ge "$bytes" ]; then
+        rm -f "$destination.part"
+      fi
+    done
+  done
+  err "未能下载并校验 CI 预装的服务端依赖 ${key:0:12}，保留旧版本"
+}
+
 select_deploy_build_source() {
   case "$DEPLOY_BUILD_MODE" in
     local)
@@ -2353,8 +2395,10 @@ do_update() {
       DEPLOY_BUILD_MODE=ci
       select_deploy_build_source
       [ "$DEPLOY_ARTIFACT_READY" = "1" ] || err "缺少精确 SHA 的 GitHub 制品，保留旧版本"
+      prepare_server_modules
       CPU_WEB_DEPLOY_ROOT="$ROOT_DIR" DEPLOY_TARGET_COMMIT="$DEPLOY_TARGET_COMMIT" \
         DEPLOY_ARTIFACT_DIR="$DEPLOY_ARTIFACT_DIR" DEPLOY_CHANGED_FILES="$DEPLOY_CHANGED_FILES" \
+        DEPLOY_SERVER_MODULES_ARCHIVE="$DEPLOY_SERVER_MODULES_ARCHIVE" \
         DEPLOY_FORCE_ALL="$DEPLOY_FORCE_ALL" PORT="$PORT" VOICEHUB_PORT="$VOICEHUB_PORT" \
         NGINX_BIN="$NGINX_BIN" NGINX_SITE_CONFIG="$NGINX_SITE_CONFIG" \
         node "$ROOT_DIR/ops/deploy/blue-green.mjs"

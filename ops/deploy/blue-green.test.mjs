@@ -34,13 +34,14 @@ test('update uses the verified-artifact coordinator and never records success af
     PORT=23333; VOICEHUB_PORT=23335; NGINX_BIN=nginx; NGINX_SITE_CONFIG=/tmp/site.conf
     collect_update_changes() { echo collect; }
     select_deploy_build_source() { test "$DEPLOY_BUILD_MODE" = ci; echo artifact; DEPLOY_ARTIFACT_READY=1; }
+    prepare_server_modules() { echo modules; DEPLOY_SERVER_MODULES_ARCHIVE=/tmp/modules.tar.gz; }
     record_successful_deployment() { echo recorded; }
-    node() { test "$1" = /tmp/cpu-test/ops/deploy/blue-green.mjs; echo coordinator; return "$FAILURE"; }
+    node() { test "$1" = /tmp/cpu-test/ops/deploy/blue-green.mjs; test "$DEPLOY_SERVER_MODULES_ARCHIVE" = /tmp/modules.tar.gz; echo coordinator; return "$FAILURE"; }
     do_main_restart() { exit 91; }; do_build_server() { exit 92; }
     warn() { :; }; err() { echo "$*" >&2; exit 37; }
     ${update}
     do_update`
-  assert.equal(execFileSync('bash', ['-c', harness], { env: { ...process.env, FAILURE: '0' }, encoding: 'utf8' }).trim(), 'collect\nartifact\ncoordinator\nrecorded')
+  assert.equal(execFileSync('bash', ['-c', harness], { env: { ...process.env, FAILURE: '0' }, encoding: 'utf8' }).trim(), 'collect\nartifact\nmodules\ncoordinator\nrecorded')
   assert.throws(() => execFileSync('bash', ['-c', harness], { env: { ...process.env, FAILURE: '1' }, encoding: 'utf8' }), error => error.status === 1 && !String(error.stdout).includes('recorded'))
 })
 
