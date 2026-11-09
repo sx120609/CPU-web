@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, ChatLineRound, MapLocation, Compass, DataLine, Document, DocumentChecked, FolderOpened, KnifeFork, Microphone, Monitor, OfficeBuilding, Phone, Tools, Trophy } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, ChatLineRound, MapLocation, Compass, DataLine, Document, DocumentChecked, FolderOpened, KnifeFork, Microphone, Monitor, OfficeBuilding, Phone, Search, Tools, Trophy } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda" | "treehole" | "canteen_picker";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda" | "treehole" | "canteen_picker" | "compound_lookup";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -229,6 +229,21 @@ export const serviceTools: ServiceTool[] = [
     iconComponent: KnifeFork,
     badge: "随机干饭",
     badgeType: "success",
+  },
+  {
+    slug: "compound_lookup",
+    name: "化合索检器",
+    summary: "输入中文名、英文名、CAS 号或 CID，查分子式、理化数据和 GHS 危险性",
+    description: "先查中英文物质库，再从 PubChem 取分子式、分子量、SMILES、logP、熔沸点、密度、溶解度和 GHS 危险编码，供有机化学、药物化学实验查数据。",
+    icon: "search",
+    status: "ready",
+    category: "学习查询",
+    routeName: "service-tool-detail",
+    componentKey: "compound_lookup",
+    accent: "#2563eb",
+    iconComponent: Search,
+    badge: "同学作品",
+    badgeType: "info",
   },
   {
     slug: "assessment-form",

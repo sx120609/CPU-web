@@ -146,6 +146,15 @@ export const SCHOOL_MODULES: readonly SchoolModuleDefinition[] = [
     pages: ["/services/tools/department_contacts"],
     tools: ["department_contacts"],
   },
+  // 化合索检器：公开的化学物质速查，数据来自本地物质库和 PubChem，不存学校相关内容。
+  {
+    key: "compoundLookup",
+    label: "化合索检器",
+    isolation: "global",
+    routes: ["/tools/compounds"],
+    pages: ["/services/tools/compound_lookup"],
+    tools: ["compound_lookup"],
+  },
   { key: "schoolCalendar", label: "校历", isolation: "school", implementedFor: ["cpu"], routes: [], tools: ["school_calendar"] },
   { key: "venueReservation", label: "场馆预约", isolation: "school", implementedFor: ["cpu"], routes: [], tools: ["venue_reservation"] },
   { key: "canteen", label: "食堂选择器", isolation: "school", implementedFor: ["cpu"], routes: [], tools: ["canteen_picker"] },

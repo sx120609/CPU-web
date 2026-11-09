@@ -1,0 +1,1618 @@
+{
+  "meta": {
+    "source": "常用试剂、溶剂和药物的中英文名称对照，CID 与 CAS 号经 PubChem 核对",
+    "updatedAt": "2026-11-09",
+    "count": 201
+  },
+  "compounds": [
+    {
+      "zh": "水",
+      "en": "water",
+      "aliases": [],
+      "cas": "7732-18-5",
+      "cid": 962
+    },
+    {
+      "zh": "乙醇",
+      "en": "ethanol",
+      "aliases": [
+        "酒精",
+        "无水乙醇"
+      ],
+      "cas": "64-17-5",
+      "cid": 702
+    },
+    {
+      "zh": "甲醇",
+      "en": "methanol",
+      "aliases": [
+        "木醇"
+      ],
+      "cas": "67-56-1",
+      "cid": 887
+    },
+    {
+      "zh": "异丙醇",
+      "en": "isopropanol",
+      "aliases": [
+        "2-丙醇"
+      ],
+      "cas": "67-63-0",
+      "cid": 3776
+    },
+    {
+      "zh": "正丁醇",
+      "en": "1-butanol",
+      "aliases": [
+        "丁醇"
+      ],
+      "cas": "71-36-3",
+      "cid": 263
+    },
+    {
+      "zh": "叔丁醇",
+      "en": "tert-butanol",
+      "aliases": [],
+      "cas": "75-65-0",
+      "cid": 6386
+    },
+    {
+      "zh": "乙二醇",
+      "en": "ethylene glycol",
+      "aliases": [
+        "甘醇"
+      ],
+      "cas": "107-21-1",
+      "cid": 174
+    },
+    {
+      "zh": "丙三醇",
+      "en": "glycerol",
+      "aliases": [
+        "甘油"
+      ],
+      "cas": "56-81-5",
+      "cid": 753
+    },
+    {
+      "zh": "苯甲醇",
+      "en": "benzyl alcohol",
+      "aliases": [
+        "苄醇"
+      ],
+      "cas": "100-51-6",
+      "cid": 244
+    },
+    {
+      "zh": "丙酮",
+      "en": "acetone",
+      "aliases": [],
+      "cas": "67-64-1",
+      "cid": 180
+    },
+    {
+      "zh": "丁酮",
+      "en": "2-butanone",
+      "aliases": [
+        "甲乙酮"
+      ],
+      "cas": "78-93-3",
+      "cid": 6569
+    },
+    {
+      "zh": "环己酮",
+      "en": "cyclohexanone",
+      "aliases": [],
+      "cas": "108-94-1",
+      "cid": 7967
+    },
+    {
+      "zh": "乙醚",
+      "en": "diethyl ether",
+      "aliases": [],
+      "cas": "60-29-7",
+      "cid": 3283
+    },
+    {
+      "zh": "四氢呋喃",
+      "en": "tetrahydrofuran",
+      "aliases": [
+        "THF"
+      ],
+      "cas": "109-99-9",
+      "cid": 8028
+    },
+    {
+      "zh": "1,4-二氧六环",
+      "en": "1,4-dioxane",
+      "aliases": [
+        "二氧六环"
+      ],
+      "cas": "123-91-1",
+      "cid": 31275
+    },
+    {
+      "zh": "乙酸乙酯",
+      "en": "ethyl acetate",
+      "aliases": [
+        "醋酸乙酯"
+      ],
+      "cas": "141-78-6",
+      "cid": 8857
+    },
+    {
+      "zh": "乙腈",
+      "en": "acetonitrile",
+      "aliases": [],
+      "cas": "75-05-8",
+      "cid": 6342
+    },
+    {
+      "zh": "二氯甲烷",
+      "en": "dichloromethane",
+      "aliases": [
+        "DCM"
+      ],
+      "cas": "75-09-2",
+      "cid": 6344
+    },
+    {
+      "zh": "三氯甲烷",
+      "en": "chloroform",
+      "aliases": [
+        "氯仿"
+      ],
+      "cas": "67-66-3",
+      "cid": 6212
+    },
+    {
+      "zh": "四氯化碳",
+      "en": "carbon tetrachloride",
+      "aliases": [],
+      "cas": "56-23-5",
+      "cid": 5943
+    },
+    {
+      "zh": "1,2-二氯乙烷",
+      "en": "1,2-dichloroethane",
+      "aliases": [],
+      "cas": "107-06-2",
+      "cid": 11
+    },
+    {
+      "zh": "正己烷",
+      "en": "hexane",
+      "aliases": [
+        "己烷"
+      ],
+      "cas": "110-54-3",
+      "cid": 8058
+    },
+    {
+      "zh": "环己烷",
+      "en": "cyclohexane",
+      "aliases": [],
+      "cas": "110-82-7",
+      "cid": 8078
+    },
+    {
+      "zh": "正庚烷",
+      "en": "heptane",
+      "aliases": [
+        "庚烷"
+      ],
+      "cas": "142-82-5",
+      "cid": 8900
+    },
+    {
+      "zh": "苯",
+      "en": "benzene",
+      "aliases": [],
+      "cas": "71-43-2",
+      "cid": 241
+    },
+    {
+      "zh": "甲苯",
+      "en": "toluene",
+      "aliases": [],
+      "cas": "108-88-3",
+      "cid": 1140
+    },
+    {
+      "zh": "氯苯",
+      "en": "chlorobenzene",
+      "aliases": [],
+      "cas": "108-90-7",
+      "cid": 7964
+    },
+    {
+      "zh": "硝基苯",
+      "en": "nitrobenzene",
+      "aliases": [],
+      "cas": "98-95-3",
+      "cid": 7416
+    },
+    {
+      "zh": "苯胺",
+      "en": "aniline",
+      "aliases": [],
+      "cas": "62-53-3",
+      "cid": 6115
+    },
+    {
+      "zh": "苯酚",
+      "en": "phenol",
+      "aliases": [
+        "石炭酸"
+      ],
+      "cas": "108-95-2",
+      "cid": 996
+    },
+    {
+      "zh": "吡啶",
+      "en": "pyridine",
+      "aliases": [],
+      "cas": "110-86-1",
+      "cid": 1049
+    },
+    {
+      "zh": "三乙胺",
+      "en": "triethylamine",
+      "aliases": [
+        "TEA"
+      ],
+      "cas": "121-44-8",
+      "cid": 8471
+    },
+    {
+      "zh": "N,N-二甲基甲酰胺",
+      "en": "N,N-dimethylformamide",
+      "aliases": [
+        "DMF"
+      ],
+      "cas": "68-12-2",
+      "cid": 6228
+    },
+    {
+      "zh": "N,N-二甲基乙酰胺",
+      "en": "N,N-dimethylacetamide",
+      "aliases": [
+        "DMAc"
+      ],
+      "cas": "127-19-5",
+      "cid": 31374
+    },
+    {
+      "zh": "二甲基亚砜",
+      "en": "dimethyl sulfoxide",
+      "aliases": [
+        "DMSO"
+      ],
+      "cas": "67-68-5",
+      "cid": 679
+    },
+    {
+      "zh": "N-甲基吡咯烷酮",
+      "en": "N-methyl-2-pyrrolidone",
+      "aliases": [
+        "NMP"
+      ],
+      "cas": "872-50-4",
+      "cid": 13387
+    },
+    {
+      "zh": "甲醛",
+      "en": "formaldehyde",
+      "aliases": [],
+      "cas": "50-00-0",
+      "cid": 712
+    },
+    {
+      "zh": "乙醛",
+      "en": "acetaldehyde",
+      "aliases": [],
+      "cas": "75-07-0",
+      "cid": 177
+    },
+    {
+      "zh": "苯甲醛",
+      "en": "benzaldehyde",
+      "aliases": [],
+      "cas": "100-52-7",
+      "cid": 240
+    },
+    {
+      "zh": "甲酸",
+      "en": "formic acid",
+      "aliases": [
+        "蚁酸"
+      ],
+      "cas": "64-18-6",
+      "cid": 284
+    },
+    {
+      "zh": "乙酸",
+      "en": "acetic acid",
+      "aliases": [
+        "醋酸",
+        "冰醋酸"
+      ],
+      "cas": "64-19-7",
+      "cid": 176
+    },
+    {
+      "zh": "乙酸酐",
+      "en": "acetic anhydride",
+      "aliases": [
+        "醋酸酐",
+        "醋酐"
+      ],
+      "cas": "108-24-7",
+      "cid": 7918
+    },
+    {
+      "zh": "三氟乙酸",
+      "en": "trifluoroacetic acid",
+      "aliases": [
+        "TFA"
+      ],
+      "cas": "76-05-1",
+      "cid": 6422
+    },
+    {
+      "zh": "草酸",
+      "en": "oxalic acid",
+      "aliases": [
+        "乙二酸"
+      ],
+      "cas": "144-62-7",
+      "cid": 971
+    },
+    {
+      "zh": "柠檬酸",
+      "en": "citric acid",
+      "aliases": [
+        "枸橼酸"
+      ],
+      "cas": "77-92-9",
+      "cid": 311
+    },
+    {
+      "zh": "酒石酸",
+      "en": "tartaric acid",
+      "aliases": [],
+      "cas": "87-69-4",
+      "cid": 444305
+    },
+    {
+      "zh": "苯甲酸",
+      "en": "benzoic acid",
+      "aliases": [
+        "安息香酸"
+      ],
+      "cas": "65-85-0",
+      "cid": 243
+    },
+    {
+      "zh": "水杨酸",
+      "en": "salicylic acid",
+      "aliases": [
+        "邻羟基苯甲酸"
+      ],
+      "cas": "69-72-7",
+      "cid": 338
+    },
+    {
+      "zh": "乳酸",
+      "en": "lactic acid",
+      "aliases": [],
+      "cas": "50-21-5",
+      "cid": 612
+    },
+    {
+      "zh": "琥珀酸",
+      "en": "succinic acid",
+      "aliases": [
+        "丁二酸"
+      ],
+      "cas": "110-15-6",
+      "cid": 1110
+    },
+    {
+      "zh": "马来酸",
+      "en": "maleic acid",
+      "aliases": [
+        "顺丁烯二酸"
+      ],
+      "cas": "110-16-7",
+      "cid": 444266
+    },
+    {
+      "zh": "富马酸",
+      "en": "fumaric acid",
+      "aliases": [
+        "反丁烯二酸"
+      ],
+      "cas": "110-17-8",
+      "cid": 444972
+    },
+    {
+      "zh": "盐酸",
+      "en": "hydrochloric acid",
+      "aliases": [
+        "氯化氢"
+      ],
+      "cas": "7647-01-0",
+      "cid": 313
+    },
+    {
+      "zh": "硫酸",
+      "en": "sulfuric acid",
+      "aliases": [],
+      "cas": "7664-93-9",
+      "cid": 1118
+    },
+    {
+      "zh": "硝酸",
+      "en": "nitric acid",
+      "aliases": [],
+      "cas": "7697-37-2",
+      "cid": 944
+    },
+    {
+      "zh": "磷酸",
+      "en": "phosphoric acid",
+      "aliases": [],
+      "cas": "7664-38-2",
+      "cid": 1004
+    },
+    {
+      "zh": "氢氟酸",
+      "en": "hydrofluoric acid",
+      "aliases": [
+        "氟化氢"
+      ],
+      "cas": "7664-39-3",
+      "cid": 14917
+    },
+    {
+      "zh": "硼酸",
+      "en": "boric acid",
+      "aliases": [],
+      "cas": "10043-35-3",
+      "cid": 7628
+    },
+    {
+      "zh": "氢氧化钠",
+      "en": "sodium hydroxide",
+      "aliases": [
+        "烧碱",
+        "火碱"
+      ],
+      "cas": "1310-73-2",
+      "cid": 14798
+    },
+    {
+      "zh": "氢氧化钾",
+      "en": "potassium hydroxide",
+      "aliases": [],
+      "cas": "1310-58-3",
+      "cid": 14797
+    },
+    {
+      "zh": "氨水",
+      "en": "ammonium hydroxide",
+      "aliases": [],
+      "cas": "1336-21-6",
+      "cid": 14923
+    },
+    {
+      "zh": "氨",
+      "en": "ammonia",
+      "aliases": [],
+      "cas": "7664-41-7",
+      "cid": 222
+    },
+    {
+      "zh": "碳酸钠",
+      "en": "sodium carbonate",
+      "aliases": [
+        "纯碱",
+        "苏打"
+      ],
+      "cas": "497-19-8",
+      "cid": 10340
+    },
+    {
+      "zh": "碳酸氢钠",
+      "en": "sodium bicarbonate",
+      "aliases": [
+        "小苏打"
+      ],
+      "cas": "144-55-8",
+      "cid": 516892
+    },
+    {
+      "zh": "碳酸钾",
+      "en": "potassium carbonate",
+      "aliases": [],
+      "cas": "584-08-7",
+      "cid": 11430
+    },
+    {
+      "zh": "氯化钠",
+      "en": "sodium chloride",
+      "aliases": [
+        "食盐"
+      ],
+      "cas": "7647-14-5",
+      "cid": 5234
+    },
+    {
+      "zh": "氯化钾",
+      "en": "potassium chloride",
+      "aliases": [],
+      "cas": "7447-40-7",
+      "cid": 4873
+    },
+    {
+      "zh": "氯化钙",
+      "en": "calcium chloride",
+      "aliases": [],
+      "cas": "10043-52-4",
+      "cid": 5284359
+    },
+    {
+      "zh": "氯化铵",
+      "en": "ammonium chloride",
+      "aliases": [],
+      "cas": "12125-02-9",
+      "cid": 25517
+    },
+    {
+      "zh": "硫酸钠",
+      "en": "sodium sulfate",
+      "aliases": [
+        "芒硝"
+      ],
+      "cas": "7757-82-6",
+      "cid": 24436
+    },
+    {
+      "zh": "硫酸镁",
+      "en": "magnesium sulfate",
+      "aliases": [],
+      "cas": "7487-88-9",
+      "cid": 24083
+    },
+    {
+      "zh": "硫酸铜",
+      "en": "copper(II) sulfate",
+      "aliases": [
+        "胆矾"
+      ],
+      "cas": "7758-98-7",
+      "cid": 24462
+    },
+    {
+      "zh": "硝酸银",
+      "en": "silver nitrate",
+      "aliases": [],
+      "cas": "7761-88-8",
+      "cid": 24470
+    },
+    {
+      "zh": "高锰酸钾",
+      "en": "potassium permanganate",
+      "aliases": [],
+      "cas": "7722-64-7",
+      "cid": 516875
+    },
+    {
+      "zh": "重铬酸钾",
+      "en": "potassium dichromate",
+      "aliases": [],
+      "cas": "7778-50-9",
+      "cid": 24502
+    },
+    {
+      "zh": "过氧化氢",
+      "en": "hydrogen peroxide",
+      "aliases": [
+        "双氧水"
+      ],
+      "cas": "7722-84-1",
+      "cid": 784
+    },
+    {
+      "zh": "次氯酸钠",
+      "en": "sodium hypochlorite",
+      "aliases": [],
+      "cas": "7681-52-9",
+      "cid": 23665760
+    },
+    {
+      "zh": "硫代硫酸钠",
+      "en": "sodium thiosulfate",
+      "aliases": [
+        "大苏打",
+        "海波"
+      ],
+      "cas": "7772-98-7",
+      "cid": 24477
+    },
+    {
+      "zh": "亚硫酸氢钠",
+      "en": "sodium bisulfite",
+      "aliases": [],
+      "cas": "7631-90-5",
+      "cid": 23665763
+    },
+    {
+      "zh": "磷酸二氢钾",
+      "en": "potassium dihydrogen phosphate",
+      "aliases": [],
+      "cas": "7778-77-0",
+      "cid": 516951
+    },
+    {
+      "zh": "磷酸氢二钠",
+      "en": "disodium hydrogen phosphate",
+      "aliases": [],
+      "cas": "7558-79-4",
+      "cid": 24203
+    },
+    {
+      "zh": "乙二胺四乙酸",
+      "en": "edetic acid",
+      "aliases": [
+        "EDTA"
+      ],
+      "cas": "60-00-4",
+      "cid": 6049
+    },
+    {
+      "zh": "碘",
+      "en": "iodine",
+      "aliases": [],
+      "cas": "7553-56-2",
+      "cid": 807
+    },
+    {
+      "zh": "溴",
+      "en": "bromine",
+      "aliases": [],
+      "cas": "7726-95-6",
+      "cid": 24408
+    },
+    {
+      "zh": "硼氢化钠",
+      "en": "sodium borohydride",
+      "aliases": [],
+      "cas": "16940-66-2",
+      "cid": 4311764
+    },
+    {
+      "zh": "氢化铝锂",
+      "en": "lithium aluminium hydride",
+      "aliases": [
+        "LAH"
+      ],
+      "cas": "16853-85-3",
+      "cid": 28112
+    },
+    {
+      "zh": "正丁基锂",
+      "en": "n-butyllithium",
+      "aliases": [],
+      "cas": "109-72-8",
+      "cid": 53627823
+    },
+    {
+      "zh": "氯化亚砜",
+      "en": "thionyl chloride",
+      "aliases": [
+        "二氯亚砜"
+      ],
+      "cas": "7719-09-7",
+      "cid": 24386
+    },
+    {
+      "zh": "三氯氧磷",
+      "en": "phosphoryl chloride",
+      "aliases": [],
+      "cas": "10025-87-3",
+      "cid": 24813
+    },
+    {
+      "zh": "乙酰氯",
+      "en": "acetyl chloride",
+      "aliases": [],
+      "cas": "75-36-5",
+      "cid": 6367
+    },
+    {
+      "zh": "苯甲酰氯",
+      "en": "benzoyl chloride",
+      "aliases": [],
+      "cas": "98-88-4",
+      "cid": 7412
+    },
+    {
+      "zh": "对甲苯磺酸",
+      "en": "p-toluenesulfonic acid",
+      "aliases": [],
+      "cas": "104-15-4",
+      "cid": 6101
+    },
+    {
+      "zh": "甲磺酰氯",
+      "en": "methanesulfonyl chloride",
+      "aliases": [],
+      "cas": "124-63-0",
+      "cid": 31297
+    },
+    {
+      "zh": "N-溴代丁二酰亚胺",
+      "en": "N-bromosuccinimide",
+      "aliases": [
+        "NBS"
+      ],
+      "cas": "128-08-5",
+      "cid": 67184
+    },
+    {
+      "zh": "二环己基碳二亚胺",
+      "en": "N,N'-dicyclohexylcarbodiimide",
+      "aliases": [
+        "DCC"
+      ],
+      "cas": "538-75-0",
+      "cid": 10868
+    },
+    {
+      "zh": "4-二甲氨基吡啶",
+      "en": "4-dimethylaminopyridine",
+      "aliases": [
+        "DMAP"
+      ],
+      "cas": "1122-58-3",
+      "cid": 14284
+    },
+    {
+      "zh": "碳酸二叔丁酯",
+      "en": "di-tert-butyl dicarbonate",
+      "aliases": [
+        "Boc酸酐"
+      ],
+      "cas": "24424-99-5",
+      "cid": 90495
+    },
+    {
+      "zh": "三苯基膦",
+      "en": "triphenylphosphine",
+      "aliases": [],
+      "cas": "603-35-0",
+      "cid": 11776
+    },
+    {
+      "zh": "钯",
+      "en": "palladium",
+      "aliases": [],
+      "cas": "7440-05-3",
+      "cid": 23938
+    },
+    {
+      "zh": "葡萄糖",
+      "en": "D-glucose",
+      "aliases": [
+        "右旋糖"
+      ],
+      "cas": "50-99-7",
+      "cid": 5793
+    },
+    {
+      "zh": "蔗糖",
+      "en": "sucrose",
+      "aliases": [],
+      "cas": "57-50-1",
+      "cid": 5988
+    },
+    {
+      "zh": "乳糖",
+      "en": "lactose",
+      "aliases": [],
+      "cas": "5965-66-2",
+      "cid": 6134
+    },
+    {
+      "zh": "尿素",
+      "en": "urea",
+      "aliases": [
+        "脲"
+      ],
+      "cas": "57-13-6",
+      "cid": 1176
+    },
+    {
+      "zh": "甘氨酸",
+      "en": "glycine",
+      "aliases": [],
+      "cas": "56-40-6",
+      "cid": 750
+    },
+    {
+      "zh": "L-丙氨酸",
+      "en": "L-alanine",
+      "aliases": [
+        "丙氨酸"
+      ],
+      "cas": "56-41-7",
+      "cid": 5950
+    },
+    {
+      "zh": "L-半胱氨酸",
+      "en": "L-cysteine",
+      "aliases": [
+        "半胱氨酸"
+      ],
+      "cas": "52-90-4",
+      "cid": 5862
+    },
+    {
+      "zh": "L-谷氨酸",
+      "en": "L-glutamic acid",
+      "aliases": [
+        "谷氨酸"
+      ],
+      "cas": "56-86-0",
+      "cid": 33032
+    },
+    {
+      "zh": "L-色氨酸",
+      "en": "L-tryptophan",
+      "aliases": [
+        "色氨酸"
+      ],
+      "cas": "73-22-3",
+      "cid": 6305
+    },
+    {
+      "zh": "L-苯丙氨酸",
+      "en": "L-phenylalanine",
+      "aliases": [
+        "苯丙氨酸"
+      ],
+      "cas": "63-91-2",
+      "cid": 6140
+    },
+    {
+      "zh": "胆固醇",
+      "en": "cholesterol",
+      "aliases": [],
+      "cas": "57-88-5",
+      "cid": 5997
+    },
+    {
+      "zh": "咖啡因",
+      "en": "caffeine",
+      "aliases": [
+        "咖啡碱"
+      ],
+      "cas": "58-08-2",
+      "cid": 2519
+    },
+    {
+      "zh": "尼古丁",
+      "en": "nicotine",
+      "aliases": [
+        "烟碱"
+      ],
+      "cas": "54-11-5",
+      "cid": 89594
+    },
+    {
+      "zh": "阿司匹林",
+      "en": "aspirin",
+      "aliases": [
+        "乙酰水杨酸"
+      ],
+      "cas": "50-78-2",
+      "cid": 2244
+    },
+    {
+      "zh": "对乙酰氨基酚",
+      "en": "acetaminophen",
+      "aliases": [
+        "扑热息痛"
+      ],
+      "cas": "103-90-2",
+      "cid": 1983
+    },
+    {
+      "zh": "布洛芬",
+      "en": "ibuprofen",
+      "aliases": [],
+      "cas": "15687-27-1",
+      "cid": 3672
+    },
+    {
+      "zh": "萘普生",
+      "en": "naproxen",
+      "aliases": [],
+      "cas": "22204-53-1",
+      "cid": 156391
+    },
+    {
+      "zh": "双氯芬酸",
+      "en": "diclofenac",
+      "aliases": [],
+      "cas": "15307-86-5",
+      "cid": 3033
+    },
+    {
+      "zh": "吲哚美辛",
+      "en": "indomethacin",
+      "aliases": [
+        "消炎痛"
+      ],
+      "cas": "53-86-1",
+      "cid": 3715
+    },
+    {
+      "zh": "吗啡",
+      "en": "morphine",
+      "aliases": [],
+      "cas": "57-27-2",
+      "cid": 5288826
+    },
+    {
+      "zh": "可待因",
+      "en": "codeine",
+      "aliases": [],
+      "cas": "76-57-3",
+      "cid": 5284371
+    },
+    {
+      "zh": "青霉素G",
+      "en": "benzylpenicillin",
+      "aliases": [
+        "青霉素"
+      ],
+      "cas": "61-33-6",
+      "cid": 5904
+    },
+    {
+      "zh": "阿莫西林",
+      "en": "amoxicillin",
+      "aliases": [],
+      "cas": "26787-78-0",
+      "cid": 33613
+    },
+    {
+      "zh": "头孢氨苄",
+      "en": "cefalexin",
+      "aliases": [
+        "先锋霉素IV"
+      ],
+      "cas": "15686-71-2",
+      "cid": 27447
+    },
+    {
+      "zh": "红霉素",
+      "en": "erythromycin",
+      "aliases": [],
+      "cas": "114-07-8",
+      "cid": 12560
+    },
+    {
+      "zh": "四环素",
+      "en": "tetracycline",
+      "aliases": [],
+      "cas": "60-54-8",
+      "cid": 54675776
+    },
+    {
+      "zh": "氯霉素",
+      "en": "chloramphenicol",
+      "aliases": [],
+      "cas": "56-75-7",
+      "cid": 5959
+    },
+    {
+      "zh": "环丙沙星",
+      "en": "ciprofloxacin",
+      "aliases": [],
+      "cas": "85721-33-1",
+      "cid": 2764
+    },
+    {
+      "zh": "左氧氟沙星",
+      "en": "levofloxacin",
+      "aliases": [],
+      "cas": "100986-85-4",
+      "cid": 149096
+    },
+    {
+      "zh": "磺胺甲噁唑",
+      "en": "sulfamethoxazole",
+      "aliases": [],
+      "cas": "723-46-6",
+      "cid": 5329
+    },
+    {
+      "zh": "甲硝唑",
+      "en": "metronidazole",
+      "aliases": [
+        "灭滴灵"
+      ],
+      "cas": "443-48-1",
+      "cid": 4173
+    },
+    {
+      "zh": "异烟肼",
+      "en": "isoniazid",
+      "aliases": [
+        "雷米封"
+      ],
+      "cas": "54-85-3",
+      "cid": 3767
+    },
+    {
+      "zh": "利福平",
+      "en": "rifampicin",
+      "aliases": [],
+      "cas": "13292-46-1",
+      "cid": 135398735
+    },
+    {
+      "zh": "阿昔洛韦",
+      "en": "acyclovir",
+      "aliases": [
+        "无环鸟苷"
+      ],
+      "cas": "59277-89-3",
+      "cid": 135398513
+    },
+    {
+      "zh": "奥司他韦",
+      "en": "oseltamivir",
+      "aliases": [
+        "达菲"
+      ],
+      "cas": "196618-13-0",
+      "cid": 65028
+    },
+    {
+      "zh": "二甲双胍",
+      "en": "metformin",
+      "aliases": [],
+      "cas": "657-24-9",
+      "cid": 4091
+    },
+    {
+      "zh": "格列本脲",
+      "en": "glibenclamide",
+      "aliases": [
+        "优降糖"
+      ],
+      "cas": "10238-21-8",
+      "cid": 3488
+    },
+    {
+      "zh": "胰岛素",
+      "en": "insulin",
+      "aliases": [],
+      "cas": "9004-10-8",
+      "cid": 70678557
+    },
+    {
+      "zh": "阿托伐他汀",
+      "en": "atorvastatin",
+      "aliases": [],
+      "cas": "134523-00-5",
+      "cid": 60823
+    },
+    {
+      "zh": "辛伐他汀",
+      "en": "simvastatin",
+      "aliases": [],
+      "cas": "79902-63-9",
+      "cid": 54454
+    },
+    {
+      "zh": "硝苯地平",
+      "en": "nifedipine",
+      "aliases": [
+        "心痛定"
+      ],
+      "cas": "21829-25-4",
+      "cid": 4485
+    },
+    {
+      "zh": "氨氯地平",
+      "en": "amlodipine",
+      "aliases": [],
+      "cas": "88150-42-9",
+      "cid": 2162
+    },
+    {
+      "zh": "卡托普利",
+      "en": "captopril",
+      "aliases": [],
+      "cas": "62571-86-2",
+      "cid": 44093
+    },
+    {
+      "zh": "普萘洛尔",
+      "en": "propranolol",
+      "aliases": [
+        "心得安"
+      ],
+      "cas": "525-66-6",
+      "cid": 4946
+    },
+    {
+      "zh": "美托洛尔",
+      "en": "metoprolol",
+      "aliases": [],
+      "cas": "51384-51-1",
+      "cid": 4171
+    },
+    {
+      "zh": "呋塞米",
+      "en": "furosemide",
+      "aliases": [
+        "速尿"
+      ],
+      "cas": "54-31-9",
+      "cid": 3440
+    },
+    {
+      "zh": "氢氯噻嗪",
+      "en": "hydrochlorothiazide",
+      "aliases": [
+        "双氢克尿噻"
+      ],
+      "cas": "58-93-5",
+      "cid": 3639
+    },
+    {
+      "zh": "地高辛",
+      "en": "digoxin",
+      "aliases": [],
+      "cas": "20830-75-5",
+      "cid": 2724385
+    },
+    {
+      "zh": "华法林",
+      "en": "warfarin",
+      "aliases": [],
+      "cas": "81-81-2",
+      "cid": 54678486
+    },
+    {
+      "zh": "硝酸甘油",
+      "en": "nitroglycerin",
+      "aliases": [],
+      "cas": "55-63-0",
+      "cid": 4510
+    },
+    {
+      "zh": "奥美拉唑",
+      "en": "omeprazole",
+      "aliases": [],
+      "cas": "73590-58-6",
+      "cid": 4594
+    },
+    {
+      "zh": "雷尼替丁",
+      "en": "ranitidine",
+      "aliases": [],
+      "cas": "66357-35-5",
+      "cid": 3001055
+    },
+    {
+      "zh": "西咪替丁",
+      "en": "cimetidine",
+      "aliases": [],
+      "cas": "51481-61-9",
+      "cid": 2756
+    },
+    {
+      "zh": "氯雷他定",
+      "en": "loratadine",
+      "aliases": [],
+      "cas": "79794-75-5",
+      "cid": 3957
+    },
+    {
+      "zh": "苯海拉明",
+      "en": "diphenhydramine",
+      "aliases": [],
+      "cas": "58-73-1",
+      "cid": 3100
+    },
+    {
+      "zh": "地西泮",
+      "en": "diazepam",
+      "aliases": [
+        "安定"
+      ],
+      "cas": "439-14-5",
+      "cid": 3016
+    },
+    {
+      "zh": "苯巴比妥",
+      "en": "phenobarbital",
+      "aliases": [
+        "鲁米那"
+      ],
+      "cas": "50-06-6",
+      "cid": 4763
+    },
+    {
+      "zh": "卡马西平",
+      "en": "carbamazepine",
+      "aliases": [],
+      "cas": "298-46-4",
+      "cid": 2554
+    },
+    {
+      "zh": "氟西汀",
+      "en": "fluoxetine",
+      "aliases": [
+        "百忧解"
+      ],
+      "cas": "54910-89-3",
+      "cid": 3386
+    },
+    {
+      "zh": "氯丙嗪",
+      "en": "chlorpromazine",
+      "aliases": [
+        "冬眠灵"
+      ],
+      "cas": "50-53-3",
+      "cid": 2726
+    },
+    {
+      "zh": "左旋多巴",
+      "en": "levodopa",
+      "aliases": [],
+      "cas": "59-92-7",
+      "cid": 6047
+    },
+    {
+      "zh": "利多卡因",
+      "en": "lidocaine",
+      "aliases": [],
+      "cas": "137-58-6",
+      "cid": 3676
+    },
+    {
+      "zh": "普鲁卡因",
+      "en": "procaine",
+      "aliases": [
+        "奴佛卡因"
+      ],
+      "cas": "59-46-1",
+      "cid": 4914
+    },
+    {
+      "zh": "阿托品",
+      "en": "atropine",
+      "aliases": [],
+      "cas": "51-55-8",
+      "cid": 174174
+    },
+    {
+      "zh": "肾上腺素",
+      "en": "epinephrine",
+      "aliases": [],
+      "cas": "51-43-4",
+      "cid": 5816
+    },
+    {
+      "zh": "去甲肾上腺素",
+      "en": "norepinephrine",
+      "aliases": [],
+      "cas": "51-41-2",
+      "cid": 439260
+    },
+    {
+      "zh": "多巴胺",
+      "en": "dopamine",
+      "aliases": [],
+      "cas": "51-61-6",
+      "cid": 681
+    },
+    {
+      "zh": "氢化可的松",
+      "en": "hydrocortisone",
+      "aliases": [
+        "皮质醇"
+      ],
+      "cas": "50-23-7",
+      "cid": 5754
+    },
+    {
+      "zh": "地塞米松",
+      "en": "dexamethasone",
+      "aliases": [],
+      "cas": "50-02-2",
+      "cid": 5743
+    },
+    {
+      "zh": "泼尼松",
+      "en": "prednisone",
+      "aliases": [
+        "强的松"
+      ],
+      "cas": "53-03-2",
+      "cid": 5865
+    },
+    {
+      "zh": "黄体酮",
+      "en": "progesterone",
+      "aliases": [
+        "孕酮"
+      ],
+      "cas": "57-83-0",
+      "cid": 5994
+    },
+    {
+      "zh": "雌二醇",
+      "en": "estradiol",
+      "aliases": [],
+      "cas": "50-28-2",
+      "cid": 5757
+    },
+    {
+      "zh": "睾酮",
+      "en": "testosterone",
+      "aliases": [
+        "睾丸素"
+      ],
+      "cas": "58-22-0",
+      "cid": 6013
+    },
+    {
+      "zh": "维生素C",
+      "en": "ascorbic acid",
+      "aliases": [
+        "抗坏血酸"
+      ],
+      "cas": "50-81-7",
+      "cid": 54670067
+    },
+    {
+      "zh": "维生素B1",
+      "en": "thiamine",
+      "aliases": [
+        "硫胺素"
+      ],
+      "cas": "59-43-8",
+      "cid": 1130
+    },
+    {
+      "zh": "维生素B2",
+      "en": "riboflavin",
+      "aliases": [
+        "核黄素"
+      ],
+      "cas": "83-88-5",
+      "cid": 493570
+    },
+    {
+      "zh": "维生素B6",
+      "en": "pyridoxine",
+      "aliases": [
+        "吡哆醇"
+      ],
+      "cas": "65-23-6",
+      "cid": 1054
+    },
+    {
+      "zh": "维生素B12",
+      "en": "cyanocobalamin",
+      "aliases": [
+        "氰钴胺"
+      ],
+      "cas": "68-19-9",
+      "cid": 166596686
+    },
+    {
+      "zh": "维生素A",
+      "en": "retinol",
+      "aliases": [
+        "视黄醇"
+      ],
+      "cas": "68-26-8",
+      "cid": 445354
+    },
+    {
+      "zh": "维生素D3",
+      "en": "cholecalciferol",
+      "aliases": [
+        "胆钙化醇"
+      ],
+      "cas": "67-97-0",
+      "cid": 5280795
+    },
+    {
+      "zh": "维生素E",
+      "en": "alpha-tocopherol",
+      "aliases": [
+        "生育酚"
+      ],
+      "cas": "59-02-9",
+      "cid": 14985
+    },
+    {
+      "zh": "维生素K1",
+      "en": "phylloquinone",
+      "aliases": [
+        "叶绿醌"
+      ],
+      "cas": "84-80-0",
+      "cid": 5284607
+    },
+    {
+      "zh": "叶酸",
+      "en": "folic acid",
+      "aliases": [],
+      "cas": "59-30-3",
+      "cid": 135398658
+    },
+    {
+      "zh": "烟酰胺",
+      "en": "nicotinamide",
+      "aliases": [
+        "维生素B3"
+      ],
+      "cas": "98-92-0",
+      "cid": 936
+    },
+    {
+      "zh": "青蒿素",
+      "en": "artemisinin",
+      "aliases": [],
+      "cas": "63968-64-9",
+      "cid": 68827
+    },
+    {
+      "zh": "小檗碱",
+      "en": "berberine",
+      "aliases": [
+        "黄连素"
+      ],
+      "cas": "2086-83-1",
+      "cid": 2353
+    },
+    {
+      "zh": "紫杉醇",
+      "en": "paclitaxel",
+      "aliases": [],
+      "cas": "33069-62-4",
+      "cid": 36314
+    },
+    {
+      "zh": "喜树碱",
+      "en": "camptothecin",
+      "aliases": [],
+      "cas": "7689-03-4",
+      "cid": 24360
+    },
+    {
+      "zh": "槲皮素",
+      "en": "quercetin",
+      "aliases": [],
+      "cas": "117-39-5",
+      "cid": 5280343
+    },
+    {
+      "zh": "芦丁",
+      "en": "rutin",
+      "aliases": [],
+      "cas": "153-18-4",
+      "cid": 5280805
+    },
+    {
+      "zh": "姜黄素",
+      "en": "curcumin",
+      "aliases": [],
+      "cas": "458-37-7",
+      "cid": 969516
+    },
+    {
+      "zh": "薄荷醇",
+      "en": "menthol",
+      "aliases": [
+        "薄荷脑"
+      ],
+      "cas": "1490-04-6",
+      "cid": 1254
+    },
+    {
+      "zh": "樟脑",
+      "en": "camphor",
+      "aliases": [],
+      "cas": "76-22-2",
+      "cid": 2537
+    },
+    {
+      "zh": "香草醛",
+      "en": "vanillin",
+      "aliases": [
+        "香兰素"
+      ],
+      "cas": "121-33-5",
+      "cid": 1183
+    },
+    {
+      "zh": "甲基橙",
+      "en": "methyl orange",
+      "aliases": [],
+      "cas": "547-58-0",
+      "cid": 23673835
+    },
+    {
+      "zh": "酚酞",
+      "en": "phenolphthalein",
+      "aliases": [],
+      "cas": "77-09-8",
+      "cid": 4764
+    },
+    {
+      "zh": "溴百里酚蓝",
+      "en": "bromothymol blue",
+      "aliases": [],
+      "cas": "76-59-5",
+      "cid": 6450
+    },
+    {
+      "zh": "亚甲基蓝",
+      "en": "methylene blue",
+      "aliases": [
+        "美蓝"
+      ],
+      "cas": "61-73-4",
+      "cid": 6099
+    },
+    {
+      "zh": "结晶紫",
+      "en": "crystal violet",
+      "aliases": [
+        "龙胆紫"
+      ],
+      "cas": "548-62-9",
+      "cid": 11057
+    },
+    {
+      "zh": "茚三酮",
+      "en": "ninhydrin",
+      "aliases": [],
+      "cas": "485-47-2",
+      "cid": 10236
+    },
+    {
+      "zh": "三羟甲基氨基甲烷",
+      "en": "tris(hydroxymethyl)aminomethane",
+      "aliases": [
+        "Tris"
+      ],
+      "cas": "77-86-1",
+      "cid": 6503
+    },
+    {
+      "zh": "十二烷基硫酸钠",
+      "en": "sodium dodecyl sulfate",
+      "aliases": [
+        "SDS"
+      ],
+      "cas": "151-21-3",
+      "cid": 3423265
+    }
+  ]
+}

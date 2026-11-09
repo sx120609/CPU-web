@@ -18,6 +18,7 @@
     <PdfToolPanel v-else-if="tool.componentKey === 'pdf_tools'" :require-login="requireLogin" />
     <SchoolCalendarPanel v-else-if="tool.componentKey === 'school_calendar'" />
     <VenueReservationPanel v-else-if="tool.componentKey === 'venue_reservation'" />
+    <CompoundLookupPanel v-else-if="tool.componentKey === 'compound_lookup'" />
     <template v-else-if="tool.componentKey === 'canteen_picker'">
       <section v-if="!canteenMeta" class="pk-card pk-empty" role="status">
         <p>{{ toolsError || "正在加载工具设置…" }}</p>
@@ -87,6 +88,7 @@ import "@/styles/page-kit.css";
 const PdfToolPanel = defineAsyncComponent(() => import("./PdfToolPanel.vue"));
 const SchoolCalendarPanel = defineAsyncComponent(() => import("./SchoolCalendarPanel.vue"));
 const VenueReservationPanel = defineAsyncComponent(() => import("./VenueReservationPanel.vue"));
+const CompoundLookupPanel = defineAsyncComponent(() => import("./CompoundLookupPanel.vue"));
 const CanteenPickerPanel = defineAsyncComponent(() => import("./CanteenPickerPanel.vue"));
 
 const route = useRoute();

@@ -180,6 +180,11 @@ const STATIC_PAGES: Record<string, StaticPage> = {
     description: `按食堂、楼层和品类筛选${SEO_SCHOOL.name}食堂门店，随机选择并查看公开评分与评论。`,
     sitemap: true,
   },
+  "/services/tools/compound_lookup": {
+    title: "化合索检器",
+    description: "按中文名、英文名、CAS 号或 PubChem CID 查询化合物的分子式、分子量、SMILES、熔沸点、密度、溶解度和 GHS 危险性。",
+    sitemap: true,
+  },
   "/services/tools/pdf_tools": {
     title: "PDF 工具",
     description: "在浏览器本地合并、拆分、压缩 PDF，转图片和提取文字，适合整理作业、通知和课程材料。",
