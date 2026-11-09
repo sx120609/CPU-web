@@ -933,6 +933,12 @@ private struct ScheduleWidgetRoot<Content: View>: View {
         .containerBackground(for: .widget) {
             if family.isAccessory {
                 Color.clear
+            } else if let photo = WidgetBackgroundImage.load(dark: colorScheme == .dark) {
+                // The user's photo under a veil of the widget's own colour.
+                ZStack {
+                    Image(uiImage: photo).resizable().scaledToFill()
+                    WidgetPalette.background(for: colorScheme).opacity(WidgetBackgroundImage.veil)
+                }
             } else {
                 WidgetPalette.background(for: colorScheme)
             }
@@ -3066,4 +3072,32 @@ private extension ScheduleLiveActivityAttributes.ContentState {
 } contentStates: {
     ScheduleLiveActivityAttributes.ContentState.upcomingPreview
     ScheduleLiveActivityAttributes.ContentState.inProgressPreview
+}
+
+/// The photo set in the app's 小组件背景 (`NativeWidgetBackground`): the dark
+/// one in dark appearance when there is one, else the light one.
+private enum WidgetBackgroundImage {
+    private static var cache: [String: (modified: Date, image: UIImage)] = [:]
+
+    static var veil: Double {
+        let value = UserDefaults(suiteName: AppWidgetConfiguration.appGroup)?.object(forKey: "widgetBackgroundVeil") as? Double ?? 0.5
+        return min(0.85, max(0.15, value))
+    }
+
+    static func load(dark: Bool) -> UIImage? {
+        if dark, let image = image(named: "widget-background-dark.jpg") { return image }
+        return image(named: "widget-background-light.jpg")
+    }
+
+    private static func image(named name: String) -> UIImage? {
+        guard let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: AppWidgetConfiguration.appGroup)?
+            .appendingPathComponent(name),
+              let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        else { return nil }
+        if let cached = cache[name], cached.modified == modified { return cached.image }
+        guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+        cache[name] = (modified, image)
+        return image
+    }
 }

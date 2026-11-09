@@ -42,7 +42,14 @@ final class NativeSchedulePreferences: ObservableObject {
     @Published private(set) var backgroundPath: String
     @Published var backgroundVisibility: Double { didSet { persist() } }
     @Published var backgroundBlur: Double { didSet { persist() } }
+    /// The background in light appearance, cropped as chosen.
     @Published private(set) var backgroundImage: UIImage?
+    /// The background in dark appearance; nil uses the light one.
+    @Published private(set) var darkBackgroundImage: UIImage?
+    /// The part of each image shown, as fractions of its width and height;
+    /// nil shows the whole image filled to the screen.
+    @Published private(set) var backgroundCrop: CGRect?
+    @Published private(set) var darkBackgroundCrop: CGRect?
 
     private let defaults: UserDefaults
     private let imageURL: URL
@@ -71,6 +78,9 @@ final class NativeSchedulePreferences: ObservableObject {
         static let backgroundPath = "nativeSchedule.backgroundPath"
         static let backgroundVisibility = "nativeSchedule.backgroundVisibility"
         static let backgroundBlur = "nativeSchedule.backgroundBlur"
+        static let darkBackgroundPath = "nativeSchedule.darkBackgroundPath"
+        static let backgroundCrop = "nativeSchedule.backgroundCrop"
+        static let darkBackgroundCrop = "nativeSchedule.darkBackgroundCrop"
     }
 
     init(defaults: UserDefaults = .standard, imageURL: URL = NativeSchedulePreferences.backgroundFileURL) {
@@ -104,9 +114,85 @@ final class NativeSchedulePreferences: ObservableObject {
         backgroundVisibility = Self.normalizedVisibility(defaults.object(forKey: Key.backgroundVisibility) as? Double ?? 0.76)
         backgroundBlur = Self.normalizedBlur(defaults.object(forKey: Key.backgroundBlur) as? Double ?? 0)
         backgroundImage = nil
+        backgroundCrop = Self.crop(defaults.string(forKey: Key.backgroundCrop))
+        darkBackgroundCrop = Self.crop(defaults.string(forKey: Key.darkBackgroundCrop))
         loadBackgroundImage()
+        loadDarkBackgroundImage()
         ready = true
         persist()
+    }
+
+    /// The background for an appearance: the dark one in dark mode when there is one.
+    func backgroundImage(dark: Bool) -> UIImage? {
+        dark ? (darkBackgroundImage ?? backgroundImage) : backgroundImage
+    }
+
+    var hasBackground: Bool { backgroundImage != nil || darkBackgroundImage != nil }
+
+    static var darkBackgroundFileURL: URL {
+        backgroundFileURL.deletingLastPathComponent().appendingPathComponent("schedule-background-dark.jpg")
+    }
+
+    private var darkImageURL: URL {
+        imageURL.deletingLastPathComponent().appendingPathComponent("schedule-background-dark.jpg")
+    }
+
+    /// The whole image as chosen, for the crop editor.
+    func originalBackground(dark: Bool) -> UIImage? {
+        guard let data = try? Data(contentsOf: dark ? darkImageURL : imageURL) else { return nil }
+        return Self.previewImage(data: data, crop: nil)
+    }
+
+    /// Sets the dark-appearance image; nil goes back to the light one.
+    func setDarkBackgroundData(_ data: Data?) throws {
+        if let data {
+            guard Self.previewImage(data: data, crop: nil) != nil else { throw BackgroundError.invalidData }
+            try FileManager.default.createDirectory(at: darkImageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: darkImageURL, options: .atomic)
+            var excludedURL = darkImageURL
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            try? excludedURL.setResourceValues(resourceValues)
+        } else if FileManager.default.fileExists(atPath: darkImageURL.path) {
+            try FileManager.default.removeItem(at: darkImageURL)
+        }
+        darkBackgroundCrop = nil
+        loadDarkBackgroundImage()
+        persist()
+    }
+
+    /// The part of an image to show; nil for all of it.
+    func setBackgroundCrop(_ crop: CGRect?, dark: Bool) {
+        let value = crop.flatMap(Self.normalizedCrop)
+        if dark {
+            darkBackgroundCrop = value
+            loadDarkBackgroundImage()
+        } else {
+            backgroundCrop = value
+            loadBackgroundImage()
+        }
+        persist()
+    }
+
+    private func loadDarkBackgroundImage() {
+        darkBackgroundImage = (try? Data(contentsOf: darkImageURL)).flatMap { Self.previewImage(data: $0, crop: darkBackgroundCrop) }
+    }
+
+    static func normalizedCrop(_ rect: CGRect) -> CGRect? {
+        let clipped = rect.standardized.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard !clipped.isNull, clipped.width > 0.02, clipped.height > 0.02 else { return nil }
+        return clipped.width > 0.995 && clipped.height > 0.995 ? nil : clipped
+    }
+
+    private static func crop(_ text: String?) -> CGRect? {
+        let parts = (text ?? "").split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 4 else { return nil }
+        return normalizedCrop(CGRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3]))
+    }
+
+    private static func cropText(_ rect: CGRect?) -> String {
+        guard let rect else { return "" }
+        return [rect.minX, rect.minY, rect.width, rect.height].map { String(format: "%.5f", $0) }.joined(separator: ",")
     }
 
     static let paletteOptions = ["color-glass", "green", "blue", "teal", "indigo", "violet", "orange", "rose", "slate"]
@@ -175,6 +261,7 @@ final class NativeSchedulePreferences: ObservableObject {
 
     func reset() throws {
         try setBackgroundData(nil)
+        try setDarkBackgroundData(nil)
         showLocation = true
         showTeacher = true
         showPeriod = true
@@ -206,6 +293,7 @@ final class NativeSchedulePreferences: ObservableObject {
             var resourceValues = URLResourceValues()
             resourceValues.isExcludedFromBackup = true
             try? excludedURL.setResourceValues(resourceValues)
+            backgroundCrop = nil
             backgroundImage = image
             backgroundPath = imageURL.lastPathComponent
         } else {
@@ -214,6 +302,7 @@ final class NativeSchedulePreferences: ObservableObject {
             }
             backgroundPath = ""
             backgroundImage = nil
+            backgroundCrop = nil
             backgroundVisibility = 0.76
             backgroundBlur = 0
         }
@@ -228,14 +317,14 @@ final class NativeSchedulePreferences: ObservableObject {
         // App container paths change after an update/restore. The asset always
         // lives in Application Support; an old absolute preference is a marker.
         if let data = try? Data(contentsOf: imageURL) {
-            backgroundImage = Self.previewImage(data: data)
+            backgroundImage = Self.previewImage(data: data, crop: backgroundCrop)
         } else {
             backgroundImage = nil
         }
         backgroundPath = backgroundImage == nil ? "" : imageURL.lastPathComponent
     }
 
-    private static func previewImage(data: Data) -> UIImage? {
+    private static func previewImage(data: Data, crop: CGRect? = nil) -> UIImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -243,7 +332,10 @@ final class NativeSchedulePreferences: ObservableObject {
                 kCGImageSourceShouldCacheImmediately: true,
                 kCGImageSourceThumbnailMaxPixelSize: 2560,
               ] as CFDictionary) else { return nil }
-        return UIImage(cgImage: image)
+        guard let crop else { return UIImage(cgImage: image) }
+        let width = CGFloat(image.width), height = CGFloat(image.height)
+        let rect = CGRect(x: crop.minX * width, y: crop.minY * height, width: crop.width * width, height: crop.height * height).integral
+        return image.cropping(to: rect).map { UIImage(cgImage: $0) } ?? UIImage(cgImage: image)
     }
 
     private func persist() {
@@ -270,6 +362,9 @@ final class NativeSchedulePreferences: ObservableObject {
         defaults.set(backgroundPath, forKey: Key.backgroundPath)
         defaults.set(Self.normalizedVisibility(backgroundVisibility), forKey: Key.backgroundVisibility)
         defaults.set(Self.normalizedBlur(backgroundBlur), forKey: Key.backgroundBlur)
+        defaults.set(darkBackgroundImage == nil ? "" : darkImageURL.lastPathComponent, forKey: Key.darkBackgroundPath)
+        defaults.set(Self.cropText(backgroundCrop), forKey: Key.backgroundCrop)
+        defaults.set(Self.cropText(darkBackgroundCrop), forKey: Key.darkBackgroundCrop)
     }
 
     private enum BackgroundError: Error { case invalidData }

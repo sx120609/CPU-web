@@ -356,8 +356,8 @@ private struct NativeScheduleSettingsView: View {
                             .frame(width: 52, height: 52)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("背景自定义")
-                            Text(preferences.backgroundImage == nil ? "选择图片、调整显现与柔化" : "已设置 · 点按预览和调整")
+                            Text("背景")
+                            Text(preferences.hasBackground ? "已设置 · 点按预览和调整" : "课表和小组件的背景图，浅色深色可分开")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

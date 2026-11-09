@@ -205,7 +205,7 @@ struct NativeScheduleView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 8)
                     .background {
-                        if preferences.backgroundImage != nil {
+                        if preferences.backgroundImage(dark: colorScheme == .dark) != nil {
                             NativeScheduleBackgroundSurface().ignoresSafeArea(edges: .top)
                         } else if let canvas = styleCanvas {
                             canvas.ignoresSafeArea(edges: .top)
@@ -286,16 +286,16 @@ struct NativeScheduleView: View {
         }
         .background {
             // Paper and board bring their own page colour; a photo still wins.
-            if preferences.backgroundImage == nil, let canvas = styleCanvas {
+            if !preferences.hasBackground, let canvas = styleCanvas {
                 canvas.ignoresSafeArea()
             } else {
-                NativeScheduleBackground(image: preferences.backgroundImage,
+                NativeScheduleBackground(image: preferences.backgroundImage(dark: colorScheme == .dark),
                                          visibility: preferences.backgroundVisibility,
                                          blur: preferences.backgroundBlur)
                     .ignoresSafeArea()
             }
         }
-        .environment(\.scheduleHasBackground, preferences.backgroundImage != nil)
+        .environment(\.scheduleHasBackground, preferences.backgroundImage(dark: colorScheme == .dark) != nil)
         .environment(\.scheduleBackgroundVisibility, preferences.backgroundVisibility)
         .environment(\.scheduleStyle, style)
         .environment(\.scheduleCouple, coupleLayer)
@@ -315,7 +315,7 @@ struct NativeScheduleView: View {
             if viewMode == .month { seedMonthSelection(store.result) }
 #if DEBUG
             if !isBackgroundPreview,
-               ProcessInfo.processInfo.environment["CPU_DEBUG_BACKGROUND_EDITOR"] == "1" {
+               ["1", "crop"].contains(ProcessInfo.processInfo.environment["CPU_DEBUG_BACKGROUND_EDITOR"]) {
                 backgroundEditorPresented = true
             }
             // `CPU_DEBUG_SCHEDULE_ACTION` runs one action once the timetable has
@@ -2702,7 +2702,7 @@ struct NativeScheduleView: View {
             }
         }
         .background {
-            if preferences.backgroundImage != nil {
+            if preferences.backgroundImage(dark: colorScheme == .dark) != nil {
                 NativeScheduleBackgroundSurface()
             }
         }
