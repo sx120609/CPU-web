@@ -57,7 +57,8 @@ extension NativeScheduleCourse {
             nativeId: nativeId, customStartTime: start, customEndTime: end, name: name, teacher: teacher,
             weeks: weeks, weekList: weekList, location: location, slotNote: slotNote,
             startSlot: startSlot, endSlot: endSlot, sourceKey: sourceKey, customId: customId,
-            custom: custom, orphaned: orphaned, sourceNote: sourceNote
+            custom: custom, orphaned: orphaned, sourceNote: sourceNote,
+            occurrenceKey: occurrenceKey, occurrenceFrom: occurrenceFrom, sourceWeeks: sourceWeeks, editKeys: editKeys
         )
     }
 }

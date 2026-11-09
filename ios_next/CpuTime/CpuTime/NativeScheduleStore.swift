@@ -237,6 +237,18 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     public let customId: String?
     public let custom: Bool
     public let orphaned: Bool
+    /// Set on a course shown in place of a single meeting that was moved
+    /// (调整这一次): the edit key of the course it came from and the date it was
+    /// meant for. See `NativeScheduleOccurrenceChange`.
+    public let occurrenceKey: String?
+    public let occurrenceFrom: String?
+    /// The week text the course came with when one of its meetings was cancelled
+    /// or moved and `weeks` was rewritten; its edit key is built from this.
+    public let sourceWeeks: String?
+    /// The schedule-edit keys of the rows this course was drawn from, before
+    /// the site merged split rows; empty from an older site. Single-meeting
+    /// changes name the course by one of these.
+    public let editKeys: [String]
     /// The note the course arrived with. A merged block replaces `slotNote`
     /// with its period label and keeps the original here. Not part of the
     /// stored or transmitted course.
@@ -278,8 +290,16 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
         customId: String? = nil,
         custom: Bool = false,
         orphaned: Bool = false,
-        sourceNote: String? = nil
+        sourceNote: String? = nil,
+        occurrenceKey: String? = nil,
+        occurrenceFrom: String? = nil,
+        sourceWeeks: String? = nil,
+        editKeys: [String] = []
     ) {
+        self.editKeys = editKeys
+        self.occurrenceKey = occurrenceKey?.trimmedNonEmpty
+        self.occurrenceFrom = occurrenceFrom?.trimmedNonEmpty
+        self.sourceWeeks = sourceWeeks
         self.customStartTime = customStartTime
         self.customEndTime = customEndTime
         self.nativeId = nativeId?.trimmedNonEmpty
@@ -302,6 +322,7 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
         case customStartTime, customEndTime
         case nativeId, name, teacher, weeks, weekList, location, slotNote, startSlot, endSlot
         case sourceKey, customId, custom, orphaned
+        case occurrenceKey, occurrenceFrom, sourceWeeks, editKeys
     }
 
     public init(from decoder: Decoder) throws {
@@ -325,7 +346,12 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
             sourceKey: try values.decodeFlexibleString(forKey: .sourceKey),
             customId: try values.decodeFlexibleString(forKey: .customId),
             custom: values.decodeFlexibleBool(forKey: .custom) ?? false,
-            orphaned: values.decodeFlexibleBool(forKey: .orphaned) ?? false
+            orphaned: values.decodeFlexibleBool(forKey: .orphaned) ?? false,
+            occurrenceKey: try values.decodeFlexibleString(forKey: .occurrenceKey),
+            occurrenceFrom: try values.decodeFlexibleString(forKey: .occurrenceFrom),
+            sourceWeeks: try values.decodeFlexibleString(forKey: .sourceWeeks),
+            editKeys: ((try? values.decodeIfPresent([String].self, forKey: .editKeys)) ?? nil)?
+                .compactMap { $0.trimmedNonEmpty } ?? []
         )
     }
 }
@@ -431,28 +457,65 @@ public struct NativeScheduleCustomItem: Codable, Equatable, Sendable {
     }
 }
 
+/// One meeting of a course changed on its own: 这次停课, or 调整这一次 to
+/// another date, other periods or another room. The server keeps them with the
+/// schedule edits (`server/src/shared/scheduleOccurrences.ts`) and the site
+/// writes them into the timetable before it reaches the app.
+public struct NativeScheduleOccurrenceChange: Codable, Equatable, Hashable, Sendable {
+    /// The course's edit key (`jwxt|…`, or `custom:<id>`).
+    public var key: String
+    /// "yyyy-MM-dd", the meeting as it was meant to be held.
+    public var date: String
+    public var cancelled: Bool?
+    public var toDate: String?
+    public var startSlot: Int?
+    public var endSlot: Int?
+    public var location: String?
+    public var note: String?
+
+    public init(key: String, date: String, cancelled: Bool? = nil, toDate: String? = nil,
+                startSlot: Int? = nil, endSlot: Int? = nil, location: String? = nil, note: String? = nil) {
+        self.key = key
+        self.date = date
+        self.cancelled = cancelled == true ? true : nil
+        self.toDate = toDate
+        self.startSlot = startSlot
+        self.endSlot = endSlot
+        self.location = location?.trimmedNonEmpty
+        self.note = note?.trimmedNonEmpty
+    }
+
+    public var isCancelled: Bool { cancelled == true }
+}
+
 public struct NativeScheduleEditState: Codable, Equatable, Sendable {
     public var hidden: [String]
     public var custom: [NativeScheduleCustomItem]
+    /// Single meetings cancelled or moved. Nil when the site does not keep them
+    /// yet; a save then leaves them out and the server keeps what it has.
+    public var occurrences: [NativeScheduleOccurrenceChange]?
     /// Display priority by `NativeSchedulePriority.key`. Always sent on save, so
     /// the server takes this client's map as it stands; a client that omits
     /// the field leaves the saved one alone.
     public var priority: [String: Int]
 
-    public init(hidden: [String] = [], custom: [NativeScheduleCustomItem] = [], priority: [String: Int] = [:]) {
+    public init(hidden: [String] = [], custom: [NativeScheduleCustomItem] = [], priority: [String: Int] = [:],
+                occurrences: [NativeScheduleOccurrenceChange]? = nil) {
         self.hidden = hidden
         self.custom = custom
         self.priority = priority
+        self.occurrences = occurrences
     }
 
-    private enum CodingKeys: String, CodingKey { case hidden, custom, priority }
+    private enum CodingKeys: String, CodingKey { case hidden, custom, priority, occurrences }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             hidden: try values.decodeIfPresent([String].self, forKey: .hidden) ?? [],
             custom: try values.decodeIfPresent([NativeScheduleCustomItem].self, forKey: .custom) ?? [],
-            priority: ((try? values.decodeIfPresent([String: Int].self, forKey: .priority)) ?? nil) ?? [:]
+            priority: ((try? values.decodeIfPresent([String: Int].self, forKey: .priority)) ?? nil) ?? [:],
+            occurrences: (try? values.decodeIfPresent([NativeScheduleOccurrenceChange].self, forKey: .occurrences)) ?? nil
         )
     }
 }
@@ -671,6 +734,9 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     public let calendar: NativeScheduleCalendar?
     public let auth: NativeScheduleAuth
     public let error: String?
+    /// The single meetings cancelled or moved this term, already written into
+    /// `data`. Nil from a site that does not support them.
+    public let occurrenceChanges: [NativeScheduleOccurrenceChange]?
 
     public init(
         version: Int = 1,
@@ -682,8 +748,10 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
         data: NativeScheduleResult? = nil,
         calendar: NativeScheduleCalendar? = nil,
         auth: NativeScheduleAuth = NativeScheduleAuth(),
-        error: String? = nil
+        error: String? = nil,
+        occurrenceChanges: [NativeScheduleOccurrenceChange]? = nil
     ) {
+        self.occurrenceChanges = occurrenceChanges
         self.version = version
         self.completeSemester = completeSemester
         self.cancelled = cancelled
@@ -698,6 +766,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case version, completeSemester, cancelled, source, fetchedAt, periods, data, calendar, auth, error
+        case occurrenceChanges
     }
 
     public init(from decoder: Decoder) throws {
@@ -712,7 +781,8 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
             data: try values.decodeIfPresent(NativeScheduleResult.self, forKey: .data),
             calendar: try values.decodeIfPresent(NativeScheduleCalendar.self, forKey: .calendar),
             auth: try values.decodeIfPresent(NativeScheduleAuth.self, forKey: .auth) ?? NativeScheduleAuth(),
-            error: try values.decodeIfPresent(String.self, forKey: .error)
+            error: try values.decodeIfPresent(String.self, forKey: .error),
+            occurrenceChanges: (try? values.decodeIfPresent([NativeScheduleOccurrenceChange].self, forKey: .occurrenceChanges)) ?? nil
         )
     }
 }
@@ -971,7 +1041,11 @@ public enum NativeScheduleCourseBlockMerger {
             customId: course.customId,
             custom: course.custom,
             orphaned: course.orphaned,
-            sourceNote: sourceNote
+            sourceNote: sourceNote,
+            occurrenceKey: course.occurrenceKey ?? next?.occurrenceKey,
+            occurrenceFrom: course.occurrenceFrom ?? next?.occurrenceFrom,
+            sourceWeeks: course.sourceWeeks ?? next?.sourceWeeks,
+            editKeys: Array(NSOrderedSet(array: course.editKeys + (next?.editKeys ?? []))) as? [String] ?? course.editKeys
         )
     }
 
@@ -1235,8 +1309,28 @@ public final class NativeScheduleStore: ObservableObject {
     public private(set) var latestSnapshot: NativeScheduleSnapshot? {
         didSet {
             guard latestSnapshot != oldValue else { return }
+            if latestSnapshot?.occurrenceChanges != occurrenceChanges, latestSnapshot?.occurrenceChanges != nil || latestSnapshot == nil {
+                occurrenceChanges = latestSnapshot?.occurrenceChanges
+            }
             onLatestSnapshotChange?(latestSnapshot)
         }
+    }
+    /// The single meetings cancelled or moved this term; nil when the site
+    /// cannot keep them, and the 调整这一次 / 这次停课 actions are then hidden.
+    @Published public private(set) var occurrenceChanges: [NativeScheduleOccurrenceChange]?
+
+    /// Cancels or moves one meeting of the course with these edit keys (one
+    /// per row the site merged into it), or with `nil` puts it back as planned.
+    public func changeOccurrence(keys: [String], date: String,
+                                 to change: ((String) -> NativeScheduleOccurrenceChange)?) async throws {
+        let keys = Set(keys)
+        guard !keys.isEmpty else { return }
+        var edits = try await loadScheduleEdits()
+        var list = edits.occurrences ?? occurrenceChanges ?? []
+        list.removeAll { keys.contains($0.key) && $0.date == date }
+        if let change { list.append(contentsOf: keys.sorted().map(change)) }
+        edits.occurrences = list
+        try await saveScheduleEdits(edits)
     }
     public var onWatchSnapshot: ((NativeScheduleSnapshot) -> Void)?
     /// 最新快照变了（包括退出登录时清空成 `nil`）。小组件的本地课表跟着它写。

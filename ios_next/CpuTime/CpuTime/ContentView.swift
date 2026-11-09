@@ -464,6 +464,34 @@ private enum NativeScheduleDebugFixture {
                 ),
             ]))
         }
+        // `CPU_DEBUG_OCCURRENCES=1` (with the visual timetable): Monday's first
+        // course is cancelled this week and Tuesday's first is moved to
+        // Thursday evening, as the site would hand them over.
+        var occurrenceChanges: [NativeScheduleOccurrenceChange]? = nil
+        if ProcessInfo.processInfo.environment["CPU_DEBUG_OCCURRENCES"] == "1", cells.count > 1, days.count == 7 {
+            func rewritten(_ cell: NativeScheduleCell, key: String) -> NativeScheduleCell {
+                let course = cell.courses[0]
+                return NativeScheduleCell(day: cell.day, bigSlot: cell.bigSlot, courses: [NativeScheduleCourse(
+                    nativeId: course.nativeId, name: course.name, teacher: course.teacher, weeks: "第 2 周", weekList: [2],
+                    location: course.location, slotNote: course.slotNote, startSlot: course.startSlot, endSlot: course.endSlot,
+                    sourceKey: course.sourceKey, sourceWeeks: "第 1-2 周", editKeys: [key]
+                )])
+            }
+            let cancelledKey = cells[0].courses[0].sourceKey ?? "debug-cancelled"
+            let movedKey = cells[1].courses[0].sourceKey ?? "debug-moved"
+            let moving = cells[1].courses[0]
+            cells[0] = rewritten(cells[0], key: cancelledKey)
+            cells[1] = rewritten(cells[1], key: movedKey)
+            cells.append(NativeScheduleCell(day: 4, bigSlot: 5, courses: [NativeScheduleCourse(
+                nativeId: "occ:debug", name: moving.name, teacher: moving.teacher, weeks: "第 1 周", weekList: [1],
+                location: "教学楼 B305", startSlot: 9, endSlot: 10, occurrenceKey: movedKey, occurrenceFrom: days[1]
+            )]))
+            occurrenceChanges = [
+                NativeScheduleOccurrenceChange(key: cancelledKey, date: days[0], cancelled: true),
+                NativeScheduleOccurrenceChange(key: movedKey, date: days[1], toDate: days[3], startSlot: 9, endSlot: 10,
+                                               location: "教学楼 B305"),
+            ]
+        }
         let result = NativeScheduleResult(
             source: .jwxt,
             semesters: semesters,
@@ -479,7 +507,8 @@ private enum NativeScheduleDebugFixture {
             periods: periods,
             data: result,
             calendar: calendar,
-            auth: NativeScheduleAuth(authenticated: true, identity: "debug", account: "debug")
+            auth: NativeScheduleAuth(authenticated: true, identity: "debug", account: "debug"),
+            occurrenceChanges: occurrenceChanges
         )
     }
 }

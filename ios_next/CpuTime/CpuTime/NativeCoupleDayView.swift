@@ -184,6 +184,7 @@ struct ScheduleCoupleDayView: View {
                 let frame = frame(block, lanes: counts[block.id] ?? 1, width: width)
                 tile(block, partner: partner, together: together.contains(CoupleRules.key(Self.piece(block))))
                     .frame(width: frame.width, height: frame.height)
+                    .scheduleCourseInteractions(block)
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { onCourseSelected(block) }
                     .offset(x: frame.minX, y: frame.minY)

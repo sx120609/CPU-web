@@ -17,6 +17,7 @@ import {
   scheduleWidgetFallbackPayload,
 } from "../services/scheduleWidget";
 import { applyScheduleEditsToCells, dropCopiesOfRestoredCourses, normalizeScheduleEditsState } from "../shared/scheduleEdits";
+import { MAX_OCCURRENCE_CHANGES, normalizeOccurrenceChanges } from "../shared/scheduleOccurrences";
 import { normalizeCustomTimeRange } from "../shared/scheduleCustomTime";
 import {
   MAX_SCHEDULE_PRIORITIES,
@@ -380,6 +381,17 @@ const scheduleEditStateSchema = z.object({
   priority: z.record(z.string().trim().min(1).max(80), z.number().int().min(1).max(MAX_SCHEDULE_PRIORITY))
     .refine((value) => Object.keys(value).length <= MAX_SCHEDULE_PRIORITIES, "优先级条目过多")
     .optional(),
+  // 单次停课、调课，见 shared/scheduleOccurrences.ts。旧客户端不带这个字段，服务端保留已存的。
+  occurrences: z.array(z.object({
+    key: z.string().trim().min(1).max(180),
+    date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
+    cancelled: z.boolean().optional(),
+    toDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    startSlot: z.number().int().min(1).max(48).optional(),
+    endSlot: z.number().int().min(1).max(48).optional(),
+    location: z.string().trim().max(60).optional(),
+    note: z.string().trim().max(80).optional(),
+  })).max(MAX_OCCURRENCE_CHANGES).optional(),
 });
 
 const scheduleWidgetTokenSchema = z.object({
@@ -1031,14 +1043,17 @@ jwxtRouter.put(
       const where = { userId_semester: { userId: req.user.userId, semester } };
       const { priority: incomingPriority, ...incoming } = normalizeScheduleEdits(req.body.edits);
       const stored = await prisma.userScheduleEdit.findUnique({ where, select: { payload: true } });
-      let storedEdits: { hidden?: unknown; priority?: unknown } | undefined;
+      let storedEdits: { hidden?: unknown; priority?: unknown; occurrences?: unknown } | undefined;
       try { storedEdits = stored?.payload ? JSON.parse(stored.payload) : undefined; } catch { storedEdits = undefined; }
       // Older iOS, Android and HarmonyOS builds restore a hidden course but keep its edited copy.
       const state = dropCopiesOfRestoredCourses(incoming, {
         hidden: Array.isArray(storedEdits?.hidden) ? storedEdits.hidden.filter((key): key is string => typeof key === "string") : [],
       });
       const priority = resolveSavedSchedulePriority(incomingPriority, storedEdits?.priority);
-      const edits = priority ? { ...state, priority } : state;
+      // A client that does not know single-meeting changes leaves the saved ones alone.
+      const occurrences = state.occurrences ?? normalizeOccurrenceChanges(storedEdits?.occurrences);
+      const withOccurrences = occurrences.length ? { ...state, occurrences } : { ...state, occurrences: undefined };
+      const edits = priority ? { ...withOccurrences, priority } : withOccurrences;
       await prisma.userScheduleEdit.upsert({
         where,
         create: {

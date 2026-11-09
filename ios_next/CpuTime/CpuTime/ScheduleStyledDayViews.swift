@@ -72,6 +72,12 @@ private extension View {
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("轻点查看课程详情")
     }
+
+    /// The same for one course card, with its state and long-press menu.
+    @available(iOS 17.0, *)
+    func scheduleCourseAction(_ block: NativeScheduleCourseBlock, _ action: @escaping () -> Void) -> some View {
+        scheduleCourseInteractions(block).scheduleCourseAction(action)
+    }
 }
 
 /// The day view of every style except classic.
@@ -230,7 +236,7 @@ struct ScheduleStyledDayView: View {
                     ScheduleStyledDepartureRow(block: block, status: status, showLocation: showLocation,
                                                showsDivider: !last)
                         .frame(height: cardHeight)
-                        .scheduleCourseAction { onCourseSelected(block) }
+                        .scheduleCourseAction(block) { onCourseSelected(block) }
                 }
             }
         }
@@ -409,6 +415,7 @@ private struct ScheduleDayTimeline: View {
                             )
                             .frame(height: cardHeight)
                             .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .scheduleCourseInteractions(block)
                             .onTapGesture { onCourseSelected(block) }
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(scheduleSpokenLabel(block, status: status, state: status.label(block)))
@@ -653,7 +660,7 @@ private struct ScheduleDayTableRow: View {
                         ScheduleDayTableCourse(block: block, status: status, showLocation: showLocation,
                                                continuation: slot.number > block.startSlot)
                             .frame(height: rowHeight)
-                            .scheduleCourseAction { onCourseSelected(block) }
+                            .scheduleCourseAction(block) { onCourseSelected(block) }
                     }
                 }
             }
@@ -858,7 +865,7 @@ private struct ScheduleBoardDayView: View {
                                        @ViewBuilder content: () -> Content) -> some View {
         content()
             .frame(height: height)
-            .scheduleCourseAction { onCourseSelected(block) }
+            .scheduleCourseAction(block) { onCourseSelected(block) }
     }
 
     /// The trailing edge of a row: a countdown for the next course, and 已结束

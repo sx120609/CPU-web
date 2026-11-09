@@ -38,6 +38,15 @@ struct NativeScheduleView: View {
     @State private var couplePresented = false
     @State private var calendarPresented = false
     @State private var overlayPickerPresented = false
+    /// 调整这一次: the meeting being moved, while its sheet is up.
+    @State private var occurrenceEditor: NativeOccurrenceEditorContext?
+    /// A cancelled meeting tapped: asks whether to put it back.
+    @State private var cancelledTapped: NativeScheduleCourseBlock?
+    @State private var occurrenceError: String?
+#if DEBUG
+    /// `course-preview`: the long-press card, which a script cannot open.
+    @State private var debugPreviewBlock: NativeScheduleCourseBlock?
+#endif
     /// An empty period tapped on the user's own timetable: a 日程 at its start, or a course in it.
     @State private var addChoice: ScheduleAddChoice?
     /// Two of the user's own courses in one period, to be pointed out once.
@@ -78,6 +87,104 @@ struct NativeScheduleView: View {
     }
 
     var body: some View {
+        withExtraPresentations(mainBody)
+    }
+
+    /// Sheets added for single meetings, layering and the calendar, kept out
+    /// of `mainBody` so its long modifier chain still type-checks.
+    private func withExtraPresentations<Content: View>(_ content: Content) -> some View {
+        content
+#if DEBUG
+        .sheet(item: $debugPreviewBlock) { block in
+            VStack(spacing: 16) {
+                coursePreview(block)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: .black.opacity(0.15), radius: 20, y: 8)
+                if let result = store.result {
+                    VStack(spacing: 0) {
+                        ForEach(Array(courseMenuSections(block, result: result).filter { !$0.isEmpty }.flatMap { $0 }.enumerated()),
+                                id: \.offset) { _, action in
+                            Label(action.title, systemImage: action.systemImage)
+                                .foregroundStyle(action.role == .destructive ? Color.red : Color.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16).padding(.vertical, 11)
+                            Divider()
+                        }
+                    }
+                    .frame(width: 250)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black.opacity(0.25))
+            .presentationDetents([.large])
+        }
+#endif
+        .sheet(item: $occurrenceEditor) { context in
+            NativeOccurrenceEditorSheet(
+                context: context,
+                calendar: store.calendar,
+                slots: ScheduleSlot.all,
+                coursesOn: { date in occurrenceNeighbours(on: date, excluding: context) },
+                save: { change in
+                    try await store.changeOccurrence(keys: context.keys, date: context.date, to: change)
+                },
+                restore: context.existing == nil ? nil : {
+                    try await store.changeOccurrence(keys: context.keys, date: context.date, to: nil)
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            cancelledTapped.map { "「\($0.course.name)」这次停课" } ?? "",
+            isPresented: Binding(get: { cancelledTapped != nil }, set: { if !$0 { cancelledTapped = nil } }),
+            titleVisibility: .visible,
+            presenting: cancelledTapped
+        ) { block in
+            Button("恢复原安排") { restoreOccurrence(keys: cancelledKeys(block), date: block.cancelledOccurrence?.date ?? "") }
+            Button("取消", role: .cancel) {}
+        } message: { block in
+            Text(occurrenceDateText(block.cancelledOccurrence?.date ?? "") + " 的这节课已停课；恢复后按原来的时间上课。")
+        }
+        .alert("没有保存", isPresented: Binding(get: { occurrenceError != nil }, set: { if !$0 { occurrenceError = nil } })) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(occurrenceError ?? "")
+        }
+        .sheet(isPresented: $overlayPickerPresented) {
+            NativeScheduleOverlayPicker(
+                selection: $overlayCode,
+                openSharing: {
+                    overlayPickerPresented = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sharingPresented = true }
+                },
+                openCouple: {
+                    overlayPickerPresented = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $calendarPresented) {
+            NavigationStack {
+                NativeScheduleCalendarView(store: store)
+                    .navigationTitle("Apple 日历")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { calendarPresented = false }
+                        }
+                    }
+            }
+            .tint(.cpuBrand)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var mainBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Keep the controls pinned while the timetable is being swiped.
             // The Web version treats this region as chrome outside its pager.
@@ -180,6 +287,7 @@ struct NativeScheduleView: View {
         .environment(\.scheduleBackgroundVisibility, preferences.backgroundVisibility)
         .environment(\.scheduleStyle, style)
         .environment(\.scheduleCouple, coupleLayer)
+        .environment(\.scheduleCourseMenu, courseMenuProvider)
         .environment(\.scheduleAgenda, agendaContext)
         .environment(\.schedulePalette, preferences.palette)
         .environment(\.scheduleThemeBrand, ScheduleStyle.themeBrand(palette: preferences.palette))
@@ -266,6 +374,23 @@ struct NativeScheduleView: View {
                             )]
                         )
                         if action == "sharing" { sharingPresented = true } else { viewedShare = sample }
+                    // With `CPU_DEBUG_OCCURRENCES=1`: `occurrence-editor` runs 调整这一次 on
+                    // Wednesday's first course, `occurrence-cancelled` taps the cancelled one.
+                    case "course-preview", "course-preview-moved":
+                        let week = weekNumber(store.selectedWeek)
+                        let day = action == "course-preview" ? 3 : 4
+                        let shown = blocks(for: day, week: week, result: result)
+                        debugPreviewBlock = action == "course-preview" ? shown.first : shown.first { $0.isMovedOccurrence }
+                    case "occurrence-editor", "occurrence-cancelled":
+                        let week = weekNumber(store.selectedWeek)
+                        let day = action == "occurrence-editor" ? 3 : 1
+                        let shown = blocks(for: day, week: week, result: result)
+                        if action == "occurrence-cancelled", let ghost = shown.first(where: { $0.cancelledOccurrence != nil }) {
+                            selectCourse(ghost, day: day, week: week, result: result)
+                        } else if let block = shown.first {
+                            courseMenuSections(block, result: result).flatMap { $0 }
+                                .first { $0.title == "调整这一次" }?.perform()
+                        }
                     case "overlay", "overlay-picker":
                         // A classmate at NJMU, whose bells differ from CPU's, laid on top.
                         guard var sample = debugSharedSchedule(result) else { break }
@@ -456,36 +581,6 @@ struct NativeScheduleView: View {
         .sheet(item: $sharePayload) { payload in
             NativeActivityView(activityItems: payload.items)
                 .ignoresSafeArea()
-        }
-        .sheet(isPresented: $overlayPickerPresented) {
-            NativeScheduleOverlayPicker(
-                selection: $overlayCode,
-                openSharing: {
-                    overlayPickerPresented = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sharingPresented = true }
-                },
-                openCouple: {
-                    overlayPickerPresented = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $calendarPresented) {
-            NavigationStack {
-                NativeScheduleCalendarView(store: store)
-                    .navigationTitle("Apple 日历")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("完成") { calendarPresented = false }
-                        }
-                    }
-            }
-            .tint(.cpuBrand)
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $sharingPresented) {
             NativeScheduleSharingView(store: store) { schedule in
@@ -1745,6 +1840,10 @@ struct NativeScheduleView: View {
     /// the weekday it is shown on; editing from it uses the weekday the course
     /// actually belongs to, which differs on a make-up day.
     private func selectCourse(_ shown: NativeScheduleCourseBlock, day: Int, week: Int?, result: NativeScheduleResult) {
+        if shown.cancelledOccurrence != nil {
+            cancelledTapped = shown
+            return
+        }
         let effective = effectiveSlot(day: day, week: week, result: result)
         // A piece left visible beside a course in front still opens the whole course.
         let block = shown.whole
@@ -1756,9 +1855,185 @@ struct NativeScheduleView: View {
             startSlot: block.startSlot,
             endSlot: block.endSlot,
             schedule: scheduleText(block, day: day),
-            // The partner's course can be looked at, not edited.
-            ownerTitle: block.owner == .partner ? coupleLayer?.ownerTitle : nil
+            // The partner's course can be looked at, not edited; nor can a
+            // single moved meeting as a whole course.
+            ownerTitle: block.owner == .partner ? coupleLayer?.ownerTitle
+                : block.course.occurrenceFrom.map { "调课 · 原定 \(occurrenceDateText($0))" }
         ))
+    }
+
+    // MARK: Long press and single meetings
+
+    /// The long-press menu of the courses on this page; none on somebody else's timetable.
+    private var courseMenuProvider: ScheduleCourseMenuProvider? {
+        guard !isReadOnly, let result = store.result else { return nil }
+        return ScheduleCourseMenuProvider(
+            sections: { block in courseMenuSections(block, result: result) },
+            preview: { block in AnyView(coursePreview(block)) }
+        )
+    }
+
+    private func calendarWeek(of date: String?) -> Int? {
+        guard let date else { return nil }
+        return store.calendar?.weeks.first { $0.days.contains(date) }?.week
+    }
+
+    private func courseMenuSections(_ block: NativeScheduleCourseBlock,
+                                    result: NativeScheduleResult) -> [[ScheduleCourseMenuAction]] {
+        let day = block.day ?? selectedDay
+        let week = calendarWeek(of: block.date) ?? weekNumber(store.selectedWeek)
+        let open = ScheduleCourseMenuAction("查看详情", systemImage: "info.circle") {
+            selectCourse(block, day: day, week: week, result: result)
+        }
+        if block.owner == .partner { return [[open]] }
+        if let change = block.cancelledOccurrence {
+            return [[ScheduleCourseMenuAction("恢复原安排", systemImage: "arrow.uturn.backward") {
+                restoreOccurrence(keys: cancelledKeys(block), date: change.date)
+            }], [open]]
+        }
+        var first = [open]
+        if result.source != .graduate, !block.isMovedOccurrence {
+            first.append(ScheduleCourseMenuAction("编辑整门课", systemImage: "pencil") {
+                let effective = effectiveSlot(day: day, week: week, result: result)
+                let whole = block.whole
+                courseEditorPresentation = .edit(SelectedCourse(
+                    id: whole.id, course: whole.course, day: effective.day, bigSlot: whole.bigSlot,
+                    startSlot: whole.startSlot, endSlot: whole.endSlot, schedule: scheduleText(whole, day: day)
+                ))
+            })
+        }
+        var once: [ScheduleCourseMenuAction] = []
+        if store.occurrenceChanges != nil, result.source != .graduate, let date = block.date,
+           store.calendar?.adjustments.contains(where: { $0.date == date }) != true {
+            if block.isMovedOccurrence, let from = block.course.occurrenceFrom, let key = block.course.occurrenceKey {
+                let keys = movedKeys(key: key, from: from)
+                let existing = store.occurrenceChanges?.first { $0.key == key && $0.date == from }
+                once.append(ScheduleCourseMenuAction("再调整这一次", systemImage: "calendar.badge.clock") {
+                    occurrenceEditor = NativeOccurrenceEditorContext(
+                        course: block.course, keys: keys, date: from,
+                        startSlot: block.courseStartSlot, endSlot: block.courseEndSlot, existing: existing, original: originalSlots(keys: keys, date: from)
+                    )
+                })
+                once.append(ScheduleCourseMenuAction("恢复原安排", systemImage: "arrow.uturn.backward") {
+                    restoreOccurrence(keys: keys, date: from)
+                })
+            } else {
+                let keys = occurrenceKeys(block)
+                once.append(ScheduleCourseMenuAction("调整这一次", systemImage: "calendar.badge.clock") {
+                    occurrenceEditor = NativeOccurrenceEditorContext(
+                        course: block.course, keys: keys, date: date,
+                        startSlot: block.courseStartSlot, endSlot: block.courseEndSlot, existing: nil,
+                        original: (block.courseStartSlot, block.courseEndSlot)
+                    )
+                })
+                once.append(ScheduleCourseMenuAction("这次停课", systemImage: "xmark.circle", role: .destructive) {
+                    changeOccurrence(keys: keys, date: date) { NativeScheduleOccurrenceChange(key: $0, date: date, cancelled: true) }
+                })
+            }
+        }
+        var more: [ScheduleCourseMenuAction] = []
+        if agendaService.available, let date = block.date {
+            let start = ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil).start(block)
+            more.append(ScheduleCourseMenuAction("在这节课加日程", systemImage: "calendar.badge.plus") {
+                agendaService.openNew(date: date, start: start)
+            })
+        }
+        return [first, once, more]
+    }
+
+    /// The edit keys a meeting of `block` is saved under: one per row of the
+    /// timetable the site merged into it.
+    private func occurrenceKeys(_ block: NativeScheduleCourseBlock) -> [String] {
+        if !block.course.editKeys.isEmpty { return block.course.editKeys }
+        return [nativeCourseEditKey(day: block.day ?? 0, bigSlot: block.bigSlot, course: block.course)]
+    }
+
+    private func cancelledKeys(_ block: NativeScheduleCourseBlock) -> [String] {
+        Array(Set(occurrenceKeys(block) + [block.cancelledOccurrence?.key].compactMap { $0 }))
+    }
+
+    /// The keys of every row moved together with `key` on `from`.
+    private func movedKeys(key: String, from: String) -> [String] {
+        let changes = store.occurrenceChanges ?? []
+        guard let base = changes.first(where: { $0.key == key && $0.date == from }) else { return [key] }
+        return changes.filter {
+            $0.date == from && ($0.key == key || ($0.toDate == base.toDate && $0.startSlot == base.startSlot
+                && $0.endSlot == base.endSlot && $0.location == base.location))
+        }.map(\.key)
+    }
+
+    /// Where the meeting sat before it was moved, from the course's other weeks.
+    private func originalSlots(keys: [String], date: String) -> (Int, Int)? {
+        guard let result = store.result else { return nil }
+        for cell in result.cells {
+            for course in cell.courses where !Set(course.editKeys).isDisjoint(with: keys)
+                || keys.contains(nativeCourseEditKey(day: cell.day, bigSlot: cell.bigSlot, course: course)) {
+                let start = course.startSlot ?? cell.bigSlot * 2 - 1
+                return (start, course.endSlot ?? max(start, cell.bigSlot * 2))
+            }
+        }
+        return nil
+    }
+
+    /// The other courses on `date`, for the clash line of 调整这一次.
+    private func occurrenceNeighbours(on date: String, excluding context: NativeOccurrenceEditorContext) -> [NativeScheduleCourseBlock] {
+        guard let result = store.result, let calendar = store.calendar,
+              let week = calendar.weeks.first(where: { $0.days.contains(date) }),
+              let index = week.days.firstIndex(of: date) else { return [] }
+        return blocks(for: index + 1, week: week.week, result: result).filter { block in
+            block.cancelledOccurrence == nil
+                && Set(occurrenceKeys(block)).isDisjoint(with: context.keys)
+                && !(block.course.occurrenceFrom == context.date && context.keys.contains(block.course.occurrenceKey ?? ""))
+        }
+    }
+
+    private func changeOccurrence(keys: [String], date: String,
+                                  _ change: @escaping (String) -> NativeScheduleOccurrenceChange) {
+        Task { @MainActor in
+            do { try await store.changeOccurrence(keys: keys, date: date, to: change) }
+            catch { occurrenceError = error.localizedDescription }
+        }
+    }
+
+    private func restoreOccurrence(keys: [String], date: String) {
+        guard !date.isEmpty else { return }
+        Task { @MainActor in
+            do { try await store.changeOccurrence(keys: keys, date: date, to: nil) }
+            catch { occurrenceError = error.localizedDescription }
+        }
+    }
+
+    /// "11月12日 周四".
+    private func occurrenceDateText(_ date: String) -> String {
+        NativeOccurrenceText.date(date)
+    }
+
+    private func coursePreview(_ block: NativeScheduleCourseBlock) -> some View {
+        let course = block.course
+        let status = ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil)
+        let slots = block.courseStartSlot == block.courseEndSlot
+            ? "第 \(block.courseStartSlot) 节" : "第 \(block.courseStartSlot)–\(block.courseEndSlot) 节"
+        let when = [block.date.map(occurrenceDateText), slots, "\(status.start(block))–\(status.end(block))"]
+            .compactMap { $0 }.joined(separator: " · ")
+        var rows: [(symbol: String, text: String)] = [("clock", when)]
+        if let location = ScheduleStyleTime.location(course.location) { rows.append(("mappin.and.ellipse", location)) }
+        if let teacher = course.teacher?.trimmedNonEmpty { rows.append(("person", teacher)) }
+        if !course.weeks.isEmpty, !block.isMovedOccurrence { rows.append(("calendar", course.weeks)) }
+        let state: (symbol: String, text: String, color: Color)?
+        if block.cancelledOccurrence != nil {
+            state = ("xmark.circle.fill", "这次停课", .secondary)
+        } else if let from = course.occurrenceFrom {
+            state = ("arrow.uturn.right.circle.fill", "调课 · 原定 \(occurrenceDateText(from))", .orange)
+        } else if block.owner == .partner, let title = coupleLayer?.ownerTitle {
+            state = ("person.2.fill", title, .teal)
+        } else {
+            state = nil
+        }
+        return ScheduleCoursePreviewCard(
+            title: course.name,
+            tint: NativeScheduleThemeColor.accent(for: course.name, palette: preferences.palette, scheme: colorScheme),
+            rows: rows, status: state
+        )
     }
 
     /// "周三 · 第 5–6 节 · 13:30–15:10"
@@ -2833,10 +3108,13 @@ struct NativeScheduleView: View {
               let week = weekNumber(store.selectedWeek),
               courseEditorPresentation == nil, !weekPickerPresented, !scheduleToolsPresented, !backgroundEditorPresented,
               !stylePickerPresented, !sharingPresented, !couplePresented else { return }
+        // A meeting the user moved or cancelled is their own doing, not the academic system's.
         let pieces = (1...7).flatMap { day in
-            blocks(for: day, week: week, result: result).map {
-                ScheduleOverlapNotice.Piece(day: day, startSlot: $0.startSlot, endSlot: $0.endSlot, lane: $0.lane, name: $0.course.name)
-            }
+            blocks(for: day, week: week, result: result)
+                .filter { $0.cancelledOccurrence == nil && !$0.isMovedOccurrence }
+                .map {
+                    ScheduleOverlapNotice.Piece(day: day, startSlot: $0.startSlot, endSlot: $0.endSlot, lane: $0.lane, name: $0.course.name)
+                }
         }
         guard let notice = ScheduleOverlapNotice.find(pieces) else { return }
         let key = notice.key(semester: store.selectedSemester)
@@ -2858,7 +3136,16 @@ struct NativeScheduleView: View {
     }
 
     private func blocks(for day: Int, week: Int?, result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
-        Self.dayBlocks(day: day, week: week, result: result, calendar: store.calendar, priorities: store.displayPriorities)
+        let date = rawDayDate(day, week: week, result: result)
+        let cancelled = isReadOnly ? [] : (store.occurrenceChanges ?? []).filter { $0.isCancelled && $0.date == date }
+        return Self.dayBlocks(day: day, week: week, result: result, calendar: store.calendar,
+                              priorities: store.displayPriorities, cancelled: cancelled)
+            .map { block in
+                var dated = block
+                dated.date = date
+                dated.day = day
+                return dated
+            }
     }
 
     /// The courses of one weekday of a timetable, placed in lanes. `calendar`
@@ -2868,7 +3155,8 @@ struct NativeScheduleView: View {
     /// somebody else's timetable may have more than the user's.
     private static func dayBlocks(day: Int, week: Int?, result: NativeScheduleResult, calendar: NativeScheduleCalendar?,
                                   priorities: [String: Int], idPrefix: String = "",
-                                  slotCount: Int? = nil) -> [NativeScheduleCourseBlock] {
+                                  slotCount: Int? = nil,
+                                  cancelled: [NativeScheduleOccurrenceChange] = []) -> [NativeScheduleCourseBlock] {
         let slotCount = slotCount ?? ScheduleSlot.all.count
         var sourceDay = day
         var sourceWeek = week
@@ -2917,13 +3205,34 @@ struct NativeScheduleView: View {
                 return lhs.endSlot < rhs.endSlot
             }
 
+        // A cancelled meeting stays where it would have been, greyed out. The
+        // site took its week out of the course, which still runs other weeks.
+        var ghosts: [String: NativeScheduleOccurrenceChange] = [:]
+        var ghostRecords: [NativeScheduleCourseBlockRecord] = []
+        for change in cancelled {
+            for cell in result.cells where cell.day == sourceDay {
+                guard let course = cell.courses.first(where: {
+                    $0.editKeys.contains(change.key)
+                        || nativeCourseEditKey(day: cell.day, bigSlot: cell.bigSlot, course: $0) == change.key
+                }) else { continue }
+                let start = min(max(course.startSlot ?? cell.bigSlot * 2 - 1, 1), slotCount)
+                let end = min(max(course.endSlot ?? cell.bigSlot * 2, start), slotCount)
+                let id = "cancelled:\(course.editKeys.first ?? change.key)@\(change.date)"
+                guard ghosts[id] == nil else { break }
+                ghosts[id] = change
+                ghostRecords.append(NativeScheduleCourseBlockRecord(id: id, course: course, bigSlot: cell.bigSlot,
+                                                                    startSlot: start, endSlot: end))
+                break
+            }
+        }
+
         // A course set to show first covers the periods it shares with the
         // others; without any priority this is the plain side-by-side layout.
         return NativeSchedulePriority.place(
-            NativeScheduleCourseBlockMerger.merge(rawBlocks),
+            NativeScheduleCourseBlockMerger.merge(rawBlocks) + ghostRecords,
             priorities: priorities
         ).map { placed in
-            NativeScheduleCourseBlock(
+            var block = NativeScheduleCourseBlock(
                 id: placed.id,
                 course: placed.block.course,
                 bigSlot: placed.block.bigSlot,
@@ -2933,6 +3242,8 @@ struct NativeScheduleView: View {
                 courseStartSlot: placed.block.startSlot,
                 courseEndSlot: placed.block.endSlot
             )
+            block.cancelledOccurrence = ghosts[placed.id]
+            return block
         }
     }
 
@@ -3077,6 +3388,16 @@ struct NativeScheduleCourseBlock: Identifiable {
     /// The couple timetable: this course of the user's meets one of the
     /// partner's and names it in a line at its foot.
     var coupleMeets = false
+    /// The date (yyyy-MM-dd) and weekday of the column or page it is drawn
+    /// on; nil where a block is not tied to a date.
+    var date: String? = nil
+    var day: Int? = nil
+    /// This meeting was cancelled (这次停课): drawn grey and struck through,
+    /// in the place it would have been.
+    var cancelledOccurrence: NativeScheduleOccurrenceChange? = nil
+
+    /// Shown in place of a single meeting moved here (调整这一次).
+    var isMovedOccurrence: Bool { course.occurrenceFrom != nil }
 
     init(
         id: String, course: NativeScheduleCourse, bigSlot: Int, startSlot: Int, endSlot: Int, lane: Int = 0,
@@ -3097,6 +3418,9 @@ struct NativeScheduleCourseBlock: Identifiable {
                                              lane: lane, courseStartSlot: courseStartSlot, courseEndSlot: courseEndSlot)
         copy.owner = owner
         copy.coupleMeets = coupleMeets
+        copy.date = date
+        copy.day = day
+        copy.cancelledOccurrence = cancelledOccurrence
         return copy
     }
 
@@ -3105,6 +3429,9 @@ struct NativeScheduleCourseBlock: Identifiable {
         var copy = NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot,
                                              startSlot: courseStartSlot, endSlot: courseEndSlot, lane: lane)
         copy.owner = owner
+        copy.date = date
+        copy.day = day
+        copy.cancelledOccurrence = cancelledOccurrence
         return copy
     }
 }
@@ -3124,7 +3451,8 @@ private func nativeCourseEditKey(day: Int, bigSlot: Int, course: NativeScheduleC
         "jwxt", String(day), String(bigSlot),
         course.startSlot.map(String.init) ?? "",
         course.endSlot.map(String.init) ?? "",
-        part(course.name), part(course.teacher), part(course.location), part(course.weeks),
+        // A cancelled or moved meeting rewrote `weeks`; the key keeps the original.
+        part(course.name), part(course.teacher), part(course.location), part(course.sourceWeeks ?? course.weeks),
     ].joined(separator: "|")
 }
 
@@ -3458,6 +3786,7 @@ private struct NativeScheduleDayColumn: View {
                     // the Button with an undersized intrinsic label.
                     .frame(width: cardWidth, height: cardHeight)
                     .contentShape(Rectangle())
+                    .scheduleCourseInteractions(block)
                     .zIndex(10)
                     .offset(
                         x: 1 + CGFloat(block.lane) * laneWidth,

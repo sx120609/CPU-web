@@ -6,6 +6,7 @@ import { useSiteStore } from "@/stores/site";
 import type { Router } from "vue-router";
 import { isNativeScheduleShell } from "./clientInfo";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState, courseEditKey } from "./scheduleEdits";
+import { applyOccurrenceChanges } from "../../../server/src/shared/scheduleOccurrences";
 import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { buildGraduateFallbackCalendar, extendScheduleWeeksToCalendar, hydrateCalendar } from "@/views/schedule/calendar";
 import type { CalendarResult, ScheduleResult } from "@/views/schedule/types";
@@ -579,8 +580,10 @@ export function installIosNextScheduleBridge(
       ? { ...data, semesters: knownSemesterOptions }
       : data;
   };
+  // 单次停课、调课按日期改写周次：原生端、小组件和实时活动读到的课表已经是改过的。
   const edited = (entry: SemesterEntry, data: ScheduleResult) => ({
-    ...data, cells: nativeCells(entry.semester, applyScheduleEditsToCells(data.cells, entry.edits)),
+    ...data, cells: nativeCells(entry.semester, applyOccurrenceChanges(
+      applyScheduleEditsToCells(data.cells, entry.edits), entry.edits.occurrences, entry.calendar?.weeks)),
   });
   const normalizeText = (value: unknown) => String(value ?? "")
     .normalize("NFKC")
@@ -728,7 +731,7 @@ export function installIosNextScheduleBridge(
     type NativeEntry = {
       day: number;
       bigSlot: number;
-      course: ScheduleResult["cells"][number]["courses"][number];
+      course: ScheduleResult["cells"][number]["courses"][number] & { editKeys?: string[] };
       range: { start: number; end: number };
     };
     // Do not trust the source table's big-slot grouping. A legacy/modern JWXT
@@ -744,6 +747,8 @@ export function installIosNextScheduleBridge(
           ...course,
           nativeId: sourceIdentity(cell.day, cell.bigSlot, course),
           weekList: normalizedCourseWeekList(course),
+          // 课表编辑用的键，在合并相邻行之前算：单次停课、调课按它找到这门课。
+          editKeys: [courseEditKey(cell.day, cell.bigSlot, course)],
         };
         entries.push({ day: cell.day, bigSlot: cell.bigSlot, course: normalized, range });
       }
@@ -768,6 +773,7 @@ export function installIosNextScheduleBridge(
         const start = Math.min(previous.range.start, entry.range.start);
         const end = Math.max(previous.range.end, entry.range.end);
         previous.course.weekList = weekList;
+        previous.course.editKeys = [...new Set([...(previous.course.editKeys ?? []), ...(entry.course.editKeys ?? [])])];
         previous.course.weeks = mergeWeeksText(previous.course, entry.course, weekList);
         previous.course.startSlot = start;
         previous.course.endSlot = end;
@@ -809,6 +815,8 @@ export function installIosNextScheduleBridge(
     data: { ...edited(entry, entry.complete ?? data), currentWeek: week || (entry.calendar?.currentWeek
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
     calendar: withSchool(entry.calendar), auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
+    // 原生端据此画出停课的灰色删除线，并知道这一次改过；带这个字段也表示站点支持单次调整。
+    occurrenceChanges: entry.edits.occurrences ?? [],
   });
   const loadWeek = (entry: SemesterEntry, week: string, epoch: number, background = false): Promise<ScheduleResult> => {
     const cached = entry.schedules.get(week);

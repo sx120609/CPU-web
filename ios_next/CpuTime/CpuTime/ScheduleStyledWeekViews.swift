@@ -867,6 +867,7 @@ struct NativeScheduleStyledDayColumn: View {
         }
         .frame(width: frame.width, height: frame.height)
         .contentShape(Rectangle())
+        .scheduleCourseInteractions(block)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(block) + (status.label(block).map { "，" + $0 } ?? ""))
         .accessibilityAddTraits(.isButton)

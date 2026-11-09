@@ -1,5 +1,6 @@
 import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { courseCustomTime } from "./scheduleCustomTime";
+import { normalizeOccurrenceChanges, type ScheduleOccurrenceChange } from "./scheduleOccurrences";
 
 export interface EditableScheduleCourse {
   name: string;
@@ -17,6 +18,11 @@ export interface EditableScheduleCourse {
   customId?: string;
   custom?: boolean;
   orphaned?: boolean;
+  /**
+   * The week text the course came with, kept when a single cancelled or moved
+   * meeting (scheduleOccurrences.ts) rewrote `weeks`: its edit key stays the same.
+   */
+  sourceWeeks?: string;
 }
 
 export interface EditableScheduleCell {
@@ -36,6 +42,11 @@ export interface CustomScheduleItem {
 export interface ScheduleEditState {
   hidden: string[];
   custom: CustomScheduleItem[];
+  /**
+   * Single meetings cancelled or moved (scheduleOccurrences.ts). Absent from
+   * clients that predate them; the server then keeps what it has saved.
+   */
+  occurrences?: ScheduleOccurrenceChange[];
 }
 
 
@@ -76,7 +87,10 @@ export function normalizeScheduleEditsState(input: ScheduleEditState | null | un
         },
       }))
     : [];
-  return { hidden, custom };
+  // Kept only when it was there, so a client that never sends the list does not clear it.
+  return Array.isArray(input?.occurrences)
+    ? { hidden, custom, occurrences: normalizeOccurrenceChanges(input.occurrences) }
+    : { hidden, custom };
 }
 
 /** 合法的一对时间原样补齐；只有一个、写错了或结束不晚于开始时两个都去掉。 */
@@ -141,7 +155,7 @@ export function courseEditKey(day: number, bigSlot: number, course: EditableSche
     normalizeKeyPart(course.name),
     normalizeKeyPart(course.teacher),
     normalizeKeyPart(course.location),
-    normalizeKeyPart(course.weeks),
+    normalizeKeyPart(course.sourceWeeks ?? course.weeks),
   ].join("|");
 }
 
