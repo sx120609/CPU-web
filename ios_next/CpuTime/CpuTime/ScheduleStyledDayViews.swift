@@ -1094,6 +1094,17 @@ private struct ScheduleBoardFinishedRow: View {
 struct ScheduleEmptyDayView: View {
     var note: String? = nil
     var holidayGreeting: String? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scheduleStaticRendering) private var staticRendering
+    /// A holiday's fireworks, while they play: from opening the day once, or the party popper.
+    @State private var fireworks: Date?
+    @AppStorage("cpu.schedule.fireworksShown") private var fireworksShown = ""
+
+    /// A festive holiday: fireworks, not for 清明.
+    private var festive: Bool {
+        guard let holidayGreeting, !holidayGreeting.isEmpty else { return false }
+        return !holidayGreeting.hasPrefix("清明")
+    }
 
     @Environment(\.scheduleStyle) private var style
     @Environment(\.colorScheme) private var colorScheme
@@ -1112,6 +1123,23 @@ struct ScheduleEmptyDayView: View {
             ScheduleRestIllustration()
                 .frame(width: 184, height: 140)
                 .accessibilityHidden(true)
+                .overlay(alignment: .topTrailing) {
+                    if festive && !staticRendering {
+                        Button {
+                            fireworks = .now
+                        } label: {
+                            Image(systemName: "party.popper.fill")
+                                .font(.system(size: 26, weight: .semibold))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.pink)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(holidayGreeting ?? "")，放烟花")
+                        .offset(x: 18, y: -10)
+                    }
+                }
             VStack(spacing: 10) {
                 Text("这天没有课程")
                     .font(.title3.weight(.semibold))
@@ -1142,6 +1170,21 @@ struct ScheduleEmptyDayView: View {
         // At accessibility sizes read from the top instead of centring the card low on the screen.
         .frame(maxWidth: .infinity, maxHeight: .infinity,
                alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center)
+        .overlay {
+            if let fireworks, !reduceMotion { ScheduleFireworks(startedAt: fireworks) }
+        }
+        .task(id: fireworks) {
+            guard fireworks != nil else { return }
+            try? await Task.sleep(for: .seconds(3.4))
+            self.fireworks = nil
+        }
+        // The first time a holiday is opened, the fireworks go off by themselves.
+        .onAppear {
+            let key = "\(holidayGreeting ?? "")@\(Calendar.current.component(.year, from: .now))"
+            guard festive, !staticRendering, fireworksShown != key else { return }
+            fireworksShown = key
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { fireworks = .now }
+        }
     }
 }
 

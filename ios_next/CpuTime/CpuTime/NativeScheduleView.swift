@@ -39,6 +39,7 @@ struct NativeScheduleView: View {
     @State private var calendarPresented = false
     @State private var overlayPickerPresented = false
     @State private var commonFreePresented = false
+    @State private var shareChoicePresented = false
     /// 调整这一次: the meeting being moved, while its sheet is up.
     @State private var occurrenceEditor: NativeOccurrenceEditorContext?
     /// A cancelled meeting tapped: asks whether to put it back.
@@ -134,6 +135,17 @@ struct NativeScheduleView: View {
             .presentationDetents([.large])
         }
 #endif
+        .confirmationDialog("分享课表图片", isPresented: $shareChoicePresented, titleVisibility: .visible) {
+            if let result = store.result {
+                Button("这一周") { exportScheduleImage(result) }
+                if let target = shareDayTarget(result) {
+                    Button("这一天（\(occurrenceDateText(target.date))）") {
+                        exportDayImage(result, day: target.day, week: target.week, date: target.date)
+                    }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        }
         .sheet(isPresented: $commonFreePresented) {
             NativeCommonFreeView(
                 store: store,
@@ -321,6 +333,11 @@ struct NativeScheduleView: View {
             if let mode = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_VIEW"].flatMap(ScheduleViewMode.init) {
                 viewMode = mode
             }
+            // `CPU_DEBUG_DAY=7` opens the day view on that weekday.
+            if let day = ProcessInfo.processInfo.environment["CPU_DEBUG_DAY"].flatMap(Int.init), (1...7).contains(day) {
+                selectedDay = day
+                didInitializeDay = true
+            }
 #endif
             adoptSelectionIfNeeded()
             if viewMode == .month { seedMonthSelection(store.result) }
@@ -374,6 +391,10 @@ struct NativeScheduleView: View {
                     switch action {
                     case "couple": couplePresented = true
                     case "share-image": exportScheduleImage(result)
+                    case "share-day":
+                        if let target = shareDayTarget(result) {
+                            exportDayImage(result, day: target.day, week: target.week, date: target.date)
+                        }
                     case "calendar", "calendar-file": calendarPresented = true
                     case "tools": scheduleToolsPresented = true
                     case "course-sheet", "course-editor":
@@ -702,6 +723,15 @@ struct NativeScheduleView: View {
         )
     }
 #endif
+
+    /// `CPU_DEBUG_HOLIDAY_GREETING=国庆快乐`: every empty day reads as that holiday, fireworks and all.
+    private var debugHolidayGreeting: String? {
+#if DEBUG
+        ProcessInfo.processInfo.environment["CPU_DEBUG_HOLIDAY_GREETING"]
+#else
+        nil
+#endif
+    }
 
     private var isLoading: Bool {
         store.state == .loading
@@ -1236,7 +1266,7 @@ struct NativeScheduleView: View {
                     }
                     scheduleToolTile("分享图片", systemImage: "square.and.arrow.up", tint: .indigo) {
                         scheduleToolsPresented = false
-                        exportScheduleImage(result)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { shareChoicePresented = true }
                     }
                 }
 
@@ -2389,7 +2419,7 @@ struct NativeScheduleView: View {
                 },
                 cardHeight: styledDayCardHeight,
                 emptyNote: adjustment.map(adjustmentDetail),
-                holidayGreeting: date.flatMap { ChineseCalendarInfo.restGreeting(forDate: $0) },
+                holidayGreeting: debugHolidayGreeting ?? date.flatMap { ChineseCalendarInfo.restGreeting(forDate: $0) },
                 showLocation: preferences.showLocation,
                 showTeacher: preferences.showTeacher,
                 onCourseSelected: { block in selectCourse(block, day: day, week: week, result: result) },
@@ -3019,6 +3049,53 @@ struct NativeScheduleView: View {
         Task { @MainActor in
             // Let the More sheet finish its dismissal before asking SwiftUI
             // to present the system share controller.
+            try? await Task.sleep(for: .milliseconds(350))
+            sharePayload = NativeScheduleSharePayload(items: [url])
+        }
+    }
+
+    /// The day 分享这一天 shares: the one shown in the day view, else today in
+    /// the shown week, else the shown week's first day with classes.
+    private func shareDayTarget(_ result: NativeScheduleResult) -> (day: Int, week: Int, date: String)? {
+        guard let week = weekNumber(store.selectedWeek) else { return nil }
+        var day = selectedDay
+        if viewMode != .day {
+            let today = (1...7).first { rawDayDate($0, week: week, result: result) == Self.todayDate }
+            day = today ?? (1...7).first { !blocks(for: $0, week: week, result: result).isEmpty } ?? 1
+        }
+        guard let date = rawDayDate(day, week: week, result: result) else { return nil }
+        return (day, week, date)
+    }
+
+    private func exportDayImage(_ result: NativeScheduleResult, day: Int, week: Int, date: String) {
+        let status = ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil)
+        let items = blocks(for: day, week: week, result: result)
+            .filter { $0.owner != .partner }
+            .sorted { ($0.courseStartSlot, $0.lane) < ($1.courseStartSlot, $1.lane) }
+            .map { block in
+                ScheduleDayShareCard.Item(
+                    id: block.id, start: status.start(block), end: status.end(block), name: block.course.name,
+                    detail: [ScheduleStyleTime.location(block.course.location), block.course.teacher?.trimmedNonEmpty]
+                        .compactMap { $0 }.joined(separator: " · "),
+                    tint: NativeScheduleThemeColor.accent(for: block.course.name, palette: preferences.palette, scheme: .light),
+                    cancelled: block.cancelledOccurrence != nil, moved: block.isMovedOccurrence
+                )
+            }
+        let lunar = ChineseCalendarInfo.info(forDate: date)?.displayLabel
+        let off = store.calendar?.adjustments.first { $0.date == date }?.kind == "off"
+        let card = ScheduleDayShareCard(
+            brand: "药大拾间",
+            title: occurrenceDateText(date),
+            subtitle: ["第 \(week) 周", lunar.map { "农历\($0)" }].compactMap { $0 }.joined(separator: " · "),
+            items: items,
+            emptyText: off ? "放假啦" : "这天没有课"
+        )
+        .environment(\.colorScheme, .light)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = displayScale
+        guard let image = renderer.uiImage,
+              let url = NativeScheduleSharePresenter.writeImage(image, fileName: "药大拾间-\(date)-日课表.png") else { return }
+        Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))
             sharePayload = NativeScheduleSharePayload(items: [url])
         }
