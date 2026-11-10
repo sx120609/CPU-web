@@ -9,6 +9,7 @@ import UIKit
 struct NativeScheduleView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var store: NativeScheduleStore
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
     @ObservedObject private var couple = NativeCoupleService.shared
@@ -1478,7 +1479,8 @@ struct NativeScheduleView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 // Bound to a partner, the words give their width to the status line.
-                let arrowOnly = showsOverlayLine && viewMode != .month
+                // At accessibility text sizes the words would crowd out the title.
+                let arrowOnly = (showsOverlayLine && viewMode != .month) || dynamicTypeSize.isAccessibilitySize
                 if systemName == "chevron.right" {
                     if !arrowOnly { Text(label) }
                     Image(systemName: systemName)
@@ -1490,7 +1492,8 @@ struct NativeScheduleView: View {
             .font(.caption.weight(.medium))
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .frame(minWidth: showsOverlayLine && viewMode != .month ? 36 : 68, minHeight: 42)
+            .frame(minWidth: (showsOverlayLine && viewMode != .month) || dynamicTypeSize.isAccessibilitySize ? 36 : 68,
+                   minHeight: 42)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1902,7 +1905,7 @@ struct NativeScheduleView: View {
                         .foregroundStyle(navigatorSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    if let school = coupleLayer?.otherSchool {
+                    if let school = coupleLayer?.otherSchool, !dynamicTypeSize.isAccessibilitySize {
                         Text(school)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.teal)

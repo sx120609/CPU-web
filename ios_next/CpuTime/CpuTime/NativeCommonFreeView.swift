@@ -12,6 +12,7 @@ struct NativeCommonFreeView: View {
     @ObservedObject private var couple = NativeCoupleService.shared
     @ObservedObject private var sharing = NativeScheduleSharingService.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var mine: NativeScheduleSnapshot?
     @State private var includesPartner = true
@@ -150,9 +151,11 @@ struct NativeCommonFreeView: View {
                     }
                 }
                 Text(name).font(.caption.weight(.semibold)).lineLimit(1)
-                Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .multilineTextAlignment(.center)
             }
-            .frame(width: 76)
+            // Wider at large text sizes, so the name and its line still fit.
+            .frame(width: dynamicTypeSize.isAccessibilitySize ? 128 : dynamicTypeSize >= .xLarge ? 92 : 80)
             .padding(.vertical, 10)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
