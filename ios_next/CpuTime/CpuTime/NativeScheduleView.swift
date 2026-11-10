@@ -1244,6 +1244,9 @@ struct NativeScheduleView: View {
 
     private func scheduleToolsSheet(_ result: NativeScheduleResult) -> some View {
         NavigationStack {
+            // A scroll view keeps every row reachable on a small screen or at a
+            // large text size, and lays the content out below the title bar.
+            ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 10) {
                     scheduleToolTile("刷新", systemImage: "arrow.clockwise", tint: .cpuBrand, disabled: isLoading) {
@@ -1352,6 +1355,8 @@ struct NativeScheduleView: View {
                 guard value > 0 else { return }
                 scheduleToolsContentHeight = value
             }
+            }
+            .scrollBounceBehavior(.basedOnSize)
             .navigationTitle("更多")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1455,9 +1460,13 @@ struct NativeScheduleView: View {
         .disabled(disabled)
     }
 
+    /// The whole list when it fits: the content plus the title bar and the
+    /// grabber above it. Taller than the screen allows, the sheet stops short
+    /// and the list scrolls.
     private var scheduleToolsDetentHeight: CGFloat {
-        let measured = scheduleToolsContentHeight > 0 ? scheduleToolsContentHeight + 54 : 420
-        return min(max(measured, 330), WindowGeometry.size.height * 0.82)
+        let chrome: CGFloat = 76
+        let measured = scheduleToolsContentHeight > 0 ? scheduleToolsContentHeight + chrome : 560
+        return min(max(measured, 360), WindowGeometry.size.height * 0.9)
     }
 
     private func weekStepButton(
