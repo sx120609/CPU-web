@@ -2,7 +2,7 @@
   "meta": {
     "source": "常用试剂、溶剂和药物的中英文名称对照，含惟省整理的《药物常用化合物对照表》；CID 与 CAS 号经 PubChem 核对",
     "updatedAt": "2026-11-10",
-    "count": 1883
+    "count": 1890
   },
   "compounds": [
     {
@@ -21168,6 +21168,89 @@
       ],
       "cas": "85-43-8",
       "cid": 6810
+    },
+    {
+      "zh": "噻托溴铵",
+      "en": "tiotropium bromide",
+      "aliases": [],
+      "names": [
+        "Spiriva",
+        "Tiotropium (Bromide)"
+      ],
+      "cas": "136310-93-5",
+      "cid": 5487426
+    },
+    {
+      "zh": "秋水仙胺",
+      "en": "demecolcine",
+      "aliases": [],
+      "names": [
+        "colcemid",
+        "Demecolcin"
+      ],
+      "cas": "477-30-5",
+      "cid": 220401
+    },
+    {
+      "zh": "二乙基二硫代氨基甲酸钠",
+      "en": "sodium diethyldithiocarbamate",
+      "aliases": [
+        "铜试剂"
+      ],
+      "names": [
+        "Ditiocarb sodium",
+        "Sodium N,N-diethyldithiocarbamate",
+        "Dithiocarb"
+      ],
+      "cas": "148-18-5",
+      "cid": 533728
+    },
+    {
+      "zh": "氟利昂-113",
+      "en": "CFC-113",
+      "aliases": [
+        "1,1,2-三氯三氟乙烷"
+      ],
+      "names": [
+        "1,1,2-Trichlorotrifluoroethane",
+        "1,1,2-Trichloro-1,2,2-trifluoroethane",
+        "Fluorocarbon 113",
+        "Freon 113"
+      ],
+      "cas": "76-13-1",
+      "cid": 6428
+    },
+    {
+      "zh": "3-甲基-2-氧代丁酸乙酯",
+      "en": "ethyl 3-methyl-2-oxobutyrate",
+      "aliases": [],
+      "names": [
+        "Ethyl 3-methyl-2-oxobutanoate"
+      ],
+      "cas": "20201-24-5",
+      "cid": 88406
+    },
+    {
+      "zh": "新松脂酸",
+      "en": "neoabietic acid",
+      "aliases": [],
+      "names": [
+        "Neoabietate"
+      ],
+      "cas": "471-77-2",
+      "cid": 221118
+    },
+    {
+      "zh": "紫罗兰酮",
+      "en": "ionone",
+      "aliases": [
+        "香堇酮"
+      ],
+      "names": [
+        "Irisone"
+      ],
+      "cas": "8013-90-9",
+      "cid": 24680
     }
   ]
 }
