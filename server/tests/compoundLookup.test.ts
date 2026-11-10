@@ -83,6 +83,10 @@ test("library search ranks exact Chinese names, aliases and English names first"
   assert.equal(searchLibrary("50-78-2")[0].en, "aspirin");
   assert.deepEqual(searchLibrary("  "), []);
   assert.ok(searchLibrary("乙酸").length > 1);
+  // 检索专用的英文名（俗名、IUPAC 名）能搜到，但不随结果返回。
+  const [glycerol] = searchLibrary("propane-1,2,3-triol");
+  assert.equal(glycerol.cid, 753);
+  assert.ok(!("names" in glycerol));
 });
 
 test("experimental and GHS sections are flattened, deduplicated and labelled", () => {

@@ -6,6 +6,8 @@ import library from "../data/compoundLibrary.json";
  */
 
 export type LibraryCompound = { zh: string; en: string; aliases: string[]; cas: string | null; cid: number };
+/** 库里的条目还可以带只用于检索的英文名（俗名、IUPAC 名），不返回给前端。 */
+type LibraryEntry = LibraryCompound & { names?: string[] };
 export type QueryKind = "cas" | "cid" | "chinese" | "english";
 
 export type ExperimentalValue = { value: string; source: string | null };
@@ -63,7 +65,8 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_TTL_MS = 60 * 60 * 1000;
 const CACHE_LIMIT = 600;
 
-const compounds = (library as { compounds: LibraryCompound[] }).compounds;
+const entries = (library as { compounds: LibraryEntry[] }).compounds;
+const compounds: LibraryCompound[] = entries.map(({ names: _names, ...compound }) => compound);
 export const compoundLibraryMeta = (library as { meta: { source: string; updatedAt: string; count?: number } }).meta;
 
 export function isValidCas(value: string) {
@@ -87,10 +90,11 @@ function fold(value: string) {
   return value.normalize("NFKC").toLowerCase().replace(/[\s\-_,'()（）]/gu, "");
 }
 
-const libraryIndex = compounds.map((compound) => ({
-  compound,
-  keys: [compound.zh, compound.en, ...compound.aliases, ...(compound.cas ? [compound.cas] : [])].map(fold),
+const libraryIndex = entries.map((entry, index) => ({
+  compound: compounds[index],
+  keys: [entry.zh, entry.en, ...entry.aliases, ...(entry.names ?? []), ...(entry.cas ? [entry.cas] : [])].map(fold),
 }));
+const keysByCompound = new Map(libraryIndex.map((item) => [item.compound, item.keys]));
 
 /** 精确命中排最前，其次是前缀命中，再次是包含；同档按名字短的在前。 */
 export function searchLibrary(query: string, limit = 8): LibraryCompound[] {
@@ -407,7 +411,7 @@ export async function lookupCompound(raw: string): Promise<LookupResult> {
   const query = normalizeQuery(raw);
   const kind = detectQueryKind(query);
   const candidates = searchLibrary(query);
-  const exact = candidates.find((compound) => [compound.zh, compound.en, compound.cas ?? "", ...compound.aliases].some((key) => fold(key) === fold(query)));
+  const exact = candidates.find((compound) => keysByCompound.get(compound)?.includes(fold(query)));
   const base = { query, kind, candidates };
 
   if (kind === "cas" && !isValidCas(query)) return { ...base, detail: null, message: "CAS 号校验位不对，请检查是否输错" };
