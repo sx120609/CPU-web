@@ -17,6 +17,7 @@ export const CANTEEN_CATEGORIES = [
   { id: "western", name: "汉堡·披萨" },
   { id: "regional", name: "地方风味" },
   { id: "light", name: "轻食" },
+  { id: "dessert", name: "甜品·饮品" },
 ] as const;
 
 export type CanteenCategoryId = (typeof CANTEEN_CATEGORIES)[number]["id"];

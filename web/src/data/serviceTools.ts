@@ -219,7 +219,7 @@ export const serviceTools: ServiceTool[] = [
     slug: "canteen_picker",
     name: "药大今天吃什么",
     summary: "按食堂、楼层和品类随机选一家，看看大家怎么说",
-    description: "收录一、二食堂的门店，按食堂、楼层、品类和评分筛选后随机抽一家，也能浏览全部门店的评分和短评。门店信息有误可以提交纠错，大家投票通过后由 AI 修改。",
+    description: "收录一、二食堂的门店，按食堂、楼层、品类和评分筛选后随机抽一家，也能浏览全部门店的评分和短评。门店信息有误可以提交纠错，大家投票通过后自动生效。",
     icon: "food",
     status: "ready",
     category: "校园生活",

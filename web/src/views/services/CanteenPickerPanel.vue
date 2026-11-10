@@ -117,7 +117,7 @@
         <template v-if="sort === 'location'">
           <div v-for="group in groups" :key="group.code" class="cp-group">
             <h4>{{ group.canteenName }} {{ group.label }}<small>{{ group.code }}</small></h4>
-            <p v-if="!group.total" class="cp-group-empty">还没有收录门店。<button type="button" class="cp-link" @click="openCorrection(null)">知道有哪些店？去补充</button></p>
+            <p v-if="!group.total" class="cp-group-empty">还没有收录门店。<button type="button" class="cp-link" @click="openCorrection(null, group.code)">知道有哪些店？去补充</button></p>
             <ul v-else>
               <li v-for="shop in group.shops" :key="shop.id"><ShopRow :shop="shop" /></li>
             </ul>
@@ -135,7 +135,7 @@
         <header class="cp-list-head">
           <div>
             <h3>门店纠错</h3>
-            <p>新增、删除、改名、换位置都可以提。超过 5 位同学认为正确，AI 会核对后直接修改门店信息。</p>
+            <p>新增、删除、改名、换位置都可以提。超过 5 位同学认为正确就生效：新增的店直接加进列表，其他修改由 AI 核对后改好。</p>
           </div>
           <button type="button" class="cp-btn is-primary" @click="openCorrection(null)">补充或纠正</button>
         </header>
@@ -181,7 +181,7 @@
       </div>
     </el-drawer>
 
-    <CorrectionDialog v-model="correctionOpen" :shop="correctionShop" @submitted="onCorrectionSubmitted" />
+    <CorrectionDialog v-model="correctionOpen" :shop="correctionShop" :floor-code="correctionFloor" @submitted="onCorrectionSubmitted" />
   </div>
 </template>
 
@@ -468,11 +468,13 @@ function onRated(payload: { shopId: string; average: number; count: number; mine
 
 const correctionOpen = ref(false);
 const correctionShop = ref<CanteenShop | null>(null);
+const correctionFloor = ref("");
 const correctionKey = ref(0);
 const openCorrectionCount = ref(0);
 
-function openCorrection(shop: CanteenShop | null) {
+function openCorrection(shop: CanteenShop | null, floorCode = "") {
   correctionShop.value = shop;
+  correctionFloor.value = floorCode;
   correctionOpen.value = true;
 }
 

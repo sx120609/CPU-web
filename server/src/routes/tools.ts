@@ -284,7 +284,11 @@ toolsRouter.post(
     z.object({
       shopId: z.string().trim().max(120).optional().default(""),
       kind: z.enum(CANTEEN_CORRECTION_KINDS),
-      content: z.string().max(600),
+      content: z.string().max(600).optional().default(""),
+      // 新增门店：楼层、店名、品类直接选好，过票后原样加进目录。
+      floorCode: z.string().trim().max(20).optional(),
+      name: z.string().max(60).optional(),
+      tags: z.array(z.string().max(20)).max(4).optional(),
     }).strict(),
   ),
   async (req, res, next) => {

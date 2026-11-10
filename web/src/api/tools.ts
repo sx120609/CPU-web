@@ -345,6 +345,8 @@ export interface CanteenCorrectionEntry {
   disagreeCount: number;
   aiNote: string;
   hasPatch: boolean;
+  /** 新增门店时同学选的品类名。 */
+  proposedTags?: string[];
   author: string;
   mine: boolean;
   myVote: "agree" | "disagree" | null;
@@ -367,7 +369,7 @@ export const toolsApi = {
     request.get<CanteenCatalogPayload>("/tools/canteen/catalog", undefined, options ?? { cacheTtlMs: 0, cacheStaleTtlMs: 0 }),
   canteenCorrections: (shopId?: string, options?: RequestOptions) =>
     request.get<CanteenCorrections>("/tools/canteen/corrections", shopId ? { shopId } : undefined, options ?? { cacheTtlMs: 0, cacheStaleTtlMs: 0 }),
-  submitCanteenCorrection: (payload: { shopId?: string; kind: CanteenCorrectionKind; content: string }) =>
+  submitCanteenCorrection: (payload: { shopId?: string; kind: CanteenCorrectionKind; content: string; floorCode?: string; name?: string; tags?: string[] }) =>
     request.post<{ id: string }>("/tools/canteen/corrections", payload),
   voteCanteenCorrection: (id: string, agree: boolean) =>
     request.post<{ status: CanteenCorrectionStatus; agreeCount: number; disagreeCount: number }>(`/tools/canteen/corrections/${encodeURIComponent(id)}/vote`, { agree }),

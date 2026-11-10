@@ -9,14 +9,15 @@
         <strong v-if="showShop && item.shopName" class="cc-shop">{{ item.shopName }}</strong>
         <span class="cc-status">{{ statusLabel(item) }}</span>
       </header>
-      <p class="cc-content">{{ item.content }}</p>
+      <p v-if="item.proposedTags?.length" class="cc-tags">卖 {{ item.proposedTags.join("、") }}</p>
+      <p v-if="item.content" class="cc-content">{{ item.content }}</p>
       <p v-if="item.aiNote && item.status !== 'voting'" class="cc-note">
-        <b>{{ item.status === "applied" || item.status === "reverted" ? "AI 已修改" : "处理结果" }}</b>{{ item.aiNote }}
+        <b>{{ item.status === "applied" || item.status === "reverted" ? "已修改" : "处理结果" }}</b>{{ item.aiNote }}
       </p>
       <footer>
         <span class="cc-meta">{{ item.author }} · {{ formatTime(item.createdAt) }}</span>
         <template v-if="item.status === 'voting'">
-          <div class="cc-progress" :title="`${item.agreeCount} 人认为正确，超过 ${threshold} 人就会交给 AI 修改`">
+          <div class="cc-progress" :title="`${item.agreeCount} 人认为正确，超过 ${threshold} 人就会生效`">
             <i :style="{ width: `${Math.min(100, item.agreeCount / (threshold + 1) * 100)}%` }"></i>
           </div>
           <span class="cc-count">{{ item.agreeCount }}/{{ threshold + 1 }}</span>
@@ -26,7 +27,7 @@
           </template>
           <span v-else class="cc-mine">我提交的</span>
         </template>
-        <span v-else-if="item.status === 'approved'" class="cc-mine">AI 处理中…</span>
+        <span v-else-if="item.status === 'approved'" class="cc-mine">处理中…</span>
       </footer>
       <div v-if="canModerate" class="cc-admin">
         <button v-if="['voting', 'approved', 'failed'].includes(item.status)" type="button" class="cc-link" @click="moderate(item, 'dismiss')">关闭</button>
@@ -106,8 +107,10 @@ async function vote(item: CanteenCorrectionEntry, agree: boolean) {
     const result = await toolsApi.voteCanteenCorrection(item.id, agree);
     Object.assign(item, { agreeCount: result.agreeCount, disagreeCount: result.disagreeCount, status: result.status, myVote: agree ? "agree" : "disagree" });
     if (result.status === "approved") {
-      ElMessage.success("票数够了，AI 正在核对并修改门店信息");
+      ElMessage.success(item.kind === "新增门店" && item.proposedTags?.length ? "票数够了，马上加进门店列表" : "票数够了，AI 正在核对并修改门店信息");
       emit("catalog-may-change");
+    } else if (result.status === "rejected") {
+      ElMessage.info("认为不对的人够多了，这条纠错不采纳");
     }
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : "投票失败");
@@ -145,6 +148,7 @@ defineExpose({ load });
 .cc-shop { font-size: var(--cpu-fs-s); }
 .cc-status { margin-left: auto; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
 .is-applied .cc-status { color: var(--cpu-primary); font-weight: 600; }
+.cc-tags { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
 .cc-content { margin: 6px 0 0; font-size: var(--cpu-fs-s); line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
 .cc-note { margin: 6px 0 0; padding: 6px 8px; border-radius: var(--cpu-radius-s); background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 .cc-note b { margin-right: 6px; color: var(--cpu-text); }

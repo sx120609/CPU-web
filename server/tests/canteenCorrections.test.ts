@@ -15,6 +15,7 @@ import {
   getCanteenCatalog,
   invalidateCanteenCatalog,
   processApprovedCanteenCorrections,
+  submitCanteenCorrection,
   voteCanteenCorrection,
 } from "../src/services/canteenCorrections";
 
@@ -73,6 +74,15 @@ function fakeStore() {
     findMany: async ({ where }: Row = {}) => [...corrections.values()].filter((row) => matches(row, where)).sort((a, b) => (a.resolvedAt?.getTime() ?? 0) - (b.resolvedAt?.getTime() ?? 0)),
     findUnique: async ({ where }: Row) => corrections.get(where.id) ?? null,
     findFirst: async ({ where }: Row) => [...corrections.values()].find((row) => matches(row, where)) ?? null,
+    count: async ({ where }: Row) => [...corrections.values()].filter((row) => matches(row, where)).length,
+    create: async ({ data }: Row) => {
+      const row = {
+        id: `n${corrections.size + 1}`, shopId: "", patch: "", aiNote: "", status: "voting", agreeCount: 0, disagreeCount: 0,
+        attempts: 0, lockedAt: null, resolvedAt: null, createdAt: new Date(), updatedAt: new Date(), ...data,
+      };
+      corrections.set(row.id, row);
+      return row;
+    },
     update: async ({ where, data }: Row) => {
       const row = corrections.get(where.id)!;
       Object.assign(row, data, { updatedAt: new Date() });
@@ -195,5 +205,91 @@ test("one correction can split a listing into two shops on the same floor, but n
   } finally {
     (prisma as any).canteenCorrection = saved;
     invalidateCanteenCatalog();
+  }
+});
+
+function useStore(store: ReturnType<typeof fakeStore>) {
+  const saved = { transaction: prisma.$transaction, correction: prisma.canteenCorrection, vote: prisma.canteenCorrectionVote };
+  prisma.$transaction = (async (fn: any) => fn(store.tx)) as any;
+  (prisma as any).canteenCorrection = store.tx.canteenCorrection;
+  (prisma as any).canteenCorrectionVote = store.tx.canteenCorrectionVote;
+  invalidateCanteenCatalog();
+  return () => {
+    prisma.$transaction = saved.transaction;
+    (prisma as any).canteenCorrection = saved.correction;
+    (prisma as any).canteenCorrectionVote = saved.vote;
+    invalidateCanteenCatalog();
+  };
+}
+
+test("a new shop with floor, name and category goes live after the vote without asking the AI", async () => {
+  const store = fakeStore();
+  for (let id = 1; id <= 10; id += 1) store.users.set(id, { status: "active", mutedUntil: null });
+  const restore = useStore(store);
+  try {
+    await assert.rejects(submitCanteenCorrection({ kind: "新增门店", floorCode: "2.3", name: "姬小满韩式拌饭", tags: [] }, { userId: 1 }), /卖什么/);
+    await assert.rejects(submitCanteenCorrection({ kind: "新增门店", floorCode: "9.9", name: "姬小满韩式拌饭", tags: ["rice"] }, { userId: 1 }), /楼层/);
+    await assert.rejects(submitCanteenCorrection({ kind: "新增门店", floorCode: "2.3", name: "手工馄饨", tags: ["soup"] }, { userId: 1 }), /已经有这家店/);
+    const { id } = await submitCanteenCorrection({ kind: "新增门店", floorCode: "2.3", name: "姬小满韩式拌饭", tags: ["rice", "regional"] }, { userId: 1 });
+    await assert.rejects(submitCanteenCorrection({ kind: "新增门店", floorCode: "2.3", name: "姬小满韩式拌饭", tags: ["rice"] }, { userId: 2 }), /投一票/);
+    let asked = 0;
+    canteenCorrectionAi.decide = async () => { asked += 1; return { decision: "reject", note: "不该问 AI" }; };
+    for (let voter = 2; voter <= CANTEEN_CORRECTION_THRESHOLD + 2; voter += 1) await voteCanteenCorrection(id, true, { userId: voter });
+    await processApprovedCanteenCorrections();
+    const row = store.corrections.get(id)!;
+    assert.equal(row.status, "applied");
+    assert.equal(row.shopId, "2.3::姬小满韩式拌饭");
+    assert.match(row.aiNote, /二食堂三楼新增「姬小满韩式拌饭」/);
+    assert.equal(asked, 0);
+    invalidateCanteenCatalog();
+    const { index } = await getCanteenCatalog();
+    assert.deepEqual(index.find("2.3::姬小满韩式拌饭")?.tags, ["rice", "regional"]);
+  } finally {
+    restore();
+  }
+});
+
+test("a written new-shop request without a shop is added by the AI on the floor it names", async () => {
+  const store = fakeStore();
+  store.corrections.set("a1", {
+    id: "a1", userId: 1, shopId: "", kind: "新增门店", content: "二食堂三楼新开了一家姬小满韩式拌饭。", status: "approved",
+    agreeCount: 6, disagreeCount: 0, patch: "", aiNote: "", attempts: 0, lockedAt: null, resolvedAt: null, updatedAt: new Date(),
+  });
+  const restore = useStore(store);
+  try {
+    let seen: any = null;
+    canteenCorrectionAi.decide = async (row, index) => {
+      seen = { shopId: row.shopId, floors: index.canteens.length };
+      return { decision: "apply", patches: [{ op: "add", floorCode: "2.3", name: "姬小满韩式拌饭", tags: ["rice"] }] };
+    };
+    await processApprovedCanteenCorrections();
+    assert.equal(seen.shopId, "");
+    assert.equal(store.corrections.get("a1")!.status, "applied");
+
+    // 新增门店不能顺手删别的店。
+    store.corrections.set("a2", { ...store.corrections.get("a1")!, id: "a2", status: "approved", shopId: "", patch: "", content: "一食堂一楼新开了老王拌面" });
+    canteenCorrectionAi.decide = async () => ({ decision: "apply", patches: [{ op: "remove", shopId: "1.1::粥员外" }] });
+    await processApprovedCanteenCorrections();
+    assert.equal(store.corrections.get("a2")!.status, "rejected");
+  } finally {
+    restore();
+  }
+});
+
+test("more than the threshold of disagreeing votes closes the correction", async () => {
+  const store = fakeStore();
+  for (let id = 1; id <= 10; id += 1) store.users.set(id, { status: "active", mutedUntil: null });
+  store.corrections.set("d1", {
+    id: "d1", userId: 1, shopId: "1.1::粥员外", kind: "删除门店", content: "关门了", status: "voting",
+    agreeCount: 0, disagreeCount: 0, patch: "", aiNote: "", attempts: 0, lockedAt: null, resolvedAt: null, updatedAt: new Date(),
+  });
+  const restore = useStore(store);
+  try {
+    let last;
+    for (let voter = 2; voter <= CANTEEN_CORRECTION_THRESHOLD + 2; voter += 1) last = await voteCanteenCorrection("d1", false, { userId: voter });
+    assert.equal(last!.status, "rejected");
+    assert.match(store.corrections.get("d1")!.aiNote, /认为不对/);
+  } finally {
+    restore();
   }
 });
