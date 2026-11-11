@@ -15,15 +15,17 @@ test('accent text in the new sheets follows the theme, so it stays readable in d
     /Text\(day\.name\)[\s\S]{0,120}fontColor\(day\.ymd === this\.model\.view\?\.free\.date \? \$r\('app\.color\.app_on_accent'\)/);
 });
 
-test('long-press menus show the larger course card and group their actions alike', () => {
-  const body = read('schedule/NativeScheduleBody.ets');
-  const strip = read('schedule/ScheduleOverlayStrip.ets');
-  for (const source of [body, strip]) {
-    assert.doesNotMatch(source, /MenuPreviewMode\.IMAGE/);
-    assert.match(source, /scheduleCoursePreview\(/);
+test('courses answer a tap only: no long-press menus anywhere on the timetable', () => {
+  for (const file of ['schedule/NativeScheduleBody.ets', 'schedule/ScheduleOverlayStrip.ets', 'schedule/ScheduleMonthView.ets',
+    'schedule/NativeSchedulePage.ets']) {
+    const source = read(file);
+    assert.doesNotMatch(source, /bindContextMenu|ResponseType\.LongPress|LongPressGesture/, `${file} still has a long press`);
   }
-  assert.match(strip, /MenuItemGroup\(\)/);
-  assert.match(strip, /contentFontColor\('#DC2626'\)/);
+  // The quick look carries the actions; 这次停课 asks first and is red.
+  const page = read('schedule/NativeSchedulePage.ets');
+  assert.match(page, /private quickActionBar\(\)/);
+  assert.match(page, /courseQuickActions\(/);
+  assert.match(page, /AlertDialog\.show\(\{ title: `「\$\{block\.course\.name\}」这次停课？`/);
 });
 
 test('更多 and 找共同空闲 keep their title outside the scrolling list', () => {

@@ -286,14 +286,24 @@ await start({ occurrences: 1, day: 1 });
 nodes = await waitFor(nodes => has(nodes, '已停课') && has(nodes, '调') && has(nodes, '药物分析'), 'Seeded single-meeting changes missing');
 capture('occurrences-week');
 const live = nodes.find(node => node.text === '药物分析');
-shell('uitest', 'uiInput', 'longClick', ...point(live).map(String));
-await waitFor(nodes => has(nodes, '调整这一次') && has(nodes, '这次停课') && has(nodes, '在这节课加日程'), 'Long-press menu missing');
-capture('occurrences-menu');
-await click('这次停课');
+// A tap is the only way in: the quick look carries the actions.
+shell('uitest', 'uiInput', 'click', ...point(live).map(String));
+await waitFor(nodes => hasId(nodes, 'schedule-course-edit') && hasId(nodes, 'schedule-course-adjust')
+  && hasId(nodes, 'schedule-course-cancel') && hasId(nodes, 'schedule-course-agenda'), 'Quick look actions missing');
+capture('occurrences-quicklook');
+await click('#schedule-course-cancel');
+// 这次停课 asks first; the dialog's button has the same words as the quick look's.
+nodes = await waitFor(nodes => nodes.filter(node => node.text === '这次停课').length >= 2, 'The cancel confirmation did not open');
+capture('occurrences-confirm');
+const confirmButton = nodes.filter(node => node.text === '这次停课' && node.id !== 'schedule-course-cancel').pop();
+shell('uitest', 'uiInput', 'click', ...point(confirmButton).map(String));
 await waitFor(nodes => nodes.filter(node => node.text === '已停课').length >= 2, 'The meeting was not cancelled');
 const cancelled = layout().filter(node => node.text === '药物分析').pop();
 shell('uitest', 'uiInput', 'click', ...point(cancelled).map(String));
-await click('恢复原安排');
+await waitFor(nodes => hasId(nodes, 'schedule-course-restore') && hasPart(nodes, '已停课 ·') && !hasId(nodes, 'schedule-course-edit'),
+  'A cancelled meeting must open its quick look with only 恢复这节课');
+capture('occurrences-cancelled-quicklook');
+await click('#schedule-course-restore');
 await waitFor(nodes => nodes.filter(node => node.text === '已停课').length === 1, 'The meeting was not restored');
 await start({ occurrences: 1, day: 1, panel: 'occurrence' });
 await waitFor(nodes => has(nodes, '调整这一次') && hasId(nodes, 'occurrence-save'), 'The 调整这一次 sheet did not open');
@@ -302,7 +312,7 @@ await click('#occurrence-slot-12');
 await click('#occurrence-save');
 await waitFor(nodes => !hasId(nodes, 'occurrence-save'), 'The single change was not saved');
 capture('occurrences-moved');
-pass('long-press menu, 这次停课, 恢复原安排 and 调整这一次');
+pass('tap-only quick look actions, 这次停课 with confirmation, 恢复这节课 and 调整这一次');
 
 // A classmate at another school laid over: the two-column strip.
 await start({ overlay: 1 });

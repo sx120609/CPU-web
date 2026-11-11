@@ -16,7 +16,8 @@ import { couplePersonTone } from './ScheduleCouple';
 import { NativeOccurrenceEditor, NativeOccurrenceEditorModel } from './NativeOccurrenceEditor';
 import { ScheduleOverlayStrip } from './ScheduleOverlayStrip';
 import { backgroundCropRect } from './NativeBackgroundCrop';
-import { cancelledKeysOf, movedKeys, occurrenceDateText, occurrenceKeysOf, originalSlotsOf } from './ScheduleOccurrences';
+import { cancelledKeysOf, courseQuickActions, CourseQuickAction, movedKeys, occurrenceDateText, occurrenceKeysOf,
+  originalSlotsOf } from './ScheduleOccurrences';
 import { agendaMinutes, agendaOn, NativeAgendaOccurrence } from './NativeAgenda';
 import { promptAction } from '@kit.ArkUI';
 
@@ -75,6 +76,8 @@ export struct NativeSchedulePage {
   @State private detailStatus: string = '';
   // The date of the meeting looked at, for its 日程; empty when the calendar has none.
   @State private detailDate: string = '';
+  // The weekday the course is shown on (a make-up day shows another weekday's courses).
+  @State private detailShownDay: number = 1;
   @State private occurrence: NativeOccurrenceEditorModel = new NativeOccurrenceEditorModel();
   // 更多: NapTable's grouped tools sheet.
   @State private toolsVisible: boolean = false;
@@ -101,10 +104,10 @@ export struct NativeSchedulePage {
       const day = this.store.selectedDay;
       const blocks = this.store.displayBlocks(day);
       const date = this.store.rawDate(day);
-      if (action === 'occurrence' && blocks.length) this.handleMenu('adjust', blocks[0], day, date);
+      if (action === 'occurrence' && blocks.length) this.runQuickAction('adjust', blocks[0], day, date);
       if (action === 'occurrenceCancelled') {
-        const ghost = [1, 2, 3, 4, 5, 6, 7].map((value: number) => this.store.cancelledBlocks(value)).find((list: NativeCourseBlock[]) => list.length > 0);
-        if (ghost) this.askRestore(ghost[0]);
+        const shown = [1, 2, 3, 4, 5, 6, 7].find((value: number) => this.store.cancelledBlocks(value).length > 0);
+        if (shown) this.openDetail(this.store.cancelledBlocks(shown)[0], shown);
       }
       if (action === 'courseDetail' && blocks.length) this.openDetail(blocks[0], day, '', date);
       if (action === 'tools') this.toolsVisible = true;
@@ -151,7 +154,7 @@ export struct NativeSchedulePage {
           if (this.store.viewMode === 'month' && this.store.weekOptions().length && this.store.result) {
             ScheduleMonthView({ store: this.store, couple: this.couple,
               onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay, '', this.store.selectedDate),
-              onCancelled: (block: NativeCourseBlock) => this.askRestore(block) })
+              onCancelled: (block: NativeCourseBlock) => this.openDetail(block, this.store.selectedDay, '', this.store.selectedDate) })
           } else if (this.store.viewMode === 'day' && this.store.weekOptions().length) {
             Column() {
               this.dayStrip()
@@ -164,8 +167,7 @@ export struct NativeSchedulePage {
                       showDayStrip: false,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
                       onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
-                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
-                      onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date) })
+                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
                   }.width('100%').height('100%')
                 })
               }.width('100%').layoutWeight(1).index(Math.max(0, Math.min(6, this.store.selectedDay - 1)))
@@ -180,7 +182,6 @@ export struct NativeSchedulePage {
                 revision: `${this.store.selectedSemester}|${this.store.dataRevision}|${this.couple.revision}|${this.store.periods.length}`,
                 onCourse: (block: NativeCourseBlock, shownDay: number, date: string) => this.openDetail(block, shownDay, '', date),
                 onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
-                onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date),
                 onOpenDay: (date: string) => { this.store.openDate(date); } })
             }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
           } else if (this.store.weekOptions().length) {
@@ -192,8 +193,7 @@ export struct NativeSchedulePage {
                       contentHeight: this.contentHeight, pageWidth: this.pageWidth,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
                       onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
-                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
-                      onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date) })
+                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
                   }
                 }.width('100%').height('100%')
               }, (week: NativeScheduleWeek) => this.store.selectedSemester + ':' + week.value)
@@ -208,8 +208,7 @@ export struct NativeSchedulePage {
               contentHeight: this.contentHeight, pageWidth: this.pageWidth,
               onLogin: this.onLogin, onAddSlot: this.onAddSlot,
               onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
-              onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
-                      onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date) })
+              onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
           }
         }.layoutWeight(1).width('100%').clip(true).margin({ bottom: this.bottomClearance })
           .onRefreshing(() => { this.pullRefreshing = true; this.store.load(true); })
@@ -682,13 +681,6 @@ export struct NativeSchedulePage {
           Text(this.detailName).width('100%').fontSize(22).fontWeight(FontWeight.Bold).fontColor(this.textColor())
           Text(this.detailSchedule).width('100%').fontSize(14).fontColor(scheduleMetaText(this.store.dark))
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        if (this.store.canEdit() && !this.detailPeek) {
-          Button('编辑').type(ButtonType.Capsule).height(32).fontSize(14).fontWeight(600).padding({ left: 14, right: 14 })
-            .fontColor(scheduleThemeText(this.store.palette, this.store.dark))
-            .backgroundColor(scheduleThemeTint(this.store.palette, this.store.dark ? 0.2 : 0.1))
-            .id('schedule-course-edit').accessibilityText('编辑课程')
-            .onClick(() => { if (this.detailBlock) this.onEdit(this.detailBlock); })
-        }
       }.width('100%').alignItems(VerticalAlign.Top).padding({ right: 36 })
       // Rows without a value take no space.
       if (this.detailLocation || this.detailTeacher || this.detailWeeks || this.detailNote) {
@@ -701,7 +693,8 @@ export struct NativeSchedulePage {
         }.width('100%')
       }
       if (this.detailStatus) {
-        Text(this.detailStatus).width('100%').fontSize(13).fontWeight(600).fontColor('#C2410C')
+        Text(this.detailStatus).width('100%').fontSize(13).fontWeight(600)
+          .fontColor(this.detailBlock?.cancelled ? '#DC2626' : '#C2410C')
       }
       if (this.agendaShown()) this.detailAgenda()
       if (this.detailPeek.trim()) {
@@ -711,10 +704,76 @@ export struct NativeSchedulePage {
       } else if (this.detailCustom) {
         Text('自己添加或修改过的课程').width('100%').fontSize(13).fontColor(scheduleMetaText(this.store.dark))
       }
+      if (this.quickActions().length) this.quickActionBar()
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 24, bottom: 28 })
     .backgroundColor(this.surfaceColor())
+  }
+
+  // The quick look's buttons: one filled, the rest outlined two to a row, 这次停课 in red text.
+  @Builder
+  private quickActionBar() {
+    Column({ space: 10 }) {
+      ForEach(this.quickActions().filter((action: CourseQuickAction) => action.kind === 'primary'), (action: CourseQuickAction) => {
+        Button(action.label).type(ButtonType.Capsule).width('100%').height(44).fontSize(15).fontWeight(600)
+          .fontColor('#FFFFFF').backgroundColor('#0F766E')
+          .id('schedule-course-' + action.id).onClick(() => this.tapQuickAction(action))
+      }, (action: CourseQuickAction) => action.id)
+      ForEach(this.quickActionRows(), (row: CourseQuickAction[]) => {
+        Row({ space: 10 }) {
+          ForEach(row, (action: CourseQuickAction) => {
+            Button(action.label).type(ButtonType.Capsule).layoutWeight(1).height(40).fontSize(14).fontWeight(600)
+              .fontColor(scheduleThemeText(this.store.palette, this.store.dark))
+              .backgroundColor(scheduleThemeTint(this.store.palette, this.store.dark ? 0.16 : 0.08))
+              .border({ width: 1, color: scheduleThemeTint(this.store.palette, this.store.dark ? 0.45 : 0.3), radius: 20 })
+              .id('schedule-course-' + action.id).onClick(() => this.tapQuickAction(action))
+          }, (action: CourseQuickAction) => action.id)
+        }.width('100%')
+      }, (row: CourseQuickAction[]) => row.map((action: CourseQuickAction) => action.id).join(','))
+      ForEach(this.quickActions().filter((action: CourseQuickAction) => action.kind === 'destructive'), (action: CourseQuickAction) => {
+        Text(action.label).fontSize(14).fontWeight(600).fontColor('#DC2626').height(32).padding({ left: 16, right: 16 })
+          .id('schedule-course-' + action.id).accessibilityText(action.label)
+          .onClick(() => this.tapQuickAction(action))
+      }, (action: CourseQuickAction) => action.id)
+    }.width('100%').alignItems(HorizontalAlign.Center).margin({ top: 4 })
+  }
+
+  private quickActions(): CourseQuickAction[] {
+    const block = this.detailBlock;
+    if (!block || this.store.readOnly) return [];
+    return courseQuickActions({ partner: !!this.detailPeek.trim(), cancelled: !!block.cancelled,
+      moved: !!block.course.occurrenceFrom, editable: this.store.canEdit(), occurrences: this.store.occurrencesEditable(),
+      date: this.detailDate, adjusted: !!this.store.adjustmentOnDate(this.detailDate),
+      agenda: this.store.agendaAvailable && !!this.store.agendaNew });
+  }
+
+  // The outlined buttons, two to a row.
+  private quickActionRows(): CourseQuickAction[][] {
+    const rest = this.quickActions().filter((action: CourseQuickAction) => action.kind === 'secondary');
+    const rows: CourseQuickAction[][] = [];
+    for (let index = 0; index < rest.length; index += 2) rows.push(rest.slice(index, index + 2));
+    return rows;
+  }
+
+  // The quick look closes first: what follows is another sheet, a dialog or a toast.
+  private tapQuickAction(action: CourseQuickAction): void {
+    const block = this.detailBlock;
+    if (!block) return;
+    const shownDay = this.detailShownDay;
+    const date = this.detailDate;
+    if (action.id === 'cancel') {
+      AlertDialog.show({ title: `「${block.course.name}」这次停课？`,
+        message: `只停 ${occurrenceDateText(date)} 这一节，其他周照常；之后点这节课可以恢复。`,
+        primaryButton: { value: '取消', action: () => undefined },
+        secondaryButton: { value: '这次停课', fontColor: '#DC2626', action: () => {
+          this.store.detailVisible = false;
+          this.runQuickAction('cancel', block, shownDay, date);
+        } } });
+      return;
+    }
+    this.store.detailVisible = false;
+    setTimeout(() => this.runQuickAction(action.id, block, shownDay, date), 350);
   }
 
   @Builder
@@ -740,19 +799,9 @@ export struct NativeSchedulePage {
       Divider().color(scheduleAlpha(this.secondaryColor(), 0.25))
       Row() {
         Text('这节课的日程').fontSize(14).fontWeight(600).fontColor(scheduleMetaText(this.store.dark)).layoutWeight(1)
-        if (this.store.agendaAvailable && this.store.agendaNew) {
-          Text('＋ 添加').fontSize(14).fontWeight(600).fontColor(scheduleThemeText(this.store.palette, this.store.dark))
-            .id('schedule-course-agenda-add')
-            .onClick(() => {
-              const date = this.detailDate;
-              const start = this.detailBlock ? this.store.blockStart(this.detailBlock) : '';
-              this.store.detailVisible = false;
-              setTimeout(() => this.store.agendaNew?.(date, start), 350);
-            })
-        }
       }.width('100%')
       if (!this.relatedAgenda().length) {
-        Text('还没有。作业、小测或要带的东西，记一笔就会在这里出现。').fontSize(12).fontColor(scheduleMetaText(this.store.dark)).width('100%')
+        Text('还没有。作业、小测或要带的东西，点「在这节课加日程」记一笔。').fontSize(12).fontColor(scheduleMetaText(this.store.dark)).width('100%')
       }
       ForEach(this.relatedAgenda(), (entry: NativeAgendaOccurrence) => {
         Row({ space: 10 }) {
@@ -885,13 +934,10 @@ export struct NativeSchedulePage {
     setTimeout(() => run(), 350);
   }
 
-  // ---- The long-press menu and single meetings ----
+  // ---- The quick look's actions and single meetings ----
 
-  private handleMenu(action: string, block: NativeCourseBlock, shownDay: number, date: string): void {
-    if (action === 'detail') {
-      if (block.cancelled) this.askRestore(block);
-      else this.openDetail(block, shownDay, '', date);
-    } else if (action === 'edit') {
+  private runQuickAction(action: string, block: NativeCourseBlock, shownDay: number, date: string): void {
+    if (action === 'edit') {
       this.onEdit(block);
     } else if (action === 'agenda') {
       this.store.agendaNew?.(date, this.store.blockStart(block));
@@ -901,7 +947,7 @@ export struct NativeSchedulePage {
       const name = block.course.name;
       const change: NativeOccurrenceChange = { key: '', date, cancelled: true };
       void this.store.changeOccurrence(occurrenceKeysOf(block.course), date, change).then((message: string) => {
-        promptAction.showToast({ message: message || `「${name}」${occurrenceDateText(date)}停课，长按可恢复` });
+        promptAction.showToast({ message: message || `「${name}」${occurrenceDateText(date)}停课，点这节课可以恢复` });
       });
     } else if (action === 'readjust') {
       const key = block.course.occurrenceKey ?? '';
@@ -923,23 +969,14 @@ export struct NativeSchedulePage {
     });
   }
 
-  // A cancelled meeting tapped: put it back?
-  private askRestore(block: NativeCourseBlock): void {
-    const change = block.cancelled;
-    if (!change) return;
-    AlertDialog.show({ title: `「${block.course.name}」这次停课`,
-      message: `${occurrenceDateText(change.date)} 的这节课已停课；恢复后按原来的时间上课。`,
-      primaryButton: { value: '取消', action: () => undefined },
-      secondaryButton: { value: '恢复原安排', action: () => this.restore(cancelledKeysOf(block), change.date) } });
-  }
-
   // `shownDay` is the weekday the course is shown on; on a make-up day it differs from the
   // weekday the course belongs to, which is what the editor uses.
   private openDetail(block: NativeCourseBlock, shownDay: number, peek: string = '', date: string = ''): void {
-    if (block.cancelled && !peek.trim()) { this.askRestore(block); return; }
     this.detailPeek = peek;
-    this.detailDate = date || this.store.shownRawDate(shownDay);
-    this.detailStatus = block.course.occurrenceFrom ? `调课 · 原定 ${occurrenceDateText(block.course.occurrenceFrom)}` : '';
+    this.detailShownDay = shownDay;
+    this.detailDate = date || block.cancelled?.date || this.store.shownRawDate(shownDay);
+    this.detailStatus = block.cancelled ? `已停课 · ${occurrenceDateText(block.cancelled.date)} 这一节不上`
+      : block.course.occurrenceFrom ? `调课 · 原定 ${occurrenceDateText(block.course.occurrenceFrom)}` : '';
     this.detailBlock = block;
     this.detailName = block.course.name || '课程';
     this.detailTeacher = (block.course.teacher ?? '').trim();

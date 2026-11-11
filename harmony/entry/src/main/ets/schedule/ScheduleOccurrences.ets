@@ -1,25 +1,26 @@
 import { NativeCalendarWeek, NativeCourseBlock, NativeOccurrenceChange, NativeScheduleCell,
   NativeScheduleCourse } from './NativeScheduleStore';
 
-// Single meetings changed on their own (iOS ScheduleCourseMenu / ScheduleOccurrenceEditor): 这次停课,
+// Single meetings changed on their own (iOS ScheduleCourseMenu / ScheduleOccurrenceEditor; here the
+// actions sit in the course quick look, a tap away, not in a long-press menu): 这次停课,
 // 调整这一次 and 恢复原安排. The server keeps the changes with the schedule edits and the site writes
 // them into the timetable (server/src/shared/scheduleOccurrences.ts); these are the rules the app
 // needs around that, as plain values so they can be checked without a device.
 
 const WEEKDAYS: string[] = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
-/** One entry of the long-press menu of a course. */
-export interface CourseMenuAction {
-  // detail | edit | adjust | cancel | readjust | restore | agenda
+/** One button at the foot of the course quick look (tapping a course is the only way in). */
+export interface CourseQuickAction {
+  // edit | adjust | cancel | readjust | restore | agenda
   id: string;
   label: string;
-  destructive: boolean;
-  // Entries of one group are drawn together; a divider goes between groups.
-  group: number;
+  // primary (one, filled) | secondary (outlined) | destructive (red text, asks first)
+  kind: string;
 }
 
-/** What the long-press menu needs to know about a course and the timetable it is on. */
-export interface CourseMenuInput {
+/** What the quick look's buttons depend on: the course and the timetable it is on. */
+export interface CourseQuickInput {
+  // Somebody else's course, or one only looked at from here: read-only, no buttons.
   partner: boolean;
   cancelled: boolean;
   moved: boolean;
@@ -42,25 +43,28 @@ export function occurrenceDateText(date: string): string {
   return `${Number(match[2])}月${Number(match[3])}日 ${WEEKDAYS[new Date(time).getUTCDay()]}`;
 }
 
-/** The long-press menu, iOS's order: look and edit, this meeting, then the rest. */
-export function courseMenuActions(input: CourseMenuInput): CourseMenuAction[] {
-  const actions: CourseMenuAction[] = [{ id: 'detail', label: '查看详情', destructive: false, group: 0 }];
-  if (input.partner) return actions;
-  if (input.cancelled) {
-    return [{ id: 'restore', label: '恢复原安排', destructive: false, group: 0 },
-      { id: 'detail', label: '查看详情', destructive: false, group: 1 }];
-  }
-  if (input.editable && !input.moved) actions.push({ id: 'edit', label: '编辑整门课', destructive: false, group: 0 });
-  if (input.editable && input.occurrences && input.date && !input.adjusted) {
-    if (input.moved) {
-      actions.push({ id: 'readjust', label: '再调整这一次', destructive: false, group: 1 });
-      actions.push({ id: 'restore', label: '恢复原安排', destructive: false, group: 1 });
-    } else {
-      actions.push({ id: 'adjust', label: '调整这一次', destructive: false, group: 1 });
-      actions.push({ id: 'cancel', label: '这次停课', destructive: true, group: 1 });
+/**
+ * The quick look's buttons, the first one filled: the whole course, then this meeting, then a
+ * 日程 for it, with 这次停课 last in red. A cancelled meeting only offers to come back; a moved
+ * one to move again or go back; somebody else's course none.
+ */
+export function courseQuickActions(input: CourseQuickInput): CourseQuickAction[] {
+  if (input.partner) return [];
+  const single = input.editable && input.occurrences && !!input.date && !input.adjusted;
+  if (input.cancelled) return input.editable ? [{ id: 'restore', label: '恢复这节课', kind: 'primary' }] : [];
+  const actions: CourseQuickAction[] = [];
+  if (input.moved) {
+    if (single) {
+      actions.push({ id: 'readjust', label: '再调整这一次', kind: 'secondary' });
+      actions.push({ id: 'restore', label: '恢复原安排', kind: 'secondary' });
     }
+  } else {
+    if (input.editable) actions.push({ id: 'edit', label: '编辑整门课', kind: 'secondary' });
+    if (single) actions.push({ id: 'adjust', label: '调整这一次', kind: 'secondary' });
   }
-  if (input.agenda && input.date) actions.push({ id: 'agenda', label: '在这节课加日程', destructive: false, group: 2 });
+  if (input.agenda && input.date) actions.push({ id: 'agenda', label: '在这节课加日程', kind: 'secondary' });
+  if (actions.length) actions[0].kind = 'primary';
+  if (single && !input.moved) actions.push({ id: 'cancel', label: '这次停课', kind: 'destructive' });
   return actions;
 }
 

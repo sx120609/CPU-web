@@ -41,17 +41,22 @@ const cells = () => {
 const k1 = () => cells()[0].courses[0].editKeys[0];
 const k2 = () => cells()[1].courses[0].editKeys[0];
 
-test('the long-press menu follows iOS for own, moved, cancelled and somebody else\'s courses', () => {
-  const ids = input => JSON.parse(JSON.stringify(rules.courseMenuActions({ partner: false, cancelled: false, moved: false, editable: true, occurrences: true,
-    date: '2026-09-07', adjusted: false, agenda: true, ...input }).map(action => action.id)));
-  assert.deepEqual(ids({}), ['detail', 'edit', 'adjust', 'cancel', 'agenda']);
-  assert.deepEqual(ids({ moved: true }), ['detail', 'readjust', 'restore', 'agenda']);
-  assert.deepEqual(ids({ cancelled: true }), ['restore', 'detail']);
-  assert.deepEqual(ids({ partner: true }), ['detail']);
+test('the quick look offers each course its own buttons, one filled and 这次停课 last', () => {
+  const run = input => JSON.parse(JSON.stringify(rules.courseQuickActions({ partner: false, cancelled: false, moved: false, editable: true,
+    occurrences: true, date: '2026-09-07', adjusted: false, agenda: true, ...input })));
+  const ids = input => run(input).map(action => action.id);
+  assert.deepEqual(ids({}), ['edit', 'adjust', 'agenda', 'cancel']);
+  assert.deepEqual(run({}).map(action => action.kind), ['primary', 'secondary', 'secondary', 'destructive']);
+  assert.deepEqual(ids({ moved: true }), ['readjust', 'restore', 'agenda']);
+  assert.equal(run({ moved: true })[0].kind, 'primary');
+  assert.deepEqual(run({ cancelled: true }).map(action => [action.id, action.label, action.kind]), [['restore', '恢复这节课', 'primary']]);
+  assert.deepEqual(ids({ partner: true }), []);
   // A site without single-meeting changes, a day off or make-up day, a graduate timetable.
-  assert.deepEqual(ids({ occurrences: false }), ['detail', 'edit', 'agenda']);
-  assert.deepEqual(ids({ adjusted: true }), ['detail', 'edit', 'agenda']);
-  assert.deepEqual(ids({ editable: false, agenda: false }), ['detail']);
+  assert.deepEqual(ids({ occurrences: false }), ['edit', 'agenda']);
+  assert.deepEqual(ids({ adjusted: true }), ['edit', 'agenda']);
+  assert.deepEqual(ids({ editable: false }), ['agenda']);
+  assert.deepEqual(ids({ editable: false, agenda: false }), []);
+  assert.deepEqual(ids({ cancelled: true, editable: false }), []);
 });
 
 test('dates read as month, day and weekday', () => {
