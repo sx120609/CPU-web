@@ -8,6 +8,11 @@ final class ScheduleWidgetPrefs {
     private static final String KEY_ENDPOINT = "endpoint";
     private static final String KEY_THEME = "theme";
     private static final String KEY_ACCOUNT = "account_fingerprint";
+    /** 小组件风格: empty follows the timetable's style. */
+    private static final String KEY_STYLE = "style";
+    /** 文字底色: how much of the widget's own colour covers the photo, 0.2–0.9. */
+    private static final String KEY_VEIL = "photo_veil";
+    static final String PHOTO_FILE = "widget-background.jpg";
 
     private ScheduleWidgetPrefs() {
     }
@@ -50,6 +55,35 @@ final class ScheduleWidgetPrefs {
     /** Sign-out or a different account: drop the subscription and its owner. */
     static void clearAccount(Context context) {
         prefs(context).edit().remove(KEY_ENDPOINT).remove(KEY_ACCOUNT).apply();
+    }
+
+    /** The style chosen for the widgets, or "" to follow the timetable. */
+    static String styleChoice(Context context) {
+        return prefs(context).getString(KEY_STYLE, "");
+    }
+
+    static void saveStyle(Context context, String style) {
+        prefs(context).edit().putString(KEY_STYLE, style == null ? "" : style).apply();
+    }
+
+    /** The style the widgets draw in: their own choice, else the timetable's (classic, grid and minimal draw alike). */
+    static String style(Context context) {
+        String chosen = styleChoice(context);
+        if (!chosen.isEmpty()) return chosen;
+        return context.getApplicationContext().getSharedPreferences("native_schedule_style", Context.MODE_PRIVATE)
+                .getString("visualStyle", "classic");
+    }
+
+    static float veil(Context context) {
+        return Math.max(0.2f, Math.min(0.9f, prefs(context).getFloat(KEY_VEIL, 0.55f)));
+    }
+
+    static void saveVeil(Context context, float veil) {
+        prefs(context).edit().putFloat(KEY_VEIL, veil).apply();
+    }
+
+    static java.io.File photoFile(Context context) {
+        return new java.io.File(context.getApplicationContext().getFilesDir(), PHOTO_FILE);
     }
 
     private static SharedPreferences prefs(Context context) {

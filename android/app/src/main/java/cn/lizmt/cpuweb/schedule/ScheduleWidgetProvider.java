@@ -458,7 +458,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         ScheduleWidgetCardRenderer.Family family = family(mode);
         return painter(data, mode, today, currentMinutes()).paint(ScheduleWidgetCardRenderer.Frame.fit(
                 family, family.width, family.height, metrics.density, 1_200_000,
-                new ScheduleWidgetPalette(ScheduleWidgetPrefs.theme(context), dark)));
+                ScheduleWidgetPalette.of(context, ScheduleWidgetPrefs.theme(context), dark)));
     }
 
     interface Painter {
@@ -678,15 +678,15 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         ScheduleWidgetCardRenderer.Family family = family(mode);
         if (both) {
             Bitmap light = painter.paint(ScheduleWidgetCardRenderer.Frame.fit(family, width, height,
-                    metrics.density, maxPixels, new ScheduleWidgetPalette(theme, false)));
+                    metrics.density, maxPixels, ScheduleWidgetPalette.of(context, theme, false)));
             Bitmap dark = painter.paint(ScheduleWidgetCardRenderer.Frame.fit(family, width, height,
-                    metrics.density, maxPixels, new ScheduleWidgetPalette(theme, true)));
+                    metrics.density, maxPixels, ScheduleWidgetPalette.of(context, theme, true)));
             views.setIcon(R.id.widget_content_image, "setImageIcon",
                     Icon.createWithBitmap(light), Icon.createWithBitmap(dark));
         } else {
             views.setImageViewBitmap(R.id.widget_content_image, painter.paint(
                     ScheduleWidgetCardRenderer.Frame.fit(family, width, height, metrics.density, maxPixels,
-                            new ScheduleWidgetPalette(theme, isNightMode(context)))));
+                            ScheduleWidgetPalette.of(context, theme, isNightMode(context)))));
         }
     }
 

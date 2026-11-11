@@ -88,7 +88,9 @@ class ScheduleStyleSettings(private val context: Context) {
 
     fun selectVisualStyle(value: ScheduleVisualStyle) {
         visualStyle = value
-        prefs.edit().putString("visualStyle", value.id).apply()
+        prefs.edit().putString("visualStyle", value.id).commit()
+        // The widgets follow the timetable's style unless they have one of their own.
+        if (ScheduleWidgetPrefs.styleChoice(context).isEmpty()) runCatching { ScheduleWidgetProvider.updateAll(context) }
     }
 
     /** What the week grid's cards and period axis read. */

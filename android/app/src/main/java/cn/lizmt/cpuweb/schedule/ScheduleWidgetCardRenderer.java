@@ -34,6 +34,9 @@ final class ScheduleWidgetCardRenderer {
     // 每一行字的高度按像素向上取整（SwiftUI 也这样），渲染入口里按这张图的清晰度设。
     private static float pixelGrid = 3f;
     private static final Typeface[] TYPEFACES = new Typeface[10];
+    /** The style's faces for the drawing under way (see ScheduleWidgetPalette.face / figures). */
+    private static Typeface styleFace;
+    private static Typeface figureFace;
 
     enum Family {
         SMALL(170f, 170f),
@@ -1021,6 +1024,57 @@ final class ScheduleWidgetCardRenderer {
             this.canvas = new Canvas(bitmap);
             this.frame = frame;
             canvas.scale(frame.scale, frame.scale);
+            ScheduleWidgetPalette palette = frame.palette;
+            styleFace = palette.face();
+            figureFace = palette.figures();
+            if (palette.styled() || palette.photo != null) paintSurface(palette);
+        }
+
+        /**
+         * The whole widget, for a style of its own or a background photo: the
+         * paper colour (or the photo under a veil of it), then the style's
+         * decoration. Rounded like the launcher's frame for systems that do
+         * not clip the picture.
+         */
+        private void paintSurface(ScheduleWidgetPalette palette) {
+            float width = frame.width;
+            float height = frame.height;
+            RectF bounds = new RectF(0f, 0f, width, height);
+            canvas.save();
+            android.graphics.Path clip = new android.graphics.Path();
+            clip.addRoundRect(bounds, 22f, 22f, android.graphics.Path.Direction.CW);
+            canvas.clipPath(clip);
+            fill.setColor(palette.background());
+            canvas.drawRect(bounds, fill);
+            if (palette.photo != null) {
+                Bitmap photo = palette.photo;
+                float cover = Math.max(width / photo.getWidth(), height / photo.getHeight());
+                float drawnWidth = photo.getWidth() * cover;
+                float drawnHeight = photo.getHeight() * cover;
+                RectF target = new RectF((width - drawnWidth) / 2f, (height - drawnHeight) / 2f,
+                        (width + drawnWidth) / 2f, (height + drawnHeight) / 2f);
+                Paint image = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+                canvas.drawBitmap(photo, null, target, image);
+                fill.setColor(ScheduleWidgetPalette.withAlpha(palette.background(), palette.veil));
+                canvas.drawRect(bounds, fill);
+            }
+            Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
+            line.setColor(palette.rule());
+            if (palette.paper()) {
+                // Ruled lines, and the red margin of a note pad.
+                line.setStrokeWidth(0.5f);
+                for (float y = 38f; y < height; y += 22f) canvas.drawLine(0f, y, width, y, line);
+                line.setStrokeWidth(1f);
+                canvas.drawLine(10f, 0f, 10f, height, line);
+            } else if (palette.board()) {
+                // The departures board's heavy rule along the top.
+                canvas.drawRect(0f, 0f, width, 4f, line);
+            } else if (palette.table()) {
+                line.setStyle(Paint.Style.STROKE);
+                line.setStrokeWidth(1f);
+                canvas.drawRoundRect(new RectF(0.5f, 0.5f, width - 0.5f, height - 0.5f), 22f, 22f, line);
+            }
+            canvas.restore();
         }
 
         Paint text(float size, int weight, int color) {
@@ -1034,11 +1088,15 @@ final class ScheduleWidgetCardRenderer {
         void drawText(String text, float x, float top, Paint paint) {
             float baseline = top + paint.getTextSize() * ASCENT;
             float cursor = x;
+            Typeface original = paint.getTypeface();
             for (String run : runs(text)) {
-                paint.setLetterSpacing(isCjk(run.codePointAt(0)) ? 0f : LATIN_TRACKING);
+                boolean cjk = isCjk(run.codePointAt(0));
+                paint.setTypeface(runFace(original, cjk));
+                paint.setLetterSpacing(cjk || figureFace != null ? 0f : LATIN_TRACKING);
                 canvas.drawText(run, cursor, baseline, paint);
                 cursor += paint.measureText(run);
             }
+            paint.setTypeface(original);
             paint.setLetterSpacing(0f);
         }
 
@@ -1072,6 +1130,16 @@ final class ScheduleWidgetCardRenderer {
         }
     }
 
+    /** The face of one run of text: the board's figures for non-Chinese runs, else the style's face. */
+    private static Typeface runFace(Typeface base, boolean cjk) {
+        Typeface family = !cjk && figureFace != null ? figureFace : styleFace;
+        if (family == null) return base;
+        int weight = base == null ? 400 : (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? base.getWeight() : (base.isBold() ? 700 : 400));
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? Typeface.create(family, weight, false)
+                : Typeface.create(family, weight >= 600 ? Typeface.BOLD : Typeface.NORMAL);
+    }
+
     private static Typeface typeface(int weight) {
         int slot = Math.max(1, Math.min(9, weight / 100));
         Typeface cached = TYPEFACES[slot];
@@ -1088,10 +1156,14 @@ final class ScheduleWidgetCardRenderer {
     /** 按中文 / 非中文分段量宽度：非中文那段加一点字距，见 LATIN_TRACKING。 */
     private static float measure(Paint paint, String text) {
         float width = 0f;
+        Typeface original = paint.getTypeface();
         for (String run : runs(text)) {
-            paint.setLetterSpacing(isCjk(run.codePointAt(0)) ? 0f : LATIN_TRACKING);
+            boolean cjk = isCjk(run.codePointAt(0));
+            paint.setTypeface(runFace(original, cjk));
+            paint.setLetterSpacing(cjk || figureFace != null ? 0f : LATIN_TRACKING);
             width += paint.measureText(run);
         }
+        paint.setTypeface(original);
         paint.setLetterSpacing(0f);
         return width;
     }

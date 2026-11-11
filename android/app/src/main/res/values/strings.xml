@@ -6,5 +6,7 @@
     <string name="widget_schedule_name_today_large">课表·今日课程 4×4</string>
     <string name="widget_schedule_name_large">课表·两日课表 4×4</string>
     <string name="share_to_agenda">记成日程</string>
+    <string name="widget_agenda_name">日程与待办 4×2</string>
+    <string name="widget_agenda_description">逾期待办、两周内的日程和没有日期的待办，点圆圈直接完成</string>
     <string name="widget_schedule_description">五种桌面课表样式：临近课程、今日课程和两日课表</string>
 </resources>

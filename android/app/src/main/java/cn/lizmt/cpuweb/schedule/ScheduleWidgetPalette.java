@@ -31,10 +31,58 @@ final class ScheduleWidgetPalette {
 
     final String theme;
     final boolean dark;
+    /**
+     * The timetable style the widget follows (iOS ScheduleWidgetStyle): classic,
+     * grid and minimal draw as before; table, paper and board have their own
+     * paper colour, ink, typeface and decoration.
+     */
+    final String style;
+    /** 小组件背景: a photo under a veil of the widget's own colour; null for none. */
+    android.graphics.Bitmap photo;
+    float veil = 0.55f;
 
     ScheduleWidgetPalette(String theme, boolean dark) {
+        this(theme, dark, "classic");
+    }
+
+    ScheduleWidgetPalette(String theme, boolean dark, String style) {
         this.theme = normalizeTheme(theme);
         this.dark = dark;
+        this.style = normalizeStyle(style);
+    }
+
+    /** The palette the widgets draw with now: theme, style and background photo from the settings. */
+    static ScheduleWidgetPalette of(android.content.Context context, String theme, boolean dark) {
+        ScheduleWidgetPalette palette = new ScheduleWidgetPalette(theme, dark, ScheduleWidgetPrefs.style(context));
+        palette.photo = WidgetPhoto.load(context);
+        palette.veil = ScheduleWidgetPrefs.veil(context);
+        return palette;
+    }
+
+    static String normalizeStyle(String value) {
+        if ("table".equals(value) || "paper".equals(value) || "board".equals(value)) return value;
+        return "classic";
+    }
+
+    /** A style with a look of its own, drawn over the whole widget. */
+    boolean styled() {
+        return !"classic".equals(style);
+    }
+
+    boolean paper() { return "paper".equals(style); }
+
+    boolean board() { return "board".equals(style); }
+
+    boolean table() { return "table".equals(style); }
+
+    /** Every letter in this face (paper's serif); null keeps the system face. */
+    android.graphics.Typeface face() {
+        return paper() ? android.graphics.Typeface.SERIF : null;
+    }
+
+    /** Times and dates in this face (the board's monospaced figures); null keeps the text face. */
+    android.graphics.Typeface figures() {
+        return board() ? android.graphics.Typeface.MONOSPACE : null;
     }
 
     /** 网页端的主题名，老名字和 web/src/components/jwxt/scheduleTheme.ts 的 normalizeScheduleTheme 一样归并。 */
@@ -66,15 +114,26 @@ final class ScheduleWidgetPalette {
     }
 
     int background() {
+        if (paper()) return dark ? Color.rgb(0x20, 0x1E, 0x1B) : Color.rgb(0xF1, 0xEC, 0xE2);
+        if (board()) return dark ? Color.rgb(0x17, 0x1A, 0x1C) : Color.rgb(0xF4, 0xF5, 0xF4);
         return dark ? Color.rgb(14, 20, 32) : Color.rgb(248, 251, 255);
     }
 
-    /** SwiftUI 的 Color.primary / .secondary（系统 label 色）。 */
+    /** SwiftUI 的 Color.primary / .secondary（系统 label 色）；素笺、站牌用自己的墨色。 */
     int primary() {
+        if (paper()) return dark ? Color.rgb(0xED, 0xE6, 0xD8) : Color.rgb(0x2A, 0x25, 0x1F);
+        if (board()) return dark ? Color.rgb(0xFF, 0xE4, 0xA3) : Color.rgb(0x17, 0x1A, 0x1C);
         return dark ? Color.WHITE : Color.BLACK;
     }
 
+    /** The decoration of a styled widget: table rules, paper's margin and lines, the board's heavy rule. */
+    int rule() {
+        if (paper()) return dark ? Color.argb(40, 0xF3, 0x9B, 0x85) : Color.argb(46, 0xA6, 0x3F, 0x29);
+        return withAlpha(primary(), board() ? 0.85f : 0.16f);
+    }
+
     int secondary() {
+        if (paper() || board()) return withAlpha(primary(), 0.62f);
         return dark ? Color.argb(153, 235, 235, 245) : Color.argb(153, 60, 60, 67);
     }
 

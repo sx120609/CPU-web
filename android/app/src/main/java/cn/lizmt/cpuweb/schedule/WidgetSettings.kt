@@ -101,7 +101,8 @@ class WidgetSettings(private val activity: MainActivity) {
 
     /** Write the current term from the native store; unchanged records are not rewritten. */
     fun syncLocalDays(store: ScheduleStore, web: WebSession) {
-        if (!web.authState.authenticated) return
+        // The debug fixture has no session: its sample timetable still feeds the widgets.
+        if (!web.authState.authenticated && !activity.debugFixture) return
         val record = store.widgetLocalRecord() ?: return
         val owner = fingerprint(web.authState.account)
         activity.lifecycleScope.launch {
@@ -121,6 +122,44 @@ class WidgetSettings(private val activity: MainActivity) {
         ScheduleWidgetProvider.updateAll(context)
         revision += 1
         message = if (store.widgetLocalRecord() != null) "已按当前课表刷新桌面小组件" else "请先加载本学期课表"
+    }
+
+    /** 小组件风格: "" follows the timetable. */
+    var styleChoice by mutableStateOf(ScheduleWidgetPrefs.styleChoice(context))
+        private set
+    var hasPhoto by mutableStateOf(ScheduleWidgetPrefs.photoFile(context).exists())
+        private set
+    var veil by mutableStateOf(ScheduleWidgetPrefs.veil(context))
+        private set
+
+    fun selectStyle(value: String) {
+        styleChoice = value
+        ScheduleWidgetPrefs.saveStyle(context, value)
+        redraw()
+    }
+
+    /** A photo for the widgets, scaled down to 900 px. */
+    fun setPhoto(bitmap: android.graphics.Bitmap?) {
+        if (bitmap == null) WidgetPhoto.clear(context) else WidgetPhoto.save(context, bitmap)
+        hasPhoto = ScheduleWidgetPrefs.photoFile(context).exists()
+        redraw()
+    }
+
+    fun updateVeil(value: Float) {
+        veil = value
+        ScheduleWidgetPrefs.saveVeil(context, value)
+    }
+
+    fun redraw() {
+        ScheduleWidgetProvider.updateAll(context)
+        revision += 1
+    }
+
+    fun pinAgenda(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val manager = activity.getSystemService(AppWidgetManager::class.java) ?: return false
+        if (!manager.isRequestPinAppWidgetSupported) return false
+        return manager.requestPinAppWidget(ComponentName(activity, AgendaWidgetProvider::class.java), null, null)
     }
 
     fun selectTheme(value: String) {
@@ -234,8 +273,26 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
+        SettingsSection("风格")
+        // Classic, grid and minimal draw alike on a widget: they are one choice here.
+        SettingsSegmented(
+            listOf("" to "跟随课表", "classic" to "经典", "table" to "表格", "paper" to "素笺", "board" to "站牌"),
+            widgets.styleChoice,
+        ) { widgets.selectStyle(it) }
         SettingsSection("配色")
         PaletteChoices(widgets.theme) { widgets.selectTheme(it) }
+        SettingsSection("小组件背景")
+        SettingsValueRow(if (widgets.hasPhoto) "已设置" else "未设置") {
+            if (widgets.hasPhoto) androidx.compose.material3.TextButton(onClick = { widgets.setPhoto(null) }) { Text("清除") }
+            androidx.compose.material3.TextButton(onClick = { activity.pickWidgetBackground() }) { Text(if (widgets.hasPhoto) "更换" else "从相册选择") }
+        }
+        if (widgets.hasPhoto) {
+            SettingsValueRow("文字底色") { Text("${(widgets.veil * 100).toInt()}%", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            androidx.compose.material3.Slider(
+                value = widgets.veil, onValueChange = { widgets.updateVeil(it) }, onValueChangeFinished = { widgets.redraw() },
+                valueRange = 0.2f..0.9f, modifier = Modifier.semantics { contentDescription = "小组件背景上文字底色的浓度" },
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = { widgets.refresh(activity.schedule, activity.web) },
@@ -249,6 +306,13 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
             ) { Text("添加“${selected.title} ${selected.size}”到桌面") }
+        }
+        if (widgets.canPin()) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { if (!widgets.pinAgenda()) activity.toast("请长按桌面空白处，在小组件里找到“日程与待办”") },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+            ) { Text("添加“日程与待办”小组件到桌面") }
         }
         if (widgets.message.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))

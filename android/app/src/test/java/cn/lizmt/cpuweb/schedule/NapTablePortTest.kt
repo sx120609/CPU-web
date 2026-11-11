@@ -429,4 +429,56 @@ class NapTablePortTest {
     }
 
     // endregion
+
+    // region Widgets
+
+    @Test
+    fun theAgendaWidgetListsOverdueUpcomingAndUndatedItems() {
+        val today = java.time.LocalDate.parse("2026-11-11")
+        fun item(id: String, kind: cn.lizmt.cpuweb.schedule.agenda.AgendaKind, date: String, start: String = "", done: Boolean = false) =
+            cn.lizmt.cpuweb.schedule.agenda.AgendaItem(id, kind, id, date, start, done = done, createdAt = 1)
+        val todo = cn.lizmt.cpuweb.schedule.agenda.AgendaKind.Todo
+        val event = cn.lizmt.cpuweb.schedule.agenda.AgendaKind.Event
+        val items = listOf(
+            item("late", todo, "2026-11-09"), item("lateDone", todo, "2026-11-08", done = true),
+            item("talk", event, "2026-11-11", "14:00"), item("report", todo, "2026-11-11"),
+            item("trip", event, "2026-11-20"), item("far", event, "2026-12-30"),
+            item("someday", todo, ""), item("doneSomeday", todo, "", done = true),
+        )
+        val entries = AgendaWidgetRules.entries(items, today)
+        assertEquals(listOf("late", "report", "talk", "trip", "someday"), entries.map { it.id })
+        assertEquals("逾期 · 11月9日", entries[0].meta)
+        assertTrue(entries[0].overdue)
+        assertEquals("今天 14:00", entries[2].meta)
+        assertEquals("11月20日 周五 全天", entries[3].meta)
+        assertEquals("待办", entries[4].meta)
+        // A tick on the home screen shows at once: today's stays struck through, the overdue one goes.
+        val ticked = AgendaWidgetRules.entries(items, today, listOf(
+            AgendaWidgetRules.Toggle("talk", "2026-11-11", true), AgendaWidgetRules.Toggle("late", "2026-11-09", true),
+        ))
+        assertEquals(listOf("report", "talk", "trip", "someday"), ticked.map { it.id })
+        assertTrue(ticked.first { it.id == "talk" }.done)
+        val toggles = listOf(AgendaWidgetRules.Toggle("a", "2026-11-11", true))
+        assertEquals(toggles, AgendaWidgetRules.decode(AgendaWidgetRules.encode(toggles)))
+        assertTrue(AgendaWidgetRules.decode("not json").isEmpty())
+    }
+
+    @Test
+    fun widgetStylesFollowTheTimetable() {
+        assertEquals("classic", ScheduleWidgetPalette.normalizeStyle("grid"))
+        assertEquals("classic", ScheduleWidgetPalette.normalizeStyle("minimal"))
+        assertEquals("paper", ScheduleWidgetPalette.normalizeStyle("paper"))
+        val paper = ScheduleWidgetPalette("green", false, "paper")
+        assertTrue(paper.styled())
+        assertEquals(android.graphics.Typeface.SERIF, paper.face())
+        assertEquals(0xFFF1ECE2.toInt(), paper.background())
+        val board = ScheduleWidgetPalette("green", true, "board")
+        assertEquals(android.graphics.Typeface.MONOSPACE, board.figures())
+        assertEquals(0xFFFFE4A3.toInt(), board.primary())
+        val classic = ScheduleWidgetPalette("green", false)
+        assertFalse(classic.styled())
+        assertEquals(ScheduleWidgetPalette("green", false, "grid").background(), classic.background())
+    }
+
+    // endregion
 }

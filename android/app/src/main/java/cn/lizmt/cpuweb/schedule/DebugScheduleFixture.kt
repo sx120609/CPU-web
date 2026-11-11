@@ -107,6 +107,10 @@ object DebugScheduleFixture {
         intent.getIntExtra("debugDay", 0).takeIf { it in 1..7 }?.let { activity.schedule.selectDay(it) }
         pinnedNow = intent.getStringExtra("debugNow")?.let(ScheduleStyleTime::clockMinutes)
         holidayGreeting = intent.getStringExtra("debugHolidayGreeting")
+        // "debugWidgetBackground /data/local/tmp/x.jpg": 小组件背景 from a file on the device.
+        intent.getStringExtra("debugWidgetBackground")?.let { path ->
+            android.graphics.BitmapFactory.decodeFile(path)?.let { activity.widgets.setPhoto(it) }
+        }
         sheet = intent.getStringExtra("debugSheet").orEmpty()
         // Display settings for a screenshot, e.g. "sundayFirst,offWeek,teacher,rows=140".
         intent.getStringExtra("debugDisplay")?.split(',')?.map { it.trim() }?.let { flags ->

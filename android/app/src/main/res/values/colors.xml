@@ -9,4 +9,6 @@
     <!-- 课表小组件，同 iOS WidgetPalette.background 和系统 secondary 文字色 -->
     <color name="widget_background">#F8FBFF</color>
     <color name="widget_secondary_text">#993C3C43</color>
+    <color name="widget_primary_text">#FF000000</color>
+    <color name="widget_accent">#FF0F8F7F</color>
 </resources>

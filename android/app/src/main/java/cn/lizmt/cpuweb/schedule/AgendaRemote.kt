@@ -52,6 +52,8 @@ class AgendaRemote(
         frozen = true
         available = true
         items = sample.mapNotNull(AgendaCodec::normalize)
+        // The 日程 widget reads the kept copy.
+        writeCache(context, "debug", items)
     }
 
     /** Everything on [day]: all-day and untimed first, then by time (NEXT `AgendaStore.on`). */
@@ -78,7 +80,10 @@ class AgendaRemote(
             else if (it.repeat == AgendaRepeat.None) it.copy(done = done)
             else it.copy(doneDates = if (done) it.doneDates + day else it.doneDates - day)
         }
-        if (frozen) return
+        if (frozen) {
+            writeCache(context, "debug", items)
+            return
+        }
         scope.launch {
             accept(request(JSONObject().put("action", "toggle").put("id", item.id).put("date", day).put("done", done)))
         }

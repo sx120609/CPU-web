@@ -125,6 +125,29 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         }
     }
 
+    /** 小组件背景: a photo for the widgets, kept apart from the timetable's own. */
+    private val widgetPhotoPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                    var sample = 1
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 900) sample *= 2
+                    contentResolver.openInputStream(uri)?.use {
+                        android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+                    }
+                }.getOrNull()
+            }
+            if (bitmap == null) toast("图片读取失败") else widgets.setPhoto(bitmap)
+        }
+    }
+
+    fun pickWidgetBackground() {
+        widgetPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
     private val webPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         val callback = permissionCallback ?: return@registerForActivityResult
         permissionCallback = null
@@ -181,6 +204,14 @@ class MainActivity : ComponentActivity(), WebSessionHost {
             }
         }
         removeAgendaReminderLeftovers(preferences)
+        // The 日程 widget draws from the list the app keeps; ticks made on it are saved once the site answers.
+        lifecycleScope.launch {
+            snapshotFlow { agenda.items to agenda.available }.collectLatest {
+                delay(300)
+                AgendaWidgetProvider.syncPending(this@MainActivity, agenda)
+                AgendaWidgetProvider.updateAll(this@MainActivity)
+            }
+        }
         lifecycleScope.launch {
             snapshotFlow { web.authState.ready to web.authState.authenticated }.collectLatest { (ready, authenticated) ->
                 if (!ready) return@collectLatest
