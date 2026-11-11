@@ -380,7 +380,9 @@ export struct NativeDormSheet {
           ForEach(this.model.view.free.days, (day: DormDayName) => {
             Column() {
               Text(day.name).fontSize(13).fontWeight(600)
+                .fontColor(day.ymd === this.model.view?.free.date ? $r('app.color.app_on_accent') : $r('app.color.app_text_primary'))
               Text(day.ymd.substring(5)).fontSize(10)
+                .fontColor(day.ymd === this.model.view?.free.date ? $r('app.color.app_on_accent') : $r('app.color.app_text_secondary'))
             }.padding({ left: 10, right: 10, top: 6, bottom: 6 }).borderRadius(10)
               .backgroundColor(day.ymd === this.model.view?.free.date ? $r('app.color.app_accent') : $r('app.color.app_control'))
               .onClick(() => this.model.pickDay(day.ymd))

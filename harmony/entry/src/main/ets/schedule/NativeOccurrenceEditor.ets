@@ -134,8 +134,9 @@ export struct NativeOccurrenceEditor {
       }.padding({ right: 40 })
       Row({ space: 12 }) {
         Text('日期').fontSize(15).fontColor(scheduleText(this.dark)).width(48)
-        Text(occurrenceDateText(this.model.target)).fontSize(15).fontWeight(600).fontColor('#0F766E').layoutWeight(1)
-        Button('换一天').type(ButtonType.Capsule).height(30).fontSize(13).fontColor('#0F766E').backgroundColor('#140F766E')
+        Text(occurrenceDateText(this.model.target)).fontSize(15).fontWeight(600).fontColor($r('app.color.app_accent')).layoutWeight(1)
+        Button('换一天').type(ButtonType.Capsule).height(30).fontSize(13).fontColor($r('app.color.app_accent'))
+          .backgroundColor($r('app.color.app_accent_surface'))
           .id('occurrence-date')
           .onClick(() => this.pickDate())
       }.width('100%')
