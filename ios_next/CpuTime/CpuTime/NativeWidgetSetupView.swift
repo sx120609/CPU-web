@@ -570,6 +570,7 @@ struct NativeWidgetSetupView: View {
 private struct WidgetSettingsSection: View {
     @ObservedObject var session: HybridWebViewStore
     @State private var theme: String
+    @State private var widgetStyle: String
     @State private var options: WidgetDisplayOptions
 
     private let themes = [
@@ -582,6 +583,7 @@ private struct WidgetSettingsSection: View {
         self.session = session
         let defaults = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)
         _theme = State(initialValue: defaults?.string(forKey: NextWidgetConfiguration.widgetThemeKey) ?? "color-glass")
+        _widgetStyle = State(initialValue: defaults?.string(forKey: NextWidgetConfiguration.widgetStyleKey) ?? "follow")
         _options = State(initialValue: WidgetDisplayOptions.load(defaults: defaults))
     }
 
@@ -607,10 +609,25 @@ private struct WidgetSettingsSection: View {
             .onChange(of: theme) { _, value in
                 session.widgetSettings.setScheduleWidgetTheme(value)
             }
+
+            Picker("小组件风格", selection: $widgetStyle) {
+                ForEach(NextWidgetConfiguration.widgetStyles, id: \.value) { value in
+                    Text(value.title).tag(value.value)
+                }
+            }
+            .onChange(of: widgetStyle) { _, value in
+                session.widgetSettings.setScheduleWidgetStyle(value)
+            }
         } header: {
             Label("iPhone 小组件", systemImage: "square.grid.2x2")
         } footer: {
-            Text("选择要显示的信息后，打开桌面添加“临近课程”“今日课表”或“两日课表”。小组件直接用 App 里的课表，打开 App 同步课表后自动更新。节假日只标法定假日和传统节日，没课时显示最近假期的倒计时；开启「最近节假日常驻」后，有课时日期栏也会显示。今天的课上完后显示什么、两日课表显示哪两天、大号用时间线还是列表，长按小组件选“编辑小组件”设置。")
+            Text("选择要显示的信息后，打开桌面或锁屏添加“临近课程”“今日课表”“两日课表”或“日程”。小组件直接用 App 里的课表，打开 App 同步课表后自动更新；风格默认跟着课表风格走（经典、格子与简约同一个样子）。节假日只标法定假日和传统节日，没课时显示最近假期的倒计时；开启「最近节假日常驻」后，有课时日期栏也会显示。今天的课上完后显示什么、两日课表显示哪两天、大号用时间线还是列表，长按小组件选“编辑小组件”设置。")
+        }
+
+        Section {
+            LabeledContent("日程小组件", value: NativeAgendaWidgetBridge.statusText)
+        } footer: {
+            Text("“日程”小组件列出待办和接下来两周的日程，点圆圈直接勾选完成。勾选先记在手机上，下次打开 App 时同步到网站和其他设备；只写标题、时间和地点，不带备注。")
         }
     }
 

@@ -9,6 +9,11 @@ enum NextWidgetConfiguration {
     static let legacyWidgetFileNames = ["schedule-widget-endpoint.txt", "schedule-widget-cache.json"]
     static let widgetThemeKey = "scheduleWidgetTheme"
     static let widgetDisplayOptionsKey = "scheduleWidgetDisplayOptions"
+    /// 小组件风格：`follow`（跟随课表风格，默认）、`minimal`、`table`、`paper`、`board`。
+    static let widgetStyleKey = "scheduleWidgetStyle"
+    static let widgetStyles: [(value: String, title: String)] = [
+        ("follow", "跟随课表风格"), ("minimal", "简约"), ("table", "表格"), ("paper", "素笺"), ("board", "站牌"),
+    ]
     static func normalizedWidgetTheme(_ value: String?) -> String? {
         guard let theme = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               ["green", "blue", "teal", "indigo", "violet", "orange", "rose", "slate", "color-glass"]
@@ -100,6 +105,13 @@ final class NativeWidgetSettings: ObservableObject {
         }
         defaults.set(theme, forKey: NextWidgetConfiguration.widgetThemeKey)
         defaults.synchronize()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    func setScheduleWidgetStyle(_ value: String) {
+        guard NextWidgetConfiguration.widgetStyles.contains(where: { $0.value == value }),
+              let defaults = UserDefaults(suiteName: NextWidgetConfiguration.appGroup) else { return }
+        defaults.set(value, forKey: NextWidgetConfiguration.widgetStyleKey)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
