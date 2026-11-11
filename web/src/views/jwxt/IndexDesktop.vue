@@ -197,20 +197,20 @@
         </el-tab-pane>
         -->
         <el-tab-pane v-if="!isGraduateIdentity" name="progress" lazy>
-          <template #label><AppIcon name="school" /> 学业完成情况</template>
+          <template #label><AppIcon name="school" /> 学业</template>
           <ProgressTab :data="progress" :loading="tabLoading" :active="tab === 'progress'" />
         </el-tab-pane>
         <el-tab-pane v-if="!isGraduateIdentity && showPyfaTab" name="pyfa" lazy>
           <template #label><AppIcon name="course" /> 培养方案</template>
           <PyfaPane :data="pyfa" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="showExtraTabs" name="selection" lazy>
+        <el-tab-pane v-if="showSelectionTab" name="selection" lazy>
           <template #label><AppIcon name="ticket" /> 选课</template>
           <SelectionTab :active="tab === 'selection'" />
         </el-tab-pane>
-        <el-tab-pane v-if="showRoomsTab" name="rooms" lazy>
-          <template #label><AppIcon name="home" /> 教室</template>
-          <RoomsTab :active="tab === 'rooms'" />
+        <el-tab-pane v-if="showLookupTab" name="lookup" lazy>
+          <template #label><AppIcon name="search" /> 全校查询</template>
+          <LookupTab :active="tab === 'lookup'" />
         </el-tab-pane>
         <el-tab-pane name="debug" v-if="isDev">
           <template #label><AppIcon name="tools" /> 调试</template>
@@ -249,7 +249,7 @@ const GradesTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/Grad
 const ProgressTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/ProgressTab.vue"));
 const PyfaPane = defineAsyncComponent(() => import("@/components/jwxt/PyfaPane.vue"));
 const SelectionTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/SelectionTab.vue"));
-const RoomsTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/RoomsTab.vue"));
+const LookupTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/LookupTab.vue"));
 
 const {
   jwxt,
@@ -276,8 +276,8 @@ const {
   snapResult,
   isDev,
   showPyfaTab,
-  showExtraTabs,
-  showRoomsTab,
+  showSelectionTab,
+  showLookupTab,
   hasJwxtTabs,
   academicDataUnavailable,
   showDataShell,

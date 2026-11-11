@@ -1,7 +1,7 @@
 <template>
-  <JwxtSubViews :views="views" label="教室" id-prefix="jwxt-rooms" :active="active">
-    <template #free="{ active: shown }"><FreeRoomsPane :active="shown" /></template>
+  <JwxtSubViews :views="views" label="全校查询" id-prefix="jwxt-lookup" :active="active">
     <template #search="{ active: shown }"><TimetableSearchPane :active="shown" /></template>
+    <template #free="{ active: shown }"><FreeRoomsPane :active="shown" /></template>
   </JwxtSubViews>
 </template>
 
@@ -14,10 +14,11 @@ import TimetableSearchPane from "@/components/jwxt/records/TimetableSearchPane.v
 
 defineProps<{ active?: boolean }>();
 
+// 查的是全校的数据，和“我的”成绩、学业、选课分开：按课程／教师／教室／班级查开课，以及空教室。
 // 子视图按学校档案里的教务视图清单显示。
 const academicViews = useAcademicViews();
 const views = computed(() => [
+  ...(academicViews.value.has("timetableSearch") ? [{ key: "search", label: "开课查询" }] : []),
   ...(academicViews.value.has("freeRooms") ? [{ key: "free", label: "空教室" }] : []),
-  ...(academicViews.value.has("timetableSearch") ? [{ key: "search", label: "课表检索" }] : []),
 ]);
 </script>

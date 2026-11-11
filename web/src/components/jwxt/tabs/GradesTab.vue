@@ -26,9 +26,9 @@ defineProps<{ data: unknown; loading?: boolean; active?: boolean }>();
 const academicViews = useAcademicViews();
 const views = computed(() => [
   { key: "courses", label: "课程成绩" },
+  ...(academicViews.value.has("transcript") ? [{ key: "transcript", label: "成绩单" }] : []),
   ...(academicViews.value.has("levelExams") ? [{ key: "level-exams", label: "等级考试" }] : []),
   ...(academicViews.value.has("exams") ? [{ key: "exams", label: "考试安排" }] : []),
-  ...(academicViews.value.has("transcript") ? [{ key: "transcript", label: "成绩单" }] : []),
 ]);
 const levelExamSources: Array<{ kind: RecordKind }> = [{ kind: "level-exams" }];
 </script>

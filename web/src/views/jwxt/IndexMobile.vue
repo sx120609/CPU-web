@@ -83,7 +83,7 @@
               <ProgressTab v-else-if="item.name === 'progress'" :data="progress" :loading="tabLoading && tab === 'progress'" :active="tab === 'progress'" />
               <PyfaPane v-else-if="item.name === 'pyfa'" :data="pyfa" :loading="tabLoading && tab === 'pyfa'" />
               <SelectionTab v-else-if="item.name === 'selection'" :active="tab === 'selection'" />
-              <RoomsTab v-else-if="item.name === 'rooms'" :active="tab === 'rooms'" />
+              <LookupTab v-else-if="item.name === 'lookup'" :active="tab === 'lookup'" />
             </template>
           </div>
         </template>
@@ -232,10 +232,10 @@ import {
   DataAnalysis,
   InfoFilled,
   Lock,
-  OfficeBuilding,
   Reading,
   Refresh,
   School,
+  Search,
   Tickets,
   TopRight,
   User,
@@ -247,7 +247,7 @@ const GradesTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/Grad
 const ProgressTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/ProgressTab.vue"));
 const PyfaPane = defineAsyncComponent(() => import("@/components/jwxt/PyfaPane.vue"));
 const SelectionTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/SelectionTab.vue"));
-const RoomsTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/RoomsTab.vue"));
+const LookupTab = defineAsyncComponent(() => import("@/components/jwxt/tabs/LookupTab.vue"));
 
 const {
   jwxt,
@@ -266,8 +266,8 @@ const {
   forgetBusy,
   reauthorizeBusy,
   availableDataTabs,
-  showExtraTabs,
-  showRoomsTab,
+  showSelectionTab,
+  showLookupTab,
   academicDataUnavailable,
   showDataShell,
   usingSavedCredentialRecovery,
@@ -287,20 +287,20 @@ const {
   useManualCredentials,
 } = useInjectedJwxtPage();
 
-// 移动端课表在独立课表页，这里提供成绩、学业、培养方案、选课和教室。
+// 移动端课表在独立课表页，这里提供成绩、学业、培养方案、选课和全校查询。
 type MobileTab = Exclude<DataTab, "schedule"> | ExtraTab;
 const tabMeta: Record<MobileTab, { label: string; icon: unknown }> = {
   grades: { label: "成绩", icon: DataAnalysis },
   progress: { label: "学业", icon: School },
   pyfa: { label: "培养", icon: Reading },
   selection: { label: "选课", icon: Tickets },
-  rooms: { label: "教室", icon: OfficeBuilding },
+  lookup: { label: "查询", icon: Search },
 };
 const visibleTabs = computed(() => {
   const names: MobileTab[] = availableDataTabs.value
     .filter((name): name is Exclude<DataTab, "schedule"> => name !== "schedule");
-  if (showExtraTabs.value) names.push("selection");
-  if (showRoomsTab.value) names.push("rooms");
+  if (showSelectionTab.value) names.push("selection");
+  if (showLookupTab.value) names.push("lookup");
   return names.map((name) => ({ name, ...tabMeta[name] }));
 });
 

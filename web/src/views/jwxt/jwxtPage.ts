@@ -17,8 +17,9 @@ import {
 } from "@/utils/jwxtTabCache";
 
 export type DataTab = Exclude<JwxtDataTab, "midterm">; // 期中暂时停用；恢复时移除 Exclude。
-// 选课、教室两个标签（以及成绩、学业里新增的视图）由各自的面板按需读取，不走这里的整页缓存。
-export type ExtraTab = "selection" | "rooms";
+// 选课、全校查询两个标签（以及成绩、学业里新增的视图）由各自的面板按需读取，不走这里的整页缓存。
+// 成绩、学业、选课是“我的”数据；开课查询、空教室查的是全校，单独放在“全校查询”。
+export type ExtraTab = "selection" | "lookup";
 export type JwxtTab = DataTab | ExtraTab | "debug";
 
 export type JwxtPageLayout = "desktop" | "mobile";
@@ -84,8 +85,11 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
     if (views.has("pyfa")) tabs.push("pyfa");
     return tabs;
   });
-  const showExtraTabs = computed(() => academicViews.value.has("selection") && availableDataTabs.value.includes("grades"));
-  const showRoomsTab = computed(() => (
+  const showSelectionTab = computed(() => (
+    (academicViews.value.has("selection") || academicViews.value.has("retake"))
+    && availableDataTabs.value.includes("grades")
+  ));
+  const showLookupTab = computed(() => (
     (academicViews.value.has("freeRooms") || academicViews.value.has("timetableSearch"))
     && availableDataTabs.value.includes("grades")
   ));
@@ -242,8 +246,8 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
       if (!isDev.value) tab.value = firstVisibleTab();
       return;
     }
-    if (tab.value === "selection" || tab.value === "rooms") {
-      if (!(tab.value === "rooms" ? showRoomsTab.value : showExtraTabs.value)) tab.value = firstVisibleTab();
+    if (tab.value === "selection" || tab.value === "lookup") {
+      if (!(tab.value === "lookup" ? showLookupTab.value : showSelectionTab.value)) tab.value = firstVisibleTab();
       return;
     }
     if (!availableDataTabs.value.includes(tab.value as DataTab)) {
@@ -563,8 +567,8 @@ export function useJwxtPage(layout: Ref<JwxtPageLayout>) {
     isDev,
     availableDataTabs,
     showPyfaTab,
-    showExtraTabs,
-    showRoomsTab,
+    showSelectionTab,
+    showLookupTab,
     hasJwxtTabs,
     academicDataUnavailable,
     showDataShell,

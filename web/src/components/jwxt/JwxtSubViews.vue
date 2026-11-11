@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
 const props = withDefaults(defineProps<{
   views: Array<{ key: string; label: string }>;
@@ -39,11 +39,16 @@ const props = withDefaults(defineProps<{
   active?: boolean;
 }>(), { active: false });
 
-const current = ref(props.views[0]?.key ?? "");
+// 视图清单随学校档案变化时（例如档案晚到一步），选中的视图不在清单里就回到第一个。
+const chosen = ref(props.views[0]?.key ?? "");
+const current = computed(() => (
+  props.views.some((view) => view.key === chosen.value) ? chosen.value : props.views[0]?.key ?? ""
+));
 const visited = reactive(new Set<string>([current.value]));
+watch(current, (key) => { if (key) visited.add(key); });
 
 function select(key: string) {
-  current.value = key;
+  chosen.value = key;
   visited.add(key);
 }
 </script>
