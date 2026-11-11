@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     lateinit var sharing: ScheduleSharing
     lateinit var couple: ScheduleCouple
     lateinit var dorm: ScheduleDormRoom
+    /** A sheet a launcher shortcut asked for; the timetable clears it when it shows it. */
+    var shortcutSheet by mutableStateOf<String?>(null)
     /** 上课闹钟's switches. */
     lateinit var alarms: RoutineAlarmSettings
         private set
@@ -271,6 +273,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
             }
         }
         handleLaunchIntent(intent)
+        ScheduleShortcuts.publish(this)
     }
 
     fun finishWelcome() {
@@ -334,6 +337,25 @@ class MainActivity : ComponentActivity(), WebSessionHost {
                 intent.action = null
                 agendaRequest = AgendaRequest(source = source)
                 shell.showSchedule()
+            }
+            return
+        }
+        intent?.getStringExtra(ScheduleShortcuts.EXTRA)?.let { shortcut ->
+            intent.removeExtra(ScheduleShortcuts.EXTRA)
+            ScheduleShortcuts.ENTRIES.firstOrNull { it.first == shortcut }?.let { runCatching {
+                androidx.core.content.pm.ShortcutManagerCompat.reportShortcutUsed(this, shortcut)
+            } }
+            when (shortcut) {
+                ScheduleShortcuts.TODAY -> {
+                    shell.openSchedule(null, null)
+                    schedule.selectViewMode("day")
+                }
+                ScheduleShortcuts.NEW_AGENDA -> openAgenda(null, ScheduleStore.todayKey())
+                ScheduleShortcuts.AGENDA -> openAgendaList()
+                ScheduleShortcuts.FREE -> {
+                    shortcutSheet = ScheduleShortcuts.FREE
+                    shell.showSchedule()
+                }
             }
             return
         }

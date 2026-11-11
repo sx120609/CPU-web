@@ -181,6 +181,12 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     val style = activity.style
     val colors = LocalScheduleColors.current
     var sheet by remember { mutableStateOf<ScheduleSheet?>(if (store.readOnly) null else DebugScheduleFixture.initialSheet()) }
+    // A launcher shortcut asks for a sheet.
+    LaunchedEffect(activity.shortcutSheet, store.readOnly) {
+        if (store.readOnly || activity.shortcutSheet == null) return@LaunchedEffect
+        if (activity.shortcutSheet == ScheduleShortcuts.FREE) sheet = ScheduleSheet.CommonFree
+        activity.shortcutSheet = null
+    }
     // A dorm link or the shell asks for 宿舍课表 over the timetable.
     LaunchedEffect(activity.dormRequest, store.readOnly) {
         val code = activity.dormRequest ?: return@LaunchedEffect
