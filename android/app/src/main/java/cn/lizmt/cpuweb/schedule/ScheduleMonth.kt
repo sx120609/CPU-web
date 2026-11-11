@@ -3,7 +3,7 @@ package cn.lizmt.cpuweb.schedule
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -119,7 +119,11 @@ internal fun ScheduleMonthView(
     selectedDate: String,
     onSelect: (String) -> Unit,
     onOpenDay: (String) -> Unit,
-    /** Dragging the grid up or down turns the month: 1 is the next one, -1 the one before. */
+    /**
+     * Dragging the grid sideways turns the month: 1 is the next one, -1 the one
+     * before. Sideways only, as on iOS: an up-or-down drag scrolls the page to
+     * the 当天安排 panel under the grid.
+     */
     onMove: (Int) -> Unit = {},
     /** The partner's timetable while the couple timetable is drawn. */
     couple: CoupleLayer? = null,
@@ -171,7 +175,7 @@ internal fun ScheduleMonthView(
                 Modifier.fillMaxWidth()
                     .pointerInput(Unit) {
                         var total = 0f
-                        detectVerticalDragGestures(
+                        detectHorizontalDragGestures(
                             onDragStart = { total = 0f },
                             onDragCancel = { motion.launch { pull.animateTo(0f) } },
                             onDragEnd = {
@@ -192,7 +196,7 @@ internal fun ScheduleMonthView(
                         }
                     }
                     .graphicsLayer {
-                        translationY = pull.value
+                        translationX = pull.value
                         alpha = 1f - (abs(pull.value) / (enterDistance * 2.4f)).coerceIn(0f, 0.6f)
                     },
                 verticalArrangement = Arrangement.spacedBy(4.dp),
