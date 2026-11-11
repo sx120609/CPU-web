@@ -3,7 +3,7 @@
     android:label="@string/widget_agenda_name"
     android:description="@string/widget_agenda_description"
     android:initialLayout="@layout/widget_agenda"
-    android:previewLayout="@layout/widget_agenda"
+    android:previewLayout="@layout/widget_agenda_preview"
     android:minWidth="250dp"
     android:minHeight="110dp"
     android:minResizeWidth="180dp"
