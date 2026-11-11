@@ -350,4 +350,30 @@ class NapTablePortTest {
     }
 
     // endregion
+
+    // region Backgrounds
+
+    @Test
+    fun backgroundFramingIsKeptAsFractionsOfTheOriginal() {
+        val crop = BackgroundCrop(0.25f, 0.1f, 0.5f, 0.8f)
+        assertEquals(crop.text(), BackgroundCrop.parse(crop.text())!!.text())
+        // Practically the whole photo, or next to nothing, is no framing.
+        assertNull(BackgroundCrop(0f, 0f, 0.999f, 1f).normalized())
+        assertNull(BackgroundCrop(0.5f, 0.5f, 0.01f, 0.5f).normalized())
+        assertNull(BackgroundCrop.parse("1,2,3"))
+        assertNull(BackgroundCrop.parse(""))
+        // Clipped to the photo.
+        assertEquals(BackgroundCrop(0.5f, 0f, 0.5f, 1f).text(), BackgroundCrop(0.5f, -0.2f, 0.8f, 1.5f).normalized()!!.text())
+        val pixels = crop.pixels(1600, 1200)!!
+        assertEquals(listOf(400, 120, 1200, 1080), listOf(pixels.left, pixels.top, pixels.right, pixels.bottom))
+        // A 1600×1200 photo in a 450×1000 viewport, filled to its height and centred, then panned 100 px.
+        val scale = 1000f / 1200f
+        val framed = BackgroundCrop.of(1600f, 1200f, 450f, 1000f, scale, -(1600f * scale - 450f) / 2 + 100f, 0f)
+        assertEquals(0f, framed.y, 0.0001f)
+        assertEquals(1f, framed.height, 0.0001f)
+        assertEquals(450f / (1600f * scale), framed.width, 0.0001f)
+        assertEquals(((1600f * scale - 450f) / 2 - 100f) / (1600f * scale), framed.x, 0.0001f)
+    }
+
+    // endregion
 }

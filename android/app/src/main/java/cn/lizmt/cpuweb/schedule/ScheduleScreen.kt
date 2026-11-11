@@ -138,6 +138,9 @@ private class ScheduleBodyContext(
 @Composable
 fun NativeScheduleScreen(activity: MainActivity) {
     val store = activity.schedule
+    // The background follows the appearance: the dark photo in dark mode when there is one.
+    val dark = LocalScheduleColors.current.dark
+    androidx.compose.runtime.SideEffect { activity.style.appearanceDark = dark }
     // The user's own 日程 show in their own timetable, not in a shared one, and are edited right there.
     val agendaLayer = remember(activity) {
         ScheduleAgendaLayer(activity.agenda::on, onOpen = { activity.openAgenda(it.id, null) }, onToggle = { activity.agenda.toggle(it) })

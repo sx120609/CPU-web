@@ -90,6 +90,13 @@ object DebugScheduleFixture {
     fun configure(activity: MainActivity, intent: Intent) {
         intent.getStringExtra("debugStyle")?.let { activity.style.selectVisualStyle(ScheduleVisualStyle.fromId(it)) }
         if (intent.getBooleanExtra("debugAgenda", false)) activity.agenda.debugSeed(sampleAgenda())
+        // "debugBackground /data/local/tmp/x.jpg" (and debugBackgroundDark): a photo for that appearance, framed if
+        // "debugBackgroundFrame true", as if just picked (the settings sheet then opens its framing).
+        listOf(false to "debugBackground", true to "debugBackgroundDark").forEach { (dark, extra) ->
+            val path = intent.getStringExtra(extra) ?: return@forEach
+            activity.style.importBackground(android.net.Uri.fromFile(java.io.File(path)), dark).onSuccess { activity.style.showBackground(it, dark) }
+            if (intent.getBooleanExtra("debugBackgroundFrame", false)) activity.backgroundToFrame = dark
+        }
         intent.getStringExtra("debugView")?.let { activity.schedule.selectViewMode(it) }
         intent.getIntExtra("debugDay", 0).takeIf { it in 1..7 }?.let { activity.schedule.selectDay(it) }
         pinnedNow = intent.getStringExtra("debugNow")?.let(ScheduleStyleTime::clockMinutes)

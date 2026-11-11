@@ -21,6 +21,8 @@ import kotlin.math.max
 class ScheduleStyleSettings(private val context: Context) {
     private val prefs = context.getSharedPreferences("native_schedule_style", Context.MODE_PRIVATE)
     private val file = File(context.filesDir, "schedule-background.jpg")
+    /** The dark-appearance photo; without one, dark mode keeps the light one. */
+    private val darkFile = File(context.filesDir, "schedule-background-dark.jpg")
 
     var palette by mutableStateOf(normalizedScheduleTheme(prefs.getString("palette", "color-glass")))
         private set
@@ -28,8 +30,26 @@ class ScheduleStyleSettings(private val context: Context) {
         private set
     var blur by mutableFloatStateOf(prefs.getFloat("blur", 0f).coerceIn(0f, MAX_BLUR))
         private set
-    var background by mutableStateOf<ImageBitmap?>(null)
+    /** The light-appearance photo, cropped as chosen. */
+    var lightBackground by mutableStateOf<ImageBitmap?>(null)
         private set
+    var darkBackground by mutableStateOf<ImageBitmap?>(null)
+        private set
+    /** The part of each photo shown, as fractions of its width and height; null shows all of it filled to the screen. */
+    var lightCrop by mutableStateOf(BackgroundCrop.parse(prefs.getString("backgroundCrop", null)))
+        private set
+    var darkCrop by mutableStateOf(BackgroundCrop.parse(prefs.getString("darkBackgroundCrop", null)))
+        private set
+    /** The appearance the timetable is drawn in, told by the screen; the background follows it. */
+    var appearanceDark by mutableStateOf(false)
+
+    /** The background of the appearance on screen: the dark photo in dark mode when there is one. */
+    val background: ImageBitmap?
+        get() = if (appearanceDark) darkBackground ?: lightBackground else lightBackground
+
+    fun background(dark: Boolean): ImageBitmap? = if (dark) darkBackground ?: lightBackground else lightBackground
+
+    val hasBackground: Boolean get() = lightBackground != null || darkBackground != null
     /** The visual style; classic until the user picks another one. */
     var visualStyle by mutableStateOf(ScheduleVisualStyle.fromId(prefs.getString("visualStyle", null)))
         private set
@@ -62,7 +82,8 @@ class ScheduleStyleSettings(private val context: Context) {
         private set
 
     init {
-        if (file.exists()) background = decode(file)
+        if (file.exists()) lightBackground = decode(file, lightCrop)
+        if (darkFile.exists()) darkBackground = decode(darkFile, darkCrop)
     }
 
     fun selectVisualStyle(value: ScheduleVisualStyle) {
@@ -137,10 +158,12 @@ class ScheduleStyleSettings(private val context: Context) {
     }
 
     /**
-     * Copy the picked photo into private storage, downsampled to limit memory
-     * use. Runs off the main thread; pass the result to [showBackground].
+     * Copy the picked photo into private storage for one appearance, downsampled
+     * to limit memory use. The whole photo is kept so it can be framed again.
+     * Runs off the main thread; pass the result to [showBackground].
      */
-    fun importBackground(uri: Uri): Result<ImageBitmap> = runCatching {
+    fun importBackground(uri: Uri, dark: Boolean = false): Result<ImageBitmap> = runCatching {
+        val file = if (dark) darkFile else this.file
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         // A bounds-only decode always returns null; only a missing stream is an error.
         val stream = context.contentResolver.openInputStream(uri) ?: error("图片读取失败")
@@ -160,23 +183,47 @@ class ScheduleStyleSettings(private val context: Context) {
         bitmap.asImageBitmap()
     }
 
-    fun showBackground(image: ImageBitmap) {
-        background = image
+    /** A new photo for one appearance: shown whole until it is framed. */
+    fun showBackground(image: ImageBitmap, dark: Boolean = false) {
+        setCrop(null, dark, reload = false)
+        if (dark) darkBackground = image else lightBackground = image
     }
 
-    fun clearBackground() {
-        file.delete()
-        background = null
+    /** The whole photo of an appearance, for the crop editor. */
+    fun originalBackground(dark: Boolean): ImageBitmap? = decode(if (dark) darkFile else file, null)
+
+    /** Shows only [crop] of an appearance's photo; null shows all of it. */
+    fun setCrop(crop: BackgroundCrop?, dark: Boolean, reload: Boolean = true) {
+        val value = crop?.normalized()
+        if (dark) darkCrop = value else lightCrop = value
+        prefs.edit().putString(if (dark) "darkBackgroundCrop" else "backgroundCrop", value?.text().orEmpty()).apply()
+        if (!reload) return
+        if (dark) darkBackground = decode(darkFile, value) else lightBackground = decode(file, value)
+    }
+
+    /** Clears the light photo, or the dark one (dark mode then keeps the light one). */
+    fun clearBackground(dark: Boolean = false) {
+        setCrop(null, dark, reload = false)
+        if (dark) {
+            darkFile.delete()
+            darkBackground = null
+        } else {
+            file.delete()
+            lightBackground = null
+        }
     }
 
     fun reset() {
         clearBackground()
+        clearBackground(dark = true)
         updateVisibility(DEFAULT_VISIBILITY)
         updateBlur(0f)
     }
 
-    private fun decode(source: File): ImageBitmap? = runCatching {
-        BitmapFactory.decodeFile(source.absolutePath)?.asImageBitmap()
+    private fun decode(source: File, crop: BackgroundCrop?): ImageBitmap? = runCatching {
+        val bitmap = BitmapFactory.decodeFile(source.absolutePath) ?: return@runCatching null
+        val rect = crop?.pixels(bitmap.width, bitmap.height) ?: return@runCatching bitmap.asImageBitmap()
+        Bitmap.createBitmap(bitmap, rect.left, rect.top, rect.width(), rect.height()).asImageBitmap()
     }.getOrNull()
 
     companion object {

@@ -25,6 +25,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -151,11 +157,8 @@ fun ScheduleSettingsSheet(activity: MainActivity, readOnly: Boolean, onWidgets: 
             PaletteChoices(style.palette) { style.selectPalette(it) }
 
             SettingsSection("背景图片")
-            SettingsValueRow(if (style.background == null) "未设置" else "已设置") {
-                if (style.background != null) TextButton(onClick = { style.clearBackground() }) { Text("清除") }
-                TextButton(onClick = { activity.pickScheduleBackground() }) { Text(if (style.background == null) "从相册选择" else "更换") }
-            }
-            if (style.background != null) {
+            BackgroundChoice(activity)
+            if (style.hasBackground) {
                 SettingsValueRow("显现程度") { Text("${(style.visibility * 100).roundToInt()}%", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Slider(
                     value = style.visibility, onValueChange = { style.updateVisibility(it) },
@@ -202,6 +205,52 @@ fun ScheduleSettingsSheet(activity: MainActivity, readOnly: Boolean, onWidgets: 
 
             SettingsSection("更多")
             SettingsNavRow("桌面课表小组件", onClick = onWidgets)
+        }
+    }
+}
+
+/**
+ * 背景图片 for each appearance: 浅色模式 and 深色模式 (which keeps the light
+ * photo until it has one of its own), each with 调整范围 to frame it. A new
+ * photo opens the framing at once.
+ */
+@Composable
+private fun BackgroundChoice(activity: MainActivity) {
+    val style = activity.style
+    var dark by rememberSaveable { mutableStateOf(style.appearanceDark) }
+    var framing by remember { mutableStateOf<Boolean?>(null) }
+    // A photo just picked: frame it now.
+    androidx.compose.runtime.LaunchedEffect(activity.backgroundToFrame) {
+        activity.backgroundToFrame?.let {
+            dark = it
+            framing = it
+            activity.backgroundToFrame = null
+        }
+    }
+    SettingsSegmented(listOf("light" to "浅色模式", "dark" to "深色模式"), if (dark) "dark" else "light") { dark = it == "dark" }
+    Spacer(Modifier.height(4.dp))
+    val own = if (dark) style.darkBackground else style.lightBackground
+    val status = when {
+        own != null -> "已设置"
+        dark && style.lightBackground != null -> "跟随浅色模式"
+        else -> "未设置"
+    }
+    SettingsValueRow(status) {
+        if (own != null) TextButton(onClick = { style.clearBackground(dark) }) { Text("清除") }
+        TextButton(onClick = { activity.pickScheduleBackground(dark) }) { Text(if (own == null) "从相册选择" else "更换") }
+    }
+    if (own != null) SettingsNavRow("调整范围", if ((if (dark) style.darkCrop else style.lightCrop) == null) "整张" else "已裁剪") { framing = dark }
+    framing?.let { which ->
+        val original = androidx.compose.runtime.remember(which) { style.originalBackground(which) }
+        if (original == null) {
+            androidx.compose.runtime.LaunchedEffect(which) { framing = null }
+        } else {
+            BackgroundCropEditor(original, if (which) style.darkCrop else style.lightCrop,
+                onDone = { crop ->
+                    style.setCrop(crop, which)
+                    framing = null
+                },
+                onDismiss = { framing = null })
         }
     }
 }

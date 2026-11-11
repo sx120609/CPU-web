@@ -103,11 +103,20 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         toast(if (saved) "日历文件已保存" else "日历导出失败")
     }
 
+    /** Which appearance the photo being picked is for. */
+    private var pickingDarkBackground = false
+    /** A new photo was set: the background sheet opens its framing at once. */
+    var backgroundToFrame by mutableStateOf<Boolean?>(null)
+
     private val backgroundPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@registerForActivityResult
+        val dark = pickingDarkBackground
         lifecycleScope.launch {
-            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { style.importBackground(uri) }
-            result.onSuccess(style::showBackground).onFailure { toast(it.message ?: "图片读取失败") }
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { style.importBackground(uri, dark) }
+            result.onSuccess {
+                style.showBackground(it, dark)
+                backgroundToFrame = dark
+            }.onFailure { toast(it.message ?: "图片读取失败") }
         }
     }
 
@@ -177,7 +186,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
             }
         }
         clientStats = ClientStats(this, lifecycleScope) {
-            ClientFeatureState(appearance.mode, style.visualStyle.id, style.background != null)
+            ClientFeatureState(appearance.mode, style.visualStyle.id, style.hasBackground)
         }
         // The fixture is a development surface, not a real launch of the app.
         reportsClientStats = !debugFixture
@@ -415,7 +424,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         shell.openWeb("/jwxt?reauthorize=1&redirect=/schedule", ShellTab.Academic)
     }
 
-    fun pickScheduleBackground() {
+    fun pickScheduleBackground(dark: Boolean = false) {
+        pickingDarkBackground = dark
         backgroundPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
