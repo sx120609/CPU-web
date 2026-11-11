@@ -25,6 +25,9 @@ import { findScheduleOverlap, PlacedCourseBlock, placeScheduleBlocks, scheduleOv
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
 import { dormPagePath } from '../schedule/ScheduleDorm';
 import { DormReply, DormRequest, NativeDormModel, NativeDormSheet } from '../schedule/NativeDormSheet';
+import { PendingToggle, readCardBackground, readCardStyleChoice, saveCardBackground, saveCardStyleChoice,
+  takePendingAgendaToggles } from '../common/ScheduleCardExtras';
+import { agendaImageDataUrl } from '../schedule/NativeAgendaImage';
 import { schedulePalette } from '../schedule/ScheduleVisuals';
 import common from '@ohos.app.ability.common';
 import webview from '@ohos.web.webview';
@@ -130,6 +133,10 @@ struct Index {
   @State private cropTarget: string = '';
   // A desktop shortcut that asked for something (today | agenda | free), handled once the page is up.
   @StorageProp('scheduleShortcut') @Watch('runShortcut') private shortcut: string = '';
+  // 卡片风格 (follow | classic | table | paper | board) and the photo behind the desktop cards.
+  @State private cardStyleChoice: string = 'follow';
+  @State private cardBackground: string = '';
+  @State private cardVeil: number = 0.55;
   // 宿舍课表, a native sheet over the timetable.
   @State private dormModel: NativeDormModel = new NativeDormModel();
   // 分享这一天: the card drawn off screen.
@@ -189,6 +196,8 @@ struct Index {
   private previewBaseOffsetY: number = 0;
 
   aboutToAppear(): void {
+    // The desktop cards' style and photo, for the 课表卡片 panel.
+    void this.loadCardOptions();
     // A shortcut that launched the app: run it once the shell has settled.
     setTimeout(() => this.runShortcut(), 2500);
     this.scheduleMounted = this.selectedTab === 2;
@@ -335,6 +344,12 @@ struct Index {
       onReady: () => {
         this.scheduleStore.markBridgeReady();
         this.agendaModel?.refresh(true);
+        // Ticks made on the 日程 card while the app was closed go to the site now.
+        if (context) {
+          void takePendingAgendaToggles(context).then((pending: PendingToggle[]) => {
+            pending.forEach((entry: PendingToggle) => this.agendaModel?.toggle(entry.id, entry.date, entry.done));
+          });
+        }
       },
       onAuthChanged: (scope: string) => {
         if (scope.trim()) this.resolveAuthenticated(false);
@@ -965,6 +980,53 @@ struct Index {
       store.alarmMorning, store.alarmNap, Date.now()));
   }
 
+  private async loadCardOptions(): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.cardStyleChoice = await readCardStyleChoice(context);
+    const background = await readCardBackground(context);
+    this.cardBackground = background[0];
+    this.cardVeil = Number(background[1]) || 0.55;
+  }
+
+  private async chooseCardStyle(choice: string): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.cardStyleChoice = choice;
+    await saveCardStyleChoice(context, choice);
+    await refreshAllScheduleForms(context).catch(() => undefined);
+  }
+
+  private async setCardBackground(path: string, veil: number): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.cardBackground = path;
+    await saveCardBackground(context, path, veil);
+    await refreshAllScheduleForms(context).catch(() => undefined);
+  }
+
+  // A photo behind the desktop cards, kept small: cards have little memory.
+  private async chooseCardBackground(): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    try {
+      const photoPicker = new photoAccessHelper.PhotoViewPicker();
+      const options = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 1;
+      const selected = await photoPicker.select(options);
+      if (!selected.photoUris.length) return;
+      const data = await agendaImageDataUrl(selected.photoUris[0]);
+      const target = `${context.filesDir}/card-background-${Date.now()}.jpg`;
+      const bytes = new util.Base64Helper().decodeSync(data.substring(data.indexOf(',') + 1));
+      const file = fs.openSync(target, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+      try { fs.writeSync(file.fd, bytes.buffer); } finally { fs.closeSync(file); }
+      await this.setCardBackground(target, this.cardVeil);
+    } catch (_) {
+      promptAction.showToast({ message: '图片读取失败' });
+    }
+  }
+
   // 桌面快捷方式: 今日课表, 添加日程 and 找共同空闲 (resources/base/profile/shortcuts_config.json).
   private runShortcut(): void {
     const action = this.shortcut;
@@ -979,6 +1041,8 @@ struct Index {
         this.agendaEditor.openNew(scheduleTodayDate(Date.now()), '');
       } else if (action === 'free') {
         this.commonFreeVisible = true;
+      } else if (action === 'agendaList') {
+        this.agendaEditor.openList();
       }
     }, 400);
   }
@@ -1213,7 +1277,8 @@ struct Index {
       `).catch(() => model.accept(id, '{"missing":true}'));
     }, (raw: string) => {
       if (!saved) return;
-      void saved.put('items', raw).then(() => saved?.flush()).catch(() => undefined);
+      void saved.put('items', raw).then(() => saved?.flush())
+        .then(() => { if (context) void refreshAllScheduleForms(context).catch(() => undefined); }).catch(() => undefined);
     }, (items: NativeAgendaItem[]) => {
       if (context) syncAgendaReminders(context, items);
     });
@@ -2539,6 +2604,42 @@ struct Index {
         Column({ space: 8 }) {
           Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
           this.paletteChoices(this.widgetTheme, true)
+        }.width('100%')
+        Column({ space: 8 }) {
+          Text('卡片风格').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Row({ space: 2 }) {
+            ForEach(['follow', 'classic', 'table', 'paper', 'board'], (choice: string) => {
+              Text(choice === 'follow' ? '跟随课表' : choice === 'classic' ? '经典' : choice === 'table' ? '表格' : choice === 'paper' ? '素笺' : '站牌')
+                .fontSize(12).layoutWeight(1).height(30).textAlign(TextAlign.Center).borderRadius(8)
+                .fontColor(this.cardStyleChoice === choice ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
+                .backgroundColor(this.cardStyleChoice === choice ? $r('app.color.app_surface') : Color.Transparent)
+                .id('card-style-' + choice)
+                .onClick(() => { void this.chooseCardStyle(choice); })
+            }, (choice: string) => choice)
+          }.width('100%').padding(2).borderRadius(10).backgroundColor($r('app.color.app_divider'))
+          Text('经典、简约和格子在卡片上是同一个样子；表格、素笺、站牌各有纸色和边框。').fontSize(12)
+            .fontColor($r('app.color.app_text_tertiary')).width('100%')
+        }.width('100%')
+        Column({ space: 8 }) {
+          Text('卡片背景').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Row({ space: 8 }) {
+            Button(this.cardBackground ? '换一张照片' : '从相册选择').type(ButtonType.Normal).height(40).layoutWeight(1).borderRadius(12)
+              .fontSize(13).fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_control'))
+              .onClick(() => { void this.chooseCardBackground(); })
+            if (this.cardBackground) {
+              Button('移除').type(ButtonType.Normal).height(40).width(72).borderRadius(12).fontSize(13)
+                .fontColor('#B42318').backgroundColor($r('app.color.app_control'))
+                .onClick(() => { void this.setCardBackground('', this.cardVeil); })
+            }
+          }.width('100%')
+          if (this.cardBackground) {
+            Text('照片上的底色').fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
+            Slider({ value: this.cardVeil * 100, min: 15, max: 85, step: 5 }).selectedColor($r('app.color.app_accent'))
+              .onChange((value: number, mode: SliderChangeMode) => {
+                this.cardVeil = value / 100;
+                if (mode === SliderChangeMode.End) void this.setCardBackground(this.cardBackground, this.cardVeil);
+              })
+          }
         }.width('100%')
         Button(this.widgetConfigured ? '刷新卡片' : '连接教务课表').width('100%').height(44).fontSize(14)
           .fontColor($r('app.color.app_on_accent')).backgroundColor($r('app.color.app_accent'))

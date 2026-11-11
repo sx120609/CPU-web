@@ -3,6 +3,7 @@ import preferences from '@ohos.data.preferences';
 import fs from '@ohos.file.fs';
 import http from '@ohos.net.http';
 import { formBindingData, formProvider } from '@kit.FormKit';
+import { agendaCardBinding, cardDecor } from './ScheduleCardExtras';
 import {
   ChineseCalendar,
   ChineseCalendarDay,
@@ -161,6 +162,11 @@ export interface ScheduleWidgetBinding {
   // 锁屏：矩形卡片第一行「明天 9.29 周二」，单行卡片开头「明天」或「周一」。
   lockTitle: string;
   lockDay: string;
+  // The timetable style (classic | table | paper | board), the photo behind the card and its veil.
+  cardStyle: string;
+  background: string;
+  veil: number;
+  formImages?: Record<string, number>;
 }
 
 interface LoadedSchedule {
@@ -451,7 +457,10 @@ function loadingBinding(
     rightBadge: '',
     rightBadgeStatutory: false,
     lockTitle: '',
-    lockDay: ''
+    lockDay: '',
+    cardStyle: 'classic',
+    background: '',
+    veil: 0.55
   };
 }
 
@@ -795,7 +804,10 @@ function readyBinding(
     rightBadge: rightMarks.badge,
     rightBadgeStatutory: rightMarks.badgeStatutory,
     lockTitle: [aheadLabel(lockOffset), dayTitle(selection.day)].filter((value: string) => value.length > 0).join(' '),
-    lockDay
+    lockDay,
+    cardStyle: 'classic',
+    background: '',
+    veil: 0.55
   };
 }
 
@@ -945,7 +957,18 @@ export async function refreshScheduleForm(
   const endpoint = String(await prefs.get(ENDPOINT_KEY, ''));
   const theme = String(await prefs.get(THEME_KEY, ''));
   const revision = Number(await prefs.get(LOCAL_REVISION_KEY, 0));
+  if (formName === 'schedule_agenda') {
+    await formProvider.updateForm(formId, formBindingData.createFormBindingData(await agendaCardBinding(context, dimension)));
+    return;
+  }
   const content = await contentFor(context, dimension, formName);
+  // The timetable style and the photo the cards are drawn with (ScheduleCardExtras).
+  const decor = await cardDecor(context);
+  content.binding.cardStyle = decor.cardStyle;
+  content.binding.background = content.binding.variant === 'desktop' ? decor.background : '';
+  content.binding.veil = decor.veil;
+  if (content.binding.background) content.binding.formImages = decor.images;
+  else Object.keys(decor.images).forEach((key: string) => { try { fs.closeSync(decor.images[key]); } catch (_) {} });
   // 算卡片内容时 App 可能换了账号、主题或本地课表，重新读一次，变了就丢掉这次结果。
   const latest = await widgetPreferences(context);
   if (endpoint !== String(await latest.get(ENDPOINT_KEY, '')) || theme !== String(await latest.get(THEME_KEY, ''))

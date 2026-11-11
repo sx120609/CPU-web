@@ -39,3 +39,22 @@ test('class alarms take their share of the system\'s 30 reminders first', () => 
   assert.deepEqual(plain(reminders.reminderShares(0, 40)), [0, 30]);
   assert.deepEqual(plain(reminders.reminderShares(3, 5)), [3, 5]);
 });
+
+test('the 日程 card lists overdue to-dos, the next two weeks and undated to-dos, and ticks off locally', () => {
+  const agenda = compile('../entry/src/main/ets/schedule/NativeAgenda.ets');
+  const item = (id, title, date, start = '', extra = {}) => ({ id, title, date, start, end: '', location: '', note: '', remind: -1,
+    repeat: 'none', until: '', done: false, doneDates: [], createdAt: 1, ...extra });
+  const items = [item('a', '交报告', '2026-11-09'), item('b', '组会', '2026-11-11', '14:00'), item('c', '体检', '2026-11-13'),
+    item('d', '买实验服', ''), item('e', '跑步', '2026-11-01', '07:00', { repeat: 'daily', doneDates: ['2026-11-11'] }),
+    item('f', '下月的事', '2026-12-30')];
+  const rows = plain(agenda.agendaCardRows(items, '2026-11-11', 20));
+  assert.deepEqual(rows.map(row => [row.id, row.when, row.done]).slice(0, 4),
+    [['a', '逾期 · 11.9', false], ['e', '今天 07:00', true], ['b', '今天 14:00', false], ['e', '明天 07:00', false]]);
+  assert.ok(rows.some(row => row.id === 'c' && row.when === '周五 11.13'));
+  assert.deepEqual(rows.at(-1), { id: 'd', date: '', title: '买实验服', done: false, overdue: false, when: '待办' });
+  assert.ok(!rows.some(row => row.id === 'f'));
+  assert.equal(agenda.agendaCardRows(items, '2026-11-11', 4).length, 4);
+  const ticked = plain(agenda.agendaToggled(items, 'e', '2026-11-12', true));
+  assert.deepEqual(ticked.find(entry => entry.id === 'e').doneDates, ['2026-11-11', '2026-11-12']);
+  assert.equal(plain(agenda.agendaToggled(items, 'a', '', true)).find(entry => entry.id === 'a').done, true);
+});

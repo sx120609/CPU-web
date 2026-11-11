@@ -465,3 +465,59 @@ export class NativeAgendaModel {
     }
   }
 }
+
+/** One line of the 日程 card. */
+export interface AgendaCardRow {
+  id: string;
+  date: string;
+  title: string;
+  // 逾期 · 11.09, 今天 14:00, 周五 11.14, 待办.
+  when: string;
+  done: boolean;
+  overdue: boolean;
+}
+
+const CARD_WEEKDAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+function cardDay(date: string, today: string): string {
+  const gap = agendaDayNumber(date) - agendaDayNumber(today);
+  if (gap === 0) return '今天';
+  if (gap === 1) return '明天';
+  return `${CARD_WEEKDAYS[agendaWeekday(date) - 1] ?? ''} ${Number(date.substring(5, 7))}.${Number(date.substring(8, 10))}`;
+}
+
+/**
+ * The 日程 card (iOS AgendaWidget): to-dos past their day and not done, then the next two weeks
+ * (today's done ones stay, ticked), then to-dos without a date. At most `limit` lines.
+ */
+export function agendaCardRows(items: NativeAgendaItem[], today: string, limit: number): AgendaCardRow[] {
+  const rows: AgendaCardRow[] = [];
+  const first = agendaDayNumber(today);
+  items.filter((item: NativeAgendaItem) => (!item.repeat || item.repeat === 'none') && !item.done && !!item.date
+    && agendaDayNumber(item.date) >= 0 && agendaDayNumber(item.date) < first)
+    .sort((a: NativeAgendaItem, b: NativeAgendaItem) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
+    .forEach((item: NativeAgendaItem) => rows.push({ id: item.id, date: item.date, title: item.title, done: false, overdue: true,
+      when: `逾期 · ${Number(item.date.substring(5, 7))}.${Number(item.date.substring(8, 10))}` }));
+  for (let offset = 0; offset < 14; offset += 1) {
+    const date = agendaDateOf(first + offset);
+    agendaOn(items, date).forEach((entry: NativeAgendaOccurrence) => {
+      if (entry.done && offset > 0) return;
+      rows.push({ id: entry.item.id, date, title: entry.item.title, done: entry.done, overdue: false,
+        when: cardDay(date, today) + (entry.item.start ? ' ' + entry.item.start : '') });
+    });
+  }
+  items.filter((item: NativeAgendaItem) => !item.date && !item.done)
+    .forEach((item: NativeAgendaItem) => rows.push({ id: item.id, date: '', title: item.title, done: false, overdue: false, when: '待办' }));
+  return rows.slice(0, Math.max(0, limit));
+}
+
+/** Ticks an occurrence in a saved list, as the page would: one day of a repeating item, or the item. */
+export function agendaToggled(items: NativeAgendaItem[], id: string, date: string, done: boolean): NativeAgendaItem[] {
+  return items.map((item: NativeAgendaItem): NativeAgendaItem => {
+    if (item.id !== id) return item;
+    const copy: NativeAgendaItem = JSON.parse(JSON.stringify(item)) as NativeAgendaItem;
+    if (!copy.repeat || copy.repeat === 'none') copy.done = done;
+    else copy.doneDates = done ? copy.doneDates.concat([date]) : copy.doneDates.filter((day: string) => day !== date);
+    return copy;
+  });
+}

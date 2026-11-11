@@ -169,6 +169,7 @@ import { librarySave, RawShareDocument, readSharedSchedule, SharedSchedule, Shar
   sharePublishBody } from '../schedule/ScheduleSharing';
 import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
 import { NativeCommonFree } from '../schedule/NativeCommonFree';
+import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
 import { DormReply, DormRequest, DormViewReply, NativeDormModel, NativeDormSheet } from '../schedule/NativeDormSheet';
 import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
 import { DayShareCardData, dayShareCard, dayShareCardData } from '../schedule/ScheduleDayShareCard';
@@ -226,6 +227,12 @@ struct ScheduleAcceptance {
   @StorageProp('qaOverlay') private overlaySeed: string = '';
   @State private overlayPicker: boolean = false;
   @State private commonFree: boolean = false;
+  // \`--ps panel cards\`: today's card in the four card styles, the last over a photo.
+  @State private cardsShown: boolean = false;
+  private cardRows: string = ${JSON.stringify(JSON.stringify([
+    { name: '药物化学', start: '08:00', time: '08:00–09:45', meta: '@B202', ended: false, accent: '#2563EB', tint: '#DBEAFE', colorIndex: 1 },
+    { name: '药理学', start: '10:00', time: '10:00–11:45', meta: '@C101', ended: false, accent: '#0F766E', tint: '#CCFBF1', colorIndex: 3 },
+    { name: '临床药学', start: '16:00', time: '16:00–18:45', meta: '@A102', ended: false, accent: '#BE185D', tint: '#FCE7F3', colorIndex: 5 }]))};
   @State private dorm: NativeDormModel = new NativeDormModel();
   @StorageProp('qaDorm') private dormState: string = '';
   // \`--ps background 1\` puts a photo behind the timetable (light; \`dark\` too with backgroundDark 1),
@@ -348,6 +355,7 @@ struct ScheduleAcceptance {
     }
     if (this.panel === 'overlayPicker') setTimeout(() => this.overlayPicker = true, 600);
     if (this.panel === 'commonFree') setTimeout(() => this.commonFree = true, 600);
+    if (this.panel === 'cards') setTimeout(() => this.cardsShown = true, 600);
     this.dorm.attach((request: DormRequest) => this.dormApi(request), () => undefined);
     if (this.panel.startsWith('dorm')) setTimeout(() => {
       this.dorm.page = this.panel === 'dormFree' ? 'free' : this.panel === 'dormMorning' ? 'morning' : this.panel === 'dormRoom' ? 'room' : 'week';
@@ -573,6 +581,19 @@ struct ScheduleAcceptance {
         .padding({ top: this.topPadding() })
       NativeTabBar({ selected: 2, dark: this.store.dark })
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
+      if (this.cardsShown) {
+        Scroll() {
+          Column({ space: 12 }) {
+            ForEach(['classic', 'table', 'paper', 'board', 'photo'], (style: string) => {
+              Column() {
+                ScheduleCardView({ state: 'ready', title: '课表', leftTitle: '今天 周三', primaryCourses: this.cardRows, dimension: 3,
+                  variant: 'desktop', layout: 'today', mode: 'today', cardStyle: style === 'photo' ? 'paper' : style,
+                  cardPhoto: style === 'photo' ? this.store.backgroundPath : '', veil: 0.55 })
+              }.width('100%').aspectRatio(364 / 170)
+            }, (style: string) => style)
+          }.width('100%').padding({ left: 16, right: 16, top: 60, bottom: 120 })
+        }.width('100%').height('100%').backgroundColor('#8090A0').onClick(() => this.cardsShown = false)
+      }
       if (this.cardShown) {
         Scroll() { Column() { this.shareCardBuilder() }.scale({ x: 0.66, y: 0.66 }) }.width('100%').height('100%')
           .backgroundColor('#333333').onClick(() => this.cardShown = false)

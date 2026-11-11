@@ -1,27 +1,93 @@
 {
   "color": [
-    { "name": "widget_surface", "value": "#0E1420" },
-    { "name": "widget_text", "value": "#FFFFFF" },
-    { "name": "widget_secondary", "value": "#99EBEBF5" },
-    { "name": "widget_muted", "value": "#6EEBEBF5" },
-    { "name": "widget_rule", "value": "#32EBEBF5" },
-    { "name": "widget_divider", "value": "#99545458" },
-    { "name": "widget_pink", "value": "#FF375F" },
-    { "name": "widget_pink_soft", "value": "#29FF375F" },
-    { "name": "widget_tint_glass_0", "value": "#2EE85B4B" },
-    { "name": "widget_tint_glass_1", "value": "#2E4A78F2" },
-    { "name": "widget_tint_glass_2", "value": "#2E8B5CF6" },
-    { "name": "widget_tint_glass_3", "value": "#2E17A69A" },
-    { "name": "widget_tint_glass_4", "value": "#2EE0A224" },
-    { "name": "widget_tint_glass_5", "value": "#2EEC70A1" },
-    { "name": "widget_tint_green", "value": "#2E168776" },
-    { "name": "widget_tint_blue", "value": "#2E2563EB" },
-    { "name": "widget_tint_teal", "value": "#2E0891B2" },
-    { "name": "widget_tint_indigo", "value": "#2EDB2777" },
-    { "name": "widget_tint_violet", "value": "#2E7C3AED" },
-    { "name": "widget_tint_orange", "value": "#2EEA580C" },
-    { "name": "widget_tint_rose", "value": "#2EE11D48" },
-    { "name": "widget_tint_slate", "value": "#2E475569" },
+    {
+      "name": "widget_surface",
+      "value": "#0E1420"
+    },
+    {
+      "name": "widget_text",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "widget_secondary",
+      "value": "#99EBEBF5"
+    },
+    {
+      "name": "widget_muted",
+      "value": "#6EEBEBF5"
+    },
+    {
+      "name": "widget_rule",
+      "value": "#32EBEBF5"
+    },
+    {
+      "name": "widget_divider",
+      "value": "#99545458"
+    },
+    {
+      "name": "widget_pink",
+      "value": "#FF375F"
+    },
+    {
+      "name": "widget_pink_soft",
+      "value": "#29FF375F"
+    },
+    {
+      "name": "widget_tint_glass_0",
+      "value": "#2EE85B4B"
+    },
+    {
+      "name": "widget_tint_glass_1",
+      "value": "#2E4A78F2"
+    },
+    {
+      "name": "widget_tint_glass_2",
+      "value": "#2E8B5CF6"
+    },
+    {
+      "name": "widget_tint_glass_3",
+      "value": "#2E17A69A"
+    },
+    {
+      "name": "widget_tint_glass_4",
+      "value": "#2EE0A224"
+    },
+    {
+      "name": "widget_tint_glass_5",
+      "value": "#2EEC70A1"
+    },
+    {
+      "name": "widget_tint_green",
+      "value": "#2E168776"
+    },
+    {
+      "name": "widget_tint_blue",
+      "value": "#2E2563EB"
+    },
+    {
+      "name": "widget_tint_teal",
+      "value": "#2E0891B2"
+    },
+    {
+      "name": "widget_tint_indigo",
+      "value": "#2EDB2777"
+    },
+    {
+      "name": "widget_tint_violet",
+      "value": "#2E7C3AED"
+    },
+    {
+      "name": "widget_tint_orange",
+      "value": "#2EEA580C"
+    },
+    {
+      "name": "widget_tint_rose",
+      "value": "#2EE11D48"
+    },
+    {
+      "name": "widget_tint_slate",
+      "value": "#2E475569"
+    },
     {
       "name": "start_window_background",
       "value": "#151A17"
@@ -73,6 +139,18 @@
     {
       "name": "app_on_accent",
       "value": "#173D28"
+    },
+    {
+      "name": "widget_paper",
+      "value": "#221F1A"
+    },
+    {
+      "name": "widget_board",
+      "value": "#121314"
+    },
+    {
+      "name": "widget_ink_rule",
+      "value": "#80E8DFCF"
     }
   ]
 }

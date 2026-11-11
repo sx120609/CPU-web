@@ -1,27 +1,93 @@
 {
   "color": [
-    { "name": "widget_surface", "value": "#F8FBFF" },
-    { "name": "widget_text", "value": "#000000" },
-    { "name": "widget_secondary", "value": "#993C3C43" },
-    { "name": "widget_muted", "value": "#6E3C3C43" },
-    { "name": "widget_rule", "value": "#323C3C43" },
-    { "name": "widget_divider", "value": "#4A3C3C43" },
-    { "name": "widget_pink", "value": "#FF2D55" },
-    { "name": "widget_pink_soft", "value": "#29FF2D55" },
-    { "name": "widget_tint_glass_0", "value": "#FDECE9" },
-    { "name": "widget_tint_glass_1", "value": "#EAF0FF" },
-    { "name": "widget_tint_glass_2", "value": "#F2ECFF" },
-    { "name": "widget_tint_glass_3", "value": "#E5F8F5" },
-    { "name": "widget_tint_glass_4", "value": "#FFF7E0" },
-    { "name": "widget_tint_glass_5", "value": "#FDEBF4" },
-    { "name": "widget_tint_green", "value": "#F4FBF8" },
-    { "name": "widget_tint_blue", "value": "#F3F8FF" },
-    { "name": "widget_tint_teal", "value": "#F0FBFF" },
-    { "name": "widget_tint_indigo", "value": "#FFF5FA" },
-    { "name": "widget_tint_violet", "value": "#FAF7FF" },
-    { "name": "widget_tint_orange", "value": "#FFF7F1" },
-    { "name": "widget_tint_rose", "value": "#FFF5F7" },
-    { "name": "widget_tint_slate", "value": "#F8FAFC" },
+    {
+      "name": "widget_surface",
+      "value": "#F8FBFF"
+    },
+    {
+      "name": "widget_text",
+      "value": "#000000"
+    },
+    {
+      "name": "widget_secondary",
+      "value": "#993C3C43"
+    },
+    {
+      "name": "widget_muted",
+      "value": "#6E3C3C43"
+    },
+    {
+      "name": "widget_rule",
+      "value": "#323C3C43"
+    },
+    {
+      "name": "widget_divider",
+      "value": "#4A3C3C43"
+    },
+    {
+      "name": "widget_pink",
+      "value": "#FF2D55"
+    },
+    {
+      "name": "widget_pink_soft",
+      "value": "#29FF2D55"
+    },
+    {
+      "name": "widget_tint_glass_0",
+      "value": "#FDECE9"
+    },
+    {
+      "name": "widget_tint_glass_1",
+      "value": "#EAF0FF"
+    },
+    {
+      "name": "widget_tint_glass_2",
+      "value": "#F2ECFF"
+    },
+    {
+      "name": "widget_tint_glass_3",
+      "value": "#E5F8F5"
+    },
+    {
+      "name": "widget_tint_glass_4",
+      "value": "#FFF7E0"
+    },
+    {
+      "name": "widget_tint_glass_5",
+      "value": "#FDEBF4"
+    },
+    {
+      "name": "widget_tint_green",
+      "value": "#F4FBF8"
+    },
+    {
+      "name": "widget_tint_blue",
+      "value": "#F3F8FF"
+    },
+    {
+      "name": "widget_tint_teal",
+      "value": "#F0FBFF"
+    },
+    {
+      "name": "widget_tint_indigo",
+      "value": "#FFF5FA"
+    },
+    {
+      "name": "widget_tint_violet",
+      "value": "#FAF7FF"
+    },
+    {
+      "name": "widget_tint_orange",
+      "value": "#FFF7F1"
+    },
+    {
+      "name": "widget_tint_rose",
+      "value": "#FFF5F7"
+    },
+    {
+      "name": "widget_tint_slate",
+      "value": "#F8FAFC"
+    },
     {
       "name": "start_window_background",
       "value": "#F7F8F6"
@@ -73,6 +139,18 @@
     {
       "name": "app_on_accent",
       "value": "#FFFFFF"
+    },
+    {
+      "name": "widget_paper",
+      "value": "#F5EFE1"
+    },
+    {
+      "name": "widget_board",
+      "value": "#F1F1EC"
+    },
+    {
+      "name": "widget_ink_rule",
+      "value": "#7A2E1B1B"
     }
   ]
 }

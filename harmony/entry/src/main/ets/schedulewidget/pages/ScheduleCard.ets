@@ -40,6 +40,9 @@ struct ScheduleCard {
   @LocalStorageProp('rightBadgeStatutory') private rightBadgeStatutory: boolean = false;
   @LocalStorageProp('lockTitle') private lockTitle: string = '';
   @LocalStorageProp('lockDay') private lockDay: string = '';
+  @LocalStorageProp('cardStyle') private cardStyle: string = 'classic';
+  @LocalStorageProp('background') private cardPhoto: string = '';
+  @LocalStorageProp('veil') private veil: number = 0.55;
 
   build() {
     Column() {
@@ -78,6 +81,9 @@ struct ScheduleCard {
       rightBadge: this.rightBadge,
       rightBadgeStatutory: this.rightBadgeStatutory,
       lockTitle: this.lockTitle,
+      cardStyle: this.cardStyle,
+      cardPhoto: this.cardPhoto,
+      veil: this.veil,
       lockDay: this.lockDay
     })
     }.width('100%').height('100%')

@@ -176,8 +176,10 @@ for (const [state, title] of [['loading', '正在加载课表'], ['unauthorized'
   capture(`state-${state}`);
 }
 pass('loading, authorization, and error states');
+// The fixture term starts on 2026-09-07; "now" is drawn only in the week that holds today.
+const todayWeek = String(Math.min(20, Math.max(1, Math.floor((Date.now() + 8 * 3600000 - Date.UTC(2026, 8, 7)) / 604800000) + 1)));
 for (const style of ['minimal', 'grid', 'table', 'paper', 'board']) {
-  await start({ style, now: '10:20' });
+  await start({ style, now: '10:20', week: todayWeek });
   nodes = await waitFor(nodes => has(nodes, '药物设计学') && draws(nodes, '10:20'), `${style} week failed`);
   assert.ok(point(nodes.find(node => node.text === '第十二节课程'))[1]
     < point(nodes.find(node => node.text === '首页'))[1], `${style} week does not fit above the navigation bar`);
@@ -202,14 +204,20 @@ pass('five more timetable styles in the week and day views');
 
 for (const style of ['classic', 'minimal', 'grid', 'table', 'paper', 'board']) {
   await start({ style, mode: 'month' });
-  await waitFor(nodes => hasPart(nodes, '年', '月') && has(nodes, '日视图'), `${style} month failed`);
+  await waitFor(nodes => hasPart(nodes, '年', '月'), `${style} month failed`);
   capture(`month-${style}`);
+  // 当天安排 sits under the calendar.
+  shell('uitest', 'uiInput', 'swipe', '540', '1600', '540', '500', '900');
+  await waitFor(nodes => has(nodes, '当天安排') && has(nodes, '日视图'), `${style} month has no 当天安排`);
 }
-const month = layout().find(node => /^\d{4} 年 \d+ 月$/.test(node.text)).text;
+await start({ mode: 'month' });
+const month = (await waitFor(nodes => nodes.some(node => /^\d{4} 年 \d+ 月$/.test(node.text)), 'Month title missing'))
+  .find(node => /^\d{4} 年 \d+ 月$/.test(node.text)).text;
 await click('#schedule-next-month');
 await waitFor(nodes => nodes.some(node => /^\d{4} 年 \d+ 月$/.test(node.text) && node.text !== month), 'Next month did not show');
 await click('#schedule-previous-month');
 await waitFor(nodes => has(nodes, month), 'Previous month did not show');
+shell('uitest', 'uiInput', 'swipe', '540', '1600', '540', '500', '900');
 await click('日视图');
 await waitFor(nodes => has(nodes, '周一') && nodes.some(node => /^第\d+周$/.test(node.text)), 'The month list did not open the day view');
 pass('month view in six styles, month arrows, and opening a day');
@@ -268,6 +276,92 @@ await click('保存到本机');
 await waitFor(nodes => has(nodes, '已保存的课表') && has(nodes, '阿青'), 'The share was not saved');
 capture('sharing-saved');
 pass('publishing a share code, previewing, read-only viewing and saving a shared timetable');
+
+// ---- NapTable features ----
+
+// Single meetings: Monday's first course cancelled and Tuesday's moved to Thursday evening.
+await start({ occurrences: 1, day: 1 });
+nodes = await waitFor(nodes => has(nodes, '已停课') && has(nodes, '调') && has(nodes, '药物分析'), 'Seeded single-meeting changes missing');
+capture('occurrences-week');
+const live = nodes.find(node => node.text === '药物分析');
+shell('uitest', 'uiInput', 'longClick', ...point(live).map(String));
+await waitFor(nodes => has(nodes, '调整这一次') && has(nodes, '这次停课') && has(nodes, '在这节课加日程'), 'Long-press menu missing');
+capture('occurrences-menu');
+await click('这次停课');
+await waitFor(nodes => nodes.filter(node => node.text === '已停课').length >= 2, 'The meeting was not cancelled');
+const cancelled = layout().filter(node => node.text === '药物分析').pop();
+shell('uitest', 'uiInput', 'click', ...point(cancelled).map(String));
+await click('恢复原安排');
+await waitFor(nodes => nodes.filter(node => node.text === '已停课').length === 1, 'The meeting was not restored');
+await start({ occurrences: 1, day: 1, panel: 'occurrence' });
+await waitFor(nodes => has(nodes, '调整这一次') && hasId(nodes, 'occurrence-save'), 'The 调整这一次 sheet did not open');
+await click('#occurrence-slot-11');
+await click('#occurrence-slot-12');
+await click('#occurrence-save');
+await waitFor(nodes => !hasId(nodes, 'occurrence-save'), 'The single change was not saved');
+capture('occurrences-moved');
+pass('long-press menu, 这次停课, 恢复原安排 and 调整这一次');
+
+// A classmate at another school laid over: the two-column strip.
+await start({ overlay: 1 });
+nodes = await waitFor(nodes => hasId(nodes, 'schedule-overlay-strip') && hasPart(nodes, '叠加了', '小林'), 'Overlay strip missing');
+assert.ok(has(nodes, '系统解剖学') || has(nodes, '药物设计学'));
+capture('overlay-strip');
+shell('uitest', 'uiInput', 'swipe', '900', '1300', '350', '1300', '600');
+await pause(1500);
+capture('overlay-strip-swiped');
+await click('#schedule-overlay-off');
+await waitFor(nodes => !hasId(nodes, 'schedule-overlay-strip'), 'Taking the overlay off did not bring the grid back');
+pass('overlay strip, swiping it and taking it off');
+
+// 更多, 找共同空闲, the overlay picker.
+await start({ panel: 'tools' });
+await waitFor(nodes => has(nodes, '日历与日程') && has(nodes, '一起看') && has(nodes, '外观与设置'), 'Grouped 更多 missing');
+capture('tools');
+await start({ overlay: 1, panel: 'commonFree' });
+await waitFor(nodes => has(nodes, '找共同空闲') && has(nodes, '小林') && has(nodes, '空闲时段'), 'Common free page missing');
+capture('common-free');
+await start({ overlay: 1, panel: 'overlayPicker' });
+await waitFor(nodes => has(nodes, '叠加到我的课表') && has(nodes, '不叠加'), 'Overlay picker missing');
+capture('overlay-picker');
+pass('grouped 更多, 找共同空闲 and the overlay picker');
+
+// The month: 当天安排 with 日程; a holiday's rest card; the day card.
+await start({ mode: 'month' });
+await pause(1500);
+shell('uitest', 'uiInput', 'swipe', '540', '1600', '540', '500', '900');
+await waitFor(nodes => has(nodes, '当天安排') && hasId(nodes, 'schedule-month-open-day'), '当天安排 missing under the month');
+capture('month-day-panel');
+await start({ mode: 'day', day: 7, style: 'minimal', holiday: '国庆快乐' });
+await waitFor(nodes => has(nodes, '国庆快乐') && hasId(nodes, 'schedule-fireworks'), 'Holiday greeting or fireworks button missing');
+capture('holiday');
+await start({ panel: 'shareCard', day: 1, occurrences: 1 });
+await waitFor(nodes => has(nodes, '由 拾间课表 生成') && has(nodes, '停课'), 'Day share card missing');
+capture('share-card');
+pass('当天安排, holiday fireworks and the day card');
+
+// 宿舍课表, native.
+await start({ dorm: 'active', panel: 'dormWeek' });
+await waitFor(nodes => hasId(nodes, 'dorm-tab-week') && hasPart(nodes, '第 10 周'), 'Dorm week missing');
+await click('#dorm-cell-0-0');
+// The details sit under the grid.
+shell('uitest', 'uiInput', 'swipe', '540', '1800', '540', '700', '900');
+await waitFor(nodes => has(nodes, '看这天的空闲时段 ›'), 'A dorm cell did not open its details');
+capture('dorm-cell');
+await click('#dorm-tab-free');
+await waitFor(nodes => hasPart(nodes, '的空闲时段') && has(nodes, '每人当天的课'), 'Dorm free page missing');
+await click('#dorm-tab-morning');
+await waitFor(nodes => hasPart(nodes, '早八'), 'Dorm 早八 page missing');
+await click('#dorm-tab-room');
+await waitFor(nodes => has(nodes, 'K7M2QX') && has(nodes, '立即同步我的课表'), 'Dorm room page missing');
+capture('dorm-room');
+pass('native 宿舍课表: 一周, a cell, 空闲, 早八 and 宿舍');
+
+// Cards in the four styles.
+await start({ panel: 'cards', background: 1 });
+await waitFor(nodes => nodes.filter(node => node.text === '药物化学').length >= 5, 'Card styles missing');
+capture('card-styles');
+pass('service cards in the timetable styles and over a photo');
 
 await start();
 await waitFor(nodes => has(nodes, '药物设计学'), 'Final loaded state missing');

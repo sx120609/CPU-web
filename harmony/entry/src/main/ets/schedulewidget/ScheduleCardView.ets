@@ -66,6 +66,11 @@ export struct ScheduleCardView {
   @Prop rightBadgeStatutory: boolean = false;
   @Prop lockTitle: string = '';
   @Prop lockDay: string = '';
+  // The timetable style: 表格 frames the card in rules, 素笺 is paper with a double rule, 站牌 a sign
+  // with a heavy top rule; the rest keep the original look. A photo may lie under a veil of the card's colour.
+  @Prop cardStyle: string = 'classic';
+  @Prop cardPhoto: string = '';
+  @Prop veil: number = 0.55;
   @State private cardHeight: number = 0;
 
   private rows(value: string): WidgetCourseRow[] {
@@ -75,6 +80,19 @@ export struct ScheduleCardView {
     } catch (_) {
       return [];
     }
+  }
+
+  private surface(): ResourceColor {
+    if (this.cardStyle === 'paper') return $r('app.color.widget_paper');
+    if (this.cardStyle === 'board') return $r('app.color.widget_board');
+    return $r('app.color.widget_surface');
+  }
+
+  private frame(): BorderOptions {
+    if (this.cardStyle === 'table') return { width: 1, color: $r('app.color.widget_rule'), radius: 10 };
+    if (this.cardStyle === 'paper') return { width: 1.5, color: $r('app.color.widget_ink_rule'), radius: 6, style: BorderStyle.Solid };
+    if (this.cardStyle === 'board') return { width: { top: 4, left: 0, right: 0, bottom: 0 }, color: $r('app.color.widget_ink_rule'), radius: 6 };
+    return { width: 0 };
   }
 
   private effectiveLayout(): string {
@@ -901,6 +919,11 @@ export struct ScheduleCardView {
   }
 
   build() {
+    Stack() {
+    if (this.cardPhoto && !this.isLockScreen()) {
+      Image(this.cardPhoto).width('100%').height('100%').objectFit(ImageFit.Cover)
+      Column().width('100%').height('100%').backgroundColor(this.surface()).opacity(this.veil)
+    }
     Column() {
       if (this.isLockScreen() && this.state !== 'ready') {
         this.lockStatusView()
@@ -925,8 +948,13 @@ export struct ScheduleCardView {
     .width('100%')
     .height('100%')
     .padding(this.cardPadding())
-    .backgroundColor(this.isLockScreen() ? Color.Transparent : $r('app.color.widget_surface'))
-    .borderRadius(this.isLockScreen() ? 0 : 22)
+    }
+    .width('100%')
+    .height('100%')
+    .clip(true)
+    .backgroundColor(this.isLockScreen() || this.cardPhoto ? Color.Transparent : this.surface())
+    .borderRadius(this.isLockScreen() ? 0 : this.cardStyle === 'paper' || this.cardStyle === 'board' ? 6 : this.cardStyle === 'table' ? 10 : 22)
+    .border(this.isLockScreen() ? { width: 0 } : this.frame())
     .onAreaChange((_previous: Area, area: Area) => this.cardHeight = Number(area.height))
   }
 }

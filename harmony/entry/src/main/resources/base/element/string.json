@@ -79,6 +79,14 @@
     {
       "name": "shortcut_free",
       "value": "找共同空闲"
+    },
+    {
+      "name": "agenda_widget_name",
+      "value": "日程"
+    },
+    {
+      "name": "agenda_widget_description",
+      "value": "逾期待办、两周内的日程和待办，可直接勾选完成"
     }
   ]
 }

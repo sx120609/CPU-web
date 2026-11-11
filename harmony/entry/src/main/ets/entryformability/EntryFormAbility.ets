@@ -6,6 +6,13 @@ import {
   registerScheduleForm,
   removeScheduleForm
 } from '../common/ScheduleWidgetService';
+import { toggleAgendaFromCard } from '../common/ScheduleCardExtras';
+
+interface CardMessage {
+  action?: string;
+  id?: string;
+  date?: string;
+}
 
 const FORM_ID_KEY = 'ohos.extra.param.key.form_identity';
 const FORM_DIMENSION_KEY = 'ohos.extra.param.key.form_dimension';
@@ -26,6 +33,16 @@ export default class EntryFormAbility extends FormExtensionAbility {
 
   onUpdateForm(formId: string): void {
     void refreshRegisteredScheduleForm(this.context, formId).catch(() => undefined);
+  }
+
+  // The 日程 card's circle: ticked in the saved list at once, sent to the site when the app next opens.
+  onFormEvent(formId: string, message: string): void {
+    let parsed: CardMessage = {};
+    try { parsed = JSON.parse(message) as CardMessage; } catch (_) { return; }
+    if (parsed.action !== 'toggle' || !parsed.id) return;
+    void toggleAgendaFromCard(this.context, parsed.id, parsed.date ?? '')
+      .then(() => refreshRegisteredScheduleForm(this.context, formId))
+      .catch(() => undefined);
   }
 
   onRemoveForm(formId: string): void {

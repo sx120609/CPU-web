@@ -1440,6 +1440,7 @@ export struct NativeScheduleBody {
   // The trailing edge of a board row: a countdown for the next course, and 已结束 for a finished
   // course in the plain timetable. Every other row leaves it empty; the times already lead.
   private boardNote(block: PlacedCourseBlock, isNext: boolean): string {
+    if (block.whole.cancelled) return '已停课';
     if (this.blockPhase(block, this.view.selectedDay) === 'completed') return '已结束';
     const start = scheduleClockMinutes(this.blockStart(block));
     const now = this.dayStatus(this.view.selectedDay).now;
