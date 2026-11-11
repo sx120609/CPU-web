@@ -482,7 +482,7 @@ private fun OverlayColumn(
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             periods.forEach { _ ->
                 Box(Modifier.width(width).height(rowHeight).clip(RoundedCornerShape(6.dp))
-                    .background(if (scope.style == ScheduleVisualStyle.Classic) colors.cell.copy(alpha = 0.6f) else scope.cellSurface.copy(alpha = 0.55f)))
+                    .background(stripCellFill(scope, colors)))
             }
         }
         OverlayStripRules.clusters(blocks).forEach { (block, more) ->
@@ -561,4 +561,16 @@ private fun OverlayHollowTile(course: ScheduleCourse, height: Dp, together: Bool
         if (together) Icon(Icons.Rounded.Favorite, contentDescription = null, tint = CoupleAccent,
             modifier = Modifier.align(Alignment.TopEnd).size(8.dp))
     }
+}
+
+
+/**
+ * An empty period in a strip column. The styled surfaces already carry their
+ * own alpha (white at 5–8% in dark mode), so it is scaled, not replaced: a
+ * flat 55% white made the dark strip a sheet of light grey tiles.
+ */
+private fun stripCellFill(scope: ScheduleStyleScope, colors: ScheduleColors): Color = when {
+    scope.style == ScheduleVisualStyle.Classic -> colors.cell.copy(alpha = colors.cell.alpha * 0.6f)
+    colors.dark -> scope.cellSurface
+    else -> scope.cellSurface.copy(alpha = scope.cellSurface.alpha * 0.55f)
 }
