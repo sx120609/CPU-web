@@ -60,6 +60,8 @@ object DebugScheduleFixture {
         "widgets" -> ScheduleSheet.Widgets
         "dorm" -> ScheduleSheet.Dorm()
         "agenda" -> ScheduleSheet.AgendaList
+        "commonFree" -> ScheduleSheet.CommonFree
+        "overlay" -> ScheduleSheet.Overlay
         "agendaNew" -> ScheduleSheet.AgendaEdit(newAgendaDraft(java.time.LocalDate.now().toString(), "14:00"))
         // 截图识别 with the fixture's sample reading (needs debugAgenda for the frozen remote).
         "agendaExtract" -> ScheduleSheet.AgendaEdit(newAgendaDraft(""), AgendaSource.Text("debug"))

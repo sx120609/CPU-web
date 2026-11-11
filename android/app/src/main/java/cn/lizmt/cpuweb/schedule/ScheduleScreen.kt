@@ -109,6 +109,8 @@ sealed interface ScheduleSheet {
     data class Cancelled(val block: PlacedBlock) : ScheduleSheet
     /** 叠加到我的课表. */
     data object Overlay : ScheduleSheet
+    /** 找共同空闲. */
+    data object CommonFree : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -443,6 +445,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                         ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
                         ("情侣课表" to { sheet = ScheduleSheet.Couple }).takeIf { !store.readOnly },
                         ("叠加到我的课表" to { sheet = ScheduleSheet.Overlay }).takeIf { !store.readOnly },
+                        ("找共同空闲" to { sheet = ScheduleSheet.CommonFree }).takeIf { !store.readOnly },
                         ("宿舍课表" to { sheet = ScheduleSheet.Dorm() }).takeIf { !store.readOnly },
                         MENU_DIVIDER,
                         "课表设置" to { sheet = ScheduleSheet.Settings },
@@ -569,6 +572,11 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
         is ScheduleSheet.Dorm -> ScheduleDormSheet(activity, current.code, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
         ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
+        ScheduleSheet.CommonFree -> CommonFreeSheet(
+            activity, store,
+            onAgenda = if (activity.agenda.available) ({ date, start -> sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(date, start)) }) else null,
+            onDismiss = { if (sheet == ScheduleSheet.CommonFree) sheet = null },
+        )
         ScheduleSheet.Overlay -> OverlayPickerSheet(
             activity, onSharing = { sheet = ScheduleSheet.Sharing }, onCouple = { sheet = ScheduleSheet.Couple }, onDismiss = { sheet = null },
         )

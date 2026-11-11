@@ -264,4 +264,69 @@ class NapTablePortTest {
     }
 
     // endregion
+
+    // region Meetings and common free time
+
+    private fun snapshotOf(
+        cells: List<ScheduleCell>, weeks: List<CalendarWeek>, periods: List<SchedulePeriod> = BUNDLED_PERIODS,
+        adjustments: List<ScheduleAdjustment> = emptyList(), complete: Boolean = true,
+    ) = ScheduleSnapshot(
+        version = 1, completeSemester = complete, source = "jwxt", fetchedAt = 0L, periods = periods, periodsComplete = true,
+        data = ScheduleResult(semesters = emptyList(), weeks = emptyList(), currentSemester = "2026-2027-1", currentWeek = "1", cells = cells),
+        calendar = ScheduleCalendar(currentSemester = "2026-2027-1", currentWeek = 1, weeks = weeks, adjustments = adjustments),
+        authenticated = true, identity = null, account = null, error = null, cancelled = false, raw = "",
+    )
+
+    private fun days(start: Int) = (start until start + 7).map { "2026-09-%02d".format(it) }
+
+    @Test
+    fun meetingsFollowDaysOffMakeUpDaysAndOwnTimes() {
+        val calendarWeeks = listOf(CalendarWeek(1, days(7), "2026-09-07", "2026-09-13"), CalendarWeek(2, days(14), "2026-09-14", "2026-09-20"))
+        val math = ScheduleCourse(name = "高等数学", nativeId = "m", weekList = listOf(1, 2), location = "教学楼A102", startSlot = 1, endSlot = 2)
+        val lab = ScheduleCourse(name = "实验, 第一组", nativeId = "l", weekList = listOf(2), startSlot = 11, endSlot = 12,
+            customStartTime = "18:30", customEndTime = "20:00")
+        val cells = listOf(ScheduleCell(1, 1, listOf(math)), ScheduleCell(3, 6, listOf(lab)))
+        // Week 2 Monday is off; that Saturday runs week 1's Monday.
+        val adjustments = listOf(ScheduleAdjustment("2026-09-14", "off", null, null), ScheduleAdjustment("2026-09-19", "swap", "2026-09-07", null))
+        val found = ScheduleMeetings.make(snapshotOf(cells, calendarWeeks, adjustments = adjustments))
+        assertEquals(listOf("2026-09-07", "2026-09-16", "2026-09-19"), found.map { it.date })
+        assertEquals("2026-09-07", found[2].sourceDate)
+        assertEquals(2, found[2].week)
+        assertEquals(6, found[2].day)
+        assertEquals("08:00" to "09:40", found[0].start to found[0].end)
+        assertEquals("18:30" to "20:00", found[1].start to found[1].end)
+        assertEquals("2026-2027-1|1|1|1|2|m", found[0].key)
+        // A single week only covers that week.
+        assertEquals(listOf("2026-09-07"), ScheduleMeetings.make(snapshotOf(cells, calendarWeeks, adjustments = adjustments, complete = false)).map { it.date })
+    }
+
+    @Test
+    fun commonFreeTimeFollowsTheIosChecks() {
+        val both = listOf(CalendarWeek(1, days(7), "2026-09-07", "2026-09-13"), CalendarWeek(2, days(14), "2026-09-14", "2026-09-20"))
+        // Me: Monday periods 1–2 (08:00–09:40) and 5–6 (13:30–15:10).
+        val me = snapshotOf(listOf(
+            ScheduleCell(1, 1, listOf(ScheduleCourse(name = "高数", weekList = listOf(1, 2), startSlot = 1, endSlot = 2))),
+            ScheduleCell(1, 3, listOf(ScheduleCourse(name = "化学", weekList = listOf(1), startSlot = 5, endSlot = 6))),
+        ), both)
+        // Them, at another school: Monday 09:40–11:10 by their own bells, and only week 1 in their term.
+        val theirBells = listOf(SchedulePeriod(1, "09:40", "10:20"), SchedulePeriod(2, "10:30", "11:10"))
+        val them = snapshotOf(listOf(ScheduleCell(1, 1, listOf(ScheduleCourse(name = "解剖", weekList = listOf(1), startSlot = 1, endSlot = 2)))),
+            listOf(CalendarWeek(1, days(7), "2026-09-07", "2026-09-13")), periods = theirBells)
+        val result = ScheduleCommonFree.days(listOf(me, them), "2026-09-07", "2026-09-20", 8 * 60, 18 * 60, 60, "2026-09-01", 0)
+        assertEquals(days(7), result.map { it.date })
+        assertEquals(listOf(480..670, 810..910), result[0].busy)
+        // 11:10–13:30 and 15:10–18:00; 08:00–09:40 is taken, nothing under an hour.
+        assertEquals(listOf(670 to 810, 910 to 1080), result[0].windows.map { it.start to it.end })
+        assertEquals(listOf(480 to 1080), result[1].windows.map { it.start to it.end })
+        // Today starts at the next quarter hour; earlier days are left out.
+        val today = ScheduleCommonFree.days(listOf(me), "2026-09-07", "2026-09-08", 480, 1080, 30, "2026-09-08", 11 * 60 + 5)
+        assertEquals(listOf("2026-09-08"), today.map { it.date })
+        assertEquals(11 * 60 + 15, today[0].windows.first().start)
+        assertEquals(listOf(1..4, 5..9, 12..13), ScheduleCommonFree.merge(listOf(5..9, 1..3, 3..4, 12..13)))
+        assertEquals("1 小时 45 分", ScheduleCommonFree.durationText(105))
+        assertEquals("2 小时", ScheduleCommonFree.durationText(120))
+        assertEquals(listOf("2026-02-27", "2026-02-28", "2026-03-01", "2026-03-02"), ScheduleCommonFree.range("2026-02-27", "2026-03-02"))
+    }
+
+    // endregion
 }
