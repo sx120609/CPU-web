@@ -563,7 +563,9 @@ internal fun StyledDayColumn(
                     StyledCourseTile(
                         block.course, Modifier.fillMaxSize(), tileHeight, compact = narrow,
                         // Three or more side by side leave two characters a line: no inverted "now" tile there.
-                        start = block.course.customTime?.first ?: periods.firstOrNull { it.number == block.startSlot }?.startTime, current = !ghost && lanes < 3 && isCurrent(block),
+                        // The board's start time needs about 50dp; narrower columns (a small phone) cut it to 「13:3(」.
+                        start = (block.course.customTime?.first ?: periods.firstOrNull { it.number == block.startSlot }?.startTime)
+                            ?.takeIf { dayRow || room / lanes >= 50.dp }, current = !ghost && lanes < 3 && isCurrent(block),
                         trailingInset = if (label != null) 80.dp else 0.dp, dayRow = dayRow, showLocation = showLocation, tag = tag,
                         couple = tint, bottomInset = noteSpace,
                     )

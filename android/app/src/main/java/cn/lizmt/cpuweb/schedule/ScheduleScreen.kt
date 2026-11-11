@@ -1463,8 +1463,12 @@ private fun SlotAxis(store: ScheduleStore, slot: Int, stride: Dp) {
     ) {
         Text(slot.toString(), fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
         if (LocalScheduleDisplay.current.showSlotTime) {
+            // Short rows (a small screen fitting every period) keep the start time only:
+            // three lines would run into the next row.
+            val room = stride - (if (glass != null) 5.dp else 0.dp)
+            val threeLines = with(androidx.compose.ui.platform.LocalDensity.current) { 34.sp.toDp() } + 4.dp
             Text(period.startTime, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, color = colors.secondary)
-            Text(period.endTime, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, color = colors.secondary)
+            if (room >= threeLines) Text(period.endTime, fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.sp, color = colors.secondary)
         }
     }
 }
