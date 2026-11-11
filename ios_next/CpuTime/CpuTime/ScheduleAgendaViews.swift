@@ -58,7 +58,7 @@ struct ScheduleAgendaChipLayer: View {
     }
 }
 
-/// An item at the same time as a class: a thin bar inside the class's right edge, so the
+/// An item at the same time as a class: a thin bar on the class's right border, so the
 /// class's name is never covered. The class's quick look and the day view list the item.
 @available(iOS 17.0, *)
 private struct ScheduleAgendaBar: View {

@@ -60,8 +60,8 @@ struct NativeAgendaChecks {
         precondition(abs(chips[0].y - 50 * 22 / 45) < 0.01 && chips[0].beside)
         // In the lunch break, after period 2: across the gap before period 3, clear of the class.
         precondition(!chips[1].beside && chips[1].y >= 104 && chips[1].y <= 108 && chips[1].height >= 20)
-        // Beside a class it is a thin bar inside the class's right edge; in free time it spans the column.
-        precondition(abs(chips[0].frame(columnWidth: 60).maxX - 57) < 0.001
+        // Beside a class it is a thin bar on the class's right border; in free time it spans the column.
+        precondition(abs(chips[0].frame(columnWidth: 60).maxX - 59.5) < 0.001
                      && chips[0].frame(columnWidth: 60).width == NativeAgendaChip.besideWidth
                      && chips[1].frame(columnWidth: 60).width == 58)
         // Before the first period it is pinned onto period 1, so it keeps beside the class there.

@@ -109,7 +109,7 @@ struct NativeAgendaChip: Equatable, Identifiable {
     let entry: NativeAgendaOccurrence
     let y: CGFloat
     let height: CGFloat
-    /// It meets a class: drawn as a thin bar inside the class's right edge, with no text, so
+    /// It meets a class: drawn as a thin bar on the class's right border, with no text, so
     /// the class's name stays readable. Only items in free time carry their title on the grid.
     let beside: Bool
 
@@ -120,7 +120,8 @@ struct NativeAgendaChip: Equatable, Identifiable {
 
     func frame(columnWidth: CGFloat) -> CGRect {
         let width = beside ? Self.besideWidth : max(12, columnWidth - 2)
-        return CGRect(x: beside ? columnWidth - width - 3 : 1, y: y, width: width, height: height)
+        // Beside a class the bar sits on the class's right border, clear of its text.
+        return CGRect(x: beside ? columnWidth - width - 0.5 : 1, y: y, width: width, height: height)
     }
 }
 
