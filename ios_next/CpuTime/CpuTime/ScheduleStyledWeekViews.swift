@@ -611,11 +611,10 @@ struct NativeScheduleStyledDayColumn: View {
     var completedBeforeMinutes: Int? = nil
     /// Courses that do not run this week, faded under the others.
     var offWeekBlocks: [NativeScheduleCourseBlock] = []
-    /// The partner's courses that meet one of the user's: named in a line
-    /// at the foot of that course instead of getting a tile.
-    var coupleClashes: [NativeScheduleCourseBlock] = []
     /// "yyyy-MM-dd" when the column draws the user's 日程; nil for none.
     var agendaDate: String? = nil
+    /// Off in the overlay strip, which fills today's whole day at once.
+    var drawsTodayBackground = true
 
     private var marksToday: Bool { isToday && !staticRendering }
     @Environment(\.scheduleCouple) private var couple
@@ -734,7 +733,7 @@ struct NativeScheduleStyledDayColumn: View {
     private var columnBackground: some View {
         switch style {
         case .minimal:
-            if marksToday {
+            if marksToday && drawsTodayBackground {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.themeTint(ThemePalette.Surface.todayStrength(dark: colorScheme == .dark)))
                     .allowsHitTesting(false)
@@ -748,7 +747,7 @@ struct NativeScheduleStyledDayColumn: View {
                 Color.primary.opacity(0.035)
             }
         case .paper:
-            if marksToday {
+            if marksToday && drawsTodayBackground {
                 style.styleAccent(dark: colorScheme == .dark, fallback: .clear)
                     .opacity(colorScheme == .dark ? 0.10 : 0.07)
             }
@@ -844,12 +843,11 @@ struct NativeScheduleStyledDayColumn: View {
         let narrow = compactCards || columnWidth / CGFloat(lanes) < 70
         // Three or more side by side: a tile two characters wide keeps the name only.
         let tiny = lanes > 2
-        let note = ScheduleCoupleNote.kind(for: block, clashes: coupleClashes)
         return ZStack(alignment: .trailing) {
-            if let owner = block.owner, let couple {
-                // One colour per person while the partner's courses are shown.
-                ScheduleCouplePersonTile(course: block.course, layer: couple, partner: owner == .partner,
-                                         compact: narrow, showLocation: showLocation, note: note, tiny: tiny)
+            if block.owner == .partner {
+                // Somebody else's course in the overlay strip.
+                ScheduleOverlayHollowTile(course: block.course, ownerTitle: couple?.ownerTitle ?? "TA 的课",
+                                          showLocation: showLocation, together: block.together, tiny: tiny)
             } else if style == .minimal {
                 ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation)
             } else {
@@ -869,7 +867,8 @@ struct NativeScheduleStyledDayColumn: View {
         .contentShape(Rectangle())
         .scheduleCourseInteractions(block)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel(block) + (status.label(block).map { "，" + $0 } ?? ""))
+        .accessibilityLabel((block.owner == .partner ? (couple?.ownerTitle ?? "TA 的课") + "，" : "")
+            + accessibilityLabel(block) + (status.label(block).map { "，" + $0 } ?? ""))
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("轻点查看课程详情")
         .accessibilityAction { onCourseSelected(block) }
@@ -877,14 +876,7 @@ struct NativeScheduleStyledDayColumn: View {
     }
 
     private func block(at point: CGPoint, _ laneCounts: [String: Int]) -> NativeScheduleCourseBlock? {
-        guard let block = blocks.reversed().first(where: { frame(of: $0, lanes: laneCounts[$0.id] ?? 1).contains(point) }) else { return nil }
-        // The line at the foot of the tile opens the partner's course.
-        let lanes = laneCounts[block.id] ?? 1
-        if couple != nil, lanes < 3, case .partner(let theirs) = ScheduleCoupleNote.kind(for: block, clashes: coupleClashes),
-           ScheduleCoupleNote.tapArea(in: frame(of: block, lanes: lanes)).contains(point) {
-            return theirs[0]
-        }
-        return block
+        blocks.reversed().first { frame(of: $0, lanes: laneCounts[$0.id] ?? 1).contains(point) }
     }
 
     private func slot(at point: CGPoint) -> Int? {
@@ -949,8 +941,6 @@ struct ScheduleStyledDay: Identifiable {
     let blocks: [NativeScheduleCourseBlock]
     /// Courses that do not run this week, for the periods left free.
     var offWeekBlocks: [NativeScheduleCourseBlock] = []
-    /// The partner's courses that meet one of the user's.
-    var coupleClashes: [NativeScheduleCourseBlock] = []
 
     var id: Int { day }
 }
@@ -1032,7 +1022,6 @@ struct ScheduleStyledWeekRows: View {
                     onEmptySlot: { onEmptySlot(day, $0) },
                     nowMinutes: day.isToday ? now : nil,
                     offWeekBlocks: day.offWeekBlocks,
-                    coupleClashes: day.coupleClashes,
                     agendaDate: staticRendering ? nil : day.rawDate
                 )
             }

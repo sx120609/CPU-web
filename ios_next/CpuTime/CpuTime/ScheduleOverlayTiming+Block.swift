@@ -16,7 +16,7 @@ extension ScheduleOverlayTiming {
             bigSlot: (placed.start + 1) / 2, startSlot: placed.start, endSlot: placed.end, lane: block.lane
         )
         moved.owner = block.owner
-        moved.coupleMeets = block.coupleMeets
+        moved.together = block.together
         return moved
     }
 }

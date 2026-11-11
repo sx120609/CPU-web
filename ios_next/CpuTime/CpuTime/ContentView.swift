@@ -362,7 +362,10 @@ private enum NativeScheduleDebugFixture {
 
     static var snapshot: NativeScheduleSnapshot {
         let semesters = [NativeScheduleSemester(value: semester, label: "2026-2027 学年第一学期", current: true)]
-        let weeks = [NativeScheduleWeek(value: "1", label: "第 1 周", current: true)]
+        // `CPU_DEBUG_WEEKS=3` runs the term on for that many weeks from this one,
+        // with every course in each, so paging across weeks can be checked.
+        let weekCount = max(1, min(20, Int(ProcessInfo.processInfo.environment["CPU_DEBUG_WEEKS"] ?? "") ?? 1))
+        let weeks = (1...weekCount).map { NativeScheduleWeek(value: "\($0)", label: "第 \($0) 周", current: $0 == 1) }
         var calendarValue = Calendar(identifier: .gregorian)
         calendarValue.timeZone = TimeZone(identifier: "Asia/Shanghai")!
         calendarValue.firstWeekday = 2
@@ -375,9 +378,10 @@ private enum NativeScheduleDebugFixture {
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.timeZone = calendarValue.timeZone
         dateFormatter.dateFormat = "yyyy-MM-dd"
-        let days = (0..<7).compactMap { offset in
+        let termDays = (0..<(7 * weekCount)).compactMap { offset in
             calendarValue.date(byAdding: .day, value: offset, to: monday).map(dateFormatter.string(from:))
         }
+        let days = Array(termDays.prefix(7))
         let now = Date.now
         let liveStart = now.addingTimeInterval(-15 * 60)
         let liveEnd = now.addingTimeInterval(45 * 60)
@@ -414,9 +418,12 @@ private enum NativeScheduleDebugFixture {
             semesters: semesters,
             currentSemester: semester,
             currentWeek: 1,
-            semesterStart: days[0],
-            semesterEnd: days[6],
-            weeks: [NativeCalendarWeek(week: 1, days: days, monday: days[0], sunday: days[6])]
+            semesterStart: termDays[0],
+            semesterEnd: termDays[termDays.count - 1],
+            weeks: (1...weekCount).map { week in
+                let slice = Array(termDays[(week - 1) * 7..<week * 7])
+                return NativeCalendarWeek(week: week, days: slice, monday: slice[0], sunday: slice[6])
+            }
         )
         var cells = [
             NativeScheduleCell(day: todayColumn, bigSlot: 1, courses: [
@@ -472,8 +479,8 @@ private enum NativeScheduleDebugFixture {
                         nativeId: "source:visual-\(index)",
                         name: name,
                         teacher: "\(["李", "王", "张"][index % 3])老师",
-                        weeks: "第 1 周",
-                        weekList: [1],
+                        weeks: weekCount > 1 ? "第 1-\(weekCount) 周" : "第 1 周",
+                        weekList: Array(1...weekCount),
                         location: overlap ? "教学楼\(["A", "E"][index % 2])\(201 + index)" : "教学楼 \(201 + index)",
                         // `CPU_DEBUG_SCHEDULE_NOTE=带实验报告` gives the first course a written note.
                         slotNote: index == 0 ? ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_NOTE"] : nil,
