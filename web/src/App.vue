@@ -4,7 +4,7 @@
     <ExtensionHost :blocked="dataAuthOpen || strongNoticeOpen || directNoticeOpen || inAppTipOpen" />
     <SmartPostTaskIndicator />
     <AndroidUpdateDialog />
-    <NativeAppUpdateDialog />
+    <NativeAppUpdateDialog v-if="storeAppShell" />
     <LegacyDomainMigrationDialog />
     <SchoolMfaDialog />
     <el-dialog
@@ -159,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { ElMessage } from "element-plus";
 import { ChatDotRound } from "@element-plus/icons-vue";
@@ -170,13 +170,17 @@ import { authApi } from "@/api/auth";
 import { messageApi } from "@/api/message";
 import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import AndroidUpdateDialog from "@/components/install/AndroidUpdateDialog.vue";
-import NativeAppUpdateDialog from "@/components/install/NativeAppUpdateDialog.vue";
 import ExtensionHost from "@/views/workshop/ExtensionHost.vue";
 import SmartPostTaskIndicator from "@/components/forum/SmartPostTaskIndicator.vue";
 import LegacyDomainMigrationDialog from "@/components/common/LegacyDomainMigrationDialog.vue";
 import SchoolMfaDialog from "@/components/common/SchoolMfaDialog.vue";
 import { detectInAppBrowser, isWechatServiceClient, shouldAutoSuggestExternalBrowser } from "@/utils/inAppBrowser";
 import { copyText } from "@/utils/userGroup";
+import { isHarmonyNativeApp, isIosNativeApp } from "@/utils/clientInfo";
+
+// Only the iOS and HarmonyOS apps announce store updates, so other clients never load the dialog.
+const NativeAppUpdateDialog = defineAsyncComponent(() => import("@/components/install/NativeAppUpdateDialog.vue"));
+const storeAppShell = isIosNativeApp() || isHarmonyNativeApp();
 
 const auth = useAuthStore();
 const msg = useMessageStore();
