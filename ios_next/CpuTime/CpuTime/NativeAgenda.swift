@@ -96,6 +96,8 @@ final class NativeAgendaService: ObservableObject {
 
     init() {
         items = Self.readCache()
+        // The 日程 widget follows the list, and its ticks come back through it.
+        NativeAgendaWidgetBridge.shared.start(self)
     }
 
     /// Ties the service to the timetable store, whose web view carries the session, and to the

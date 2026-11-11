@@ -20,7 +20,10 @@ struct CpuTimeApp: App {
             if #available(iOS 17.0, *) {
 #if DEBUG
                 let canvases = DebugDisplayCanvas<ContentView>.canvases
-                if !canvases.isEmpty {
+                if NativeWidgetGallery.isRequested {
+                    // `CPU_DEBUG_WIDGET_GALLERY=1`: every widget at its real size, see ios_next/README.md.
+                    NativeWidgetGallery()
+                } else if !canvases.isEmpty {
                     DebugDisplayCanvas(canvases: canvases) { ContentView() }
                 } else {
                     ContentView()
@@ -132,6 +135,12 @@ struct ContentView: View {
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
                     let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    // The 日程 widget: one item, the list, or a new one.
+                    if NativeAgendaWidgetLink.isLink(query) {
+                        try? await Task.sleep(for: .milliseconds(400))
+                        NativeAgendaWidgetLink.open(query)
+                        return
+                    }
                     // The Control Center's 记一笔: a new 日程 at the class on now or next.
                     if query.contains(where: { $0.name == "action" && $0.value == "agenda" }) {
                         let target = ScheduleShortcutRouter.agendaTarget()

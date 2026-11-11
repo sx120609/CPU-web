@@ -169,7 +169,27 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 ## iOS 小组件
 
-已迁移旧版全部 WidgetKit 样式：临近课程（小号、中号、锁屏行内／圆形／矩形）、今日课表（中号、大号）、两日课表（大号），保留九种主题与每 30 分钟请求刷新的时间线策略（实际刷新由系统调度）。
+四个小组件，界面与规则跟 NapTable 对齐（`CPUWebWidgets/ScheduleWidgetViews.swift`、`AgendaWidget.swift`）：
+
+| 小组件 | 尺寸 | 内容 |
+| --- | --- | --- |
+| 临近课程 | 小／中／大、锁屏矩形／圆形／单行 | 当前与下一节；大号是今天的完整课表（时间线或列表） |
+| 今日课表 | 小／中／大、锁屏三种 | 小号列今天还没上完的课；锁屏矩形列剩下的课，圆形是今天的进度，单行一句话 |
+| 两日课表 | 中／大、锁屏三种 | 今天和明天（默认最近有课的一天）；中号两列各放两三门 |
+| 日程 | 小／中／大、锁屏三种 | 逾期待办、接下来两周的日程和没有日期的待办，点圆圈直接勾选完成 |
+
+- **风格**：小组件跟随课表风格（App Group 的 `scheduleVisualStyle`），设备设置「小组件风格」可以单独指定。经典、格子与简约在小组件里是同一个样子（原来的样子），表格、素笺、站牌各有字体、纸色和装饰；颜色主题仍是九种。切换课表风格会刷新小组件。
+- **时间线**：一次排好今天剩下和明天的每个上下课时刻，次日零点再要新的；视图从时间线条目的日期读「现在」（`\.scheduleWidgetNow`），不读 `Date.now`。课表在 App 里变了由 App 立刻刷新。
+- **寒暑假与过期**：本地课表带上学期起止（`termStart`／`termEnd`），学期外显示「暑假ing · 距开学还有 N 天」，学期内却没有今天的数据时提示「打开 App 更新课表」。
+- **染色、待机**：强调色都标了 `widgetAccentable()`；非全彩模式和系统去掉背景时（待机）不再用纸墨色，改用系统主色。
+- **日程勾选**：小组件进程没有登录会话，勾选先写进 App Group（`widget-agenda-done-v1.json`）并立刻隐藏那一项；App 回到前台、网站确认登录后由 `NativeAgendaWidgetBridge` 经 `NativeAgendaService.toggle` 保存，再清空。日程列表变了 App 只重写 `widget-agenda-v1.json`（标题、时间、地点，不带备注），内容不变不写。点日程打开它的编辑表单（`action=agenda-item`），列表和「记一笔」分别是 `action=agenda-list`、`action=agenda-new`。检查脚本 `bash ios_next/scripts/check-agenda-widget.sh`。
+
+**小组件画廊（Debug）**：模拟器桌面没法用脚本添加小组件，Debug 构建用 `CPU_DEBUG_WIDGET_GALLERY=1` 启动时不进 App，换成按 iPhone 17 Pro 实际尺寸（小 170×170、中 364×170、大 364×382、锁屏矩形 172×76、圆形 76×76）画的全部小组件，用的是扩展里同一份视图（`ScheduleWidgetViews.swift` 等在 Debug 下也编进 App，Release 用 `EXCLUDED_SOURCE_FILE_NAMES` 排除）。`CPU_DEBUG_WIDGET_GALLERY_STYLE=minimal|table|paper|board`、`..._KIND=upcoming|today|twoDay|agenda|states`、`..._MODE=fullColor|accented`（染色桌面）、`..._SCHEME=light|dark` 缩小范围，不给 `SCHEME` 时跟系统外观（`xcrun simctl ui <udid> appearance dark`）；`CPU_DEBUG_WIDGET_GALLERY_EXPORT=/目录` 另外把每一页存成 PNG（不缩小范围时 4 种风格 × 5 页 × 浅深色共 40 张）。示例课表钉在 2026-11-11 10:20（周三第二节课中），「其他状态」页是暑假、课表过期、国庆、晚上切到明天、列表排法和等待同步。系统外观是近似：桌面圆角与 16pt 边距、锁屏按灰度画在深色壁纸上、染色桌面按白色蒙版画在深色玻璃上。
+
+```sh
+SIMCTL_CHILD_CPU_DEBUG_WIDGET_GALLERY=1 SIMCTL_CHILD_CPU_DEBUG_WIDGET_GALLERY_EXPORT=/tmp/widget-gallery \
+  xcrun simctl launch <udid> cn.cputime.mobile
+```
 
 登录并完成教务授权后，首次成功加载原生课表会自动配置尚未设置的小组件（每次启动／账号变化后最多自动尝试一次，失败可手动重试）。在原生课表点击“小组件”可查看配置结果、选择主题或手动重新配置，再通过系统主屏幕／锁屏编辑界面添加。配置请求沿用 WKWebView 的同源 Cookie 与 CSRF 校验；扩展只保存专用课表订阅地址，不复制登录 Cookie。旧网页的 `CPUIOS` 小组件配置及主题接口也已接通。
 
