@@ -13,7 +13,9 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // 2026-09 按路由拆包后实测约 245.5 KiB，预留约 15% 余量；超出时先检查是否有页面或大依赖被拉进了入口。
 // 2026-11-09 实测 282.8 KiB，站点主题（校庆）的切换和状态进入口后约 283.2 KiB，上限放到 284 KiB；主题样式本身按需加载。
 // 2026-11-10 原生课表桥接要在入口里把单次停课、调课写进课表（shared/scheduleOccurrences.ts），实测 284.3 KiB，上限放到 285 KiB。
-const INITIAL_GZIP_BUDGET_BYTES = 285 * 1024
+// 2026-11-11 使用教程（/guide）的路由和页脚入口进入口后实测 285.1 KiB，上限放到 286 KiB；教程正文按需加载。
+// 图标库整体打在入口里：全站第一次用到的图标每个约加 0.13 KiB，新页面尽量用已有的图标。
+const INITIAL_GZIP_BUDGET_BYTES = 286 * 1024
 
 test('public image URLs stay on the page origin when built modules move to a CDN', async (t) => {
   const { build, loadConfigFromFile } = await import('vite')

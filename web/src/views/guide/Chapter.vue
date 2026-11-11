@@ -99,7 +99,7 @@ const opened = ref(new Set<string>());
 const allOpen = computed(() => Boolean(chapter.value?.topics.length) && chapter.value!.topics.every((topic) => opened.value.has(topic.id)));
 
 function chapterLocation(id: string) {
-  return { name: "guide-chapter", params: { chapter: id } };
+  return { name: "guide", params: { chapter: id } };
 }
 
 function onToggle(id: string, event: Event) {

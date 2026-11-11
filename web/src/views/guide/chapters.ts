@@ -1,24 +1,24 @@
 import {
-  AlarmClock,
   Bell,
   Calendar,
   Cellphone,
   ChatDotRound,
   ChatLineRound,
+  Clock,
   Compass,
   Connection,
   DataLine,
   Download,
   Files,
-  Guide,
+  Goods,
   Iphone,
   MagicStick,
+  MapLocation,
   Message,
   Monitor,
   Promotion,
   Search,
   Service,
-  ShoppingBag,
   Star,
   Trophy,
   User,
@@ -27,6 +27,7 @@ import type { GuideChapter } from "./types";
 
 // 使用教程的全部内容。按默认学校的叫法写，别的学校显示时换成本校品牌（useGuide.ts）。
 // 每章、每条用 needs 写明显示条件：本校没开、后台关了、这个客户端里没有的，不显示。
+// 图标只用站内别处已经用到的：图标库整体打在首屏入口里，新图标会加重首屏。
 // 新功能上线后在对应章节加一条；界面上的名字用「」括起来，和页面上的字保持一致。
 
 export const guideGroups = ["开始使用", "课表", "教务与学习", "论坛与消息", "校园服务", "客户端", "账号"];
@@ -200,7 +201,7 @@ export const guideChapters: GuideChapter[] = [
     title: "日程与待办",
     summary: "记下课以外的安排，到点提醒，也画在课表上",
     hue: "amber",
-    icon: AlarmClock,
+    icon: Clock,
     keywords: ["提醒", "待办", "todo", "截图识别", "通知", "ddl", "作业"],
     needs: { path: "/schedule" },
     entry: { label: "打开日程", to: "/agenda" },
@@ -553,7 +554,7 @@ export const guideChapters: GuideChapter[] = [
     title: "二手交流",
     summary: "出闲置、发求购、联系对方",
     hue: "orange",
-    icon: ShoppingBag,
+    icon: Goods,
     keywords: ["闲置", "出售", "求购", "交易", "教材", "市场"],
     needs: { path: "/forum", feature: "market", shelf: "forum" },
     entry: { label: "打开二手", to: "/forum/b/market" },
@@ -726,7 +727,7 @@ export const guideChapters: GuideChapter[] = [
     title: "校园生活指南",
     summary: "部门电话、校历地图、三维校园、场馆预约、吃什么、点歌",
     hue: "blue",
-    icon: Guide,
+    icon: MapLocation,
     keywords: ["电话", "联系方式", "校历", "放假", "地图", "3d", "体育馆", "食堂", "吃什么", "广播", "点歌"],
     topics: [
       {

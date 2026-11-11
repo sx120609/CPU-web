@@ -86,7 +86,7 @@ const hits = computed(() => search(keyword.value));
 const firstChapter = computed(() => chapters.value[0]);
 
 function chapterLocation(id: string, topic?: string) {
-  return { name: "guide-chapter", params: { chapter: id }, ...(topic ? { query: { open: topic } } : {}) };
+  return { name: "guide", params: { chapter: id }, ...(topic ? { query: { open: topic } } : {}) };
 }
 </script>
 
