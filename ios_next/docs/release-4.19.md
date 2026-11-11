@@ -31,4 +31,6 @@ Not exercised: a widget on a real home screen (the iOS 27.0 simulator's Shortcut
 > · 「更多」改为全屏展示；月视图统一左右滑动换月；与课程同时段的日程不再遮挡课程名。
 > · 修复系统大字号下部分页面文字过大、被截断，以及截图识别的日程备注里出现多余符号的问题。
 
-The 4.19 version has not been created or submitted in App Store Connect yet: the browser session there had signed out, and the user chose to do that step later.
+4.19 was created in App Store Connect and submitted on 2026-11-11 at about 12:02 with build 82; it is 正在等待审核. The export compliance answer for build 82 is 「不属于上述的任意一种算法」, chosen with the user's authorization. The review notes' first line now describes this release; the lines about the review account, the sponsorship entry and iOS 17 are unchanged:
+
+> 本次更新：宿舍课表改为原生页面；情侣课表和叠加课表的周视图改为双栏；小组件跟随课表风格，新增日程小组件；若干界面和大字号适配修复。
