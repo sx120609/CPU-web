@@ -55,6 +55,44 @@ object ScheduleExport {
         return lines.joinToString("\r\n") { fold(it) } + "\r\n"
     }
 
+    /**
+     * The whole term as a calendar file: every meeting on its real date, after
+     * days off, make-up days and single meetings cancelled or moved, a course's
+     * own clock times over the bells (iOS `NativeScheduleICSExporter`).
+     */
+    fun semesterCalendar(meetings: List<ScheduleMeeting>, name: String, now: Date = Date()): String {
+        if (meetings.isEmpty()) throw IllegalStateException("这个学期没有可以导出的课程")
+        val lines = mutableListOf(
+            "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//CPU Time//Android Schedule//ZH", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+            "X-WR-CALNAME:${escape(name)}", "X-WR-TIMEZONE:Asia/Shanghai",
+        )
+        val stamp = utcFormat().format(now)
+        meetings.forEach { meeting ->
+            val course = meeting.course
+            // ASCII only: the key has course names in it.
+            val uid = meeting.key.map { if (it.code < 128) it.toString() else "%02X".format(it.code) }.joinToString("")
+            val details = listOfNotNull(
+                "第 ${meeting.week} 周", course.teacher?.trim()?.takeIf { it.isNotEmpty() }, course.editableNote.takeIf { it.isNotEmpty() },
+                meeting.sourceDate?.let { "调休补 $it 的课" },
+            )
+            lines += listOfNotNull(
+                "BEGIN:VEVENT",
+                "UID:${escape(uid)}@cputime.cn",
+                "DTSTAMP:$stamp",
+                "DTSTART:${utcDate(meeting.date, meeting.start)}",
+                "DTEND:${utcDate(meeting.date, meeting.end)}",
+                "SUMMARY:${escape(course.name.trim().ifEmpty { "课程" })}",
+                ScheduleStyleTime.location(course.location)?.let { "LOCATION:${escape(it)}" },
+                "DESCRIPTION:${escape(details.joinToString(" · "))}",
+                "END:VEVENT",
+            )
+        }
+        lines += "END:VCALENDAR"
+        return lines.joinToString("\r\n") { fold(it) } + "\r\n"
+    }
+
+    fun semesterFileName(store: ScheduleStore) = "课表-${store.semesterTitle().replace(Regex("[\\\\/:*?\"<>|]"), "-")}-整学期.ics"
+
     fun fileName(store: ScheduleStore) = "课表-${store.semesterTitle().replace(Regex("[\\\\/:*?\"<>|]"), "-")}-第${store.selectedWeek}周.ics"
 
     private fun utcFormat() = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -102,6 +140,22 @@ fun shareSchedule(activity: MainActivity, store: ScheduleStore = activity.schedu
     val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ScheduleExport.text(store))
     runCatching { activity.startActivity(Intent.createChooser(intent, "分享课表")) }
         .onFailure { activity.toast("分享面板暂时不可用") }
+}
+
+/** 导出整学期日历文件: the whole term the timetable has loaded, as a calendar file to save or import. */
+fun exportSemesterSchedule(activity: MainActivity, store: ScheduleStore = activity.schedule) {
+    val snapshot = store.completeSnapshot()
+    if (snapshot == null) {
+        activity.toast("整学期课表还没有加载完，请刷新课表后再试")
+        return
+    }
+    val content = runCatching {
+        ScheduleExport.semesterCalendar(ScheduleMeetings.make(snapshot), "课表-${store.semesterTitle()}")
+    }.getOrElse {
+        activity.toast(it.message ?: "日历导出失败")
+        return
+    }
+    activity.saveCalendarFile(ScheduleExport.semesterFileName(store), content)
 }
 
 fun exportSchedule(activity: MainActivity, store: ScheduleStore = activity.schedule) {

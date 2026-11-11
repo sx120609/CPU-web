@@ -376,4 +376,30 @@ class NapTablePortTest {
     }
 
     // endregion
+
+    // region Calendar file
+
+    @Test
+    fun theSemesterCalendarFileFollowsTheMeetings() {
+        val calendarWeeks = listOf(CalendarWeek(1, days(7), "2026-09-07", "2026-09-13"), CalendarWeek(2, days(14), "2026-09-14", "2026-09-20"))
+        val math = ScheduleCourse(name = "高等数学", nativeId = "m", weekList = listOf(1, 2), location = "教学楼A102", startSlot = 1, endSlot = 2)
+        val lab = ScheduleCourse(name = "实验, 第一组", nativeId = "l", weekList = listOf(2), startSlot = 11, endSlot = 12,
+            customStartTime = "18:30", customEndTime = "20:00")
+        val adjustments = listOf(ScheduleAdjustment("2026-09-14", "off", null, null), ScheduleAdjustment("2026-09-19", "swap", "2026-09-07", null))
+        val meetings = ScheduleMeetings.make(snapshotOf(listOf(ScheduleCell(1, 1, listOf(math)), ScheduleCell(3, 6, listOf(lab))), calendarWeeks, adjustments = adjustments))
+        val ics = ScheduleExport.semesterCalendar(meetings, "课表-2026秋", java.util.Date(0))
+        assertTrue(ics.startsWith("BEGIN:VCALENDAR\r\n"))
+        assertTrue(ics.endsWith("END:VCALENDAR\r\n"))
+        assertEquals(4, ics.split("BEGIN:VEVENT").size)
+        // 18:30 in Beijing is 10:30 UTC.
+        assertTrue(ics.contains("DTSTART:20260916T103000Z"))
+        assertTrue(ics.contains("SUMMARY:实验\\, 第一组"))
+        assertTrue(ics.contains("LOCATION:A102"))
+        assertTrue(ics.contains("调休补 2026-09-07 的课"))
+        // Every physical line stays within 75 octets, and the identifiers are ASCII.
+        ics.split("\r\n").forEach { assertTrue(it, it.toByteArray().size <= 75) }
+        ics.split("\r\n").filter { it.startsWith("UID:") }.forEach { line -> assertTrue(line.all { it.code < 128 }) }
+    }
+
+    // endregion
 }

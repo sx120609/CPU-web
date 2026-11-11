@@ -111,6 +111,10 @@ sealed interface ScheduleSheet {
     data object Overlay : ScheduleSheet
     /** 找共同空闲. */
     data object CommonFree : ScheduleSheet
+    /** 更多. */
+    data object Tools : ScheduleSheet
+    /** 分享: this day as a card or the week as text. */
+    data object Share : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -432,28 +436,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                         monthAnchor = today
                         store.returnToCurrentWeek()
                     }) else null,
-                    actions = listOfNotNull(
-                        ("刷新课表" to { store.load(true) }).takeIf { !store.readOnly },
-                        ("添加课程" to { openEditor(null) }).takeIf { store.canEdit },
-                        // A new 日程 starts on the day shown.
-                        ("添加日程" to {
-                            sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(
-                                store.calendarWeek(store.selectedWeek)?.days?.getOrNull(store.selectedDay - 1)?.takeIf { it.length == 10 }.orEmpty()))
-                        }).takeIf { !store.readOnly && activity.agenda.available },
-                        ("日程与待办" to { sheet = ScheduleSheet.AgendaList }).takeIf { !store.readOnly },
-                        MENU_DIVIDER,
-                        "分享所选周课表" to { shareSchedule(activity, store) },
-                        "导出所选周日历" to { exportSchedule(activity, store) },
-                        MENU_DIVIDER,
-                        ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
-                        ("情侣课表" to { sheet = ScheduleSheet.Couple }).takeIf { !store.readOnly },
-                        ("叠加到我的课表" to { sheet = ScheduleSheet.Overlay }).takeIf { !store.readOnly },
-                        ("找共同空闲" to { sheet = ScheduleSheet.CommonFree }).takeIf { !store.readOnly },
-                        ("宿舍课表" to { sheet = ScheduleSheet.Dorm() }).takeIf { !store.readOnly },
-                        MENU_DIVIDER,
-                        "课表设置" to { sheet = ScheduleSheet.Settings },
-                        ("桌面课表小组件" to { sheet = ScheduleSheet.Widgets }).takeIf { !store.readOnly },
-                    ),
+                    onMore = { sheet = ScheduleSheet.Tools },
                 )
                 if (store.viewMode == "month") {
                     MonthSwitcher(anchor) { monthAnchor = ScheduleMonth.shift(anchor, it) }
@@ -604,6 +587,51 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
         is ScheduleSheet.Dorm -> ScheduleDormSheet(activity, current.code, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
         ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
+        ScheduleSheet.Tools -> {
+            val own = !store.readOnly
+            fun tool(style: Pair<androidx.compose.ui.graphics.vector.ImageVector, Color>, title: String, detail: String? = null, enabled: Boolean = true,
+                     action: (() -> Unit)?) = ScheduleTool(title, style.first, style.second, detail, enabled, action)
+            val shownDate = store.calendarWeek(store.selectedWeek)?.days?.getOrNull(store.selectedDay - 1)?.takeIf { it.length == 10 }.orEmpty()
+            ScheduleToolsSheet(
+                tiles = listOf(
+                    tool(ScheduleToolStyle.refresh, "刷新", enabled = store.status != ScheduleStatus.Loading, action = { store.load(true) }.takeIf { own }),
+                    tool(ScheduleToolStyle.addCourse, "添加课程", action = { openEditor(null) }.takeIf { store.canEdit }),
+                    // A new 日程 starts on the day shown.
+                    tool(ScheduleToolStyle.addAgenda, "添加日程", action = {
+                        sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(shownDate))
+                    }.takeIf { own && activity.agenda.available }),
+                    tool(ScheduleToolStyle.share, "分享", action = { sheet = ScheduleSheet.Share }),
+                ),
+                sections = listOf(
+                    "日历与日程" to listOf(
+                        tool(ScheduleToolStyle.calendar, "导出整学期日历文件", "按停课、调课和调休，导入手机日历", action = { exportSemesterSchedule(activity, store) }),
+                        tool(ScheduleToolStyle.calendar, "导出所选周日历", action = { exportSchedule(activity, store) }),
+                        tool(ScheduleToolStyle.agenda, "日程与待办", "作业、考试和自己的安排", action = { sheet = ScheduleSheet.AgendaList }.takeIf { own }),
+                    ),
+                    "一起看" to listOf(
+                        tool(ScheduleToolStyle.sharing, "共享课表", "发分享码，或导入同学的课表", action = { sheet = ScheduleSheet.Sharing }.takeIf { own }),
+                        tool(ScheduleToolStyle.overlay, "叠加到我的课表",
+                            overlayShared?.let { "正在叠加 ${it.name}" } ?: "把同学的课并排放进你的课表",
+                            action = { sheet = ScheduleSheet.Overlay }.takeIf { own }),
+                        tool(ScheduleToolStyle.free, "找共同空闲", "和同学、TA 比一比哪天都有空", action = { sheet = ScheduleSheet.CommonFree }.takeIf { own }),
+                        tool(ScheduleToolStyle.couple, "情侣课表", "绑定后两人的课并排显示", action = { sheet = ScheduleSheet.Couple }.takeIf { own }),
+                        tool(ScheduleToolStyle.dorm, "宿舍课表", "一周谁有空、空闲时段和早八", action = { sheet = ScheduleSheet.Dorm() }.takeIf { own }),
+                    ),
+                    "外观与设置" to listOf(
+                        tool(ScheduleToolStyle.settings, "课表设置", "风格、配色、背景和显示", action = { sheet = ScheduleSheet.Settings }),
+                        tool(ScheduleToolStyle.widgets, "桌面课表小组件", action = { sheet = ScheduleSheet.Widgets }.takeIf { own }),
+                    ),
+                ),
+                onDismiss = { if (sheet == ScheduleSheet.Tools) sheet = null },
+            )
+        }
+        ScheduleSheet.Share -> AlertDialog(
+            onDismissRequest = { sheet = null },
+            title = { Text("分享") },
+            text = { Text("把所选周的课程以文字分享出去。") },
+            confirmButton = { TextButton(onClick = { sheet = null; shareSchedule(activity, store) }) { Text("分享所选周课表") } },
+            dismissButton = { TextButton(onClick = { sheet = null }) { Text("取消") } },
+        )
         ScheduleSheet.CommonFree -> CommonFreeSheet(
             activity, store,
             onAgenda = if (activity.agenda.available) ({ date, start -> sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(date, start)) }) else null,
@@ -660,14 +688,11 @@ private fun ScheduleBackground(style: ScheduleStyleSettings) {
     }
 }
 
-/** Separates groups in the 更多 menu. */
-private val MENU_DIVIDER: Pair<String, () -> Unit> = "" to {}
 
 @Composable
-private fun ScheduleToolbar(store: ScheduleStore, onToday: (() -> Unit)?, actions: List<Pair<String, () -> Unit>>) {
+private fun ScheduleToolbar(store: ScheduleStore, onToday: (() -> Unit)?, onMore: () -> Unit) {
     val colors = LocalScheduleColors.current
     var semesterMenu by remember { mutableStateOf(false) }
-    var moreMenu by remember { mutableStateOf(false) }
     val canChooseSemester = !store.readOnly && store.semesterOptions().size > 1
     Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f).height(40.dp).clickable(enabled = canChooseSemester) { semesterMenu = true }) {
@@ -718,34 +743,11 @@ private fun ScheduleToolbar(store: ScheduleStore, onToday: (() -> Unit)?, action
         ) {
             Icon(Icons.Outlined.NearMe, contentDescription = null, tint = colors.text, modifier = Modifier.size(18.dp))
         }
-        Box {
-            IconButton(onClick = { moreMenu = true }, modifier = Modifier.size(width = 34.dp, height = 40.dp)) {
-                if (store.status == ScheduleStatus.Loading || store.refreshing) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = colors.accent)
-                } else {
-                    Icon(Icons.Rounded.MoreHoriz, contentDescription = "更多课表操作", tint = colors.text)
-                }
-            }
-            DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                // Groups are separated by MENU_DIVIDER; one at either end or next to another is dropped.
-                val items = actions.filterIndexed { index, item ->
-                    item !== MENU_DIVIDER || (index > 0 && index < actions.lastIndex && actions[index - 1] !== MENU_DIVIDER)
-                }.dropLastWhile { it === MENU_DIVIDER }
-                items.forEach { item ->
-                    val (label, action) = item
-                    if (item === MENU_DIVIDER) {
-                        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                        return@forEach
-                    }
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        enabled = label != "刷新课表" || store.status != ScheduleStatus.Loading,
-                        onClick = {
-                            moreMenu = false
-                            action()
-                        },
-                    )
-                }
+        IconButton(onClick = onMore, modifier = Modifier.size(width = 34.dp, height = 40.dp)) {
+            if (store.status == ScheduleStatus.Loading || store.refreshing) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = colors.accent)
+            } else {
+                Icon(Icons.Rounded.MoreHoriz, contentDescription = "更多课表操作", tint = colors.text)
             }
         }
     }
