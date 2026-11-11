@@ -69,7 +69,9 @@ struct NativeDormSheet: View {
                     freeDate = date
                     withAnimation(.snappy(duration: 0.25)) { page = .free }
                 }
-                .presentationDetents([.medium, .large])
+                // Full height: at half height the last names sat cut in two
+                // under the button.
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             } else {
                 // The roommates changed under the tapped cell.
@@ -302,7 +304,7 @@ private struct DormHeader: View {
 private extension DormHeader {
     @ViewBuilder
     func counts(unsynced: Int) -> some View {
-        Text("\(room.members.count) / \(room.memberLimit) 人").fixedSize()
+        Text("\(room.members.count) 人").fixedSize()
         if unsynced > 0 { Text("· \(unsynced) 人未同步").foregroundStyle(.orange).fixedSize() }
     }
 

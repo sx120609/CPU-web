@@ -338,7 +338,8 @@ struct DormCellDetail: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
                 .padding(.bottom, 6)
-                .background(.bar)
+                .frame(maxWidth: .infinity)
+                .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea(edges: .bottom))
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
