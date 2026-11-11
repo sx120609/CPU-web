@@ -132,6 +132,12 @@ struct ContentView: View {
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
                     let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    // The 日程 widget: one item, the list, or a new one.
+                    if NativeAgendaWidgetLink.isLink(query) {
+                        try? await Task.sleep(for: .milliseconds(400))
+                        NativeAgendaWidgetLink.open(query)
+                        return
+                    }
                     // The Control Center's 记一笔: a new 日程 at the class on now or next.
                     if query.contains(where: { $0.name == "action" && $0.value == "agenda" }) {
                         let target = ScheduleShortcutRouter.agendaTarget()

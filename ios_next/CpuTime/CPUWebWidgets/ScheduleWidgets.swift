@@ -8,6 +8,7 @@ struct CPUWebWidgetBundle: WidgetBundle {
         UpcomingScheduleWidget()
         TodayScheduleWidget()
         TwoDayScheduleWidget()
+        AgendaWidget()
         liveActivity
         // Control Center buttons.
         if #available(iOS 18.0, *) {
