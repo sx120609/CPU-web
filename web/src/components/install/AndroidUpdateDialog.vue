@@ -326,8 +326,13 @@ async function showRequestedPrompt(detail: AndroidUpdatePromptDetail) {
 
 function autoPromptIfNeeded() {
   autoPromptTimer = 0;
-  // Clients with the native updater (药大拾间 NEXT) check, download and install on their own.
-  if (hasNativeUpdater() && requirementState.value === "none" && !updateRequired.value) return;
+  // Clients with the native updater (药大拾间 NEXT, stable V62+) check, download and install on their own.
+  // Their own check runs at most every six hours, so a stable app that the
+  // site already knows is behind opens its updater once for that version.
+  if (hasNativeUpdater() && requirementState.value === "none" && !updateRequired.value) {
+    if (stableAndroidApp && updateAvailable.value && !hasPendingUpdate.value) nudgeNativeUpdater(latestRelease.value.versionCode);
+    return;
+  }
   // Required campaigns also cover 2.x clients pinned to the legacy hostname.
   if (requirementState.value !== "none" || updateRequired.value) {
     if (updateRequired.value || autoPromptedVersion !== latestRelease.value.versionCode) {
@@ -360,7 +365,10 @@ function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
     void router.push("/download");
     return;
   }
-  if (kind === "app" && !auto && !updateRequired.value && openNativeUpdater()) return;
+  // The download page asks for an "install"; inside an app that can update itself
+  // a newer version goes through that updater (patch, install on leave) instead.
+  const nativeKind = kind === "app" || (kind === "install" && stableAndroidApp && updateAvailable.value);
+  if (nativeKind && !auto && !updateRequired.value && openNativeUpdater()) return;
   readUpdateStatus();
   if (kind === "app" && !updateAvailable.value && !hasPendingUpdate.value && !updateRequired.value) {
     if (!auto) ElMessage.success(`当前已是最新版 ${currentVersionLabel.value}`);
@@ -462,6 +470,18 @@ function getAndroidBridge(): AndroidBridge | null {
 /** 药大拾间 NEXT updates itself (incremental patches, silent install). */
 function hasNativeUpdater() {
   try { return getAndroidBridge()?.supportsNativeUpdater?.() === true; } catch { return false; }
+}
+
+/** Opens the app's updater once per version, remembered across launches when storage allows. */
+function nudgeNativeUpdater(versionCode: number) {
+  if (autoPromptedVersion === versionCode) return;
+  autoPromptedVersion = versionCode;
+  const key = `cpu-android-native-update-nudged-${versionCode}`;
+  try {
+    if (window.localStorage.getItem(key)) return;
+    window.localStorage.setItem(key, "1");
+  } catch { /* storage may be unavailable: the in-memory guard still limits it to once per page */ }
+  openNativeUpdater();
 }
 
 function openNativeUpdater() {

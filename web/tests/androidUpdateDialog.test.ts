@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const start = Date.parse("2026-10-13T08:00:00Z");
 const deadline = start + 72 * 3_600_000;
 
-function setup(t: any, options: { version?: number; now?: number; legacy?: boolean; pending?: string; pendingFile?: string; fails?: boolean; nativeUpdater?: boolean; next?: boolean } = {}) {
+function setup(t: any, options: { version?: number; now?: number; legacy?: boolean; pending?: string; pendingFile?: string; fails?: boolean; nativeUpdater?: boolean; next?: boolean; noRequirement?: boolean; storage?: Map<string, string> } = {}) {
   let monotonic = 0;
   let nextTimer = 1;
   const timers = new Map<number, { callback: () => void; delay: number }>();
@@ -44,6 +44,10 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
         openNativeUpdater: () => nativeOpened.push("update"),
       } : {}),
     },
+    ...(options.storage ? { localStorage: {
+      getItem: (key: string) => options.storage!.get(key) ?? null,
+      setItem: (key: string, value: string) => { options.storage!.set(key, value); },
+    } } : {}),
     setTimeout(callback: () => void, delay: number) { const id = nextTimer++; timers.set(id, { callback, delay }); return id; },
     clearTimeout(id: number) { timers.delete(id); },
     setInterval: () => nextTimer++, clearInterval: () => undefined,
@@ -61,7 +65,7 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
         if (options.fails) throw new Error("network unavailable");
         return {
           versionCode: 59, versionName: "4.0.18", fileName: "CPU-Web-Android-V59.apk",
-          updateRequirement: { minimumVersionCode: 59, startsAt: new Date(start).toISOString(), deadlineAt: new Date(deadline).toISOString(), message: "安全更新" },
+          updateRequirement: options.noRequirement ? undefined : { minimumVersionCode: 59, startsAt: new Date(start).toISOString(), deadlineAt: new Date(deadline).toISOString(), message: "安全更新" },
           serverTime: new Date(options.now ?? start).toISOString(),
         };
       },
@@ -169,4 +173,38 @@ test("药大拾间 NEXT is never held to the stable app's deadline and checks up
   await vue.nextTick();
   assert.deepEqual(nativeOpened, ["update"]);
   assert.equal(c.open.value, false);
+});
+
+test("a stable app with its own updater opens it once when the site knows a newer version", async t => {
+  const storage = new Map<string, string>();
+  const first = setup(t, { version: 58, nativeUpdater: true, noRequirement: true, storage });
+  await first.component.checkRelease(false);
+  await vue.nextTick();
+  assert.deepEqual(first.nativeOpened, ["update"], "the six-hourly native check may not have run yet");
+  assert.equal(first.component.open.value, false, "no Web dialog over the native updater");
+  await first.component.checkRelease(false);
+  await vue.nextTick();
+  assert.deepEqual(first.nativeOpened, ["update"], "once per version");
+  const later = setup(t, { version: 58, nativeUpdater: true, noRequirement: true, storage });
+  await later.component.checkRelease(false);
+  await vue.nextTick();
+  assert.deepEqual(later.nativeOpened, [], "remembered across launches");
+});
+
+test("the download page's install request goes to the app's own updater for a newer version", async t => {
+  const { component: c, nativeOpened } = setup(t, { version: 58, nativeUpdater: true, noRequirement: true, storage: new Map([["cpu-android-native-update-nudged-59", "1"]]) });
+  await c.checkRelease(false);
+  await c.showRequestedPrompt({ source: "manual", kind: "install" });
+  await vue.nextTick();
+  assert.deepEqual(nativeOpened, ["update"]);
+  assert.equal(c.open.value, false);
+});
+
+test("an up-to-date stable app still gets the save-only install dialog", async t => {
+  const { component: c, nativeOpened } = setup(t, { version: 59, nativeUpdater: true, noRequirement: true });
+  await c.checkRelease(false);
+  await c.showRequestedPrompt({ source: "manual", kind: "install" });
+  await vue.nextTick();
+  assert.deepEqual(nativeOpened, []);
+  assert.equal(c.open.value, true);
 });
