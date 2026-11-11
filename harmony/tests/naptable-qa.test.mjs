@@ -43,3 +43,15 @@ test('the background framing editor gets light status bar text', () => {
   const index = read('pages/Index.ets');
   assert.match(index, /const blackout = this\.imagePreviewVisible \|\| this\.cropTarget !== ''/);
 });
+
+test('no stray control characters in the app sources (a backspace in a regex broke every desktop shortcut)', async () => {
+  const { readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const base = fileURLToPath(new URL('../entry/src/main/ets/', import.meta.url));
+  const walk = (dir) => readdirSync(dir).flatMap((name) => statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)) : [join(dir, name)]);
+  for (const file of walk(base).filter((name) => name.endsWith('.ets') || name.endsWith('.ts'))) {
+    assert.doesNotMatch(readFileSync(file, 'utf8'), /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/, file);
+  }
+  assert.match(read('entryability/EntryAbility.ets'), /\/\[\?&\]action=\(today\|agendaList\|agenda\|free\)\/\.exec/);
+});

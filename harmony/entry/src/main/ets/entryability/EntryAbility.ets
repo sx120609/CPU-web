@@ -27,7 +27,7 @@ export default class EntryAbility extends UIAbility {
       AppStorage.set('nativeTab', 2);
       requestNativeScheduleOpen();
       // A desktop shortcut (shortcuts_config.json): 今日课表, 添加日程 or 找共同空闲.
-      const shortcut = /[?&]action=(today|agendaList|agenda|free)/.exec(want.uri || routedUrl);
+      const shortcut = /[?&]action=(today|agendaList|agenda|free)/.exec(want.uri || routedUrl);
       if (shortcut) AppStorage.setOrCreate('scheduleShortcut', shortcut[1]);
     }
   }
