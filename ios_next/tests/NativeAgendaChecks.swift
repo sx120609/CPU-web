@@ -60,7 +60,10 @@ struct NativeAgendaChecks {
         precondition(abs(chips[0].y - 50 * 22 / 45) < 0.01 && chips[0].beside)
         // In the lunch break, after period 2: across the gap before period 3, clear of the class.
         precondition(!chips[1].beside && chips[1].y >= 104 && chips[1].y <= 108 && chips[1].height >= 20)
-        precondition(abs(chips[0].frame(columnWidth: 60).maxX - 59) < 0.001 && chips[1].frame(columnWidth: 60).width == 58)
+        // Beside a class it is a thin bar inside the class's right edge; in free time it spans the column.
+        precondition(abs(chips[0].frame(columnWidth: 60).maxX - 57) < 0.001
+                     && chips[0].frame(columnWidth: 60).width == NativeAgendaChip.besideWidth
+                     && chips[1].frame(columnWidth: 60).width == 58)
         // Before the first period it is pinned onto period 1, so it keeps beside the class there.
         let early = NativeAgendaRules.chips([item("run000000001", "晨跑", date: "2026-10-21", start: "07:00", end: "07:40")],
                                             date: "2026-10-21", rows: periods, rowHeight: 50, gap: 4, courses: [1...1])

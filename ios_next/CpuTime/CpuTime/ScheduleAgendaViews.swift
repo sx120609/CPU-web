@@ -44,11 +44,37 @@ struct ScheduleAgendaChipLayer: View {
     var body: some View {
         ForEach(chips) { chip in
             let frame = chip.frame(columnWidth: columnWidth)
-            ScheduleAgendaChip(entry: chip.entry, narrow: chip.beside || frame.width < 28)
-                .frame(width: frame.width, height: frame.height)
+            Group {
+                if chip.beside {
+                    ScheduleAgendaBar(entry: chip.entry)
+                } else {
+                    ScheduleAgendaChip(entry: chip.entry, narrow: frame.width < 28)
+                }
+            }
+            .frame(width: frame.width, height: frame.height)
                 .offset(x: frame.minX, y: frame.minY)
         }
         .allowsHitTesting(false)
+    }
+}
+
+/// An item at the same time as a class: a thin bar inside the class's right edge, so the
+/// class's name is never covered. The class's quick look and the day view list the item.
+@available(iOS 17.0, *)
+private struct ScheduleAgendaBar: View {
+    @Environment(\.scheduleStyle) private var style
+    @Environment(\.colorScheme) private var scheme
+    let entry: NativeAgendaOccurrence
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(style == .paper || style == .board
+                  ? AnyShapeStyle(style.inkColor(dark: scheme == .dark)) : AnyShapeStyle(.themeText))
+            .padding(.vertical, 3)
+            .opacity(entry.done ? 0.3 : 0.75)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("日程，\(entry.timeText)，\(entry.item.title)\(entry.done ? "，已完成" : "")")
+            .accessibilityAddTraits(.isButton)
     }
 }
 
