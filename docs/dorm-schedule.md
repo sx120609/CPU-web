@@ -1,6 +1,6 @@
 # 宿舍课表
 
-网页的宿舍课表在课表页（`/schedule`）「更多 → 宿舍课表」里打开；使用原生课表的客户端从原生菜单进入 `/dorm-schedule`，复用同一套宿舍界面。宿舍课表不叠加到周视图网格，主要提供以下能力：
+网页的宿舍课表在课表页（`/schedule`）「更多 → 宿舍课表」里打开；Android 和 iOS NEXT 是原生界面；其余使用原生课表的客户端从原生菜单进入 `/dorm-schedule`，复用同一套宿舍界面。宿舍课表不叠加到周视图网格，主要提供以下能力：
 
 - 一条宿舍关系里可以有多个人（默认 6 人，上限 8 人，对应 8 种成员颜色），宿舍码可以被多名室友重复使用；情侣码是一次性的。
 - 宿舍课表读的是所有人上传的课表快照，看重的是「什么时候大家都有空」和「谁哪天要早起」，所以不把所有人的课叠成一张课程网格，而是给一周空闲总表、按天的空闲时间块和早八名单。
@@ -44,7 +44,7 @@
 | Android | 原生界面：课表「更多 → 宿舍课表」打开 `ScheduleDormSheet`（一周、空闲、早八、宿舍四页）。`ScheduleDormRoom` 经 App 自带的页面桥 `CPUAndroidDorm`（`android/bridge/dorm.ts`）调用 `/api/dorm`，上传当前学期完整课表（含本地编辑与自定义起止时间），每位室友的快照按其自己的校历排出；空闲、早八和一周总表的计算是 `DormRules`，与 `dorm.ts`、`dormWeek.ts` 一致，由 `DormScheduleParityTest` 覆盖。邀请链接 `/schedule?dorm=1&code=…` 和 `/dorm-schedule?code=…` 打开原生界面并填好宿舍码。 |
 | Android NEXT | 原生课表菜单打开 `/dorm-schedule`；`ScheduleDorm` / `WebSession.dorm` 传递原生完整课表，包含本地编辑与自定义起止时间。 |
 | HarmonyOS | `NativeSchedulePage` 菜单经 `Index.ets` 打开宿舍页面；`ScheduleDorm.ets` 传递原生课表快照，返回到原生课表。 |
-| iOS NEXT | `NativeScheduleView` 菜单经 `NativeShellCoordinator` 打开宿舍页面；`NativeDormService` 读取原生完整学期快照，通过现有 WKWebView 会话提供给页面。 |
+| iOS NEXT | 原生界面：课表「更多 → 宿舍课表」打开 `NativeDormSheet`（一周、空闲、早八、宿舍四页）。`NativeDormService` 经 WKWebView 的登录会话（`NativeScheduleStore.api`）调用 `/api/dorm`，上传当前学期完整课表（含本地编辑与自定义起止时间，节流规则同上）；`NativeDormPeople` 用分享课表的读取器和 `NativeScheduleOccurrences` 按每位室友自己的校历与作息排出；空闲、早八和一周总表的计算是 `NativeDormRules.swift`（`DormRules`），与 `dorm.ts`、`dormWeek.ts` 一致。站内的 `/schedule?dorm=1&code=…`、`/dorm-schedule?code=…`（包括网页路由跳到宿舍页）都打开原生界面并填好宿舍码，不再显示网页。 |
 
 `web/src/utils/nativeDormBridge.ts` 安装 `window.CPUTimeNativeDorm`，`nativeDormSync.ts` 负责按账号保存原生快照并复用网页同步规则。`DormSchedule.vue` 复用 `DormDialog.vue`；没有原生课表数据时明确显示待同步，不把未知数据算成空闲。原生端浏览往年学期时不覆盖当前学期快照。
 
@@ -99,7 +99,7 @@
 - `web/tests/nativeDormSync.test.ts`：原生快照校验、学期保护、账号隔离、等待快照、上传完成通知和邀请路由。
 - Android / NEXT 的 `ScheduleParityTest` 覆盖宿舍邀请路由与完整快照、自定义时间；两端 `native-bridge.test.mjs` 覆盖页面返回与内嵌宿舍页面的遮罩识别。
 - `harmony/tests/dorm-schedule.test.mjs` 覆盖宿舍路由、快照传递与当前学期判断；页面桥仍随 `npm run harmony:generate` 生成。
-- `bash ios_next/scripts/check-dorm-schedule.sh` 验证 iOS 宿舍路由和快照请求规则，需要 Swift 编译器；SwiftUI 界面与 WKWebView 接入另需 Xcode/设备验证。
+- `bash ios_next/scripts/check-dorm-schedule.sh` 用和 `web/tests/dormSchedule.test.ts`、`dormWeek.test.ts` 相同的样例验证 iOS 的空闲块、早八、一周总表、调休、不同作息、邀请链接、状态解析和上传节流，需要 Swift 编译器；SwiftUI 界面另需 Xcode/模拟器验证（调试参数见 `ios_next/README.md`）。
 - `server/tests/dormSchedulePostgres.test.ts`：使用真实 PostgreSQL 的行锁屏障验证抢最后一个名额、邀请码撤销、同时加入不同宿舍、并发退出与舍长转交，以及权限、快照隔离和级联删除。设置 `DORM_TEST_DATABASE_URL` 为本机隔离数据库、schema 为 `dorm_test` 后运行；测试会创建表并清理自己的数据。GitHub `Linux deployment artifact` 工作流必跑此项。
 - 纯计算和同步测试随 `npm test` 运行，数据库测试在未设置隔离数据库地址时跳过。
 
