@@ -54,3 +54,18 @@ test("nothing found comes back with a reason, and at most six items are kept", (
   const many = sanitizeAgendaExtract({ items: Array.from({ length: 9 }, (_, index) => ({ title: `第 ${index + 1} 场`, date: "2026-11-12" })) });
   assert.equal(many.items.length, 6);
 });
+
+test("line breaks the model escaped one time too many become real line breaks", () => {
+  const result = sanitizeAgendaExtract({
+    items: [{
+      title: "评优推荐",
+      date: "2026-11-13",
+      start: "17:00",
+      location: "药学楼\\n201",
+      note: "· 班长需先通知全班\\n· 各班要组织公开评审推荐\\r\\n·  不要重复评选 \\n\\n",
+    }],
+  });
+  assert.equal(result.items[0].note, "· 班长需先通知全班\n· 各班要组织公开评审推荐\n·  不要重复评选");
+  assert.equal(result.items[0].location, "药学楼 201");
+  assert.doesNotMatch(result.items[0].note, /\\/u);
+});

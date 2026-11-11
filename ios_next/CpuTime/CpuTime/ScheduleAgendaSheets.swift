@@ -196,7 +196,7 @@ struct NativeAgendaEditor: View {
                 extractSection
             }
             Section {
-                Toggle("日期", isOn: binding({ !$0.date.isEmpty }) { item, on in
+                Toggle("设定日期", isOn: binding({ !$0.date.isEmpty }) { item, on in
                     if on {
                         item.date = NativeAgendaRules.today()
                     } else {

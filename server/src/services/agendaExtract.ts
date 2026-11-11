@@ -76,8 +76,19 @@ export function buildAgendaExtractMessages(input: { text: string; image: string;
   ];
 }
 
+/**
+ * 模型有时把换行写成字面上的 `\n`（JSON 里多转义了一层），原样存下来就会在备注里看到
+ * 一串反斜杠。这里还原成真正的换行，制表符同理。
+ */
+function unescapeModelText(value: unknown) {
+  return String(value ?? "")
+    .replace(/\\r\\n|\\n|\\r/gu, "\n")
+    .replace(/\\t/gu, " ")
+    .replace(/\r\n?/gu, "\n");
+}
+
 function clip(value: unknown, max: number) {
-  return String(value ?? "").trim().slice(0, max);
+  return unescapeModelText(value).trim().slice(0, max);
 }
 
 /** 规整模型给的日程：格式不对的字段清空，没有标题的丢掉。 */
@@ -90,8 +101,10 @@ export function sanitizeAgendaExtract(raw: unknown): AgendaExtractResult {
     const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
     const title = clip(item.title, 60).replace(/\s+/gu, " ");
     if (!title) continue;
-    const note = String(item.note ?? "").replace(/\r\n?/gu, "\n").trim().slice(0, 1_000);
-    const location = clip(item.location, 40);
+    const note = unescapeModelText(item.note)
+      .split("\n").map((line) => line.trim()).filter(Boolean).join("\n")
+      .slice(0, 1_000);
+    const location = clip(item.location, 40).replace(/\s+/gu, " ");
     if ([title, note, location].some(containsRestrictedPublicTopic)) continue;
     const date = agendaDayNumber(item.date) === null ? "" : String(item.date);
     const start = date && agendaClockMinutes(item.start) !== null ? String(item.start) : "";
