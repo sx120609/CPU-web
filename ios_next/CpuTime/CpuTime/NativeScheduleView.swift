@@ -57,7 +57,6 @@ struct NativeScheduleView: View {
     /// The minute the partner's status line was last worked out for.
     @State private var coupleClock = Date()
     @State private var viewedShare: NativeSharedSchedule?
-    @State private var scheduleToolsContentHeight: CGFloat = 0
     @State private var sharePayload: NativeScheduleSharePayload?
     // Native pagers own the horizontal pan and keep the current page under the
     // finger. The center page is restored after a transition commits the new
@@ -625,7 +624,7 @@ struct NativeScheduleView: View {
                     scheduleToolsSheet(result)
                 }
             }
-            .presentationDetents([.height(scheduleToolsDetentHeight), .large])
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(28)
             .presentationBackground(.regularMaterial)
@@ -1235,7 +1234,6 @@ struct NativeScheduleView: View {
     /// the trailing edge, which made the same control appear in two places.
     private func scheduleToolsMenu() -> some View {
         Button {
-            scheduleToolsContentHeight = 0
             scheduleToolsPresented = true
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -1355,13 +1353,6 @@ struct NativeScheduleView: View {
             .padding(.top, 8)
             .padding(.bottom, 18)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .background(GeometryReader { proxy in
-                Color.clear.preference(key: NativeScheduleToolsHeightKey.self, value: proxy.size.height)
-            })
-            .onPreferenceChange(NativeScheduleToolsHeightKey.self) { value in
-                guard value > 0 else { return }
-                scheduleToolsContentHeight = value
-            }
             }
             .scrollBounceBehavior(.basedOnSize)
             .navigationTitle("更多")
@@ -1465,15 +1456,6 @@ struct NativeScheduleView: View {
         }
         .buttonStyle(NativeScheduleToolPressStyle(highlight: true))
         .disabled(disabled)
-    }
-
-    /// The whole list when it fits: the content plus the title bar and the
-    /// grabber above it. Taller than the screen allows, the sheet stops short
-    /// and the list scrolls.
-    private var scheduleToolsDetentHeight: CGFloat {
-        let chrome: CGFloat = 76
-        let measured = scheduleToolsContentHeight > 0 ? scheduleToolsContentHeight + chrome : 560
-        return min(max(measured, 360), WindowGeometry.size.height * 0.9)
     }
 
     private func weekStepButton(
@@ -5314,14 +5296,6 @@ private struct StateCard: View {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-private struct NativeScheduleToolsHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
 }
 
 @MainActor

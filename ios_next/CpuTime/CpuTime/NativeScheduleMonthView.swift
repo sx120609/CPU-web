@@ -7,40 +7,40 @@ import SwiftUI
 /// 「+N」。点教学周内的一天进入那天的日视图。教学周信息保留在每行左侧的「周」栏
 /// 里，这样月历和学期周次仍能对上。
 
-/// 上下或左右拖动月历换月：格子跟着手指走，拖过一段距离就翻到下一个月或上一个月，
-/// 新的一页从拖来的那一边滑进来；不够就弹回去。
+/// 左右拖动月历换月，和周、日视图一样只认横向：格子跟着手指走，拖过一段距离就翻到
+/// 下一个月或上一个月，不够就弹回去。竖向拖动留给页面自己滚动，不再换月。
 @available(iOS 17.0, *)
 struct ScheduleMonthSwipe: ViewModifier {
     let onMove: (Int) -> Void
-    @State private var pull: CGFloat = 0
     @State private var sideways: CGFloat = 0
+    /// 这一次拖动是不是横向的；一旦判定为竖向，整次拖动都不再理会。
+    @State private var horizontal: Bool?
 
     func body(content: Content) -> some View {
         content
-            .offset(x: sideways, y: pull)
-            .opacity(1 - min(0.6, Double(max(abs(pull), abs(sideways))) / 86))
+            .offset(x: sideways)
+            .opacity(1 - min(0.6, Double(abs(sideways)) / 86))
             .contentShape(Rectangle())
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 12)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 14)
                     .onChanged { value in
-                        if abs(value.translation.height) > abs(value.translation.width) {
-                            pull = value.translation.height * 0.55
-                            sideways = 0
-                        } else {
-                            sideways = value.translation.width * 0.55
-                            pull = 0
+                        if horizontal == nil {
+                            horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.2
                         }
+                        guard horizontal == true else { return }
+                        sideways = value.translation.width * 0.55
                     }
                     .onEnded { value in
-                        let vertical = abs(value.translation.height) > abs(value.translation.width)
-                        // Up or left is the next month, as on a wall calendar turned page by page.
-                        let distance = vertical ? value.translation.height : value.translation.width
+                        defer { horizontal = nil }
+                        guard horizontal == true else { return }
+                        // 往左是下一个月，往右是上一个月，和周、日视图翻页的方向一致。
+                        let distance = value.translation.width
                         if abs(distance) >= 44 {
                             let delta = distance < 0 ? 1 : -1
                             onMove(delta)
-                            if vertical { pull = delta > 0 ? 36 : -36 } else { sideways = delta > 0 ? 48 : -48 }
+                            sideways = delta > 0 ? 48 : -48
                         }
-                        withAnimation(.easeOut(duration: 0.22)) { pull = 0; sideways = 0 }
+                        withAnimation(.easeOut(duration: 0.22)) { sideways = 0 }
                     }
             )
     }
@@ -62,7 +62,7 @@ struct NativeScheduleMonthView: View {
     var partnerCourses: (String) -> Int = { _ in 0 }
     let canOpenDay: (String) -> Bool
     let onOpenDay: (String) -> Void
-    /// 上下拖动月历换月：1 是下一个月，-1 是上一个月。
+    /// 左右拖动月历换月：1 是下一个月，-1 是上一个月。
     var onMoveMonth: (Int) -> Void = { _ in }
     /// 下面「当天安排」正在看的日期，格子上加一圈。
     var selectedDate: String? = nil
