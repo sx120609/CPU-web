@@ -27,6 +27,11 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.rounded.Celebration
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,6 +130,8 @@ internal fun StyledDayView(
     status: DayStatus,
     /** Shown under the rest card, e.g. the reason for a day off. */
     emptyNote: String?,
+    /** A holiday's greeting for an empty day (「国庆快乐」); fireworks for a festive one. */
+    greeting: String? = null,
     /** The visible height to centre the rest card in. */
     emptyHeight: Dp,
     canAdd: Boolean,
@@ -135,9 +142,7 @@ internal fun StyledDayView(
     val style = scope.style
     val ordered = blocks.sortedWith(compareBy({ it.startSlot }, { it.endSlot }, { it.lane }))
     if (showsRestCard(style, blocks)) {
-        Box(Modifier.fillMaxWidth().height(max(emptyHeight.value, 360f).dp), contentAlignment = Alignment.Center) {
-            ScheduleRestCard(emptyNote)
-        }
+        HolidayRest(emptyNote, greeting, max(emptyHeight.value, 360f).dp)
         return
     }
     when (style) {
@@ -688,9 +693,50 @@ private fun BoardHero(block: PlacedBlock, status: DayStatus, now: Int, modifier:
 
 // region Rest day
 
-/** The rest card of a day with no courses. */
+/**
+ * The rest card centred in [height], and on a festive holiday the fireworks:
+ * by themselves the first time that holiday is opened this year, and again
+ * from the party popper.
+ */
 @Composable
-internal fun ScheduleRestCard(note: String?) {
+internal fun HolidayRest(note: String?, greeting: String?, height: androidx.compose.ui.unit.Dp) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val festive = FireworkShow.festive(greeting) && !LocalScheduleStyle.current.static
+    // Animations switched off in the system: no fireworks.
+    val motion = remember {
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    }
+    var show by remember(greeting) { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(greeting) {
+        if (!festive || !motion) return@LaunchedEffect
+        val prefs = context.getSharedPreferences("native_schedule_notices", android.content.Context.MODE_PRIVATE)
+        val key = "$greeting@${java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)}"
+        if (prefs.getString("fireworks", "") == key) return@LaunchedEffect
+        prefs.edit().putString("fireworks", key).apply()
+        kotlinx.coroutines.delay(400)
+        show += 1
+    }
+    Box(Modifier.fillMaxWidth().height(height), contentAlignment = Alignment.Center) {
+        Box {
+            ScheduleRestCard(note, greeting)
+            if (festive) {
+                androidx.compose.material3.IconButton(
+                    onClick = { if (motion) show += 1 },
+                    modifier = Modifier.align(Alignment.TopEnd).offset(x = (-4).dp, y = (-8).dp)
+                        .semantics { contentDescription = "${greeting.orEmpty()}，放烟花" },
+                ) {
+                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.Celebration, contentDescription = null,
+                        tint = Color(0xFFE5486B), modifier = Modifier.size(28.dp))
+                }
+            }
+        }
+        if (show > 0) ScheduleFireworks(show) { show = 0 }
+    }
+}
+
+/** The rest card of a day with no courses; a holiday says its greeting. */
+@Composable
+internal fun ScheduleRestCard(note: String?, greeting: String? = null) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
     val shape = RoundedCornerShape(if (style == ScheduleVisualStyle.Paper || style == ScheduleVisualStyle.Board) 2.dp else 32.dp)
@@ -707,7 +753,7 @@ internal fun ScheduleRestCard(note: String?) {
     ) {
         RestIllustration(Modifier.size(width = 184.dp, height = 140.dp))
         Spacer(Modifier.height(24.dp))
-        Text("这天没有课程", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.fontFamily, color = scope.ink, textAlign = TextAlign.Center)
+        Text(greeting ?: "这天没有课程", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.fontFamily, color = scope.ink, textAlign = TextAlign.Center)
         Spacer(Modifier.height(10.dp))
         Text(note?.trim()?.takeIf { it.isNotEmpty() } ?: "留点时间，做喜欢的事", fontSize = 14.sp, lineHeight = 20.sp, fontFamily = scope.fontFamily,
             color = scope.meta, textAlign = TextAlign.Center)

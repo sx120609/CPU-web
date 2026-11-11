@@ -35,6 +35,9 @@ object DebugScheduleFixture {
     /** The shared timetable to open at launch (`--ez debugShared true`). */
     var openSharedCode: String? = null
         private set
+    /** `--es debugHolidayGreeting 国庆快乐`: every empty day reads as that holiday, fireworks and all. */
+    var holidayGreeting: String? = null
+        private set
     /** The fixture has two courses in one period on purpose; its screenshots stay free of the notice unless asked for. */
     var suppressesOverlapNotice = false
         private set
@@ -62,6 +65,7 @@ object DebugScheduleFixture {
         "agenda" -> ScheduleSheet.AgendaList
         "commonFree" -> ScheduleSheet.CommonFree
         "tools" -> ScheduleSheet.Tools
+        "share" -> ScheduleSheet.Share
         "overlay" -> ScheduleSheet.Overlay
         "agendaNew" -> ScheduleSheet.AgendaEdit(newAgendaDraft(java.time.LocalDate.now().toString(), "14:00"))
         // 截图识别 with the fixture's sample reading (needs debugAgenda for the frozen remote).
@@ -101,6 +105,7 @@ object DebugScheduleFixture {
         intent.getStringExtra("debugView")?.let { activity.schedule.selectViewMode(it) }
         intent.getIntExtra("debugDay", 0).takeIf { it in 1..7 }?.let { activity.schedule.selectDay(it) }
         pinnedNow = intent.getStringExtra("debugNow")?.let(ScheduleStyleTime::clockMinutes)
+        holidayGreeting = intent.getStringExtra("debugHolidayGreeting")
         sheet = intent.getStringExtra("debugSheet").orEmpty()
         // Display settings for a screenshot, e.g. "sundayFirst,offWeek,teacher,rows=140".
         intent.getStringExtra("debugDisplay")?.split(',')?.map { it.trim() }?.let { flags ->

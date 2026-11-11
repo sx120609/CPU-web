@@ -3,6 +3,10 @@
     <cache-path
         name="apk_updates"
         path="apk-updates/" />
+    <!-- 分享这一天: the day card, written just before the share sheet opens. -->
+    <cache-path
+        name="shared_images"
+        path="shared/" />
     <external-path
         name="external_files"
         path="." />

@@ -625,13 +625,24 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                 onDismiss = { if (sheet == ScheduleSheet.Tools) sheet = null },
             )
         }
-        ScheduleSheet.Share -> AlertDialog(
-            onDismissRequest = { sheet = null },
-            title = { Text("分享") },
-            text = { Text("把所选周的课程以文字分享出去。") },
-            confirmButton = { TextButton(onClick = { sheet = null; shareSchedule(activity, store) }) { Text("分享所选周课表") } },
-            dismissButton = { TextButton(onClick = { sheet = null }) { Text("取消") } },
-        )
+        ScheduleSheet.Share -> {
+            val target = shareDayTarget(store)
+            AlertDialog(
+                onDismissRequest = { sheet = null },
+                title = { Text("分享课表") },
+                text = {
+                    Column {
+                        if (target != null) TextButton(onClick = {
+                            sheet = null
+                            shareDayCard(activity, store, target.first, target.second)
+                        }, modifier = Modifier.fillMaxWidth()) { Text("这一天（${OccurrenceRules.dateText(target.second)}）的卡片") }
+                        TextButton(onClick = { sheet = null; shareSchedule(activity, store) }, modifier = Modifier.fillMaxWidth()) { Text("这一周的文字") }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { sheet = null }) { Text("取消") } },
+            )
+        }
         ScheduleSheet.CommonFree -> CommonFreeSheet(
             activity, store,
             onAgenda = if (activity.agenda.available) ({ date, start -> sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(date, start)) }) else null,
@@ -1113,8 +1124,13 @@ private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResul
                         StyledDayView(
                             day = day, blocks = blocks, periods = periods, status = status,
                             emptyNote = adjustment?.let { store.adjustmentDetail(it) }, emptyHeight = height - 12.dp, canAdd = canAdd,
+                            greeting = DebugScheduleFixture.holidayGreeting ?: ChineseCalendarInfo.restGreeting(date),
                             onCourse = { context.onCourse(it, week) }, onAddSlot = { context.onAddSlot(day, it) },
                         )
+                    } else if (blocks.isEmpty() && FireworkShow.festive(DebugScheduleFixture.holidayGreeting ?: ChineseCalendarInfo.restGreeting(date))) {
+                        // A holiday with nothing on: its greeting, and fireworks.
+                        HolidayRest(adjustment?.let { store.adjustmentDetail(it) },
+                            DebugScheduleFixture.holidayGreeting ?: ChineseCalendarInfo.restGreeting(date), height - 12.dp)
                     } else if (blocks.isEmpty() && adjustment?.kind == "off") StateCard(
                         "这一天放假，不上课", store.adjustmentDetail(adjustment), if (canAdd) "添加课程" else "",
                     ) { context.onAddSlot(day, 1) }
