@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.sp
 
 /**
  * 当天安排 under the month: the chosen day's classes (each with the same tap
- * and long press as on the grid) and 日程, with 日视图 to open the day.
+ * as on the grid) and 日程, with 日视图 to open the day.
  */
 @Composable
 internal fun MonthDayPanel(

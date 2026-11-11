@@ -1,17 +1,17 @@
 package cn.lizmt.cpuweb.schedule
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -22,10 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.rounded.Add
@@ -52,10 +50,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -64,8 +60,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -76,30 +70,12 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
- * The long press on a course card, set by the timetable on the user's own
- * grid (none on somebody else's): it opens [CourseMenuSheet] for the piece pressed.
+ * A course card's tap: it opens the course's quick look, which holds every
+ * action on the course (there is no long press). It does not fade a cancelled
+ * meeting: put [cancelledFade] ahead of the card's background so the whole card fades.
  */
-internal val LocalCourseMenu = staticCompositionLocalOf<((PlacedBlock) -> Unit)?> { null }
-
-/**
- * A course card's tap and long press. It does not fade a cancelled meeting:
- * put [cancelledFade] ahead of the card's background so the whole card fades.
- */
-@OptIn(ExperimentalFoundationApi::class)
-internal fun Modifier.courseTap(block: PlacedBlock, onClick: () -> Unit): Modifier = composed {
-    val menu = LocalCourseMenu.current
-    val haptic = LocalHapticFeedback.current
-    combinedClickable(
-        onClick = onClick,
-        onLongClickLabel = if (menu != null) "更多操作" else null,
-        onLongClick = menu?.let { open ->
-            {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                open(block)
-            }
-        },
-    )
-}
+@Suppress("UNUSED_PARAMETER")
+internal fun Modifier.courseTap(block: PlacedBlock, onClick: () -> Unit): Modifier = clickable(onClick = onClick)
 
 /**
  * A cancelled meeting is drawn faded in its old place (see
@@ -116,100 +92,77 @@ internal fun occurrenceTag(block: PlacedBlock): String? = when {
     else -> null
 }
 
-/** One entry of the long-press menu. */
+/** One action of a course, shown at the foot of its quick look. */
 internal class CourseMenuAction(
     val title: String,
     val icon: ImageVector,
     val destructive: Boolean = false,
+    /** Asked before it runs (这次停课): the title and the explanation of the dialog. */
+    val confirm: Pair<String, String>? = null,
     val perform: () -> Unit,
 )
 
 /**
- * The long-press menu: the course as a larger card (when, where, who, which
- * weeks and what changed about this meeting), then its actions in groups.
+ * The actions of the quick look: the first as a filled button, the rest
+ * outlined in rows of two, a destructive one in the error colour and asked
+ * about first. [onDone] closes the quick look before an action runs, so
+ * the action can open its own sheet.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun CourseMenuSheet(
-    store: ScheduleStore,
-    block: PlacedBlock,
-    palette: String,
-    /** "小鹿的课" for the partner's course or a shared timetable laid on top. */
-    ownerTitle: String?,
-    sections: List<List<CourseMenuAction>>,
-    onDismiss: () -> Unit,
-) {
-    ScheduleSheetContainer(onDismiss) {
-        CoursePreviewCard(store, block, palette, ownerTitle)
-        Spacer(Modifier.height(14.dp))
-        val groups = sections.filter { it.isNotEmpty() }
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))) {
-            groups.forEachIndexed { index, group ->
-                if (index > 0) HorizontalDivider(thickness = 6.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-                group.forEachIndexed { row, action ->
-                    if (row > 0) HorizontalDivider(Modifier.padding(start = 48.dp))
-                    val tint = if (action.destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 50.dp).clickable {
-                            onDismiss()
-                            action.perform()
-                        }.padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+internal fun CourseQuickLookActions(actions: List<CourseMenuAction>, onDone: () -> Unit) {
+    if (actions.isEmpty()) return
+    var asking by remember { mutableStateOf<CourseMenuAction?>(null) }
+    fun run(action: CourseMenuAction) {
+        if (action.confirm != null) asking = action else {
+            onDone()
+            action.perform()
+        }
+    }
+    val error = MaterialTheme.colorScheme.error
+    val first = actions.first()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = { run(first) }, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+            colors = if (first.destructive) ButtonDefaults.buttonColors(containerColor = error) else ButtonDefaults.buttonColors(),
+        ) {
+            Icon(first.icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(first.title, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        actions.drop(1).chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { action ->
+                    val tint = if (action.destructive) error else MaterialTheme.colorScheme.primary
+                    OutlinedButton(
+                        onClick = { run(action) }, modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        border = BorderStroke(1.dp, tint.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = tint),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
                     ) {
-                        Icon(action.icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Text(action.title, fontSize = 16.sp, color = tint)
+                        Icon(action.icon, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(action.title, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
         }
     }
-}
-
-/** The larger card of a course in the long-press menu. */
-@Composable
-internal fun CoursePreviewCard(store: ScheduleStore, block: PlacedBlock, palette: String, ownerTitle: String?) {
-    val colors = LocalScheduleColors.current
-    val course = block.course
-    val accent = Color(StyleCourseColor(course.name, palette).accent(colors.dark))
-    val meta = MaterialTheme.colorScheme.onSurfaceVariant
-    val whole = block.block
-    val start = whole.course.customTime?.first ?: store.periodTime(whole.startSlot).startTime
-    val end = whole.course.customTime?.second ?: store.periodTime(whole.endSlot).endTime
-    val whenText = listOfNotNull(
-        whole.date.takeIf { it.length == 10 }?.let(OccurrenceRules::dateText) ?: WEEKDAY_LABELS.getOrNull(whole.day - 1),
-        OccurrenceRules.slotsText(whole.startSlot, whole.endSlot), "$start–$end",
-    ).joinToString(" · ")
-    val rows = listOfNotNull(
-        Icons.Outlined.Schedule to whenText,
-        ScheduleStyleTime.location(course.location)?.let { Icons.Outlined.Place to it },
-        course.teacher?.trim()?.takeIf { it.isNotEmpty() }?.let { Icons.Outlined.Person to it },
-        course.weeks.trim().takeIf { it.isNotEmpty() && !course.isMovedOccurrence }?.let { Icons.Outlined.CalendarMonth to it },
-    )
-    val status: Pair<String, Color>? = when {
-        whole.cancelled != null -> "这次停课" to meta
-        course.occurrenceFrom != null -> "调课 · 原定 ${OccurrenceRules.dateText(course.occurrenceFrom)}" to Color(0xFFE08A1E)
-        ownerTitle != null -> ownerTitle to Color(0xFF1E9C94)
-        else -> null
-    }
-    Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(RoundedCornerShape(16.dp))
-            .background(accent.copy(alpha = if (colors.dark) 0.18f else 0.09f)).padding(14.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(Modifier.width(4.dp).fillMaxHeight().clip(CircleShape).background(accent))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(course.name, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            status?.let { (text, color) ->
-                Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color,
-                    modifier = Modifier.clip(CircleShape).background(color.copy(alpha = 0.14f)).padding(horizontal = 8.dp, vertical = 2.dp))
-            }
-            rows.forEach { (icon, text) ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
-                    Text(text, fontSize = 14.sp, color = meta)
-                }
-            }
-        }
+    asking?.let { action ->
+        val (title, text) = action.confirm ?: return@let
+        AlertDialog(
+            onDismissRequest = { asking = null },
+            title = { Text(title) },
+            text = { Text(text) },
+            confirmButton = {
+                TextButton(onClick = {
+                    asking = null
+                    onDone()
+                    action.perform()
+                }) { Text(action.title, color = if (action.destructive) error else MaterialTheme.colorScheme.primary) }
+            },
+            dismissButton = { TextButton(onClick = { asking = null }) { Text("取消") } },
+        )
     }
 }
 
@@ -414,19 +367,7 @@ private fun SlotPickerGrid(periods: List<SchedulePeriod>, start: Int, end: Int, 
     }
 }
 
-/** A cancelled meeting tapped: put it back? */
-@Composable
-internal fun CancelledMeetingDialog(block: PlacedBlock, onRestore: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("「${block.course.name}」这次停课") },
-        text = { Text("${OccurrenceRules.dateText(block.block.cancelled?.date ?: block.block.date)} 的这节课已停课；恢复后按原来的时间上课。") },
-        confirmButton = { TextButton(onClick = { onDismiss(); onRestore() }) { Text("恢复原安排") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
-}
-
-/** Icons of the long-press menu, in one place so the groups read alike. */
+/** Icons of the course actions, in one place so they read alike. */
 internal object CourseMenuIcons {
     val details = Icons.Outlined.Info
     val edit = Icons.Rounded.Edit

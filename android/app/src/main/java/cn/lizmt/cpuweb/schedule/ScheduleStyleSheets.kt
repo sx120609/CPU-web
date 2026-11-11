@@ -57,11 +57,13 @@ import androidx.compose.ui.unit.sp
 /**
  * The course quick look: the name, "weekday · periods · times", then room,
  * teacher, weeks and note. Tapping a course anywhere on the timetable opens
- * it; "编辑" goes on to the editor.
+ * it, and every action on the course sits at its foot ([actions]).
  */
 @Composable
-fun CourseQuickLookSheet(
-    store: ScheduleStore, block: CourseBlock, palette: String, onDismiss: () -> Unit, onEdit: (() -> Unit)?,
+internal fun CourseQuickLookSheet(
+    store: ScheduleStore, block: CourseBlock, palette: String, onDismiss: () -> Unit,
+    /** 编辑整门课, 调整这一次, 这次停课, 恢复…; the first is the main one. Empty for a read-only course. */
+    actions: List<CourseMenuAction> = emptyList(),
     /** Shown in place of the usual footnote, e.g. for a course that does not run this week. */
     note: String? = null,
     /** 日程 of this meeting: on its date, at its time or naming the course; null hides the section. */
@@ -95,13 +97,16 @@ fun CourseQuickLookSheet(
                         fontSize = 14.sp, color = meta,
                     )
                 }
-            }
-            if (onEdit != null) {
-                Text(
-                    "编辑", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = if (colors.dark) 0.2f else 0.1f))
-                        .clickable(onClick = onEdit).semantics { contentDescription = "编辑课程" }.padding(horizontal = 14.dp, vertical = 7.dp),
-                )
+                // A changed meeting says so up top; the footnote below has the dates.
+                val status = when {
+                    block.cancelled != null -> "已停课" to meta
+                    course.isMovedOccurrence -> "调课" to Color(0xFFE08A1E)
+                    else -> null
+                }
+                status?.let { (text, tint) ->
+                    Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = tint,
+                        modifier = Modifier.clip(CircleShape).background(tint.copy(alpha = 0.14f)).padding(horizontal = 8.dp, vertical = 2.dp))
+                }
             }
         }
         if (details.isNotEmpty()) {
@@ -135,6 +140,10 @@ fun CourseQuickLookSheet(
             HorizontalDivider()
             Spacer(Modifier.height(12.dp))
             QuickLookAgenda(related, accent, colors.dark, onOpenAgenda, onToggleAgenda, onAddAgenda)
+        }
+        if (actions.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            CourseQuickLookActions(actions, onDone = onDismiss)
         }
     }
 }
