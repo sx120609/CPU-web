@@ -17,7 +17,7 @@
   - 课程的备注只指人写的备注：教务和合并节次生成的「06-07节」、空备注保存成的「第 6-7 节」不算（`scheduleCourseNote`，与网页 `noteFromCourse`、安卓 `editableNote` 一致）。合并后的课程块在 `slotNote` 里放节次标签，原备注留在 `sourceNote`，速览和编辑器读后者。
   - 重叠的课程可以设为「优先显示」：它盖住共同的节次，其他课程保留剩余节次。优先级随个人修改保存在服务端（`priority` 字段），本机留一份，打开课表时不会重排。
   - 共享课表（更多 → 共享课表）：为当前学期生成、更新、撤销分享码；输入分享码或粘贴链接，预览后加备注保存到本机，只读打开。别人的课表按账号保存在本机，不进入卡片与课表缓存。iOS 上「关心」某份课表以接入实时活动的功能在鸿蒙端没有对应能力，未移植。
-- 日程：与网页课表、安卓、药大拾间 NEXT 是同一份（站点 `/api/next-sync` 的 `agenda` 集合），经网页桥 `CPUTimeNativeAgenda` 用 ArkWeb 的登录会话读取和勾选（`NativeAgenda.ets`）。周视图按钟点画进当天那一列，和课程同一时段时贴在课程右侧；日期栏有圆点，日视图上方列出当天的日程。新建、修改、删除和「日程与待办」都在课表上的原生面板里（`NativeAgendaEditor.ets`）：点日程打开编辑器，点空着的节次可选「添加日程」或「添加课程」，更多菜单里有「日程与待办」；保存经网页桥的 `save` / `remove` / `relay`，一句话识别用 `parse`；截图识别（选截图或粘贴整段通知，拾间AI 读出时间、地点和注意事项预填，`NativeAgendaImage.ets` 把截图压成 JPEG）用 `extract`。站内的 `/agenda` 链接经 `CPUTimeNative.openAgenda` 在课表上打开。验收壳支持 `--ps panel agenda|agendaNew|agendaEdit|agendaExtract`。读到的列表存在首选项 `native_agenda`，冷启动先画它，退出登录时清空，换账号后换成新账号的。提醒交给系统代理提醒（`NativeAgendaReminders.ets`，权限 `ohos.permission.PUBLISH_AGENT_REMINDER`），系统限每个应用 30 条，列表每次变化都重新发布接下来 30 天里最早的 30 条。
+- 日程：与网页课表、安卓、药大拾间 NEXT 是同一份（站点 `/api/next-sync` 的 `agenda` 集合），经网页桥 `CPUTimeNativeAgenda` 用 ArkWeb 的登录会话读取和勾选（`NativeAgenda.ets`）。线上网页只给带 `CPUTimeNative/` 的 UA 装这个桥，鸿蒙壳没有，所以由随包桥 `harmony/bridge/agenda.ts` 提供：同一批记录、和网页日程页同一份本机副本（`cpu-agenda-v1:<用户>`）。周视图按钟点画进当天那一列，和课程同一时段时贴在课程右侧；日期栏有圆点，日视图上方列出当天的日程。新建、修改、删除和「日程与待办」都在课表上的原生面板里（`NativeAgendaEditor.ets`）：点日程打开编辑器，点空着的节次可选「添加日程」或「添加课程」，更多菜单里有「日程与待办」；保存经网页桥的 `save` / `remove` / `relay`，一句话识别用 `parse`；截图识别（选截图或粘贴整段通知，拾间AI 读出时间、地点和注意事项预填，`NativeAgendaImage.ets` 把截图压成 JPEG）用 `extract`。站内的 `/agenda` 链接经 `CPUTimeNative.openAgenda` 在课表上打开。验收壳支持 `--ps panel agenda|agendaNew|agendaEdit|agendaExtract`。读到的列表存在首选项 `native_agenda`，冷启动先画它，退出登录时清空，换账号后换成新账号的。提醒交给系统代理提醒（`NativeAgendaReminders.ets`，权限 `ohos.permission.PUBLISH_AGENT_REMINDER`），系统限每个应用 30 条，列表每次变化都重新发布接下来 30 天里最早的 30 条。
 - 首页、教务、服务、我的及其子页面共用一个 ArkWeb 会话，保留 Cookie、DOM 存储、站内路由和侧滑返回。
 - 课表使用现有 HttpOnly 登录会话及教务自动恢复，不在鸿蒙端保存学校密码。
 - 优先复用网页侧整学期课表桥；确认整学期后在 ArkUI 本地按周筛选。旧服务端只返回单周时，网页桥按当前周附近顺序后台预取，并把完成周次直接推入原生缓存。
@@ -32,7 +32,7 @@
   - 课程速览列「这节课的日程」；月视图点一天只选中，下方「当天安排」列课程和日程（可勾选、添加、跳日视图），有未完成日程的日子带橙点，左右拖动换月；与课程同时段的日程是课程右边框上的细条。
   - 「更多」改为分组面板：刷新、添加课程、添加日程、分享，日历与日程、一起看、外观与设置。
   - 法定节假日没课时显示「国庆快乐」等，每年第一次打开自动放烟花（`ScheduleFireworks.ets`），清明不放。
-  - 上课闹钟（课表风格面板）：早上第一节前、午休后第一节前各一个，未来 7 天，响铃一分钟可「再睡 5 分钟」。系统给每个应用 30 条代理提醒，闹钟最多占 14 条，其余给日程（`NativeAgendaReminders.ets`、`ScheduleClassAlarms.ets`）。
+  - 上课闹钟（「桌面与锁屏服务卡片」面板，和 iOS 一样放在小组件设置里）：早上第一节前、午休后第一节前各一个，未来 7 天，响铃一分钟可「再睡 5 分钟」。系统给每个应用 30 条代理提醒，闹钟最多占 14 条，其余给日程（`NativeAgendaReminders.ets`、`ScheduleClassAlarms.ets`）。
   - 桌面快捷方式：今日课表、添加日程、找共同空闲（`resources/base/profile/shortcuts_config.json`）。
   - 宿舍课表是原生面板（`NativeDormSheet.ets`：一周、空闲、早八、宿舍），不再打开网页 `/dorm-schedule`；邀请链接打开它并填好宿舍码。随包桥 `CPUHarmonyDorm`（`harmony/bridge/dorm.ts`）调 `/api/dorm`，并直接用网页的 `dorm.ts`、`dormWeek.ts` 算出总表、空闲和早八，结果与网页一致；在宿舍里时上传当前学期课表（内容不变 12 小时内不重传）。
   - 服务卡片跟随课表风格（卡片面板也可单独选）：表格有边框，素笺是纸色加描边，站牌是浅底加粗顶线，其余同原样；可设一张卡片背景照片和覆盖的底色浓淡。新增「日程」卡片（2×2、2×4、4×4）：逾期待办、两周内日程和无日期待办，点圆圈直接勾选，先记在本机，下次打开 App 再交给站点（`ScheduleCardExtras.ets`、`AgendaCard.ets`）。
