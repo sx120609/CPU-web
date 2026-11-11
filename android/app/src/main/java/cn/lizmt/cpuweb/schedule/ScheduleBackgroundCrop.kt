@@ -98,6 +98,7 @@ internal fun BackgroundCropEditor(image: ImageBitmap, crop: BackgroundCrop?, onD
     val configuration = LocalConfiguration.current
     val aspect = configuration.screenWidthDp.toFloat() / configuration.screenHeightDp.coerceAtLeast(1)
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        EdgeToEdgeDialogWindow()
         Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onDismiss) { Text("取消", color = Color.White) }
@@ -105,7 +106,9 @@ internal fun BackgroundCropEditor(image: ImageBitmap, crop: BackgroundCrop?, onD
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 Spacer(Modifier.size(64.dp))
             }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+            // Set while the picture is laid out; the buttons below call them.
+            val handles = remember { CropHandles() }
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
                 val density = LocalDensity.current
                 val boxWidth = with(density) { maxWidth.toPx() }
                 val boxHeight = with(density) { maxHeight.toPx() }
@@ -161,30 +164,53 @@ internal fun BackgroundCropEditor(image: ImageBitmap, crop: BackgroundCrop?, onD
                         }
                     }
                 }
-                CropActions(
-                    onReset = {
-                        zoom = 1f
-                        left = (viewWidth - imageWidth * cover) / 2
-                        top = (viewHeight - imageHeight * cover) / 2
-                    },
-                    onDone = {
-                        onDone(BackgroundCrop.of(imageWidth, imageHeight, viewWidth, viewHeight, cover * zoom, left, top).normalized())
-                    },
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
+                handles.reset = {
+                    zoom = 1f
+                    left = (viewWidth - imageWidth * cover) / 2
+                    top = (viewHeight - imageHeight * cover) / 2
+                }
+                handles.finish = { onDone(BackgroundCrop.of(imageWidth, imageHeight, viewWidth, viewHeight, cover * zoom, left, top).normalized()) }
             }
             Text("拖动、双指缩放，选择课表背景显示的范围", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            // Below the picture, not over it: the corners of the frame stay visible.
+            CropActions(onReset = { handles.reset() }, onDone = { handles.finish() }, modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp))
         }
     }
 }
 
+private class CropHandles {
+    var reset: () -> Unit = {}
+    var finish: () -> Unit = {}
+}
+
 @Composable
 private fun CropActions(onReset: () -> Unit, onDone: () -> Unit, modifier: Modifier) {
-    Row(modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = onReset, modifier = Modifier.background(Color.Black.copy(alpha = 0.5f))) { Text("还原", color = Color.White) }
-        TextButton(onClick = onDone, modifier = Modifier.background(Color.Black.copy(alpha = 0.5f))) {
+    Row(modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        TextButton(onClick = onReset) { Text("还原", color = Color.White) }
+        TextButton(onClick = onDone) {
             Text("完成", color = Color(0xFF6FD3C1), fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+
+/**
+ * A full-screen [Dialog] window really covers the screen. With only
+ * `decorFitsSystemWindows = false` the window is placed below the status bar
+ * but keeps the full height, so its bottom (the buttons) falls off the screen.
+ * Both such screens are black, so the status bar draws light icons.
+ */
+@Composable
+internal fun EdgeToEdgeDialogWindow() {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.SideEffect {
+        val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window ?: return@SideEffect
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.attributes = window.attributes.apply { fitInsetsTypes = 0 }
         }
     }
 }

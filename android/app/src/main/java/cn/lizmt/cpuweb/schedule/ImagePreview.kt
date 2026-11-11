@@ -193,6 +193,7 @@ fun ImagePreviewScreen(request: ImagePreviewRequest, onSave: (PreviewImage) -> U
     BackHandler(onBack = onClose)
     val pager = rememberPagerState(initialPage = request.index) { request.images.size }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        EdgeToEdgeDialogWindow()
         Box(Modifier.fillMaxSize().background(Color(0xFF05070A))) {
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                 ZoomableImage(request.images[page], onDismiss = onClose)
