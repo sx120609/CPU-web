@@ -303,7 +303,7 @@ export class NativeScheduleStore {
   // 只读：别人共享的课表。不加载也不保存个人修改，不写卡片和本地缓存。
   readOnly: boolean = false;
   // 课表风格（ScheduleStyle.ets），与配色、深浅色互不影响。
-  visualStyle: string = 'classic';
+  visualStyle: string = 'minimal';
   // 显示设置：只影响周视图怎么画。默认值就是加这些开关之前的样子。
   showSaturday: boolean = true;
   showSunday: boolean = true;

@@ -352,8 +352,9 @@ class ScheduleParityTest {
     @Test
     fun theStyleFallsBackToClassic() {
         assertEquals(ScheduleVisualStyle.Paper, ScheduleVisualStyle.fromId("paper"))
-        assertEquals(ScheduleVisualStyle.Classic, ScheduleVisualStyle.fromId("neon"))
-        assertEquals(ScheduleVisualStyle.Classic, ScheduleVisualStyle.fromId(null))
+        assertEquals(ScheduleVisualStyle.Minimal, ScheduleVisualStyle.fromId("neon"))
+        assertEquals(ScheduleVisualStyle.Minimal, ScheduleVisualStyle.fromId(null))
+        assertEquals(ScheduleVisualStyle.Classic, ScheduleVisualStyle.fromId("classic"))
         assertEquals(listOf("classic", "minimal", "grid", "table", "paper", "board"), ScheduleVisualStyle.entries.map { it.id })
         assertEquals("二十一", ScheduleStyleTime.numeral(21))
         assertEquals("药学楼 302", ScheduleStyleTime.location(" @药学楼 302 "))

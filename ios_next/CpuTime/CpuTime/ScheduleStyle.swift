@@ -6,10 +6,10 @@ import WidgetKit
 /// of the light/dark appearance: switching it never touches course data, the
 /// selected week or editing rights.
 ///
-/// `classic` is the appearance this client shipped with and stays the default,
-/// so an upgrade changes nothing until the user picks another style. The other
-/// five come from NapTable. Persisted as stable English identifiers; a missing
-/// or unknown value falls back to `classic`.
+/// `minimal` is the default since 2026-11 (the user's choice): a user who never
+/// picked a style sees it, and `classic` keeps the original look for those who
+/// pick it. Five of the six come from NapTable. Persisted as stable English
+/// identifiers; a missing or unknown value falls back to `minimal`.
 nonisolated enum ScheduleStyle: String, CaseIterable, Codable, Identifiable, Sendable {
     case classic, minimal, grid, table, paper, board
 
@@ -17,7 +17,7 @@ nonisolated enum ScheduleStyle: String, CaseIterable, Codable, Identifiable, Sen
     static let storageKey = "scheduleVisualStyle"
 
     static func load(from defaults: UserDefaults?) -> Self {
-        defaults?.string(forKey: storageKey).flatMap(Self.init(rawValue:)) ?? .classic
+        defaults?.string(forKey: storageKey).flatMap(Self.init(rawValue:)) ?? .minimal
     }
 
     var title: String {

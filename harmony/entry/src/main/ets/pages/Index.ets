@@ -312,7 +312,7 @@ struct Index {
         this.scheduleStore.backgroundCrop = String(await prefs.get('crop', ''));
         this.scheduleStore.backgroundDarkCrop = String(await prefs.get('cropDark', ''));
         this.scheduleStore.backgroundOpacity = Number(await prefs.get('opacity', 0.18));
-        this.scheduleStore.visualStyle = normalizeScheduleStyle(String(await prefs.get('style', 'classic')));
+        this.scheduleStore.visualStyle = normalizeScheduleStyle(String(await prefs.get('style', 'minimal')));
         // 周六、周日两个开关都从原来的「显示周末」起步。
         const weekend = Boolean(await prefs.get('weekend', true));
         this.scheduleStore.showSaturday = Boolean(await prefs.get('saturday', weekend));

@@ -64,7 +64,7 @@ export async function cardDecor(context: common.Context): Promise<CardDecor> {
   let choice = String(await prefs.get(STYLE_KEY, 'follow'));
   if (choice === 'follow') {
     const style = await preferences.getPreferences(context, 'native_schedule_style');
-    choice = String(await style.get('style', 'classic'));
+    choice = String(await style.get('style', 'minimal'));
   }
   const decor: CardDecor = { cardStyle: cardStyleFor(choice), background: '', veil: Number(await prefs.get(VEIL_KEY, 0.55)), images: {} };
   const path = String(await prefs.get(BACKGROUND_KEY, ''));

@@ -59,10 +59,10 @@ test('a course set to show first covers the periods it shares and the other keep
   assert.equal(placement.schedulePriorityTop({}), 1);
 });
 
-test('unknown styles fall back to classic and every style describes itself', () => {
+test('unknown styles fall back to minimal and every style describes itself', () => {
   assert.deepEqual(plain(style.SCHEDULE_STYLES), ['classic', 'minimal', 'grid', 'table', 'paper', 'board']);
   assert.equal(style.normalizeScheduleStyle('paper'), 'paper');
-  assert.equal(style.normalizeScheduleStyle('neon'), 'classic');
+  assert.equal(style.normalizeScheduleStyle('neon'), 'minimal');
   for (const id of style.SCHEDULE_STYLES) {
     assert.ok(style.scheduleStyleTitle(id).length === 2 && style.scheduleStyleSubtitle(id).length > 4, id);
     assert.ok(['rows', 'cells', 'table', 'sessions'].includes(style.scheduleStyleLayout(id).grid), id);

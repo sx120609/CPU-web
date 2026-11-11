@@ -16,7 +16,7 @@ export interface ScheduleStyleLayout {
 }
 
 export function normalizeScheduleStyle(value: string): string {
-  return SCHEDULE_STYLES.includes(value) ? value : 'classic';
+  return SCHEDULE_STYLES.includes(value) ? value : 'minimal';
 }
 
 export function scheduleStyleTitle(style: string): string {

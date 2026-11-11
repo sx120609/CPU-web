@@ -24,9 +24,10 @@ enum class StyleFont { Standard, Rounded, Serif, Monospaced }
  * of the course palette and of the light/dark appearance: switching it never
  * touches course data, the selected week or editing rights.
  *
- * `Classic` is the appearance this client shipped with and stays the default,
- * so an upgrade changes nothing until the user picks another style. Persisted
- * as the stable English [id]; a missing or unknown value falls back to classic.
+ * `Minimal` is the default since 2026-11 (the user's choice): a user who never
+ * picked a style sees it, and `Classic` keeps the original look for those who
+ * pick it. Persisted as the stable English [id]; a missing or unknown value
+ * falls back to minimal.
  */
 enum class ScheduleVisualStyle(
     val id: String,
@@ -87,7 +88,7 @@ enum class ScheduleVisualStyle(
     val textFamily: FontFamily get() = if (font == StyleFont.Monospaced) FontFamily.Default else fontFamily
 
     companion object {
-        fun fromId(id: String?): ScheduleVisualStyle = entries.firstOrNull { it.id == id } ?: Classic
+        fun fromId(id: String?): ScheduleVisualStyle = entries.firstOrNull { it.id == id } ?: Minimal
     }
 }
 
