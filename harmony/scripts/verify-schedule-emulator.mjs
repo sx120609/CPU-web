@@ -27,7 +27,9 @@ function layout() {
   return flatten(JSON.parse(readFileSync(resolve(dir, 'current-layout.json'), 'utf8')));
 }
 function has(nodes, text) { return nodes.some(node => node.text === text); }
-function hasPart(nodes, ...parts) { return nodes.some(node => parts.every(part => String(node.text).includes(part))); }
+// The quick look keeps 「第 1–4 节」 and times on one line with no-break spaces and word joiners.
+const plain = text => String(text).replace(/\u2060/g, '').replace(/\u00A0/g, ' ');
+function hasPart(nodes, ...parts) { return nodes.some(node => parts.every(part => plain(node.text).includes(part))); }
 function hasId(nodes, id) { return nodes.some(node => node.id === id); }
 // Decorations hidden from screen readers report no text, only what they draw.
 function draws(nodes, text) { return nodes.some(node => node.originalText === text); }
