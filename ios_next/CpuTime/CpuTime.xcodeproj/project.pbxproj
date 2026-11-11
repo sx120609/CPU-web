@@ -621,7 +621,7 @@
 				OTHER_LDFLAGS = "$(inherited) -weak_framework ActivityKit";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -680,7 +680,7 @@
 				OTHER_LDFLAGS = "$(inherited) -weak_framework ActivityKit";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = cn.cputime.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -716,7 +716,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -752,7 +752,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = cn.cputime.mobile.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -784,7 +784,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -814,7 +814,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -847,7 +847,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp.widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -881,7 +881,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.18;
+				MARKETING_VERSION = 4.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp.widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

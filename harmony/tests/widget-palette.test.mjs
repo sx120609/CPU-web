@@ -11,7 +11,8 @@ function compile(path) {
   return context.module.exports;
 }
 const palette = compile('../entry/src/main/ets/common/ScheduleWidgetPalette.ets');
-const swift = readFileSync(new URL('../../ios_next/CpuTime/CPUWebWidgets/ScheduleWidgets.swift', import.meta.url), 'utf8');
+// 小组件按风格拆开后，配色在 ScheduleWidgetStyle.swift 里。
+const swift = readFileSync(new URL('../../ios_next/CpuTime/CPUWebWidgets/ScheduleWidgetStyle.swift', import.meta.url), 'utf8');
 const resources = folder => Object.fromEntries(JSON.parse(readFileSync(
   new URL(`../entry/src/main/resources/${folder}/element/color.json`, import.meta.url), 'utf8')).color.map(item => [item.name, item.value]));
 
@@ -21,7 +22,11 @@ function swiftColors(source) {
     .map(part => Math.round(part.includes('/') ? Number(part.split('/')[0]) : Number(part) * 255))
     .map(value => value.toString(16).padStart(2, '0').toUpperCase()).join(''));
 }
-const widgetPalette = swift.slice(swift.indexOf('private enum WidgetPalette'));
+// 以及 `(232, 91, 75)` 这样的 0–255 三元组；`dark ? (…) : (…)` 只取冒号后面的浅色值。
+const hex = parts => '#' + parts.map(value => Number(value).toString(16).padStart(2, '0').toUpperCase()).join('');
+const swiftTriples = source => [...source.matchAll(/\((\d+), (\d+), (\d+)\)/g)].map(match => hex(match.slice(1, 4)));
+const swiftLightTriples = source => [...source.matchAll(/dark \? \([^)]*\) : \((\d+), (\d+), (\d+)\)/g)].map(match => hex(match.slice(1, 4)));
+const widgetPalette = swift.slice(swift.indexOf('enum WidgetPalette'));
 const section = (start, end) => widgetPalette.slice(widgetPalette.indexOf(start), widgetPalette.indexOf(end, widgetPalette.indexOf(start)));
 const themeOrder = source => [...source.matchAll(/case \.(\w+):/g)].map(match => match[1] === 'colorGlass' ? 'color-glass' : match[1]);
 
@@ -33,12 +38,13 @@ function iosIndex(name) {
 }
 
 test('widget palette values are the ones in the iOS WidgetPalette', () => {
-  assert.deepEqual([...palette.COLOR_GLASS_ACCENTS], swiftColors(section('colorGlassAccents', '\n    ]')));
+  assert.deepEqual([...palette.COLOR_GLASS_ACCENTS], swiftTriples(section('colorGlassAccents: ', '\n    ]')));
   assert.deepEqual([...palette.COLOR_GLASS_TINTS], swiftColors(section('colorGlassTints', '\n    ]')));
   const accents = section('static func accent(for theme', 'static func accent(for course');
   const accentThemes = themeOrder(accents);
   assert.deepEqual([...accentThemes].sort(), [...palette.WIDGET_THEMES].sort());
-  swiftColors(accents).forEach((color, index) => assert.equal(palette.widgetThemeAccent(accentThemes[index]), color, accentThemes[index]));
+  assert.equal(swiftLightTriples(accents).length, accentThemes.length);
+  swiftLightTriples(accents).forEach((color, index) => assert.equal(palette.widgetThemeAccent(accentThemes[index]), color, accentThemes[index]));
   const tints = section('guard theme != .colorGlass', 'private static func index');
   const tintThemes = themeOrder(tints).filter(theme => theme !== 'color-glass');
   swiftColors(tints).forEach((color, index) => assert.equal(palette.widgetThemeTint(tintThemes[index]), color, tintThemes[index]));
