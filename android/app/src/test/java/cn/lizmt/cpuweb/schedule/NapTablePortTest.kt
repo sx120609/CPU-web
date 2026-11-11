@@ -402,4 +402,31 @@ class NapTablePortTest {
     }
 
     // endregion
+
+    // region 上课闹钟
+
+    @Test
+    fun routineAlarmsRingBeforeTheMorningAndAfterTheNoonBreak() {
+        fun meeting(date: String, start: String, end: String, name: String) =
+            ScheduleMeeting("t", 1, 1, date, start, end, 1, 2, ScheduleCourse(name = name))
+        val meetings = listOf(
+            meeting("2026-09-07", "08:00", "09:40", "高数"), meeting("2026-09-07", "13:30", "15:10", "化学"),
+            // A class running into the afternoon: no noon alarm that day.
+            meeting("2026-09-08", "10:00", "13:10", "实验"), meeting("2026-09-08", "13:30", "15:10", "英语"),
+            meeting("2026-09-09", "14:00", "15:00", "体育"),
+        )
+        val plan = RoutineAlarmRules.plan(meetings, "2026-09-07", 0, morning = 60, nap = 15)
+        assertEquals(listOf("morning@2026-09-07@07:00", "nap@2026-09-07@13:15", "morning@2026-09-08@09:00", "nap@2026-09-09@13:45"),
+            plan.map { "${it.kind}@${it.date}@${it.clock}" })
+        assertEquals("早课：08:00「高数」", plan[0].title)
+        // Already past today: left out; switched off: none.
+        assertEquals(listOf("nap"), RoutineAlarmRules.plan(meetings, "2026-09-07", 8 * 60, 60, 15).filter { it.date == "2026-09-07" }.map { it.kind })
+        assertTrue(RoutineAlarmRules.plan(meetings, "2026-09-07", 0, null, null).isEmpty())
+        // One weekly system alarm per weekday and kind; 2026-09-07 is a Monday.
+        val weekly = RoutineAlarmRules.weekly(plan)
+        assertEquals(java.util.Calendar.MONDAY, weekly[0].first)
+        assertEquals(4, weekly.size)
+    }
+
+    // endregion
 }

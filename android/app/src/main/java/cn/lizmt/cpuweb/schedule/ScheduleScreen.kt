@@ -115,6 +115,8 @@ sealed interface ScheduleSheet {
     data object Tools : ScheduleSheet
     /** 分享: this day as a card or the week as text. */
     data object Share : ScheduleSheet
+    /** 上课闹钟. */
+    data object Alarms : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -607,6 +609,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                         tool(ScheduleToolStyle.calendar, "导出整学期日历文件", "按停课、调课和调休，导入手机日历", action = { exportSemesterSchedule(activity, store) }),
                         tool(ScheduleToolStyle.calendar, "导出所选周日历", action = { exportSchedule(activity, store) }),
                         tool(ScheduleToolStyle.agenda, "日程与待办", "作业、考试和自己的安排", action = { sheet = ScheduleSheet.AgendaList }.takeIf { own }),
+                        tool(ScheduleToolStyle.alarm, "上课闹钟", "早课和午休后的第一节课前响铃", action = { sheet = ScheduleSheet.Alarms }.takeIf { own }),
                     ),
                     "一起看" to listOf(
                         tool(ScheduleToolStyle.sharing, "共享课表", "发分享码，或导入同学的课表", action = { sheet = ScheduleSheet.Sharing }.takeIf { own }),
@@ -643,6 +646,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                 dismissButton = { TextButton(onClick = { sheet = null }) { Text("取消") } },
             )
         }
+        ScheduleSheet.Alarms -> RoutineAlarmSheet(activity, onDismiss = { sheet = null })
         ScheduleSheet.CommonFree -> CommonFreeSheet(
             activity, store,
             onAgenda = if (activity.agenda.available) ({ date, start -> sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(date, start)) }) else null,
