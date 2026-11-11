@@ -55,3 +55,17 @@ test('no stray control characters in the app sources (a backspace in a regex bro
   }
   assert.match(read('entryability/EntryAbility.ets'), /\/\[\?&\]action=\(today\|agendaList\|agenda\|free\)\/\.exec/);
 });
+
+test('上课闹钟 sits in the cards panel that 更多 names for it, with one-line segment labels', async () => {
+  const index = read('pages/Index.ets');
+  assert.ok(index.indexOf("Text('锁屏卡片')") < index.indexOf("Text('上课闹钟')"), '上课闹钟 is not in the 桌面与锁屏服务卡片 panel');
+  assert.match(read('schedule/NativeSchedulePage.ets'), /'桌面与锁屏服务卡片', '卡片风格、背景和上课闹钟'/);
+  const { createRequire } = await import('node:module');
+  const require = createRequire(new URL('../../web/package.json', import.meta.url));
+  const { transformSync } = require('esbuild');
+  const source = read('schedule/ScheduleClassAlarms.ets');
+  const body = source.slice(source.indexOf('export function alarmSegmentText'), source.indexOf('export function alarmLeadText'));
+  const { code } = transformSync(body.replace('export ', '') + '\nglobalThis.segment = alarmSegmentText;', { loader: 'ts' });
+  new Function(code)();
+  assert.deepEqual([30, 45, 60, 90, 10].map(globalThis.segment), ['30分', '45分', '1小时', '1.5小时', '10分']);
+});

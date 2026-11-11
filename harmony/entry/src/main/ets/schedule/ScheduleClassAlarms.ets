@@ -80,6 +80,12 @@ export function alarmMeetings(store: NativeScheduleStore, date: string): AlarmMe
 }
 
 /** "45 分钟", "1 小时 30 分". */
+/** The lead on a segment of the 上课闹钟 picker: 「30分」「1小时」「1.5小时」, one line at a fifth of a phone's width. */
+export function alarmSegmentText(minutes: number): string {
+  if (minutes < 60) return `${minutes}分`;
+  return `${Math.round(minutes / 6) / 10}小时`;
+}
+
 export function alarmLeadText(minutes: number): string {
   if (minutes < 60) return `${minutes} 分钟`;
   return minutes % 60 === 0 ? `${minutes / 60} 小时` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`;

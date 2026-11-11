@@ -54,7 +54,7 @@ import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from
 import { NativeAgendaModel } from '../schedule/NativeAgenda';
 import { NativeAgendaEditor, NativeAgendaEditorModel } from '../schedule/NativeAgendaEditor';
 import { syncAgendaReminders, syncClassAlarms } from '../schedule/NativeAgendaReminders';
-import { ALARM_MORNING_LEADS, ALARM_NAP_LEADS, alarmLeadText, alarmMeetings, planClassAlarms } from '../schedule/ScheduleClassAlarms';
+import { ALARM_MORNING_LEADS, ALARM_NAP_LEADS, alarmMeetings, alarmSegmentText, planClassAlarms } from '../schedule/ScheduleClassAlarms';
 import { scheduleTodayDate } from '../schedule/ScheduleStyle';
 import { NativeAgendaItem, NativeOccurrenceChange, NativeOccurrenceRequest, nativeScheduleStoreOf } from '../schedule/NativeScheduleStore';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
@@ -2139,16 +2139,6 @@ struct Index {
             .onClick(() => { this.scheduleStore.resetDisplay(); this.saveScheduleStyle(); })
         }.width('100%')
         Column({ space: 8 }) {
-          Text('上课闹钟').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
-          Column() {
-            this.alarmRow('早上第一节前', ALARM_MORNING_LEADS, this.scheduleStore.alarmMorning, true)
-            Divider().color($r('app.color.app_divider')).margin({ left: 14 })
-            this.alarmRow('午休后第一节前', ALARM_NAP_LEADS, this.scheduleStore.alarmNap, false)
-          }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
-          Text('未来 7 天按课表响铃，放假、调休和单次停课、调课都已算进去；和日程提醒共用系统给每个应用的 30 条提醒。')
-            .fontSize(12).fontColor($r('app.color.app_text_tertiary')).width('100%')
-        }.width('100%')
-        Column({ space: 8 }) {
           Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
           this.paletteChoices(this.scheduleStore.palette, false)
         }.width('100%')
@@ -2172,14 +2162,14 @@ struct Index {
     }.height('100%').width('100%').scrollBar(BarState.Off).backgroundColor($r('app.color.app_surface'))
   }
 
-  // 上课闹钟: off, or one of the leads.
+  // 上课闹钟: off, or one of the leads. Short labels, so 「1.5小时」 fits a fifth of a phone's width on one line.
   @Builder
   private alarmRow(title: string, leads: number[], value: number, morning: boolean) {
     Column({ space: 8 }) {
-      Text(title).fontSize(15).fontColor($r('app.color.app_text_primary')).width('100%')
+      Text(title + '，提前多久响').fontSize(15).fontColor($r('app.color.app_text_primary')).width('100%')
       Row({ space: 2 }) {
         ForEach([0].concat(leads), (lead: number) => {
-          Text(lead ? '提前 ' + alarmLeadText(lead).replace(' 分钟', '分').replace(' 小时', '小时').replace(' 分', '分') : '关')
+          Text(lead ? alarmSegmentText(lead) : '关')
             .fontSize(12).layoutWeight(1).height(30).textAlign(TextAlign.Center).borderRadius(8)
             .fontColor(lead === value ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
             .backgroundColor(lead === value ? $r('app.color.app_surface') : Color.Transparent)
@@ -2660,6 +2650,16 @@ struct Index {
           }.width('100%')
           Column() { this.lockCardPreview('lock-inline') }
             .width('100%').height(42).backgroundColor('#35443C').borderRadius(14)
+        }.width('100%')
+        Column({ space: 8 }) {
+          Text('上课闹钟').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Column() {
+            this.alarmRow('早上第一节前', ALARM_MORNING_LEADS, this.scheduleStore.alarmMorning, true)
+            Divider().color($r('app.color.app_divider')).margin({ left: 14 })
+            this.alarmRow('午休后第一节前', ALARM_NAP_LEADS, this.scheduleStore.alarmNap, false)
+          }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
+          Text('未来 7 天按课表响铃，放假、调休和单次停课、调课都已算进去；和日程提醒共用系统给每个应用的 30 条提醒。')
+            .fontSize(12).fontColor($r('app.color.app_text_tertiary')).width('100%')
         }.width('100%')
       }.width('100%').padding({left: 20, right: 20, top: 32, bottom: 40})
     }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor($r('app.color.app_surface'))
