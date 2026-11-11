@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import WidgetKit
 
 /// The timetable's visual style. It is independent of the course palette and
 /// of the light/dark appearance: switching it never touches course data, the
@@ -99,5 +100,7 @@ final class NativeScheduleStyleSettings: ObservableObject {
         guard style != value else { return }
         style = value
         defaults?.set(value.rawValue, forKey: ScheduleStyle.storageKey)
+        // The widgets follow the timetable's style unless 小组件风格 picks one.
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

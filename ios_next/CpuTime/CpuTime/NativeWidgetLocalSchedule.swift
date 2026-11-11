@@ -33,6 +33,9 @@ enum NativeWidgetLocalSchedule {
         let days: [Day]
         /// 调休表里的法定放假日，小组件拿去覆盖离线推算的假期。旧版本写的文件没有这一项。
         var holidays: [PublishedHoliday]? = nil
+        /// 学期第一天和最后一天，小组件靠它认出寒暑假、课表过期。旧版本写的文件没有。
+        var termStart: String? = nil
+        var termEnd: String? = nil
     }
 
     static func connect(to store: NativeScheduleStore) {
@@ -123,10 +126,16 @@ enum NativeWidgetLocalSchedule {
             for day in existing.days where byDate[day.date] == nil { byDate[day.date] = day }
             if holidays.isEmpty { holidays = existing.holidays ?? [] }
         }
+        // 学期起止按校历的周：第一周的第一天到最后一周的最后一天，没有周历时用校历写的起止。
+        let calendarDays = calendar.weeks.flatMap(\.days).sorted()
+        let termStart = calendarDays.first ?? calendar.semesterStart.trimmedNonEmpty
+        let termEnd = calendarDays.last ?? calendar.semesterEnd.trimmedNonEmpty
         return Record(
             semester: data.currentSemester,
             days: byDate.values.sorted { $0.date < $1.date },
-            holidays: holidays
+            holidays: holidays,
+            termStart: termStart.flatMap { $0.count == 10 ? $0 : nil },
+            termEnd: termEnd.flatMap { $0.count == 10 ? $0 : nil }
         )
     }
 

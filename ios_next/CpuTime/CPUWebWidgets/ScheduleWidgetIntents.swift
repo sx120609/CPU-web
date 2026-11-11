@@ -4,6 +4,7 @@ import WidgetKit
 
 /// 长按小组件 →「编辑小组件」里的选项。每个小组件各存各的，所以同一种小组件
 /// 放两个也可以一个看明天、一个看假期。
+@available(iOS 17.0, *)
 struct ScheduleWidgetConfiguration: Sendable {
     var afterClass: ScheduleWidgetAfterClassStyle = .nextCourseDay
     /// 小号「临近课程」显示几节课。默认值和原来的样子一致：当前和下一节。
@@ -21,6 +22,7 @@ enum ScheduleWidgetLayoutStyle: String, Sendable {
     case list
 }
 
+@available(iOS 17.0, *)
 enum LayoutOption: String, AppEnum {
     case timeline
     case list
@@ -39,6 +41,7 @@ enum LayoutOption: String, AppEnum {
     }
 }
 
+@available(iOS 17.0, *)
 enum AfterClassOption: String, AppEnum {
     case nextCourseDay
     /// rawValue 沿用旧的「今天没有课程」，原来选它的小组件不用重新设置；
@@ -59,6 +62,7 @@ enum AfterClassOption: String, AppEnum {
     }
 }
 
+@available(iOS 17.0, *)
 enum UpcomingCourseCountOption: Int, AppEnum {
     case one = 1
     case two = 2
@@ -70,6 +74,7 @@ enum UpcomingCourseCountOption: Int, AppEnum {
     ]
 }
 
+@available(iOS 17.0, *)
 enum TwoDayStartOption: String, AppEnum {
     /// 固定今天和明天。
     case today
@@ -86,6 +91,7 @@ enum TwoDayStartOption: String, AppEnum {
 
 /// 放假当天祝福上方的彩炮按钮。记下按的时间，系统随即刷新小组件，这一刷看到刚按过就放一次烟花，
 /// 几秒后的下一条时间线再收起来（见 `ScheduleTimeline.make`）。
+@available(iOS 17.0, *)
 struct CelebrateHolidayIntent: AppIntent {
     static let title: LocalizedStringResource = "放礼花"
     static let isDiscoverable = false
@@ -119,10 +125,12 @@ struct CelebrateHolidayIntent: AppIntent {
     }
 }
 
+@available(iOS 17.0, *)
 protocol ScheduleWidgetIntent: WidgetConfigurationIntent {
     var configuration: ScheduleWidgetConfiguration { get }
 }
 
+@available(iOS 17.0, *)
 struct TodayScheduleWidgetIntent: ScheduleWidgetIntent {
     static let title: LocalizedStringResource = "今日课表"
     static let description = IntentDescription("选择今天的课上完后小组件显示什么，以及大号的显示方式。")
@@ -133,7 +141,7 @@ struct TodayScheduleWidgetIntent: ScheduleWidgetIntent {
     @Parameter(title: "显示方式", default: .timeline)
     var layout: LayoutOption
 
-    /// 中号只放得下两门课，没有时间线可选。
+    /// 小号、中号和锁屏只放得下几门课，没有时间线可选。
     static var parameterSummary: some ParameterSummary {
         When(widgetFamily: .equalTo, .systemLarge) {
             Summary {
@@ -152,9 +160,10 @@ struct TodayScheduleWidgetIntent: ScheduleWidgetIntent {
     }
 }
 
+@available(iOS 17.0, *)
 struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
     static let title: LocalizedStringResource = "临近课程"
-    static let description = IntentDescription("选择今天的课上完后显示什么，以及小号显示几节课。")
+    static let description = IntentDescription("选择今天的课上完后显示什么、小号显示几节课，以及大号的显示方式。")
 
     // 默认：今天上完就换到最近有课的一天，小号显示当前和下一节。
     @Parameter(title: "今天的课上完后", default: .nextCourseDay)
@@ -163,7 +172,11 @@ struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
     @Parameter(title: "显示几节课", default: .two)
     var courseCount: UpcomingCourseCountOption
 
-    /// 中号本来就是「当前 / 接下来」两栏，锁屏也只放得下一节，节数只在小号上给选。
+    @Parameter(title: "显示方式", default: .timeline)
+    var layout: LayoutOption
+
+    /// 中号本来就是「当前 / 接下来」两栏，锁屏也只放得下一节，节数只在小号上给选；
+    /// 大号放的是今天的完整课表，可以选时间线或列表。
     static var parameterSummary: some ParameterSummary {
         When(widgetFamily: .equalTo, .systemSmall) {
             Summary {
@@ -171,20 +184,32 @@ struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
                 \.$courseCount
             }
         } otherwise: {
-            Summary {
-                \.$afterClass
+            When(widgetFamily: .equalTo, .systemLarge) {
+                Summary {
+                    \.$afterClass
+                    \.$layout
+                }
+            } otherwise: {
+                Summary {
+                    \.$afterClass
+                }
             }
         }
     }
 
     var configuration: ScheduleWidgetConfiguration {
-        ScheduleWidgetConfiguration(afterClass: afterClass.style, upcomingCourseCount: courseCount.rawValue)
+        ScheduleWidgetConfiguration(
+            afterClass: afterClass.style,
+            upcomingCourseCount: courseCount.rawValue,
+            layout: layout.style
+        )
     }
 }
 
+@available(iOS 17.0, *)
 struct TwoDayScheduleWidgetIntent: ScheduleWidgetIntent {
     static let title: LocalizedStringResource = "两日课表"
-    static let description = IntentDescription("选择两日课表显示哪两天，以及显示方式。")
+    static let description = IntentDescription("选择两日课表显示哪两天，以及大号的显示方式。")
 
     // 默认值：右边是最近有课的一天。
     @Parameter(title: "显示哪两天", default: .nextCourseDay)
@@ -194,23 +219,40 @@ struct TwoDayScheduleWidgetIntent: ScheduleWidgetIntent {
     @Parameter(title: "显示方式", default: .list)
     var layout: LayoutOption
 
+    static var parameterSummary: some ParameterSummary {
+        When(widgetFamily: .equalTo, .systemLarge) {
+            Summary {
+                \.$start
+                \.$layout
+            }
+        } otherwise: {
+            Summary {
+                \.$start
+            }
+        }
+    }
+
     var configuration: ScheduleWidgetConfiguration {
         ScheduleWidgetConfiguration(twoDayStart: start, layout: layout.style)
     }
 }
 
 /// 三个小组件共用同一条时间线，只是各自带上自己的配置。
+@available(iOS 17.0, *)
 struct ScheduleIntentTimelineProvider<Configuration: ScheduleWidgetIntent>: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ScheduleEntry { .placeholder }
 
+    /// 小组件库里的预览用示例课表；桌面上的快照（比如编辑小组件时）用真实课表，和时间线第一条一样。
     func snapshot(for configuration: Configuration, in context: Context) async -> ScheduleEntry {
-        var entry = ScheduleEntry.placeholder
+        var entry = context.isPreview
+            ? ScheduleEntry.placeholder
+            : ScheduleTimeline.make(now: .now).entries.first ?? .placeholder
         entry.configuration = configuration.configuration
         return entry
     }
 
     func timeline(for configuration: Configuration, in context: Context) async -> Timeline<ScheduleEntry> {
-        let timeline = await ScheduleTimeline.make(now: .now)
+        let timeline = ScheduleTimeline.make(now: .now)
         return Timeline(
             entries: timeline.entries.map { entry in
                 var entry = entry
@@ -222,6 +264,7 @@ struct ScheduleIntentTimelineProvider<Configuration: ScheduleWidgetIntent>: AppI
     }
 }
 
+@available(iOS 17.0, *)
 private struct ScheduleWidgetConfigurationEnvironmentKey: EnvironmentKey {
     static let defaultValue = ScheduleWidgetConfiguration()
 }
@@ -230,6 +273,7 @@ private struct ScheduleWidgetCelebratingEnvironmentKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+@available(iOS 17.0, *)
 extension EnvironmentValues {
     var scheduleWidgetConfiguration: ScheduleWidgetConfiguration {
         get { self[ScheduleWidgetConfigurationEnvironmentKey.self] }
