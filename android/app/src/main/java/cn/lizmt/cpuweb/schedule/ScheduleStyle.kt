@@ -50,8 +50,8 @@ class ScheduleStyleSettings(private val context: Context) {
     fun background(dark: Boolean): ImageBitmap? = if (dark) darkBackground ?: lightBackground else lightBackground
 
     val hasBackground: Boolean get() = lightBackground != null || darkBackground != null
-    /** The visual style; classic until the user picks another one. */
-    var visualStyle by mutableStateOf(ScheduleVisualStyle.fromId(prefs.getString("visualStyle", null)))
+    /** The visual style; minimal until the user picks another one. */
+    var visualStyle by mutableStateOf(promotedVisualStyle())
         private set
     /** Saturday and Sunday columns; a weekend day with classes shows either way. Both start from the old single switch. */
     var showSaturday by mutableStateOf(prefs.getBoolean("showSaturday", prefs.getBoolean("showWeekend", true)))
@@ -84,6 +84,21 @@ class ScheduleStyleSettings(private val context: Context) {
     init {
         if (file.exists()) lightBackground = decode(file, lightCrop)
         if (darkFile.exists()) darkBackground = decode(darkFile, darkCrop)
+    }
+
+    /**
+     * 简约 is promoted from 2026-11: a stored 经典 (the old default) becomes 简约 once.
+     * Choosing 经典 again afterwards is kept; the other styles are never touched.
+     */
+    private fun promotedVisualStyle(): ScheduleVisualStyle {
+        if (!prefs.getBoolean(KEY_MINIMAL_PROMOTED, false)) {
+            val editor = prefs.edit().putBoolean(KEY_MINIMAL_PROMOTED, true)
+            if (prefs.getString("visualStyle", null) == ScheduleVisualStyle.Classic.id) {
+                editor.putString("visualStyle", ScheduleVisualStyle.Minimal.id)
+            }
+            editor.commit()
+        }
+        return ScheduleVisualStyle.fromId(prefs.getString("visualStyle", null))
     }
 
     fun selectVisualStyle(value: ScheduleVisualStyle) {
@@ -229,6 +244,7 @@ class ScheduleStyleSettings(private val context: Context) {
     }.getOrNull()
 
     companion object {
+        private const val KEY_MINIMAL_PROMOTED = "visualStyleMinimalPromoted"
         const val DEFAULT_VISIBILITY = 0.76f
         const val MIN_VISIBILITY = 0.22f
         const val MAX_VISIBILITY = 0.88f

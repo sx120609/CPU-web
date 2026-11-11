@@ -312,7 +312,17 @@ struct Index {
         this.scheduleStore.backgroundCrop = String(await prefs.get('crop', ''));
         this.scheduleStore.backgroundDarkCrop = String(await prefs.get('cropDark', ''));
         this.scheduleStore.backgroundOpacity = Number(await prefs.get('opacity', 0.18));
-        this.scheduleStore.visualStyle = normalizeScheduleStyle(String(await prefs.get('style', 'minimal')));
+        // 2026-11 起推广「简约」：存着的「经典」（原来的默认）一次性换成简约；之后再选经典就保留，其他风格不动。
+        let storedStyle = String(await prefs.get('style', 'minimal'));
+        if (!Boolean(await prefs.get('minimalPromoted', false))) {
+          if (storedStyle === 'classic') {
+            storedStyle = 'minimal';
+            await prefs.put('style', storedStyle);
+          }
+          await prefs.put('minimalPromoted', true);
+          await prefs.flush();
+        }
+        this.scheduleStore.visualStyle = normalizeScheduleStyle(storedStyle);
         // 周六、周日两个开关都从原来的「显示周末」起步。
         const weekend = Boolean(await prefs.get('weekend', true));
         this.scheduleStore.showSaturday = Boolean(await prefs.get('saturday', weekend));

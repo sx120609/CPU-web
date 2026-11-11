@@ -86,6 +86,15 @@ final class NativeScheduleStyleSettings: ObservableObject {
 
     init(defaults: UserDefaults? = UserDefaults(suiteName: AppGroupIdentifier.resolved())) {
         self.defaults = defaults
+        // 简约 is promoted from 2026-11: a stored 经典 (the old default) becomes 简约 once.
+        // Choosing 经典 again afterwards is kept; the other styles are never touched.
+        let promotedKey = "scheduleVisualStyleMinimalPromoted"
+        if let defaults, !defaults.bool(forKey: promotedKey) {
+            if defaults.string(forKey: ScheduleStyle.storageKey) == ScheduleStyle.classic.rawValue {
+                defaults.set(ScheduleStyle.minimal.rawValue, forKey: ScheduleStyle.storageKey)
+            }
+            defaults.set(true, forKey: promotedKey)
+        }
         style = ScheduleStyle.load(from: defaults)
 #if DEBUG
         // `CPU_DEBUG_SCHEDULE_STYLE=paper` shows a style for one launch without saving it.
