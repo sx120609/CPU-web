@@ -5,6 +5,7 @@ import { installHarmonyEditor } from './editor';
 import { installHarmonySharing } from './sharing';
 import { installHarmonyCouple } from './couple';
 import { installHarmonyDorm } from './dorm';
+import { installHarmonyAgenda } from './agenda';
 import { installHarmonyShellObserver } from './shell';
 import { installHarmonyHeader } from './header';
 import { installHarmonyNavigation } from './navigation';
@@ -15,6 +16,8 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   installHarmonySharing();
   installHarmonyCouple();
   installHarmonyDorm();
+  // The live site's 日程 bridge is only for CPUTimeNative/ user agents; this shell brings its own.
+  installHarmonyAgenda();
   let attempts = 0;
   let loginInstalled = false;
   const install = () => {
