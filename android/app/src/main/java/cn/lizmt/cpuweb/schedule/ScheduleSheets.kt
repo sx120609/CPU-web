@@ -1,5 +1,6 @@
 package cn.lizmt.cpuweb.schedule
 
+import androidx.compose.foundation.layout.statusBarsPadding
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,7 +50,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleSheetContainer(onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(modifier = Modifier.statusBarsPadding(), onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
             content()
         }
@@ -93,6 +94,7 @@ fun WeekPickerSheet(store: ScheduleStore, onDismiss: () -> Unit) {
     val colors = LocalScheduleColors.current
     val current = store.weekOptions().firstOrNull { store.isCurrentWeek(it.value) }?.value
     ModalBottomSheet(
+        modifier = Modifier.statusBarsPadding(),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         dragHandle = {

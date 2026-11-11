@@ -1,5 +1,6 @@
 package cn.lizmt.cpuweb.schedule
 
+import androidx.compose.foundation.layout.statusBarsPadding
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,7 +46,7 @@ internal fun formatBytes(bytes: Long): String = when {
 @Composable
 internal fun AppUpdateSheet(activity: MainActivity, onDismiss: () -> Unit) {
     val updates = activity.updates
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(modifier = Modifier.statusBarsPadding(), onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),

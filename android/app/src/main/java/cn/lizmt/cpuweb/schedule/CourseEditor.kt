@@ -1,5 +1,6 @@
 package cn.lizmt.cpuweb.schedule
 
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -348,6 +349,7 @@ fun CourseEditorSheet(model: CourseEditorModel, onDismiss: () -> Unit) {
         )
     }
     androidx.compose.material3.ModalBottomSheet(
+        modifier = Modifier.statusBarsPadding(),
         onDismissRequest = onDismiss,
         // A drag or scrim tap cannot close the sheet mid-save; Back still can.
         sheetState = rememberModalBottomSheetState(

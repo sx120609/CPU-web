@@ -524,7 +524,7 @@ private fun QuickEntrySheet(activity: MainActivity, onDismiss: () -> Unit, onOpe
         add(QuickEntry(Icons.Rounded.ShoppingBag, "二手交流", "/market", ShellTab.Home))
         add(QuickEntry(Icons.Rounded.AutoAwesome, "拾间AI", "/search", ShellTab.Home))
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(modifier = Modifier.statusBarsPadding(), onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp).padding(bottom = 24.dp)) {
             Text("快捷入口", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
