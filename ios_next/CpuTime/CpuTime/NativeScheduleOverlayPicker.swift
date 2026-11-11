@@ -27,7 +27,7 @@ struct NativeScheduleOverlayPicker: View {
                 Section {
                     explanation
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 4, trailing: 4))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 6, trailing: 16))
                 }
 
                 Section("情侣") {
@@ -100,7 +100,7 @@ struct NativeScheduleOverlayPicker: View {
             Text("选一个人的课表，和你的课并排显示：一起上课、谁有空，一眼就能看出来。别的学校的同学也可以，课会按实际上课时间对齐。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
