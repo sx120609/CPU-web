@@ -504,6 +504,12 @@ private fun OverlayColumn(
                             occurrenceTag(block)?.let { ScheduleCardTag(it, Color(tone.text)) }
                             Text(block.course.name, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium, color = Color(tone.text),
                                 textAlign = TextAlign.Center, maxLines = if (span == 1) 2 else 5, overflow = TextOverflow.Ellipsis)
+                            // The classroom, like the other person's column and every other style: a short card keeps only the name.
+                            ScheduleStyleTime.location(block.course.location)?.takeIf { tileHeight >= 56.dp }?.let {
+                                Text("@$it", fontSize = 9.sp, lineHeight = 11.sp, fontWeight = FontWeight.SemiBold,
+                                    color = Color(tone.text).copy(alpha = 0.85f), textAlign = TextAlign.Center, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                            }
                         }
                     }
                 } else {
