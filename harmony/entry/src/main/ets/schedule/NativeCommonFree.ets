@@ -49,11 +49,13 @@ export struct NativeCommonFree {
   }
 
   build() {
+    Column() {
+    // The title stays put: the sheet's close button floats over it, not over the list scrolling by.
+    Row() {
+      Text('找共同空闲').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
+    }.width('100%').padding({ left: 16, right: 64, top: 24, bottom: 6 })
     Scroll() {
       Column({ space: 18 }) {
-        Row() {
-          Text('找共同空闲').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
-        }.width('100%')
         this.title('和谁比', this.otherCount() === 0 ? '只看自己的空闲' : `共 ${this.otherCount() + 1} 人`)
         Scroll() {
           Row({ space: 10 }) {
@@ -101,8 +103,9 @@ export struct NativeCommonFree {
         }
         Text('比较的是各自的课表（含停课、调课和调休），不包括日程等个人安排。').fontSize(12)
           .fontColor($r('app.color.app_text_tertiary')).width('100%')
-      }.width('100%').padding({ left: 16, right: 16, top: 24, bottom: 40 })
-    }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top).backgroundColor($r('app.color.app_surface'))
+      }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 40 })
+    }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
+    }.width('100%').height('100%').backgroundColor($r('app.color.app_surface'))
   }
 
   @Builder
@@ -157,8 +160,8 @@ export struct NativeCommonFree {
       Row({ space: 8 }) {
         Text(occurrenceDateText(day.date)).fontSize(16).fontWeight(600).fontColor($r('app.color.app_text_primary'))
         if (this.relative(day.date)) {
-          Text(this.relative(day.date)).fontSize(11).fontWeight(600).fontColor('#0F766E').padding({ left: 7, right: 7, top: 2, bottom: 2 })
-            .borderRadius(9).backgroundColor('#1F0F766E')
+          Text(this.relative(day.date)).fontSize(11).fontWeight(600).fontColor($r('app.color.app_accent')).padding({ left: 7, right: 7, top: 2, bottom: 2 })
+            .borderRadius(9).backgroundColor($r('app.color.app_accent_surface'))
         }
         Blank()
         Text(`${day.windows.length} 段`).fontSize(12).fontColor($r('app.color.app_text_secondary'))
@@ -173,7 +176,8 @@ export struct NativeCommonFree {
             Text(commonFreeDuration(window.end - window.start)).fontSize(12).fontColor($r('app.color.app_text_secondary'))
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           if (this.onAgenda) {
-            Button('建日程').type(ButtonType.Capsule).height(30).fontSize(13).fontColor('#0F766E').backgroundColor('#1A0F766E')
+            Button('建日程').type(ButtonType.Capsule).height(30).fontSize(13).fontColor($r('app.color.app_accent'))
+              .backgroundColor($r('app.color.app_accent_surface'))
               .onClick(() => {
                 const date = window.date;
                 const start = commonFreeClock(window.start);

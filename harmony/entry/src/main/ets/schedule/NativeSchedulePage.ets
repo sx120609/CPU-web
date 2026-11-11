@@ -607,10 +607,12 @@ export struct NativeSchedulePage {
 
   @Builder
   private scheduleSheet() {
-    Scroll() {
+    // 更多 keeps its title still and scrolls only the list, so the sheet's close button never sits on a row.
     if (this.toolsVisible) {
       this.toolsSheet()
-    } else if (this.occurrence.visible) {
+    } else {
+    Scroll() {
+    if (this.occurrence.visible) {
       NativeOccurrenceEditor({ model: this.occurrence, dark: this.store.dark })
     } else if (this.store.weekPickerVisible) {
       Column({ space: 16 }) {
@@ -632,6 +634,7 @@ export struct NativeSchedulePage {
     } else this.courseQuickLook()
     }.width('100%').constraintSize({ maxHeight: Math.max(260, this.pageHeight - 60) })
       .scrollBar(BarState.Off).backgroundColor(this.surfaceColor())
+    }
   }
 
   private textColor(): string { return scheduleText(this.store.dark); }
@@ -804,8 +807,11 @@ export struct NativeSchedulePage {
   // NapTable's 更多: four quick actions, then 日历与日程, 一起看 and 外观与设置.
   @Builder
   private toolsSheet() {
+    Column() {
+    Text('更多').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.textColor()).width('100%')
+      .padding({ left: 16, right: 64, top: 24, bottom: 14 })
+    Scroll() {
     Column({ space: 16 }) {
-      Text('更多').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.textColor()).width('100%')
       Row({ space: 8 }) {
         this.toolTile('刷新', $r('sys.symbol.arrow_clockwise'), '#0F766E', 'tools-refresh', () => this.store.load(true))
         this.toolTile('添加课程', $r('sys.symbol.plus'), '#2563EB', 'tools-course', () => this.onTools())
@@ -837,7 +843,10 @@ export struct NativeSchedulePage {
           () => this.onWidgets())
         this.toolRow('应用外观', '跟随系统、浅色或深色', $r('sys.symbol.sun_max'), '#CA8A04', 'tools-appearance', () => this.onAppearance())
       }.width('100%').borderRadius(16).backgroundColor(this.softSurfaceColor()).clip(true)
-    }.width('100%').padding({ left: 16, right: 16, top: 24, bottom: 28 }).backgroundColor(this.surfaceColor())
+    }.width('100%').padding({ left: 16, right: 16, top: 2, bottom: 28 })
+    }.width('100%').scrollBar(BarState.Off).align(Alignment.Top)
+      .constraintSize({ maxHeight: Math.max(200, this.pageHeight - 130) })
+    }.width('100%').backgroundColor(this.surfaceColor())
   }
 
   @Builder
@@ -940,8 +949,10 @@ export struct NativeSchedulePage {
     this.detailCustom = block.course.custom === true || !!block.course.customId;
     this.detailOrphaned = block.course.orphaned === true;
     // "周三 · 第 5–6 节 · 13:30–15:10"
+    // Each part stays on one line (no break inside 「第 9–10 节」 or 「16:00–17:45」); lines wrap between parts.
     this.detailSchedule = [scheduleWeekday(shownDay), scheduleSlotText(block.startSlot, block.endSlot),
-      this.timeRange(block)].filter((value: string) => !!value).join(' · ');
+      this.timeRange(block)].filter((value: string) => !!value)
+      .map((value: string) => value.replace(/ /g, '\u00A0').replace(/[–-]/g, '\u2060–\u2060')).join(' · ');
     this.store.detailVisible = true;
   }
 
