@@ -16,6 +16,8 @@ import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiReply, Share
 import { CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
 import { NativeCommonFree } from '../schedule/NativeCommonFree';
+import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
+import display from '@ohos.display';
 import { findScheduleOverlap, PlacedCourseBlock, placeScheduleBlocks, scheduleOverlapKey, scheduleOverlapText } from '../schedule/SchedulePlacement';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
 import { DORM_SCHEDULE_PAGE, dormOfferRequest, dormPagePath } from '../schedule/ScheduleDorm';
@@ -118,6 +120,8 @@ struct Index {
   @State private overlayPickerVisible: boolean = false;
   // 找共同空闲.
   @State private commonFreeVisible: boolean = false;
+  // 调整范围 of the light or dark background ('' while closed).
+  @State private cropTarget: string = '';
   @State private sharingModel: NativeScheduleSharingModel = new NativeScheduleSharingModel();
   @State private coupleModel: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
   // 共享课表是别人的课表，不叠情侣课表：给它一个始终未绑定的。
@@ -280,6 +284,9 @@ struct Index {
       void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
         this.scheduleStore.palette = String(await prefs.get('palette', 'color-glass'));
         this.scheduleStore.backgroundPath = String(await prefs.get('background', ''));
+        this.scheduleStore.backgroundDarkPath = String(await prefs.get('backgroundDark', ''));
+        this.scheduleStore.backgroundCrop = String(await prefs.get('crop', ''));
+        this.scheduleStore.backgroundDarkCrop = String(await prefs.get('cropDark', ''));
         this.scheduleStore.backgroundOpacity = Number(await prefs.get('opacity', 0.18));
         this.scheduleStore.visualStyle = normalizeScheduleStyle(String(await prefs.get('style', 'classic')));
         // 周六、周日两个开关都从原来的「显示周末」起步。
@@ -1018,8 +1025,7 @@ struct Index {
     store.palette = this.scheduleStore.palette;
     store.visualStyle = this.scheduleStore.visualStyle;
     store.copyDisplay(this.scheduleStore);
-    store.backgroundPath = this.scheduleStore.backgroundPath;
-    store.backgroundOpacity = this.scheduleStore.backgroundOpacity;
+    store.copyBackground(this.scheduleStore);
     store.attach((request: NativeScheduleRequest) => {
       if (request.id) store.acceptResult(request.id, snapshot);
     }, () => undefined);
@@ -1764,6 +1770,8 @@ struct Index {
     }
     .width('100%')
     .height('100%')
+    .bindContentCover(this.cropTarget !== '', this.backgroundCropCover(), { modalTransition: ModalTransition.DEFAULT,
+      onDisappear: () => { if (this.cropTarget) this.finishBackgroundCrop(undefined); } })
     .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible || this.sharingModel.visible
       || this.coupleModel.sheetVisible || this.agendaEditor.visible || this.overlayPickerVisible || this.commonFreeVisible,
       this.nativePanelSheet(), {
@@ -2009,21 +2017,80 @@ struct Index {
         }.width('100%')
         Column({ space: 12 }) {
           Text('背景图片').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
-          Button('从相册选择').type(ButtonType.Normal).height(48).width('100%').borderRadius(14).fontSize(14)
-            .fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_control'))
-            .onClick(() => { void this.chooseScheduleBackground(); })
+          Column() {
+            this.backgroundRow('浅色背景', false)
+            Divider().color($r('app.color.app_divider')).margin({ left: 14 })
+            this.backgroundRow('深色背景', true)
+          }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
+          Text('深色背景不设时，深色模式也用浅色背景。照片只保存在本机。').fontSize(12)
+            .fontColor($r('app.color.app_text_tertiary')).width('100%')
           if (this.scheduleStore.backgroundPath) {
             Text('背景可见度').fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
             Slider({ value: this.scheduleStore.backgroundOpacity * 100, min: 5, max: 35, step: 1 })
               .selectedColor($r('app.color.app_accent'))
               .onChange((value: number) => { this.scheduleStore.backgroundOpacity = value / 100; this.saveScheduleStyle(); })
-            Button('移除背景图片').height(44).width('100%').fontSize(13)
-              .fontColor($r('app.color.app_text_secondary')).backgroundColor(Color.Transparent)
-              .onClick(() => this.removeScheduleBackground())
           }
         }.width('100%')
       }.width('100%').padding({ left: 20, right: 20, top: 32, bottom: 40 })
     }.height('100%').width('100%').scrollBar(BarState.Off).backgroundColor($r('app.color.app_surface'))
+  }
+
+  // One appearance's photo: choose, frame (调整范围) or remove. The dark one needs a light one first.
+  @Builder
+  private backgroundRow(title: string, dark: boolean) {
+    Row({ space: 8 }) {
+      Column({ space: 2 }) {
+        Text(title).fontSize(15).fontColor($r('app.color.app_text_primary')).width('100%')
+        Text((dark ? this.scheduleStore.backgroundDarkPath : this.scheduleStore.backgroundPath)
+          ? ((dark ? this.scheduleStore.backgroundDarkCrop : this.scheduleStore.backgroundCrop) ? '已设置 · 自定范围' : '已设置 · 铺满屏幕')
+          : (dark ? '用浅色背景' : '未设置')).fontSize(12).fontColor($r('app.color.app_text_secondary')).width('100%')
+      }.layoutWeight(1)
+      if (dark ? this.scheduleStore.backgroundDarkPath : this.scheduleStore.backgroundPath) {
+        Text('调整范围').fontSize(13).fontColor($r('app.color.app_accent')).padding(6).id(dark ? 'background-crop-dark' : 'background-crop-light')
+          .onClick(() => this.openBackgroundCrop(dark))
+        Text('移除').fontSize(13).fontColor('#B42318').padding(6)
+          .onClick(() => this.removeScheduleBackground(dark))
+      }
+      Text('选择').fontSize(13).fontWeight(600).fontColor($r('app.color.app_accent')).padding(6)
+        .enabled(!dark || !!this.scheduleStore.backgroundPath).opacity(!dark || this.scheduleStore.backgroundPath ? 1 : 0.4)
+        .id(dark ? 'background-choose-dark' : 'background-choose-light')
+        .onClick(() => { void this.chooseScheduleBackground(dark); })
+    }.width('100%').padding({ left: 14, right: 8, top: 10, bottom: 10 })
+  }
+
+  // 调整范围 covers the screen; the style sheet steps aside while it is open and comes back after.
+  private openBackgroundCrop(dark: boolean): void {
+    this.scheduleStyleVisible = false;
+    setTimeout(() => this.cropTarget = dark ? 'dark' : 'light', 350);
+  }
+
+  private finishBackgroundCrop(crop: string | undefined): void {
+    if (crop !== undefined) {
+      if (this.cropTarget === 'dark') this.scheduleStore.backgroundDarkCrop = crop;
+      else this.scheduleStore.backgroundCrop = crop;
+      this.saveScheduleStyle();
+    }
+    this.cropTarget = '';
+    setTimeout(() => this.scheduleStyleVisible = true, 350);
+  }
+
+  @Builder
+  private backgroundCropCover() {
+    NativeBackgroundCrop({ path: this.cropTarget === 'dark' ? this.scheduleStore.backgroundDarkPath : this.scheduleStore.backgroundPath,
+      crop: this.cropTarget === 'dark' ? this.scheduleStore.backgroundDarkCrop : this.scheduleStore.backgroundCrop,
+      aspect: this.screenAspect(),
+      onDone: (crop: string) => this.finishBackgroundCrop(crop), onCancel: () => this.finishBackgroundCrop(undefined) })
+  }
+
+  // Width over height of the timetable under the status bar and above the tab bar.
+  private screenAspect(): number {
+    try {
+      const shown = display.getDefaultDisplaySync();
+      const height = shown.height - this.systemTopInsetPx - this.systemBottomInsetPx;
+      return height > 0 ? shown.width / height : 0.46;
+    } catch (_) {
+      return 0.46;
+    }
   }
 
   private saveScheduleStyle(): void {
@@ -2032,6 +2099,9 @@ struct Index {
     void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
       await prefs.put('palette', this.scheduleStore.palette);
       await prefs.put('background', this.scheduleStore.backgroundPath);
+      await prefs.put('backgroundDark', this.scheduleStore.backgroundDarkPath);
+      await prefs.put('crop', this.scheduleStore.backgroundCrop);
+      await prefs.put('cropDark', this.scheduleStore.backgroundDarkCrop);
       await prefs.put('opacity', this.scheduleStore.backgroundOpacity);
       await prefs.put('style', this.scheduleStore.visualStyle);
       await prefs.put('saturday', this.scheduleStore.showSaturday);
@@ -2049,10 +2119,18 @@ struct Index {
     }).catch(() => promptAction.showToast({ message: '样式保存失败，请重试' }));
   }
 
-  private removeScheduleBackground(): void {
-    const previous = this.scheduleStore.backgroundPath;
-    this.scheduleStore.backgroundPath = '';
+  // Removing the light photo takes the dark one along: a dark photo needs a light one to fall back on.
+  private removeScheduleBackground(dark: boolean = false): void {
+    const gone: string[] = dark ? [this.scheduleStore.backgroundDarkPath]
+      : [this.scheduleStore.backgroundPath, this.scheduleStore.backgroundDarkPath];
+    if (!dark) { this.scheduleStore.backgroundPath = ''; this.scheduleStore.backgroundCrop = ''; }
+    this.scheduleStore.backgroundDarkPath = '';
+    this.scheduleStore.backgroundDarkCrop = '';
     this.saveScheduleStyle();
+    gone.forEach((previous: string) => this.deleteBackgroundFile(previous));
+  }
+
+  private deleteBackgroundFile(previous: string): void {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
     const prefix = `file://${context.filesDir}/schedule-background-`;
@@ -2061,7 +2139,7 @@ struct Index {
     }
   }
 
-  private async chooseScheduleBackground(): Promise<void> {
+  private async chooseScheduleBackground(dark: boolean = false): Promise<void> {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
     try {
@@ -2077,12 +2155,13 @@ struct Index {
         if (fs.statSync(source.fd).size > 15 * 1024 * 1024) throw new Error('请选择小于 15 MB 的背景图片');
         fs.copyFileSync(source.fd, target);
       } finally { fs.closeSync(source); }
-      const previous = this.scheduleStore.backgroundPath;
-      this.scheduleStore.backgroundPath = `file://${target}`;
+      const previous = dark ? this.scheduleStore.backgroundDarkPath : this.scheduleStore.backgroundPath;
+      if (dark) { this.scheduleStore.backgroundDarkPath = `file://${target}`; this.scheduleStore.backgroundDarkCrop = ''; }
+      else { this.scheduleStore.backgroundPath = `file://${target}`; this.scheduleStore.backgroundCrop = ''; }
       this.saveScheduleStyle();
-      if (previous.startsWith(`file://${context.filesDir}/schedule-background-`)) {
-        try { fs.unlinkSync(previous.substring(7)); } catch (_) {}
-      }
+      this.deleteBackgroundFile(previous);
+      // Straight on to framing the new photo.
+      this.openBackgroundCrop(dark);
     } catch (error) {
       promptAction.showToast({ message: error instanceof Error ? error.message : '图片读取失败' });
     }

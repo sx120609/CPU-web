@@ -10,6 +10,8 @@ import { scheduleAlpha, scheduleCourseAccent, scheduleCourseFill, scheduleMetaTe
 import { calendarDayBadge, calendarDayLabel, ChineseCalendar, OffDay, publishedHolidaysFromOffDays } from '../common/ChineseCalendar';
 import { systemLunarDate } from '../common/SystemLunarCalendar';
 import { NativeScheduleCoupleModel } from './NativeScheduleCouple';
+import { agendaOn, NativeAgendaOccurrence } from './NativeAgenda';
+import { occurrenceDateText } from './ScheduleOccurrences';
 
 const WEEKDAY_LABELS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 const HOLIDAY_RED: string = '#E11D48';
@@ -27,6 +29,8 @@ export struct ScheduleMonthView {
   // The couple timetable; a read-only shared timetable gets one that is not bound.
   @ObjectLink couple: NativeScheduleCoupleModel;
   onCourse: (block: NativeCourseBlock, shownDay: number) => void = () => undefined;
+  // A cancelled meeting in 当天安排 asks to be put back, like on the grid.
+  onCancelled: (block: NativeCourseBlock) => void = () => undefined;
   private lunar?: ChineseCalendar;
   private lunarKey: string = '';
   private cachedKey: string = '';
@@ -37,16 +41,15 @@ export struct ScheduleMonthView {
   build() {
     Scroll() {
       Column() {
-        // The pan starts after 3 vp, sooner than the page's own scrolling, so a drag that begins
-        // on the calendar turns the month instead of scrolling or pulling to refresh.
+        // A sideways drag turns the month (NapTable); the page's own scrolling stays vertical.
         Column() {
           if (this.store.visualStyle === 'classic') this.classicGrid()
           else this.styledGrid()
         }.width('100%')
-          .translate({ y: this.pull }).opacity(this.pullOpacity())
-          .gesture(PanGesture({ direction: PanDirection.Vertical, distance: 3 })
-            .onActionUpdate((event: GestureEvent) => { this.pull = event.offsetY * 0.55; })
-            .onActionEnd((event: GestureEvent) => this.finishPull(event.offsetY))
+          .translate({ x: this.pull }).opacity(this.pullOpacity())
+          .gesture(PanGesture({ direction: PanDirection.Horizontal, distance: 8 })
+            .onActionUpdate((event: GestureEvent) => { this.pull = event.offsetX * 0.55; })
+            .onActionEnd((event: GestureEvent) => this.finishPull(event.offsetX))
             .onActionCancel(() => this.finishPull(0)))
           .backgroundColor(this.store.visualStyle === 'classic' ? Color.Transparent : this.panelColor())
           .borderRadius(this.store.visualStyle === 'minimal' ? 20 : this.store.visualStyle === 'grid' ? 12 : 0)
@@ -55,9 +58,94 @@ export struct ScheduleMonthView {
             color: this.store.visualStyle === 'paper' ? scheduleAlpha(this.ink(), 0.6)
               : this.store.visualStyle === 'table' ? this.rule() : scheduleStyleCellBorder(this.store.dark),
             radius: this.store.visualStyle === 'minimal' ? 20 : this.store.visualStyle === 'grid' ? 12 : 0 })
+        this.dayPanel()
       }.width('100%').padding({ top: 4, bottom: 16 })
     }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
   }
+
+  // ---- 当天安排: the chosen day's classes in time order, then its 日程 ----
+
+  @Builder
+  private dayPanel() {
+    Column({ space: 10 }) {
+      Row({ space: 8 }) {
+        Text('当天安排').fontSize(13).fontWeight(600).fontColor(this.metaColor())
+        Text(occurrenceDateText(this.panelDate())).fontSize(15).fontWeight(600).fontColor(this.panelInk()).layoutWeight(1)
+        if (this.store.dateSlot(this.panelDate())) {
+          Text('日视图').fontSize(13).fontWeight(600).fontColor(this.themeText()).padding({ left: 10, right: 10, top: 4, bottom: 4 })
+            .borderRadius(12).backgroundColor(scheduleAlpha(this.themeText(), 0.12))
+            .id('schedule-month-open-day').onClick(() => { this.store.openDate(this.panelDate()); })
+        }
+      }.width('100%')
+      if (!this.panelBlocks().length && !this.panelAgenda().length) {
+        Text(this.store.adjustmentOnDate(this.panelDate())?.kind === 'off' ? '放假，没有课' : '这天没有课').fontSize(13)
+          .fontColor(this.metaColor()).width('100%')
+      }
+      ForEach(this.panelBlocks(), (block: NativeCourseBlock) => {
+        Row({ space: 10 }) {
+          Column().width(3).height(32).borderRadius(2).backgroundColor(this.lineInk(block.course.name))
+          Column({ space: 2 }) {
+            Text(block.course.name).fontSize(15).fontWeight(600).fontColor(this.panelInk()).maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+              .decoration({ type: block.cancelled ? TextDecorationType.LineThrough : TextDecorationType.None })
+            Text([`${this.store.blockStart(block)}–${this.store.blockEnd(block)}`, `第 ${block.startSlot}–${block.endSlot} 节`,
+              block.course.location ?? '', block.cancelled ? '已停课' : block.course.occurrenceFrom ? '调课' : '']
+              .filter((value: string) => !!value).join(' · ')).fontSize(12).fontColor(this.metaColor()).maxLines(1).width('100%')
+          }.layoutWeight(1)
+        }.width('100%').opacity(block.cancelled ? 0.55 : 1)
+          .accessibilityGroup(true).accessibilityText(block.course.name)
+          .onClick(() => {
+            if (block.cancelled) this.onCancelled(block);
+            else this.onCourse(block, this.store.dateSlot(this.panelDate())?.day ?? block.day);
+          })
+      }, (block: NativeCourseBlock) => `${block.startSlot}-${block.endSlot}-${block.course.name}-${block.cancelled ? 1 : 0}`)
+      ForEach(this.panelAgenda(), (entry: NativeAgendaOccurrence) => {
+        Row({ space: 10 }) {
+          Stack() {
+            if (entry.done) Text('✓').fontSize(10).fontColor('#FFFFFF')
+          }.width(18).height(18).borderRadius(9)
+            .backgroundColor(entry.done ? scheduleThemeFill(this.store.palette) : Color.Transparent)
+            .border({ width: entry.done ? 0 : 1.5, color: this.metaColor(), radius: 9 })
+            .responseRegion({ x: -10, y: -10, width: 38, height: 38 })
+            .accessibilityText(entry.done ? '标为未完成' : '标为完成')
+            .onClick(() => this.store.agendaToggle?.(entry.item.id, entry.date, !entry.done))
+          Text(entry.item.title).fontSize(14).fontColor(this.panelInk()).layoutWeight(1).maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .decoration({ type: entry.done ? TextDecorationType.LineThrough : TextDecorationType.None })
+          Text(entry.item.start ? (entry.item.end ? `${entry.item.start}–${entry.item.end}` : entry.item.start) : '全天')
+            .fontSize(12).fontColor(this.metaColor())
+        }.width('100%').opacity(entry.done ? 0.55 : 1)
+          .onClick(() => this.store.agendaOpen?.(entry.item.id, entry.date))
+      }, (entry: NativeAgendaOccurrence) => entry.item.id + ':' + entry.date + ':' + (entry.done ? 1 : 0))
+      if (this.store.agendaAvailable && this.store.agendaNew && !this.store.readOnly) {
+        Text('＋ 添加日程').fontSize(14).fontWeight(600).fontColor(this.themeText()).width('100%')
+          .id('schedule-month-add-agenda').onClick(() => this.store.agendaNew?.(this.panelDate(), ''))
+      }
+    }.width('100%').padding(14).margin({ top: 12 }).borderRadius(16)
+      .backgroundColor(this.store.visualStyle === 'classic' ? scheduleSurface(this.store.dark, !!this.store.backgroundPath) : this.panelColor())
+  }
+
+  // The day 当天安排 shows: the one picked, else today when it is in this month, else the month's first.
+  private panelDate(): string {
+    const anchor = (this.store.monthAnchor || this.today()).substring(0, 7);
+    if (this.store.selectedDate && this.store.selectedDate.substring(0, 7) === anchor) return this.store.selectedDate;
+    return this.today().substring(0, 7) === anchor ? this.today() : anchor + '-01';
+  }
+
+  private panelBlocks(): NativeCourseBlock[] {
+    const date = this.panelDate();
+    const slot = this.store.dateSlot(date);
+    const cancelled = slot ? this.store.cancelledOnDate(date, slot.day, this.store.adjustmentOnDate(date)?.kind === 'swap'
+      ? (this.store.dateSlot(this.store.adjustmentOnDate(date)?.source ?? '')?.day ?? slot.day) : slot.day) : [];
+    return this.store.blocksOnDate(date).concat(cancelled)
+      .sort((left: NativeCourseBlock, right: NativeCourseBlock) => left.startSlot - right.startSlot);
+  }
+
+  private panelAgenda(): NativeAgendaOccurrence[] {
+    return this.store.agendaItems.length ? agendaOn(this.store.agendaItems, this.panelDate()) : [];
+  }
+
+  private panelInk(): string { return this.store.visualStyle === 'classic' ? this.text() : this.ink(); }
 
   // ---- Classic: the teaching week in a gutter, on a glass panel ----
 
@@ -172,11 +260,16 @@ export struct ScheduleMonthView {
       }.width('100%').height(this.couple.showing() ? 106 : 90).justifyContent(FlexAlign.Start).alignItems(HorizontalAlign.Center)
         .padding({ top: 3, left: 1, right: 1 })
       this.badge(day, 12)
+      // Open 日程 that day: an orange dot.
+      if (this.store.agendaItems.length && agendaOn(this.store.agendaItems, day.date).some((entry: NativeAgendaOccurrence) => !entry.done)) {
+        Circle().width(5).height(5).fill('#EA580C').position({ x: 3, y: 3 }).accessibilityLevel('no')
+      }
     }.width('100%').opacity(day.inMonth ? 1 : 0.45)
+      .border({ width: day.date === this.store.selectedDate && day.date !== this.today() ? 1.5 : 0, color: this.themeText(), radius: 8 })
       .accessibilityGroup(true).accessibilityText(this.spokenDay(day))
       .id(day.date === this.today() ? 'schedule-month-today' : '')
-      // A day of the term opens as that day; any other one is only picked.
-      .onClick(() => { if (!this.store.openDate(day.date)) this.store.selectDate(day.date); })
+      // A tap picks the day for 当天安排 below; 日视图 there opens it.
+      .onClick(() => this.store.selectDate(day.date))
   }
 
   // 拖过一段距离就换月，新的一页从拖来的那一边滑进来；不够就弹回去。
@@ -262,7 +355,8 @@ export struct ScheduleMonthView {
 
   private dayKey(day: ScheduleMonthDay): string {
     return [day.date, day.inMonth ? 1 : 0, day.week, day.subtitle, day.adjustmentKind,
-      day.courses.map((block: NativeCourseBlock) => block.course.name).join('/'), this.partnerCount(day), this.couple.revision].join('|');
+      day.courses.map((block: NativeCourseBlock) => block.course.name).join('/'), this.partnerCount(day), this.couple.revision,
+      day.date === this.store.selectedDate ? 1 : 0, JSON.stringify(agendaOn(this.store.agendaItems, day.date).map((entry: NativeAgendaOccurrence) => entry.done))].join('|');
   }
 
   private spokenDay(day: ScheduleMonthDay): string {

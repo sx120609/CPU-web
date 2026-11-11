@@ -272,7 +272,12 @@ export class NativeScheduleStore {
   weekPickerVisible: boolean = false;
   palette: string = 'color-glass';
   dark: boolean = false;
+  // The background in light appearance; the dark one, when set, replaces it in dark appearance.
   backgroundPath: string = '';
+  backgroundDarkPath: string = '';
+  // The part of each photo shown, "x,y,w,h" in fractions of the image; empty fills the screen centred.
+  backgroundCrop: string = '';
+  backgroundDarkCrop: string = '';
   backgroundOpacity: number = 0.18;
   viewMode: string = 'week';
   errorMessage: string = '';
@@ -341,6 +346,19 @@ export class NativeScheduleStore {
   private priorityPersistence?: (raw: string) => void;
 
   attachPersistence(writer: (raw: string) => void): void { this.persistence = writer; }
+
+  /** The photo behind the timetable in the current appearance: the dark one in dark mode when there is one. */
+  shownBackground(): string { return this.dark && this.backgroundDarkPath ? this.backgroundDarkPath : this.backgroundPath; }
+
+  shownBackgroundCrop(): string { return this.dark && this.backgroundDarkPath ? this.backgroundDarkCrop : this.backgroundCrop; }
+
+  copyBackground(from: NativeScheduleStore): void {
+    this.backgroundPath = from.backgroundPath;
+    this.backgroundDarkPath = from.backgroundDarkPath;
+    this.backgroundCrop = from.backgroundCrop;
+    this.backgroundDarkCrop = from.backgroundDarkCrop;
+    this.backgroundOpacity = from.backgroundOpacity;
+  }
 
   attachSnapshotListener(listener: NativeScheduleSnapshotListener): void { this.snapshotListener = listener; }
 

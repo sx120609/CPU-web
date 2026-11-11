@@ -1,6 +1,6 @@
 // Install a deterministic, offline UI harness in an isolated copy of harmony/.
 // Never use a signed/release package or a real user account for visual acceptance.
-import { readFileSync, writeFileSync, realpathSync } from 'node:fs';
+import { copyFileSync, readFileSync, writeFileSync, realpathSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -144,6 +144,8 @@ import { librarySave, RawShareDocument, readSharedSchedule, SharedSchedule, Shar
   sharePublishBody } from '../schedule/ScheduleSharing';
 import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
 import { NativeCommonFree } from '../schedule/NativeCommonFree';
+import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
+import fs from '@ohos.file.fs';
 import { CoupleApiData, CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { normalizeScheduleStyle, scheduleClockMinutes, SCHEDULE_STYLES } from '../schedule/ScheduleStyle';
 import { NativeTabBar } from '../common/NativeTabBar';
@@ -196,6 +198,11 @@ struct ScheduleAcceptance {
   @StorageProp('qaOverlay') private overlaySeed: string = '';
   @State private overlayPicker: boolean = false;
   @State private commonFree: boolean = false;
+  // \`--ps background 1\` puts a photo behind the timetable (light; \`dark\` too with backgroundDark 1),
+  // \`--ps crop x,y,w,h\` frames it, \`--ps panel crop\` opens 调整范围.
+  @StorageProp('qaBackground') private backgroundSeed: string = '';
+  @StorageProp('qaCrop') private cropSeed: string = '';
+  @State private cropOpen: boolean = false;
   private occurrences: NativeOccurrenceChange[] = [];
   private published: boolean = false;
   @StorageProp('systemTopInsetPx') private topInset: number = 0;
@@ -307,6 +314,8 @@ struct ScheduleAcceptance {
     }
     if (this.panel === 'overlayPicker') setTimeout(() => this.overlayPicker = true, 600);
     if (this.panel === 'commonFree') setTimeout(() => this.commonFree = true, 600);
+    if (this.backgroundSeed) this.seedBackground();
+    if (this.panel === 'crop') setTimeout(() => this.cropOpen = true, 600);
     this.syncOptions();
   }
   private async coupleApi(request: CoupleApiRequest): Promise<CoupleApiReply> {
@@ -330,6 +339,20 @@ struct ScheduleAcceptance {
     if (data.partner && data.status === 'active') data.partner.color = this.coupleTheirs;
     const reply: CoupleApiReply = { ok: true, status: 200, data };
     return reply;
+  }
+  private seedBackground(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    try {
+      const target = context.filesDir + '/qa-background.jpg';
+      const bytes = context.resourceManager.getRawFileContentSync('qa-background.jpg');
+      const file = fs.openSync(target, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+      try { fs.writeSync(file.fd, bytes.buffer); } finally { fs.closeSync(file); }
+      this.store.backgroundPath = 'file://' + target;
+      this.store.backgroundCrop = this.cropSeed;
+      this.store.backgroundOpacity = 0.3;
+      if (this.backgroundSeed === 'dark') { this.store.backgroundDarkPath = 'file://' + target; this.store.backgroundDarkCrop = ''; }
+    } catch (_) {}
   }
   private attachAgenda(): void {
     const today = agendaDayNumber(agendaToday());
@@ -479,6 +502,11 @@ struct ScheduleAcceptance {
         .padding({ top: this.topPadding() })
       NativeTabBar({ selected: 2, dark: this.store.dark })
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
+      if (this.cropOpen) {
+        NativeBackgroundCrop({ path: this.store.backgroundPath, crop: this.store.backgroundCrop, aspect: 0.48,
+          onDone: (crop: string) => { this.store.backgroundCrop = crop; this.cropOpen = false; },
+          onCancel: () => this.cropOpen = false })
+      }
       if (this.sharedVisible) {
         Column() {
           NativeSchedulePage({ store: this.sharedStore, couple: this.noCouple, bottomClearance: nativeNavigationBottomInset(px2vp(this.bottomInset)) + 8,
@@ -513,8 +541,12 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaClean', String(want.parameters?.clean ?? 'false') === 'true');
     AppStorage.setOrCreate('qaOccurrences', String(want.parameters?.occurrences ?? ''));
     AppStorage.setOrCreate('qaOverlay', String(want.parameters?.overlay ?? ''));
+    AppStorage.setOrCreate('qaBackground', String(want.parameters?.background ?? ''));
+    AppStorage.setOrCreate('qaCrop', String(want.parameters?.crop ?? ''));
     const routedUrl =`);
 put('entry/src/main/ets/entryability/EntryAbility.ets', ability);
+// A photo for the background checks.
+copyFileSync(resolve(source, '../web/src/views/services/campus3d/cover.jpg'), resolve(target, 'entry/src/main/resources/rawfile/qa-background.jpg'));
 put('entry/src/main/resources/base/profile/main_pages.json', JSON.stringify({ src: ['pages/Index', 'pages/ScheduleAcceptance'] }, null, 2));
 const appPath = resolve(source, 'AppScope/app.json5');
 put('AppScope/app.json5', readFileSync(appPath, 'utf8').replace('"cn.lizmt.cpuweb"', '"cn.lizmt.cpuweb.scheduleqa"'));

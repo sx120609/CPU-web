@@ -15,6 +15,7 @@ import { COUPLE_ACCENT, NativeScheduleCoupleModel } from './NativeScheduleCouple
 import { couplePersonTone } from './ScheduleCouple';
 import { NativeOccurrenceEditor, NativeOccurrenceEditorModel } from './NativeOccurrenceEditor';
 import { ScheduleOverlayStrip } from './ScheduleOverlayStrip';
+import { backgroundCropRect } from './NativeBackgroundCrop';
 import { cancelledKeysOf, movedKeys, occurrenceDateText, occurrenceKeysOf, originalSlotsOf } from './ScheduleOccurrences';
 import { agendaMinutes, agendaOn, NativeAgendaOccurrence } from './NativeAgenda';
 import { promptAction } from '@kit.ArkUI';
@@ -123,8 +124,19 @@ export struct NativeSchedulePage {
       if (scheduleStyleCanvas(this.store.visualStyle, this.store.dark)) {
         Column().width('100%').height('100%').backgroundColor(scheduleStyleCanvas(this.store.visualStyle, this.store.dark))
       }
-      if (this.store.backgroundPath) {
-        Image(this.store.backgroundPath).width('100%').height('100%').objectFit(ImageFit.Cover).opacity(this.store.backgroundOpacity)
+      if (this.store.shownBackground()) {
+        if (backgroundCropRect(this.store.shownBackgroundCrop()).length === 4) {
+          // The framing chosen in 调整范围: that part of the photo stretched over the page.
+          Stack() {
+            Image(this.store.shownBackground()).objectFit(ImageFit.Fill)
+              .width(this.pageWidth / backgroundCropRect(this.store.shownBackgroundCrop())[2])
+              .height(this.pageHeight / backgroundCropRect(this.store.shownBackgroundCrop())[3])
+              .position({ x: -backgroundCropRect(this.store.shownBackgroundCrop())[0] * this.pageWidth / backgroundCropRect(this.store.shownBackgroundCrop())[2],
+                y: -backgroundCropRect(this.store.shownBackgroundCrop())[1] * this.pageHeight / backgroundCropRect(this.store.shownBackgroundCrop())[3] })
+          }.width('100%').height('100%').clip(true).opacity(this.store.backgroundOpacity)
+        } else {
+          Image(this.store.shownBackground()).width('100%').height('100%').objectFit(ImageFit.Cover).opacity(this.store.backgroundOpacity)
+        }
       }
       Column() {
         if (this.store.semesterOptions().length) {
@@ -138,7 +150,8 @@ export struct NativeSchedulePage {
         Refresh({ refreshing: this.pullRefreshing && this.store.status === 'loading' }) {
           if (this.store.viewMode === 'month' && this.store.weekOptions().length && this.store.result) {
             ScheduleMonthView({ store: this.store, couple: this.couple,
-              onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay, '', this.store.selectedDate) })
+              onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay, '', this.store.selectedDate),
+              onCancelled: (block: NativeCourseBlock) => this.askRestore(block) })
           } else if (this.store.viewMode === 'day' && this.store.weekOptions().length) {
             Column() {
               this.dayStrip()
