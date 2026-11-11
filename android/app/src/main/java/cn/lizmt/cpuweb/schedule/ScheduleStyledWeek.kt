@@ -546,7 +546,7 @@ internal fun StyledDayColumn(
             val showLocation = room / lanes >= 30.dp
             val tile = Modifier.offset(x = inset + room / lanes * block.lane, y = step * first + inset)
                 .width(tileWidth).height(tileHeight)
-                .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
+                .then(if (ghost) Modifier.alpha(0.5f) else Modifier.cancelledFade(block))
                 .then(if (!interactive) Modifier else if (ghost) Modifier.clickable { onOffWeek(block) } else Modifier.courseTap(block) { onCourse(block) })
                 .then(if (interactive) Modifier.semantics {
                     contentDescription = (if (ghost) "非本周，" else if (block.owner == CoupleOwner.Partner) "TA 的课，" else "") +

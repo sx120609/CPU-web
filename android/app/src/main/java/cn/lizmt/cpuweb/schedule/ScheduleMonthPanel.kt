@@ -104,7 +104,7 @@ internal fun MonthDayPanel(
             val start = block.course.customTime?.first ?: (if (partner) couple?.partnerStore ?: store else store).periodTime(block.startSlot).startTime
             val end = block.course.customTime?.second ?: (if (partner) couple?.partnerStore ?: store else store).periodTime(block.endSlot).endTime
             Row(
-                Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(RoundedCornerShape(12.dp))
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).cancelledFade(block).clip(RoundedCornerShape(12.dp))
                     .background(accent.copy(alpha = if (colors.dark) 0.14f else 0.07f))
                     .courseTap(block) { onCourse(block, weekValue ?: store.selectedWeek) }
                     .semantics { contentDescription = (if (partner) "TA 的课，" else "") + (occurrenceTag(block)?.let { "$it，" } ?: "") + courseAccessibility(block.block) }

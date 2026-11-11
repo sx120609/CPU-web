@@ -490,7 +490,7 @@ private fun OverlayColumn(
             val span = max(1, block.endSlot - block.startSlot + 1)
             val tileHeight = rowHeight * span + gap * (span - 1)
             val place = Modifier.offset(y = step * first).width(width).height(tileHeight)
-            Box(place.courseTap(block) { onCourse(block) }.semantics {
+            Box(place.cancelledFade(block).courseTap(block) { onCourse(block) }.semantics {
                 contentDescription = (if (hollow) layer.ownerTitle + "，" else "") + (occurrenceTag(block)?.let { "$it，" } ?: "") +
                     courseAccessibility(block.block) + if (more > 0) "，还有 $more 门课同时" else ""
             }) {

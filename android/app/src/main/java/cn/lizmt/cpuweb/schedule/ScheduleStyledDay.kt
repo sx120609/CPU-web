@@ -112,7 +112,7 @@ private fun spokenLabel(block: PlacedBlock, status: DayStatus, state: String?): 
 ).joinToString("，")
 
 private fun Modifier.courseAction(block: PlacedBlock, status: DayStatus, state: String?, onCourse: (PlacedBlock) -> Unit): Modifier =
-    courseTap(block) { onCourse(block) }.clearAndSetSemantics { contentDescription = spokenLabel(block, status, state) }
+    cancelledFade(block).courseTap(block) { onCourse(block) }.clearAndSetSemantics { contentDescription = spokenLabel(block, status, state) }
 
 /** Standard card height of the styled day views. */
 internal val StyledDayCardHeight = 108.dp

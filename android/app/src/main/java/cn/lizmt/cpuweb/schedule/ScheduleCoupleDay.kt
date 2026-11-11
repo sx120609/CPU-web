@@ -182,7 +182,7 @@ private fun CoupleDayTile(
     val end = block.course.customTime?.second ?: periods.firstOrNull { it.number == block.endSlot }?.endTime.orEmpty()
     val location = ScheduleStyleTime.location(course.location)
     Box(
-        modifier.clip(shape).background(fill).border(0.5.dp, edge.copy(alpha = 0.55f), shape)
+        modifier.cancelledFade(block).clip(shape).background(fill).border(0.5.dp, edge.copy(alpha = 0.55f), shape)
             // A bar of the person's colour down the leading edge.
             .drawBehind {
                 drawRoundRect(edge, topLeft = Offset(4.dp.toPx(), 6.dp.toPx()), size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height - 12.dp.toPx()),

@@ -82,15 +82,14 @@ import kotlinx.coroutines.launch
 internal val LocalCourseMenu = staticCompositionLocalOf<((PlacedBlock) -> Unit)?> { null }
 
 /**
- * A course card's tap and long press. A cancelled meeting is drawn faded in
- * its old place (see [OccurrenceRules.cancelledBlocks]).
+ * A course card's tap and long press. It does not fade a cancelled meeting:
+ * put [cancelledFade] ahead of the card's background so the whole card fades.
  */
 @OptIn(ExperimentalFoundationApi::class)
 internal fun Modifier.courseTap(block: PlacedBlock, onClick: () -> Unit): Modifier = composed {
     val menu = LocalCourseMenu.current
     val haptic = LocalHapticFeedback.current
-    val faded = if (block.block.cancelled != null) alpha(0.45f) else this
-    faded.combinedClickable(
+    combinedClickable(
         onClick = onClick,
         onLongClickLabel = if (menu != null) "更多操作" else null,
         onLongClick = menu?.let { open ->
@@ -101,6 +100,14 @@ internal fun Modifier.courseTap(block: PlacedBlock, onClick: () -> Unit): Modifi
         },
     )
 }
+
+/**
+ * A cancelled meeting is drawn faded in its old place (see
+ * [OccurrenceRules.cancelledBlocks]). Goes before the card's background, or
+ * only the text fades and the card keeps its full colour.
+ */
+internal fun Modifier.cancelledFade(block: PlacedBlock): Modifier =
+    if (block.block.cancelled != null) alpha(0.45f) else this
 
 /** The small label of a course card for a changed meeting: 已停课, or 调 for a moved one. */
 internal fun occurrenceTag(block: PlacedBlock): String? = when {
