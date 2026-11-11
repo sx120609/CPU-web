@@ -111,9 +111,9 @@ internal fun MonthDayPanel(
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.width(46.dp), horizontalAlignment = Alignment.End) {
-                    Text(start, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
-                    Text(end, fontSize = 12.sp, color = colors.secondary)
+                Column(Modifier.width(textWidth(46.dp)), horizontalAlignment = Alignment.End) {
+                    Text(start, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.text, maxLines = 1, softWrap = false)
+                    Text(end, fontSize = 12.sp, color = colors.secondary, maxLines = 1, softWrap = false)
                 }
                 Spacer(Modifier.width(10.dp))
                 androidx.compose.foundation.layout.Box(Modifier.width(4.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(accent))

@@ -226,7 +226,7 @@ internal fun AgendaDayStrip(date: String) {
                 Text(
                     if (!item.timed) "全天" else if (item.end.isNotEmpty()) "${item.start}–${item.end}" else item.start,
                     fontSize = 12.sp, lineHeight = 15.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = scope.themeText,
-                    modifier = Modifier.width(84.dp), maxLines = 1,
+                    modifier = Modifier.width(textWidth(84.dp)), maxLines = 1, softWrap = false,
                 )
                 run {
                     Box(

@@ -98,12 +98,17 @@ fun SettingsValueRow(title: String, trailing: @Composable () -> Unit) {
     }
 }
 
-/** Few choices side by side, the chosen one raised. */
+/**
+ * Few choices side by side, the chosen one raised. A label never wraps: with
+ * large text the row scrolls sideways instead of stacking 「3 小时」 a character
+ * a line.
+ */
 @Composable
 fun SettingsSegmented(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     val meta = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier.clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(2.dp),
+        Modifier.horizontalScroll(rememberScrollState())
+            .clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         options.forEach { (key, label) ->
@@ -111,6 +116,7 @@ fun SettingsSegmented(options: List<Pair<String, String>>, selected: String, onS
             Text(
                 label, fontSize = 13.sp, fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (chosen) MaterialTheme.colorScheme.primary else meta, textAlign = TextAlign.Center,
+                maxLines = 1, softWrap = false,
                 modifier = Modifier.clip(RoundedCornerShape(8.dp))
                     .background(if (chosen) MaterialTheme.colorScheme.surface else Color.Transparent)
                     .clickable { onSelect(key) }.semantics { this.selected = chosen }

@@ -234,7 +234,7 @@ private fun WeekTab(people: List<DormPerson>, meId: Int, today: String, dark: Bo
     }
     // Header: weekday and date, today picked out.
     Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-        Spacer(Modifier.width(34.dp))
+        Spacer(Modifier.width(textWidth(34.dp)))
         grid.dates.forEachIndexed { index, date ->
             val isToday = date == today
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -248,9 +248,9 @@ private fun WeekTab(people: List<DormPerson>, meId: Int, today: String, dark: Bo
     grid.rows.forEach { row ->
         if (row.breakBefore) Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth().padding(vertical = 1.5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.width(34.dp)) {
+            Column(Modifier.width(textWidth(34.dp))) {
                 Text("${row.period.number}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text(row.period.startTime, fontSize = 9.sp, lineHeight = 10.sp, color = meta)
+                Text(row.period.startTime, fontSize = 9.sp, lineHeight = 10.sp, color = meta, maxLines = 1, softWrap = false)
             }
             row.cells.forEach { cell ->
                 val unknown = cell.known == 0
@@ -376,7 +376,7 @@ private fun MorningTab(people: List<DormPerson>, days: List<DormMorningDay>, tod
     }
     days.forEach { day ->
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
-            Column(Modifier.width(64.dp)) {
+            Column(Modifier.width(textWidth(64.dp))) {
                 Text(DormRules.dayName(day.date, today), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text(day.date.substring(5).replace('-', '/'), fontSize = 11.sp, color = meta)
             }

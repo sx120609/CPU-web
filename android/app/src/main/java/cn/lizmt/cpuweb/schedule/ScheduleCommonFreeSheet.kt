@@ -173,7 +173,7 @@ private fun SectionLine(title: String, trailing: String?) {
 @Composable
 private fun FreePerson(name: String, detail: String, tint: Color, icon: ImageVector?, selected: Boolean, onClick: (() -> Unit)?) {
     Column(
-        Modifier.width(84.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+        Modifier.width(textWidth(84.dp)).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
             .border(1.5.dp, if (selected && onClick != null) tint.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(16.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .semantics(mergeDescendants = true) { this.selected = selected }

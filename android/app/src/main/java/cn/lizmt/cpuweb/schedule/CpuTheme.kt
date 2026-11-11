@@ -93,12 +93,22 @@ fun CpuTheme(mode: String, content: @Composable () -> Unit) {
             surfaceContainerLow = Color(0xFFF6F8F7),
         )
     }
+    val density = androidx.compose.ui.platform.LocalDensity.current
     MaterialTheme(colorScheme = scheme) {
         androidx.compose.runtime.CompositionLocalProvider(
             LocalScheduleColors provides if (dark) DarkSchedule else LightSchedule,
+            // Text follows the system size up to MAX_FONT_SCALE, as iOS stops at the largest
+            // standard size: beyond it the week grid, sheets and chips overflow.
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
+                density.density, cappedFontScale(density.fontScale)),
             // No stretch ("jelly") overscroll anywhere in the native UI; lists simply stop at their ends.
             androidx.compose.foundation.LocalOverscrollConfiguration provides null,
             content = content,
         )
     }
 }
+
+/** The largest system text size the native UI follows (Android's 130% step). */
+const val MAX_FONT_SCALE = 1.3f
+
+fun cappedFontScale(system: Float): Float = system.coerceAtMost(MAX_FONT_SCALE)
