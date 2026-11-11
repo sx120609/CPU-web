@@ -56,6 +56,10 @@ struct NativeDormSheet: View {
         .task {
             guard !didStart else { return }
             didStart = true
+#if DEBUG
+            // `CPU_DEBUG_DORM_MIN_FREE=2` opens 空闲 asking for at least that many, for a screenshot run.
+            if let value = ProcessInfo.processInfo.environment["CPU_DEBUG_DORM_MIN_FREE"].flatMap(Int.init) { minFree = value }
+#endif
             if presentation.showsCellDetail { pickDebugCell() }
             await dorm.reload()
         }
@@ -67,6 +71,9 @@ struct NativeDormSheet: View {
                 }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+            } else {
+                // The roommates changed under the tapped cell.
+                Color.clear.onAppear { cellPick = nil }
             }
         }
         .alert("宿舍课表", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -149,10 +156,12 @@ struct NativeDormSheet: View {
         }
 #if DEBUG
         .task {
-            // `CPU_DEBUG_DORM_SCROLL=bottom` shows the foot of the page, for a screenshot run.
-            guard ProcessInfo.processInfo.environment["CPU_DEBUG_DORM_SCROLL"] == "bottom" else { return }
+            // `CPU_DEBUG_DORM_SCROLL=bottom` shows the foot of the page, `windows` the free
+            // blocks of 空闲, for a screenshot run.
+            guard let target = ProcessInfo.processInfo.environment["CPU_DEBUG_DORM_SCROLL"] else { return }
             try? await Task.sleep(for: .milliseconds(900))
-            reader.scrollTo(Self.bottom, anchor: .bottom)
+            if target == "windows" { reader.scrollTo(DormFreePage.windowsAnchor, anchor: .top) }
+            if target == "bottom" { reader.scrollTo(Self.bottom, anchor: .bottom) }
         }
 #endif
         }

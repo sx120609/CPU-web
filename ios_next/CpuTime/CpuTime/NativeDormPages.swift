@@ -388,6 +388,8 @@ struct DormFreePage: View {
     let today: String
     @Environment(\.dynamicTypeSize) private var typeSize
 
+    static let windowsAnchor = "dorm-windows"
+
     var body: some View {
         let day = DormRules.availability(dorm.people, date: date, minFree: minFree)
         VStack(alignment: .leading, spacing: 14) {
@@ -405,6 +407,7 @@ struct DormFreePage: View {
             DormSectionTitle(title: "当天时间轴", trailing: DormRules.spanText(day.window.start, day.window.end))
             DormDayLanes(dorm: dorm, day: day)
             DormSectionTitle(title: "空闲时段", trailing: day.windows.isEmpty ? nil : "\(day.windows.count) 段")
+                .id(Self.windowsAnchor)
             if day.windows.isEmpty {
                 DormStateCard(symbol: day.knownIds.isEmpty ? "questionmark.circle" : "moon.zzz",
                               title: day.knownIds.isEmpty ? "没法判断" : "没有凑得齐的空闲",
