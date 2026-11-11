@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const start = Date.parse("2026-10-13T08:00:00Z");
 const deadline = start + 72 * 3_600_000;
 
-function setup(t: any, options: { version?: number; now?: number; legacy?: boolean; pending?: string; pendingFile?: string; fails?: boolean; nativeUpdater?: boolean; next?: boolean; noRequirement?: boolean; storage?: Map<string, string> } = {}) {
+function setup(t: any, options: { version?: number; now?: number; legacy?: boolean; pending?: string; pendingFile?: string; fails?: boolean; nativeUpdater?: boolean; quietCheck?: boolean; next?: boolean; noRequirement?: boolean; storage?: Map<string, string> } = {}) {
   let monotonic = 0;
   let nextTimer = 1;
   const timers = new Map<number, { callback: () => void; delay: number }>();
@@ -42,6 +42,7 @@ function setup(t: any, options: { version?: number; now?: number; legacy?: boole
       ...(options.nativeUpdater ? {
         supportsNativeUpdater: () => true,
         openNativeUpdater: () => nativeOpened.push("update"),
+        ...(options.quietCheck ? { checkNativeUpdate: () => nativeOpened.push("check") } : {}),
       } : {}),
     },
     ...(options.storage ? { localStorage: {
@@ -207,4 +208,14 @@ test("an up-to-date stable app still gets the save-only install dialog", async t
   await vue.nextTick();
   assert.deepEqual(nativeOpened, []);
   assert.equal(c.open.value, true);
+});
+
+test("an app that can update in the background is asked to check, not to open its update page", async t => {
+  const storage = new Map<string, string>();
+  const { component: c, nativeOpened } = setup(t, { version: 58, nativeUpdater: true, quietCheck: true, noRequirement: true, storage });
+  await c.checkRelease(false);
+  await vue.nextTick();
+  assert.deepEqual(nativeOpened, ["check"]);
+  assert.equal(c.open.value, false);
+  assert.equal(storage.size, 0, "a background check is not remembered as a shown prompt");
 });

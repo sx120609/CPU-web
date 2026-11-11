@@ -41,7 +41,7 @@ import java.lang.ref.WeakReference
 
 /** When an update may download without asking. */
 enum class DownloadPolicy(val id: String, val title: String) {
-    Wifi("wifi", "仅 Wi-Fi 下自动下载"),
+    Wifi("wifi", "Wi-Fi 下自动下载；5 MB 以内的增量包用流量也自动下载"),
     Always("always", "任何网络都自动下载"),
     Manual("manual", "只在我点击时下载");
 
@@ -86,6 +86,15 @@ class AppUpdater private constructor(private val context: Context) {
     private val client = ReleaseClient(AppConfig.origin) { userAgent }
     private val downloader = UpdateDownloader { userAgent }
     private var job: Job? = null
+
+    /**
+     * The user tapped 更新 and is waiting: once the package is ready it installs
+     * straight away instead of stopping at 已准备好 for a second tap.
+     */
+    private var installWhenReady = false
+
+    /** The version an automatic check decided to download by itself (worked out off the main thread). */
+    @Volatile private var autoDownloadVersion = 0
     private var pendingConfirmation: Intent? = null
     private var activity = WeakReference<Activity>(null)
     private val backgroundInstall = Runnable { installInBackground {} }
@@ -157,7 +166,7 @@ class AppUpdater private constructor(private val context: Context) {
 
     private fun attentionReason(): String? = when (val current = state) {
         // An update about to download by itself is not news yet.
-        is UpdateState.Available -> if (shouldDownloadAutomatically()) null else "${current.release.versionCode}:available"
+        is UpdateState.Available -> if (autoDownloadVersion == current.release.versionCode) null else "${current.release.versionCode}:available"
         is UpdateState.Ready -> when {
             current.needsConfirmation -> "${current.release.versionCode}:confirm"
             installOnLeave && canInstallSilently -> null
@@ -211,6 +220,12 @@ class AppUpdater private constructor(private val context: Context) {
             // The dialog was dismissed or the process came back without a result.
             if (pendingConfirmation == null) state = UpdateState.Ready(installing.release, prefs.getBoolean(KEY_READY_PATCH, false), prefs.getLong(KEY_READY_SAVED, 0))
         }
+        // A download the user started finished while they were away: carry on with the install.
+        if (installWhenReady && state is UpdateState.Ready) {
+            installWhenReady = false
+            install()
+            return
+        }
         if (autoCheck && System.currentTimeMillis() - lastCheckedAt > AUTO_CHECK_INTERVAL_MS && state.canCheck()) check(manual = false)
     }
 
@@ -245,8 +260,11 @@ class AppUpdater private constructor(private val context: Context) {
                     post { state = UpdateState.Ready(release, prefs.getBoolean(KEY_READY_PATCH, false), prefs.getLong(KEY_READY_SAVED, 0)) }
                     return@launch
                 }
+                // Decided before the state changes: the update page reads it to stay closed.
+                val auto = !manual && shouldDownloadAutomatically(release)
+                autoDownloadVersion = if (auto) release.versionCode else 0
                 post { state = UpdateState.Available(release) }
-                if (!manual && shouldDownloadAutomatically()) download(release)
+                if (auto) download(release)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -256,6 +274,15 @@ class AppUpdater private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * The site already knows a newer version (the app's own check runs at most every six hours):
+     * check now the way the automatic check does, so the update downloads and installs by itself;
+     * the update page opens only when the user has something to do.
+     */
+    fun checkSoon() {
+        if (autoCheck && state.canCheck() && job?.isActive != true) check(manual = false)
+    }
+
     /** [full]: the whole package even when an incremental patch exists. */
     fun startDownload(full: Boolean = false) {
         val release = when (val current = state) {
@@ -263,20 +290,26 @@ class AppUpdater private constructor(private val context: Context) {
             is UpdateState.Failed -> current.release ?: return check(manual = true)
             else -> return
         }
+        installWhenReady = true
         job?.cancel()
         job = scope.launch { download(release, usePatch = !full) }
     }
 
     fun cancel() {
+        installWhenReady = false
         job?.cancel()
         state = UpdateState.Idle
     }
 
-    private fun shouldDownloadAutomatically(): Boolean = when (downloadPolicy) {
+    private fun shouldDownloadAutomatically(release: ReleaseInfo): Boolean = when (downloadPolicy) {
         DownloadPolicy.Manual -> false
         DownloadPolicy.Always -> true
-        DownloadPolicy.Wifi -> unmetered()
+        // An incremental patch is a megabyte or two: not worth waiting for Wi-Fi.
+        DownloadPolicy.Wifi -> unmetered() || smallPatch(release)
     }
+
+    private fun smallPatch(release: ReleaseInfo): Boolean =
+        release.patch?.let { it.size <= SMALL_PATCH_BYTES && baseSha256() == it.fromSha256 } == true
 
     private suspend fun download(release: ReleaseInfo, usePatch: Boolean = true) {
         try {
@@ -328,13 +361,19 @@ class AppUpdater private constructor(private val context: Context) {
                 .apply()
             post {
                 state = UpdateState.Ready(release, viaPatch, saved)
-                if (!foreground && installOnLeave && canInstallSilently) scheduleBackgroundInstall()
+                if (installWhenReady && foreground) {
+                    installWhenReady = false
+                    install()
+                } else if (!foreground && installOnLeave && canInstallSilently) scheduleBackgroundInstall()
             }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             Log.w(TAG, "download", error)
-            post { state = UpdateState.Failed(error.message ?: "下载失败，请稍后重试", release) }
+            post {
+                installWhenReady = false
+                state = UpdateState.Failed(error.message ?: "下载失败，请稍后重试", release)
+            }
         }
     }
 
@@ -702,7 +741,8 @@ class AppUpdater private constructor(private val context: Context) {
         const val ACTION_STATUS = "cn.lizmt.cpuweb.UPDATE_STATUS"
         const val ACTION_APPLY = "cn.lizmt.cpuweb.UPDATE_APPLY"
         private const val AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
-        private const val BACKGROUND_INSTALL_DELAY_MS = 90_000L
+        private const val SMALL_PATCH_BYTES = 5L * 1024 * 1024
+        private const val BACKGROUND_INSTALL_DELAY_MS = 10_000L
 
         @Volatile private var instance: AppUpdater? = null
 

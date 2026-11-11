@@ -10,7 +10,7 @@
 - **共享 WebView**：所有 Web 栏目共用一个 WebView，保留 Cookie、DOM 存储、站内路由；网页顶栏和底栏由注入样式隐藏，但仍保留在 DOM 中供抽屉与账号操作复用。系统返回键依次关闭网页弹层、按网页路由返回上级，根页面回到课表后再退出。旋转、深浅色、字体大小变化不重建 Activity，WebView 会话不会丢失。
 - **登录门禁**：未登录时显示原生登录页（统一认证、验证码、保持登录；长按图标解锁站内账号登录；须同意隐私政策与用户协议）。登录仍由网页的 Pinia 登录流程完成，HttpOnly 会话 Cookie 留在 WebView 中，原生不保存学校密码。判定与 iOS 相同：以网页登录状态为准，空账号报告先二次核验，Cookie 仅换取有限的恢复窗口，教务授权失效不会触发站点登录门禁。
 - **原生课表**：两排工具栏（学期、日/周/月视图、回到本周今日、更多），周次切换与校历日期，周视图左右滑动切周、日视图左右滑动切换日期，12 节时间轴（优先使用校历下发的节次时间），连续节次合并，下拉刷新。月视图是一张月历：每天一格（公历日、农历或节日、课程圆点、休/班），左右滑动换月，上下滑动看下面所选那天的当天安排（课程和日程），可跳到日视图。点课程打开速览（教室、老师、周次、备注），“编辑”进入编辑器。今天这一列标出当前时间，日视图显示正在上、下一节和已结束；可在“课表风格”里关闭，也可隐藏周末（周末有课或补班的那一天仍显示）。已显示的课表不会被状态页替换：教务授权失效、刷新失败都以顶部横幅提示。
-- **课表风格**：与 iOS 4.14 相同的六种风格——经典（原来的样子，默认）、简约、格子、表格、素笺、站牌，覆盖周、日、月视图；风格只换画法，不改课程数据、配色和背景。日视图顶部的七天条由各风格按自己周视图表头的样子画（经典保留原来的），选中的那天和今天各有各的标记：简约是浅色圆角底，格子是带边框的方格，表格是整格主题色，素笺是淡染，站牌是反色块（今天用底边粗线）。站牌只在时间和日期上用等宽字体，课程名、教室这些正文用系统字体。主题色按配色取一次并调到在画布、面板和今日列上都不低于 4.5:1。
+- **课表风格**：与 iOS 4.14 相同的六种风格——经典（原来的样子）、简约（默认，没选过风格的都是它）、格子、表格、素笺、站牌，覆盖周、日、月视图；风格只换画法，不改课程数据、配色和背景。日视图顶部的七天条由各风格按自己周视图表头的样子画（经典保留原来的），选中的那天和今天各有各的标记：简约是浅色圆角底，格子是带边框的方格，表格是整格主题色，素笺是淡染，站牌是反色块（今天用底边粗线）。站牌只在时间和日期上用等宽字体，课程名、教室这些正文用系统字体。主题色按配色取一次并调到在画布、面板和今日列上都不低于 4.5:1。
 - **重叠课程**：同一时段的课程并排显示；在编辑器里打开“优先显示这门课”后，重叠的节次只显示它，其余课程保留没被盖住的节次。优先级按课程名保存在课表修改的 `priority` 字段里（`server/src/shared/schedulePriority.ts`），和 iOS 共用。
 - **缓存**：内存缓存 12 小时、最多 4 个学期；整学期规则只缓存一次，旧服务端的逐周数据由网页桥后台预取并推入原生缓存。最近一次成功的课表写入不参与备份的私有目录，并记录站点会话 Cookie 的指纹；冷启动先核对指纹再显示，随后静默刷新。账号变化或退出登录立即清空内存与磁盘缓存。
 - **个人课程**：原生添加、修改、隐藏、删除、恢复教务原始安排与恢复已隐藏课程，经网页同源接口与 CSRF 保存，并核对服务器修改基线以避免覆盖并发编辑；研究生课表沿用网站限制。一门课可以有多组上课时间，节次可以不连续；保存时每段连续节次写成一条原有格式的修改项，其他客户端照常读取。与已有课程时间重叠时只提示，不阻止保存。
@@ -48,7 +48,7 @@ UA 追加 `CPUWebScheduleApp/<versionCode> CPUWebScheduleAppVersion/<versionName
 - `app/src/main/assets/NativeShellBootstrap.js`：页面开始时注入（仅本站来源），隐藏网页栏、创建 `window.CPUTimeNative` 并上报路由、登录状态与外观。消息优先经按来源限定、只接收主框架的 `WebMessageListener` 送达 Kotlin；旧版 WebView 回退到 JavaScript 接口。
 - `app/src/main/assets/NativeWebCompatibility.js`：由 `android/bridge/*.ts` 生成，页面加载完成后执行。线上网页尚未提供课表桥时，用现有 Pinia 状态和同源 Cookie 安装兼容桥，并提供原生登录、顶栏状态、返回导航、弹层检测与课程编辑（`CPUAndroidEditor`）。
 - 原有 `CPUAndroid` 桥（应用内更新、小组件、图片保存）保留，仅对本站页面开放。
-- 应用更新（`AppUpdater.kt`、`update/`、`AppUpdateSheet.kt`，从药大拾间 NEXT 移植）：回到前台时每 6 小时最多检查一次 `/api/site/downloads/android?from=<已装版本>`，有适用的增量包（`.cpupatch`，DEX 不压缩存放才小）就只下载它并用已安装的 APK 合成，否则下载完整包；默认仅 Wi-Fi 自动下载。校验通过后 Android 12 及以上已授权安装时离开 App 约一分半钟自动安装，其余情况打开一次“应用更新”面板，面板里也可以选完整包。网页更新弹窗经 `supportsNativeUpdater` / `openNativeUpdater` 把手动更新交给它，强制更新期间网页弹窗照旧显示。Release 用 R8 只做裁剪（`proguard-rules.pro`：不混淆、不优化，未变的类字节不变）；`-PminifyDebug=true` 让调试版也跑裁剪后的代码。
+- 应用更新（`AppUpdater.kt`、`update/`、`AppUpdateSheet.kt`，从药大拾间 NEXT 移植）：回到前台时每 6 小时最多检查一次 `/api/site/downloads/android?from=<已装版本>`，有适用的增量包（`.cpupatch`，DEX 不压缩存放才小）就只下载它并用已安装的 APK 合成，否则下载完整包；默认 Wi-Fi 下自动下载，5 MB 以内的增量包用流量也自动下载。校验通过后 Android 12 及以上已授权安装时离开 App 约 10 秒自动安装，其余情况打开一次“应用更新”面板，面板里也可以选完整包；在面板里点一次“立即更新”就下载并直接安装，不再停在“已准备好”。网站发现线上有更新的版本时调用 `CPUAndroid.checkNativeUpdate()` 让 App 立刻在后台检查（不受 6 小时间隔限制），只在需要用户操作时打开面板。安装后系统会关闭 App，不会自动重新打开（Android 10 起后台不能启动界面）。网页更新弹窗经 `supportsNativeUpdater` / `openNativeUpdater` 把手动更新交给它，强制更新期间网页弹窗照旧显示。Release 用 R8 只做裁剪（`proguard-rules.pro`：不混淆、不优化，未变的类字节不变）；`-PminifyDebug=true` 让调试版也跑裁剪后的代码。
 - 日程经网页的 `CPUTimeNativeAgenda`（`web/src/utils/nativeAgendaBridge.ts`，`list` / `toggle` / `save` / `remove` / `relay` / `parse`）读写，在课表里原生编辑（`ScheduleAgendaSheets.kt`）：点日程打开编辑器，点空着的节次可选「添加日程」或「添加课程」，「更多 → 日程与待办」列出待办、接下来一周和「微信和 QQ 也提醒」。列表变化时网页调用 `CPUTimeNative.agendaChanged()`，App 重新读取；站内的 `/agenda` 链接经 `CPUTimeNative.openAgenda` 在课表上打开。线上网页还没有这个桥时保留上次读到的。
 
 修改 `android/bridge`、共享课表桥或网页主题后，在仓库根目录运行：
@@ -88,7 +88,7 @@ adb shell am start -n cn.lizmt.cpuweb/cn.lizmt.cpuweb.schedule.MainActivity --ez
 | `--es debugNow 09:00` | 固定“现在”，查看正在上、下一节等状态 |
 | `--es debugPriority 体育（羽毛球）` | 设置优先显示的课程，多个用逗号分隔，靠前的在上 |
 | `--es debugSheet sharing` | 启动后打开弹窗：`settings`（课表设置；旧的 `visual`、`display`、`style` 也打开它）、`sharing`（共享课表）、`couple`（情侣课表）、`widgets`（桌面小组件）、`dorm`（宿舍课表，配合 `--es debugDorm active` 显示示例宿舍）、`agenda`（日程与待办）、`agendaNew`（新建日程）、`agendaExtract`（截图识别读出两条示例日程，配合 `--ez debugAgenda true`）、`tools`（更多）、`overlay`（叠加到我的课表）、`commonFree`（找共同空闲）、`share`（分享）、`alarms`（上课闹钟） |
-| `--es debugUpdate updated` | 显示更新弹窗的示例：`available`（发现新版）、`ready`（已下载好）、`updated`（更新完成） |
+| `--es debugUpdate updated` | 显示更新弹窗的示例：`available`（发现新版）、`ready`（已下载好）、`updated`（更新完成）；`check` 打开更新面板并向 `-PappUrl` 指向的站点真实检查一次，`auto` 走网站触发的后台检查（只在需要用户操作时打开面板） |
 | `--es debugCouple active` | 情侣课表的假接口状态：`active`（已绑定，TA 的课表和自己的有重合、有撞课、有各自的课）、`pending`（邀请码等待接受），不传为未绑定 |
 | `--ez debugOverlapNotice true` | 示例课表里周三有两门课排在同一时段；带上它才弹「同一时间排了两门课」的提示（每处只弹一次，清数据后再看） |
 | `--es debugCoupleColors teal,amber` | 情侣课表里两人的颜色：先是自己的，再是 TA 的（`blue`、`pink`、`purple`、`teal`、`green`、`amber`、`orange`） |

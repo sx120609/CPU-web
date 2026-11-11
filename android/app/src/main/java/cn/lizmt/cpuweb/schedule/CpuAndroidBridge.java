@@ -60,6 +60,12 @@ public final class CpuAndroidBridge {
         activity.runOnUiThread(activity::openUpdater);
     }
 
+    /** The site saw a newer release: check and update in the background, without opening the update page. */
+    @JavascriptInterface
+    public void checkNativeUpdate() {
+        activity.runOnUiThread(() -> activity.getUpdates().checkSoon());
+    }
+
     @JavascriptInterface
     public boolean supportsScheduleWidget() {
         return true;

@@ -163,8 +163,12 @@ object DebugScheduleFixture {
             )
             activity.overlay.select(OVERLAY_CODE)
         }
-        // "debugUpdate available|ready|updated": the update sheet or 更新完成 with sample notes.
+        // "debugUpdate available|ready|updated": the update sheet or 更新完成 with sample notes;
+        // "check": the update sheet with a real check against the app's site (-PappUrl);
+        // "auto": the background check the site triggers, with no sheet unless the user must act.
         intent.getStringExtra("debugUpdate")?.let { kind ->
+            if (kind == "check") return@let activity.openUpdater()
+            if (kind == "auto") return@let activity.updates.checkSoon()
             activity.updates.debugSample(kind, listOf(
                 "以后可以在 App 里直接更新，只下载变化的部分；每次更新前后都会告诉你这次改了什么。",
                 "桌面小组件跨天不再停在前一天，重启手机或改了时间后也会自动刷新。",

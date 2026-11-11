@@ -56,15 +56,16 @@ internal fun AppUpdateSheet(activity: MainActivity, onDismiss: () -> Unit) {
             HorizontalDivider()
             SettingRow("自动检查更新", checked = updates.autoCheck) { updates.changeAutoCheck(it) }
             Text("自动下载", style = MaterialTheme.typography.bodyLarge)
+            Text(updates.downloadPolicy.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(DownloadPolicy.Wifi to "仅 Wi-Fi", DownloadPolicy.Always to "任何网络", DownloadPolicy.Manual to "手动").forEach { (policy, label) ->
+                listOf(DownloadPolicy.Wifi to "Wi-Fi 或小增量包", DownloadPolicy.Always to "任何网络", DownloadPolicy.Manual to "手动").forEach { (policy, label) ->
                     FilterChip(selected = updates.downloadPolicy == policy, onClick = { updates.changeDownloadPolicy(policy) }, label = { Text(label) })
                 }
             }
             val silentCapable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             SettingRow(
                 "离开拾间后自动安装",
-                detail = if (silentCapable) "下载好之后，离开拾间约一分半钟自动装好，不弹系统确认" else "需要 Android 12 及以上",
+                detail = if (silentCapable) "下载好之后，离开拾间几秒钟就自动装好，不弹系统确认" else "需要 Android 12 及以上",
                 checked = updates.installOnLeave && silentCapable,
                 enabled = silentCapable,
             ) { updates.changeInstallOnLeave(it) }
@@ -106,10 +107,10 @@ private fun UpdateStatus(activity: MainActivity) {
                 ReleaseNotes(state.release.notes)
                 val patch = state.release.patch
                 if (patch != null) {
-                    Button(onClick = { updates.startDownload() }) { Text("增量更新（${formatBytes(patch.size)}）") }
-                    OutlinedButton(onClick = { updates.startDownload(full = true) }) { Text("下载完整安装包（${formatBytes(state.release.size)}）") }
+                    Button(onClick = { updates.startDownload() }) { Text("立即更新（增量 ${formatBytes(patch.size)}）") }
+                    OutlinedButton(onClick = { updates.startDownload(full = true) }) { Text("用完整安装包更新（${formatBytes(state.release.size)}）") }
                 } else {
-                    Button(onClick = { updates.startDownload() }) { Text("下载更新（${formatBytes(state.release.size)}）") }
+                    Button(onClick = { updates.startDownload() }) { Text("立即更新（${formatBytes(state.release.size)}）") }
                 }
             }
             is UpdateState.Downloading -> {
@@ -139,8 +140,8 @@ private fun UpdateStatus(activity: MainActivity) {
                 Text(
                     when {
                         state.needsConfirmation -> "系统需要你确认一次安装"
-                        updates.canInstallSilently && updates.installOnLeave -> "离开拾间一会儿后会自动装好；现在安装会立即重启拾间"
-                        updates.canInstallSilently -> "安装时拾间会自动重启，不需要重新下载或卸载"
+                        updates.canInstallSilently && updates.installOnLeave -> "离开拾间几秒钟就会自动装好；现在安装会立即关闭拾间"
+                        updates.canInstallSilently -> "安装时拾间会关闭，再打开就是新版，不需要卸载"
                         else -> "安装时会弹出系统确认，覆盖安装，数据都会保留"
                     },
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -148,7 +149,7 @@ private fun UpdateStatus(activity: MainActivity) {
                 Button(onClick = { updates.install() }) { Text(if (state.needsConfirmation) "确认安装" else "立即安装") }
             }
             is UpdateState.Installing -> {
-                Text("正在安装 ${state.release.versionName}，拾间会自动重启", style = MaterialTheme.typography.bodyMedium)
+                Text("正在安装 ${state.release.versionName}，装好后拾间会关闭，再打开就是新版", style = MaterialTheme.typography.bodyMedium)
                 progress(null)
             }
             is UpdateState.Failed -> {

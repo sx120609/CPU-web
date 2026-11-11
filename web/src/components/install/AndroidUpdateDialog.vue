@@ -117,6 +117,7 @@ interface AndroidBridge {
   retryApkUpdate?: () => boolean;
   supportsNativeUpdater?: () => boolean;
   openNativeUpdater?: () => void;
+  checkNativeUpdate?: () => void;
 }
 
 const router = useRouter();
@@ -472,10 +473,18 @@ function hasNativeUpdater() {
   try { return getAndroidBridge()?.supportsNativeUpdater?.() === true; } catch { return false; }
 }
 
-/** Opens the app's updater once per version, remembered across launches when storage allows. */
+/**
+ * Gets the app's updater going for a version the site already knows about. Newer apps check
+ * and update in the background (the update page opens only when the user must act); older
+ * ones open their update page, once per version, remembered across launches when storage allows.
+ */
 function nudgeNativeUpdater(versionCode: number) {
   if (autoPromptedVersion === versionCode) return;
   autoPromptedVersion = versionCode;
+  const bridge = getAndroidBridge();
+  if (typeof bridge?.checkNativeUpdate === "function") {
+    try { bridge.checkNativeUpdate(); return; } catch { /* fall back to the update page */ }
+  }
   const key = `cpu-android-native-update-nudged-${versionCode}`;
   try {
     if (window.localStorage.getItem(key)) return;
