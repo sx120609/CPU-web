@@ -21,6 +21,13 @@ object DebugScheduleFixture {
     private const val SEMESTER = "2026-2027-1"
     private const val FRIEND_CODE = "FRKEND23"
     private const val OWN_CODE = "DEMQ2345"
+    private const val OVERLAY_CODE = "LINKS234"
+    /** NJMU's fifteen periods: the third is 09:40–10:20 there, 09:55–10:40 here. */
+    private val NJMU_BELLS = listOf(
+        "08:00" to "08:40", "08:50" to "09:30", "09:40" to "10:20", "10:30" to "11:10", "11:20" to "12:00",
+        "12:10" to "12:50", "14:00" to "14:40", "14:50" to "15:30", "15:40" to "16:20", "16:30" to "17:10",
+        "17:20" to "18:00", "18:10" to "18:50", "19:00" to "19:40", "19:50" to "20:30", "20:40" to "21:20",
+    )
 
     /** "Now" pinned by `--es debugNow 10:20`, so a state of the day view can be looked at on demand. */
     var pinnedNow: Int? = null
@@ -126,6 +133,14 @@ object DebugScheduleFixture {
             if (published) listOf(ShareMeta(OWN_CODE, "我", SEMESTER, friend.courseCount, updatedAt = "2026-10-07T02:00:00.000Z")) else emptyList(),
         )
         openSharedCode = if (intent.getBooleanExtra("debugShared", false)) FRIEND_CODE else null
+        // "debugOverlay njmu": a classmate at NJMU, whose bells differ, laid over the timetable; "same" keeps this school's bells.
+        intent.getStringExtra("debugOverlay")?.let { kind ->
+            val classmate = SharedSchedule.read(shareDocument(OVERLAY_CODE, "小林", njmu = kind == "njmu"), System.currentTimeMillis()).copy(remark = "小林")
+            activity.sharing.installDebugState(
+                SharedScheduleLibrary(account = "debug", schedules = listOf(friend, classmate)), activity.sharing.mine,
+            )
+            activity.overlay.select(OVERLAY_CODE)
+        }
         // "debugUpdate available|ready|updated": the update sheet or 更新完成 with sample notes.
         intent.getStringExtra("debugUpdate")?.let { kind ->
             activity.updates.debugSample(kind, listOf(
@@ -178,13 +193,35 @@ object DebugScheduleFixture {
         return JSONObject().put("data", data).toString()
     }
 
-    private fun shareDocument(code: String, owner: String): JSONObject {
+    private fun shareDocument(code: String, owner: String, njmu: Boolean = false): JSONObject {
         val snapshot = JSONObject(snapshot())
         val data = snapshot.getJSONObject("data")
+        val calendar = snapshot.getJSONObject("calendar")
+        var cells = data.getJSONArray("cells")
+        if (code == OVERLAY_CODE) {
+            // A classmate: some courses shared, some of their own, at their own periods.
+            val all = (1..18).toList()
+            fun course(name: String, start: Int, end: Int, location: String) = JSONObject().put("name", name).put("startSlot", start)
+                .put("endSlot", end).put("location", location).put("weeks", ScheduleStore.weekText(all)).put("weekList", JSONArray(all))
+            fun cell(day: Int, value: JSONObject) = JSONObject().put("day", day).put("bigSlot", (value.getInt("startSlot") + 1) / 2)
+                .put("courses", JSONArray().put(value))
+            cells = JSONArray()
+                .put(cell(1, course("药理学", 1, 2, "药学楼 302")))
+                .put(cell(2, course("病理学", 3, 4, "基础楼 B201")))
+                .put(cell(3, course("系统解剖学", 7, 8, "解剖楼 101")))
+                .put(cell(3, course("组织胚胎学", 7, 8, "基础楼 A105")))
+                .put(cell(4, course("医学免疫学", 1, 3, "基础楼 C302")))
+                .put(cell(5, course("诊断学", 9, 10, "临床楼 401")))
+        }
+        if (njmu) {
+            calendar.put("school", "南京医科大学").put("periods", JSONArray(NJMU_BELLS.mapIndexed { index, (start, end) ->
+                JSONObject().put("number", index + 1).put("startTime", start).put("endTime", end)
+            }))
+        }
         return JSONObject().put("code", code).put("owner", owner).put("semester", SEMESTER).put("courseCount", 8)
             .put("createdAt", "2026-10-01T02:00:00.000Z").put("updatedAt", "2026-10-07T02:00:00.000Z")
-            .put("schedule", JSONObject().put("cells", data.getJSONArray("cells")))
-            .put("calendar", snapshot.getJSONObject("calendar"))
+            .put("schedule", JSONObject().put("cells", cells))
+            .put("calendar", calendar)
     }
 
     /** A stand-in for `/api/schedule-shares`, so the sharing pages work without an account. */

@@ -171,4 +171,97 @@ class NapTablePortTest {
     }
 
     // endregion
+
+    // region Overlays
+
+    private val njmu = listOf(
+        "08:00" to "08:40", "08:50" to "09:30", "09:40" to "10:20", "10:30" to "11:10", "11:20" to "12:00",
+        "12:10" to "12:50", "14:00" to "14:40", "14:50" to "15:30",
+    ).mapIndexed { index, (start, end) -> SchedulePeriod(index + 1, start, end) }
+
+    @Test
+    fun overlayTimingFollowsTheIosChecks() {
+        val cpu = OverlayTiming.periods(BUNDLED_PERIODS)
+        val theirs = OverlayTiming.periods(njmu)
+        assertTrue(OverlayTiming.sameBells(cpu, cpu))
+        assertFalse(OverlayTiming.sameBells(theirs, cpu))
+        // Fewer periods with the same bells still count as the same.
+        assertTrue(OverlayTiming.sameBells(cpu.take(4), cpu))
+        // NJMU 1–2 (08:00–09:30) covers CPU 1–2.
+        assertEquals(1 to 2, OverlayTiming.place(480, 570, cpu))
+        // NJMU 3–4 (09:40–11:10) starts in the break before CPU 3.
+        assertEquals(3 to 4, OverlayTiming.place(580, 670, cpu))
+        // NJMU 7–8 (14:00–15:30) covers CPU 5–7.
+        assertEquals(5 to 7, OverlayTiming.place(840, 930, cpu))
+        // NJMU 6 (12:10–12:50) falls in CPU's lunch break: the nearest period.
+        assertEquals(4 to 4, OverlayTiming.place(730, 770, cpu))
+        assertEquals(12 to 12, OverlayTiming.place(23 * 60, 23 * 60 + 30, cpu))
+        assertNull(OverlayTiming.place(600, 650, emptyList()))
+        assertEquals(485, OverlayTiming.minutes("8:05"))
+        assertNull(OverlayTiming.minutes("24:00"))
+        assertEquals("08:05", OverlayTiming.clock(485))
+    }
+
+    @Test
+    fun aCourseAtAnotherSchoolKeepsItsOwnTimes() {
+        val cpu = OverlayTiming.periods(BUNDLED_PERIODS)
+        val block = CourseBlock(1, 4, 7, 8, ScheduleCourse(name = "系统解剖学", startSlot = 7, endSlot = 8, nativeId = "x"))
+        val moved = OverlayTiming.remap(block, OverlayTiming.periods(njmu), cpu)
+        assertEquals(5, moved.startSlot)
+        assertEquals(7, moved.endSlot)
+        assertEquals("14:00" to "15:30", moved.course.customTime)
+        assertEquals("x", moved.course.nativeId)
+        // Same bells: nothing changes.
+        assertEquals(block, OverlayTiming.remap(block, cpu, cpu))
+        assertEquals("南京医科大学", OverlayTiming.otherSchool(" 南京医科大学 ", "中国药科大学"))
+        assertNull(OverlayTiming.otherSchool("中国药科大学", "中国药科大学"))
+        assertNull(OverlayTiming.otherSchool("", "中国药科大学"))
+    }
+
+    @Test
+    fun theStripStartsOnTheSelectedDayAndStopsAtItsLastScreen() {
+        val pages = OverlayStripRules.pages(ScheduleCalendar(weeks = weeks))
+        assertEquals(14, pages.size)
+        assertEquals(OverlayStripPage(2, 1, "2026-09-16"), pages[7])
+        assertEquals(3, OverlayStripRules.dayCount(360f, 42f))
+        assertEquals(7, OverlayStripRules.dayCount(1200f, 42f))
+        assertEquals(2, OverlayStripRules.leadingIndex("2026-09-11", pages, 3))
+        // A date between pages: the first one after it.
+        assertEquals(0, OverlayStripRules.leadingIndex("2026-09-01", pages, 3))
+        // Near the end of term: the last full screen.
+        assertEquals(11, OverlayStripRules.leadingIndex("2026-09-22", pages, 3))
+        assertEquals(11, OverlayStripRules.leadingIndex(null, pages, 3))
+        assertNull(OverlayStripRules.leadingIndex("2026-09-11", emptyList(), 3))
+    }
+
+    @Test
+    fun overlappingCoursesInAHalfColumnBecomeOneCard() {
+        fun placed(name: String, start: Int, end: Int) =
+            PlacedBlock(CourseBlock(1, (start + 1) / 2, start, end, ScheduleCourse(name = name)), start, end)
+        val clusters = OverlayStripRules.clusters(listOf(placed("乙", 3, 4), placed("甲", 1, 2), placed("丙", 4, 6), placed("丁", 9, 10)))
+        assertEquals(listOf("甲", "乙", "丁"), clusters.map { it.first.course.name })
+        assertEquals(listOf(0, 1, 0), clusters.map { it.second })
+        // The card reaches to the end of the last course behind it.
+        assertEquals(6, clusters[1].first.endSlot)
+    }
+
+    @Test
+    fun sharedSchedulesKeepTheirSchoolAndBells() {
+        val document = JSONObject().put("code", "ABCD2345").put("owner", "小林").put("semester", "2026-2027-1")
+            .put("schedule", JSONObject().put("cells", JSONArray().put(JSONObject().put("day", 1).put("bigSlot", 1)
+                .put("courses", JSONArray().put(JSONObject().put("name", "病理学").put("startSlot", 1).put("endSlot", 2).put("weekList", JSONArray(listOf(1))))))))
+            .put("calendar", JSONObject().put("school", "南京医科大学")
+                .put("weeks", JSONArray(weeks.map { JSONObject().put("week", it.week).put("days", JSONArray(it.days)) }))
+                .put("periods", JSONArray(njmu.map { JSONObject().put("number", it.number).put("startTime", it.startTime).put("endTime", it.endTime) })))
+        val shared = SharedSchedule.read(document, 0L)
+        assertEquals("南京医科大学", shared.school)
+        assertEquals("南京医科大学", SharedSchedule.fromJson(shared.toJson())!!.school)
+        val snapshot = ScheduleJson.parseSnapshot(shared.snapshot("2026-09-10"))!!
+        assertTrue(snapshot.periodsComplete)
+        assertEquals("南京医科大学", snapshot.calendar!!.school)
+        // Eight periods of their own, not completed with this school's twelve.
+        assertEquals(8, mergeSuppliedPeriods(snapshot.periods, snapshot.periodsComplete).size)
+    }
+
+    // endregion
 }

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.NearMe
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
@@ -106,6 +107,8 @@ sealed interface ScheduleSheet {
     data class Occurrence(val context: OccurrenceEditorContext) : ScheduleSheet
     /** A cancelled meeting tapped: put it back? */
     data class Cancelled(val block: PlacedBlock) : ScheduleSheet
+    /** 叠加到我的课表. */
+    data object Overlay : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -256,7 +259,27 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
 
     val couple = activity.couple.takeIf { !store.readOnly }
     val partnerStore = couple?.partnerStore
-    val layer = remember(couple?.status, couple?.visible, partnerStore, partnerStore?.result) { couple?.layer() }
+    // A saved shared timetable laid on top takes the place of the partner's while it is on.
+    val overlayShared = if (store.readOnly) null else activity.sharing.library.schedules.firstOrNull { it.meta.code == activity.overlay.code }
+    val composeScope = androidx.compose.runtime.rememberCoroutineScope()
+    val overlayStore = remember(overlayShared?.meta?.code, overlayShared?.meta?.updatedAt) {
+        overlayShared?.let { shared ->
+            ScheduleStore(composeScope, readOnly = true).apply {
+                loader = { shared.snapshot() }
+                markBridgeReady()
+            }
+        }
+    }
+    val mySchool = store.calendar?.school.orEmpty()
+    val layer = remember(couple?.status, couple?.visible, partnerStore, partnerStore?.result, overlayStore, overlayStore?.result, store.periods, mySchool) {
+        val shared = overlayShared
+        val sharedData = overlayStore?.result
+        if (shared != null && overlayStore != null && sharedData != null) {
+            val mine = couple?.active?.me?.color ?: "blue"
+            CoupleLayer(overlayStore, sharedData, mine, if (mine == "teal") "amber" else "teal", shared.name, store.periods,
+                CoupleLayer.Kind.Shared, OverlayTiming.otherSchool(shared.school, mySchool))
+        } else couple?.layer(store.periods, mySchool)
+    }
     if (couple != null) {
         // The partner's timetable changes while this one is open.
         LaunchedEffect(couple) {
@@ -419,6 +442,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                         MENU_DIVIDER,
                         ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
                         ("情侣课表" to { sheet = ScheduleSheet.Couple }).takeIf { !store.readOnly },
+                        ("叠加到我的课表" to { sheet = ScheduleSheet.Overlay }).takeIf { !store.readOnly },
                         ("宿舍课表" to { sheet = ScheduleSheet.Dorm() }).takeIf { !store.readOnly },
                         MENU_DIVIDER,
                         "课表设置" to { sheet = ScheduleSheet.Settings },
@@ -428,7 +452,11 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                 if (store.viewMode == "month") {
                     MonthSwitcher(anchor) { monthAnchor = ScheduleMonth.shift(anchor, it) }
                 } else if (store.weekOptions().isNotEmpty()) {
-                    WeekSwitcher(store, couple, DebugScheduleFixture.pinnedNow ?: minute, onCouple = { sheet = ScheduleSheet.Couple }) {
+                    WeekSwitcher(
+                        store, couple, DebugScheduleFixture.pinnedNow ?: minute, onCouple = { sheet = ScheduleSheet.Couple },
+                        overlay = overlayShared?.takeIf { layer?.kind == CoupleLayer.Kind.Shared }, overlaySchool = layer?.otherSchool,
+                        onOverlay = { sheet = ScheduleSheet.Overlay }, onClearOverlay = { activity.overlay.select("") },
+                    ) {
                         sheet = ScheduleSheet.WeekPicker
                     }
                 }
@@ -485,7 +513,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                 openEditor(current.block)
             }) else null,
             note = when {
-                current.partner -> "${layer?.partnerName?.ifEmpty { "TA" } ?: "TA"} 的课"
+                current.partner -> layer?.ownerTitle ?: "TA 的课"
                 current.offWeek -> "这门课本周不上"
                 current.block.cancelled != null -> "${OccurrenceRules.dateText(current.block.cancelled.date)} 这次停课"
                 current.block.course.occurrenceFrom != null ->
@@ -496,7 +524,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         is ScheduleSheet.CourseMenu -> CourseMenuSheet(
             if (current.block.owner == CoupleOwner.Partner) layer?.partnerStore ?: store else store,
             current.block, style.palette,
-            ownerTitle = if (current.block.owner == CoupleOwner.Partner) "${layer?.partnerName?.ifEmpty { "TA" } ?: "TA"} 的课" else null,
+            ownerTitle = if (current.block.owner == CoupleOwner.Partner) layer?.ownerTitle ?: "TA 的课" else null,
             sections = menuSections(current.block), onDismiss = { if (sheet == current) sheet = null },
         )
         is ScheduleSheet.Occurrence -> {
@@ -541,6 +569,9 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
         is ScheduleSheet.Dorm -> ScheduleDormSheet(activity, current.code, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
         ScheduleSheet.Couple -> ScheduleCoupleSheet(activity, DebugScheduleFixture.pinnedNow ?: minute, onDismiss = { sheet = null })
+        ScheduleSheet.Overlay -> OverlayPickerSheet(
+            activity, onSharing = { sheet = ScheduleSheet.Sharing }, onCouple = { sheet = ScheduleSheet.Couple }, onDismiss = { sheet = null },
+        )
         is ScheduleSheet.AgendaEdit -> AgendaEditorSheet(activity.agenda, current.draft, current.source, onDismiss = { sheet = null })
         ScheduleSheet.AgendaList -> AgendaListSheet(
             activity.agenda,
@@ -708,7 +739,11 @@ private fun ModeButton(label: String, selected: Boolean, modifier: Modifier, onC
 }
 
 @Composable
-private fun WeekSwitcher(store: ScheduleStore, couple: ScheduleCouple?, minute: Int, onCouple: () -> Unit, onPick: () -> Unit) {
+private fun WeekSwitcher(
+    store: ScheduleStore, couple: ScheduleCouple?, minute: Int, onCouple: () -> Unit,
+    overlay: SharedSchedule? = null, overlaySchool: String? = null, onOverlay: () -> Unit = {}, onClearOverlay: () -> Unit = {},
+    onPick: () -> Unit,
+) {
     val colors = LocalScheduleColors.current
     val label = store.selectedWeek.takeIf { it.isNotEmpty() }?.let { "第${it}周" } ?: "选择周次"
     val start = store.dayDate(1)
@@ -716,7 +751,7 @@ private fun WeekSwitcher(store: ScheduleStore, couple: ScheduleCouple?, minute: 
     val range = if (start.isNotEmpty() && end.isNotEmpty()) "${start.replace('-', '.')} - ${end.replace('-', '.')}" else "校历暂无日期"
     val current = store.isCurrentWeek()
     val bound = couple?.active
-    if (couple != null && bound != null) {
+    if (overlay != null || (couple != null && bound != null)) {
         // Bound: the week and its dates share the first line, and the partner's
         // status takes the second, so the couple timetable needs no row of its own.
         SwitcherRow(
@@ -740,7 +775,8 @@ private fun WeekSwitcher(store: ScheduleStore, couple: ScheduleCouple?, minute: 
                 Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1,
                     fontFamily = navigatorDateFamily(), overflow = TextOverflow.Ellipsis)
             }
-            CoupleStatusLine(couple, bound, minute, onCouple)
+            if (overlay != null) SharedOverlayLine(overlay, overlaySchool, onOverlay, onClearOverlay)
+            else if (couple != null && bound != null) CoupleStatusLine(couple, bound, minute, onCouple)
         }
         return
     }
@@ -763,6 +799,35 @@ private fun WeekSwitcher(store: ScheduleStore, couple: ScheduleCouple?, minute: 
         // The date range is all digits, so the board may keep its monospaced face there.
         Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1,
             fontFamily = navigatorDateFamily())
+    }
+}
+
+/** The second line while a shared timetable is laid on top: whose it is, and a button to take it off. */
+@Composable
+private fun SharedOverlayLine(shared: SharedSchedule, school: String?, onOpen: () -> Unit, onClear: () -> Unit) {
+    val colors = LocalScheduleColors.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Row(
+            Modifier.weight(1f, fill = false).clip(RoundedCornerShape(10.dp)).clickable(onClick = onOpen).padding(horizontal = 6.dp, vertical = 2.dp)
+                .semantics(mergeDescendants = true) { contentDescription = "叠加了 ${shared.name} 的课，选择叠加的课表" },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(OverlayTeal))
+            Spacer(Modifier.width(5.dp))
+            Text("叠加了 ${shared.name} 的课", fontSize = 11.sp, lineHeight = 15.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (school != null) {
+                Spacer(Modifier.width(5.dp))
+                Text(school, fontSize = 10.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium, color = OverlayTeal, maxLines = 1,
+                    modifier = Modifier.clip(CircleShape).background(OverlayTeal.copy(alpha = 0.14f)).padding(horizontal = 5.dp, vertical = 1.dp))
+            }
+        }
+        Box(
+            Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onClear).semantics { contentDescription = "不再叠加 ${shared.name} 的课表" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(androidx.compose.material.icons.Icons.Rounded.Close, contentDescription = null, tint = colors.secondary, modifier = Modifier.size(15.dp))
+        }
     }
 }
 
@@ -891,6 +956,25 @@ private fun SchedulePages(store: ScheduleStore, context: ScheduleBodyContext) {
     val weeks = store.weekOptions()
     if (weeks.isEmpty()) {
         ScheduleBody(store, store.selectedWeek, store.result, context)
+        return
+    }
+    val layer = context.couple
+    if (store.viewMode == "week" && layer != null && store.result != null && store.calendar?.weeks?.isNotEmpty() == true) {
+        // Somebody else's courses beside the user's: days side by side, two columns each.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val height = maxHeight
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
+                OverlayStrip(
+                    store, layer, height, context.rowScale, context.now,
+                    onCourse = { block, week -> context.onCourse(block, week) },
+                    onOpenDay = { page ->
+                        if (page.week.toString() != store.selectedWeek) store.selectWeek(page.week.toString())
+                        store.selectDay(page.day)
+                        store.selectViewMode("day")
+                    },
+                )
+            }
+        }
         return
     }
     if (store.viewMode == "day") {

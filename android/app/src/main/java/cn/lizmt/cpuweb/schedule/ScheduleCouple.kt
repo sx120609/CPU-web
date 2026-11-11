@@ -220,14 +220,34 @@ class CoupleLayer(
     val myColor: String,
     val partnerColor: String,
     val partnerName: String,
+    /** The user's own bells: somebody at another school is placed on them by clock time. Empty keeps period numbers. */
+    private val myPeriods: List<SchedulePeriod> = emptyList(),
+    /** Whose timetable: the partner's, or a saved shared one laid on top (叠加到我的课表). */
+    val kind: Kind = Kind.Couple,
+    /** Their school, when it is not the user's own. */
+    val otherSchool: String? = null,
 ) {
+    enum class Kind { Couple, Shared }
+
     val partnerStore: ScheduleStore get() = store
 
-    /** The partner's courses on `date` ("yyyy-MM-dd"); null when the date is outside their term. */
+    /** "小鹿的课 · 南京医科大学", for the quick look and the menu. */
+    val ownerTitle: String get() = "${partnerName.ifEmpty { "TA " }}的课" + (otherSchool?.let { " · $it" } ?: "")
+
+    private val theirBells = OverlayTiming.periods(store.periods)
+    private val myBells = OverlayTiming.periods(myPeriods)
+
+    /** The partner's courses on `date` ("yyyy-MM-dd"), on the user's periods; null when the date is outside their term. */
     fun blocksOn(date: String): List<PlacedBlock>? {
         if (date.length != 10) return null
         val week = store.calendar?.weeks?.firstOrNull { date in it.days } ?: return null
-        return store.placedBlocksForDay(week.days.indexOf(date) + 1, week.week.toString(), data)
+        val day = week.days.indexOf(date) + 1
+        if (myBells.isEmpty() || OverlayTiming.sameBells(theirBells, myBells)) {
+            return store.placedBlocksForDay(day, week.week.toString(), data).map { it.copy(block = it.block.copy(date = date)) }
+        }
+        // Their bells differ: each course moves onto the user's periods by clock time and keeps its own times.
+        val moved = store.blocksForDay(day, week.week.toString(), data).map { OverlayTiming.remap(it.copy(date = date), theirBells, myBells) }
+        return SchedulePriority.place(moved, emptyMap())
     }
 
     /** The user's courses of `date` with the partner's beside them. */
@@ -352,13 +372,14 @@ class ScheduleCouple(
         }
     }
 
-    /** The partner's timetable ready to draw, when the user wants to see it. */
-    fun layer(): CoupleLayer? {
+    /** The partner's timetable ready to draw, when the user wants to see it, placed on [myPeriods] and compared with [mySchool]. */
+    fun layer(myPeriods: List<SchedulePeriod> = emptyList(), mySchool: String = ""): CoupleLayer? {
         val bound = active ?: return null
         val store = partnerStore ?: return null
         val data = store.result ?: return null
         if (!visible) return null
-        return CoupleLayer(store, data, bound.me.color, bound.partner.color, bound.partner.nickname)
+        return CoupleLayer(store, data, bound.me.color, bound.partner.color, bound.partner.nickname, myPeriods,
+            otherSchool = OverlayTiming.otherSchool(store.calendar?.school.orEmpty(), mySchool))
     }
 
     /** The status line under the week title; null when the user is not bound. */

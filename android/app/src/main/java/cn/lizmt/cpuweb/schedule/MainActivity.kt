@@ -56,6 +56,9 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     lateinit var sharing: ScheduleSharing
     lateinit var couple: ScheduleCouple
     lateinit var dorm: ScheduleDormRoom
+    /** The saved shared timetable laid over the user's own (叠加到我的课表). */
+    lateinit var overlay: OverlayChoice
+        private set
     /** A dorm code from a link (or empty) for the timetable to open 宿舍课表 with; null when nothing is asked. */
     var dormRequest by mutableStateOf<String?>(null)
     lateinit var agenda: AgendaRemote
@@ -148,6 +151,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         else ScheduleCouple(lifecycleScope, getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE), { web.couple(it) })
         dorm = if (debugFixture) ScheduleDormRoom(lifecycleScope, null, { DebugScheduleFixture.dorm(it) })
         else ScheduleDormRoom(lifecycleScope, getSharedPreferences(DORM_PREFS, MODE_PRIVATE), { web.dormRoom(it) })
+        overlay = OverlayChoice(if (debugFixture) null else getSharedPreferences(COUPLE_PREFS, MODE_PRIVATE))
         shell = ShellCoordinator(lifecycleScope, web, schedule)
         shell.onOpenDorm = { page -> openDormSchedule(page) }
         agenda =AgendaRemote(this, lifecycleScope) { web.agenda(it) }

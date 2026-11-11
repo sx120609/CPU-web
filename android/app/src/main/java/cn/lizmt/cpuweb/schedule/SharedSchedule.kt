@@ -68,6 +68,8 @@ data class SharedSchedule(
     val fetchedAt: Long = 0L,
     /** The publisher withdrew the share. The saved copy still opens, it just will not change again. */
     val revoked: Boolean = false,
+    /** The publisher's school, when the share says: their bells may differ from the reader's. */
+    val school: String = "",
 ) {
     /** The remark wins: a nickname is the publisher's choice and may be shared by many. */
     val name: String get() = remark.trim().ifEmpty { meta.ownerName ?: "共享课表" }
@@ -103,6 +105,8 @@ data class SharedSchedule(
         return JSONObject()
             .put("version", 1).put("completeSemester", true).put("source", "shared").put("fetchedAt", now)
             .put("periods", JSONArray(periods.map { JSONObject().put("number", it.number).put("startTime", it.startTime).put("endTime", it.endTime) }))
+            // The publisher's own bells, whatever their count: not completed from this school's.
+            .put("periodsComplete", periods.isNotEmpty())
             .put("data", JSONObject()
                 .put("source", "shared").put("semesters", semesters).put("weeks", weekOptions)
                 .put("currentSemester", semesterValue).put("currentWeek", current.toString())
@@ -115,6 +119,7 @@ data class SharedSchedule(
 
     private fun calendarJson(): JSONObject = JSONObject()
         .put("semesterStart", semesterStart).put("semesterEnd", semesterEnd)
+        .apply { if (school.isNotEmpty()) put("school", school) }
         .put("weeks", JSONArray(weeks.map { week ->
             JSONObject().put("week", week.week).put("days", JSONArray(week.days)).put("monday", week.monday).put("sunday", week.sunday)
         }))
@@ -196,6 +201,7 @@ data class SharedSchedule(
                 periods = readPeriods(calendarJson.optJSONArray("periods")),
                 adjustments = calendar.adjustments,
                 fetchedAt = fetchedAt,
+                school = calendar.school,
             )
         }
 
@@ -319,7 +325,9 @@ data class SharedSchedule(
                 .put("calendar", JSONObject()
                     .put("currentSemester", semester).put("currentWeek", firstWeek)
                     .put("semesterStart", calendar.semesterStart).put("semesterEnd", calendar.semesterEnd)
-                    .put("weeks", weeks).put("periods", periods).put("adjustments", adjustments))
+                    .put("weeks", weeks).put("periods", periods).put("adjustments", adjustments)
+                    // A reader at another school sees whose bells these are.
+                    .apply { if (calendar.school.isNotEmpty()) put("school", calendar.school.take(40)) })
         }
 
         /** What the share sheet sends: the code, where to type it, and the link that opens it in a browser. */

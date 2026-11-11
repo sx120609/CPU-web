@@ -109,6 +109,8 @@ data class ScheduleCalendar(
     val semesterEnd: String = "",
     val weeks: List<CalendarWeek> = emptyList(),
     val adjustments: List<ScheduleAdjustment> = emptyList(),
+    /** The school whose calendar and bells these are; set by the site, empty from an older one. */
+    val school: String = "",
 )
 
 data class SchedulePeriod(val number: Int, val startTime: String, val endTime: String)
@@ -330,6 +332,7 @@ object ScheduleJson {
             semesterEnd = json.optString("semesterEnd", ""),
             weeks = weeks,
             adjustments = parseAdjustments(json.optJSONArray("adjustments")),
+            school = json.optStringOrNull("school")?.take(40).orEmpty(),
         )
     }
 
