@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compareAppVersions, getAppStoreVersion, parseAppStoreLookup, resetAppStoreVersionCache } from "../src/services/iosAppUpdate";
+import { compareAppVersions, getAppStoreVersion, isMarketingVersion, parseAppStoreLookup, parseAppStoreRelease, resetAppStoreVersionCache } from "../src/services/iosAppUpdate";
 
 test("marketing versions compare part by part", () => {
   assert.equal(compareAppVersions("4.13", "4.15"), -1);
@@ -39,4 +39,14 @@ test("the App Store version is cached and survives a failed lookup", async () =>
   assert.equal(await getAppStoreVersion(fetcher, start + 37 * 60_000), "4.15");
   assert.equal(calls, 3);
   resetAppStoreVersionCache();
+});
+
+test("App Store release notes become plain lines", () => {
+  const release = parseAppStoreRelease({
+    results: [{ trackId: 6811073406, version: "4.18", releaseNotes: "· 登录时可以选择学校。\n\n· 新增找共同空闲。\r\n1. 修复问题" }],
+  });
+  assert.deepEqual(release, { version: "4.18", notes: ["登录时可以选择学校。", "新增找共同空闲。", "修复问题"] });
+  assert.equal(isMarketingVersion("4.18"), true);
+  assert.equal(isMarketingVersion("4.18; drop"), false);
+  assert.equal(isMarketingVersion(["4.18"]), false);
 });

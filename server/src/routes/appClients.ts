@@ -3,7 +3,8 @@ import { securityRateLimit } from "../middleware/securityRateLimit";
 import { androidClientHeartbeatSchema, androidClientMetricsSchema, recordAndroidClientHeartbeat, recordAndroidClientMetrics } from "../services/androidClientStats";
 import { desktopInstallReportSchema, recordDesktopInstallReport } from "../services/desktopInstallReports";
 import { harmonyClientHeartbeatSchema, recordHarmonyClientHeartbeat } from "../services/harmonyClientStats";
-import { getIosAppUpdateStatus } from "../services/iosAppUpdate";
+import { getHarmonyAppUpdateStatus } from "../services/harmonyAppUpdate";
+import { getIosAppUpdateStatus, isMarketingVersion } from "../services/iosAppUpdate";
 import { iosClientHeartbeatSchema, iosClientMetricsSchema, recordIosClientHeartbeat, recordIosClientMetrics } from "../services/iosClientStats";
 import { Errors, ok } from "../utils/response";
 
@@ -27,13 +28,27 @@ appClientRouter.post("/ios/heartbeat", securityRateLimit("ios-client-heartbeat",
   }
 });
 
-// Whether the signed-in user's iOS app is behind the App Store. Guests have no
-// install to compare (and a 401 would read as an expired session), so they
-// simply get no prompt.
+// Whether the iOS app is behind the App Store. Newer builds pass their own
+// version, which works signed out too; for older builds the signed-in
+// account's latest install stands in, and guests simply get no prompt (a 401
+// would read as an expired session).
 appClientRouter.get("/ios/update", async (req, res, next) => {
-  if (!req.user) return ok(res, { updateAvailable: false });
+  const reported = isMarketingVersion(req.query.version) ? req.query.version : null;
+  if (!reported && !req.user) return ok(res, { updateAvailable: false });
   try {
-    ok(res, await getIosAppUpdateStatus(req.user.userId));
+    ok(res, await getIosAppUpdateStatus(req.user?.userId ?? null, reported));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Whether a HarmonyOS app with this version code is behind AppGallery. The
+// shell's version code is in its user agent, so guests are told as well.
+appClientRouter.get("/harmony/update", async (req, res, next) => {
+  const versionCode = Number(req.query.versionCode);
+  if (!Number.isSafeInteger(versionCode) || versionCode < 1) return ok(res, { updateAvailable: false });
+  try {
+    ok(res, await getHarmonyAppUpdateStatus(versionCode));
   } catch (error) {
     next(error);
   }

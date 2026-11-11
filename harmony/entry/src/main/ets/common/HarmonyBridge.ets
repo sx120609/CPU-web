@@ -78,6 +78,11 @@ export class HarmonyBridge {
     return false;
   }
 
+  /** 这一版自己用系统弹窗提示应用市场的新版本，网页就不再弹。 */
+  supportsNativeUpdatePrompt(): boolean {
+    return true;
+  }
+
   copyText(text: string): boolean {
     try {
       const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text ?? '');
@@ -446,6 +451,10 @@ export class HarmonyJavaScriptProxy {
 
   supportsInAppApkDownload(): boolean {
     return activeHarmonyBridge?.supportsInAppApkDownload() ?? false;
+  }
+
+  supportsNativeUpdatePrompt(): boolean {
+    return true;
   }
 
   copyText(text: string): boolean {

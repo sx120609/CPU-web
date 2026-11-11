@@ -46,12 +46,22 @@ export type DesktopDownloadInfo = {
   platform?: "windows" | "macos";
 };
 
-export type IosAppUpdateStatus = {
+export type NativeAppUpdateStatus = {
   updateAvailable: boolean;
   latestVersion?: string | null;
+  /** The release notes of the version on sale, one change per line. */
+  notes?: string[];
+  storeUrl?: string;
+};
+
+export type IosAppUpdateStatus = NativeAppUpdateStatus & {
   currentVersion?: string | null;
   currentBuild?: string | null;
-  storeUrl?: string;
+};
+
+export type HarmonyAppUpdateStatus = NativeAppUpdateStatus & {
+  latestVersionCode?: number | null;
+  currentVersionCode?: number | null;
 };
 
 export type SchoolSummary = {
@@ -104,6 +114,7 @@ export const siteApi = {
   desktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop", undefined, { suppressErrorMessage: true }),
   macDesktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop-mac", undefined, { suppressErrorMessage: true }),
   iosAppUpdate: () => request.get<IosAppUpdateStatus>("/app-clients/ios/update", undefined, { suppressErrorMessage: true }),
+  harmonyAppUpdate: (versionCode: number) => request.get<HarmonyAppUpdateStatus>("/app-clients/harmony/update", { versionCode }, { suppressErrorMessage: true }),
   assessmentFormDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/assessment-form", undefined, { suppressErrorMessage: true }),
 };
 

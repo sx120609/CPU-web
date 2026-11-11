@@ -53,6 +53,8 @@ final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
         // Subscribe early: MetricKit delivers pending crash reports at launch.
         ClientDiagnosticsCollector.shared.start()
+        // Newer App Store versions are announced over the native timetable.
+        AppUpdatePrompt.shared.start()
         return true
     }
 

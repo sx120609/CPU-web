@@ -423,6 +423,7 @@ struct Index {
       'getVersionName',
       'supportsScheduleWidget',
       'supportsInAppApkDownload',
+      'supportsNativeUpdatePrompt',
       'copyText',
       'openExternalUrl',
       'downloadAndInstallApk',

@@ -1,15 +1,12 @@
 import { prisma } from "../prisma";
+import { cachedStoreLookup, releaseNoteLines, type StoreRelease } from "./storeReleaseCache";
 
 export const IOS_APP_STORE_ID = "6811073406";
 export const IOS_APP_STORE_URL = `https://apps.apple.com/cn/app/id${IOS_APP_STORE_ID}`;
 
 const LOOKUP_URL = `https://itunes.apple.com/lookup?id=${IOS_APP_STORE_ID}&country=cn`;
-const FRESH_MS = 30 * 60 * 1000;
-const RETRY_MS = 5 * 60 * 1000;
 const RECENT_INSTALL_MS = 30 * 24 * 60 * 60 * 1000;
-
-let cached: { version: string | null; checkedAt: number } = { version: null, checkedAt: -Infinity };
-let pending: Promise<string | null> | null = null;
+const MARKETING_VERSION = /^\d+(\.\d+){0,3}$/;
 
 /** Compares dotted marketing versions such as "4.15" and "4.9"; missing parts count as 0. */
 export function compareAppVersions(left: string, right: string) {
@@ -22,58 +19,68 @@ export function compareAppVersions(left: string, right: string) {
   return 0;
 }
 
-export function parseAppStoreLookup(payload: unknown) {
-  const result = (payload as { results?: Array<{ trackId?: unknown; version?: unknown }> } | null)?.results?.[0];
-  if (String(result?.trackId ?? "") !== IOS_APP_STORE_ID) return null;
-  return typeof result?.version === "string" && /^\d+(\.\d+){0,3}$/.test(result.version) ? result.version : null;
+export function isMarketingVersion(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 20 && MARKETING_VERSION.test(value);
 }
 
-/** The version the China App Store currently serves. A failed lookup keeps the last known value. */
+export function parseAppStoreRelease(payload: unknown): StoreRelease | null {
+  const result = (payload as { results?: Array<{ trackId?: unknown; version?: unknown; releaseNotes?: unknown }> } | null)?.results?.[0];
+  if (String(result?.trackId ?? "") !== IOS_APP_STORE_ID) return null;
+  if (!isMarketingVersion(result?.version)) return null;
+  return { version: result.version, notes: releaseNoteLines(result.releaseNotes) };
+}
+
+export function parseAppStoreLookup(payload: unknown) {
+  return parseAppStoreRelease(payload)?.version ?? null;
+}
+
+const appStoreRelease = cachedStoreLookup(async fetcher => {
+  const response = await fetcher(LOOKUP_URL, { signal: AbortSignal.timeout(5_000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const release = parseAppStoreRelease(await response.json());
+  if (!release) throw new Error("App Store lookup has no version");
+  return release;
+});
+
+/** The release the China App Store currently serves. A failed lookup keeps the last known value. */
+export function getAppStoreRelease(fetcher: typeof fetch = fetch, now = Date.now()) {
+  return appStoreRelease.get(fetcher, now);
+}
+
 export async function getAppStoreVersion(fetcher: typeof fetch = fetch, now = Date.now()) {
-  const age = now - cached.checkedAt;
-  if (age < (cached.version ? FRESH_MS : RETRY_MS)) return cached.version;
-  pending ??= fetcher(LOOKUP_URL, { signal: AbortSignal.timeout(5_000) })
-    .then(async response => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const version = parseAppStoreLookup(await response.json());
-      if (!version) throw new Error("App Store lookup has no version");
-      cached = { version, checkedAt: now };
-      return version;
-    })
-    .catch(() => {
-      // Retry sooner than a successful lookup, but do not hammer Apple on every request.
-      cached = { version: cached.version, checkedAt: now - (cached.version ? FRESH_MS - RETRY_MS : 0) };
-      return cached.version;
-    })
-    .finally(() => { pending = null; });
-  return pending;
+  return (await getAppStoreRelease(fetcher, now))?.version ?? null;
 }
 
 export function resetAppStoreVersionCache() {
-  cached = { version: null, checkedAt: -Infinity };
-  pending = null;
+  appStoreRelease.reset();
 }
 
 /**
- * The Web page inside the iOS app cannot read the app's version, so the
- * account's most recently active install (its launch heartbeat reports the
- * version) stands in for the device the user is holding.
+ * Whether the iOS app the user is holding is behind the App Store.
+ *
+ * Newer builds report their own version (the app asks itself, and its user agent
+ * carries the version for the page). Older builds do not, so the account's most
+ * recently active install, whose launch heartbeat reports the version, stands in.
  */
-export async function getIosAppUpdateStatus(userId: number, now = new Date()) {
-  const [latestVersion, install] = await Promise.all([
-    getAppStoreVersion(),
-    prisma.iosClientInstall.findFirst({
-      where: { userId, lastSeenAt: { gte: new Date(now.getTime() - RECENT_INSTALL_MS) } },
-      orderBy: { lastSeenAt: "desc" },
-      select: { appVersion: true, appBuild: true },
-    }),
+export async function getIosAppUpdateStatus(userId: number | null, reportedVersion: string | null, now = new Date()) {
+  const [release, install] = await Promise.all([
+    getAppStoreRelease(),
+    reportedVersion || userId === null
+      ? null
+      : prisma.iosClientInstall.findFirst({
+        where: { userId, lastSeenAt: { gte: new Date(now.getTime() - RECENT_INSTALL_MS) } },
+        orderBy: { lastSeenAt: "desc" },
+        select: { appVersion: true, appBuild: true },
+      }),
   ]);
-  const currentVersion = install?.appVersion ?? null;
+  const latestVersion = release?.version ?? null;
+  const currentVersion = reportedVersion ?? install?.appVersion ?? null;
   return {
     latestVersion,
     currentVersion,
     currentBuild: install?.appBuild ?? null,
     updateAvailable: Boolean(latestVersion && currentVersion && compareAppVersions(currentVersion, latestVersion) < 0),
+    notes: release?.notes ?? [],
     storeUrl: IOS_APP_STORE_URL,
   };
 }

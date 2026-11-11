@@ -5,6 +5,7 @@ import window from '@ohos.window';
 import { APP_URL, destinationUrlForDeepLink } from '../common/AppConfig';
 import { refreshAllScheduleForms } from '../common/ScheduleWidgetService';
 import { requestNativeScheduleOpen } from '../schedule/NativeScheduleHost';
+import { promptAppUpdate } from '../common/AppUpdatePrompt';
 
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
@@ -40,6 +41,11 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     this.applyWant(want, false);
+  }
+
+  onForeground(): void {
+    // 应用市场的新版本：等启动画面和课表先出来，再弹系统更新提示。
+    setTimeout(() => void promptAppUpdate(this.context), 4000);
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

@@ -454,7 +454,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
-        configuration.applicationNameForUserAgent = "CPUWebIOSApp/1 CPUTimeNative/1"
+        // The version token also tells the page that the app announces App Store updates itself.
+        configuration.applicationNameForUserAgent = "CPUWebIOSApp/1 \(AppUpdatePrompt.userAgentToken) CPUTimeNative/1"
 
         let webView = ImmersiveWebView(frame: .zero, configuration: configuration)
         webView.onFootChange = { [weak self] _ in self?.applyPageFoot() }

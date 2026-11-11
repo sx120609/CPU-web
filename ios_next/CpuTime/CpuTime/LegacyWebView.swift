@@ -65,7 +65,7 @@ private final class LegacyWebSession: NSObject, ObservableObject, WKNavigationDe
         let configuration = WKWebViewConfiguration()
         // Retain the same persistent cookie store across app and OS upgrades.
         configuration.websiteDataStore = .default()
-        configuration.applicationNameForUserAgent = "CPUWebIOSApp/1 CPUTimeLegacy/1"
+        configuration.applicationNameForUserAgent = "CPUWebIOSApp/1 \(AppUpdatePrompt.userAgentToken) CPUTimeLegacy/1"
         if let resource = Bundle.main.url(forResource: "LegacyWebCompatibility", withExtension: "js"),
            let source = try? String(contentsOf: resource, encoding: .utf8) {
             configuration.userContentController.addUserScript(WKUserScript(
