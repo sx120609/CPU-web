@@ -1450,8 +1450,7 @@ struct NativeShellView: View {
             NativeScheduleView(
                 store: scheduleStore,
                 onLogin: { shell.openWeb(path: "/login", tab: .profile) },
-                onDeviceSettings: { deviceSettingsPresented = true },
-                onDormSchedule: { shell.openDormSchedule() }
+                onDeviceSettings: { deviceSettingsPresented = true }
             )
             .tabItem {
                 Label(ShellTab.schedule.label, systemImage: ShellTab.schedule.systemImage)

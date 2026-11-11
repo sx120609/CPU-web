@@ -14,14 +14,13 @@ struct NativeScheduleView: View {
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
     @ObservedObject private var couple = NativeCoupleService.shared
     @ObservedObject private var sharing = NativeScheduleSharingService.shared
+    @ObservedObject private var dormService = NativeDormService.shared
     /// The share code of a saved timetable laid over the user's; empty for none.
     @AppStorage("cpu.schedule.overlay.v1") private var overlayCode = ""
     @ObservedObject private var agendaService = NativeAgendaService.shared
     @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
-    /// Opens the dorm timetable, a site page; nil where there is no shell to open it in.
-    private let onDormSchedule: (() -> Void)?
     private let isBackgroundPreview: Bool
 
     @State private var selectedDay = 1
@@ -78,7 +77,6 @@ struct NativeScheduleView: View {
         store: NativeScheduleStore,
         onLogin: @escaping () -> Void = {},
         onDeviceSettings: @escaping () -> Void = {},
-        onDormSchedule: (() -> Void)? = nil,
         isBackgroundPreview: Bool = false
     ) {
         _store = ObservedObject(wrappedValue: store)
@@ -86,7 +84,6 @@ struct NativeScheduleView: View {
         if !store.isReadOnly { ScheduleSlot.timetable = store }
         self.onDeviceSettings = onDeviceSettings
         self.onLogin = onLogin
-        self.onDormSchedule = onDormSchedule
         self.isBackgroundPreview = isBackgroundPreview
     }
 
@@ -391,6 +388,16 @@ struct NativeScheduleView: View {
                     store.commitWeekSelection(week)
                 }
             }
+            // `CPU_DEBUG_DORM=active` (`member`, `empty`, `none`, `loading`, `error`) puts the
+            // sample timetable in a sample dorm; the `dorm`, `dorm-week`, `dorm-free`,
+            // `dorm-morning`, `dorm-room`, `dorm-cell` and `dorm-join` actions open its sheet.
+            if !isBackgroundPreview, !isReadOnly,
+               let state = ProcessInfo.processInfo.environment["CPU_DEBUG_DORM"] {
+                for _ in 0..<40 where store.result == nil || store.calendar == nil {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                NativeDormService.shared.installDebugSample(state, store: store)
+            }
             // `CPU_DEBUG_AGENDA=1` draws a week of sample 日程 without a site session.
             if !isBackgroundPreview, !isReadOnly, ProcessInfo.processInfo.environment["CPU_DEBUG_AGENDA"] == "1" {
                 NativeAgendaService.shared.installDebugSample()
@@ -410,6 +417,12 @@ struct NativeScheduleView: View {
                 if let result = store.result {
                     switch action {
                     case "couple": couplePresented = true
+                    case "dorm", "dorm-week": dormService.open(page: .week)
+                    case "dorm-free": dormService.open(page: .free)
+                    case "dorm-morning": dormService.open(page: .morning)
+                    case "dorm-room": dormService.open(page: .room)
+                    case "dorm-cell": dormService.presentation = DormPresentation(page: .week, showsCellDetail: true)
+                    case "dorm-join": dormService.open(code: "K7M2QX")
                     case "share-image": exportScheduleImage(result)
                     case "share-day":
                         if let target = shareDayTarget(result) {
@@ -668,6 +681,10 @@ struct NativeScheduleView: View {
             NativeCoupleSheet(partnerNow: { coupleNowText(now: $0, short: false) ?? "" })
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: isReadOnly || isBackgroundPreview ? .constant(nil) : $dormService.presentation) { presentation in
+            NativeDormSheet(presentation: presentation)
+                .presentationDragIndicator(.visible)
+        }
         .sheet(item: isReadOnly ? .constant(nil) : $agendaService.presentation) { presentation in
             NativeAgendaSheet(presentation: presentation)
                 .presentationDragIndicator(.visible)
@@ -743,6 +760,12 @@ struct NativeScheduleView: View {
         )
     }
 #endif
+
+    /// 更多's line under 宿舍课表: the dorm when the user is in one.
+    private var dormToolDetail: String {
+        guard let room = dormService.room else { return "室友谁有空、谁要早八" }
+        return "\(room.name.isEmpty ? "我的宿舍" : room.name) · \(room.members.count) 人"
+    }
 
     /// `CPU_DEBUG_HOLIDAY_GREETING=国庆快乐`: every empty day reads as that holiday, fireworks and all.
     private var debugHolidayGreeting: String? {
@@ -1334,12 +1357,10 @@ struct NativeScheduleView: View {
                             scheduleToolsPresented = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { couplePresented = true }
                         }
-                        if let onDormSchedule {
-                            scheduleToolDivider
-                            scheduleToolRow("宿舍课表", detail: "室友的课一目了然", systemImage: "bed.double.fill", tint: .teal) {
-                                scheduleToolsPresented = false
-                                onDormSchedule()
-                            }
+                        scheduleToolDivider
+                        scheduleToolRow("宿舍课表", detail: dormToolDetail, systemImage: "bed.double.fill", tint: .cyan) {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { dormService.open() }
                         }
                     }
                 }
