@@ -142,23 +142,19 @@ internal fun CommonFreeSheet(
     }
 
     picking?.let { which ->
-        val state = rememberDatePickerState(initialSelectedDateMillis = OccurrenceRules.utcMillis(if (which == "from") from else to))
-        DatePickerDialog(
-            onDismissRequest = { picking = null },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.selectedDateMillis?.let { millis ->
-                        val picked = OccurrenceRules.fromUtcMillis(millis)
-                        if (which == "from") {
-                            from = picked
-                            if (to < picked) to = picked
-                        } else to = maxOf(picked, from)
-                    }
-                    picking = null
-                }) { Text("确定") }
+        ChineseDatePickerDialog(
+            initial = java.time.LocalDate.parse(if (which == "from") from else to),
+            onDismiss = { picking = null },
+            onConfirm = { day ->
+                val picked = day.toString()
+                if (which == "from") {
+                    from = picked
+                    if (to < picked) to = picked
+                } else to = maxOf(picked, from)
+                picking = null
             },
             dismissButton = { TextButton(onClick = { picking = null }) { Text("取消") } },
-        ) { DatePicker(state = state, title = null, headline = null, showModeToggle = false) }
+        )
     }
 }
 

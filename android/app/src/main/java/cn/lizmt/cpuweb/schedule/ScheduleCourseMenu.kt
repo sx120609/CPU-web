@@ -354,23 +354,16 @@ internal fun OccurrenceEditorSheet(
 
     if (picking) {
         val days = calendar?.weeks?.flatMap { it.days }?.filter { it.length == 10 }.orEmpty().toSet()
-        val state = rememberDatePickerState(
-            initialSelectedDateMillis = OccurrenceRules.utcMillis(target),
-            selectableDates = object : SelectableDates {
-                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                    days.isEmpty() || OccurrenceRules.fromUtcMillis(utcTimeMillis) in days
-            },
-        )
-        DatePickerDialog(
-            onDismissRequest = { picking = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.selectedDateMillis?.let { target = OccurrenceRules.fromUtcMillis(it) }
-                    picking = false
-                }) { Text("确定") }
+        ChineseDatePickerDialog(
+            initial = java.time.LocalDate.parse(target),
+            onDismiss = { picking = false },
+            selectable = { days.isEmpty() || it.toString() in days },
+            onConfirm = { day ->
+                target = day.toString()
+                picking = false
             },
             dismissButton = { TextButton(onClick = { picking = false }) { Text("取消") } },
-        ) { DatePicker(state = state, title = null, headline = null, showModeToggle = false) }
+        )
     }
 }
 

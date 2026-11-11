@@ -391,17 +391,13 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, source: 
     pickingDate?.let { which ->
         val current = AgendaItem.parseDate(if (which == "until") shown.until else shown.date)
         val initial = current ?: date ?: LocalDate.now()
-        val state = rememberDatePickerState(initialSelectedDateMillis = initial.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli())
-        DatePickerDialog(
-            onDismissRequest = { pickingDate = null },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.selectedDateMillis?.let { millis ->
-                        val picked = LocalDate.ofEpochDay(Math.floorDiv(millis, 86_400_000L)).toString()
-                        edit { if (which == "until") it.copy(until = picked.takeIf { day -> day >= it.date }.orEmpty()) else it.copy(date = picked) }
-                    }
-                    pickingDate = null
-                }) { Text("确定") }
+        ChineseDatePickerDialog(
+            initial = initial,
+            onDismiss = { pickingDate = null },
+            onConfirm = { day ->
+                val picked = day.toString()
+                edit { if (which == "until") it.copy(until = picked.takeIf { value -> value >= it.date }.orEmpty()) else it.copy(date = picked) }
+                pickingDate = null
             },
             dismissButton = {
                 Row {
@@ -415,7 +411,7 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, source: 
                     TextButton(onClick = { pickingDate = null }) { Text("取消") }
                 }
             },
-        ) { DatePicker(state = state, title = null, headline = null, showModeToggle = false) }
+        )
     }
 }
 

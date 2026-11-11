@@ -374,36 +374,20 @@ private fun CoupleFootnote(text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AnniversaryPicker(current: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
-    val utc = TimeZone.getTimeZone("UTC")
-    fun millis(date: String): Long? = runCatching {
-        GregorianCalendar(utc, Locale.US).apply {
-            clear()
-            set(date.substring(0, 4).toInt(), date.substring(5, 7).toInt() - 1, date.substring(8, 10).toInt())
-        }.timeInMillis
-    }.getOrNull()
-    val latest = millis(ScheduleStore.todayKey()) ?: System.currentTimeMillis()
-    val state = rememberDatePickerState(
-        initialSelectedDateMillis = millis(current) ?: latest,
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean = utcTimeMillis <= latest
-            override fun isSelectableYear(year: Int): Boolean = year in 1970..ScheduleStore.todayKey().take(4).toInt()
-        },
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                val picked = state.selectedDateMillis ?: return@TextButton
-                val calendar = GregorianCalendar(utc, Locale.US).apply { timeInMillis = picked }
-                onPick(String.format(Locale.US, "%04d-%02d-%02d", calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH) + 1,
-                    calendar.get(Calendar.DAY_OF_MONTH)))
-            }, enabled = state.selectedDateMillis != null) { Text("保存") }
-        },
+    val todayDate = java.time.LocalDate.parse(ScheduleStore.todayKey())
+    ChineseDatePickerDialog(
+        initial = runCatching { java.time.LocalDate.parse(current) }.getOrNull() ?: todayDate,
+        onDismiss = onDismiss,
+        selectable = { it <= todayDate && it.year >= 1970 },
+        title = "纪念日",
+        yearArrows = true,
+        confirmLabel = "保存",
+        onConfirm = { day -> onPick(day.toString()) },
         dismissButton = {
             Row {
                 if (current.isNotEmpty()) TextButton(onClick = { onPick("") }) { Text("清除", color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = onDismiss) { Text("取消") }
             }
         },
-    ) { DatePicker(state = state, title = { Text("纪念日", modifier = Modifier.padding(start = 24.dp, top = 16.dp)) }) }
+    )
 }
