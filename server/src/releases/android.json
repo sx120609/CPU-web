@@ -1,15 +1,16 @@
 {
   "schemaVersion": 1,
-  "versionCode": 64,
-  "versionName": "4.1.0",
+  "versionCode": 65,
+  "versionName": "4.1.1",
   "packageName": "cn.lizmt.cpuweb",
-  "fileName": "CPU-Web-Android-V64.apk",
+  "fileName": "CPU-Web-Android-V65.apk",
   "size": 8645179,
-  "sha256": "16df828a3eb2c7a2e2ea9ebddfb6a46db67edb2f212f0dbd91f8967b643409b6",
+  "sha256": "cc06702188f985ac5dbf5147d75e07b1e796ac2881fa2de258f7e88ee01eccdf",
   "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
-  "sourceCommit": "9aeb2b536a259d4d4f6aa83d174ea75d4c956278",
-  "buildRun": 42972689936,
+  "sourceCommit": "679f58c297f33882a40f9aed734e2de5e277f45e",
+  "buildRun": 43008510066,
   "notes": [
+    "修复情侣课表和叠加课表的双栏周视图里，经典风格下自己的课不显示教室的问题。",
     "长按课程可以只对这一次停课、调课，或在这节课加日程；改过的课标出“调”，停课的那节灰显，随时可以恢复原安排。",
     "情侣课表和叠加同学课表时，周视图改为几天并排的双栏，左边是你、右边是 TA；跨校也按实际上课时间对齐。",
     "新增“找共同空闲”：和 TA 或同学的课表比一比，挑出大家都有空的时间，一键建成日程。",
@@ -25,11 +26,18 @@
   ],
   "patches": [
     {
+      "fromVersionCode": 64,
+      "fromSha256": "16df828a3eb2c7a2e2ea9ebddfb6a46db67edb2f212f0dbd91f8967b643409b6",
+      "fileName": "CPU-Web-Android-V64-V65.cpupatch",
+      "size": 172358,
+      "sha256": "496952fad3a0e86aace60957c5907f8f979207701c449525ecb3e839d9ba5da4"
+    },
+    {
       "fromVersionCode": 63,
       "fromSha256": "5b1ec441f5504cf86dcac8d91f5245fe280af9dc4df85edf8c86bd7639813268",
-      "fileName": "CPU-Web-Android-V63-V64.cpupatch",
-      "size": 1378872,
-      "sha256": "bbfbeaefb2eb2ca7b69c3999a55db8a5549edda190a19c70f870f42670d37974"
+      "fileName": "CPU-Web-Android-V63-V65.cpupatch",
+      "size": 1385540,
+      "sha256": "b8fcf940845163034567527c08d65f9e4a364b93d302b455bac01f455f490a78"
     }
   ]
 }
