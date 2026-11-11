@@ -10,10 +10,12 @@ import deviceInfo from '@ohos.deviceInfo';
 import window from '@ohos.window';
 import fs from '@ohos.file.fs';
 import { systemShare } from '@kit.ShareKit';
-import { scheduleText, scheduleCalendar } from '../schedule/ScheduleExport';
+import { scheduleText, scheduleCalendar, scheduleSemesterCalendar } from '../schedule/ScheduleExport';
 import { SCHEDULE_STYLES, normalizeScheduleStyle, scheduleStyleSubtitle, scheduleStyleTitle } from '../schedule/ScheduleStyle';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
 import { CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
+import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
+import { NativeCommonFree } from '../schedule/NativeCommonFree';
 import { findScheduleOverlap, PlacedCourseBlock, placeScheduleBlocks, scheduleOverlapKey, scheduleOverlapText } from '../schedule/SchedulePlacement';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
 import { DORM_SCHEDULE_PAGE, dormOfferRequest, dormPagePath } from '../schedule/ScheduleDorm';
@@ -43,7 +45,7 @@ import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from
 import { NativeAgendaModel } from '../schedule/NativeAgenda';
 import { NativeAgendaEditor, NativeAgendaEditorModel } from '../schedule/NativeAgendaEditor';
 import { syncAgendaReminders } from '../schedule/NativeAgendaReminders';
-import { NativeAgendaItem } from '../schedule/NativeScheduleStore';
+import { NativeAgendaItem, NativeOccurrenceChange, NativeOccurrenceRequest, nativeScheduleStoreOf } from '../schedule/NativeScheduleStore';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
 import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidgetPreview, saveScheduleWidgetTheme, refreshAllScheduleForms, clearScheduleWidgetAccount, readScheduleWidgetSettings, saveLocalScheduleSnapshot } from '../common/ScheduleWidgetService';
@@ -68,6 +70,20 @@ interface NativeWebTaskPending {
 
 interface SchedulePriorityReply {
   priority?: Record<string, number>;
+  error?: string;
+}
+
+// CPUHarmonyEditor's `occurrence` action (harmony/bridge/editor.ts).
+interface OccurrenceBridgeRequest {
+  action: string;
+  semester: string;
+  keys: string[];
+  date: string;
+  change: NativeOccurrenceChange | null;
+}
+
+interface OccurrenceBridgeReply {
+  saved?: boolean;
   error?: string;
 }
 
@@ -98,6 +114,10 @@ struct Index {
   // 日程 are added, edited and listed in a panel over the timetable.
   @State private agendaEditor: NativeAgendaEditorModel = new NativeAgendaEditorModel();
   @State private scheduleStyleVisible: boolean = false;
+  // 叠加到我的课表.
+  @State private overlayPickerVisible: boolean = false;
+  // 找共同空闲.
+  @State private commonFreeVisible: boolean = false;
   @State private sharingModel: NativeScheduleSharingModel = new NativeScheduleSharingModel();
   @State private coupleModel: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
   // 共享课表是别人的课表，不叠情侣课表：给它一个始终未绑定的。
@@ -242,6 +262,19 @@ struct Index {
       `).catch(() => this.editorModel.accept(id, '{"error":"网页会话尚未就绪"}'));
     }, () => this.scheduleStore.load(true),
       (semester: string, priority: Record<string, number>) => this.scheduleStore.setPriorities(semester, priority));
+    // 这次停课 / 调整这一次 / 恢复原安排, saved with the schedule edits through the page.
+    this.scheduleStore.occurrenceSaver = async (request: NativeOccurrenceRequest): Promise<string> => {
+      const raw = await this.runWebTask(`typeof window.CPUHarmonyEditor === 'function'
+        ? window.CPUHarmonyEditor(${this.scriptLiteral({ action: 'occurrence', semester: request.semester, keys: request.keys,
+          date: request.date, change: request.change ?? null } as OccurrenceBridgeRequest)}) : null`);
+      try {
+        const reply = JSON.parse(raw || 'null') as OccurrenceBridgeReply | null;
+        if (reply?.saved) return '';
+        return reply?.error || '没能保存，请检查网络后再试';
+      } catch (_) {
+        return '没能保存，请检查网络后再试';
+      }
+    };
     this.attachAgenda(context);
     if (context) {
       void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
@@ -264,6 +297,7 @@ struct Index {
         this.scheduleStore.showNowIndicator = Boolean(await prefs.get('now', true));
         this.scheduleStore.restorePriorities(String(await prefs.get('priorities', '')));
         this.coupleModel.restore(String(await prefs.get('coupleVisible', '1')) !== '0', String(await prefs.get('coupleSync', '')));
+        this.restoreOverlay(String(await prefs.get('overlayCode', '')));
         try { this.overlapSeen = JSON.parse(String(await prefs.get('overlapSeen', '[]'))) as string[]; } catch (_) { this.overlapSeen = []; }
         this.overlapLoaded = true;
         this.checkScheduleOverlap();
@@ -284,6 +318,8 @@ struct Index {
         this.agendaModel?.refresh(true);
         // 共享课表按账号分开存；换了身份（本科/研究生）还是同一个账号。
         this.sharingModel.adopt(scope.split(':')[0]);
+        // Another account has another library: a timetable laid over from the old one goes.
+        if (this.coupleModel.overlayCode) this.restoreOverlay(this.coupleModel.overlayCode);
         this.coupleModel.adopt(scope.split(':')[0]);
         this.dormAccount = scope.split(':')[0];
         if (!this.scheduleStore.handleAuthChanged(scope)) return;
@@ -839,7 +875,9 @@ struct Index {
     if (!this.overlapLoaded || !store.result || store.status !== 'loaded' || this.selectedTab !== 2) return;
     let week: PlacedCourseBlock[] = [];
     [1, 2, 3, 4, 5, 6, 7].forEach((day: number) => {
-      week = week.concat(placeScheduleBlocks(store.displayBlocks(day), store.displayPriorities()));
+      // A meeting the user moved is their own doing, not the academic system's.
+      week = week.concat(placeScheduleBlocks(store.displayBlocks(day).filter((block: NativeCourseBlock) => !block.course.occurrenceFrom),
+        store.displayPriorities()));
     });
     const notice = findScheduleOverlap(week);
     if (!notice) return;
@@ -857,11 +895,17 @@ struct Index {
       confirm: { value: '知道了', action: () => undefined } });
   }
 
+  // 叠加到我的课表 is kept by share code; a code no longer in the library lays nothing over.
+  private restoreOverlay(code: string): void {
+    const schedule = code ? this.sharingModel.library.schedules.find((item: SharedSchedule) => item.meta.code === code) : undefined;
+    if ((schedule?.meta.code ?? '') !== this.coupleModel.overlayCode || schedule) this.coupleModel.setOverlay(schedule);
+  }
+
   private persistCouple(key: string, value: string): void {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
     void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
-      await prefs.put(key === 'visible' ? 'coupleVisible' : 'coupleSync', value);
+      await prefs.put(key === 'visible' ? 'coupleVisible' : key === 'overlay' ? 'overlayCode' : 'coupleSync', value);
       await prefs.flush();
     }).catch(() => undefined);
   }
@@ -1367,6 +1411,9 @@ struct Index {
               store: this.scheduleStore,
               couple: this.coupleModel,
               onCouple: () => this.coupleModel.open(),
+              onOverlay: () => this.overlayPickerVisible = true,
+              onCommonFree: () => this.commonFreeVisible = true,
+              onCalendar: () => this.chooseCalendarExport(),
               onDorm: () => this.openDormSchedule(),
               onAgenda: () => this.agendaEditor.openList(),
               bottomClearance: this.bottomContentClearance(),
@@ -1718,7 +1765,8 @@ struct Index {
     .width('100%')
     .height('100%')
     .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible || this.sharingModel.visible
-      || this.coupleModel.sheetVisible || this.agendaEditor.visible, this.nativePanelSheet(), {
+      || this.coupleModel.sheetVisible || this.agendaEditor.visible || this.overlayPickerVisible || this.commonFreeVisible,
+      this.nativePanelSheet(), {
       height: SheetSize.LARGE, showClose: true, dragBar: true,
       onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy && !this.agendaEditor.busy) action.dismiss(); },
       onDisappear: () => {
@@ -1726,6 +1774,12 @@ struct Index {
         this.sharingModel.close();
         this.coupleModel.close();
         this.agendaEditor.close();
+        this.commonFreeVisible = false;
+        if (this.overlayPickerVisible) {
+          this.overlayPickerVisible = false;
+          // A share removed from the library meanwhile is no longer laid over.
+          this.restoreOverlay(this.coupleModel.overlayCode);
+        }
       }
     })
   }
@@ -1764,6 +1818,15 @@ struct Index {
         onCopy: (text: string) => { if (this.bridge.copyText(text)) promptAction.showToast({ message: '已复制，可以发给对方了' }); },
         onSend: (text: string) => this.sendText(text)
       })
+    } else if (this.commonFreeVisible) {
+      NativeCommonFree({ store: this.scheduleStore, couple: this.coupleModel, sharing: this.sharingModel,
+        onAgenda: this.scheduleStore.agendaAvailable ? (date: string, start: string) => this.agendaEditor.openNew(date, start) : undefined,
+        onDone: () => this.commonFreeVisible = false })
+    } else if (this.overlayPickerVisible) {
+      NativeOverlayPicker({ couple: this.coupleModel, sharing: this.sharingModel,
+        onDone: () => this.overlayPickerVisible = false,
+        onOpenSharing: () => { this.overlayPickerVisible = false; setTimeout(() => this.openSharing(), 350); },
+        onOpenCouple: () => { this.overlayPickerVisible = false; setTimeout(() => this.coupleModel.open(), 350); } })
     } else if (this.coupleModel.sheetVisible) {
       NativeScheduleCouple({
         model: this.coupleModel,
@@ -2131,17 +2194,29 @@ struct Index {
     }
   }
 
-  private async exportSchedule(): Promise<void> {
+  // 导出日历文件: the week on screen, or the whole term (which the system calendar can import).
+  private chooseCalendarExport(): void {
+    promptAction.showActionMenu({ title: '导出日历文件', buttons: [
+      { text: `这一周（第 ${this.scheduleStore.selectedWeek} 周）`, color: '#168776' },
+      { text: '整学期', color: '#168776' }
+    ] }).then((result: promptAction.ActionMenuSuccessResponse) => { void this.exportSchedule(result.index === 1); })
+      .catch(() => undefined);
+  }
+
+  private async exportSchedule(wholeTerm: boolean = false): Promise<void> {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context || !this.scheduleStore.result) {
       promptAction.showToast({ message: '请先加载课表' });
       return;
     }
     try {
-      const calendar = scheduleCalendar(this.scheduleStore);
+      const complete = this.scheduleStore.completeSnapshot();
+      if (wholeTerm && !complete) throw new Error('整学期课表还没有加载完，请刷新课表后再试');
+      const calendar = wholeTerm && complete ? scheduleSemesterCalendar(nativeScheduleStoreOf(complete)) : scheduleCalendar(this.scheduleStore);
       const viewPicker = new picker.DocumentViewPicker(context);
       const options = new picker.DocumentSaveOptions();
-      options.newFileNames = [`课表-${this.scheduleStore.selectedSemester}-第${this.scheduleStore.selectedWeek}周.ics`];
+      options.newFileNames = [wholeTerm ? `课表-${this.scheduleStore.selectedSemester}-整学期.ics`
+        : `课表-${this.scheduleStore.selectedSemester}-第${this.scheduleStore.selectedWeek}周.ics`];
       const uris = await viewPicker.save(options);
       if (!uris.length) return;
       const file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
@@ -2409,6 +2484,11 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.overlayPickerVisible || this.commonFreeVisible) {
+      this.overlayPickerVisible = false;
+      this.commonFreeVisible = false;
+      return true;
+    }
     if (this.coupleModel.sheetVisible) {
       this.coupleModel.close();
       return true;

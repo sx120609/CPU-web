@@ -10,7 +10,6 @@ import { scheduleAlpha, scheduleCourseAccent, scheduleCourseFill, scheduleMetaTe
 import { calendarDayBadge, calendarDayLabel, ChineseCalendar, OffDay, publishedHolidaysFromOffDays } from '../common/ChineseCalendar';
 import { systemLunarDate } from '../common/SystemLunarCalendar';
 import { NativeScheduleCoupleModel } from './NativeScheduleCouple';
-import { couplePersonTone } from './ScheduleCouple';
 
 const WEEKDAY_LABELS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 const HOLIDAY_RED: string = '#E11D48';
@@ -166,9 +165,9 @@ export struct ScheduleMonthView {
         // The partner's day is one line of its own: how many courses they have.
         if (this.partnerCount(day) > 0) {
           Text(`TA ${this.partnerCount(day)} 门`).fontSize(10).fontWeight(600).maxLines(1).textAlign(TextAlign.Center)
-            .fontColor(couplePersonTone(this.couple.status.partner.color, this.store.dark).text)
+            .fontColor(this.couple.tint('ta', this.store.dark).text)
             .width('100%').height(14).borderRadius(7).margin({ top: 1 })
-            .backgroundColor(couplePersonTone(this.couple.status.partner.color, this.store.dark).fill)
+            .backgroundColor(this.couple.tint('ta', this.store.dark).fill)
         }
       }.width('100%').height(this.couple.showing() ? 106 : 90).justifyContent(FlexAlign.Start).alignItems(HorizontalAlign.Center)
         .padding({ top: 3, left: 1, right: 1 })
@@ -249,7 +248,7 @@ export struct ScheduleMonthView {
 
   // How many different courses the partner has that day; 0 while the couple timetable is off.
   private partnerCount(day: ScheduleMonthDay): number {
-    return this.couple.showing() ? scheduleMonthCourseNames(this.couple.blocksOn(day.date)).length : 0;
+    return this.couple.showing() ? scheduleMonthCourseNames(this.couple.blocksOn(day.date, this.store.periods)).length : 0;
   }
 
   private rowWeek(row: ScheduleMonthDay[]): string {
@@ -321,12 +320,12 @@ export struct ScheduleMonthView {
   }
   // One course's line: its own colour, or the user's couple colour while the partner's courses are shown.
   private lineFill(name: string): string {
-    if (this.couple.showing()) return couplePersonTone(this.couple.status.me.color, this.store.dark).fill;
+    if (this.couple.showing()) return this.couple.tint('me', this.store.dark).fill;
     if (this.store.visualStyle === 'classic') return scheduleCardTone(name, this.store.palette, this.store.dark).top;
     return scheduleCourseFill(scheduleStyleCourseColor(name, this.store.palette), this.store.dark, !!this.store.backgroundPath);
   }
   private lineInk(name: string): string {
-    if (this.couple.showing()) return couplePersonTone(this.couple.status.me.color, this.store.dark).text;
+    if (this.couple.showing()) return this.couple.tint('me', this.store.dark).text;
     if (this.store.visualStyle === 'classic') return scheduleCardTone(name, this.store.palette, this.store.dark).text;
     return this.store.visualStyle === 'paper' || this.store.visualStyle === 'board' ? this.ink()
       : scheduleCourseAccent(scheduleStyleCourseColor(name, this.store.palette), this.store.dark);

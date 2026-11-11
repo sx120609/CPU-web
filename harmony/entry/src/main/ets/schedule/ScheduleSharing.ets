@@ -23,6 +23,8 @@ export interface SharedScheduleCalendar {
   weeks: NativeCalendarWeek[];
   periods: NativeCalendarPeriod[];
   adjustments: NativeScheduleAdjustment[];
+  // The publisher's school, so a reader elsewhere sees whose bells these are; empty when unknown.
+  school?: string;
 }
 
 /**
@@ -70,6 +72,7 @@ interface RawShareCalendar {
   weeks?: RawShareWeek[];
   periods?: RawSharePeriod[];
   adjustments?: RawShareAdjustment[];
+  school?: string;
 }
 export interface RawShareDocument {
   code?: string;
@@ -115,6 +118,7 @@ interface PublishCalendar {
   weeks: NativeCalendarWeek[];
   periods: NativeCalendarPeriod[];
   adjustments: NativeScheduleAdjustment[];
+  school?: string;
 }
 export interface SharePublishBody {
   semester: string;
@@ -277,9 +281,10 @@ export function readSharedSchedule(document: RawShareDocument, fetchedAt: number
     if (text(item.note, 80)) adjustment.note = text(item.note, 80);
     adjustments.push(adjustment);
   });
-  return { meta, cells, remark: '', fetchedAt, revoked: false,
-    calendar: { semesterStart: text(document.calendar?.semesterStart, 10), semesterEnd: text(document.calendar?.semesterEnd, 10),
-      weeks, periods, adjustments } };
+  const calendar: SharedScheduleCalendar = { semesterStart: text(document.calendar?.semesterStart, 10),
+    semesterEnd: text(document.calendar?.semesterEnd, 10), weeks, periods, adjustments };
+  if (text(document.calendar?.school, 40)) calendar.school = text(document.calendar?.school, 40);
+  return { meta, cells, remark: '', fetchedAt, revoked: false, calendar };
 }
 
 /** `yyyy-MM-dd` in the timetable's time zone (Asia/Shanghai). */
@@ -315,6 +320,7 @@ export function sharedScheduleSnapshot(schedule: SharedSchedule, now: number): N
   const calendar: NativeScheduleCalendar = { source: 'shared', semesters, currentSemester: value, currentWeek: current,
     semesterStart: schedule.calendar.semesterStart, semesterEnd: schedule.calendar.semesterEnd,
     weeks: schedule.calendar.weeks, periods: schedule.calendar.periods, adjustments: schedule.calendar.adjustments };
+  if (schedule.calendar.school) calendar.school = schedule.calendar.school;
   return { version: 1, completeSemester: true, source: 'shared', fetchedAt: schedule.fetchedAt,
     auth: { authenticated: true },
     data: { source: 'shared', semesters, weeks, currentSemester: value, currentWeek: String(current), cells: schedule.cells },
@@ -365,13 +371,16 @@ export function sharePublishBody(snapshot: NativeScheduleSnapshot | undefined, f
     if (item.note) adjustment.note = item.note;
     return adjustment;
   });
+  const published: PublishCalendar = { currentSemester: semester, currentWeek: weeks[0].week, semesterStart: calendar.semesterStart ?? '',
+    semesterEnd: calendar.semesterEnd ?? '', weeks, periods, adjustments };
+  // The school's name: a reader at another school sees whose bells these are.
+  if ((calendar.school ?? '').trim()) published.school = (calendar.school ?? '').trim().substring(0, 40);
   return {
     semester,
     schedule: { scope: 'semester', semesters: [],
       weeks: weeks.map((week: NativeCalendarWeek): PublishWeekOption => ({ value: String(week.week), label: `第 ${week.week} 周`, current: false })),
       currentSemester: semester, currentWeek: String(weeks[0].week), cells },
-    calendar: { currentSemester: semester, currentWeek: weeks[0].week, semesterStart: calendar.semesterStart ?? '',
-      semesterEnd: calendar.semesterEnd ?? '', weeks, periods, adjustments }
+    calendar: published
   };
 }
 

@@ -16,6 +16,7 @@ import { scheduleAlpha, scheduleCleanLocation, scheduleClockLabel, scheduleClock
   scheduleStyleCourseColor, scheduleStyleFont, scheduleStyleFramesPanel, scheduleStyleInk, scheduleStyleLayout,
   scheduleStylePanelSurface, scheduleStyleTextFont, scheduleThemeFill, scheduleThemeText, scheduleThemeTint,
   scheduleTodayDate, scheduleWeekday, SCHEDULE_TABULAR_DIGITS } from './ScheduleStyle';
+import { CourseMenuAction, courseMenuActions } from './ScheduleOccurrences';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 // Row gap and date-header height of the styled grids, as on iOS.
@@ -29,6 +30,8 @@ const COUPLE_NOTE_SPACE: number = 17;
 const COUPLE_DAY_ROW: number = 50;
 const COUPLE_DAY_GAP: number = 3;
 const COUPLE_DAY_AXIS: number = 46;
+// Width of the bar a 日程 at the same time as a class is drawn as.
+const AGENDA_BAR: number = 4;
 
 // How a period's cell relates to the courses drawn over it.
 interface SlotCover {
@@ -69,6 +72,8 @@ export struct NativeScheduleBody {
   // A course that can only be looked at from here: one that does not run this week (with a
   // note saying so), or one on the leading Sunday, which belongs to the week before.
   onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => void = () => undefined;
+  // An entry of a course's long-press menu (ScheduleOccurrences `courseMenuActions`).
+  onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => void = () => undefined;
 
   build() {
     Scroll() {
@@ -174,6 +179,7 @@ export struct NativeScheduleBody {
               Column({ space: block.endSlot === block.startSlot || this.store.compactLayout ? 1 : 2 }) {
                 if (this.tileTag(block)) this.cardTag(this.tileTag(block), this.cardText(block))
                 Text(block.course.name).fontSize(this.fs(this.metrics().nameSize)).fontWeight(FontWeight.Bold)
+                  .decoration({ type: block.whole.cancelled ? TextDecorationType.LineThrough : TextDecorationType.None })
                   .minFontSize(this.fs(this.metrics().nameSize)).maxFontSize(this.fs(this.metrics().nameSize))
                   .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
                   .fontColor(this.cardText(block)).width('100%').textAlign(TextAlign.Center)
@@ -206,9 +212,10 @@ export struct NativeScheduleBody {
                 .border({ width: this.store.palette === 'color-glass' ? 1 : 1.5, color: this.cardBorder(block), radius: this.metrics().courseRadius })
                 .shadow({ radius: 3, offsetY: 1, color: this.store.dark ? '#3D000000' : '#0D2C3E5E' })
                 .position({ x: block.lane * this.weekColumn() / block.lanes + 1, y: (block.startSlot - 1) * this.weekStride() + 1 })
-                .opacity(block.offWeek ? 0.5 : 1)
+                .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
                 .accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
                 .onClick(() => this.openTile(block, day))
+                .bindContextMenu(this.courseMenu(block, day), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
             })
             this.agendaColumn(day, false)
             if (this.view.shownIsToday(day) && this.nowMarkY('week', day) >= 0) {
@@ -256,6 +263,7 @@ export struct NativeScheduleBody {
             Column({ space: block.endSlot === block.startSlot ? 2 : 5 }) {
               if (this.tileTag(block)) this.cardTag(this.tileTag(block), this.cardText(block))
               Text(block.course.name).fontSize(block.endSlot === block.startSlot ? 14 : 17).fontWeight(FontWeight.Bold)
+                .decoration({ type: block.whole.cancelled ? TextDecorationType.LineThrough : TextDecorationType.None })
                 .fontColor(this.cardText(block)).width('100%')
                 .maxLines(block.endSlot === block.startSlot ? 1 : block.endSlot - block.startSlot < 2 ? 2 : 3).textOverflow({ overflow: TextOverflow.Ellipsis })
               Text([block.course.location ? '@' + scheduleCleanLocation(block.course.location) : '', block.course.teacher].filter((value: string | undefined) => !!value).join(' · ') || '地点待确认')
@@ -274,7 +282,9 @@ export struct NativeScheduleBody {
             .border({ width: this.store.palette === 'color-glass' ? 1 : 1.5, color: this.cardBorder(block), radius: 14 })
             .shadow({ radius: 3, offsetY: 1, color: this.store.dark ? '#3D000000' : '#0D2C3E5E' })
             .position({ x: block.lane * this.dayColumn() / block.lanes + 1, y: (block.startSlot - 1) * this.dayStride() + 1 })
+            .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
             .accessibilityText(this.courseAccessibility(block, this.view.selectedDay)).onClick(() => this.openTile(block, this.view.selectedDay))
+            .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
         })
         if (this.nowMarkY('day', 0) >= 0) {
           this.nowLine('day', 0)
@@ -300,6 +310,16 @@ export struct NativeScheduleBody {
   @Builder
   private agendaColumn(day: number, styled: boolean) {
     ForEach(this.agendaChipsFor(day, styled), (chip: NativeAgendaChip) => {
+      if (chip.beside) {
+        // At the same time as a class: a thin bar on the class's right border, with no text, so the
+        // class's name stays readable. The class's quick look and the day view list the item.
+        Column().width(AGENDA_BAR).height(Math.max(8, chip.height - 6)).borderRadius(AGENDA_BAR / 2)
+          .backgroundColor(this.agendaInk()).opacity(chip.entry.done ? 0.3 : 0.75)
+          .position({ x: this.agendaWidth(styled) - AGENDA_BAR - 0.5, y: chip.y + 3 })
+          .responseRegion({ x: -8, y: 0, width: AGENDA_BAR + 10, height: '100%' })
+          .accessibilityText('日程，' + chip.entry.item.title + '，' + chip.entry.item.start + (chip.entry.done ? '，已完成' : ''))
+          .onClick(() => this.store.agendaOpen?.(chip.entry.item.id, chip.entry.date))
+      } else {
       Button() {
         Column() {
           Text((chip.entry.done ? '✓ ' : '') + chip.entry.item.title).fontSize(9).fontWeight(600).fontColor(this.agendaInk())
@@ -312,13 +332,14 @@ export struct NativeScheduleBody {
           .justifyContent(FlexAlign.Start)
           .padding({ left: 3, right: 3, top: 2, bottom: 2 })
       }.type(ButtonType.Normal).padding(0).clip(true)
-        .width(chip.beside ? this.agendaWidth(styled) * 0.44 : this.agendaWidth(styled) - 2).height(chip.height)
-        .position({ x: chip.beside ? this.agendaWidth(styled) * 0.56 - 1 : 1, y: chip.y })
+        .width(this.agendaWidth(styled) - 2).height(chip.height)
+        .position({ x: 1, y: chip.y })
         .borderRadius(this.agendaRadius()).backgroundColor(this.agendaFill())
         .border({ width: 1, color: scheduleAlpha(this.agendaInk(), 0.6), radius: this.agendaRadius(), style: BorderStyle.Dashed })
         .opacity(chip.entry.done ? 0.55 : 1)
         .accessibilityText('日程，' + chip.entry.item.title + '，' + chip.entry.item.start + (chip.entry.item.end ? ' 至 ' + chip.entry.item.end : '') + (chip.entry.done ? '，已完成' : ''))
         .onClick(() => this.store.agendaOpen?.(chip.entry.item.id, chip.entry.date))
+      }
     }, (chip: NativeAgendaChip) => chip.entry.item.id + ':' + chip.entry.date + ':' + (chip.entry.done ? 1 : 0) + ':' + chip.y)
   }
 
@@ -618,6 +639,7 @@ export struct NativeScheduleBody {
           }
         }
         Text(block.course.name).fontSize(this.tileFont(this.tileNameSize(block, dayRow), dayRow)).fontWeight(600)
+          .decoration({ type: block.whole.cancelled ? TextDecorationType.LineThrough : TextDecorationType.None })
           .fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
           .maxLines(dayRow ? (this.tileShort(block, dayRow) ? 1 : 2) : this.tileTiny(block, dayRow) ? 1 : this.tileShort(block, dayRow) ? 2
             : this.tileCompact(dayRow) ? 6 : this.tileSmall(block, dayRow) ? 4 : 3)
@@ -664,9 +686,10 @@ export struct NativeScheduleBody {
         radius: scheduleStyleLayout(this.store.visualStyle).cornerRadius })
       .position({ x: this.tileInset(block) + block.lane * this.columnWidth(dayRow) / block.lanes,
         y: (block.startSlot - 1) * (this.cellRow(dayRow) + STYLED_SLOT_GAP) + this.tileInset(block) })
-      .opacity(block.offWeek ? 0.5 : 1)
+      .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
       .onClick(() => this.openTile(block, day))
+      .bindContextMenu(this.courseMenu(block, day), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
   }
 
   // Under a course of the user's: 一起 with a heart for a class both attend, or "TA 课名" in the
@@ -783,11 +806,13 @@ export struct NativeScheduleBody {
       .backgroundColor(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).fill)
       .border({ width: 0.5, radius: 12, color: scheduleAlpha(this.couple.tint(partner ? 'ta' : 'me', this.store.dark).border, 0.55) })
       .position({ x: block.lane * this.coupleSideWidth() / block.lanes, y: (block.startSlot - 1) * (COUPLE_DAY_ROW + COUPLE_DAY_GAP) })
+      .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText((partner ? 'TA 的课，' : '') + this.spokenLabel(block, this.view.selectedDay))
       .onClick(() => {
         if (partner) this.onPeek(block.whole, this.view.selectedDay, this.couple.partnerName() + ' 的课');
         else this.openTile(block, this.view.selectedDay);
       })
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
   }
 
   // The small outlined label on a course: 非本周, or TA on the partner's.
@@ -909,8 +934,10 @@ export struct NativeScheduleBody {
         : scheduleCourseBorder(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark) })
       .shadow({ radius: this.blockPhase(block, this.view.selectedDay) === 'completed' ? 0 : 7, offsetY: 3,
         color: this.store.dark ? '#2E000000' : '#12000000' })
+      .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
       .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
   }
 
   @Builder
@@ -959,8 +986,10 @@ export struct NativeScheduleBody {
                     .border({ width: { left: 0.5 }, color: scheduleStyleCellBorder(this.store.dark) })
                 }.width('100%').height(this.tableRow())
                   .backgroundColor(scheduleCourseFill(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark))
+                  .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
                   .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
                   .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
+                  .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
               })
             }.layoutWeight(1)
           }
@@ -1003,8 +1032,10 @@ export struct NativeScheduleBody {
               // The last row closes the list; one more rule there would sit on the panel's edge.
               .border({ width: { bottom: sectionIndex === this.daySections().length - 1 && index === section.courses.length - 1 ? 0 : 0.5 },
                 color: scheduleAlpha(this.ink(), 0.15) })
+              .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
               .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
               .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
+              .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
           })
         })
       }.width('100%').padding(9).border({ width: 0.6, color: scheduleAlpha(this.ink(), 0.24) })
@@ -1043,8 +1074,10 @@ export struct NativeScheduleBody {
                 Text(scheduleCleanLocation(block.course.location)).fontSize(12).fontColor(scheduleAlpha(this.ink(), 0.62)).maxLines(1)
               }
             }.width('100%').height(Math.max(34, this.cardHeight() * 0.34)).padding({ left: 12, right: 12 })
+              .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
               .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
               .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
+              .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
           })
         }
       } else {
@@ -1101,6 +1134,7 @@ export struct NativeScheduleBody {
       .backgroundColor(this.ink())
       .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
       .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
   }
 
   // A course still to come, or any course in the plain timetable: the start time leads, with the
@@ -1129,8 +1163,10 @@ export struct NativeScheduleBody {
       }
     }.width('100%').height(Math.max(68, this.cardHeight() * 0.66)).padding({ left: 12, right: 12 })
       .border({ width: { bottom: last ? 0 : 0.5 }, color: scheduleAlpha(this.ink(), 0.15) })
+      .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
       .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
   }
 
   // The rest card of a day with no courses: a dozing cloud in the theme colour.
@@ -1179,10 +1215,10 @@ export struct NativeScheduleBody {
 
   // The day's courses as drawn; with the couple timetable, the partner's of the same date beside them.
   private placed(day: number): PlacedCourseBlock[] {
-    const own = placeScheduleBlocks(this.view.shownBlocks(day), this.store.displayPriorities());
+    const own = placeScheduleBlocks(this.view.shownBlocks(day).concat(this.view.cancelledBlocks(day)), this.store.displayPriorities());
     if (!this.couple.showing()) return own;
     const none: Record<string, number> = {};
-    return mergeCoupleBlocks(own, placeScheduleBlocks(this.couple.blocksOn(this.view.shownRawDate(day)), none));
+    return mergeCoupleBlocks(own, placeScheduleBlocks(this.couple.blocksOn(this.view.shownRawDate(day), this.view.periods), none));
   }
 
   // The couple day: the user's side holds the user's courses, the partner's side everything of theirs.
@@ -1311,11 +1347,12 @@ export struct NativeScheduleBody {
   }
 
   private tileStatus(block: PlacedCourseBlock, day: number): string {
+    if (block.whole.cancelled) return '已停课';
     return scheduleCourseStatusLabel(this.dayStatus(day), this.blockStart(block), this.blockEnd(block));
   }
 
   private tileCurrent(block: PlacedCourseBlock, day: number): boolean {
-    return !block.offWeek && this.blockPhase(block, day) === 'current';
+    return !block.offWeek && !block.whole.cancelled && this.blockPhase(block, day) === 'current';
   }
 
   private blockRemaining(block: PlacedCourseBlock): number {
@@ -1454,6 +1491,40 @@ export struct NativeScheduleBody {
       .filter((value: string) => !!value).join('，');
   }
 
+  // A course that does not run this week and a cancelled meeting are drawn faded.
+  private tileOpacity(block: PlacedCourseBlock): number {
+    return block.whole.cancelled ? 0.55 : block.offWeek ? 0.5 : 1;
+  }
+
+  // The long-press menu of a course: the system's larger preview of the card and NapTable's actions.
+  @Builder
+  private courseMenu(block: PlacedCourseBlock, day: number) {
+    Menu() {
+      ForEach([0, 1, 2], (group: number) => {
+        if (this.menuActions(block, day).some((action: CourseMenuAction) => action.group === group)) {
+          MenuItemGroup() {
+            ForEach(this.menuActions(block, day).filter((action: CourseMenuAction) => action.group === group), (action: CourseMenuAction) => {
+              if (action.destructive) {
+                MenuItem({ content: action.label }).contentFontColor('#DC2626')
+                  .onClick(() => this.onMenu(action.id, block.whole, day, this.view.shownRawDate(day)))
+              } else {
+                MenuItem({ content: action.label })
+                  .onClick(() => this.onMenu(action.id, block.whole, day, this.view.shownRawDate(day)))
+              }
+            }, (action: CourseMenuAction) => action.id)
+          }
+        }
+      }, (group: number) => String(group))
+    }
+  }
+
+  private menuActions(block: PlacedCourseBlock, day: number): CourseMenuAction[] {
+    return courseMenuActions({ partner: block.owner === 'ta' || !!block.offWeek, cancelled: !!block.whole.cancelled,
+      moved: !!block.course.occurrenceFrom, editable: this.store.canEdit() && !this.view.leadsWeek(day),
+      occurrences: this.store.occurrencesEditable(), date: this.view.shownRawDate(day), adjusted: !!this.view.shownAdjustment(day),
+      agenda: this.store.agendaAvailable && !!this.store.agendaNew });
+  }
+
   // ---- Geometry ----
 
   private metrics(): ScheduleGridMetrics {
@@ -1534,6 +1605,8 @@ export struct NativeScheduleBody {
     return block.owner && !block.offWeek && this.couple.showing() ? this.couple.tint(block.owner, this.store.dark) : undefined;
   }
   private tileTag(block: PlacedCourseBlock): string {
+    if (block.whole.cancelled) return '已停课';
+    if (block.course.occurrenceFrom && !block.offWeek) return '调';
     return block.offWeek ? '非本周' : block.owner === 'ta' && block.endSlot > block.startSlot && block.lanes === 1 ? 'TA' : '';
   }
   private tileAccent(block: PlacedCourseBlock): string {

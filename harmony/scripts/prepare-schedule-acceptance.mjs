@@ -52,7 +52,7 @@ const snapshot = {
     cells: courses.map(([day, startSlot, endSlot, name, location, note], index) => ({
       day, bigSlot: Math.ceil(startSlot / 2), courses: [{
         nativeId: `fixture-${index}`, name, location, teacher: '示例教师', weeks: '1-20周',
-        weekList: weeks.map(({ value }) => Number(value)), startSlot, endSlot,
+        weekList: weeks.map(({ value }) => Number(value)), startSlot, endSlot, editKeys: [`qa|${index}`],
         slotNote: note || `${String(startSlot).padStart(2, '0')}-${String(endSlot).padStart(2, '0')}节`,
       }],
     })),
@@ -61,7 +61,13 @@ const snapshot = {
   calendar: { periods, currentWeek: 5, semesterStart: '2026-09-07', semesterEnd: '2027-01-24', weeks: calendarWeeks,
     adjustments: [{ date: calendarWeeks[5].days[0], kind: 'off', note: '校运动会' },
       { date: calendarWeeks[5].days[5], kind: 'swap', source: calendarWeeks[5].days[3] }] },
+  // The stand-in keeps single-meeting changes (`--ps occurrences 1` seeds two).
+  occurrenceChanges: [],
 };
+// `--ps occurrences 1`: this week Monday's first course is cancelled and Tuesday's first moved to
+// Thursday evening, as iOS's CPU_DEBUG_OCCURRENCES.
+const seededOccurrences = [{ key: 'qa|0', date: calendarWeeks[4].days[0], cancelled: true },
+  { key: 'qa|2', date: calendarWeeks[4].days[1], toDate: calendarWeeks[4].days[3], startSlot: 9, endSlot: 10, location: '实验楼B101' }];
 // `--ps data promo`: the sample timetable the iOS client uses for its store screenshots
 // (NativeScheduleDebugFixture with CPU_DEBUG_VISUAL_SCHEDULE), on the school's own bell times.
 const promoNames = ['高等数学', '大学英语', '有机化学', '药理学', '人体解剖生理学', '药物分析', '生物化学', '大学物理', '思想道德与法治',
@@ -86,6 +92,18 @@ const promoSnapshot = {
   },
   calendar: { periods: promoPeriods, currentWeek: 5, semesterStart: '2026-09-07', semesterEnd: '2027-01-24', weeks: calendarWeeks },
 };
+// `--ps overlay 1`: a classmate at another school laid over the timetable, on that school's bells
+// (15 forty-minute periods), so the strip places their courses by clock time.
+const otherPeriods = [['08:00', '08:40'], ['08:50', '09:30'], ['09:40', '10:20'], ['10:30', '11:10'], ['11:20', '12:00'],
+  ['13:30', '14:10'], ['14:20', '15:00'], ['15:10', '15:50'], ['16:00', '16:40'], ['16:50', '17:30'], ['18:30', '19:10'],
+  ['19:20', '20:00'], ['20:10', '20:50'], ['21:00', '21:40'], ['21:50', '22:30']].map(([start, end], index) => ({ id: index + 1, start, end }));
+const otherCourses = [[1, 1, 3, '系统解剖学', '基础楼201'], [1, 6, 7, '医学心理学', '求索楼B102'], [2, 3, 5, '组织胚胎学', '基础楼305'],
+  [3, 1, 2, '药物设计学', '教学楼A101'], [3, 11, 12, '大学生心理健康', '线上'], [4, 6, 8, '病理学实验', '实验楼E210'], [5, 2, 4, '生理学', '基础楼102']];
+const overlayDocument = { code: 'NJMU2345', owner: '小林', semester, courseCount: otherCourses.length,
+  createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-06T12:30:00.000Z',
+  schedule: { cells: otherCourses.map(([day, startSlot, endSlot, name, location]) => ({ day, bigSlot: Math.ceil(startSlot / 2),
+    courses: [{ name, location, teacher: '', weeks: '1-20周', weekList: weeks.map(({ value }) => Number(value)), startSlot, endSlot }] })) },
+  calendar: { ...snapshot.calendar, periods: otherPeriods, school: '南京医科大学' } };
 // What the stand-in share server hands back for any code: the same timetable under another name.
 const shareDocument = { code: 'ABCD2345', owner: '阿青', semester, courseCount: courses.length,
   createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-06T12:30:00.000Z',
@@ -114,13 +132,18 @@ const coupleSchedules = { me: null, partner: { semester, syncedAt: '2026-10-08T0
   calendar: snapshot.calendar } };
 put('entry/src/main/ets/pages/ScheduleAcceptance.ets', `
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
-import { NativeCourseBlock, NativeScheduleStore, NativeScheduleRequest } from '../schedule/NativeScheduleStore';
+import { NativeCourseBlock, NativeScheduleStore, NativeScheduleRequest, NativeOccurrenceChange, NativeOccurrenceRequest,
+  NativeScheduleSnapshot } from '../schedule/NativeScheduleStore';
+import { applyOccurrencesToCells } from '../schedule/ScheduleOccurrences';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
 import { agendaDateOf, agendaDayNumber, AgendaReply, NativeAgendaDraft, NativeAgendaExtracted, NativeAgendaModel } from '../schedule/NativeAgenda';
 import { agendaToday, NativeAgendaEditor, NativeAgendaEditorModel } from '../schedule/NativeAgendaEditor';
 import { NativeAgendaItem } from '../schedule/NativeScheduleStore';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiData, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
-import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
+import { librarySave, RawShareDocument, readSharedSchedule, SharedSchedule, SharePublishBody, sharedScheduleSnapshot,
+  sharePublishBody } from '../schedule/ScheduleSharing';
+import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
+import { NativeCommonFree } from '../schedule/NativeCommonFree';
 import { CoupleApiData, CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { normalizeScheduleStyle, scheduleClockMinutes, SCHEDULE_STYLES } from '../schedule/ScheduleStyle';
 import { NativeTabBar } from '../common/NativeTabBar';
@@ -169,6 +192,11 @@ struct ScheduleAcceptance {
   @StorageProp('qaData') private data: string = '';
   // Store screenshots: no system status bar, which on an emulator carries debugging icons.
   @StorageProp('qaClean') private clean: boolean = false;
+  @StorageProp('qaOccurrences') private seedOccurrences: string = '';
+  @StorageProp('qaOverlay') private overlaySeed: string = '';
+  @State private overlayPicker: boolean = false;
+  @State private commonFree: boolean = false;
+  private occurrences: NativeOccurrenceChange[] = [];
   private published: boolean = false;
   @StorageProp('systemTopInsetPx') private topInset: number = 0;
   @StorageProp('systemBottomInsetPx') private bottomInset: number = 0;
@@ -234,11 +262,32 @@ struct ScheduleAcceptance {
     this.store.dark = !this.store.dark;
     this.applySystemAppearance();
   }
+  // The fixture with the stand-in's single-meeting changes written in, as the site does.
+  private snapshotJson(): string {
+    const base = JSON.parse(this.data === 'promo'
+      ? ${JSON.stringify(JSON.stringify(promoSnapshot))} : ${JSON.stringify(JSON.stringify(snapshot))}) as NativeScheduleSnapshot;
+    if (base.data && base.calendar) base.data.cells = applyOccurrencesToCells(base.data.cells, this.occurrences, base.calendar.weeks);
+    if (this.data !== 'promo') base.occurrenceChanges = this.occurrences;
+    base.fetchedAt = Date.now();
+    return JSON.stringify(base);
+  }
   aboutToAppear(): void {
+    if (this.seedOccurrences === '1') this.occurrences = JSON.parse(${JSON.stringify(JSON.stringify(seededOccurrences))}) as NativeOccurrenceChange[];
     this.store.attach((request: NativeScheduleRequest) => {
-      this.store.acceptResult(request.id, this.data === 'promo'
-        ? ${JSON.stringify(JSON.stringify(promoSnapshot))} : ${JSON.stringify(JSON.stringify(snapshot))});
+      if (request.id) this.store.acceptResult(request.id, this.snapshotJson());
     }, () => undefined);
+    this.store.occurrenceSaver = async (request: NativeOccurrenceRequest): Promise<string> => {
+      const kept = this.occurrences.filter((item: NativeOccurrenceChange) => !(request.keys.includes(item.key) && item.date === request.date));
+      const change = request.change;
+      const added: NativeOccurrenceChange[] = change ? request.keys.map((key: string): NativeOccurrenceChange => {
+        const item: NativeOccurrenceChange = JSON.parse(JSON.stringify(change)) as NativeOccurrenceChange;
+        item.key = key;
+        item.date = request.date;
+        return item;
+      }) : [];
+      this.occurrences = kept.concat(added);
+      return '';
+    };
     this.store.markBridgeReady();
     this.editor.attach((id: string, request: CourseEditorRequest) => {
       const opened: QaEditorReply = { session: 'offline-acceptance', hidden: [], priority: this.store.displayPriorities() };
@@ -251,6 +300,13 @@ struct ScheduleAcceptance {
     const picked = this.coupleColors.split(',');
     if (picked.length === 2) { this.coupleMine = picked[0].trim(); this.coupleTheirs = picked[1].trim(); }
     if (this.coupleState) void this.couple.refresh(true);
+    if (this.overlaySeed === '1') {
+      const shared = readSharedSchedule(JSON.parse(${JSON.stringify(JSON.stringify(overlayDocument))}) as RawShareDocument, Date.now());
+      this.sharing.library = librarySave(this.sharing.library, shared, '');
+      this.couple.setOverlay(shared);
+    }
+    if (this.panel === 'overlayPicker') setTimeout(() => this.overlayPicker = true, 600);
+    if (this.panel === 'commonFree') setTimeout(() => this.commonFree = true, 600);
     this.syncOptions();
   }
   private async coupleApi(request: CoupleApiRequest): Promise<CoupleApiReply> {
@@ -389,7 +445,12 @@ struct ScheduleAcceptance {
   }
   @Builder
   private panelSheet() {
-    if (this.editor.visible) {
+    if (this.commonFree) {
+      NativeCommonFree({ store: this.store, couple: this.couple, sharing: this.sharing,
+        onAgenda: (date: string, start: string) => this.agendaEditor.openNew(date, start), onDone: () => this.commonFree = false })
+    } else if (this.overlayPicker) {
+      NativeOverlayPicker({ couple: this.couple, sharing: this.sharing, onDone: () => this.overlayPicker = false })
+    } else if (this.editor.visible) {
       NativeCourseEditor({ model: this.editor })
     } else if (this.agendaEditor.visible) {
       NativeAgendaEditor({ model: this.agendaEditor, store: this.store })
@@ -408,12 +469,13 @@ struct ScheduleAcceptance {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       NativeSchedulePage({ store: this.store, couple: this.couple, onCouple: () => this.couple.open(),
+        onOverlay: () => this.overlayPicker = true, onCommonFree: () => this.commonFree = true,
         bottomClearance: nativeNavigationClearance(px2vp(this.bottomInset)),
         pinnedNow: scheduleClockMinutes(this.now),
         onStyle: () => this.cycleStyle(), onAppearance: () => this.toggleAppearance(), onWidgets: () => this.cycleTheme(),
         onEdit: (block: NativeCourseBlock) => this.openEditor(block), onTools: () => this.openEditor(),
         onAddSlot: (day: number, slot: number) => this.openEditor(undefined, day, slot),
-        onSharing: () => this.sharing.open(), onAgenda: () => this.agendaEditor.openList() })
+        onSharing: () => this.sharing.open(), onAgenda: () => this.agendaEditor.openList(), debugAction: this.panel })
         .padding({ top: this.topPadding() })
       NativeTabBar({ selected: 2, dark: this.store.dark })
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
@@ -424,9 +486,9 @@ struct ScheduleAcceptance {
         }.width('100%').height('100%').padding({ top: this.topPadding() }).backgroundColor(scheduleSurface(this.store.dark))
       }
     }.width('100%').height('100%').backgroundColor(scheduleSurface(this.store.dark))
-      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible || this.agendaEditor.visible, this.panelSheet(),
+      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible || this.agendaEditor.visible || this.overlayPicker || this.commonFree, this.panelSheet(),
         { height: SheetSize.LARGE, showClose: true, dragBar: true,
-        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); this.agendaEditor.close(); } })
+        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); this.agendaEditor.close(); this.overlayPicker = false; this.commonFree = false; } })
   }
 }
 `);
@@ -449,6 +511,8 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaCoupleColors', String(want.parameters?.coupleColors ?? ''));
     AppStorage.setOrCreate('qaData', String(want.parameters?.data ?? ''));
     AppStorage.setOrCreate('qaClean', String(want.parameters?.clean ?? 'false') === 'true');
+    AppStorage.setOrCreate('qaOccurrences', String(want.parameters?.occurrences ?? ''));
+    AppStorage.setOrCreate('qaOverlay', String(want.parameters?.overlay ?? ''));
     const routedUrl =`);
 put('entry/src/main/ets/entryability/EntryAbility.ets', ability);
 put('entry/src/main/resources/base/profile/main_pages.json', JSON.stringify({ src: ['pages/Index', 'pages/ScheduleAcceptance'] }, null, 2));

@@ -28,6 +28,40 @@ export interface NativeScheduleCourse {
   orphaned?: boolean;
   customStartTime?: string;
   customEndTime?: string;
+  // The schedule-edit keys of the rows the site merged into this course (web bridge `editKeys`);
+  // a single cancelled or moved meeting names the course by one of them.
+  editKeys?: string[];
+  // Set on a course shown in place of one meeting that was moved (调整这一次): the edit key of the
+  // course it came from and the date it was meant for (server/src/shared/scheduleOccurrences.ts).
+  occurrenceKey?: string;
+  occurrenceFrom?: string;
+  // The week text before a cancelled or moved meeting rewrote `weeks`; the edit key is built from it.
+  sourceWeeks?: string;
+}
+
+/**
+ * One meeting of a course changed on its own: 这次停课, or 调整这一次 to another date, other periods or
+ * another room. Saved with the schedule edits; the site writes them into the timetable before it
+ * reaches the app, and the snapshot lists them (`occurrenceChanges`).
+ */
+export interface NativeOccurrenceChange {
+  key: string;
+  // yyyy-MM-dd, the meeting as it was meant to be held.
+  date: string;
+  cancelled?: boolean;
+  toDate?: string;
+  startSlot?: number;
+  endSlot?: number;
+  location?: string;
+  note?: string;
+}
+
+/** What `occurrenceSaver` sends: the change for every key, or none to put the meeting back. */
+export interface NativeOccurrenceRequest {
+  semester: string;
+  keys: string[];
+  date: string;
+  change?: NativeOccurrenceChange;
 }
 
 // "06-07节" from the academic system and the merged blocks, "第 6-7 节" from a save with the note left empty.
@@ -127,6 +161,8 @@ export interface NativeScheduleCalendar {
   semesterEnd: string;
   weeks: NativeCalendarWeek[];
   adjustments?: NativeScheduleAdjustment[];
+  // The school's name (web bridge `withSchool`); a shared timetable carries its publisher's.
+  school?: string;
 }
 
 export interface NativeScheduleResult {
@@ -153,6 +189,9 @@ export interface NativeScheduleSnapshot {
   calendar?: NativeScheduleCalendar;
   auth: NativeScheduleAuth;
   error?: string;
+  // The single meetings cancelled or moved this term, already written into `data`. Absent from a
+  // site that cannot keep them; 调整这一次 and 这次停课 are hidden then.
+  occurrenceChanges?: NativeOccurrenceChange[];
 }
 
 export interface NativeScheduleRequest {
@@ -168,6 +207,8 @@ export interface NativeCourseBlock {
   startSlot: number;
   endSlot: number;
   course: NativeScheduleCourse;
+  // A meeting cancelled with 这次停课: drawn where it would have been, grey and struck through.
+  cancelled?: NativeOccurrenceChange;
 }
 
 /** A course's own [start, end] when it does not follow the periods; empty when it has none or they are not valid. */
@@ -275,6 +316,10 @@ export class NativeScheduleStore {
   selectedDate: string = '';
   monthAnchor: string = '';
   priorityRevision: number = 0;
+  // Single meetings cancelled or moved this term; undefined when the site cannot keep them.
+  occurrenceChanges?: NativeOccurrenceChange[];
+  // Saves a single-meeting change through the signed-in page; resolves to '' or an error to show.
+  occurrenceSaver?: (request: NativeOccurrenceRequest) => Promise<string>;
 
   private requester?: NativeScheduleRequester;
   private listener?: NativeScheduleChangeListener;
@@ -794,6 +839,56 @@ export class NativeScheduleStore {
     return scheduleOffWeekBlocks(this.mergedBlocks(other, day), this.shownBlocks(day), week);
   }
 
+  // ---- 单次停课、调课 ----
+
+  /** The site keeps single-meeting changes, and this is the user's own timetable. */
+  occurrencesEditable(): boolean {
+    return !this.readOnly && this.source !== 'graduate' && Array.isArray(this.occurrenceChanges);
+  }
+
+  /** The meetings cancelled on the date this column shows, at the periods they would have taken. */
+  cancelledBlocks(day: number): NativeCourseBlock[] {
+    const changes = this.occurrenceChanges ?? [];
+    if (this.readOnly || !this.result || !changes.length) return [];
+    return this.cancelledOnDate(this.shownRawDate(day), day, this.shownSlot(day).day);
+  }
+
+  /** The same for any date (month view, exports); `day` is the weekday it is drawn as. */
+  cancelledOnDate(date: string, day: number, sourceDay: number = day): NativeCourseBlock[] {
+    const changes = (this.occurrenceChanges ?? []).filter((change: NativeOccurrenceChange) => change.cancelled === true && change.date === date);
+    if (this.readOnly || !this.result || !date || !changes.length) return [];
+    const blocks: NativeCourseBlock[] = [];
+    const seen: string[] = [];
+    const maxSlot = this.slotCount();
+    changes.forEach((change: NativeOccurrenceChange) => {
+      for (const cell of this.result?.cells ?? []) {
+        if (cell.day !== sourceDay) continue;
+        const course = cell.courses.find((item: NativeScheduleCourse) => (item.editKeys ?? []).includes(change.key));
+        if (!course) continue;
+        const id = (course.editKeys ?? [change.key])[0] + '@' + change.date;
+        if (seen.includes(id)) break;
+        seen.push(id);
+        const startSlot = Math.max(1, Math.min(maxSlot, Number(course.startSlot) || cell.bigSlot * 2 - 1));
+        const endSlot = Math.max(startSlot, Math.min(maxSlot, Number(course.endSlot) || cell.bigSlot * 2));
+        blocks.push({ day, bigSlot: cell.bigSlot, startSlot, endSlot, course, cancelled: change });
+        break;
+      }
+    });
+    return blocks;
+  }
+
+  /**
+   * Cancels or moves one meeting of the course saved under `keys` (one per row the site merged into
+   * it), or with no `change` puts it back. Reloads the timetable once the site has it.
+   */
+  async changeOccurrence(keys: string[], date: string, change?: NativeOccurrenceChange): Promise<string> {
+    if (!this.occurrenceSaver || !keys.length || !date) return '这项功能需要更新网站后才能使用';
+    const semester = this.prioritySemester();
+    const message = await this.occurrenceSaver({ semester, keys, date, change });
+    if (!message) this.load(true);
+    return message;
+  }
+
   // ---- 月视图 ----
 
   private todayDate(): string {
@@ -957,7 +1052,16 @@ export class NativeScheduleStore {
       location: course.location ?? next?.location, slotNote: this.slotLabel(startSlot, endSlot),
       sourceNote: this.sourceNote(course, next), startSlot, endSlot,
       sourceKey: course.sourceKey, customId: course.customId, custom: course.custom, orphaned: course.orphaned,
-      customStartTime: course.customStartTime ?? next?.customStartTime, customEndTime: course.customEndTime ?? next?.customEndTime };
+      customStartTime: course.customStartTime ?? next?.customStartTime, customEndTime: course.customEndTime ?? next?.customEndTime,
+      editKeys: this.mergedKeys(course.editKeys, next?.editKeys), occurrenceKey: course.occurrenceKey ?? next?.occurrenceKey,
+      occurrenceFrom: course.occurrenceFrom ?? next?.occurrenceFrom, sourceWeeks: course.sourceWeeks ?? next?.sourceWeeks };
+  }
+
+  private mergedKeys(left?: string[], right?: string[]): string[] | undefined {
+    if (!left?.length && !right?.length) return undefined;
+    const keys: string[] = [];
+    (left ?? []).concat(right ?? []).forEach((key: string) => { if (key && !keys.includes(key)) keys.push(key); });
+    return keys;
   }
 
   private weekText(values: number[]): string {
@@ -995,6 +1099,7 @@ export class NativeScheduleStore {
     preview.readOnly = this.readOnly;
     preview.copyDisplay(this);
     preview.completeSemester = this.completeSemester;
+    preview.occurrenceChanges = this.occurrenceChanges;
     // Adjacent pages may only display a matching cached week or a complete term.
     const cached = this.freshCache(this.selectedSemester, week);
     preview.result = week === this.selectedWeek ? this.result : cached?.snapshot.data;
@@ -1089,6 +1194,7 @@ export class NativeScheduleStore {
     this.calendar = snapshot.calendar;
     this.completeSemester = snapshot.completeSemester === true;
     this.periods = this.snapshotPeriods(snapshot);
+    this.occurrenceChanges = Array.isArray(snapshot.occurrenceChanges) ? snapshot.occurrenceChanges : undefined;
     if (!this.selectedSemester) this.selectedSemester = snapshot.data.currentSemester;
     if (!this.selectedWeek) {
       this.selectedWeek = snapshot.data.currentWeek || (snapshot.calendar?.currentWeek ? String(snapshot.calendar.currentWeek) : '');
@@ -1287,4 +1393,14 @@ export function scheduleOffWeekBlocks(candidates: NativeCourseBlock[], taken: Na
     if (!chosen.some((item: NativeCourseBlock) => scheduleBlocksOverlap(item, block))) chosen.push(block);
   });
   return chosen;
+}
+
+/** A read-only store showing one snapshot, laid out with its own calendar (exports, comparisons). */
+export function nativeScheduleStoreOf(snapshot: NativeScheduleSnapshot): NativeScheduleStore {
+  const store = new NativeScheduleStore();
+  const raw = JSON.stringify(snapshot);
+  store.readOnly = true;
+  store.attach((request: NativeScheduleRequest) => { if (request.id) store.acceptResult(request.id, raw); }, () => undefined);
+  store.markBridgeReady();
+  return store;
 }

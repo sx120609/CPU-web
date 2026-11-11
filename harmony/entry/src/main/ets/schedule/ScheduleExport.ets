@@ -1,4 +1,4 @@
-import { NativeScheduleStore, NativeCourseBlock } from './NativeScheduleStore';
+import { NativeCalendarWeek, NativeScheduleStore, NativeCourseBlock } from './NativeScheduleStore';
 import { scheduleCleanLocation, scheduleClockMinutes } from './ScheduleStyle';
 
 const DAYS: string[] = ['周一','周二','周三','周四','周五','周六','周日'];
@@ -45,6 +45,37 @@ function foldLine(line: string): string {
 
 function utcDate(date: string, time: string): string {
   return new Date(`${date}T${time}:00+08:00`).toISOString().replace(/[-:]/g, '').replace('.000', '');
+}
+
+/**
+ * The whole term as one calendar file: every date of the calendar with the courses actually held
+ * then. Days off have none, make-up days carry the day they make up, and a meeting cancelled or
+ * moved on its own is where the site put it. `store` must hold the complete term.
+ */
+export function scheduleSemesterCalendar(store: NativeScheduleStore): string {
+  const weeks: NativeCalendarWeek[] = store.calendar?.weeks ?? [];
+  if (!weeks.length || !store.completeSemester) throw new Error('整学期课表还没有加载完，请刷新课表后再试');
+  const lines: string[] = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CPU Time//HarmonyOS Schedule//ZH', 'CALSCALE:GREGORIAN',
+    'X-WR-CALNAME:' + escapeText(`课表 ${store.selectedSemester}`)];
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  let count = 0;
+  weeks.forEach((week: NativeCalendarWeek) => {
+    (week.days ?? []).forEach((date: string) => {
+      store.blocksOnDate(date).forEach((block: NativeCourseBlock, index: number) => {
+        const times = blockTimes(store, block);
+        if (!date || !times[0] || !times[1]) return;
+        count += 1;
+        lines.push('BEGIN:VEVENT', `UID:${date}-${block.startSlot}-${index}-${count}@harmony.cputime.cn`,
+          `DTSTAMP:${stamp}`, `DTSTART:${utcDate(date, times[0])}`, `DTEND:${utcDate(date, times[1])}`,
+          `SUMMARY:${escapeText(block.course.name)}`, `LOCATION:${escapeText(scheduleCleanLocation(block.course.location))}`,
+          `DESCRIPTION:${escapeText([block.course.teacher || '', block.course.occurrenceFrom ? '调课' : ''].filter((value: string) => !!value).join(' · '))}`,
+          'END:VEVENT');
+      });
+    });
+  });
+  if (!count) throw new Error('这个学期没有可以导出的课程');
+  lines.push('END:VCALENDAR');
+  return lines.map(foldLine).join('\r\n') + '\r\n';
 }
 
 export function scheduleCalendar(store: NativeScheduleStore): string {

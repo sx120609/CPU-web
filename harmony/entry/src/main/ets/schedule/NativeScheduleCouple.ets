@@ -1,5 +1,7 @@
-import { NativeCourseBlock, NativeScheduleRequest, NativeScheduleStore } from './NativeScheduleStore';
-import { RawShareDocument, readSharedSchedule, shareDateKey, SharedSchedule, SharePublishBody, sharedScheduleSnapshot } from './ScheduleSharing';
+import { NativeCourseBlock, NativeSchedulePeriod, NativeScheduleRequest, NativeScheduleStore } from './NativeScheduleStore';
+import { RawShareDocument, readSharedSchedule, shareDateKey, SharedSchedule, sharedScheduleName, SharePublishBody,
+  sharedScheduleSnapshot } from './ScheduleSharing';
+import { OverlayPeriod, overlayPeriods, overlayRemap } from './ScheduleOverlay';
 import { COUPLE_COLORS, coupleColorName, coupleDaysTogether, coupleFingerprint, coupleInvitation, coupleNowText,
   couplePersonTone, coupleRelativeTime, CoupleStatus, coupleStatusFrom, CoupleTimedCourse, CoupleTint, emptyCoupleStatus,
   RawCoupleParty, RawCoupleStatus } from './ScheduleCouple';
@@ -58,6 +60,16 @@ export class NativeScheduleCoupleModel {
   private partner?: NativeScheduleStore;
   private partnerPrint: string = '';
   private dayCache: Map<string, NativeCourseBlock[]> = new Map();
+  // 叠加到我的课表: a saved shared timetable laid over the user's own instead of the partner's.
+  overlayCode: string = '';
+  overlayName: string = '';
+  overlaySchool: string = '';
+  private overlay?: NativeScheduleStore;
+  // The partner's school, from their snapshot; empty when it is not known.
+  partnerSchool: string = '';
+  // The user's own bells: somebody at another school is placed on them by clock time.
+  private ownBells: OverlayPeriod[] = [];
+  private ownBellsPrint: string = '';
   private account: string = '';
   private checkedAt: number = 0;
   private attemptedAt: number = 0;
@@ -97,36 +109,88 @@ export class NativeScheduleCoupleModel {
 
   bound(): boolean { return this.status.kind === 'active'; }
 
-  /** The partner's courses are drawn over the grid. */
-  showing(): boolean { return this.bound() && this.visible && !!this.partner?.result; }
+  /** A shared timetable is laid over the user's (it wins over the partner's). */
+  overlaying(): boolean { return !!this.overlayCode && !!this.overlay?.result; }
 
-  partnerName(): string { return this.status.partner.nickname || 'TA'; }
+  /** Somebody else's courses are drawn over the grid: the overlay's or the partner's. */
+  showing(): boolean { return this.overlaying() || (this.bound() && this.visible && !!this.partner?.result); }
 
-  /** The partner's courses on `date` ("yyyy-MM-dd"); none outside their term. */
-  blocksOn(date: string): NativeCourseBlock[] {
-    const store = this.partner;
+  partnerName(): string { return this.overlaying() ? (this.overlayName || '同学') : (this.status.partner.nickname || 'TA'); }
+
+  /** The other person's school, when it is known and differs from nothing. */
+  otherSchool(): string { return this.overlaying() ? this.overlaySchool : this.partnerSchool; }
+
+  /**
+   * Lays `schedule` over the user's timetable, or with none goes back to the partner's (when bound
+   * and shown) or nobody's. Kept on this device by its share code.
+   */
+  setOverlay(schedule?: SharedSchedule): void {
+    const code = schedule?.meta.code ?? '';
+    this.overlayCode = code;
+    this.overlayName = schedule ? sharedScheduleName(schedule) : '';
+    this.overlaySchool = schedule?.calendar.school ?? '';
+    if (schedule) {
+      const store = new NativeScheduleStore();
+      const raw = JSON.stringify(sharedScheduleSnapshot(schedule, Date.now()));
+      store.readOnly = true;
+      store.attach((request: NativeScheduleRequest) => { if (request.id) store.acceptResult(request.id, raw); }, () => undefined);
+      store.markBridgeReady();
+      this.overlay = store;
+    } else {
+      this.overlay = undefined;
+    }
+    this.dayCache.clear();
+    this.revision += 1;
+    this.persistence?.('overlay', code);
+  }
+
+  /** The user's own bells changed (another term, another school): place the other person anew. */
+  setOwnPeriods(periods: NativeSchedulePeriod[]): void {
+    const print = periods.map((period: NativeSchedulePeriod) => `${period.number}=${period.startTime}-${period.endTime}`).join(',');
+    if (print === this.ownBellsPrint) return;
+    this.ownBellsPrint = print;
+    this.ownBells = overlayPeriods(periods);
+    this.dayCache.clear();
+  }
+
+  private source(): NativeScheduleStore | undefined { return this.overlaying() ? this.overlay : this.partner; }
+
+  /** The partner's timetable, laid out with their own calendar; undefined while unbound or not synced. */
+  partnerStore(): NativeScheduleStore | undefined { return this.bound() ? this.partner : undefined; }
+
+  /**
+   * The other person's courses on `date` ("yyyy-MM-dd"); none outside their term. Somebody with
+   * other bells is moved onto the user's periods by clock time.
+   */
+  blocksOn(date: string, mine?: NativeSchedulePeriod[]): NativeCourseBlock[] {
+    if (mine) this.setOwnPeriods(mine);
+    const store = this.source();
     if (!store?.result || !date) return [];
-    let blocks = this.dayCache.get(date);
+    const key = (this.overlaying() ? this.overlayCode : 'partner') + '|' + date;
+    let blocks = this.dayCache.get(key);
     if (!blocks) {
-      blocks = store.blocksOnDate(date);
-      this.dayCache.set(date, blocks);
+      const theirs = overlayPeriods(store.periods);
+      blocks = store.blocksOnDate(date).map((block: NativeCourseBlock) => overlayRemap(block, theirs, this.ownBells));
+      this.dayCache.set(key, blocks);
     }
     return blocks;
   }
 
-  /** One person, one colour: the user's courses in the user's, the partner's in the partner's. */
+  /** One person, one colour: the user's courses in the user's, the other person's in theirs. */
   tint(owner: string, dark: boolean): CoupleTint {
+    if (this.overlaying() && owner === 'ta') return couplePersonTone(this.status.me.color === 'teal' ? 'orange' : 'teal', dark);
     return couplePersonTone(owner === 'ta' ? this.status.partner.color : this.status.me.color, dark);
   }
 
-  /** What the partner is doing right now: the status line (`short`) or the sheet's row. */
+  /** What the other person is doing right now: the status line (`short`) or the sheet's row. */
   nowText(minutes: number, short: boolean = true): string {
-    const store = this.partner;
+    const store = this.source();
     const today = shareDateKey(Date.now());
     const courses: CoupleTimedCourse[] = this.blocksOn(today).map((block: NativeCourseBlock): CoupleTimedCourse => {
       return { name: block.course.name, start: store?.blockStart(block) ?? '', end: store?.blockEnd(block) ?? '' };
     });
-    return coupleNowText(this.status.partner.nickname, !!store?.result, !!store?.dateSlot(today), courses, minutes, short);
+    return coupleNowText(this.overlaying() ? this.partnerName() : this.status.partner.nickname, !!store?.result,
+      !!store?.dateSlot(today), courses, minutes, short);
   }
 
   daysTogether(): number { return coupleDaysTogether(this.status.anniversary, shareDateKey(Date.now())); }
@@ -181,6 +245,7 @@ export class NativeScheduleCoupleModel {
     const print = schedule ? coupleFingerprint(JSON.stringify(schedule.cells) + JSON.stringify(schedule.calendar)) : '';
     if (print === this.partnerPrint) return;
     this.partnerPrint = print;
+    this.partnerSchool = schedule?.calendar.school ?? '';
     this.dayCache.clear();
     if (schedule) {
       const store = new NativeScheduleStore();

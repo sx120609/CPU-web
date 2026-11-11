@@ -1,4 +1,5 @@
-import { NativeCourseBlock, NativeScheduleSemester, NativeScheduleStore, NativeScheduleWeek } from './NativeScheduleStore';
+import { NativeCourseBlock, NativeOccurrenceChange, NativeScheduleSemester, NativeScheduleStore,
+  NativeScheduleWeek } from './NativeScheduleStore';
 import { NativeScheduleBody } from './NativeScheduleBody';
 import { ScheduleMonthView } from './ScheduleMonthView';
 import { scheduleMonthTitle } from './ScheduleMonth';
@@ -12,6 +13,11 @@ import { scheduleAlpha, scheduleCleanLocation, scheduleCourseAccent, scheduleMet
 import { ScheduleStyledDateHeader } from './ScheduleDateHeader';
 import { COUPLE_ACCENT, NativeScheduleCoupleModel } from './NativeScheduleCouple';
 import { couplePersonTone } from './ScheduleCouple';
+import { NativeOccurrenceEditor, NativeOccurrenceEditorModel } from './NativeOccurrenceEditor';
+import { ScheduleOverlayStrip } from './ScheduleOverlayStrip';
+import { cancelledKeysOf, movedKeys, occurrenceDateText, occurrenceKeysOf, originalSlotsOf } from './ScheduleOccurrences';
+import { agendaMinutes, agendaOn, NativeAgendaOccurrence } from './NativeAgenda';
+import { promptAction } from '@kit.ArkUI';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 // Height of the styled day strip: the date header of the styled week views, a little taller.
@@ -34,6 +40,12 @@ export struct NativeSchedulePage {
   onExport: () => void = () => undefined;
   onSharing: () => void = () => undefined;
   onCouple: () => void = () => undefined;
+  // 叠加到我的课表: whose courses are drawn beside the user's.
+  onOverlay: () => void = () => undefined;
+  // 找共同空闲.
+  onCommonFree: () => void = () => undefined;
+  // 导出日历文件: this week or the whole term.
+  onCalendar: () => void = () => undefined;
   // 宿舍课表是网页页面，返回回到这里。
   onDorm: () => void = () => undefined;
   // 日程与待办, over the user's own timetable.
@@ -42,6 +54,8 @@ export struct NativeSchedulePage {
   onClose: () => void = () => undefined;
   // Pins "now" (minutes since midnight) for acceptance screenshots; -1 follows the clock.
   @Prop @Watch('tick') pinnedNow: number = -1;
+  // The acceptance harness opens a sheet of this page once the timetable is there (`--ps panel …`).
+  @Prop @Watch('runDebugAction') debugAction: string = '';
   @State private contentHeight: number = 540;
   @State private pageWidth: number = 360;
   @State private pageHeight: number = 700;
@@ -56,6 +70,13 @@ export struct NativeSchedulePage {
   @State private detailSchedule: string = '';
   @State private detailCustom: boolean = false;
   @State private detailOrphaned: boolean = false;
+  // 调课 · 原定 …, on a meeting that was moved on its own.
+  @State private detailStatus: string = '';
+  // The date of the meeting looked at, for its 日程; empty when the calendar has none.
+  @State private detailDate: string = '';
+  @State private occurrence: NativeOccurrenceEditorModel = new NativeOccurrenceEditorModel();
+  // 更多: NapTable's grouped tools sheet.
+  @State private toolsVisible: boolean = false;
   private detailBlock?: NativeCourseBlock;
   private weekController: SwiperController = new SwiperController();
   private dayController: SwiperController = new SwiperController();
@@ -63,12 +84,30 @@ export struct NativeSchedulePage {
 
   aboutToAppear(): void {
     this.tick();
+    this.runDebugAction();
     // "Now" moves once a minute; a short interval keeps it from lagging after the app resumes.
     this.nowTimer = setInterval(() => this.tick(), 15000);
   }
 
   aboutToDisappear(): void {
     clearInterval(this.nowTimer);
+  }
+
+  private runDebugAction(): void {
+    const action = this.debugAction;
+    if (!action) return;
+    setTimeout(() => {
+      const day = this.store.selectedDay;
+      const blocks = this.store.displayBlocks(day);
+      const date = this.store.rawDate(day);
+      if (action === 'occurrence' && blocks.length) this.handleMenu('adjust', blocks[0], day, date);
+      if (action === 'occurrenceCancelled') {
+        const ghost = [1, 2, 3, 4, 5, 6, 7].map((value: number) => this.store.cancelledBlocks(value)).find((list: NativeCourseBlock[]) => list.length > 0);
+        if (ghost) this.askRestore(ghost[0]);
+      }
+      if (action === 'courseDetail' && blocks.length) this.openDetail(blocks[0], day, '', date);
+      if (action === 'tools') this.toolsVisible = true;
+    }, 600);
   }
 
   private tick(): void {
@@ -99,7 +138,7 @@ export struct NativeSchedulePage {
         Refresh({ refreshing: this.pullRefreshing && this.store.status === 'loading' }) {
           if (this.store.viewMode === 'month' && this.store.weekOptions().length && this.store.result) {
             ScheduleMonthView({ store: this.store, couple: this.couple,
-              onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay) })
+              onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay, '', this.store.selectedDate) })
           } else if (this.store.viewMode === 'day' && this.store.weekOptions().length) {
             Column() {
               this.dayStrip()
@@ -112,13 +151,25 @@ export struct NativeSchedulePage {
                       showDayStrip: false,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
                       onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
-                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
+                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
+                      onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date) })
                   }.width('100%').height('100%')
                 })
               }.width('100%').layoutWeight(1).index(Math.max(0, Math.min(6, this.store.selectedDay - 1)))
                 .loop(false).indicator(false).duration(260).curve(Curve.EaseOut).cachedCount(1)
                 .onChange((index: number) => this.store.selectDay(index + 1))
             }.width('100%').height('100%')
+          } else if (this.stripShown()) {
+            // Somebody else's timetable laid over: NapTable's strip of days side by side.
+            Scroll() {
+              ScheduleOverlayStrip({ store: this.store, couple: this.couple, pageWidth: this.pageWidth, contentHeight: this.contentHeight,
+                selection: this.store.rawDate(this.store.selectedDay),
+                revision: `${this.store.selectedSemester}|${this.store.dataRevision}|${this.couple.revision}|${this.store.periods.length}`,
+                onCourse: (block: NativeCourseBlock, shownDay: number, date: string) => this.openDetail(block, shownDay, '', date),
+                onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
+                onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date),
+                onOpenDay: (date: string) => { this.store.openDate(date); } })
+            }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
           } else if (this.store.weekOptions().length) {
             Swiper(this.weekController) {
               ForEach(this.store.weekOptions(), (week: NativeScheduleWeek, index: number) => {
@@ -128,7 +179,8 @@ export struct NativeSchedulePage {
                       contentHeight: this.contentHeight, pageWidth: this.pageWidth,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
                       onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
-                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
+                      onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
+                      onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date) })
                   }
                 }.width('100%').height('100%')
               }, (week: NativeScheduleWeek) => this.store.selectedSemester + ':' + week.value)
@@ -143,7 +195,8 @@ export struct NativeSchedulePage {
               contentHeight: this.contentHeight, pageWidth: this.pageWidth,
               onLogin: this.onLogin, onAddSlot: this.onAddSlot,
               onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay),
-              onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' ') })
+              onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
+                      onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => this.handleMenu(action, block, shownDay, date) })
           }
         }.layoutWeight(1).width('100%').clip(true).margin({ bottom: this.bottomClearance })
           .onRefreshing(() => { this.pullRefreshing = true; this.store.load(true); })
@@ -155,9 +208,12 @@ export struct NativeSchedulePage {
         .padding({ left: scheduleGridMetrics(this.pageWidth, this.contentHeight).inset, right: scheduleGridMetrics(this.pageWidth, this.contentHeight).inset, top: 4 })
     }.width('100%').height('100%')
       .onAreaChange((_old: Area, next: Area) => { this.pageWidth = Number(next.width); this.pageHeight = Number(next.height); })
-      .bindSheet(this.store.detailVisible || this.store.weekPickerVisible, this.scheduleSheet(), {
+      .bindSheet(this.store.detailVisible || this.store.weekPickerVisible || this.occurrence.visible || this.toolsVisible, this.scheduleSheet(), {
         height: SheetSize.FIT_CONTENT, showClose: true, dragBar: true,
-        onDisappear: () => { this.store.detailVisible = false; this.store.weekPickerVisible = false; }
+        onWillDismiss: (action: DismissSheetAction) => { if (!this.occurrence.busy) action.dismiss(); },
+        onDisappear: () => {
+          this.store.detailVisible = false; this.store.weekPickerVisible = false; this.occurrence.visible = false; this.toolsVisible = false;
+        }
       })
   }
 
@@ -213,19 +269,7 @@ export struct NativeSchedulePage {
         }.type(ButtonType.Normal).width(34).height(40).padding(0).backgroundColor(Color.Transparent).borderRadius(12)
           .responseRegion({ x: -3, y: -2, width: 40, height: 44 })
           .id('schedule-more').accessibilityText('更多课表操作')
-          .bindMenu([
-            { value: '刷新课表', enabled: this.store.status !== 'loading', action: () => this.store.load(true) },
-            { value: '添加与恢复课程', enabled: this.store.source !== 'graduate', action: () => this.onTools() },
-            { value: '日程与待办', enabled: !!this.onAgenda, action: () => this.onAgenda?.() },
-            { value: '课表风格、配色与背景', action: () => this.onStyle() },
-            { value: '桌面与锁屏服务卡片', action: () => this.onWidgets() },
-            { value: '分享所选周课表', action: () => this.onShare() },
-            { value: '导出所选周日历', action: () => this.onExport() },
-            { value: '共享课表', action: () => this.onSharing() },
-            { value: '情侣课表', action: () => this.onCouple() },
-            { value: '宿舍课表', action: () => this.onDorm() },
-            { value: '应用外观', action: () => this.onAppearance() }
-          ])
+          .onClick(() => this.toolsVisible = true)
       }
     }.width('100%').height(40).margin({ bottom: 2 })
   }
@@ -264,7 +308,7 @@ export struct NativeSchedulePage {
       .id(delta < 0 ? 'schedule-previous-week' : 'schedule-next-week')
       .accessibilityText(delta < 0 ? '上一周' : '下一周')
       .onClick(() => {
-        if (this.store.viewMode === 'day') this.store.moveWeek(delta);
+        if (this.store.viewMode === 'day' || this.stripShown()) this.store.moveWeek(delta);
         else if (delta < 0) this.weekController.showPrevious();
         else this.weekController.showNext();
       })
@@ -321,9 +365,48 @@ export struct NativeSchedulePage {
       .backgroundColor(this.store.backgroundPath ? this.surfaceColor() : Color.Transparent)
   }
 
+  // A shared timetable laid over: the week and its dates, then whose courses these are with a button to take them off.
+  @Builder
+  private overlayWeekSwitcher() {
+    Row() {
+      this.weekStepButton(-1)
+      Column({ space: 2 }) {
+        Row({ space: 6 }) {
+          Text(this.weekLabel()).fontSize(14).fontWeight(600).fontColor(this.navigatorInk()).fontFamily(this.navigatorTitleFont()).maxLines(1)
+          if (this.isCurrentWeek()) {
+            Text('本周').fontSize(10).fontWeight(FontWeight.Bold).fontColor(this.accentColor())
+              .padding({ left: 5, right: 5, top: 1, bottom: 1 }).borderRadius(6)
+              .backgroundColor(scheduleTint(this.accentColor(), 0.14))
+          }
+          Text(this.weekRange()).fontSize(10).fontColor(this.navigatorSecondary()).maxLines(1).fontFamily(this.navigatorDateFont())
+        }.justifyContent(FlexAlign.Center).width('100%')
+          .id('schedule-week-title').onClick(() => this.store.weekPickerVisible = true)
+        Row({ space: 6 }) {
+          Circle().width(6).height(6).fill(this.couple.tint('ta', this.store.dark).border)
+          Text(`叠加了 ${this.couple.partnerName()} 的课` + (this.couple.otherSchool() ? ` · ${this.couple.otherSchool()}` : ''))
+            .fontSize(11).fontColor(this.navigatorSecondary()).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
+            .id('schedule-overlay-line').onClick(() => this.onOverlay())
+          SymbolGlyph($r('sys.symbol.xmark')).fontSize(11).fontColor([this.navigatorSecondary()])
+            .responseRegion({ x: -10, y: -10, width: 32, height: 32 })
+            .id('schedule-overlay-off').accessibilityText('不再叠加')
+            .onClick(() => this.couple.setOverlay(undefined))
+        }.justifyContent(FlexAlign.Center).width('100%')
+      }.layoutWeight(1).alignItems(HorizontalAlign.Center)
+      this.weekStepButton(1)
+    }.width('100%').constraintSize({ minHeight: 42 }).margin({ bottom: 2 }).borderRadius(18)
+      .backgroundColor(this.store.backgroundPath ? this.surfaceColor() : Color.Transparent)
+  }
+
+  // The week view while somebody else's timetable is laid over the user's.
+  private stripShown(): boolean {
+    return this.store.viewMode === 'week' && !this.store.readOnly && this.couple.showing() && !!this.store.calendar?.weeks?.length;
+  }
+
   @Builder
   private weekSwitcher() {
-    if (!this.store.readOnly && this.couple.bound()) {
+    if (!this.store.readOnly && this.couple.overlaying()) {
+      this.overlayWeekSwitcher()
+    } else if (!this.store.readOnly && this.couple.bound()) {
       this.coupledWeekSwitcher()
     } else {
     Row() {
@@ -512,7 +595,11 @@ export struct NativeSchedulePage {
   @Builder
   private scheduleSheet() {
     Scroll() {
-    if (this.store.weekPickerVisible) {
+    if (this.toolsVisible) {
+      this.toolsSheet()
+    } else if (this.occurrence.visible) {
+      NativeOccurrenceEditor({ model: this.occurrence, dark: this.store.dark })
+    } else if (this.store.weekPickerVisible) {
       Column({ space: 16 }) {
         Text('选择周次').width('100%').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.textColor())
         Grid() {
@@ -597,6 +684,10 @@ export struct NativeSchedulePage {
           if (this.detailNote) this.detailRow('备注', this.detailNote)
         }.width('100%')
       }
+      if (this.detailStatus) {
+        Text(this.detailStatus).width('100%').fontSize(13).fontWeight(600).fontColor('#C2410C')
+      }
+      if (this.agendaShown()) this.detailAgenda()
       if (this.detailPeek.trim()) {
         Text(this.detailPeek.trim()).width('100%').fontSize(13).fontColor(scheduleMetaText(this.store.dark))
       } else if (this.detailOrphaned) {
@@ -626,15 +717,212 @@ export struct NativeSchedulePage {
     .accessibilityGroup(true)
   }
 
+  // 这节课的日程: on the meeting's date, at its time or naming the course; ticked or opened in place.
+  @Builder
+  private detailAgenda() {
+    Column({ space: 8 }) {
+      Divider().color(scheduleAlpha(this.secondaryColor(), 0.25))
+      Row() {
+        Text('这节课的日程').fontSize(14).fontWeight(600).fontColor(scheduleMetaText(this.store.dark)).layoutWeight(1)
+        if (this.store.agendaAvailable && this.store.agendaNew) {
+          Text('＋ 添加').fontSize(14).fontWeight(600).fontColor(scheduleThemeText(this.store.palette, this.store.dark))
+            .id('schedule-course-agenda-add')
+            .onClick(() => {
+              const date = this.detailDate;
+              const start = this.detailBlock ? this.store.blockStart(this.detailBlock) : '';
+              this.store.detailVisible = false;
+              setTimeout(() => this.store.agendaNew?.(date, start), 350);
+            })
+        }
+      }.width('100%')
+      if (!this.relatedAgenda().length) {
+        Text('还没有。作业、小测或要带的东西，记一笔就会在这里出现。').fontSize(12).fontColor(scheduleMetaText(this.store.dark)).width('100%')
+      }
+      ForEach(this.relatedAgenda(), (entry: NativeAgendaOccurrence) => {
+        Row({ space: 10 }) {
+          Stack() {
+            if (entry.done) Text('✓').fontSize(11).fontColor('#FFFFFF')
+          }.width(20).height(20).borderRadius(10)
+            .backgroundColor(entry.done ? scheduleThemeText(this.store.palette, this.store.dark) : Color.Transparent)
+            .border({ width: entry.done ? 0 : 1.5, color: this.secondaryColor(), radius: 10 })
+            .responseRegion({ x: -10, y: -10, width: 40, height: 40 })
+            .accessibilityText(entry.done ? entry.item.title + '，已完成' : '完成' + entry.item.title)
+            .onClick(() => this.store.agendaToggle?.(entry.item.id, entry.date, !entry.done))
+          Column({ space: 2 }) {
+            Text(entry.item.title).fontSize(15).fontColor(this.textColor()).width('100%').maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .decoration({ type: entry.done ? TextDecorationType.LineThrough : TextDecorationType.None })
+            if (entry.item.start) {
+              Text(entry.item.end ? `${entry.item.start}–${entry.item.end}` : entry.item.start).fontSize(12)
+                .fontColor(scheduleMetaText(this.store.dark)).width('100%')
+            }
+          }.layoutWeight(1)
+            .onClick(() => {
+              const id = entry.item.id;
+              const date = entry.date;
+              this.store.detailVisible = false;
+              setTimeout(() => this.store.agendaOpen?.(id, date), 350);
+            })
+        }.width('100%').opacity(entry.done ? 0.6 : 1)
+      }, (entry: NativeAgendaOccurrence) => entry.item.id + ':' + entry.date + ':' + (entry.done ? 1 : 0))
+    }.width('100%')
+  }
+
+  private agendaShown(): boolean {
+    return !this.store.readOnly && !this.detailPeek && !!this.detailDate && (this.store.agendaAvailable || this.relatedAgenda().length > 0);
+  }
+
+  private relatedAgenda(): NativeAgendaOccurrence[] {
+    if (this.store.readOnly || !this.detailDate || !this.detailBlock || !this.store.agendaItems.length) return [];
+    const name = this.detailName.trim();
+    const start = agendaMinutes(this.store.blockStart(this.detailBlock));
+    const end = agendaMinutes(this.store.blockEnd(this.detailBlock));
+    return agendaOn(this.store.agendaItems, this.detailDate).filter((entry: NativeAgendaOccurrence) => {
+      if (name.length >= 2 && (entry.item.title.includes(name) || entry.item.note.includes(name))) return true;
+      const begins = agendaMinutes(entry.item.start);
+      if (start < 0 || end < 0 || begins < 0) return false;
+      const ends = agendaMinutes(entry.item.end) >= 0 ? agendaMinutes(entry.item.end) : begins;
+      return begins < end && ends >= start;
+    });
+  }
+
+  // ---- 更多 ----
+
+  // NapTable's 更多: four quick actions, then 日历与日程, 一起看 and 外观与设置.
+  @Builder
+  private toolsSheet() {
+    Column({ space: 16 }) {
+      Text('更多').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.textColor()).width('100%')
+      Row({ space: 8 }) {
+        this.toolTile('刷新', $r('sys.symbol.arrow_clockwise'), '#0F766E', 'tools-refresh', () => this.store.load(true))
+        this.toolTile('添加课程', $r('sys.symbol.plus'), '#2563EB', 'tools-course', () => this.onTools())
+        this.toolTile('添加日程', $r('sys.symbol.calendar_badge_plus'), '#EA580C', 'tools-agenda',
+          () => this.store.agendaNew?.(this.store.rawDate(this.store.selectedDay), ''))
+        this.toolTile('分享', $r('sys.symbol.share'), '#4F46E5', 'tools-share', () => this.onShare())
+      }.width('100%')
+      this.toolSection('日历与日程')
+      Column() {
+        this.toolRow('导出日历文件', '这一周或整学期，可导入系统日历', $r('sys.symbol.calendar'), '#DC2626', 'tools-calendar',
+          () => this.onCalendar())
+        this.toolRow('日程与待办', '作业、考试和自己的安排', $r('sys.symbol.checkmark_square'), '#EA580C', 'tools-agenda-list',
+          () => this.onAgenda?.())
+      }.width('100%').borderRadius(16).backgroundColor(this.softSurfaceColor()).clip(true)
+      this.toolSection('一起看')
+      Column() {
+        this.toolRow('共享课表', '发分享码，或保存同学的课表', $r('sys.symbol.person_2'), '#0D9488', 'tools-sharing', () => this.onSharing())
+        this.toolRow('叠加到我的课表', this.couple.overlaying() ? `正在叠加 ${this.couple.partnerName()}` : '把同学的课并排放进你的课表',
+          $r('sys.symbol.square_on_square_fill'), '#0891B2', 'tools-overlay', () => this.onOverlay())
+        this.toolRow('找共同空闲', '和同学、TA 比一比哪天都有空', $r('sys.symbol.clock'), '#4F46E5', 'tools-free', () => this.onCommonFree())
+        this.toolRow('情侣课表', '绑定后两人的课并排显示', $r('sys.symbol.heart_fill'), '#E2568A', 'tools-couple', () => this.onCouple())
+        this.toolRow('宿舍课表', '一周谁有空、空闲时段和早八', $r('sys.symbol.house'), '#7C3AED', 'tools-dorm', () => this.onDorm())
+      }.width('100%').borderRadius(16).backgroundColor(this.softSurfaceColor()).clip(true)
+      this.toolSection('外观与设置')
+      Column() {
+        this.toolRow('课表风格、配色与背景', '六种风格，浅色、深色背景分别设置', $r('sys.symbol.paintpalette'), '#DB2777', 'tools-style',
+          () => this.onStyle())
+        this.toolRow('桌面与锁屏服务卡片', '卡片风格、背景和上课闹钟', $r('sys.symbol.square_grid_2x2'), '#0284C7', 'tools-widgets',
+          () => this.onWidgets())
+        this.toolRow('应用外观', '跟随系统、浅色或深色', $r('sys.symbol.sun_max'), '#CA8A04', 'tools-appearance', () => this.onAppearance())
+      }.width('100%').borderRadius(16).backgroundColor(this.softSurfaceColor()).clip(true)
+    }.width('100%').padding({ left: 16, right: 16, top: 24, bottom: 28 }).backgroundColor(this.surfaceColor())
+  }
+
+  @Builder
+  private toolSection(title: string) {
+    Text(title).fontSize(13).fontWeight(600).fontColor(this.secondaryColor()).width('100%').padding({ left: 4 }).margin({ bottom: -8 })
+  }
+
+  @Builder
+  private toolTile(title: string, icon: Resource, tint: string, id: string, run: () => void) {
+    Column({ space: 6 }) {
+      SymbolGlyph(icon).fontSize(20).fontColor([tint])
+      Text(title).fontSize(12).fontWeight(600).fontColor(this.textColor()).maxLines(1)
+    }.layoutWeight(1).height(68).justifyContent(FlexAlign.Center).borderRadius(16).backgroundColor(this.softSurfaceColor())
+      .id(id).accessibilityGroup(true).accessibilityText(title)
+      .onClick(() => this.runTool(run))
+  }
+
+  @Builder
+  private toolRow(title: string, detail: string, icon: Resource, tint: string, id: string, run: () => void) {
+    Row({ space: 12 }) {
+      Stack() { SymbolGlyph(icon).fontSize(17).fontColor(['#FFFFFF']) }
+        .width(30).height(30).borderRadius(9).backgroundColor(tint)
+      Column({ space: 2 }) {
+        Text(title).fontSize(15).fontColor(this.textColor()).width('100%').maxLines(1)
+        Text(detail).fontSize(11).fontColor(this.secondaryColor()).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      }.layoutWeight(1)
+      SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(14).fontColor([this.secondaryColor()])
+    }.width('100%').padding({ left: 14, right: 12, top: 10, bottom: 10 })
+      .id(id).accessibilityGroup(true).accessibilityText(title + '，' + detail)
+      .onClick(() => this.runTool(run))
+  }
+
+  // The tools sheet closes first; what opens next is usually another sheet.
+  private runTool(run: () => void): void {
+    this.toolsVisible = false;
+    setTimeout(() => run(), 350);
+  }
+
+  // ---- The long-press menu and single meetings ----
+
+  private handleMenu(action: string, block: NativeCourseBlock, shownDay: number, date: string): void {
+    if (action === 'detail') {
+      if (block.cancelled) this.askRestore(block);
+      else this.openDetail(block, shownDay, '', date);
+    } else if (action === 'edit') {
+      this.onEdit(block);
+    } else if (action === 'agenda') {
+      this.store.agendaNew?.(date, this.store.blockStart(block));
+    } else if (action === 'adjust') {
+      this.occurrence.open(this.store, block, occurrenceKeysOf(block.course), date, undefined, [block.startSlot, block.endSlot]);
+    } else if (action === 'cancel') {
+      const name = block.course.name;
+      const change: NativeOccurrenceChange = { key: '', date, cancelled: true };
+      void this.store.changeOccurrence(occurrenceKeysOf(block.course), date, change).then((message: string) => {
+        promptAction.showToast({ message: message || `「${name}」${occurrenceDateText(date)}停课，长按可恢复` });
+      });
+    } else if (action === 'readjust') {
+      const key = block.course.occurrenceKey ?? '';
+      const from = block.course.occurrenceFrom ?? '';
+      const changes = this.store.occurrenceChanges ?? [];
+      const keys = movedKeys(changes, key, from);
+      const existing = changes.find((change: NativeOccurrenceChange) => change.key === key && change.date === from);
+      this.occurrence.open(this.store, block, keys, from, existing, originalSlotsOf(this.store.result?.cells ?? [], keys));
+    } else if (action === 'restore') {
+      if (block.cancelled) this.restore(cancelledKeysOf(block), block.cancelled.date);
+      else this.restore(movedKeys(this.store.occurrenceChanges ?? [], block.course.occurrenceKey ?? '', block.course.occurrenceFrom ?? ''),
+        block.course.occurrenceFrom ?? '');
+    }
+  }
+
+  private restore(keys: string[], date: string): void {
+    void this.store.changeOccurrence(keys, date).then((message: string) => {
+      promptAction.showToast({ message: message || '已恢复原安排' });
+    });
+  }
+
+  // A cancelled meeting tapped: put it back?
+  private askRestore(block: NativeCourseBlock): void {
+    const change = block.cancelled;
+    if (!change) return;
+    AlertDialog.show({ title: `「${block.course.name}」这次停课`,
+      message: `${occurrenceDateText(change.date)} 的这节课已停课；恢复后按原来的时间上课。`,
+      primaryButton: { value: '取消', action: () => undefined },
+      secondaryButton: { value: '恢复原安排', action: () => this.restore(cancelledKeysOf(block), change.date) } });
+  }
+
   // `shownDay` is the weekday the course is shown on; on a make-up day it differs from the
   // weekday the course belongs to, which is what the editor uses.
-  private openDetail(block: NativeCourseBlock, shownDay: number, peek: string = ''): void {
+  private openDetail(block: NativeCourseBlock, shownDay: number, peek: string = '', date: string = ''): void {
+    if (block.cancelled && !peek.trim()) { this.askRestore(block); return; }
     this.detailPeek = peek;
+    this.detailDate = date || this.store.shownRawDate(shownDay);
+    this.detailStatus = block.course.occurrenceFrom ? `调课 · 原定 ${occurrenceDateText(block.course.occurrenceFrom)}` : '';
     this.detailBlock = block;
     this.detailName = block.course.name || '课程';
     this.detailTeacher = (block.course.teacher ?? '').trim();
     this.detailLocation = scheduleCleanLocation(block.course.location);
-    this.detailWeeks = (block.course.weeks ?? '').trim();
+    this.detailWeeks = block.course.occurrenceFrom ? '' : (block.course.weeks ?? '').trim();
     this.detailNote = this.store.courseNote(block.course);
     this.detailCustom = block.course.custom === true || !!block.course.customId;
     this.detailOrphaned = block.course.orphaned === true;

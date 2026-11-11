@@ -4,6 +4,7 @@ import { buildCustomCourseItem, saveCustomCourseEdit, deleteCourseEdit, restoreO
 import { buildCourseFamilyKey } from '../../web/src/views/schedule/viewModels';
 import { MAX_SMALL_SLOT } from '../../web/src/views/schedule/slots';
 import { normalizeCustomTimeRange } from '../../web/src/utils/scheduleCustomTime';
+import { normalizeOccurrenceChanges } from '../../server/src/shared/scheduleOccurrences';
 
 type PriorityMap = Record<string, number>;
 
@@ -62,6 +63,19 @@ export function installHarmonyEditor() {
       if (payload.action === 'priority') {
         // Read-only: which overlapping courses show first. Needs no editing session.
         return { priority: (await request('GET', payload.semester)).priority };
+      }
+      if (payload.action === 'occurrence') {
+        // 这次停课 / 调整这一次 / 恢复原安排 for one meeting (server/src/shared/scheduleOccurrences.ts):
+        // one change per edit key of the rows the course was merged from, or none to put it back.
+        const keys = [...new Set<string>((Array.isArray(payload.keys) ? payload.keys : []).map(String).filter(Boolean))].sort();
+        const date = String(payload.date || '');
+        if (!keys.length || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw Error('这节课的日期不完整，暂时不能单独调整');
+        const loaded = await request('GET', payload.semester);
+        const kept = (loaded.edits.occurrences ?? []).filter((item: any) => !(keys.includes(item.key) && item.date === date));
+        const added = payload.change ? keys.map((key) => ({ ...payload.change, key, date })) : [];
+        const occurrences = normalizeOccurrenceChanges([...kept, ...added]);
+        await request('PUT', payload.semester, { ...loaded.edits, occurrences });
+        return { saved: true };
       }
       if (payload.action === 'open') {
         const owner = identity();
