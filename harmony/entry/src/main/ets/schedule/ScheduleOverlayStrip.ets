@@ -2,10 +2,11 @@ import { NativeCalendarWeek, NativeCourseBlock, NativeScheduleStore } from './Na
 import { NativeScheduleCoupleModel } from './NativeScheduleCouple';
 import { OverlayStripCard, overlayStripCards, overlayStripDayCount, overlayStripLeading } from './ScheduleOverlay';
 import { CourseMenuAction, courseMenuActions } from './ScheduleOccurrences';
+import { scheduleCoursePreview, ScheduleCoursePreviewInfo } from './ScheduleCoursePreview';
 import { scheduleAlpha, scheduleCleanLocation, scheduleCourseAccent, scheduleCourseFill, scheduleMetaText, scheduleNowOffset,
   scheduleStyleCanvas, scheduleStyleCellBorder, scheduleStyleCourseColor, scheduleStyleInk, scheduleStyleLayout,
   scheduleStylePanelSurface, scheduleStyleTextFont, scheduleThemeFill, scheduleThemeText, scheduleThemeTint,
-  scheduleTodayDate, scheduleWeekday } from './ScheduleStyle';
+  scheduleSlotText, scheduleTodayDate, scheduleWeekday } from './ScheduleStyle';
 import { scheduleSecondaryText, scheduleText } from './ScheduleLayout';
 
 // The week view while somebody else's timetable is laid over the user's (the partner's, or a shared
@@ -219,20 +220,54 @@ export struct ScheduleOverlayStrip {
         if (theirs) this.onPeek(card.block, this.weekday(date), this.couple.partnerName() + ' 的课');
         else this.onCourse(card.block, this.weekday(date), date);
       })
-      .bindContextMenu(this.menu(card, date, theirs), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+      .bindContextMenu(this.menu(card, date, theirs), ResponseType.LongPress, { preview: this.cardPreview(card, date, theirs) })
   }
 
   @Builder
+  private cardPreview(card: OverlayStripCard, date: string, theirs: boolean) {
+    scheduleCoursePreview(this.previewInfo(card, date, theirs))
+  }
+
+  private previewInfo(card: OverlayStripCard, date: string, theirs: boolean): ScheduleCoursePreviewInfo {
+    const block = card.block;
+    const start = this.store.blockStart(block);
+    const end = this.store.blockEnd(block);
+    const when = [scheduleWeekday(this.weekday(date)), scheduleSlotText(block.startSlot, block.endSlot),
+      start && end ? `${start}–${end}` : ''].filter((part: string) => !!part).join(' · ');
+    const note = theirs ? this.couple.partnerName() + ' 的课' : block.cancelled ? '这次已停课'
+      : block.course.occurrenceFrom ? '调课：只改这一次' : card.more ? `同一时间还有 ${card.more} 门` : '';
+    const info: ScheduleCoursePreviewInfo = { name: block.course.name, when: when,
+      location: scheduleCleanLocation(block.course.location), note: note, dark: this.store.dark,
+      accent: scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark) };
+    return info;
+  }
+
+  // Grouped like the week and day views' menu: dividers between the groups, 这次停课 in red.
+  @Builder
   private menu(card: OverlayStripCard, date: string, theirs: boolean) {
     Menu() {
-      ForEach(this.actions(card, date, theirs), (action: CourseMenuAction) => {
-        MenuItem({ content: action.label })
-          .onClick(() => {
-            if (action.id === 'detail' && theirs) this.onPeek(card.block, this.weekday(date), this.couple.partnerName() + ' 的课');
-            else this.onMenu(action.id, card.block, this.weekday(date), date);
-          })
-      }, (action: CourseMenuAction) => action.id)
+      ForEach([0, 1, 2], (group: number) => {
+        if (this.actions(card, date, theirs).some((action: CourseMenuAction) => action.group === group)) {
+          MenuItemGroup() {
+            ForEach(this.actions(card, date, theirs).filter((action: CourseMenuAction) => action.group === group),
+              (action: CourseMenuAction) => {
+                if (action.destructive) {
+                  MenuItem({ content: action.label }).contentFontColor('#DC2626')
+                    .onClick(() => this.runMenu(action, card, date, theirs))
+                } else {
+                  MenuItem({ content: action.label })
+                    .onClick(() => this.runMenu(action, card, date, theirs))
+                }
+              }, (action: CourseMenuAction) => action.id)
+          }
+        }
+      }, (group: number) => String(group))
     }
+  }
+
+  private runMenu(action: CourseMenuAction, card: OverlayStripCard, date: string, theirs: boolean): void {
+    if (action.id === 'detail' && theirs) this.onPeek(card.block, this.weekday(date), this.couple.partnerName() + ' 的课');
+    else this.onMenu(action.id, card.block, this.weekday(date), date);
   }
 
   // ---- Following the page ----

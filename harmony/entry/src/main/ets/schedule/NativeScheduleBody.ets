@@ -18,6 +18,7 @@ import { scheduleAlpha, scheduleCleanLocation, scheduleClockLabel, scheduleClock
   scheduleTodayDate, scheduleWeekday, SCHEDULE_TABULAR_DIGITS } from './ScheduleStyle';
 import { CourseMenuAction, courseMenuActions } from './ScheduleOccurrences';
 import { ScheduleFireworks } from './ScheduleFireworks';
+import { scheduleCoursePreview, ScheduleCoursePreviewInfo } from './ScheduleCoursePreview';
 import { ChineseCalendar, OffDay, publishedHolidaysFromOffDays } from '../common/ChineseCalendar';
 import { systemLunarDate } from '../common/SystemLunarCalendar';
 import { NativeScheduleAdjustment } from './NativeScheduleStore';
@@ -229,7 +230,7 @@ export struct NativeScheduleBody {
                 .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
                 .accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
                 .onClick(() => this.openTile(block, day))
-                .bindContextMenu(this.courseMenu(block, day), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+                .bindContextMenu(this.courseMenu(block, day), ResponseType.LongPress, { preview: this.coursePreviewCard(block, day) })
             })
             this.agendaColumn(day, false)
             if (this.view.shownIsToday(day) && this.nowMarkY('week', day) >= 0) {
@@ -298,7 +299,7 @@ export struct NativeScheduleBody {
             .position({ x: block.lane * this.dayColumn() / block.lanes + 1, y: (block.startSlot - 1) * this.dayStride() + 1 })
             .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
             .accessibilityText(this.courseAccessibility(block, this.view.selectedDay)).onClick(() => this.openTile(block, this.view.selectedDay))
-            .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+            .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
         })
         if (this.nowMarkY('day', 0) >= 0) {
           this.nowLine('day', 0)
@@ -703,7 +704,7 @@ export struct NativeScheduleBody {
       .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText((block.offWeek ? '非本周，' : '') + this.courseAccessibility(block, day))
       .onClick(() => this.openTile(block, day))
-      .bindContextMenu(this.courseMenu(block, day), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+      .bindContextMenu(this.courseMenu(block, day), ResponseType.LongPress, { preview: this.coursePreviewCard(block, day) })
   }
 
   // Under a course of the user's: 一起 with a heart for a class both attend, or "TA 课名" in the
@@ -826,7 +827,7 @@ export struct NativeScheduleBody {
         if (partner) this.onPeek(block.whole, this.view.selectedDay, this.couple.partnerName() + ' 的课');
         else this.openTile(block, this.view.selectedDay);
       })
-      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
   }
 
   // The small outlined label on a course: 非本周, or TA on the partner's.
@@ -951,7 +952,7 @@ export struct NativeScheduleBody {
       .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
       .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
-      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
   }
 
   @Builder
@@ -1003,7 +1004,7 @@ export struct NativeScheduleBody {
                   .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
                   .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
                   .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
-                  .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+                  .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
               })
             }.layoutWeight(1)
           }
@@ -1049,7 +1050,7 @@ export struct NativeScheduleBody {
               .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
               .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
               .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
-              .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+              .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
           })
         })
       }.width('100%').padding(9).border({ width: 0.6, color: scheduleAlpha(this.ink(), 0.24) })
@@ -1091,7 +1092,7 @@ export struct NativeScheduleBody {
               .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
               .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
               .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
-              .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+              .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
           })
         }
       } else {
@@ -1148,7 +1149,7 @@ export struct NativeScheduleBody {
       .backgroundColor(this.ink())
       .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
       .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
-      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
   }
 
   // A course still to come, or any course in the plain timetable: the start time leads, with the
@@ -1180,7 +1181,7 @@ export struct NativeScheduleBody {
       .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
       .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
-      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: MenuPreviewMode.IMAGE })
+      .bindContextMenu(this.courseMenu(block, this.view.selectedDay), ResponseType.LongPress, { preview: this.coursePreviewCard(block, this.view.selectedDay) })
   }
 
   // The rest card of a day with no courses: a dozing cloud in the theme colour.
@@ -1560,7 +1561,27 @@ export struct NativeScheduleBody {
     return block.whole.cancelled ? 0.55 : block.offWeek ? 0.5 : 1;
   }
 
-  // The long-press menu of a course: the system's larger preview of the card and NapTable's actions.
+  // The card above the long-press menu: the course readable at full size, however narrow its cell.
+  @Builder
+  private coursePreviewCard(block: PlacedCourseBlock, day: number) {
+    scheduleCoursePreview(this.previewInfo(block, day))
+  }
+
+  private previewInfo(block: PlacedCourseBlock, day: number): ScheduleCoursePreviewInfo {
+    const whole = block.whole;
+    const start = this.store.blockStart(whole);
+    const end = this.store.blockEnd(whole);
+    const when = [scheduleWeekday(day), scheduleSlotText(whole.startSlot, whole.endSlot), start && end ? `${start}–${end}` : '']
+      .filter((part: string) => !!part).join(' · ');
+    const note = whole.cancelled ? '这次已停课' : block.course.occurrenceFrom ? '调课：只改这一次'
+      : block.owner === 'ta' ? this.couple.partnerName() + ' 的课' : '';
+    const info: ScheduleCoursePreviewInfo = { name: block.course.name, when: when,
+      location: scheduleCleanLocation(block.course.location), note: note, dark: this.store.dark,
+      accent: scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark) };
+    return info;
+  }
+
+  // The long-press menu of a course: the larger card above and NapTable's actions.
   @Builder
   private courseMenu(block: PlacedCourseBlock, day: number) {
     Menu() {
