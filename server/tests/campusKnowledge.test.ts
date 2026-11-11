@@ -318,7 +318,7 @@ test("course time questions get the jwxt course search as site knowledge", async
   );
   const jwxt = items.find((entry) => entry.title === "教务数据");
   assert.ok(jwxt, "教务数据 should be offered");
-  assert.match(jwxt.excerpt, /课表检索可按课程、教师、教室或班级查询/u);
+  assert.match(jwxt.excerpt, /开课查询可按课程、教师、教室或班级/u);
   assert.equal(jwxt.ref, `R${items.indexOf(jwxt) + 1}`);
 });
 
