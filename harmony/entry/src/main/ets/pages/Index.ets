@@ -17,10 +17,14 @@ import { CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleC
 import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
 import { NativeCommonFree } from '../schedule/NativeCommonFree';
 import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
+import { DayShareCardData, dayShareCard, dayShareCardData } from '../schedule/ScheduleDayShareCard';
+import { shareSnapshotImage } from '../schedule/ScheduleImageShare';
+import { occurrenceDateText } from '../schedule/ScheduleOccurrences';
 import display from '@ohos.display';
 import { findScheduleOverlap, PlacedCourseBlock, placeScheduleBlocks, scheduleOverlapKey, scheduleOverlapText } from '../schedule/SchedulePlacement';
 import { SharedSchedule, SharePublishBody, sharedScheduleSnapshot, sharePublishBody } from '../schedule/ScheduleSharing';
-import { DORM_SCHEDULE_PAGE, dormOfferRequest, dormPagePath } from '../schedule/ScheduleDorm';
+import { dormPagePath } from '../schedule/ScheduleDorm';
+import { DormReply, DormRequest, NativeDormModel, NativeDormSheet } from '../schedule/NativeDormSheet';
 import { schedulePalette } from '../schedule/ScheduleVisuals';
 import common from '@ohos.app.ability.common';
 import webview from '@ohos.web.webview';
@@ -46,7 +50,9 @@ import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeSch
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
 import { NativeAgendaModel } from '../schedule/NativeAgenda';
 import { NativeAgendaEditor, NativeAgendaEditorModel } from '../schedule/NativeAgendaEditor';
-import { syncAgendaReminders } from '../schedule/NativeAgendaReminders';
+import { syncAgendaReminders, syncClassAlarms } from '../schedule/NativeAgendaReminders';
+import { ALARM_MORNING_LEADS, ALARM_NAP_LEADS, alarmLeadText, alarmMeetings, planClassAlarms } from '../schedule/ScheduleClassAlarms';
+import { scheduleTodayDate } from '../schedule/ScheduleStyle';
 import { NativeAgendaItem, NativeOccurrenceChange, NativeOccurrenceRequest, nativeScheduleStoreOf } from '../schedule/NativeScheduleStore';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
@@ -122,6 +128,12 @@ struct Index {
   @State private commonFreeVisible: boolean = false;
   // 调整范围 of the light or dark background ('' while closed).
   @State private cropTarget: string = '';
+  // A desktop shortcut that asked for something (today | agenda | free), handled once the page is up.
+  @StorageProp('scheduleShortcut') @Watch('runShortcut') private shortcut: string = '';
+  // 宿舍课表, a native sheet over the timetable.
+  @State private dormModel: NativeDormModel = new NativeDormModel();
+  // 分享这一天: the card drawn off screen.
+  private shareCard: DayShareCardData = { brand: '', title: '', subtitle: '', items: [], emptyText: '' };
   @State private sharingModel: NativeScheduleSharingModel = new NativeScheduleSharingModel();
   @State private coupleModel: NativeScheduleCoupleModel = new NativeScheduleCoupleModel();
   // 共享课表是别人的课表，不叠情侣课表：给它一个始终未绑定的。
@@ -177,6 +189,8 @@ struct Index {
   private previewBaseOffsetY: number = 0;
 
   aboutToAppear(): void {
+    // A shortcut that launched the app: run it once the shell has settled.
+    setTimeout(() => this.runShortcut(), 2500);
     this.scheduleMounted = this.selectedTab === 2;
     this.nativeScheduleVisible = false;
     this.scheduleLayerVisible = false;
@@ -254,6 +268,7 @@ struct Index {
       (raw: string) => this.persistSharedSchedules(raw));
     this.coupleModel.attach((request: CoupleApiRequest) => this.coupleApi(request),
       (key: string, value: string) => this.persistCouple(key, value));
+    this.dormModel.attach((request: DormRequest) => this.dormApi(request), (mark: string) => this.persistCouple('dorm', mark));
     // 对方的课表会在自己开着课表时更新。
     setInterval(() => { if (this.selectedTab === 2 && this.scheduleStore.result) void this.coupleModel.refresh(); }, 5 * 60 * 1000);
     this.editorModel.attach((id: string, payload: CourseEditorRequest) => {
@@ -305,6 +320,9 @@ struct Index {
         this.scheduleStore.restorePriorities(String(await prefs.get('priorities', '')));
         this.coupleModel.restore(String(await prefs.get('coupleVisible', '1')) !== '0', String(await prefs.get('coupleSync', '')));
         this.restoreOverlay(String(await prefs.get('overlayCode', '')));
+        this.dormModel.restore(String(await prefs.get('dormSync', '')));
+        this.scheduleStore.alarmMorning = Number(await prefs.get('alarmMorning', 0)) || 0;
+        this.scheduleStore.alarmNap = Number(await prefs.get('alarmNap', 0)) || 0;
         try { this.overlapSeen = JSON.parse(String(await prefs.get('overlapSeen', '[]'))) as string[]; } catch (_) { this.overlapSeen = []; }
         this.overlapLoaded = true;
         this.checkScheduleOverlap();
@@ -328,6 +346,7 @@ struct Index {
         // Another account has another library: a timetable laid over from the old one goes.
         if (this.coupleModel.overlayCode) this.restoreOverlay(this.coupleModel.overlayCode);
         this.coupleModel.adopt(scope.split(':')[0]);
+        this.dormModel.adopt(scope.split(':')[0]);
         this.dormAccount = scope.split(':')[0];
         if (!this.scheduleStore.handleAuthChanged(scope)) return;
         this.priorityRequestKey = '';
@@ -912,7 +931,7 @@ struct Index {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
     void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
-      await prefs.put(key === 'visible' ? 'coupleVisible' : key === 'overlay' ? 'overlayCode' : 'coupleSync', value);
+      await prefs.put(key === 'visible' ? 'coupleVisible' : key === 'overlay' ? 'overlayCode' : key === 'dorm' ? 'dormSync' : 'coupleSync', value);
       await prefs.flush();
     }).catch(() => undefined);
   }
@@ -923,13 +942,45 @@ struct Index {
     this.coupleSyncTimer = setTimeout(() => {
       const store = this.scheduleStore;
       if (!store.result || !store.bridgeReady || store.status !== 'loaded') return;
-      // 宿舍课表也用这一份：交给网页，在宿舍里时由网页上传。
+      // 宿舍课表也用这一份：在宿舍里时上传。
       void this.offerDormSchedule();
+      this.refreshClassAlarms();
       void this.coupleModel.refresh().then(() => {
         if (!this.viewingCurrentSemester()) return;
         void this.coupleModel.sync((): SharePublishBody => this.sharePublishBody());
       });
     }, 4000);
+  }
+
+  // 上课闹钟 for the next seven days, from the whole term; turned off they are taken down.
+  private refreshClassAlarms(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    const store = this.scheduleStore;
+    if (!store.alarmMorning && !store.alarmNap) { syncClassAlarms(context, []); return; }
+    const complete = store.completeSnapshot();
+    if (!complete || !this.viewingCurrentSemester()) return;
+    const term = nativeScheduleStoreOf(complete);
+    syncClassAlarms(context, planClassAlarms((date: string) => alarmMeetings(term, date), scheduleTodayDate(Date.now()),
+      store.alarmMorning, store.alarmNap, Date.now()));
+  }
+
+  // 桌面快捷方式: 今日课表, 添加日程 and 找共同空闲 (resources/base/profile/shortcuts_config.json).
+  private runShortcut(): void {
+    const action = this.shortcut;
+    if (!action || this.requiresLogin) return;
+    AppStorage.set('scheduleShortcut', '');
+    this.selectTab(2);
+    setTimeout(() => {
+      if (action === 'today') {
+        this.scheduleStore.returnToCurrentWeek();
+        this.scheduleStore.setViewMode('day');
+      } else if (action === 'agenda') {
+        this.agendaEditor.openNew(scheduleTodayDate(Date.now()), '');
+      } else if (action === 'free') {
+        this.commonFreeVisible = true;
+      }
+    }, 400);
   }
 
   // 只交正在进行的学期：翻看往年学期时不能用它覆盖服务端的本学期课表。
@@ -939,26 +990,32 @@ struct Index {
     return !current || current === store.prioritySemester();
   }
 
-  // 宿舍课表是网页 /dorm-schedule：把当前学期的整学期课表（含个人修改）交给网页，由网页按网页课表的规则上传。
-  private async offerDormSchedule(): Promise<void> {
+  // 宿舍课表 is native (NativeDormSheet): while the user is in a dorm, the term running now (with personal
+  // changes) goes up through the page; the same content again only after twelve hours.
+  private async offerDormSchedule(force: boolean = false): Promise<boolean> {
     const store = this.scheduleStore;
-    if (this.requiresLogin || !store.result || !store.bridgeReady || store.status !== 'loaded') return;
-    if (!this.viewingCurrentSemester()) return;
-    let snapshot: SharePublishBody;
-    try {
-      snapshot = this.sharePublishBody();
-    } catch (_) {
-      return;
-    }
-    const request = dormOfferRequest(snapshot, this.dormAccount);
-    await this.runWebTask(`typeof window.CPUTimeNativeDorm === 'function'
-      ? window.CPUTimeNativeDorm(${this.scriptLiteral(request)}) : null`, 60000);
+    if (this.requiresLogin || !store.result || !store.bridgeReady || store.status !== 'loaded') return false;
+    if (!this.viewingCurrentSemester()) return false;
+    return this.dormModel.sync((): SharePublishBody => this.sharePublishBody(), force);
   }
 
-  // 宿舍课表开在“服务”标签下，返回回到原生课表（网页那边的上一级是 /schedule）。
-  private openDormSchedule(page: string = DORM_SCHEDULE_PAGE): void {
+  // Opens over the timetable; an invite link's code is filled in for joining.
+  private openDormSchedule(code: string = ''): void {
+    if (this.requiresLogin) return;
+    this.selectTab(2);
     void this.offerDormSchedule();
-    this.selectTab(3, page);
+    this.dormModel.open(code);
+  }
+
+  private async dormApi(request: DormRequest): Promise<DormReply> {
+    const raw = await this.runWebTask(`typeof window.CPUHarmonyDorm === 'function'
+      ? window.CPUHarmonyDorm(${this.scriptLiteral(request)}) : null`, 60000);
+    try {
+      const reply = JSON.parse(raw || 'null') as DormReply | null;
+      if (reply) return reply;
+    } catch (_) {}
+    const missing: DormReply = { error: '宿舍课表服务尚未就绪，请稍后重试', status: 0 };
+    return missing;
   }
 
   // 重叠课程谁显示在前面，随个人修改存在服务端；每次拿到新的课表数据读一次。
@@ -1072,10 +1129,10 @@ struct Index {
 
   private handleNativeNavigation(path: string): void {
     if (this.requiresLogin) return;
-    // 应用内打开的宿舍邀请链接带着宿舍码去宿舍课表页，不进原生课表。
+    // 应用内打开的宿舍邀请链接打开原生宿舍课表，并填好宿舍码。
     const dormPage = dormPagePath(path);
     if (dormPage) {
-      this.openDormSchedule(dormPage);
+      this.openDormSchedule(dormPage.indexOf('code=') >= 0 ? dormPage.substring(dormPage.indexOf('code=') + 5) : '');
       return;
     }
     if (path === '/schedule' || path.startsWith('/schedule?')) {
@@ -1773,7 +1830,8 @@ struct Index {
     .bindContentCover(this.cropTarget !== '', this.backgroundCropCover(), { modalTransition: ModalTransition.DEFAULT,
       onDisappear: () => { if (this.cropTarget) this.finishBackgroundCrop(undefined); } })
     .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible || this.sharingModel.visible
-      || this.coupleModel.sheetVisible || this.agendaEditor.visible || this.overlayPickerVisible || this.commonFreeVisible,
+      || this.coupleModel.sheetVisible || this.agendaEditor.visible || this.overlayPickerVisible || this.commonFreeVisible
+      || this.dormModel.visible,
       this.nativePanelSheet(), {
       height: SheetSize.LARGE, showClose: true, dragBar: true,
       onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy && !this.agendaEditor.busy) action.dismiss(); },
@@ -1783,6 +1841,7 @@ struct Index {
         this.coupleModel.close();
         this.agendaEditor.close();
         this.commonFreeVisible = false;
+        this.dormModel.close();
         if (this.overlayPickerVisible) {
           this.overlayPickerVisible = false;
           // A share removed from the library meanwhile is no longer laid over.
@@ -1826,6 +1885,9 @@ struct Index {
         onCopy: (text: string) => { if (this.bridge.copyText(text)) promptAction.showToast({ message: '已复制，可以发给对方了' }); },
         onSend: (text: string) => this.sendText(text)
       })
+    } else if (this.dormModel.visible) {
+      NativeDormSheet({ model: this.dormModel, dark: this.scheduleStore.dark,
+        publishBody: (): SharePublishBody => this.sharePublishBody() })
     } else if (this.commonFreeVisible) {
       NativeCommonFree({ store: this.scheduleStore, couple: this.coupleModel, sharing: this.sharingModel,
         onAgenda: this.scheduleStore.agendaAvailable ? (date: string, start: string) => this.agendaEditor.openNew(date, start) : undefined,
@@ -2012,6 +2074,16 @@ struct Index {
             .onClick(() => { this.scheduleStore.resetDisplay(); this.saveScheduleStyle(); })
         }.width('100%')
         Column({ space: 8 }) {
+          Text('上课闹钟').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Column() {
+            this.alarmRow('早上第一节前', ALARM_MORNING_LEADS, this.scheduleStore.alarmMorning, true)
+            Divider().color($r('app.color.app_divider')).margin({ left: 14 })
+            this.alarmRow('午休后第一节前', ALARM_NAP_LEADS, this.scheduleStore.alarmNap, false)
+          }.width('100%').borderRadius(16).backgroundColor($r('app.color.app_control')).clip(true)
+          Text('未来 7 天按课表响铃，放假、调休和单次停课、调课都已算进去；和日程提醒共用系统给每个应用的 30 条提醒。')
+            .fontSize(12).fontColor($r('app.color.app_text_tertiary')).width('100%')
+        }.width('100%')
+        Column({ space: 8 }) {
           Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
           this.paletteChoices(this.scheduleStore.palette, false)
         }.width('100%')
@@ -2033,6 +2105,28 @@ struct Index {
         }.width('100%')
       }.width('100%').padding({ left: 20, right: 20, top: 32, bottom: 40 })
     }.height('100%').width('100%').scrollBar(BarState.Off).backgroundColor($r('app.color.app_surface'))
+  }
+
+  // 上课闹钟: off, or one of the leads.
+  @Builder
+  private alarmRow(title: string, leads: number[], value: number, morning: boolean) {
+    Column({ space: 8 }) {
+      Text(title).fontSize(15).fontColor($r('app.color.app_text_primary')).width('100%')
+      Row({ space: 2 }) {
+        ForEach([0].concat(leads), (lead: number) => {
+          Text(lead ? '提前 ' + alarmLeadText(lead).replace(' 分钟', '分').replace(' 小时', '小时').replace(' 分', '分') : '关')
+            .fontSize(12).layoutWeight(1).height(30).textAlign(TextAlign.Center).borderRadius(8)
+            .fontColor(lead === value ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
+            .backgroundColor(lead === value ? $r('app.color.app_surface') : Color.Transparent)
+            .id((morning ? 'alarm-morning-' : 'alarm-nap-') + lead)
+            .onClick(() => {
+              if (morning) this.scheduleStore.alarmMorning = lead; else this.scheduleStore.alarmNap = lead;
+              this.saveScheduleStyle();
+              this.refreshClassAlarms();
+            })
+        }, (lead: number) => String(lead))
+      }.width('100%').padding(2).borderRadius(10).backgroundColor($r('app.color.app_divider'))
+    }.width('100%').padding({ left: 14, right: 14, top: 10, bottom: 10 })
   }
 
   // One appearance's photo: choose, frame (调整范围) or remove. The dark one needs a light one first.
@@ -2115,6 +2209,8 @@ struct Index {
       await prefs.put('slotTime', this.scheduleStore.showSlotTime);
       await prefs.put('backToWeek', this.scheduleStore.showBackToWeek);
       await prefs.put('now', this.scheduleStore.showNowIndicator);
+      await prefs.put('alarmMorning', this.scheduleStore.alarmMorning);
+      await prefs.put('alarmNap', this.scheduleStore.alarmNap);
       await prefs.flush();
     }).catch(() => promptAction.showToast({ message: '样式保存失败，请重试' }));
   }
@@ -2257,12 +2353,41 @@ struct Index {
     }
   }
 
+  // 分享: the chosen day as a picture card, or the week as text.
   private shareSchedule(): void {
-    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
-    if (!context || !this.scheduleStore.result) {
+    if (!this.scheduleStore.result) {
       promptAction.showToast({ message: '请先加载课表' });
       return;
     }
+    const store = this.scheduleStore;
+    const date = store.viewMode === 'month' && store.selectedDate ? store.selectedDate : store.rawDate(store.selectedDay);
+    const week: promptAction.Button = { text: `这一周（第 ${store.selectedWeek} 周）· 文字`, color: '#168776' };
+    const options: promptAction.ActionMenuOptions = date
+      ? { title: '分享课表', buttons: [{ text: `这一天（${occurrenceDateText(date)}）· 图片`, color: '#168776' }, week] }
+      : { title: '分享课表', buttons: [week] };
+    promptAction.showActionMenu(options)
+      .then((result: promptAction.ActionMenuSuccessResponse) => {
+        if (date && result.index === 0) void this.shareDayCard(date);
+        else this.shareWeekText();
+      }).catch(() => undefined);
+  }
+
+  @Builder
+  private shareCardBuilder() {
+    dayShareCard(this.shareCard)
+  }
+
+  private async shareDayCard(date: string): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.shareCard = dayShareCardData(this.scheduleStore, date, '拾间课表');
+    const message = await shareSnapshotImage(context, this.getUIContext(), () => { this.shareCardBuilder() }, `课表-${date}.png`);
+    if (message) promptAction.showToast({ message });
+  }
+
+  private shareWeekText(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
     try {
       const data = new systemShare.SharedData({ utd: 'general.plain-text', content: scheduleText(this.scheduleStore) });
       const controller = new systemShare.ShareController(data);
@@ -2563,9 +2688,10 @@ struct Index {
   }
 
   onBackPress(): boolean {
-    if (this.overlayPickerVisible || this.commonFreeVisible) {
+    if (this.overlayPickerVisible || this.commonFreeVisible || this.dormModel.visible) {
       this.overlayPickerVisible = false;
       this.commonFreeVisible = false;
+      this.dormModel.close();
       return true;
     }
     if (this.coupleModel.sheetVisible) {

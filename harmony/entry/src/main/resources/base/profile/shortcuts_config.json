@@ -1,0 +1,31 @@
+{
+  "shortcuts": [
+    {
+      "shortcutId": "schedule_today",
+      "label": "$string:shortcut_today",
+      "icon": "$media:app_icon",
+      "wants": [
+        { "bundleName": "cn.lizmt.cpuweb", "moduleName": "entry", "abilityName": "EntryAbility",
+          "parameters": { "targetUrl": "cpuweb://schedule?action=today" } }
+      ]
+    },
+    {
+      "shortcutId": "schedule_agenda",
+      "label": "$string:shortcut_agenda",
+      "icon": "$media:app_icon",
+      "wants": [
+        { "bundleName": "cn.lizmt.cpuweb", "moduleName": "entry", "abilityName": "EntryAbility",
+          "parameters": { "targetUrl": "cpuweb://schedule?action=agenda" } }
+      ]
+    },
+    {
+      "shortcutId": "schedule_free",
+      "label": "$string:shortcut_free",
+      "icon": "$media:app_icon",
+      "wants": [
+        { "bundleName": "cn.lizmt.cpuweb", "moduleName": "entry", "abilityName": "EntryAbility",
+          "parameters": { "targetUrl": "cpuweb://schedule?action=free" } }
+      ]
+    }
+  ]
+}

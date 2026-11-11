@@ -4,6 +4,7 @@ import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore, useSiteStor
 import { installHarmonyEditor } from './editor';
 import { installHarmonySharing } from './sharing';
 import { installHarmonyCouple } from './couple';
+import { installHarmonyDorm } from './dorm';
 import { installHarmonyShellObserver } from './shell';
 import { installHarmonyHeader } from './header';
 import { installHarmonyNavigation } from './navigation';
@@ -13,6 +14,7 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   installHarmonyEditor();
   installHarmonySharing();
   installHarmonyCouple();
+  installHarmonyDorm();
   let attempts = 0;
   let loginInstalled = false;
   const install = () => {

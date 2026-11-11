@@ -1,6 +1,7 @@
 // Install a deterministic, offline UI harness in an isolated copy of harmony/.
 // Never use a signed/release package or a real user account for visual acceptance.
 import { copyFileSync, readFileSync, writeFileSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -130,6 +131,30 @@ const coupleSchedules = { me: null, partner: { semester, syncedAt: '2026-10-08T0
   schedule: { cells: partnerCourses.map(([day, startSlot, endSlot, name, location]) => ({ day, bigSlot: Math.ceil(startSlot / 2),
     courses: [{ name, location, teacher: '', weeks: '1-20周', weekList: weeks.map(({ value }) => Number(value)), startSlot, endSlot }] })) },
   calendar: snapshot.calendar } };
+// `--ps dorm active`: a four-person dorm. The sheet's data is worked out here with the bridge's own
+// dormView (harmony/bridge/dorm.ts, the site's dorm.ts and dormWeek.ts) on fixture timetables.
+const dormStatus = { status: 'active', id: 7, name: '梅苑 3-402', memberLimit: 6, isOwner: true, since: '2026-09-01T00:00:00.000Z',
+  invite: { code: 'K7M2QX', expiresAt: '2099-01-01T00:00:00.000Z', expired: false },
+  me: { id: 1, color: 'blue', nickname: '阿青', avatar: null, isOwner: true, snapshot: { semester, syncedAt: '2026-11-10T08:00:00.000Z', changedAt: '' } },
+  members: [] };
+const dormPeople = [[1, 'blue', '阿青', true], [2, 'pink', '小鹿', false], [3, 'green', '阿杰', false], [4, 'amber', '老周', false]];
+dormStatus.members = dormPeople.map(([id, color, nickname, synced]) => ({ id, color, nickname, avatar: null, isOwner: id === 1,
+  snapshot: id === 4 ? null : { semester, syncedAt: '2026-11-10T08:00:00.000Z', changedAt: '' } }));
+const dormSnapshots = {
+  1: { semester, syncedAt: '', changedAt: '', schedule: snapshot.data, calendar: snapshot.calendar },
+  2: { semester, syncedAt: '', changedAt: '', schedule: { ...snapshot.data, cells: coupleSchedules.partner.schedule.cells }, calendar: snapshot.calendar },
+  3: { semester, syncedAt: '', changedAt: '', schedule: { ...snapshot.data, cells: overlayDocument.schedule.cells }, calendar: overlayDocument.calendar },
+};
+const dormBundle = (() => {
+  const { buildSync } = createRequire(resolve(source, '../web/package.json'))('esbuild');
+  const out = buildSync({ entryPoints: [resolve(source, 'bridge/dorm.ts')], bundle: true, write: false, format: 'cjs', platform: 'node',
+    alias: { '@': resolve(source, '../web/src') } });
+  const module = { exports: {} };
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(module, module.exports, () => ({}));
+  return module.exports;
+})();
+const dormReaders = dormBundle.createDormReaders(dormPeople.map(([id, color, nickname]) => ({ id, color, nickname, snapshot: dormSnapshots[id] ?? null })));
+const dormViews = { this: dormBundle.dormView(dormReaders, dormStatus, {}), relaxed: dormBundle.dormView(dormReaders, dormStatus, { minFree: 2 }) };
 put('entry/src/main/ets/pages/ScheduleAcceptance.ets', `
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleStore, NativeScheduleRequest, NativeOccurrenceChange, NativeOccurrenceRequest,
@@ -144,7 +169,10 @@ import { librarySave, RawShareDocument, readSharedSchedule, SharedSchedule, Shar
   sharePublishBody } from '../schedule/ScheduleSharing';
 import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
 import { NativeCommonFree } from '../schedule/NativeCommonFree';
+import { DormReply, DormRequest, DormViewReply, NativeDormModel, NativeDormSheet } from '../schedule/NativeDormSheet';
 import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
+import { DayShareCardData, dayShareCard, dayShareCardData } from '../schedule/ScheduleDayShareCard';
+import { shareSnapshotImage } from '../schedule/ScheduleImageShare';
 import fs from '@ohos.file.fs';
 import { CoupleApiData, CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { normalizeScheduleStyle, scheduleClockMinutes, SCHEDULE_STYLES } from '../schedule/ScheduleStyle';
@@ -198,11 +226,17 @@ struct ScheduleAcceptance {
   @StorageProp('qaOverlay') private overlaySeed: string = '';
   @State private overlayPicker: boolean = false;
   @State private commonFree: boolean = false;
+  @State private dorm: NativeDormModel = new NativeDormModel();
+  @StorageProp('qaDorm') private dormState: string = '';
   // \`--ps background 1\` puts a photo behind the timetable (light; \`dark\` too with backgroundDark 1),
   // \`--ps crop x,y,w,h\` frames it, \`--ps panel crop\` opens 调整范围.
   @StorageProp('qaBackground') private backgroundSeed: string = '';
   @StorageProp('qaCrop') private cropSeed: string = '';
   @State private cropOpen: boolean = false;
+  // \`--ps holiday 国庆快乐\`: every free day is that holiday. \`--ps panel shareCard\` shows the day card on screen.
+  @StorageProp('qaHoliday') private holiday: string = '';
+  @State private cardShown: boolean = false;
+  private shareCard: DayShareCardData = { brand: '', title: '', subtitle: '', items: [], emptyText: '' };
   private occurrences: NativeOccurrenceChange[] = [];
   private published: boolean = false;
   @StorageProp('systemTopInsetPx') private topInset: number = 0;
@@ -314,8 +348,18 @@ struct ScheduleAcceptance {
     }
     if (this.panel === 'overlayPicker') setTimeout(() => this.overlayPicker = true, 600);
     if (this.panel === 'commonFree') setTimeout(() => this.commonFree = true, 600);
+    this.dorm.attach((request: DormRequest) => this.dormApi(request), () => undefined);
+    if (this.panel.startsWith('dorm')) setTimeout(() => {
+      this.dorm.page = this.panel === 'dormFree' ? 'free' : this.panel === 'dormMorning' ? 'morning' : this.panel === 'dormRoom' ? 'room' : 'week';
+      this.dorm.open(this.panel === 'dormJoin' ? 'K7M2QX' : '');
+    }, 600);
     if (this.backgroundSeed) this.seedBackground();
     if (this.panel === 'crop') setTimeout(() => this.cropOpen = true, 600);
+    this.store.debugGreeting = this.holiday;
+    if (this.panel === 'shareCard') setTimeout(() => {
+      this.shareCard = dayShareCardData(this.store, this.store.rawDate(this.store.selectedDay), '拾间课表');
+      this.cardShown = true;
+    }, 800);
     this.syncOptions();
   }
   private async coupleApi(request: CoupleApiRequest): Promise<CoupleApiReply> {
@@ -339,6 +383,30 @@ struct ScheduleAcceptance {
     if (data.partner && data.status === 'active') data.partner.color = this.coupleTheirs;
     const reply: CoupleApiReply = { ok: true, status: 200, data };
     return reply;
+  }
+  private async dormApi(request: DormRequest): Promise<DormReply> {
+    if (request.action === 'view') {
+      const raw = this.dormState === 'active'
+        ? '{"status":' + ${JSON.stringify(JSON.stringify(dormStatus))} + ',"view":' + (request.minFree
+          ? ${JSON.stringify(JSON.stringify(dormViews.relaxed))} : ${JSON.stringify(JSON.stringify(dormViews.this))}) + '}'
+        : '{"status":{"status":"none"}}';
+      const reply: DormReply = { data: JSON.parse(raw) as DormViewReply };
+      return reply;
+    }
+    if (request.action === 'join' || request.action === 'invite') this.dormState = 'active';
+    if (request.action === 'leave') this.dormState = '';
+    const done: DormReply = { data: { status: 'active' } };
+    return done;
+  }
+  @Builder
+  private shareCardBuilder() {
+    dayShareCard(this.shareCard)
+  }
+  private shareDay(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.shareCard = dayShareCardData(this.store, this.store.rawDate(this.store.selectedDay), '拾间课表');
+    void shareSnapshotImage(context, this.getUIContext(), () => { this.shareCardBuilder() }, 'qa-day.png');
   }
   private seedBackground(): void {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
@@ -468,7 +536,9 @@ struct ScheduleAcceptance {
   }
   @Builder
   private panelSheet() {
-    if (this.commonFree) {
+    if (this.dorm.visible) {
+      NativeDormSheet({ model: this.dorm, dark: this.store.dark })
+    } else if (this.commonFree) {
       NativeCommonFree({ store: this.store, couple: this.couple, sharing: this.sharing,
         onAgenda: (date: string, start: string) => this.agendaEditor.openNew(date, start), onDone: () => this.commonFree = false })
     } else if (this.overlayPicker) {
@@ -492,7 +562,8 @@ struct ScheduleAcceptance {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       NativeSchedulePage({ store: this.store, couple: this.couple, onCouple: () => this.couple.open(),
-        onOverlay: () => this.overlayPicker = true, onCommonFree: () => this.commonFree = true,
+        onOverlay: () => this.overlayPicker = true, onCommonFree: () => this.commonFree = true, onShare: () => this.shareDay(),
+        onDorm: () => this.dorm.open(),
         bottomClearance: nativeNavigationClearance(px2vp(this.bottomInset)),
         pinnedNow: scheduleClockMinutes(this.now),
         onStyle: () => this.cycleStyle(), onAppearance: () => this.toggleAppearance(), onWidgets: () => this.cycleTheme(),
@@ -502,6 +573,10 @@ struct ScheduleAcceptance {
         .padding({ top: this.topPadding() })
       NativeTabBar({ selected: 2, dark: this.store.dark })
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
+      if (this.cardShown) {
+        Scroll() { Column() { this.shareCardBuilder() }.scale({ x: 0.66, y: 0.66 }) }.width('100%').height('100%')
+          .backgroundColor('#333333').onClick(() => this.cardShown = false)
+      }
       if (this.cropOpen) {
         NativeBackgroundCrop({ path: this.store.backgroundPath, crop: this.store.backgroundCrop, aspect: 0.48,
           onDone: (crop: string) => { this.store.backgroundCrop = crop; this.cropOpen = false; },
@@ -514,9 +589,9 @@ struct ScheduleAcceptance {
         }.width('100%').height('100%').padding({ top: this.topPadding() }).backgroundColor(scheduleSurface(this.store.dark))
       }
     }.width('100%').height('100%').backgroundColor(scheduleSurface(this.store.dark))
-      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible || this.agendaEditor.visible || this.overlayPicker || this.commonFree, this.panelSheet(),
+      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible || this.agendaEditor.visible || this.overlayPicker || this.commonFree || this.dorm.visible, this.panelSheet(),
         { height: SheetSize.LARGE, showClose: true, dragBar: true,
-        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); this.agendaEditor.close(); this.overlayPicker = false; this.commonFree = false; } })
+        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); this.agendaEditor.close(); this.overlayPicker = false; this.commonFree = false; this.dorm.close(); } })
   }
 }
 `);
@@ -543,6 +618,8 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaOverlay', String(want.parameters?.overlay ?? ''));
     AppStorage.setOrCreate('qaBackground', String(want.parameters?.background ?? ''));
     AppStorage.setOrCreate('qaCrop', String(want.parameters?.crop ?? ''));
+    AppStorage.setOrCreate('qaHoliday', String(want.parameters?.holiday ?? ''));
+    AppStorage.setOrCreate('qaDorm', String(want.parameters?.dorm ?? ''));
     const routedUrl =`);
 put('entry/src/main/ets/entryability/EntryAbility.ets', ability);
 // A photo for the background checks.
@@ -550,4 +627,6 @@ copyFileSync(resolve(source, '../web/src/views/services/campus3d/cover.jpg'), re
 put('entry/src/main/resources/base/profile/main_pages.json', JSON.stringify({ src: ['pages/Index', 'pages/ScheduleAcceptance'] }, null, 2));
 const appPath = resolve(source, 'AppScope/app.json5');
 put('AppScope/app.json5', readFileSync(appPath, 'utf8').replace('"cn.lizmt.cpuweb"', '"cn.lizmt.cpuweb.scheduleqa"'));
+const shortcutsPath = 'entry/src/main/resources/base/profile/shortcuts_config.json';
+put(shortcutsPath, readFileSync(resolve(source, shortcutsPath), 'utf8').replaceAll('"cn.lizmt.cpuweb"', '"cn.lizmt.cpuweb.scheduleqa"'));
 console.log(`Offline acceptance harness prepared in ${target}; bundle: cn.lizmt.cpuweb.scheduleqa`);

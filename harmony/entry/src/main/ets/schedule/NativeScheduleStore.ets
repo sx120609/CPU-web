@@ -295,6 +295,11 @@ export class NativeScheduleStore {
   agendaAvailable: boolean = false;
   // 微信和 QQ 也提醒。
   agendaRelay: boolean = false;
+  // 上课闹钟: minutes before the first morning class and the first one after the noon break; 0 is off.
+  alarmMorning: number = 0;
+  alarmNap: number = 0;
+  // The acceptance harness's holiday (`--ps holiday 国庆快乐`): every free day greets with it.
+  debugGreeting: string = '';
   // 只读：别人共享的课表。不加载也不保存个人修改，不写卡片和本地缓存。
   readOnly: boolean = false;
   // 课表风格（ScheduleStyle.ets），与配色、深浅色互不影响。

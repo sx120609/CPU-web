@@ -17,6 +17,10 @@ import { scheduleAlpha, scheduleCleanLocation, scheduleClockLabel, scheduleClock
   scheduleStylePanelSurface, scheduleStyleTextFont, scheduleThemeFill, scheduleThemeText, scheduleThemeTint,
   scheduleTodayDate, scheduleWeekday, SCHEDULE_TABULAR_DIGITS } from './ScheduleStyle';
 import { CourseMenuAction, courseMenuActions } from './ScheduleOccurrences';
+import { ScheduleFireworks } from './ScheduleFireworks';
+import { ChineseCalendar, OffDay, publishedHolidaysFromOffDays } from '../common/ChineseCalendar';
+import { systemLunarDate } from '../common/SystemLunarCalendar';
+import { NativeScheduleAdjustment } from './NativeScheduleStore';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 // Row gap and date-header height of the styled grids, as on iOS.
@@ -74,6 +78,15 @@ export struct NativeScheduleBody {
   onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => void = () => undefined;
   // An entry of a course's long-press menu (ScheduleOccurrences `courseMenuActions`).
   onMenu: (action: string, block: NativeCourseBlock, shownDay: number, date: string) => void = () => undefined;
+  // A holiday's fireworks, while they play (the time they started).
+  @State private fireworksAt: number = 0;
+  @StorageLink('cpuFireworksShown') private fireworksShown: string = '';
+  private lunar?: ChineseCalendar;
+  private lunarKey: string = '';
+
+  aboutToAppear(): void {
+    PersistentStorage.persistProp('cpuFireworksShown', '');
+  }
 
   build() {
     Scroll() {
@@ -95,6 +108,7 @@ export struct NativeScheduleBody {
             else this.styledDay()
           } else if (this.view.viewMode === 'week') this.weekSchedule()
           else if (this.placed(this.view.selectedDay).length) this.daySchedule()
+          else if (this.festive()) this.restCard()
           else this.stateCard('这一天没有课程', this.emptyDayNote(), this.store.canEdit() ? '添加课程' : '', () => this.addAt(this.view.selectedDay, 1))
         }
       }.width('100%').padding({ bottom: 12 })
@@ -1172,6 +1186,7 @@ export struct NativeScheduleBody {
   // The rest card of a day with no courses: a dozing cloud in the theme colour.
   @Builder
   private restCard() {
+    Stack() {
     Column() {
       Column({ space: 24 }) {
         // Drawn on a 116 × 88 grid, as on iOS, and scaled to 184 × 140 vp.
@@ -1191,9 +1206,10 @@ export struct NativeScheduleBody {
             .fill(Color.Transparent).stroke(scheduleAlpha(this.restAccent(), this.store.dark ? 0.85 : 0.70)).strokeWidth(1.8)
             .strokeLineCap(LineCapStyle.Round)
         }.width(184).height(140).accessibilityLevel('no')
+          .overlay(this.fireworksButton(), { align: Alignment.TopEnd, offset: { x: 18, y: -10 } })
         Column({ space: 10 }) {
           Text('这天没有课程').fontSize(20).fontWeight(600).fontColor(this.ink()).fontFamily(scheduleStyleFont(this.store.visualStyle))
-          Text(this.emptyDayNote() || '留点时间，做喜欢的事').fontSize(14).fontColor(scheduleMetaText(this.store.dark))
+          Text(this.emptyDayNote() || this.greeting() || '留点时间，做喜欢的事').fontSize(14).fontColor(scheduleMetaText(this.store.dark))
             .fontFamily(scheduleStyleFont(this.store.visualStyle)).textAlign(TextAlign.Center)
         }
         if (this.store.canEdit()) {
@@ -1209,6 +1225,53 @@ export struct NativeScheduleBody {
           color: scheduleAlpha(scheduleStyleCanvas(this.store.visualStyle, this.store.dark) ? this.ink() : this.themeText(), this.store.dark ? 0.14 : 0.1) })
     }.width('100%').constraintSize({ minHeight: Math.max(360, this.contentHeight - 24) })
       .justifyContent(FlexAlign.Center).padding({ left: 12, right: 12 })
+      if (this.fireworksAt > 0) {
+        ScheduleFireworks({ startedAt: this.fireworksAt }).width('100%').height('100%').hitTestBehavior(HitTestMode.None)
+      }
+    }.width('100%').onAppear(() => this.autoFireworks())
+  }
+
+  // ---- A holiday: greeting and fireworks ----
+
+  @Builder
+  private fireworksButton() {
+    if (this.festive()) {
+      Stack() { SymbolGlyph($r('sys.symbol.firework')).fontSize(26).fontColor(['#EC4899']) }
+        .width(44).height(44).id('schedule-fireworks')
+        .accessibilityText(this.greeting() + '，放烟花')
+        .onClick(() => this.fireworksAt = Date.now())
+    }
+  }
+
+  // The first time a holiday is opened in a year, the fireworks go off by themselves.
+  private autoFireworks(): void {
+    if (!this.festive()) return;
+    const key = `${this.greeting()}@${new Date().getFullYear()}`;
+    if (this.fireworksShown === key) return;
+    this.fireworksShown = key;
+    setTimeout(() => this.fireworksAt = Date.now(), 400);
+  }
+
+  // 「国庆快乐」 on a public holiday, from the calendar's days off and the built-in holiday rules.
+  private greeting(): string {
+    if (this.store.debugGreeting) return this.store.debugGreeting;
+    const date = this.view.shownRawDate(this.view.selectedDay);
+    if (!date) return '';
+    const offDays: OffDay[] = (this.view.calendar?.adjustments ?? [])
+      .filter((item: NativeScheduleAdjustment) => item.kind === 'off')
+      .map((item: NativeScheduleAdjustment): OffDay => ({ date: item.date, note: item.note ?? '' }));
+    const key = JSON.stringify(offDays);
+    if (!this.lunar || key !== this.lunarKey) {
+      this.lunar = new ChineseCalendar(systemLunarDate, publishedHolidaysFromOffDays(offDays));
+      this.lunarKey = key;
+    }
+    return this.lunar.restGreeting(date);
+  }
+
+  // A festive holiday: fireworks, not for 清明.
+  private festive(): boolean {
+    const greeting = this.greeting();
+    return !!greeting && !greeting.startsWith('清明') && this.view.viewMode === 'day';
   }
 
   // ---- Data ----

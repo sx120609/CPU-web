@@ -67,6 +67,18 @@
     {
       "name": "schedule_two_day_description",
       "value": "两日课表 · 课程、地点与时间"
+    },
+    {
+      "name": "shortcut_today",
+      "value": "今日课表"
+    },
+    {
+      "name": "shortcut_agenda",
+      "value": "添加日程"
+    },
+    {
+      "name": "shortcut_free",
+      "value": "找共同空闲"
     }
   ]
 }

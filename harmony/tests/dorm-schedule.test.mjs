@@ -23,7 +23,7 @@ function host({ current = '2026-2027-1', shown = '2026-2027-1', publish } = {}) 
   const ctx = vm.createContext({ module: { exports: {} }, clearTimeout, ...dorm });
   vm.runInContext(transformSync('export class Host {' + methods + '}', { loader: 'ts', format: 'cjs' }).code, ctx);
   const page = new ctx.module.exports.Host();
-  const offers = []; const tabs = []; const loads = [];
+  const offers = []; const tabs = []; const loads = []; const opened = [];
   Object.assign(page, {
     requiresLogin: false, dormAccount: 'acct-a', navigationRevision: 0,
     scheduleStore: {
@@ -33,14 +33,14 @@ function host({ current = '2026-2027-1', shown = '2026-2027-1', publish } = {}) 
     },
     sharePublishBody: publish ?? (() => ({ semester: shown, schedule: { cells: [] }, calendar: { weeks: [{ week: 1 }] } })),
     scriptLiteral: value => JSON.stringify(value),
-    // The page answers like web/src/utils/nativeDormBridge.ts would: the request arrives as sent.
-    runWebTask: async expression => {
-      offers.push(vm.runInNewContext(expression, { window: { CPUTimeNativeDorm: request => request } }));
-      return '';
+    // The native dorm sheet: what it is asked to upload and to open.
+    dormModel: {
+      sync: async body => { try { offers.push(body()); return true; } catch { return false; } },
+      open: code => opened.push(code),
     },
     selectTab: (index, destination) => tabs.push([index, destination]),
   });
-  return { page, offers, tabs, loads };
+  return { page, offers, tabs, loads, opened };
 }
 
 test('dorm invite links inside the app open the dorm page with their code', () => {
@@ -54,20 +54,19 @@ test('dorm invite links inside the app open the dorm page with their code', () =
   assert.equal(dorm.dormSchedulePage(' k7m2qx '), '/dorm-schedule?code=K7M2QX');
 });
 
-test('the dorm page gets the term running now and opens under 服务 so Back returns to the timetable', async () => {
+test('the native dorm sheet opens over the timetable and gets the term running now', async () => {
   const h = host();
   h.page.openDormSchedule();
   await new Promise(setImmediate);
-  assert.deepEqual(h.tabs, [[3, '/dorm-schedule']]);
+  assert.deepEqual(h.tabs, [[2, undefined]]);
+  assert.deepEqual(h.opened, ['']);
   assert.equal(h.offers.length, 1);
-  assert.equal(h.offers[0].action, 'offer');
-  assert.equal(h.offers[0].account, 'acct-a');
-  assert.equal(h.offers[0].snapshot.semester, '2026-2027-1');
+  assert.equal(h.offers[0].semester, '2026-2027-1');
 
-  // An in-app invite link goes to the dorm page, not the native timetable.
+  // An in-app invite link opens the sheet with its code, not the plain timetable.
   h.page.handleNativeNavigation('/schedule?dorm=1&code=abc234');
   await new Promise(setImmediate);
-  assert.deepEqual(h.tabs.at(-1), [3, '/dorm-schedule?code=ABC234']);
+  assert.deepEqual(h.opened.at(-1), 'ABC234');
   assert.deepEqual(h.loads, []);
   // Any other timetable link still shows the native timetable.
   h.page.handleNativeNavigation('/schedule?couple=1');
@@ -90,4 +89,5 @@ test('a past term on screen, an unfinished term or a signed-out shell hands noth
   gated.page.handleNativeNavigation('/schedule?dorm=1');
   assert.equal(gated.offers.length, 0);
   assert.deepEqual(gated.tabs, []);
+  assert.deepEqual(gated.opened, []);
 });
