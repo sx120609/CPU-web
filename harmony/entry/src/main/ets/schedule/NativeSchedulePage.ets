@@ -801,7 +801,8 @@ export struct NativeSchedulePage {
         Text('这节课的日程').fontSize(14).fontWeight(600).fontColor(scheduleMetaText(this.store.dark)).layoutWeight(1)
       }.width('100%')
       if (!this.relatedAgenda().length) {
-        Text('还没有。作业、小测或要带的东西，点「在这节课加日程」记一笔。').fontSize(12).fontColor(scheduleMetaText(this.store.dark)).width('100%')
+        Text(this.quickActions().some((action: CourseQuickAction) => action.id === 'agenda')
+          ? '还没有。作业、小测或要带的东西，点「在这节课加日程」记一笔。' : '还没有。').fontSize(12).fontColor(scheduleMetaText(this.store.dark)).width('100%')
       }
       ForEach(this.relatedAgenda(), (entry: NativeAgendaOccurrence) => {
         Row({ space: 10 }) {
@@ -834,7 +835,9 @@ export struct NativeSchedulePage {
   }
 
   private agendaShown(): boolean {
-    return !this.store.readOnly && !this.detailPeek && !!this.detailDate && (this.store.agendaAvailable || this.relatedAgenda().length > 0);
+    // A cancelled meeting is not held: no 日程 of its own.
+    return !this.store.readOnly && !this.detailPeek && !!this.detailDate && !this.detailBlock?.cancelled
+      && (this.store.agendaAvailable || this.relatedAgenda().length > 0);
   }
 
   private relatedAgenda(): NativeAgendaOccurrence[] {
