@@ -2220,7 +2220,7 @@ struct Index {
   // 调整范围 covers the screen; the style sheet steps aside while it is open and comes back after.
   private openBackgroundCrop(dark: boolean): void {
     this.scheduleStyleVisible = false;
-    setTimeout(() => this.cropTarget = dark ? 'dark' : 'light', 350);
+    setTimeout(() => { this.cropTarget = dark ? 'dark' : 'light'; this.updateSystemBars(); }, 350);
   }
 
   private finishBackgroundCrop(crop: string | undefined): void {
@@ -2230,6 +2230,7 @@ struct Index {
       this.saveScheduleStyle();
     }
     this.cropTarget = '';
+    this.updateSystemBars();
     setTimeout(() => this.scheduleStyleVisible = true, 350);
   }
 
@@ -2718,9 +2719,11 @@ struct Index {
   private updateSystemBars(): void {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
-    const dark = this.scheduleStore.dark || this.imagePreviewVisible;
+    // The image preview and the background framing editor are black screens: light status bar text on them.
+    const blackout = this.imagePreviewVisible || this.cropTarget !== '';
+    const dark = this.scheduleStore.dark || blackout;
     void window.getLastWindow(context).then((mainWindow) => mainWindow.setWindowSystemBarProperties({
-      statusBarColor: this.imagePreviewVisible ? '#05070A' : dark ? '#151A17' : '#F7F8F6',
+      statusBarColor: blackout ? '#05070A' : dark ? '#151A17' : '#F7F8F6',
       statusBarContentColor: dark ? '#FFFFFF' : '#202722',
       navigationBarColor: '#00000000', navigationBarContentColor: dark ? '#FFFFFF' : '#172033'
     })).catch(() => undefined);
