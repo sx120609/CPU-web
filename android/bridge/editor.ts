@@ -6,6 +6,7 @@ import { buildCourseFamilyKey } from '../../web/src/views/schedule/viewModels';
 import { MAX_SMALL_SLOT } from '../../web/src/views/schedule/slots';
 import { normalizeCustomTimeRange } from '../../web/src/utils/scheduleCustomTime';
 import { MAX_SCHEDULE_PRIORITY, normalizeSchedulePriority, schedulePriorityKey } from '../../server/src/shared/schedulePriority';
+import { normalizeOccurrenceChanges } from '../../server/src/shared/scheduleOccurrences';
 
 /**
  * `startTime`/`endTime` (HH:MM) are sent for a course that does not follow the
@@ -66,6 +67,19 @@ export function installAndroidEditor() {
         const state = await request('GET',payload.semester);
         if (identity() !== owner) throw Error('账号已变化，请重新载入当前账号课表');
         return { priority: state.priority };
+      }
+      // 这次停课、调整这一次、恢复原安排: the changes of one meeting (one per edit key of the course) are replaced, the rest kept.
+      if (payload.action === 'occurrence') {
+        const owner = identity();
+        const current = await request('GET',payload.semester);
+        if (identity() !== owner) throw Error('账号已变化，请重新载入当前账号课表');
+        const keys = new Set<string>((Array.isArray(payload.keys) ? payload.keys : []).map(String).filter(Boolean));
+        if (!keys.size || !/^\d{4}-\d{2}-\d{2}$/.test(String(payload.date || ''))) throw Error('这节课无法单独调整');
+        const kept = (current.occurrences ?? []).filter(item => !(keys.has(item.key) && item.date === payload.date));
+        const occurrences = normalizeOccurrenceChanges([...kept, ...(Array.isArray(payload.changes) ? payload.changes : [])]);
+        await request('PUT',payload.semester,{hidden:current.hidden,custom:current.custom,priority:current.priority,occurrences});
+        if (identity() !== owner) throw Error('账号已变化，请重新载入当前账号课表');
+        return { saved:true, occurrences };
       }
       if (payload.action === 'open') {
         const owner = identity();

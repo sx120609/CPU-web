@@ -63,6 +63,9 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     var agendaRequest by mutableStateOf<AgendaRequest?>(null)
     private lateinit var clientStats: ClientStats
     private var reportsClientStats = false
+    /** A debug launch on the sample timetable (`debugMockSchedule`): nothing reaches the site. */
+    var debugFixture = false
+        private set
     private lateinit var legacyBridge: CpuAndroidBridge
     lateinit var nativeWebLayer: NativeWebLayer
         private set
@@ -131,6 +134,7 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         web.onAppearanceReported = { mode -> appearance.adoptWebMode(mode) }
         web.nativeAppearanceMode = { appearance.mode }
         val debugFixture = BuildConfig.DEBUG && intent.getBooleanExtra(DebugScheduleFixture.EXTRA, false)
+        this.debugFixture = debugFixture
         val priorities = getSharedPreferences(PRIORITY_PREFS, MODE_PRIVATE)
         schedule = ScheduleStore(
             lifecycleScope, ScheduleArchive.create(this),
@@ -368,6 +372,23 @@ class MainActivity : ComponentActivity(), WebSessionHost {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         widgets.refreshForNightMode()
+    }
+
+    /**
+     * Replaces the changes of one meeting (one per edit key in [keys]) by
+     * [changes], through the page's editor bridge. Null when saved, else why not.
+     */
+    suspend fun saveOccurrence(semester: String, keys: List<String>, date: String, changes: List<OccurrenceChange>): String? {
+        if (debugFixture) {
+            DebugScheduleFixture.changeOccurrence(keys, date, changes)
+            return null
+        }
+        val payload = org.json.JSONObject().put("action", "occurrence").put("semester", semester)
+            .put("keys", org.json.JSONArray(keys)).put("date", date).put("changes", OccurrenceChange.toJsonArray(changes))
+        val reply = web.editCourse(payload)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            ?: return "网页会话还没有准备好，请稍后重试"
+        val error = reply.optString("error").ifEmpty { reply.optString("__error") }
+        return error.ifEmpty { null }
     }
 
     fun toast(message: String) {

@@ -77,6 +77,8 @@ internal class DayStatus(
     fun end(block: PlacedBlock): String = block.course.customTime?.second ?: period(block.endSlot).endTime
 
     fun phase(block: PlacedBlock): Phase {
+        // A cancelled meeting is not going to happen: never "now" or "next".
+        if (block.block.cancelled != null) return Phase.Completed
         val start = ScheduleStyleTime.clockMinutes(start(block)) ?: return Phase.Upcoming
         val end = ScheduleStyleTime.clockMinutes(end(block)) ?: return Phase.Upcoming
         val limit = completedBefore ?: now
@@ -85,7 +87,7 @@ internal class DayStatus(
         return Phase.Upcoming
     }
 
-    fun label(block: PlacedBlock): String? = when (phase(block)) {
+    fun label(block: PlacedBlock): String? = if (block.block.cancelled != null) "已停课" else when (phase(block)) {
         Phase.Completed -> "已结束"
         Phase.Current -> "正在上 · 还剩 ${max(1, (ScheduleStyleTime.clockMinutes(end(block)) ?: 0) - (now ?: 0))} 分"
         Phase.Upcoming -> {
@@ -105,7 +107,7 @@ private fun spokenLabel(block: PlacedBlock, status: DayStatus, state: String?): 
 ).joinToString("，")
 
 private fun Modifier.courseAction(block: PlacedBlock, status: DayStatus, state: String?, onCourse: (PlacedBlock) -> Unit): Modifier =
-    clickable { onCourse(block) }.clearAndSetSemantics { contentDescription = spokenLabel(block, status, state) }
+    courseTap(block) { onCourse(block) }.clearAndSetSemantics { contentDescription = spokenLabel(block, status, state) }
 
 /** Standard card height of the styled day views. */
 internal val StyledDayCardHeight = 108.dp
@@ -559,6 +561,8 @@ private fun DayBoardView(blocks: List<PlacedBlock>, status: DayStatus, onCourse:
             val start = ScheduleStyleTime.clockMinutes(status.start(block))
             val now = status.now
             val note: Pair<String, Boolean>? = when {
+                block.block.cancelled != null -> "已停课" to false
+                block.course.isMovedOccurrence && status.phase(block) != DayStatus.Phase.Completed -> "调课" to true
                 status.phase(block) == DayStatus.Phase.Completed -> "已结束" to false
                 countsDown && index == 0 && now != null && start != null && start > now -> {
                     val wait = start - now

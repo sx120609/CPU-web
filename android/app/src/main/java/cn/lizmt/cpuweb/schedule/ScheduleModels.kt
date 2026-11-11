@@ -35,7 +35,21 @@ data class ScheduleCourse(
     /** A course that does not follow the periods: its own start and end, "HH:MM" ([CourseCustomTime]). */
     val customStartTime: String? = null,
     val customEndTime: String? = null,
+    /**
+     * Set on a course shown in place of a single meeting that was moved
+     * (调整这一次): the edit key of the course it came from and the date it was
+     * meant for ([OccurrenceChange]).
+     */
+    val occurrenceKey: String? = null,
+    val occurrenceFrom: String? = null,
+    /** The week text the course came with when one of its meetings was cancelled or moved; its edit key is built from it. */
+    val sourceWeeks: String? = null,
+    /** The schedule-edit keys of the rows the site merged into this course; empty from an older site. */
+    val editKeys: List<String> = emptyList(),
 ) {
+    /** Shown in place of a single meeting moved here (调整这一次). */
+    val isMovedOccurrence: Boolean get() = occurrenceFrom != null
+
     /** The course's own start and end when both are valid and in order; null for a course on the periods. */
     val customTime: Pair<String, String>?
         get() = CourseCustomTime.range(customStartTime, customEndTime)
@@ -63,6 +77,10 @@ data class ScheduleCourse(
         if (orphaned) put("orphaned", true)
         customStartTime?.let { put("customStartTime", it) }
         customEndTime?.let { put("customEndTime", it) }
+        occurrenceKey?.let { put("occurrenceKey", it) }
+        occurrenceFrom?.let { put("occurrenceFrom", it) }
+        sourceWeeks?.let { put("sourceWeeks", it) }
+        if (editKeys.isNotEmpty()) put("editKeys", JSONArray(editKeys))
     }
 }
 
@@ -121,6 +139,12 @@ data class ScheduleSnapshot(
     val cancelled: Boolean,
     /** The original payload, persisted verbatim so a restore reparses the same data. */
     val raw: String,
+    /**
+     * The single meetings cancelled or moved this term, already written into
+     * [data]. Null from a site that does not support them: the 调整这一次 and
+     * 这次停课 actions are then hidden.
+     */
+    val occurrenceChanges: List<OccurrenceChange>? = null,
 )
 
 /** A merged, positioned course occupying one or more small slots of one day. */
@@ -130,6 +154,10 @@ data class CourseBlock(
     val startSlot: Int,
     val endSlot: Int,
     val course: ScheduleCourse,
+    /** "yyyy-MM-dd" of the column or page it is drawn on; empty where a block is not tied to a date. */
+    val date: String = "",
+    /** This meeting was cancelled (这次停课): drawn grey in the place it would have been. */
+    val cancelled: OccurrenceChange? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("day", day)
@@ -193,6 +221,7 @@ object ScheduleJson {
             error = json.optStringOrNull("error"),
             cancelled = json.optBoolean("cancelled", false),
             raw = kept,
+            occurrenceChanges = json.optJSONArray("occurrenceChanges")?.let(OccurrenceChange::parseList),
         )
     }
 
@@ -274,6 +303,12 @@ object ScheduleJson {
             orphaned = json.optBoolean("orphaned", false),
             customStartTime = json.optStringOrNull("customStartTime"),
             customEndTime = json.optStringOrNull("customEndTime"),
+            occurrenceKey = json.optStringOrNull("occurrenceKey"),
+            occurrenceFrom = json.optStringOrNull("occurrenceFrom"),
+            sourceWeeks = json.optStringOrNull("sourceWeeks"),
+            editKeys = json.optJSONArray("editKeys")?.let { keys ->
+                (0 until keys.length()).mapNotNull { keys.optString(it, "").trim().takeIf { key -> key.isNotEmpty() && key != "null" } }.distinct()
+            }.orEmpty(),
         )
     }
 

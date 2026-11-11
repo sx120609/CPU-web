@@ -40,6 +40,11 @@ object DebugScheduleFixture {
     private var coupleMine = "blue"
     private var coupleTheirs = "pink"
     private var coupleAnniversary = "2025-05-20"
+    /**
+     * Single-meeting changes of the sample timetable (`--ez debugOccurrences true`):
+     * applied to it the way the site does, so 这次停课 and 调整这一次 work offline. Null keeps them off.
+     */
+    private var occurrences: MutableList<OccurrenceChange>? = null
 
     fun initialSheet(): ScheduleSheet? = when (sheet) {
         "settings", "visual", "display", "style" -> ScheduleSheet.Settings
@@ -98,6 +103,15 @@ object DebugScheduleFixture {
             activity.schedule.setPriorities(SEMESTER, names.mapIndexed { index, name -> name to names.size - index }.toMap())
         }
         published = intent.getBooleanExtra("debugPublished", false)
+        // Monday's first course is cancelled this week and Tuesday's moved to Thursday evening.
+        occurrences = if (!intent.getBooleanExtra("debugOccurrences", false)) null else {
+            val week = JSONObject(snapshot()).getJSONObject("calendar").getJSONArray("weeks").getJSONObject(3).getJSONArray("days")
+            mutableListOf(
+                OccurrenceChange("debug|药理学|1", week.getString(0), cancelled = true),
+                OccurrenceChange("debug|大学英语 III|3", week.getString(1), toDate = week.getString(3), startSlot = 9, endSlot = 10, location = "教学楼 B305"),
+            )
+        }
+        if (occurrences != null) activity.schedule.load(true)
         suppressesOverlapNotice = !intent.getBooleanExtra("debugOverlapNotice", false)
         coupleState = intent.getStringExtra("debugCouple")?.takeIf { it == "active" || it == "pending" } ?: "none"
         dormState = if (intent.getStringExtra("debugDorm") == "active") "active" else "none"
@@ -241,6 +255,54 @@ object DebugScheduleFixture {
         return JSONObject().put("data", data).toString()
     }
 
+    /** 这次停课 / 调整这一次 / 恢复原安排 on the sample timetable: what the editor bridge does with the site. */
+    fun changeOccurrence(keys: List<String>, date: String, changes: List<OccurrenceChange>) {
+        val list = occurrences ?: mutableListOf<OccurrenceChange>().also { occurrences = it }
+        list.removeAll { it.key in keys && it.date == date }
+        list += changes
+    }
+
+    /** The site's `applyOccurrenceChanges` for the sample: a cancelled week leaves the course, a moved meeting is a one-week course. */
+    private fun applyOccurrences(cells: JSONArray, weeks: JSONArray) {
+        val changes = occurrences ?: return
+        fun place(date: String): Pair<Int, Int>? {
+            for (index in 0 until weeks.length()) {
+                val days = weeks.getJSONObject(index).getJSONArray("days")
+                for (day in 0 until days.length()) if (days.getString(day) == date) return weeks.getJSONObject(index).getInt("week") to day + 1
+            }
+            return null
+        }
+        for (change in changes) {
+            val (week, day) = place(change.date) ?: continue
+            var original: JSONObject? = null
+            for (index in 0 until cells.length()) {
+                val cell = cells.getJSONObject(index)
+                if (cell.getInt("day") != day) continue
+                val courses = cell.getJSONArray("courses")
+                for (position in 0 until courses.length()) {
+                    val course = courses.getJSONObject(position)
+                    if (course.optString("sourceKey") != change.key) continue
+                    val list = course.getJSONArray("weekList")
+                    val kept = (0 until list.length()).map { list.getInt(it) }.filter { it != week }
+                    original = JSONObject(course.toString())
+                    course.put("sourceWeeks", course.optString("weeks")).put("weekList", JSONArray(kept)).put("weeks", ScheduleStore.weekText(kept))
+                }
+            }
+            val source = original ?: continue
+            if (change.cancelled) continue
+            val (targetWeek, targetDay) = place(change.toDate ?: change.date) ?: continue
+            val start = change.startSlot ?: source.getInt("startSlot")
+            val end = change.endSlot ?: source.getInt("endSlot")
+            val moved = JSONObject(source.toString()).put("weekList", JSONArray(listOf(targetWeek))).put("weeks", "第 $targetWeek 周")
+                .put("startSlot", start).put("endSlot", end).put("occurrenceKey", change.key).put("occurrenceFrom", change.date)
+                .put("nativeId", "occ:${change.key}@${change.date}").put("editKeys", JSONArray())
+            moved.remove("sourceKey")
+            change.location?.let { moved.put("location", it) }
+            change.note?.let { moved.put("slotNote", it) }
+            cells.put(JSONObject().put("day", targetDay).put("bigSlot", (start + 1) / 2).put("courses", JSONArray().put(moved)))
+        }
+    }
+
     /** A complete term whose week 4 is the current week. */
     fun snapshot(): String {
         val calendar = Calendar.getInstance()
@@ -261,6 +323,7 @@ object DebugScheduleFixture {
         fun course(name: String, start: Int, end: Int, location: String, teacher: String, list: List<Int>) = JSONObject()
             .put("name", name).put("startSlot", start).put("endSlot", end).put("location", location).put("teacher", teacher)
             .put("weeks", ScheduleStore.weekText(list)).put("weekList", JSONArray(list)).put("sourceKey", "debug|$name|$start")
+            .put("editKeys", JSONArray().put("debug|$name|$start"))
         val all = (1..18).toList()
         val odd = all.filter { it % 2 == 1 }
         fun cell(day: Int, slot: Int, vararg courses: JSONObject) =
@@ -273,6 +336,7 @@ object DebugScheduleFixture {
             .put(cell(4, 3, course("药物分析", 5, 6, "实验楼 201", "孙老师", all)))
             .put(cell(5, 5, course("形势与政策", 9, 10, "图书馆报告厅", "吴老师", odd)))
             .put(cell(6, 2, course("周末选修：中药鉴定", 3, 4, "中药标本馆", "郑老师", all)))
+        applyOccurrences(cells, weeks)
         return JSONObject()
             .put("version", 1).put("source", "jwxt").put("completeSemester", true).put("fetchedAt", System.currentTimeMillis())
             .put("data", JSONObject()
@@ -282,6 +346,7 @@ object DebugScheduleFixture {
                 .put("cells", cells))
             .put("calendar", JSONObject().put("currentWeek", 4).put("currentSemester", SEMESTER).put("weeks", weeks))
             .put("auth", JSONObject().put("authenticated", true).put("account", "debug"))
+            .apply { occurrences?.let { put("occurrenceChanges", OccurrenceChange.toJsonArray(it)) } }
             .toString()
     }
 }

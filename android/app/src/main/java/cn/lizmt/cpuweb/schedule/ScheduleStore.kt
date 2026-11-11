@@ -69,6 +69,13 @@ class ScheduleStore(
         private set
     var bridgeReady by mutableStateOf(false)
         private set
+    /**
+     * The single meetings cancelled or moved this term (as the site wrote them
+     * into the timetable); null when the site does not keep them, and the
+     * 调整这一次 / 这次停课 actions are then hidden.
+     */
+    var occurrenceChanges by mutableStateOf<List<OccurrenceChange>?>(null)
+        private set
     /** Bumped whenever the cache changes so adjacent pager pages recompute. */
     var dataRevision by mutableIntStateOf(0)
         private set
@@ -345,6 +352,7 @@ class ScheduleStore(
         clearFallback()
         result = null
         calendar = null
+        occurrenceChanges = null
         periods = BUNDLED_PERIODS
         selectedSemester = ""
         selectedWeek = ""
@@ -566,8 +574,21 @@ class ScheduleStore(
      * One day's courses as they are drawn: a course set to show first covers
      * the periods it shares with the others, and the rest sit side by side.
      */
-    fun placedBlocksForDay(day: Int, week: String = selectedWeek, data: ScheduleResult? = resultFor(week)): List<PlacedBlock> =
-        SchedulePriority.place(blocksForDay(day, week, data), displayPriorities)
+    fun placedBlocksForDay(day: Int, week: String = selectedWeek, data: ScheduleResult? = resultFor(week)): List<PlacedBlock> {
+        val date = calendarWeek(week)?.days?.getOrNull(day - 1)?.takeIf { it.length == 10 }.orEmpty()
+        val blocks = blocksForDay(day, week, data).map { if (date.isEmpty()) it else it.copy(date = date) }
+        // A cancelled meeting stays where it would have been, greyed out; the site took its week out of the course.
+        val ghosts = if (readOnly || date.isEmpty() || adjustment(day, week) != null) emptyList()
+        else OccurrenceRules.cancelledBlocks(occurrenceChanges, date, day, data?.cells.orEmpty(), slotCount)
+        return SchedulePriority.place(blocks + ghosts, displayPriorities)
+    }
+
+    /**
+     * The courses of a day that can raise the 同一时间排了两门课 notice: a
+     * meeting the user moved or cancelled is their own doing, not the academic system's.
+     */
+    fun noticeBlocksForDay(day: Int, week: String = selectedWeek): List<PlacedBlock> =
+        SchedulePriority.place(blocksForDay(day, week).filter { !it.course.isMovedOccurrence }, displayPriorities)
 
     /** The whole selected semester when it is cached complete; publishing a share needs it. */
     fun completeSnapshot(): ScheduleSnapshot? = cache[selectedSemester + "|*"]?.snapshot
@@ -789,6 +810,7 @@ class ScheduleStore(
             sourceNote = course.sourceNote ?: course.slotNote,
             startSlot = start,
             endSlot = end,
+            editKeys = (course.editKeys + next?.editKeys.orEmpty()).distinct(),
         )
     }
 
@@ -810,6 +832,7 @@ class ScheduleStore(
             selectedWeek = data.currentWeek.ifEmpty { snapshot.calendar?.currentWeek?.takeIf { it > 0 }?.toString().orEmpty() }
         }
         source = snapshot.source ?: data.source.orEmpty()
+        occurrenceChanges = if (readOnly) null else snapshot.occurrenceChanges
         lastUpdatedAt = snapshot.fetchedAt
         if (!authorizationExpired) errorMessage = ""
         status = ScheduleStatus.Loaded

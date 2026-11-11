@@ -188,8 +188,8 @@ private fun CoupleDayTile(
                 drawRoundRect(edge, topLeft = Offset(4.dp.toPx(), 6.dp.toPx()), size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height - 12.dp.toPx()),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
             }
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = (if (partnerSide) "TA 的课，" else "") + courseAccessibility(block.block) },
+            .courseTap(block, onClick)
+            .semantics { contentDescription = (if (partnerSide) "TA 的课，" else "") + (occurrenceTag(block)?.let { "$it，" } ?: "") + courseAccessibility(block.block) },
     ) {
         Column(
             Modifier.fillMaxSize().padding(start = if (narrow) 10.dp else 12.dp, end = if (narrow) 4.dp else 9.dp, top = 4.dp, bottom = 4.dp),

@@ -81,6 +81,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlin.math.max
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 
 /** Sheets presented over the timetable. */
 sealed interface ScheduleSheet {
@@ -99,6 +100,12 @@ sealed interface ScheduleSheet {
     data object AgendaList : ScheduleSheet
     /** An empty period tapped: add a 日程 at its start (on [date]) or a course in it. */
     data class AddChoice(val day: Int, val slot: Int, val date: String) : ScheduleSheet
+    /** A course card held down: the larger card and what can be done with it. */
+    data class CourseMenu(val block: PlacedBlock) : ScheduleSheet
+    /** 调整这一次 for one meeting. */
+    data class Occurrence(val context: OccurrenceEditorContext) : ScheduleSheet
+    /** A cancelled meeting tapped: put it back? */
+    data class Cancelled(val block: PlacedBlock) : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -209,7 +216,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     var overlap by remember { mutableStateOf<OverlapNotice?>(null) }
     if (!store.readOnly) {
         val found = remember(store.selectedSemester, store.selectedWeek, store.dataRevision, store.result, store.displayPriorities) {
-            if (store.result == null) null else OverlapNotice.find((1..7).flatMap { store.placedBlocksForDay(it) })
+            if (store.result == null) null else OverlapNotice.find((1..7).flatMap { store.noticeBlocksForDay(it) })
         }
         LaunchedEffect(found) {
             val notice = found ?: return@LaunchedEffect
@@ -271,6 +278,10 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     }
 
     fun openCourse(placed: PlacedBlock, week: String) {
+        if (placed.block.cancelled != null) {
+            sheet = ScheduleSheet.Cancelled(placed)
+            return
+        }
         if (placed.owner == CoupleOwner.Partner) {
             sheet = ScheduleSheet.QuickLook(placed.block, partner = true)
             return
@@ -278,6 +289,73 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         // Side-by-side courses are narrow in the week grid, so they are listed first.
         val matches = if (store.viewMode == "week" && placed.lanes > 1) store.overlapping(placed.block, week) else emptyList()
         sheet = if (matches.size > 1) ScheduleSheet.Overlap(matches) else ScheduleSheet.QuickLook(placed.block)
+    }
+
+    /** Saves the changes of one meeting and reloads; null on success, else why not. */
+    suspend fun saveOccurrence(keys: List<String>, date: String, change: ((String) -> OccurrenceChange)?): String? {
+        val semester = store.selectedSemester.ifEmpty { store.result?.currentSemester.orEmpty() }
+        val error = activity.saveOccurrence(semester, keys, date, change?.let { keys.distinct().sorted().map(it) }.orEmpty())
+        if (error == null) store.load(true)
+        return error
+    }
+
+    fun changeOccurrence(keys: List<String>, date: String, change: ((String) -> OccurrenceChange)?) {
+        activity.lifecycleScope.launch { saveOccurrence(keys, date, change)?.let { activity.toast(it) } }
+    }
+
+    fun weekOf(date: String): String =
+        store.calendar?.weeks?.firstOrNull { date in it.days }?.week?.toString() ?: store.selectedWeek
+
+    /** The long-press menu of one of the user's own courses, or the partner's (查看详情 only). */
+    fun menuSections(placed: PlacedBlock): List<List<CourseMenuAction>> {
+        val block = placed.block
+        val date = block.date
+        val week = if (date.length == 10) weekOf(date) else store.selectedWeek
+        val open = CourseMenuAction("查看详情", CourseMenuIcons.details) {
+            if (block.cancelled != null) sheet = ScheduleSheet.QuickLook(block) else openCourse(placed, week)
+        }
+        if (placed.owner == CoupleOwner.Partner) return listOf(listOf(open))
+        block.cancelled?.let { change ->
+            return listOf(listOf(CourseMenuAction("恢复原安排", CourseMenuIcons.restore) {
+                changeOccurrence(OccurrenceRules.cancelledKeys(block), change.date, null)
+            }), listOf(open))
+        }
+        val course = block.course
+        val first = mutableListOf(open)
+        if (store.canEdit && !course.isMovedOccurrence) first += CourseMenuAction("编辑整门课", CourseMenuIcons.edit) { openEditor(block) }
+        val once = mutableListOf<CourseMenuAction>()
+        val changes = store.occurrenceChanges
+        if (store.canEdit && changes != null && OccurrenceRules.canChange(changes, store.calendar, date)) {
+            val from = course.occurrenceFrom
+            val key = course.occurrenceKey
+            if (from != null && key != null) {
+                val keys = OccurrenceRules.movedKeys(changes, key, from)
+                once += CourseMenuAction("再调整这一次", CourseMenuIcons.once) {
+                    sheet = ScheduleSheet.Occurrence(OccurrenceEditorContext(
+                        course, keys, from, block.startSlot, block.endSlot, OccurrenceRules.existing(changes, course),
+                        OccurrenceRules.originalSlots(store.result?.cells.orEmpty(), keys),
+                    ))
+                }
+                once += CourseMenuAction("恢复原安排", CourseMenuIcons.restore) { changeOccurrence(keys, from, null) }
+            } else {
+                val keys = OccurrenceRules.keys(block)
+                once += CourseMenuAction("调整这一次", CourseMenuIcons.once) {
+                    sheet = ScheduleSheet.Occurrence(OccurrenceEditorContext(
+                        course, keys, date, block.startSlot, block.endSlot, null, block.startSlot to block.endSlot,
+                    ))
+                }
+                once += CourseMenuAction("这次停课", CourseMenuIcons.cancel, destructive = true) {
+                    changeOccurrence(keys, date) { OccurrenceChange(it, date, cancelled = true) }
+                }
+            }
+        }
+        val more = mutableListOf<CourseMenuAction>()
+        if (!store.readOnly && activity.agenda.available && date.length == 10) {
+            more += CourseMenuAction("在这节课加日程", CourseMenuIcons.agenda) {
+                sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(date, store.startTime(block)))
+            }
+        }
+        return listOf(first, once, more)
     }
 
     val context = ScheduleBodyContext(
@@ -310,7 +388,11 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
     val glass = if (style.background != null) colors.surface.copy(alpha = if (colors.dark) 0.7f else 0.78f) else null
     Box(Modifier.fillMaxSize().consumesTouches().background(colors.page)) {
         ScheduleBackground(style)
-        CompositionLocalProvider(LocalScheduleGlass provides glass, LocalScheduleStyle provides styleScope, LocalScheduleCouple provides layer) {
+        val courseMenu: ((PlacedBlock) -> Unit)? = if (store.readOnly || store.result == null) null else { placed -> sheet = ScheduleSheet.CourseMenu(placed) }
+        CompositionLocalProvider(
+            LocalScheduleGlass provides glass, LocalScheduleStyle provides styleScope, LocalScheduleCouple provides layer,
+            LocalCourseMenu provides courseMenu,
+        ) {
         Column(Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 4.dp)) {
             // A term that failed to load has no weeks, but its picker must stay
             // reachable so another term can be chosen.
@@ -397,11 +479,51 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
             // The partner's course reads its times from the partner's own periods.
             if (current.partner) layer?.partnerStore ?: store else store,
             current.block, style.palette, onDismiss = { sheet = null },
-            onEdit = if (store.canEdit && !current.offWeek && !current.partner) ({
+            onEdit = if (store.canEdit && !current.offWeek && !current.partner && !current.block.course.isMovedOccurrence &&
+                current.block.cancelled == null) ({
                 sheet = null
                 openEditor(current.block)
             }) else null,
-            note = if (current.partner) "${layer?.partnerName?.ifEmpty { "TA" } ?: "TA"} 的课" else if (current.offWeek) "这门课本周不上" else null,
+            note = when {
+                current.partner -> "${layer?.partnerName?.ifEmpty { "TA" } ?: "TA"} 的课"
+                current.offWeek -> "这门课本周不上"
+                current.block.cancelled != null -> "${OccurrenceRules.dateText(current.block.cancelled.date)} 这次停课"
+                current.block.course.occurrenceFrom != null ->
+                    "调课 · 原定 ${OccurrenceRules.dateText(current.block.course.occurrenceFrom)}，只改这一次"
+                else -> null
+            },
+        )
+        is ScheduleSheet.CourseMenu -> CourseMenuSheet(
+            if (current.block.owner == CoupleOwner.Partner) layer?.partnerStore ?: store else store,
+            current.block, style.palette,
+            ownerTitle = if (current.block.owner == CoupleOwner.Partner) "${layer?.partnerName?.ifEmpty { "TA" } ?: "TA"} 的课" else null,
+            sections = menuSections(current.block), onDismiss = { if (sheet == current) sheet = null },
+        )
+        is ScheduleSheet.Occurrence -> {
+            val target = current.context
+            OccurrenceEditorSheet(
+                context = target, calendar = store.calendar, periods = (1..store.slotCount).map(store::periodTime), palette = style.palette,
+                clashes = { date, start, end ->
+                    val week = store.calendar?.weeks?.firstOrNull { date in it.days }
+                    val day = week?.days?.indexOf(date)?.plus(1) ?: 0
+                    if (week == null || day < 1) emptyList() else store.placedBlocksForDay(day, week.week.toString()).filter { block ->
+                        block.block.cancelled == null && block.startSlot <= end && start <= block.endSlot &&
+                            OccurrenceRules.keys(block.block).none { it in target.keys } &&
+                            !(block.course.occurrenceFrom == target.date && block.course.occurrenceKey in target.keys)
+                    }.map { it.course.name }.distinct()
+                },
+                save = { change -> saveOccurrence(target.keys, target.date, change) },
+                restore = if (target.existing == null) null else ({ saveOccurrence(target.keys, target.date, null) }),
+                onDismiss = { sheet = null },
+            )
+        }
+        is ScheduleSheet.Cancelled -> CancelledMeetingDialog(
+            current.block,
+            onRestore = {
+                changeOccurrence(OccurrenceRules.cancelledKeys(current.block.block),
+                    current.block.block.cancelled?.date ?: current.block.block.date, null)
+            },
+            onDismiss = { sheet = null },
         )
         is ScheduleSheet.Overlap -> OverlapSheet(current.blocks, style.palette, onDismiss = { sheet = null }) {
             sheet = ScheduleSheet.QuickLook(it)
@@ -1116,9 +1238,10 @@ private fun WeekGrid(
                                 .clip(RoundedCornerShape(9.dp)).background(colors.surface)
                                 .background(Brush.verticalGradient(listOf(Color(couple?.fill ?: tone.highlight), Color(couple?.fill ?: tone.fill))))
                                 .border(1.dp, Color(couple?.border ?: tone.border), RoundedCornerShape(9.dp))
-                                .clickable { if (ghost) context.onOffWeek(block) else context.onCourse(block, day.week) }
+                                .then(if (ghost) Modifier.clickable { context.onOffWeek(block) } else Modifier.courseTap(block) { context.onCourse(block, day.week) })
                                 .semantics {
-                                    contentDescription = (if (ghost) "非本周，" else if (theirs) "TA 的课，" else "") + courseAccessibility(block.block)
+                                    contentDescription = (if (ghost) "非本周，" else if (theirs) "TA 的课，" else "") +
+                                        (occurrenceTag(block)?.let { "$it，" } ?: "") + courseAccessibility(block.block)
                                 }
                                 .padding(horizontal = if (narrow) 1.dp else 2.dp, vertical = if (display.compact) 1.dp else 3.dp)
                                 .padding(bottom = if (noted) CoupleNoteSpace else 0.dp),
@@ -1128,8 +1251,9 @@ private fun WeekGrid(
                             ScheduleCardText {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     val gap = if (display.compact) 1.dp else 3.dp
-                                    if (ghost || (theirs && block.span > 1)) {
-                                        ScheduleCardTag(if (ghost) "非本周" else "TA", ink)
+                                    val tag = if (ghost) "非本周" else occurrenceTag(block) ?: if (theirs && block.span > 1) "TA" else null
+                                    if (tag != null) {
+                                        ScheduleCardTag(tag, ink)
                                         Spacer(Modifier.height(gap))
                                     }
                                     Text(
@@ -1245,13 +1369,14 @@ private fun DayTimeline(
                         .clip(RoundedCornerShape(12.dp)).background(colors.surface)
                         .background(Brush.verticalGradient(listOf(Color(couple?.fill ?: tone.highlight), Color(couple?.fill ?: tone.fill))))
                         .border(1.dp, Color(couple?.border ?: tone.border), RoundedCornerShape(12.dp))
-                        .clickable { context.onCourse(block, week) }
-                        .semantics { contentDescription = (if (theirs) "TA 的课，" else "") + courseAccessibility(block.block) }
+                        .courseTap(block) { context.onCourse(block, week) }
+                        .semantics { contentDescription = (if (theirs) "TA 的课，" else "") + (occurrenceTag(block)?.let { "$it，" } ?: "") + courseAccessibility(block.block) }
                         .padding(horizontal = if (narrow) 10.dp else 16.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    if (theirs && span > 1) {
-                        ScheduleCardTag("TA", ink)
+                    val tag = occurrenceTag(block) ?: if (theirs && span > 1) "TA" else null
+                    if (tag != null) {
+                        ScheduleCardTag(tag, ink)
                         Spacer(Modifier.height(4.dp))
                     }
                     Text(block.course.name, fontSize = if (span == 1) 13.sp else 16.sp, fontWeight = FontWeight.Medium,

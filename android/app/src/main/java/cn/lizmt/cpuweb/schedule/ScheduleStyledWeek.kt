@@ -547,11 +547,13 @@ internal fun StyledDayColumn(
             val tile = Modifier.offset(x = inset + room / lanes * block.lane, y = step * first + inset)
                 .width(tileWidth).height(tileHeight)
                 .then(if (ghost) Modifier.alpha(0.5f) else Modifier)
-                .then(if (interactive) Modifier.clickable { if (ghost) onOffWeek(block) else onCourse(block) }.semantics {
+                .then(if (!interactive) Modifier else if (ghost) Modifier.clickable { onOffWeek(block) } else Modifier.courseTap(block) { onCourse(block) })
+                .then(if (interactive) Modifier.semantics {
                     contentDescription = (if (ghost) "非本周，" else if (block.owner == CoupleOwner.Partner) "TA 的课，" else "") +
+                        (occurrenceTag(block)?.let { "$it，" } ?: "") +
                         courseAccessibility(block.block) + (statusLabel?.invoke(block)?.let { "，$it" } ?: "")
                 } else Modifier)
-            val tag = if (ghost) "非本周" else if (block.owner == CoupleOwner.Partner && block.span > 1) "TA" else null
+            val tag = if (ghost) "非本周" else occurrenceTag(block) ?: if (block.owner == CoupleOwner.Partner && block.span > 1) "TA" else null
             val tint = partner
             val noteSpace = if (noted) CoupleNoteSpace else 0.dp
             if (style == ScheduleVisualStyle.Minimal) {
