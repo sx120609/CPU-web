@@ -82,6 +82,8 @@ object DebugScheduleFixture {
             // Over a class of the sample timetable: drawn beside it in the week grid.
             item("debugagenda04", "英语答疑", today.plusDays(1).toString(), "10:00", "10:40", "文科楼"),
             item("debugagenda05", "羽毛球", wednesday.toString(), "19:00", "20:30", "体育馆", cn.lizmt.cpuweb.schedule.agenda.AgendaRepeat.Weekly),
+            // At the same time as Wednesday's classes: a bar on the class's border, and listed in its quick look.
+            item("debugagenda06", "生物化学小测", wednesday.toString(), "08:20", "08:40", "药学楼 105"),
         )
     }
 

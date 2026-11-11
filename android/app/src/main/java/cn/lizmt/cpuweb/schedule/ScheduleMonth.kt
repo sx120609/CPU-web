@@ -217,8 +217,9 @@ internal fun ScheduleMonthView(
                         val theirs = couple?.blocksOn(date).orEmpty().map { it.course.name }.distinct().size
                         Box(
                             Modifier.weight(1f).height(if (couple != null) 106.dp else 88.dp).padding(horizontal = 1.dp).clip(RoundedCornerShape(10.dp))
-                                // A day of the term opens as that day; any other one is only picked.
-                                .clickable { if (index[date] != null) onOpenDay(date) else onSelect(date) }
+                                // A tap shows the day in 当天安排 below; 日视图 there opens it.
+                                .then(if (selected && !isToday) Modifier.border(1.5.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(10.dp)) else Modifier)
+                                .clickable { onSelect(date) }
                                 .semantics {
                                     this.selected = selected
                                     contentDescription = listOfNotNull(

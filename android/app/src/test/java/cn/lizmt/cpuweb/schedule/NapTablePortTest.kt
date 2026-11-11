@@ -329,4 +329,25 @@ class NapTablePortTest {
     }
 
     // endregion
+
+    // region 日程 around a class
+
+    @Test
+    fun aMeetingListsTheAgendaAtItsTimeOrNamingIt() {
+        val day = java.time.LocalDate.parse("2026-09-07")
+        fun entry(title: String, start: String = "", end: String = "", note: String = "") = cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence(
+            cn.lizmt.cpuweb.schedule.agenda.AgendaItem("a" + title.hashCode().toUInt(), cn.lizmt.cpuweb.schedule.agenda.AgendaKind.Event,
+                title, "2026-09-07", start, end, note = note, createdAt = 1), day)
+        val entries = listOf(
+            entry("答疑", "08:30", "09:00"), entry("交药理学报告"), entry("小测", note = "药理学第三章"),
+            entry("午饭", "12:00", "12:30"), entry("刚好下课", "09:40"), // Starts as the class ends: not during it.
+        )
+        val related = AgendaCourseRules.related(entries, "药理学", 8 * 60, 9 * 60 + 40)
+        assertEquals(listOf("答疑", "交药理学报告", "小测"), related.map { it.item.title })
+        // A one-letter name matches nothing by name.
+        assertEquals(listOf("答疑"), AgendaCourseRules.related(entries, "药", 8 * 60, 9 * 60 + 40).map { it.item.title })
+        assertTrue(AgendaCourseRules.related(entries, "体育", null, null).isEmpty())
+    }
+
+    // endregion
 }

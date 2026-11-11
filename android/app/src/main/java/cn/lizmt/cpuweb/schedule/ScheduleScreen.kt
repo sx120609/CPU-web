@@ -495,6 +495,19 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                             onMove = { monthAnchor = ScheduleMonth.shift(anchor, it) },
                             couple = layer,
                         )
+                        Spacer(Modifier.height(12.dp))
+                        // The day picked in this month, else today when it is in this month, else the month's first day.
+                        val panelDate = when {
+                            ScheduleMonth.sameMonth(selectedDate, anchor) -> selectedDate
+                            ScheduleMonth.sameMonth(today, anchor) -> today
+                            else -> anchor.take(7) + "-01"
+                        }
+                        MonthDayPanel(
+                            store, panelDate, layer, canAddAgenda = !store.readOnly && activity.agenda.available,
+                            onCourse = ::openCourse,
+                            onOpenDay = { date -> if (store.selectDate(date)) store.selectViewMode("day") },
+                            onAddAgenda = { date -> sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(date)) },
+                        )
                     }
                 } else {
                     SchedulePages(store, context)
@@ -506,7 +519,16 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
 
     when (val current = sheet) {
         null -> Unit
-        is ScheduleSheet.QuickLook -> CourseQuickLookSheet(
+        is ScheduleSheet.QuickLook -> {
+            val block = current.block
+            val meetingDate = block.date.ifEmpty { store.calendarWeek()?.days?.getOrNull(block.day - 1).orEmpty() }
+            val agendaDay = cn.lizmt.cpuweb.schedule.agenda.AgendaItem.parseDate(meetingDate)
+            val related = if (store.readOnly || current.partner || current.offWeek || agendaDay == null) null
+            else AgendaCourseRules.related(
+                activity.agenda.on(agendaDay), block.course.name,
+                ScheduleStyleTime.clockMinutes(store.startTime(block)), ScheduleStyleTime.clockMinutes(store.endTime(block)),
+            )
+            CourseQuickLookSheet(
             // The partner's course reads its times from the partner's own periods.
             if (current.partner) layer?.partnerStore ?: store else store,
             current.block, style.palette, onDismiss = { sheet = null },
@@ -523,7 +545,14 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                     "调课 · 原定 ${OccurrenceRules.dateText(current.block.course.occurrenceFrom)}，只改这一次"
                 else -> null
             },
+            related = related,
+            onOpenAgenda = { sheet = ScheduleSheet.AgendaEdit(it.item) },
+            onToggleAgenda = { activity.agenda.toggle(it) },
+            onAddAgenda = if (related != null && activity.agenda.available) ({
+                sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(meetingDate, store.startTime(block)))
+            }) else null,
         )
+        }
         is ScheduleSheet.CourseMenu -> CourseMenuSheet(
             if (current.block.owner == CoupleOwner.Partner) layer?.partnerStore ?: store else store,
             current.block, style.palette,

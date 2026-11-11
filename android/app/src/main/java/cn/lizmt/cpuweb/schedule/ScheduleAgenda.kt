@@ -118,8 +118,20 @@ internal fun AgendaColumnChips(date: String, blocks: List<PlacedBlock>, periods:
         val top = agendaOffset(start, periods, rowHeight, gap)
         val height = (agendaOffset(end, periods, rowHeight, gap) - top).coerceAtLeast(20f).coerceAtMost((bottom - top).coerceAtLeast(20f))
         val beside = courses.any { (from, to) -> from < top + height && top < to }
-        val width = if (beside) columnWidth * 0.44f else columnWidth - 2.dp
-        val x = if (beside) columnWidth - width - 1.dp else 1.dp
+        if (beside) {
+            // At the same time as a class: a thin bar on the class's right border, so its name is
+            // never covered. The class's quick look and the day view list the item.
+            val ink = if (scope.style == ScheduleVisualStyle.Paper || scope.style == ScheduleVisualStyle.Board) scope.ink else scope.themeText
+            Box(
+                Modifier.offset(x = columnWidth - AgendaBarWidth - 0.5.dp, y = top.dp).width(AgendaBarWidth).height(height.dp)
+                    .clickable { layer.onOpen(item) }
+                    .semantics { contentDescription = "日程，${item.start}，${item.title}" + (if (occurrence.done) "，已完成" else "") }
+                    .padding(vertical = 3.dp).clip(CircleShape).background(ink.copy(alpha = if (occurrence.done) 0.3f else 0.75f)),
+            )
+            return@forEach
+        }
+        val width = columnWidth - 2.dp
+        val x = 1.dp
         // The style's typeface, corners, ink and alignment, as its classes have; the dashed
         // outline tells an item from a class.
         val style = scope.style
@@ -156,6 +168,27 @@ internal fun AgendaColumnChips(date: String, blocks: List<PlacedBlock>, periods:
                 maxLines = (height / 11f).toInt().coerceAtLeast(1), overflow = TextOverflow.Ellipsis,
                 textDecoration = if (occurrence.done) TextDecoration.LineThrough else null,
             )
+        }
+    }
+}
+
+/** The width of the bar an item at the same time as a class is drawn as. */
+internal val AgendaBarWidth = 4.dp
+
+/** The rules of 日程 around a class, free of Compose so they run in a unit test. */
+object AgendaCourseRules {
+    /**
+     * The 日程 of one meeting: on its date ([entries] are that day's), at its
+     * time (from [start] to [end], minutes) or naming the course.
+     */
+    fun related(entries: List<AgendaOccurrence>, courseName: String, start: Int?, end: Int?): List<AgendaOccurrence> {
+        val name = courseName.trim()
+        return entries.filter { entry ->
+            val item = entry.item
+            if (name.length >= 2 && (item.title.contains(name) || item.note.contains(name))) return@filter true
+            val begins = ScheduleStyleTime.clockMinutes(item.start) ?: return@filter false
+            val ends = ScheduleStyleTime.clockMinutes(item.end) ?: begins
+            start != null && end != null && begins < end && ends >= start
         }
     }
 }

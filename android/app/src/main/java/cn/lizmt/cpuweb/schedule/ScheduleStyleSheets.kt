@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +64,12 @@ fun CourseQuickLookSheet(
     store: ScheduleStore, block: CourseBlock, palette: String, onDismiss: () -> Unit, onEdit: (() -> Unit)?,
     /** Shown in place of the usual footnote, e.g. for a course that does not run this week. */
     note: String? = null,
+    /** 日程 of this meeting: on its date, at its time or naming the course; null hides the section. */
+    related: List<cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence>? = null,
+    onOpenAgenda: (cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence) -> Unit = {},
+    onToggleAgenda: (cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence) -> Unit = {},
+    /** Adds a 日程 at this meeting; null where 日程 cannot be added. */
+    onAddAgenda: (() -> Unit)? = null,
 ) {
     val colors = LocalScheduleColors.current
     val course = block.course
@@ -122,6 +129,58 @@ fun CourseQuickLookSheet(
         if (footnote != null) {
             Spacer(Modifier.height(16.dp))
             Text(footnote, fontSize = 13.sp, color = if (course.orphaned) MaterialTheme.colorScheme.tertiary else meta)
+        }
+        if (related != null && (related.isNotEmpty() || onAddAgenda != null)) {
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(12.dp))
+            QuickLookAgenda(related, accent, colors.dark, onOpenAgenda, onToggleAgenda, onAddAgenda)
+        }
+    }
+}
+
+/** 这节课的日程: homework due, an exam, a note to self; and a button to add one. */
+@Composable
+private fun QuickLookAgenda(
+    related: List<cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence>, accent: Color, dark: Boolean,
+    onOpen: (cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence) -> Unit,
+    onToggle: (cn.lizmt.cpuweb.schedule.agenda.AgendaOccurrence) -> Unit,
+    onAdd: (() -> Unit)?,
+) {
+    val meta = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.AutoMirrored.Outlined.Notes, contentDescription = null, tint = meta, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("这节课的日程", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = meta, modifier = Modifier.weight(1f))
+        if (onAdd != null) {
+            Text("＋ 添加", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = accent,
+                modifier = Modifier.clip(CircleShape).clickable(onClick = onAdd).semantics { contentDescription = "在这节课加日程" }
+                    .padding(horizontal = 8.dp, vertical = 4.dp))
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    if (related.isEmpty()) {
+        Text("还没有。作业、小测或要带的东西，记一笔就会在这里出现。", fontSize = 13.sp, lineHeight = 18.sp, color = meta)
+    }
+    related.forEach { entry ->
+        val item = entry.item
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(12.dp))
+                .background(accent.copy(alpha = if (dark) 0.16f else 0.08f)).clickable { onOpen(entry) }.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (entry.done) Icons.Rounded.CheckCircle else androidx.compose.material.icons.Icons.Rounded.RadioButtonUnchecked,
+                contentDescription = if (entry.done) "${item.title}，已完成" else "完成${item.title}",
+                tint = if (entry.done) accent else meta,
+                modifier = Modifier.size(22.dp).clip(CircleShape).clickable { onToggle(entry) },
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(item.title, fontSize = 15.sp, maxLines = 2, color = if (entry.done) meta else MaterialTheme.colorScheme.onSurface,
+                    textDecoration = if (entry.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
+                Text(if (!item.timed) "全天" else if (item.end.isNotEmpty()) "${item.start}–${item.end}" else item.start, fontSize = 12.sp, color = meta)
+            }
         }
     }
 }
