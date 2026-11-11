@@ -183,6 +183,8 @@ struct ContentView: View {
                 }
             }
             .onAppear {
+                // Text stops growing at the largest standard size, sheets included.
+                NativeTextSizeLimit.install()
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {

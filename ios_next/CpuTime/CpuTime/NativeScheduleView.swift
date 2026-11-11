@@ -91,8 +91,14 @@ struct NativeScheduleView: View {
         self.isBackgroundPreview = isBackgroundPreview
     }
 
+    /// The timetable is a dense grid and its sheets are laid out around it:
+    /// text grows with the system setting up to the largest standard size and
+    /// stops there, so accessibility sizes do not break the layout apart.
+    static let largestTextSize = DynamicTypeSize.xxxLarge
+
     var body: some View {
         withExtraPresentations(mainBody)
+            .dynamicTypeSize(...Self.largestTextSize)
     }
 
     /// Sheets added for single meetings, layering and the calendar, kept out
