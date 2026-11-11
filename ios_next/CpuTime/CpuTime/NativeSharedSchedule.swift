@@ -148,7 +148,9 @@ struct NativeSharedSchedule: Codable, Equatable, Identifiable, Sendable {
     /// The server's share document. The server checks little more than that
     /// every course has a name, so everything a grid indexes with is clamped
     /// here: a bad row is dropped instead of drawn somewhere it cannot be.
-    static func read(_ data: Data, fetchedAt: Date = .now) throws -> NativeSharedSchedule {
+    /// `allowsEmpty` takes a term without courses: a roommate who has none is
+    /// free all week, not without data.
+    static func read(_ data: Data, fetchedAt: Date = .now, allowsEmpty: Bool = false) throws -> NativeSharedSchedule {
         struct Document: Decodable {
             let schedule: NativeScheduleResult
             let calendar: NativeScheduleCalendar
@@ -184,7 +186,7 @@ struct NativeSharedSchedule: Codable, Equatable, Identifiable, Sendable {
             }
             if !courses.isEmpty { cells.append(NativeScheduleCell(day: cell.day, bigSlot: cell.bigSlot, courses: courses)) }
         }
-        guard !cells.isEmpty else { throw ReadError.empty }
+        guard allowsEmpty || !cells.isEmpty else { throw ReadError.empty }
 
         let weeks = document.calendar.weeks
             .filter { (1...64).contains($0.week) }

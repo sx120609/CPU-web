@@ -93,6 +93,15 @@ final class NativeShellCoordinator: ObservableObject {
         NativeAgendaService.shared.connect(to: scheduleStore) { [weak self] in
             self?.userSelected(.schedule)
         }
+        // The dorm sheet shows over the timetable, whichever tab asked for it.
+        NativeDormService.shared.onPresent = { [weak self] in
+            self?.userSelected(.schedule)
+        }
+        webSession.onDormRequested = { [weak self] code in
+            guard let self, !self.requiresLogin else { return false }
+            self.openDormSchedule(code: code)
+            return true
+        }
         webSession.onAgendaChanged = {
             Task { await NativeAgendaService.shared.refresh(force: true) }
         }
@@ -287,21 +296,19 @@ final class NativeShellCoordinator: ObservableObject {
         applyLoginGate(navigateToLogin: true)
     }
 
-    /// The dorm timetable is the site page `/dorm-schedule`, under 服务. It is
-    /// handed this term's timetable first, so its 立即同步 can upload what the
-    /// grid shows; its close button comes back to the timetable.
-    func openDormSchedule(page: String = DormRules.page) {
+    /// The dorm timetable is a native sheet over the timetable
+    /// (`NativeDormSheet`); an invite link fills in its code.
+    func openDormSchedule(code: String = "") {
         guard !requiresLogin else { return }
-        Task { await NativeDormService.shared.offer() }
-        openWeb(path: page, tab: .services)
+        NativeDormService.shared.open(code: code)
     }
 
     private func handleNavigate(path: String, source: String, webSession: HybridWebViewStore?) {
         guard !requiresLogin else { return }
         guard selectedTab != .schedule, source == selectedTab.rawValue else { return }
-        // A dorm invite link opened inside the app keeps its code on the dorm page.
-        if let page = DormRules.pagePath(path) {
-            openDormSchedule(page: page)
+        // A dorm invite link opened inside the app opens the dorm sheet with its code.
+        if let code = DormRules.linkCode(path) {
+            openDormSchedule(code: code)
             return
         }
         if let destination = ShellTab.from(path: path) {

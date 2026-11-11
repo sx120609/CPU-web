@@ -372,6 +372,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     /// when an iOS shell link targets /search, so every native entry uses the
     /// same keyboard-safe SwiftUI surface.
     var onAssistantRequested: (() -> Void)?
+    /// The page reached the dorm timetable (`/dorm-schedule`, or an invite
+    /// link): the code it carries. Answers whether the native sheet took it.
+    var onDormRequested: ((String) -> Bool)?
     /// Legacy account-only observer retained for older test/integration hosts.
     var onAuthChanged: ((String) -> Void)?
     var onAuthStateChanged: ((NativeAuthState) -> Void)?
@@ -1468,6 +1471,15 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
                 }
                 return
             }
+            // The dorm timetable is native on this client; the Web page it
+            // reached (an invite link, or a site without the native sheet's
+            // links) gives way to it, as the assistant does above.
+            if let code = DormRules.linkCode(path), onDormRequested?(code) == true {
+                if activeTab != .schedule {
+                    navigate(path: activeTab.defaultPath)
+                }
+                return
+            }
             onRoute?(path, source)
         case "authChanged":
             let auth = Self.nativeAuthState(from: body)
@@ -2276,6 +2288,13 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
                webView.backForwardList.currentItem != nil,
                navigationAction.targetFrame?.isMainFrame != false,
                !ShellTab.isAuthPath(url.path) {
+                decisionHandler(.cancel)
+                return
+            }
+            if navigationAction.targetFrame?.isMainFrame != false, navigationAction.navigationType == .linkActivated,
+               DormRules.linkCode(url.path + (url.query.map { "?\($0)" } ?? "")) != nil {
+                // A dorm link opens the native sheet instead of the Web page.
+                store?.openNativeRoute(url.path + (url.query.map { "?\($0)" } ?? ""))
                 decisionHandler(.cancel)
                 return
             }
