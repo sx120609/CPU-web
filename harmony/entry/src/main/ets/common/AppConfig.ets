@@ -1,8 +1,8 @@
 export const APP_NAME = '药大拾间';
-export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCode=32&appVersionName=3.1.1';
+export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCode=33&appVersionName=3.2.0';
 export const APP_HOST = 'cputime.cn';
-export const VERSION_CODE = 32;
-export const VERSION_NAME = '3.1.1';
+export const VERSION_CODE = 33;
+export const VERSION_NAME = '3.2.0';
 export const USER_AGENT_SUFFIX = `CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME}`;
 const PAYMENT_HOST = 'pay.kaipay.cn';
 
