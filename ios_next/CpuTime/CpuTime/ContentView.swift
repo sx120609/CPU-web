@@ -20,7 +20,10 @@ struct CpuTimeApp: App {
             if #available(iOS 17.0, *) {
 #if DEBUG
                 let canvases = DebugDisplayCanvas<ContentView>.canvases
-                if !canvases.isEmpty {
+                if NativeWidgetGallery.isRequested {
+                    // `CPU_DEBUG_WIDGET_GALLERY=1`: every widget at its real size, see ios_next/README.md.
+                    NativeWidgetGallery()
+                } else if !canvases.isEmpty {
                     DebugDisplayCanvas(canvases: canvases) { ContentView() }
                 } else {
                     ContentView()
