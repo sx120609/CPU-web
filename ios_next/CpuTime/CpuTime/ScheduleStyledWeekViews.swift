@@ -565,6 +565,26 @@ struct ScheduleNowBadge: View {
     }
 }
 
+/// 「+N」 on the corner of a card that stands for N more courses at the same
+/// time (the overlay strip draws one card per overlap).
+@available(iOS 17.0, *)
+struct ScheduleOverlapBadge: View {
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            Text("+\(count)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .frame(minHeight: 16)
+                .background(Color.cpuBrand, in: Capsule())
+                .padding(4)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
 /// "Now" across today's column: a theme-colour line with a dot at its leading end.
 @available(iOS 17.0, *)
 struct ScheduleNowLine: View {
@@ -864,11 +884,13 @@ struct NativeScheduleStyledDayColumn: View {
             }
         }
         .frame(width: frame.width, height: frame.height)
+        .overlay(alignment: .bottomTrailing) { ScheduleOverlapBadge(count: block.hiddenOverlaps) }
         .contentShape(Rectangle())
         .scheduleCourseInteractions(block)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel((block.owner == .partner ? (couple?.ownerTitle ?? "TA 的课") + "，" : "")
-            + accessibilityLabel(block) + (status.label(block).map { "，" + $0 } ?? ""))
+            + accessibilityLabel(block) + (status.label(block).map { "，" + $0 } ?? "")
+            + (block.hiddenOverlaps > 0 ? "，同一时间还有 \(block.hiddenOverlaps) 门课" : ""))
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("轻点查看课程详情")
         .accessibilityAction { onCourseSelected(block) }

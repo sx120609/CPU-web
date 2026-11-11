@@ -90,6 +90,13 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
     /// the user's choice and are not reported back.
     @State private var followTarget: String?
     @State private var followTask: Task<Void, Never>?
+    /// The day a swipe just reported. The page stores the weekday and the week
+    /// one after the other, so for a moment the selection names this weekday
+    /// of the old week (Monday 11.09 on the way from Sunday 11.15 to Monday
+    /// 11.16); until the reported day comes back, other selections are those
+    /// halfway states and must not scroll the strip.
+    @State private var reported: String?
+    @State private var reportedTask: Task<Void, Never>?
 
     init(pages: [ScheduleOverlayStripPage], selection: String?, width: CGFloat, metrics: Metrics,
          otherName: String, today: String?, showsNow: Bool,
@@ -168,12 +175,15 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
             }
             guard let value, let index = pages.firstIndex(where: { $0.id == value }),
                   index != Self.leadingIndex(for: selection, in: pages, count: count) else { return }
-            onSelect(pages[index])
+            report(pages[index])
         }
         .onChange(of: selection) { _, _ in follow(animated: true) }
         .onChange(of: pages) { _, _ in follow(animated: false) }
         .onChange(of: count) { _, _ in follow(animated: false) }
-        .onDisappear { endFollow() }
+        .onDisappear {
+            endFollow()
+            endReport()
+        }
     }
 
     // MARK: Following the page's selection
@@ -181,6 +191,13 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
     /// The week changed by the arrows, the week list or 回到今天: scroll there.
     /// A selection that came from scrolling is already in place.
     private func follow(animated: Bool) {
+        if let reported {
+            // Waiting for the swiped-to day to come back as the selection.
+            if Self.leadingIndex(for: selection, in: pages, count: count).map({ pages[$0].id }) == reported {
+                endReport()
+            }
+            return
+        }
         guard let index = Self.leadingIndex(for: selection, in: pages, count: count),
               leading != pages[index].id else { return }
         let target = pages[index].id
@@ -197,10 +214,31 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
             endFollow()
             // A finger that stopped the scroll on the way decides where it ends.
             if let value = leading, value != target, let page = pages.first(where: { $0.id == value }) {
-                onSelect(page)
+                report(page)
             }
         }
         withAnimation(.smooth) { leading = target }
+    }
+
+    /// Hands a day the user scrolled to over to the page, and holds off
+    /// following the selection until it has settled there (half a second at
+    /// most, for a week that cannot be selected).
+    private func report(_ page: ScheduleOverlayStripPage) {
+        reported = page.id
+        reportedTask?.cancel()
+        reportedTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            endReport()
+            follow(animated: true)
+        }
+        onSelect(page)
+    }
+
+    private func endReport() {
+        reportedTask?.cancel()
+        reportedTask = nil
+        reported = nil
     }
 
     private func endFollow() {

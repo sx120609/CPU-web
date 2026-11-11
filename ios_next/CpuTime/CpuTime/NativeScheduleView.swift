@@ -1909,7 +1909,8 @@ struct NativeScheduleView: View {
         }
         return ScheduleOverlayStripDay(page: page, isToday: page.date == today,
                                        adjustmentKind: adjustment(day: page.day, week: page.week, result: result)?.kind,
-                                       mine: mine, theirs: theirs)
+                                       mine: NativeScheduleCourseBlock.collapsingOverlaps(mine),
+                                       theirs: NativeScheduleCourseBlock.collapsingOverlaps(theirs))
     }
 
     /// The fixed period axis; its corner names the month of the leftmost day.
@@ -3833,6 +3834,9 @@ struct NativeScheduleCourseBlock: Identifiable {
     /// This meeting was cancelled (这次停课): drawn grey and struck through,
     /// in the place it would have been.
     var cancelledOccurrence: NativeScheduleOccurrenceChange? = nil
+    /// The overlay strip's half-width columns draw one card per overlap: how
+    /// many other courses this card stands for (a 「+N」 on its corner).
+    var hiddenOverlaps = 0
 
     /// Shown in place of a single meeting moved here (调整这一次).
     var isMovedOccurrence: Bool { course.occurrenceFrom != nil }
@@ -3859,7 +3863,44 @@ struct NativeScheduleCourseBlock: Identifiable {
         copy.date = date
         copy.day = day
         copy.cancelledOccurrence = cancelledOccurrence
+        copy.hiddenOverlaps = hiddenOverlaps
         return copy
+    }
+
+    /// One card for each run of overlapping courses, spanning all of them:
+    /// the front course (lane 0, earliest) is shown and counts the rest. The
+    /// overlay strip's columns are half a day wide, too narrow to set
+    /// overlapping courses side by side.
+    static func collapsingOverlaps(_ blocks: [NativeScheduleCourseBlock]) -> [NativeScheduleCourseBlock] {
+        var result: [NativeScheduleCourseBlock] = []
+        var cluster: [NativeScheduleCourseBlock] = []
+        var clusterEnd = Int.min
+        func flush() {
+            defer { cluster.removeAll() }
+            guard let front = cluster.min(by: { ($0.lane, $0.startSlot, -$0.endSlot) < ($1.lane, $1.startSlot, -$1.endSlot) })
+            else { return }
+            guard cluster.count > 1 else { result.append(front); return }
+            var merged = NativeScheduleCourseBlock(
+                id: front.id, course: front.course, bigSlot: front.bigSlot,
+                startSlot: cluster.map(\.startSlot).min() ?? front.startSlot,
+                endSlot: cluster.map(\.endSlot).max() ?? front.endSlot,
+                lane: 0, courseStartSlot: front.courseStartSlot, courseEndSlot: front.courseEndSlot
+            )
+            merged.owner = front.owner
+            merged.together = front.together
+            merged.date = front.date
+            merged.day = front.day
+            merged.cancelledOccurrence = front.cancelledOccurrence
+            merged.hiddenOverlaps = cluster.count - 1
+            result.append(merged)
+        }
+        for block in blocks.sorted(by: { ($0.startSlot, $0.endSlot) < ($1.startSlot, $1.endSlot) }) {
+            if !cluster.isEmpty && block.startSlot > clusterEnd { flush() }
+            cluster.append(block)
+            clusterEnd = cluster.count == 1 ? block.endSlot : max(clusterEnd, block.endSlot)
+        }
+        flush()
+        return result
     }
 
     /// The whole course, for the quick look and the editor.
@@ -4227,6 +4268,7 @@ private struct NativeScheduleDayColumn: View {
                     // rowspan courses whose GeometryReader otherwise leaves
                     // the Button with an undersized intrinsic label.
                     .frame(width: cardWidth, height: cardHeight)
+                    .overlay(alignment: .bottomTrailing) { ScheduleOverlapBadge(count: block.hiddenOverlaps) }
                     .contentShape(Rectangle())
                     .scheduleCourseInteractions(block)
                     .zIndex(10)
