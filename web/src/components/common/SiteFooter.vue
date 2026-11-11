@@ -15,6 +15,7 @@
         <nav class="footer-col footer-col--use" aria-label="常用入口">
           <h2>使用</h2>
           <router-link to="/services">校园服务</router-link>
+          <router-link to="/guide">使用教程</router-link>
           <router-link v-if="site.pathEnabled('/schedule')" to="/schedule">课表</router-link>
           <router-link v-if="!hidesClientDownloads() && site.clientAppsAvailable" to="/download">客户端下载</router-link>
         </nav>

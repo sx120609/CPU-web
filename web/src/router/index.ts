@@ -274,6 +274,12 @@ export const router = createRouter({
           meta: { title: "宿舍课表" },
         },
         { path: "schedule/share/:code", name: "schedule-share", component: () => import("@/views/ScheduleShare.vue"), meta: { title: "共享课表", public: true } },
+        // 使用教程：目录页只列章节，点进去才是那一章（views/guide/chapters.ts）。
+        { path: "guide", name: "guide", component: () => import("@/views/guide/Index.vue"), meta: { title: "使用教程", public: true } },
+        { path: "guide/:chapter", name: "guide-chapter", component: () => import("@/views/guide/Chapter.vue"), meta: { title: "使用教程", public: true } },
+        // 使用教程：目录页只列章节，点进去才是那一章（views/guide/chapters.ts）。
+        { path: "guide", name: "guide", component: () => import("@/views/guide/Index.vue"), meta: { title: "使用教程", public: true } },
+        { path: "guide/:chapter", name: "guide-chapter", component: () => import("@/views/guide/Chapter.vue"), meta: { title: "使用教程", public: true } },
         { path: "download", name: "download", component: () => import("@/views/Download.vue"), meta: { title: "客户端下载", public: true } },
         { path: "downloads", redirect: "/download" },
         {

@@ -129,6 +129,11 @@ const STATIC_PAGES: Record<string, StaticPage> = {
     description: `为${SEO_SCHOOL.brandName}创意工坊开发网页小游戏和工具：作品格式、运行环境、存档与排行榜接口。`,
     sitemap: true,
   },
+  "/guide": {
+    title: "使用教程",
+    description: `${SEO_SCHOOL.brandName}使用教程：课表、日程、教务数据、论坛、校园服务和各端 App 的用法，按章节挑着看。`,
+    sitemap: true,
+  },
   "/thanks": { title: "致谢", description: `感谢为${SEO_SCHOOL.brandName}提供帮助、建议和支持的同学与朋友。`, sitemap: true },
   "/sponsor": { title: `支持${SEO_SCHOOL.brandName}`, description: `支持${SEO_SCHOOL.brandName}的持续运营。` },
   "/search": { title: "拾间AI", description: `${SEO_SCHOOL.brandName}的 AI 助手，可以查询校园事务、部门联系方式和最新通知。` },
@@ -209,6 +214,7 @@ const STATIC_PAGES: Record<string, StaticPage> = {
 // 登录后才有内容、或只属于某个人的页面：可以打开，但不让搜索引擎收录。
 const PRIVATE_PAGES: Array<[RegExp, string]> = [
   [/^\/login$/, "登录"],
+  [/^\/guide\/[^/]+$/, "使用教程"],
   [/^\/register$/, "注册"],
   [/^\/next$/, `${SEO_SCHOOL.brandName} NEXT`],
   [/^\/post(?:\/|$)/, "发帖"],

@@ -337,6 +337,7 @@
         <ProfileRowMobile :icon="Coin" title="存储与缓存" tone="#0891b2" @click="router.push('/profile/storage')" />
         <ProfileRowMobile v-if="!hidesClientDownloads()" :icon="Download" title="客户端下载" tone="#2563eb" @click="router.push('/download')" />
         <ProfileRowMobile v-if="!inWechat" :icon="ChatDotRound" title="关注服务号" tone="#07c160" @click="wechatFollowOpen = true" />
+        <ProfileRowMobile :icon="Reading" title="使用教程" tone="#0f766e" @click="router.push('/guide')" />
         <ProfileRowMobile :icon="Medal" title="致谢" tone="#b45309" @click="router.push('/thanks')" />
       </div>
     </section>
@@ -512,6 +513,7 @@ import {
   Lock,
   MagicStick,
   Medal,
+  Reading,
   Message,
   StarFilled,
   Tools,

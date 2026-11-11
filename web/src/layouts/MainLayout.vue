@@ -669,6 +669,7 @@ const drawerItems = computed(() => {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
   if (assistantEntryVisible.value && !items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "拾间AI", icon: Search });
+  items.push({ id: "system-guide", to: "/guide", label: "使用教程", icon: Compass });
   return items.filter((item) => site.pathEnabled(item.to));
 });
 

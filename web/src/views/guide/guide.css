@@ -1,0 +1,119 @@
+/* 使用教程两页共用的版式，类名都带 gd- 前缀。 */
+.gd-page {
+  display: flex;
+  min-width: 0;
+  max-width: 760px;
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-m);
+  line-height: 1.6;
+}
+.gd-page :is(a, button, summary):focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
+
+.gd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.gd-head-copy { min-width: 0; flex: 1 1 240px; }
+.gd-head h1 {
+  margin: 0;
+  font-size: var(--cpu-fs-xxl);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.gd-head p {
+  margin: 2px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+}
+
+.gd-back {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  align-self: flex-start;
+  gap: 2px;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-xs);
+  text-decoration: none;
+}
+
+.gd-tile {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-hue-bg);
+  color: var(--cpu-hue-ink);
+  font-size: 18px;
+}
+
+.gd-card {
+  min-width: 0;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-card);
+  overflow: hidden;
+}
+
+.gd-h2 {
+  margin: 4px 2px -6px;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+  font-weight: 600;
+}
+
+.gd-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--cpu-border-soft);
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.gd-row:first-child { border-top: 0; }
+.gd-row-copy { min-width: 0; flex: 1 1 auto; }
+.gd-row-title {
+  display: block;
+  font-size: var(--cpu-fs-m);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.gd-row-sub {
+  display: block;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.gd-row-more {
+  flex: 0 0 auto;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
+  white-space: nowrap;
+}
+.gd-row > .el-icon:last-child { flex: 0 0 auto; color: var(--cpu-text-muted); }
+@media (hover: hover) {
+  a.gd-row:hover { background: var(--cpu-surface-soft); }
+}
+
+.gd-empty {
+  margin: 0;
+  padding: 32px 16px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
+  text-align: center;
+}

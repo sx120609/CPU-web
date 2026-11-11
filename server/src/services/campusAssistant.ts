@@ -609,6 +609,16 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["鸣谢墙", "赞助", "支持网站", "支持药大拾间", "赞助计划", "捐助", "赞助者"],
   },
   {
+    id: "guide",
+    label: "使用教程",
+    description: "按章节查看药大拾间各项功能和各端 App 的用法",
+    url: "/guide",
+    icon: "📖",
+    owner: "药大拾间",
+    requireLogin: false,
+    keywords: ["教程", "使用教程", "怎么用", "使用说明", "帮助", "新手", "功能介绍"],
+  },
+  {
     id: "thanks",
     label: "致谢",
     description: "查看为药大拾间出过力的同学名单和站点数据",
@@ -1226,6 +1236,14 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     source: "药大拾间拾间认证页面",
     sourceRef: "CPU-web",
     verifiedAt: "2026-10-12",
+  },
+  {
+    id: "guide-page-2026-11",
+    relatedActionIds: ["guide"],
+    fact: "使用教程：https://cputime.cn/guide 按章节讲药大拾间的用法，包括登录、课表、日程、共享和宿舍课表、教务数据、论坛、消息提醒、校园服务、小工具和各端 App。目录页可以搜索，点进某一章只看那一章，章末可以翻到下一章。页脚、手机“我的”和右上“更多”里都有入口。",
+    source: "药大拾间使用教程页面",
+    sourceRef: "https://cputime.cn/guide",
+    verifiedAt: "2026-11-11",
   },
   {
     id: "thanks-page-2026-10",
