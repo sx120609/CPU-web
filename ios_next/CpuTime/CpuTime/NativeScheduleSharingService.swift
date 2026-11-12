@@ -230,8 +230,7 @@ final class NativeScheduleSharingService: ObservableObject {
     /// What the share sheet sends: the code, where to type it, and the link
     /// that opens the same timetable in a browser.
     static func invitation(code: String) -> String {
-        var origin = IOSNextWebConfiguration.appURL.absoluteString
-        while origin.hasSuffix("/") { origin.removeLast() }
+        let origin = IOSNextWebConfiguration.origin
         return "我的课表分享码：\(code)\n在药大拾间「课表 → 更多 → 共享课表」里输入就能看，也可以直接打开：\(origin)/schedule/share/\(code)"
     }
 

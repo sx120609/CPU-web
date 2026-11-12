@@ -1,6 +1,8 @@
 export const APP_NAME = '药大拾间';
 export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCode=33&appVersionName=3.2.0';
 export const APP_HOST = 'cputime.cn';
+/** The site without the `/home` start path and client query: what a link sent to someone else is built on. */
+export const APP_ORIGIN = 'https://cputime.cn';
 export const VERSION_CODE = 33;
 export const VERSION_NAME = '3.2.0';
 export const USER_AGENT_SUFFIX = `CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME}`;

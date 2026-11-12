@@ -110,7 +110,7 @@ struct NativeCoupleSheet: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
-            ShareLink(item: CoupleRules.invitation(code: code, origin: IOSNextWebConfiguration.appURL.absoluteString)) {
+            ShareLink(item: CoupleRules.invitation(code: code, origin: IOSNextWebConfiguration.origin)) {
                 Label("发送邀请", systemImage: "square.and.arrow.up")
             }
             Button("换一个") { act { try await couple.invite() } }.disabled(busy)

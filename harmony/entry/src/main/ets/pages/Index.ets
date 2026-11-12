@@ -35,7 +35,7 @@ import promptAction from '@ohos.promptAction';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import picker from '@ohos.file.picker';
 import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
-import { APP_URL, USER_AGENT_SUFFIX, VERSION_CODE, VERSION_NAME, isAppOrigin, isHttpUrl, isInternalUrl, pageOwnsNavigation } from '../common/AppConfig';
+import { APP_ORIGIN, APP_URL, USER_AGENT_SUFFIX, VERSION_CODE, VERSION_NAME, isAppOrigin, isHttpUrl, isInternalUrl, pageOwnsNavigation } from '../common/AppConfig';
 import { NATIVE_STARTUP_POLICY } from '../common/NativeStartupPolicy';
 import {
   HarmonyBridge,
@@ -1955,7 +1955,7 @@ struct Index {
         semester: this.scheduleStore.prioritySemester(),
         semesterLabel: this.selectedSemesterLabel(),
         canPublish: !!this.scheduleStore.result,
-        origin: APP_URL,
+        origin: APP_ORIGIN,
         publishBody: (): SharePublishBody => this.sharePublishBody(),
         onOpen: (schedule: SharedSchedule) => this.openSharedSchedule(schedule),
         onCopy: (text: string) => { if (this.bridge.copyText(text)) promptAction.showToast({ message: '已复制，可以发给对方了' }); },
@@ -1978,7 +1978,7 @@ struct Index {
         model: this.coupleModel,
         dark: this.scheduleStore.dark,
         nowMinutes: this.scheduleStore.nowMinutes,
-        origin: APP_URL,
+        origin: APP_ORIGIN,
         onCopy: (text: string) => { if (this.bridge.copyText(text)) promptAction.showToast({ message: '已复制，可以发给 TA 了' }); },
         onSend: (text: string) => this.sendText(text)
       })

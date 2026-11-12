@@ -25,6 +25,15 @@ enum IOSNextWebConfiguration {
         return URL(string: "https://cputime.cn/home")!
     }
 
+    /// The site's scheme, host and port, without the `/home` start path:
+    /// what a link sent to someone else is built on.
+    static var origin: String {
+        let url = appURL
+        let scheme = url.scheme?.lowercased() ?? "https"
+        let host = url.host ?? "cputime.cn"
+        return "\(scheme)://\(host)" + (url.port.map { ":\($0)" } ?? "")
+    }
+
     // The bridge is installed only for the configured first-party origin.
     // Payment and arbitrary external pages are opened outside this WKWebView.
     static var appHost: String {

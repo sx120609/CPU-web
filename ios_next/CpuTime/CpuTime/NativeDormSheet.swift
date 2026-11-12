@@ -669,7 +669,7 @@ private struct DormRoomPage: View {
                 }
                 .frame(maxWidth: .infinity)
                 .textSelection(.enabled)
-                ShareLink(item: DormRules.invitation(code: invite.code, origin: IOSNextWebConfiguration.appURL.absoluteString)) {
+                ShareLink(item: DormRules.invitation(code: invite.code, origin: IOSNextWebConfiguration.origin)) {
                     Label("发送给室友", systemImage: "square.and.arrow.up")
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)

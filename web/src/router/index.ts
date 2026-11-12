@@ -262,6 +262,8 @@ export const router = createRouter({
         { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
         { path: "jwxt", name: "jwxt", component: loadJwxtView, meta: { title: "教务数据", public: true } },
         { path: "schedule", name: "schedule", component: loadScheduleView, meta: { title: "课表", public: true, hideChrome: true } },
+        // 旧版 iOS 把邀请链接拼在了 /home 后面（/home/schedule?couple=1&code=…），已发出去的链接照样要能打开。
+        { path: "home/schedule/:rest(.*)*", redirect: (to) => ({ path: to.path.replace(/^\/home/, ""), query: to.query, hash: to.hash }) },
         // 情侣课表已并入课表页；旧链接和邀请链接跳转到课表并打开情侣课表弹窗。
         { path: "schedule/couple", redirect: (to) => ({ path: "/schedule", query: { couple: "1", ...(typeof to.query.code === "string" ? { code: to.query.code } : {}) } }) },
         // 原生 App 的课表是原生画的，/schedule 会被原生接走；宿舍课表在原生壳里用这个独立页面。
