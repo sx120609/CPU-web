@@ -18,6 +18,8 @@ export interface ServiceTool {
   badge?: string;
   badgeType?: "primary" | "success" | "warning" | "info";
   hideBadge?: boolean;
+  /** 要不要登录由工具里的每一项内容自己决定（如每份问卷的填写权限），入口上不标“需登录／免登录”。 */
+  accessPerItem?: boolean;
 }
 
 export const serviceTools: ServiceTool[] = [
@@ -76,6 +78,7 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "questionnaire",
     accent: "#d97706",
     iconComponent: DocumentChecked,
+    accessPerItem: true,
   },
   {
     slug: "grade_check",

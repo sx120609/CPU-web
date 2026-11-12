@@ -321,7 +321,8 @@
 
           <ToolAccessSettings
             v-if="canAdminActiveTool"
-            description="开启后，未登录用户不能打开或提交当前小工具。"
+            :description="activeTool === 'questionnaire' ? '每份问卷要不要登录，由它自己的“填写权限”决定，这里不统一限制。' : '开启后，未登录用户不能打开或提交当前小工具。'"
+            :show-require-login="activeTool !== 'questionnaire'"
             :visible="Boolean(currentToolMeta?.isVisible)"
             :visible-text="currentToolMeta?.isVisible ? '当前会显示在小工具入口中' : '当前已从小工具入口中隐藏'"
             :require-login="Boolean(currentToolMeta?.requireLogin)"
@@ -408,15 +409,15 @@
               <el-option label="开放" value="open" />
               <el-option label="关闭" value="closed" />
             </el-select>
-            <el-select v-model="form.visibility" aria-label="填写权限">
-              <el-option label="公开填写" value="public" />
+            <el-select v-model="form.visibility" aria-label="填写权限" @change="onVisibilityChange">
+              <el-option label="公开填写（不用登录）" value="public" />
               <el-option label="登录后填写" value="login" />
             </el-select>
           </div>
           <div class="mobile-publish-checks">
-            <el-checkbox v-model="form.allowAnonymous">匿名</el-checkbox>
-            <el-checkbox v-model="form.oneResponsePerUser">限每人一次</el-checkbox>
+            <el-checkbox v-model="form.oneResponsePerUser" @change="onOncePerUserChange">每个账号限填一次（需登录）</el-checkbox>
           </div>
+          <p class="publish-access-hint">{{ accessHint }}</p>
         </section>
 
         <el-form label-position="top" class="questionnaire-editor">
@@ -562,14 +563,14 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="填写权限">
-                <el-select v-model="form.visibility">
-                  <el-option label="公开填写" value="public" />
+                <el-select v-model="form.visibility" @change="onVisibilityChange">
+                  <el-option label="公开填写（不用登录）" value="public" />
                   <el-option label="登录后填写" value="login" />
                 </el-select>
               </el-form-item>
               <div class="inspector-checks">
-                <el-checkbox v-model="form.allowAnonymous">允许匿名填写</el-checkbox>
-                <el-checkbox v-model="form.oneResponsePerUser">每个登录用户限填一次</el-checkbox>
+                <el-checkbox v-model="form.oneResponsePerUser" @change="onOncePerUserChange">每个账号限填一次（需登录）</el-checkbox>
+                <p class="publish-access-hint">{{ accessHint }}</p>
               </div>
             </el-form>
           </section>
@@ -584,7 +585,7 @@
               <span>必填题</span>
               <b>{{ requiredCount }}</b>
             </div>
-            <p>发布前确认必填题、选项数量、匿名设置和登录限制。发布后仍可编辑，已有答卷会按题目 ID 保留。</p>
+            <p>发布前确认必填题、选项数量和填写权限。发布后仍可编辑，已有答卷会按题目 ID 保留。</p>
           </section>
         </aside>
       </div>
@@ -842,10 +843,23 @@ const form = reactive({
   description: "",
   status: "draft" as QuestionnaireStatus,
   visibility: "public" as QuestionnaireVisibility,
-  allowAnonymous: true,
   oneResponsePerUser: false,
   fields: [] as EditableField[],
 });
+
+const accessHint = computed(() => {
+  if (form.visibility !== "login") return "拿到链接就能填，不用登录，也不记录填写人。";
+  return form.oneResponsePerUser ? "登录后才能填，每个账号只能提交一次。" : "登录后才能填，答卷会记录填写人。";
+});
+
+// 限每人一次要靠账号认人，只能和“登录后填写”一起用，两个选项互相带动。
+function onVisibilityChange() {
+  if (form.visibility === "public") form.oneResponsePerUser = false;
+}
+
+function onOncePerUserChange() {
+  if (form.oneResponsePerUser) form.visibility = "login";
+}
 
 const previewOpen = ref(false);
 const previewQuestionnaire = reactive({
@@ -1054,7 +1068,6 @@ function resetEditorForm(source?: Questionnaire) {
   form.description = source?.description ?? "";
   form.status = source?.status ?? "draft";
   form.visibility = source?.visibility ?? "public";
-  form.allowAnonymous = source?.allowAnonymous ?? true;
   form.oneResponsePerUser = source?.oneResponsePerUser ?? false;
   form.fields = (source?.fields ?? []).map(toEditableField);
 }
@@ -1095,7 +1108,6 @@ async function submitEditor(statusOverride?: QuestionnaireStatus) {
       description: form.description.trim() || undefined,
       status: form.status,
       visibility: form.visibility,
-      allowAnonymous: form.allowAnonymous,
       oneResponsePerUser: form.oneResponsePerUser,
       fields,
     };
@@ -1175,7 +1187,6 @@ async function duplicateQuestionnaire(row: Questionnaire) {
       description: source.description ?? undefined,
       status: "draft",
       visibility: source.visibility,
-      allowAnonymous: source.allowAnonymous,
       oneResponsePerUser: source.oneResponsePerUser,
       fields: duplicateQuestionnaireFields(source),
     });

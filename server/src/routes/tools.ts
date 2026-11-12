@@ -63,6 +63,8 @@ import {
   normalizeQuestionnaire,
   normalizeResponse,
   parseFields,
+  questionnaireRequiresLogin,
+  resolveQuestionnaireAccess,
   type QuestionnaireField,
 } from "../services/questionnaires";
 import { repairFileCollectTaskFilenames } from "../services/fileCollectFilenameRepair";
@@ -1188,12 +1190,12 @@ toolsRouter.get("/questionnaires/:slug", authOptional, async (req, res, next) =>
     });
     if (!row) throw Errors.notFound("问卷不存在");
     const canManage = await canManageQuestionnaire(row, req.user);
-    if (!canManage) await ensureToolUsableForRequest(row.toolCode, req.user);
     if (row.status !== "open" && !canManage) throw Errors.notFound("问卷不存在或未开放");
-    if (row.visibility === "login" && !req.user?.userId && !canManage) throw Errors.unauthorized("请先登录后填写");
+    if (!canManage) await ensureQuestionnaireFillable(row, req.user);
     ok(res, {
       ...normalizeQuestionnaire(row, { includeFields: true, includeStats: canManage }),
       canManage,
+      alreadySubmitted: await hasSubmittedQuestionnaire(row, req.user),
     });
   } catch (e) { next(e); }
 });
@@ -1210,9 +1212,10 @@ toolsRouter.post("/questionnaires", authRequired, validate(createQuestionnaireSc
         title: req.body.title,
         description: req.body.description || null,
         status: req.body.status ?? "draft",
-        visibility: req.body.visibility ?? "public",
-        allowAnonymous: req.body.allowAnonymous ?? true,
-        oneResponsePerUser: req.body.oneResponsePerUser ?? false,
+        ...resolveQuestionnaireAccess({
+          visibility: req.body.visibility ?? "public",
+          oneResponsePerUser: req.body.oneResponsePerUser ?? false,
+        }),
         isSystem: false,
         fields: JSON.stringify(req.body.fields),
         createdById: req.user!.userId,
@@ -1240,6 +1243,13 @@ toolsRouter.patch("/questionnaires/:id", authRequired, validate(patchQuestionnai
     }
     if (req.body.fields) validateFields(req.body.fields);
     const now = new Date();
+    // 只改状态、标题时不动填写权限；改到其中一项就把三项一起写成一致的。
+    const access = req.body.visibility === undefined && req.body.oneResponsePerUser === undefined
+      ? undefined
+      : resolveQuestionnaireAccess({
+        visibility: req.body.visibility ?? current.visibility,
+        oneResponsePerUser: req.body.oneResponsePerUser ?? current.oneResponsePerUser,
+      });
     const row = await prisma.questionnaire.update({
       where: { id },
       data: {
@@ -1247,9 +1257,7 @@ toolsRouter.patch("/questionnaires/:id", authRequired, validate(patchQuestionnai
         title: req.body.title,
         description: req.body.description === undefined ? undefined : (req.body.description || null),
         status: req.body.status,
-        visibility: req.body.visibility,
-        allowAnonymous: req.body.allowAnonymous,
-        oneResponsePerUser: req.body.oneResponsePerUser,
+        ...access,
         fields: req.body.fields ? JSON.stringify(req.body.fields) : undefined,
         publishedAt: req.body.status === "open" && !current.publishedAt ? now : undefined,
         closedAt: req.body.status === "closed" ? now : req.body.status === "open" ? null : undefined,
@@ -1279,17 +1287,9 @@ toolsRouter.post("/questionnaires/:slug/responses", authOptional, validate(respo
   try {
     const row = await prisma.questionnaire.findUnique({ where: { slug: String(req.params.slug) } });
     if (!row) throw Errors.notFound("问卷不存在");
-    await ensureToolUsableForRequest(row.toolCode, req.user);
     if (row.status !== "open") throw Errors.badRequest("问卷当前未开放填写");
-    if (row.visibility === "login" && !req.user?.userId) throw Errors.unauthorized("请先登录后填写");
-    if (!row.allowAnonymous && !req.user?.userId) throw Errors.unauthorized("请先登录后填写");
-    if (row.oneResponsePerUser && req.user?.userId) {
-      const exists = await prisma.questionnaireResponse.findFirst({
-        where: { questionnaireId: row.id, respondentId: req.user.userId },
-        select: { id: true },
-      });
-      if (exists) throw Errors.conflict("你已经提交过该问卷");
-    }
+    await ensureQuestionnaireFillable(row, req.user);
+    if (await hasSubmittedQuestionnaire(row, req.user)) throw Errors.conflict("你已经提交过该问卷");
     const fields = parseFields(row.fields);
     const answers = normalizeAnswers(fields, req.body.answers);
     const created = await prisma.questionnaireResponse.create({
@@ -1805,6 +1805,34 @@ async function ensureGradeCheckFeedbackQuestionnaire(table: {
     data: { feedbackQuestionnaireSlug: slug },
   });
   return slug;
+}
+
+/**
+ * 未登录的人能不能填这份问卷。
+ * 用户创建的问卷只看问卷自己的填写权限，分享出去的公开链接不受小工具“登录后使用”开关影响；
+ * 系统问卷（需求反馈）没有自己的填写权限，跟随小工具的开关。
+ */
+async function ensureQuestionnaireFillable(
+  row: { toolCode: string; isSystem: boolean; visibility: string; oneResponsePerUser: boolean },
+  user: Express.Request["user"],
+) {
+  if (row.isSystem) {
+    await ensureToolUsableForRequest(row.toolCode, user);
+    return;
+  }
+  if (questionnaireRequiresLogin(row) && !user?.userId) throw Errors.unauthorized("请先登录后填写");
+}
+
+async function hasSubmittedQuestionnaire(
+  row: { id: number; oneResponsePerUser: boolean },
+  user: Express.Request["user"],
+) {
+  if (!row.oneResponsePerUser || !user?.userId) return false;
+  const exists = await prisma.questionnaireResponse.findFirst({
+    where: { questionnaireId: row.id, respondentId: user.userId },
+    select: { id: true },
+  });
+  return Boolean(exists);
 }
 
 async function canManageQuestionnaire(row: { toolCode: string; slug?: string; createdById: number | null }, user: Express.Request["user"]) {

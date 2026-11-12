@@ -56,6 +56,8 @@ export interface Questionnaire {
   fields?: QuestionnaireField[];
   responseCount?: number;
   canManage?: boolean;
+  /** 限每人一次的问卷：当前账号是否已经交过。 */
+  alreadySubmitted?: boolean;
   publishedAt?: string | null;
   closedAt?: string | null;
   createdAt: string;

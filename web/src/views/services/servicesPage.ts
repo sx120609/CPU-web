@@ -84,11 +84,12 @@ export function useServiceTools() {
   }
 
   function isLoginRequired(slug: string) {
+    if (serviceTools.find((tool) => tool.slug === slug)?.accessPerItem) return false;
     return Boolean(toolAccessMap.value[slug]?.requireLogin);
   }
 
   function toolBadge(tool: ServiceTool) {
-    if (tool.hideBadge) return "";
+    if (tool.hideBadge || tool.accessPerItem) return "";
     return tool.badge ?? (isLoginRequired(tool.slug) ? "需登录" : "免登录");
   }
 

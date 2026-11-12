@@ -17,7 +17,7 @@
         @change="emit('change:visible', $event)"
       />
     </div>
-    <div class="access-setting">
+    <div v-if="showRequireLogin" class="access-setting">
       <div>
         <b>登录后使用</b>
         <span>{{ requireLoginText }}</span>
@@ -52,8 +52,10 @@ withDefaults(defineProps<{
   allowPublicManage?: boolean;
   publicManageText?: string;
   showPublicManage?: boolean;
+  showRequireLogin?: boolean;
   saving?: boolean;
 }>(), {
+  showRequireLogin: true,
   allowPublicManage: false,
   publicManageText: "",
   showPublicManage: true,

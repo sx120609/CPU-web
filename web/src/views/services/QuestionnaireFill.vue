@@ -17,7 +17,13 @@
         <PrivacyPolicyNotice v-if="questionnaire.visibility === 'login'" align="left" compact />
       </header>
 
-      <form class="pk-card q-fill-form" @submit.prevent="submit">
+      <section v-if="submitted || questionnaire.alreadySubmitted" class="pk-card q-fill-done" role="status">
+        <el-icon aria-hidden="true"><CircleCheck /></el-icon>
+        <h2 class="pk-h2">{{ submitted ? "已提交，感谢填写" : "你已经提交过这份问卷" }}</h2>
+        <p class="pk-muted">{{ questionnaire.oneResponsePerUser ? "这份问卷每个账号只能提交一次。" : "答卷已经交给发起者，可以关闭页面了。" }}</p>
+      </section>
+
+      <form v-else class="pk-card q-fill-form" @submit.prevent="submit">
         <div v-if="fieldCount" class="q-fill-progress">
           <el-progress :percentage="progressPercent" :show-text="false" :stroke-width="6" />
           <span>{{ answeredCount }}/{{ fieldCount }} 已填写</span>
@@ -40,7 +46,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, DocumentChecked } from "@element-plus/icons-vue";
+import { ArrowLeft, CircleCheck, DocumentChecked } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { toolsApi, type Questionnaire, type QuestionnaireField } from "@/api/tools";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
@@ -51,6 +57,7 @@ const route = useRoute();
 const router = useRouter();
 const loading = ref(false);
 const submitting = ref(false);
+const submitted = ref(false);
 const questionnaire = ref<Questionnaire | null>(null);
 const error = ref("");
 const answers = reactive<Record<string, string | string[]>>({});
@@ -70,6 +77,7 @@ async function load() {
   const slug = String(route.params.slug || "").trim();
   loading.value = true;
   error.value = "";
+  submitted.value = false;
   questionnaire.value = null;
   Object.keys(answers).forEach((key) => delete answers[key]);
   if (!slug) {
@@ -159,10 +167,14 @@ async function submit() {
       suppressAuthMessage: true,
       suppressErrorMessage: true,
     });
-    ElMessage.success("提交成功");
-    router.push("/services/tools/questionnaire");
+    // 留在本页给出结果：未登录的填写人被带去小工具页只会看到一个与自己无关的入口。
+    submitted.value = true;
   } catch (error) {
     const status = (error as { response?: { status?: number } }).response?.status;
+    if (status === 409) {
+      questionnaire.value.alreadySubmitted = true;
+      return;
+    }
     if (status === 401) {
       ElMessage.warning("请先登录后再提交问卷");
       router.push({ name: "login", query: { redirect: route.fullPath } });
@@ -182,6 +194,9 @@ async function submit() {
 .q-fill-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .q-fill-form { display: flex; flex-direction: column; gap: 18px; }
 .q-fill-form > .el-button { align-self: flex-start; min-width: 160px; }
+.q-fill-done { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-block: 36px; text-align: center; }
+.q-fill-done .el-icon { color: var(--cpu-success); font-size: 40px; }
+.q-fill-done h2, .q-fill-done p { margin: 0; }
 .q-fill-progress { display: flex; align-items: center; gap: 12px; }
 .q-fill-progress .el-progress { flex: 1; }
 .q-fill-progress span { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; }

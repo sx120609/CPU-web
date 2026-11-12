@@ -44,7 +44,27 @@ export function parseAnswers(raw: string | null | undefined): Record<string, unk
   }
 }
 
+/**
+ * 填写一份问卷要不要登录，只看问卷自己的两项设置：
+ * 选了“登录后填写”，或者限每人一次（要靠账号认人）。
+ * 旧数据里的 allowAnonymous 不再单独拦人：它和“公开填写”同时存在时，页面能打开却交不上。
+ */
+export function questionnaireRequiresLogin(row: { visibility: string; oneResponsePerUser: boolean }) {
+  return row.visibility === "login" || Boolean(row.oneResponsePerUser);
+}
+
+/** 按上面的规则把三项设置整理成不互相矛盾的一组，读和写都用这一份。 */
+export function resolveQuestionnaireAccess(row: { visibility: string; oneResponsePerUser: boolean }) {
+  const loginRequired = questionnaireRequiresLogin(row);
+  return {
+    visibility: loginRequired ? "login" : "public",
+    allowAnonymous: !loginRequired,
+    oneResponsePerUser: Boolean(row.oneResponsePerUser),
+  };
+}
+
 export function normalizeQuestionnaire(row: any, options: { includeFields?: boolean; includeStats?: boolean } = {}) {
+  const access = resolveQuestionnaireAccess(row);
   const result: Record<string, unknown> = {
     id: row.id,
     toolCode: row.toolCode,
@@ -52,9 +72,9 @@ export function normalizeQuestionnaire(row: any, options: { includeFields?: bool
     title: row.title,
     description: row.description,
     status: row.status,
-    visibility: row.visibility,
-    allowAnonymous: row.allowAnonymous,
-    oneResponsePerUser: row.oneResponsePerUser,
+    visibility: access.visibility,
+    allowAnonymous: access.allowAnonymous,
+    oneResponsePerUser: access.oneResponsePerUser,
     isSystem: row.isSystem,
     publishedAt: row.publishedAt,
     closedAt: row.closedAt,
