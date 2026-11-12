@@ -44,7 +44,6 @@ import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
@@ -323,7 +322,7 @@ fun LoginGate(activity: MainActivity) {
                         if (switchingSchool) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         else Icon(Icons.Rounded.ExpandMore, contentDescription = "切换学校")
                     }
-                    DropdownMenu(expanded = schoolMenu, onDismissRequest = { schoolMenu = false }) {
+                    CpuDropdownMenu(expanded = schoolMenu, onDismissRequest = { schoolMenu = false }) {
                         schools.forEach { item ->
                             val selected = item.id == school?.id
                             DropdownMenuItem(

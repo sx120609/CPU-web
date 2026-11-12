@@ -21,10 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -333,7 +331,7 @@ class CourseEditorModel(
 fun CourseEditorSheet(model: CourseEditorModel, onDismiss: () -> Unit) {
     var confirmingDelete by remember { mutableStateOf(false) }
     if (confirmingDelete) {
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { confirmingDelete = false },
             title = { Text(if (model.original?.course?.customId != null) "删除个人课程" else "隐藏课程") },
             text = {
@@ -348,7 +346,7 @@ fun CourseEditorSheet(model: CourseEditorModel, onDismiss: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("取消") } },
         )
     }
-    androidx.compose.material3.ModalBottomSheet(
+    CpuBottomSheet(
         modifier = Modifier.statusBarsPadding(),
         onDismissRequest = onDismiss,
         // A drag or scrim tap cannot close the sheet mid-save; Back still can.
@@ -563,7 +561,7 @@ internal fun TimeField(label: String, value: String, enabled: Boolean, modifier:
     if (picking) {
         val initial = CourseCustomTime.minutes(value) ?: (8 * 60)
         val state = rememberTimePickerState(initialHour = initial / 60, initialMinute = initial % 60, is24Hour = true)
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { picking = false },
             title = { Text("${label}时间") },
             text = { TimePicker(state = state) },
@@ -600,7 +598,7 @@ private fun SelectField(
             Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, fontSize = 14.sp, maxLines = 1)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { onExpanded(false) }) {
+        CpuDropdownMenu(expanded = expanded, onDismissRequest = { onExpanded(false) }) {
             options.forEachIndexed { index, option ->
                 DropdownMenuItem(text = { Text(option) }, onClick = {
                     onExpanded(false)

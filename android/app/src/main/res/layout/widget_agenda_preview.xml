@@ -24,7 +24,7 @@
             android:layout_weight="1"
             android:text="日程"
             android:textColor="@color/widget_accent"
-            android:textSize="15sp"
+            android:textSize="15dp"
             android:textStyle="bold" />
 
         <TextView
@@ -32,7 +32,7 @@
             android:layout_height="wrap_content"
             android:text="3 项"
             android:textColor="@color/widget_secondary_text"
-            android:textSize="12sp" />
+            android:textSize="12dp" />
     </LinearLayout>
 
     <LinearLayout
@@ -58,7 +58,7 @@
             android:maxLines="1"
             android:text="交实验报告"
             android:textColor="@color/widget_primary_text"
-            android:textSize="14sp" />
+            android:textSize="14dp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -67,7 +67,7 @@
             android:maxLines="1"
             android:text="今天"
             android:textColor="@color/widget_secondary_text"
-            android:textSize="12sp" />
+            android:textSize="12dp" />
     </LinearLayout>
 
     <LinearLayout
@@ -93,7 +93,7 @@
             android:maxLines="1"
             android:text="生物化学小测"
             android:textColor="@color/widget_primary_text"
-            android:textSize="14sp" />
+            android:textSize="14dp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -102,7 +102,7 @@
             android:maxLines="1"
             android:text="明天 08:20"
             android:textColor="@color/widget_secondary_text"
-            android:textSize="12sp" />
+            android:textSize="12dp" />
     </LinearLayout>
 
     <LinearLayout
@@ -128,7 +128,7 @@
             android:maxLines="1"
             android:text="社团例会"
             android:textColor="@color/widget_primary_text"
-            android:textSize="14sp" />
+            android:textSize="14dp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -137,6 +137,6 @@
             android:maxLines="1"
             android:text="周五 19:00"
             android:textColor="@color/widget_secondary_text"
-            android:textSize="12sp" />
+            android:textSize="12dp" />
     </LinearLayout>
 </LinearLayout>

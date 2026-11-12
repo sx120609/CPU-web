@@ -21,6 +21,6 @@
         android:gravity="center"
         android:padding="18dp"
         android:textColor="#475467"
-        android:textSize="13sp"
+        android:textSize="13dp"
         android:visibility="gone" />
 </FrameLayout>

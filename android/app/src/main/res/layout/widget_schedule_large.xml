@@ -26,7 +26,7 @@
             android:maxLines="1"
             android:text="药大课表"
             android:textColor="#172033"
-            android:textSize="16sp"
+            android:textSize="16dp"
             android:textStyle="bold" />
 
         <TextView
@@ -42,7 +42,7 @@
             android:paddingEnd="10dp"
             android:text="刷新"
             android:textColor="#168776"
-            android:textSize="11sp"
+            android:textSize="11dp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -55,7 +55,7 @@
         android:maxLines="1"
         android:text="正在更新"
         android:textColor="#667085"
-        android:textSize="11sp" />
+        android:textSize="11dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -148,5 +148,5 @@
         android:maxLines="1"
         android:text="配置后会自动刷新"
         android:textColor="#98A2B3"
-        android:textSize="10sp" />
+        android:textSize="10dp" />
 </LinearLayout>

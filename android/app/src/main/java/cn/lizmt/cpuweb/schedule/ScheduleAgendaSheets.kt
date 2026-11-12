@@ -32,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
@@ -41,7 +40,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
@@ -255,7 +253,7 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, source: 
     }
 
     if (confirmingDelete) {
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { confirmingDelete = false },
             title = { Text("删除「${draft.title}」？") },
             text = { Text(if (draft.repeat != AgendaRepeat.None) "这是重复的日程，所有日子的都会删除。" else "删除后其他设备上也会删除。") },
@@ -274,7 +272,7 @@ internal fun AgendaEditorSheet(remote: AgendaRemote, draft: AgendaItem, source: 
         )
     }
 
-    ModalBottomSheet(
+    CpuBottomSheet(
         modifier = Modifier.statusBarsPadding(),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden || !busy }),
@@ -453,7 +451,7 @@ internal fun AgendaListSheet(
         }
     }
 
-    ModalBottomSheet(modifier = Modifier.statusBarsPadding(), onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    CpuBottomSheet(modifier = Modifier.statusBarsPadding(), onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -564,7 +562,7 @@ internal fun openTodos(items: List<AgendaItem>, today: LocalDate): List<AgendaIt
 /** Where to add from an empty period: a 日程 at its start, or a course in it. */
 @Composable
 internal fun AddSlotChoiceDialog(label: String, canAddCourse: Boolean, onAgenda: () -> Unit, onCourse: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+    CpuAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(label) },
         text = {

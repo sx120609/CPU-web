@@ -9,11 +9,21 @@ import java.time.YearMonth
 /** Rules behind the fixes found while checking the NapTable port by hand. */
 class NapTableQaTest {
     @Test
-    fun textStopsAtTheLargestStandardSize() {
-        assertEquals(1f, cappedFontScale(1f))
-        assertEquals(1.15f, cappedFontScale(1.15f))
-        assertEquals(MAX_FONT_SCALE, cappedFontScale(2f))
-        assertEquals(0.85f, cappedFontScale(0.85f))
+    fun narrowPhonesLayOutAtTheDesignWidth() {
+        // Phones about as wide as the design, tablets and an unknown width are untouched.
+        assertEquals(1f, phoneLayoutScale(393f))
+        assertEquals(1f, phoneLayoutScale(392.7f))
+        assertEquals(1f, phoneLayoutScale(384f))
+        assertEquals(1f, phoneLayoutScale(411.4f))
+        assertEquals(1f, phoneLayoutScale(800f))
+        assertEquals(1f, phoneLayoutScale(0f))
+        // A 360dp phone lays out as 393 wide.
+        assertEquals(360f, 393f * phoneLayoutScale(360f), 0.01f)
+        // A 320dp phone stops at the smallest scale.
+        assertEquals(MIN_LAYOUT_SCALE, phoneLayoutScale(320f))
+        // The native UI does not follow the system text size.
+        assertEquals(1f, NATIVE_FONT_SCALE)
+        assertEquals(1f, nativeConfigurationOverride().fontScale)
     }
 
     @Test

@@ -31,6 +31,6 @@
         android:gravity="center"
         android:padding="18dp"
         android:textColor="@color/widget_secondary_text"
-        android:textSize="13sp"
+        android:textSize="13dp"
         android:visibility="gone" />
 </FrameLayout>

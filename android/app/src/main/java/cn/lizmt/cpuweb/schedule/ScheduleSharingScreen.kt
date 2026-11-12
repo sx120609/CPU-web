@@ -23,10 +23,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -110,7 +108,7 @@ fun ScheduleSharingSheet(activity: MainActivity, store: ScheduleStore, onDismiss
     }
 
     revokeTarget?.let { target ->
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { revokeTarget = null },
             title = { Text("撤销这个分享码？") },
             text = { Text("撤销后这个码立刻失效，服务器上的课表副本也会删除。已经保存到对方设备上的课表不会消失，只是不再更新。") },
@@ -127,7 +125,7 @@ fun ScheduleSharingSheet(activity: MainActivity, store: ScheduleStore, onDismiss
         )
     }
     removeTarget?.let { target ->
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { removeTarget = null },
             title = { Text("移除「${target.name}」？") },
             text = { Text("只从这台设备上移除，对方的分享不受影响。") },
@@ -141,7 +139,7 @@ fun ScheduleSharingSheet(activity: MainActivity, store: ScheduleStore, onDismiss
         )
     }
     renameTarget?.let { target ->
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { renameTarget = null },
             title = { Text("修改备注") },
             text = {
@@ -238,7 +236,7 @@ fun ScheduleSharingSheet(activity: MainActivity, store: ScheduleStore, onDismiss
                 }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, contentDescription = "${schedule.name} 的更多操作") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    CpuDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text("修改备注") }, onClick = {
                             menu = false
                             renameText = schedule.remark

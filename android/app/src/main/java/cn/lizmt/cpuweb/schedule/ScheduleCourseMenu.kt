@@ -30,7 +30,6 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -150,7 +149,7 @@ internal fun CourseQuickLookActions(actions: List<CourseMenuAction>, onDone: () 
     }
     asking?.let { action ->
         val (title, text) = action.confirm ?: return@let
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { asking = null },
             title = { Text(title) },
             text = { Text(text) },

@@ -53,7 +53,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -192,7 +191,7 @@ internal fun writeToGallery(activity: MainActivity, bytes: ByteArray, fileName: 
 fun ImagePreviewScreen(request: ImagePreviewRequest, onSave: (PreviewImage) -> Unit, onClose: () -> Unit) {
     BackHandler(onBack = onClose)
     val pager = rememberPagerState(initialPage = request.index) { request.images.size }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    CpuDialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         EdgeToEdgeDialogWindow()
         Box(Modifier.fillMaxSize().background(Color(0xFF05070A))) {
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->

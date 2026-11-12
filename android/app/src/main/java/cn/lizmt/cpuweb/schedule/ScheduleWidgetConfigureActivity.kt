@@ -19,6 +19,11 @@ import androidx.compose.ui.unit.dp
 
 /** Android launcher reconfiguration; saving affects only the selected widget. */
 class ScheduleWidgetConfigureActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(newBase)
+        applyOverrideConfiguration(nativeConfigurationOverride())
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setResult(RESULT_CANCELED)

@@ -93,22 +93,98 @@ fun CpuTheme(mode: String, content: @Composable () -> Unit) {
             surfaceContainerLow = Color(0xFFF6F8F7),
         )
     }
-    val density = androidx.compose.ui.platform.LocalDensity.current
     MaterialTheme(colorScheme = scheme) {
         androidx.compose.runtime.CompositionLocalProvider(
             LocalScheduleColors provides if (dark) DarkSchedule else LightSchedule,
-            // Text follows the system size up to MAX_FONT_SCALE, as iOS stops at the largest
-            // standard size: beyond it the week grid, sheets and chips overflow.
-            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
-                density.density, cappedFontScale(density.fontScale)),
             // No stretch ("jelly") overscroll anywhere in the native UI; lists simply stop at their ends.
             androidx.compose.foundation.LocalOverscrollConfiguration provides null,
-            content = content,
-        )
+        ) {
+            NativeScale(content)
+        }
     }
 }
 
-/** The largest system text size the native UI follows (Android's 130% step). */
-const val MAX_FONT_SCALE = 1.3f
+/** The native UI does not follow the system text size. */
+const val NATIVE_FONT_SCALE = 1f
 
-fun cappedFontScale(system: Float): Float = system.coerceAtMost(MAX_FONT_SCALE)
+/** The phone width the native UI is drawn for: an iPhone's 393 points. */
+const val DESIGN_WIDTH_DP = 393f
+
+/** Phones at least this wide are close enough to [DESIGN_WIDTH_DP] to be left as they are. */
+const val FULL_WIDTH_DP = 384f
+
+/** The most a narrow phone shrinks the UI; below it text would get too small to read. */
+const val MIN_LAYOUT_SCALE = 0.84f
+
+/**
+ * How much a phone whose short side is narrower than [FULL_WIDTH_DP] shrinks the
+ * native UI. Many Android phones are 360dp wide, or 320dp with the system
+ * display size turned up, where sizes meant for 393 looked oversized next to
+ * the iPhone and ran out of room. Wider phones and tablets are left alone. The
+ * Web pages of the app use the same numbers (web/public/appearance-bootstrap.js).
+ */
+fun phoneLayoutScale(shortSideDp: Float): Float =
+    if (shortSideDp <= 0f || shortSideDp >= FULL_WIDTH_DP) 1f
+    else (shortSideDp / DESIGN_WIDTH_DP).coerceAtLeast(MIN_LAYOUT_SCALE)
+
+/**
+ * The short side of the whole screen in dp, whichever way the phone is held and
+ * however small the app's window is: the scale must not change on rotation or
+ * in split screen. 0 when it cannot be read.
+ */
+fun deviceShortSideDp(context: android.content.Context): Float {
+    val manager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? android.view.WindowManager ?: return 0f
+    val density = context.resources.displayMetrics.density
+    if (density <= 0f) return 0f
+    val shortSide = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        manager.maximumWindowMetrics.bounds.let { minOf(it.width(), it.height()) }
+    } else {
+        val size = android.graphics.Point()
+        @Suppress("DEPRECATION")
+        manager.defaultDisplay.getRealSize(size)
+        minOf(size.x, size.y)
+    }
+    return shortSide / density
+}
+
+/** The density a [NativeScale] put in place, so one nested in the same window leaves it alone. */
+private val LocalNativeDensity = staticCompositionLocalOf<androidx.compose.ui.unit.Density?> { null }
+
+/**
+ * The app's own scale for everything native: a narrow phone lays out as one of
+ * [DESIGN_WIDTH_DP], and text keeps its designed size whatever the system text
+ * size is (the timetable, its sheets and the tab bar are dense, and larger text
+ * cut them short; the text on course cards has its own setting in 课表设置).
+ *
+ * [CpuTheme] applies it to the page. A sheet, dialog or menu is a window of its
+ * own and starts again from the system's values, so each goes through the
+ * wrappers in CpuWindows.kt, which apply it again.
+ */
+@Composable
+fun NativeScale(content: @Composable () -> Unit) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    if (density === LocalNativeDensity.current) {
+        content()
+        return
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // A new configuration (unfolding, another display size) is a reason to measure again.
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val scale = androidx.compose.runtime.remember(density, configuration) { phoneLayoutScale(deviceShortSideDp(context)) }
+    // Kept across rotations: Compose rebuilds a dialog, and drops what was typed in it, when its density changes.
+    val scaled = androidx.compose.runtime.remember(density, scale) {
+        androidx.compose.ui.unit.Density(density.density * scale, NATIVE_FONT_SCALE)
+    }
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides scaled,
+        LocalNativeDensity provides scaled,
+        content = content,
+    )
+}
+
+/**
+ * The configuration both activities lay over the system's: text size 100%. It
+ * reaches whatever [NativeScale] does not wrap, such as platform views.
+ */
+fun nativeConfigurationOverride(): android.content.res.Configuration =
+    android.content.res.Configuration().apply { fontScale = NATIVE_FONT_SCALE }

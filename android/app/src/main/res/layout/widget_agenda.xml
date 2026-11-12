@@ -26,7 +26,7 @@
             android:layout_weight="1"
             android:text="日程"
             android:textColor="@color/widget_accent"
-            android:textSize="15sp"
+            android:textSize="15dp"
             android:textStyle="bold" />
 
         <TextView
@@ -34,7 +34,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="@color/widget_secondary_text"
-            android:textSize="12sp" />
+            android:textSize="12dp" />
     </LinearLayout>
 
     <TextView
@@ -44,7 +44,7 @@
         android:gravity="center"
         android:text="接下来两周没有日程，点这里添加"
         android:textColor="@color/widget_secondary_text"
-        android:textSize="13sp"
+        android:textSize="13dp"
         android:visibility="gone" />
 
         <LinearLayout
@@ -73,7 +73,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_primary_text"
-                android:textSize="14sp" />
+                android:textSize="14dp" />
 
             <TextView
                 android:id="@+id/agenda_meta_0"
@@ -82,7 +82,7 @@
                 android:layout_marginStart="8dp"
                 android:maxLines="1"
                 android:textColor="@color/widget_secondary_text"
-                android:textSize="12sp" />
+                android:textSize="12dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -111,7 +111,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_primary_text"
-                android:textSize="14sp" />
+                android:textSize="14dp" />
 
             <TextView
                 android:id="@+id/agenda_meta_1"
@@ -120,7 +120,7 @@
                 android:layout_marginStart="8dp"
                 android:maxLines="1"
                 android:textColor="@color/widget_secondary_text"
-                android:textSize="12sp" />
+                android:textSize="12dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -149,7 +149,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_primary_text"
-                android:textSize="14sp" />
+                android:textSize="14dp" />
 
             <TextView
                 android:id="@+id/agenda_meta_2"
@@ -158,7 +158,7 @@
                 android:layout_marginStart="8dp"
                 android:maxLines="1"
                 android:textColor="@color/widget_secondary_text"
-                android:textSize="12sp" />
+                android:textSize="12dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -187,7 +187,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_primary_text"
-                android:textSize="14sp" />
+                android:textSize="14dp" />
 
             <TextView
                 android:id="@+id/agenda_meta_3"
@@ -196,7 +196,7 @@
                 android:layout_marginStart="8dp"
                 android:maxLines="1"
                 android:textColor="@color/widget_secondary_text"
-                android:textSize="12sp" />
+                android:textSize="12dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -225,7 +225,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_primary_text"
-                android:textSize="14sp" />
+                android:textSize="14dp" />
 
             <TextView
                 android:id="@+id/agenda_meta_4"
@@ -234,7 +234,7 @@
                 android:layout_marginStart="8dp"
                 android:maxLines="1"
                 android:textColor="@color/widget_secondary_text"
-                android:textSize="12sp" />
+                android:textSize="12dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -263,7 +263,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_primary_text"
-                android:textSize="14sp" />
+                android:textSize="14dp" />
 
             <TextView
                 android:id="@+id/agenda_meta_5"
@@ -272,7 +272,7 @@
                 android:layout_marginStart="8dp"
                 android:maxLines="1"
                 android:textColor="@color/widget_secondary_text"
-                android:textSize="12sp" />
+                android:textSize="12dp" />
         </LinearLayout>
 
 </LinearLayout>

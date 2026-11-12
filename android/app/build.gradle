@@ -43,6 +43,11 @@ android {
     namespace "cn.lizmt.cpuweb.schedule"
     compileSdk 35
 
+    lint {
+        // Widget text is sized in dp on purpose: the launcher would scale sp with the system text size.
+        disable "SpUsage"
+    }
+
     defaultConfig {
         applicationId resolvedApplicationId
         minSdk 24

@@ -27,7 +27,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -50,7 +49,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleSheetContainer(onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    ModalBottomSheet(modifier = Modifier.statusBarsPadding(), onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    CpuBottomSheet(modifier = Modifier.statusBarsPadding(), onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
             content()
         }
@@ -93,7 +92,7 @@ fun OverlapSheet(blocks: List<CourseBlock>, palette: String, onDismiss: () -> Un
 fun WeekPickerSheet(store: ScheduleStore, onDismiss: () -> Unit) {
     val colors = LocalScheduleColors.current
     val current = store.weekOptions().firstOrNull { store.isCurrentWeek(it.value) }?.value
-    ModalBottomSheet(
+    CpuBottomSheet(
         modifier = Modifier.statusBarsPadding(),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),

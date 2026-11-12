@@ -154,6 +154,11 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         callback(granted.values.all { it })
     }
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(newBase)
+        applyOverrideConfiguration(nativeConfigurationOverride())
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlin.math.max
 import kotlin.math.min
@@ -97,7 +96,7 @@ data class BackgroundCrop(val x: Float, val y: Float, val width: Float, val heig
 internal fun BackgroundCropEditor(image: ImageBitmap, crop: BackgroundCrop?, onDone: (BackgroundCrop?) -> Unit, onDismiss: () -> Unit) {
     val configuration = LocalConfiguration.current
     val aspect = configuration.screenWidthDp.toFloat() / configuration.screenHeightDp.coerceAtLeast(1)
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    CpuDialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         EdgeToEdgeDialogWindow()
         Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {

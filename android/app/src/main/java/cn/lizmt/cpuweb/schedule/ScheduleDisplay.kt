@@ -108,8 +108,8 @@ object ScheduleDisplayRules {
 }
 
 /**
- * A width that holds text, grown with the system text size (capped by
- * [cappedFontScale]): a time column sized for 100% cut 「08:20–08:40」 short or
+ * A width that holds text, grown with the text scale in effect (the native UI holds it
+ * at [NATIVE_FONT_SCALE]): a time column sized for 100% cut 「08:20–08:40」 short or
  * wrapped 「08:00」 at 130%.
  */
 @Composable

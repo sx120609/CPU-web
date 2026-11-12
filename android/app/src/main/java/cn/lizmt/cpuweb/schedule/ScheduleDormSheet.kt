@@ -25,7 +25,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -283,7 +282,7 @@ private fun WeekTab(people: List<DormPerson>, meId: Int, today: String, dark: Bo
 @Composable
 private fun CellDialog(cell: DormWeekCell, people: List<DormPerson>, today: String, dark: Boolean, onDismiss: () -> Unit) {
     fun name(id: Int) = people.firstOrNull { it.id == id }?.nickname.orEmpty().ifEmpty { "室友" }
-    AlertDialog(
+    CpuAlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } },
         title = {
@@ -473,7 +472,7 @@ private fun ManageTab(
 
     if (renaming) {
         var name by remember { mutableStateOf(dorm.name) }
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { renaming = false },
             title = { Text("宿舍名") },
             text = { OutlinedTextField(value = name, onValueChange = { name = it.take(24) }, singleLine = true, placeholder = { Text("比如 6 栋 302") }) },
@@ -482,7 +481,7 @@ private fun ManageTab(
         )
     }
     removing?.let { member ->
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { removing = null },
             title = { Text("移出${member.nickname.ifEmpty { "这位室友" }}？") },
             text = { Text("对方会收到通知，TA 的课表也会从宿舍里删除。") },
@@ -491,7 +490,7 @@ private fun ManageTab(
         )
     }
     if (leaving) {
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { leaving = false },
             title = { Text("退出宿舍？") },
             text = { Text(if (dorm.isOwner && dorm.members.size > 1) "舍长会转给最早加入的室友，你的课表会从宿舍里删除。" else "你的课表会从宿舍里删除。") },

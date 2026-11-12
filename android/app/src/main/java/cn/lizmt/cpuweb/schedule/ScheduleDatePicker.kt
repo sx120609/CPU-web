@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -17,7 +19,6 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowLeft
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowRight
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -80,11 +81,12 @@ internal fun ChineseDatePickerDialog(
     var month by remember { mutableStateOf(YearMonth.from(initial)) }
     val scheme = MaterialTheme.colorScheme
     val today = LocalDate.now()
-    AlertDialog(
+    CpuAlertDialog(
         onDismissRequest = onDismiss,
         title = title?.let { { Text(it) } },
         text = {
-            Column(Modifier.fillMaxWidth()) {
+            // Scrolls when the dialog is short (landscape): squeezed rows ran into each other.
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (yearArrows) IconButton(onClick = { month = month.minusYears(1) }) {
                         Icon(Icons.Rounded.KeyboardDoubleArrowLeft, contentDescription = "上一年")

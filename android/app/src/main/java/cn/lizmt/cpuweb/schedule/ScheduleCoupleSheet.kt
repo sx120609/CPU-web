@@ -21,7 +21,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
@@ -143,7 +142,7 @@ fun ScheduleCoupleSheet(activity: MainActivity, minute: Int, onDismiss: () -> Un
 
     val status = couple.status
     if (confirmUnbind && status is CoupleStatus.Active) {
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { confirmUnbind = false },
             title = { Text("解除绑定") },
             text = { Text("确定解除和 ${status.partner.nickname.ifEmpty { "TA" }} 的绑定吗？双方的课表快照和纪念日会立即删除。") },

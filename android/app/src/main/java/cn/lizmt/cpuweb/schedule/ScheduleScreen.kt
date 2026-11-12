@@ -38,10 +38,8 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -246,7 +244,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         }
     }
     overlap?.let { notice ->
-        AlertDialog(
+        CpuAlertDialog(
             onDismissRequest = { overlap = null },
             title = { Text("同一时间排了两门课") },
             text = { Text(notice.text) },
@@ -606,7 +604,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         }
         ScheduleSheet.Share -> {
             val target = shareDayTarget(store)
-            AlertDialog(
+            CpuAlertDialog(
                 onDismissRequest = { sheet = null },
                 title = { Text("分享课表") },
                 text = {
@@ -705,7 +703,7 @@ private fun ScheduleToolbar(store: ScheduleStore, onToday: (() -> Unit)?, onMore
                 )
                 if (canChooseSemester) Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, tint = colors.secondary)
             }
-            DropdownMenu(expanded = semesterMenu, onDismissRequest = { semesterMenu = false }) {
+            CpuDropdownMenu(expanded = semesterMenu, onDismissRequest = { semesterMenu = false }) {
                 store.semesterOptions().forEach { option ->
                     DropdownMenuItem(
                         text = { Text(option.label, fontWeight = if (option.value == store.selectedSemester) FontWeight.Bold else FontWeight.Normal) },
