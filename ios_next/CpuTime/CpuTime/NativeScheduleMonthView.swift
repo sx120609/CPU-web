@@ -46,6 +46,19 @@ struct ScheduleMonthSwipe: ViewModifier {
     }
 }
 
+/// The height the month's rows may share, set where the calendar should fill a
+/// large window (an iPad); nil keeps the phone's fixed rows.
+private struct ScheduleMonthAvailableHeightKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    var scheduleMonthAvailableHeight: CGFloat? {
+        get { self[ScheduleMonthAvailableHeightKey.self] }
+        set { self[ScheduleMonthAvailableHeightKey.self] = newValue }
+    }
+}
+
 @available(iOS 17.0, *)
 struct NativeScheduleMonthView: View {
     /// 所显示月份里的任意一天（`yyyy-MM-dd`）。
@@ -77,6 +90,7 @@ struct NativeScheduleMonthView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scheduleStyle) private var style
     @Environment(\.scheduleCouple) private var couple
+    @Environment(\.scheduleMonthAvailableHeight) private var availableHeight
 
     private static let weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"]
     private static let gutterWidth: CGFloat = 26
@@ -87,7 +101,8 @@ struct NativeScheduleMonthView: View {
         // 每月铺满整周；农历与课程数据只构建一次。
         let days = buildDays()
         if style == .classic {
-            monthGrid(days)
+            let rowHeight = rowHeight(weeks: weeks(days).count)
+            monthGrid(days, rowHeight: rowHeight)
                 .frame(height: CGFloat(weeks(days).count) * (rowHeight + 6) + 38, alignment: .top)
             .modifier(ScheduleMonthSwipe(onMove: onMoveMonth))
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -100,7 +115,14 @@ struct NativeScheduleMonthView: View {
     }
 
     /// 双人模式下多一行「TA N 门」，格子高一点。
-    private var rowHeight: CGFloat { couple == nil ? 88 : 104 }
+    private var baseRowHeight: CGFloat { couple == nil ? 88 : 104 }
+
+    /// iPad 上各行平分给月历的高度，不低于手机上的固定行高。
+    private func rowHeight(weeks: Int) -> CGFloat {
+        guard let availableHeight else { return baseRowHeight }
+        return SchedulePadLayout.monthRowHeight(base: baseRowHeight, available: availableHeight,
+                                                chrome: 38, spacing: 6, weeks: weeks)
+    }
 
     /// 教学周内的一天进日视图；学期外的日期点了没有反应。
     private func open(_ day: Day) {
@@ -120,7 +142,7 @@ struct NativeScheduleMonthView: View {
     // MARK: 月历
 
     /// 折叠到一半的 iPhone Duo 上，折痕两边各排几天，折痕上不放日期（`ScheduleFoldRow`）。
-    private func monthGrid(_ days: [Day]) -> some View {
+    private func monthGrid(_ days: [Day], rowHeight: CGFloat) -> some View {
         VStack(spacing: 6) {
             HStack(spacing: Self.columnSpacing) {
                 Text("周")
@@ -142,7 +164,7 @@ struct NativeScheduleMonthView: View {
                         .foregroundStyle(.tertiary)
                         .frame(width: Self.gutterWidth)
                     ScheduleFoldRow(count: row.count, spacing: Self.columnSpacing) { index in
-                        dayCell(row[index])
+                        dayCell(row[index], rowHeight: rowHeight)
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -154,7 +176,7 @@ struct NativeScheduleMonthView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private func dayCell(_ day: Day) -> some View {
+    private func dayCell(_ day: Day, rowHeight: CGFloat) -> some View {
         let isToday = day.date == todayDate
         let dark = colorScheme == .dark
         let mine = couple.map { CoupleRules.personTone(color: $0.myColor, dark: dark) }
@@ -184,7 +206,9 @@ struct NativeScheduleMonthView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .foregroundStyle(subtitleColor(day))
-                ScheduleMonthCourseLines(lines: lines, partner: partner).padding(.top, 1)
+                ScheduleMonthCourseLines(lines: lines, partner: partner, large: availableHeight != nil,
+                                         rowHeight: rowHeight)
+                    .padding(.top, 1)
                 Spacer(minLength: 0)
             }
             .padding(.top, 2)

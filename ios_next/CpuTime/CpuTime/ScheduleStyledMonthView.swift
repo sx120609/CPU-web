@@ -19,6 +19,7 @@ struct ScheduleStyledMonthPage: View {
     @Environment(\.scheduleHasBackground) private var hasBackground
     @Environment(\.scheduleThemeBrand) private var brand
     @Environment(\.schedulePalette) private var palette
+    @Environment(\.scheduleMonthAvailableHeight) private var availableHeight
 
     private typealias Day = NativeScheduleMonthView.Day
     private static let weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"]
@@ -44,8 +45,14 @@ struct ScheduleStyledMonthPage: View {
         stride(from: 0, to: days.count, by: 7).map { Array(days[$0..<min($0 + 7, days.count)]) }
     }
 
-    /// Taller while the partner's count sits under the user's courses.
-    private var rowHeight: CGFloat { couple == nil ? 92 : 108 }
+    /// Taller while the partner's count sits under the user's courses. On an
+    /// iPad the rows share the height the calendar is given.
+    private var rowHeight: CGFloat {
+        let base: CGFloat = couple == nil ? 92 : 108
+        guard let availableHeight else { return base }
+        return SchedulePadLayout.monthRowHeight(base: base, available: availableHeight,
+                                                chrome: 64, spacing: 6, weeks: rows.count)
+    }
 
     var body: some View {
         grid
@@ -146,7 +153,8 @@ struct ScheduleStyledMonthPage: View {
                     .foregroundStyle(subtitleColor(day))
                 ScheduleMonthCourseLines(
                     lines: lines(day), partner: partner(day), radius: squared ? 0 : 3,
-                    meta: ink.opacity(0.62), design: style.textDesign
+                    meta: ink.opacity(0.62), design: style.textDesign,
+                    large: availableHeight != nil, rowHeight: rowHeight
                 )
                 .padding(.top, 1)
                 Spacer(minLength: 0)
@@ -277,23 +285,36 @@ struct ScheduleMonthCourseLines: View {
     var radius: CGFloat = 3
     var meta: Color = .secondary
     var design: Font.Design = .default
+    /// The iPad's wider cells: larger names, and as many as the row holds.
+    var large = false
+    /// The cell's height; nil keeps the phone's three lines.
+    var rowHeight: CGFloat? = nil
+
+    private var lineHeight: CGFloat { large ? 17 : 14 }
+
+    private var limit: Int {
+        guard let rowHeight else { return 3 }
+        return SchedulePadLayout.monthLineLimit(rowHeight: rowHeight, reserved: partner == nil ? 42 : 58,
+                                                lineHeight: lineHeight + 1)
+    }
 
     var body: some View {
-        // More than three: the first two and how many are left.
-        let shown = lines.count > 3 ? Array(lines.prefix(2)) : lines
+        // More than fit (three on a phone): all but the last line, and how many are left.
+        let limit = limit
+        let shown = lines.count > limit ? Array(lines.prefix(limit - 1)) : lines
         VStack(spacing: 1) {
             ForEach(shown, id: \.name) { line in
                 Text(line.name)
-                    .font(.system(size: 10, weight: .semibold, design: design))
+                    .font(.system(size: large ? 12 : 10, weight: .semibold, design: design))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(line.text)
-                    .padding(.horizontal, 2)
-                    .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 14, alignment: .leading)
+                    .padding(.horizontal, large ? 4 : 2)
+                    .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight, alignment: .leading)
                     .background(line.fill, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             }
-            if lines.count > 3 {
-                Text("+\(lines.count - 2)")
+            if lines.count > limit {
+                Text("+\(lines.count - (limit - 1))")
                     .font(.system(size: 9, weight: .semibold, design: design))
                     .foregroundStyle(meta)
                     .frame(maxWidth: .infinity, minHeight: 12, maxHeight: 12, alignment: .leading)

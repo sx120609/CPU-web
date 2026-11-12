@@ -16,6 +16,8 @@
 
 - **iPhone Duo**：折叠时窗口在 466×678（合上）和 951×669（展开）之间变化，界面按可用宽度和尺寸类别排版，不按机型或屏幕判断；要用满屏幕必须用 Xcode 27.1（iOS 27.1 SDK）编译，四个 target 都已能用它编译。半折（书本姿势）时周视图分成折痕两边各带节次轴的两张表，月视图的日期格也避开折痕；分法由 `ScheduleFoldSplit` 计算，检查脚本是 `bash ios_next/scripts/check-fold-layout.sh`。已做的改动、在 iPhone Duo 模拟器（Device Hub）和可调尺寸显示器上的检查方法、Debug 构建的 `CPU_DEBUG_CANVAS`／`CPU_DEBUG_FOLD` 模拟和剩下的步骤见 [iPhone Duo 适配](docs/iphone-duo.md)。
 
+- **iPad**：宽屏下顶栏把五个标签和页面操作合成一条（系统标签栏隐藏），课表的周、月视图按窗口高度拉伸行高铺满屏幕，日视图旁边多一栏小月历和当天日程，月视图的「当天安排」在横屏时排到月历右侧，长面板以整页呈现，登录表单居中；接键盘时 ⌘1–⌘5 切标签、⌘←/⌘→ 翻周或月、⌘T 回到今天、⌘R 刷新。除顶栏只在 iPad 上启用外，其余都按窗口宽高和尺寸类别决定，分屏变窄后回到手机布局。算法在 `SchedulePadLayout`，检查脚本是 `bash ios_next/scripts/check-pad-layout.sh`，改动、检查方法和没查到的部分见 [iPad 适配](docs/ipad.md)。
+
 回归方式与实际测试范围见 [系统兼容测试记录](docs/ios-compatibility-qa.md)。App Store 已发布的 4.13 最低支持 iOS 15；网站下载页和 `web/src/utils/clientInfo.ts` 已同步这一要求，并注明 iOS 15–16 的网页兼容界面与 iOS 17 及以上的原生功能边界。
 
 ## 当前范围

@@ -83,6 +83,7 @@ struct ContentView: View {
     @StateObject private var shell = NativeShellCoordinator()
     @StateObject private var watchSchedule = PhoneWatchScheduleStore()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("CPUHasSeenWelcomeV3") private var hasSeenWelcome = false
     private let debugMockSchedule: Bool
     private let debugAssistant: Bool
@@ -304,13 +305,22 @@ struct ContentView: View {
     @ViewBuilder
     private var debugMockScheduleView: some View {
         if ProcessInfo.processInfo.environment["CPU_DEBUG_MOCK_TABS"] == "1" {
-            TabView(selection: .constant(ShellTab.schedule)) {
-                ForEach([ShellTab.home, .academic, .schedule, .services, .profile], id: \.self) { tab in
-                    Group {
-                        if tab == .schedule { NativeScheduleView(store: scheduleStore) } else { Color.clear }
+            // The same chrome as `NativeShellView`: on an iPad the top bar carries the tabs.
+            let padChrome = NativePadChrome.isOn(horizontalSizeClass)
+            VStack(spacing: 0) {
+                if padChrome {
+                    NativeTopBar(session: webSession, tabs: .constant(ShellTab.schedule),
+                                 onHome: {}, onRefresh: {}, onNotifications: {}, onMenu: {})
+                }
+                TabView(selection: .constant(ShellTab.schedule)) {
+                    ForEach([ShellTab.home, .academic, .schedule, .services, .profile], id: \.self) { tab in
+                        Group {
+                            if tab == .schedule { NativeScheduleView(store: scheduleStore) } else { Color.clear }
+                        }
+                        .toolbar(padChrome ? .hidden : .visible, for: .tabBar)
+                        .tabItem { Label(tab.label, systemImage: tab.systemImage) }
+                        .tag(tab)
                     }
-                    .tabItem { Label(tab.label, systemImage: tab.systemImage) }
-                    .tag(tab)
                 }
             }
             .tint(.cpuBrand)
@@ -722,6 +732,8 @@ private struct LoginGateView: View {
     @State private var mfaRevision = 0
     @State private var requestRevision = 0
     @FocusState private var focusedField: NativeLoginFieldKind?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private var brandName: String { school?.brandName ?? "药大拾间" }
     private var schoolHasSSO: Bool { school?.ssoLogin ?? true }
@@ -737,25 +749,30 @@ private struct LoginGateView: View {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                    if !mfaQr.isEmpty {
-                        mfaPanel
-                    } else {
-                        schoolPicker
-                        if accountLoginUnlocked && schoolHasSSO {
-                            modePicker
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        header
+                        if !mfaQr.isEmpty {
+                            mfaPanel
+                        } else {
+                            schoolPicker
+                            if accountLoginUnlocked && schoolHasSSO {
+                                modePicker
+                            }
+                            form
                         }
-                        form
                     }
+                    .frame(maxWidth: 430)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 28)
+                    // A window much taller than the form (an iPad) holds it in
+                    // the middle instead of leaving it against the top edge.
+                    .frame(maxWidth: .infinity,
+                           minHeight: horizontalSizeClass == .regular && verticalSizeClass == .regular ? proxy.size.height : nil)
                 }
-                .frame(maxWidth: 430)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 28)
-                .frame(maxWidth: .infinity)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
         }
         .task { await prepareSchoolLogin() }
         .task { await loadSchools() }
@@ -1417,14 +1434,34 @@ struct NativeShellView: View {
     @State private var nativeOverlayMode: NativeShellOverlay = .quickEntry
     @State private var quickEntryOpening = false
     @State private var quickEntryContentHeight: CGFloat = 0
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// On an iPad wide enough for it, one bar carries the logo, the five tabs
+    /// and the page actions, and the system tab bar is hidden: stacked, the
+    /// two bars took a sixth of a landscape screen before any content.
+    private var padChrome: Bool { NativePadChrome.isOn(horizontalSizeClass) }
+
+    /// Pages with their own navigation own the whole surface. The timetable
+    /// has its own header: it keeps the bar only where the bar carries the tabs.
+    private var showsTopBar: Bool {
+        if shell.selectedTab == .schedule { return padChrome }
+        return !NativePageChrome.usesPageNavigation(webSession.currentPath)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if shell.selectedTab != .schedule && !NativePageChrome.usesPageNavigation(webSession.currentPath) {
+            if showsTopBar {
                 NativeTopBar(
                     session: webSession,
+                    tabs: padChrome ? selection : nil,
                     onHome: { shell.userSelected(.home) },
-                    onRefresh: { webSession.refreshCurrentPage() },
+                    onRefresh: {
+                        if shell.selectedTab == .schedule {
+                            Task { await scheduleStore.load(force: true) }
+                        } else {
+                            webSession.refreshCurrentPage()
+                        }
+                    },
                     onNotifications: { shell.openWeb(path: "/messages", tab: .profile) },
                     onMenu: {
                         guard !quickEntryOpening else { return }
@@ -1444,6 +1481,7 @@ struct NativeShellView: View {
                 session: webSession,
                 tab: .home,
                 isActive: shell.selectedTab == .home,
+                hidesTabBar: padChrome,
                 showsNativePostButton: NativePageChrome.showsPostButton(webSession.currentPath),
                 onNativePost: { shell.openWeb(path: "/post", tab: .home) }
             )
@@ -1452,7 +1490,7 @@ struct NativeShellView: View {
             }
             .tag(ShellTab.home)
 
-            WebTabScreen(session: webSession, tab: .academic, isActive: shell.selectedTab == .academic)
+            WebTabScreen(session: webSession, tab: .academic, isActive: shell.selectedTab == .academic, hidesTabBar: padChrome)
                 .tabItem {
                     Label(ShellTab.academic.label, systemImage: ShellTab.academic.systemImage)
                 }
@@ -1463,18 +1501,19 @@ struct NativeShellView: View {
                 onLogin: { shell.openWeb(path: "/login", tab: .profile) },
                 onDeviceSettings: { deviceSettingsPresented = true }
             )
+            .toolbar(padChrome ? .hidden : .visible, for: .tabBar)
             .tabItem {
                 Label(ShellTab.schedule.label, systemImage: ShellTab.schedule.systemImage)
             }
             .tag(ShellTab.schedule)
 
-            WebTabScreen(session: webSession, tab: .services, isActive: shell.selectedTab == .services)
+            WebTabScreen(session: webSession, tab: .services, isActive: shell.selectedTab == .services, hidesTabBar: padChrome)
                 .tabItem {
                     Label(ShellTab.services.label, systemImage: ShellTab.services.systemImage)
                 }
                 .tag(ShellTab.services)
 
-            WebTabScreen(session: webSession, tab: .profile, isActive: shell.selectedTab == .profile)
+            WebTabScreen(session: webSession, tab: .profile, isActive: shell.selectedTab == .profile, hidesTabBar: padChrome)
                 .tabItem {
                     Label(ShellTab.profile.label, systemImage: ShellTab.profile.systemImage)
                 }
@@ -1484,6 +1523,7 @@ struct NativeShellView: View {
         .sheet(isPresented: $deviceSettingsPresented) {
             NativeDeviceSettingsView(session: webSession, watchStore: watchSchedule, scheduleStore: scheduleStore)
                 .preferredColorScheme(webSession.pageColorScheme)
+                .padPageSheet()
         }
         .sheet(isPresented: $nativeOverlayPresented) {
             switch nativeOverlayMode {
@@ -1498,6 +1538,7 @@ struct NativeShellView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(28)
+                .padPageSheet()
                 // Keep the AI surface opaque while WebKit is restoring its
                 // route. A translucent sheet briefly revealed the underlying
                 // page during streaming and looked like a flash.
@@ -1686,8 +1727,10 @@ private struct NativeQuickEntryHeightKey: PreferenceKey {
 }
 
 @available(iOS 17.0, *)
-private struct NativeTopBar: View {
+struct NativeTopBar: View {
     @ObservedObject var session: HybridWebViewStore
+    /// The selected tab, where this bar also carries the tabs (`NativePadChrome`).
+    var tabs: Binding<ShellTab>? = nil
     let onHome: () -> Void
     let onRefresh: () -> Void
     let onNotifications: () -> Void
@@ -1713,28 +1756,40 @@ private struct NativeTopBar: View {
             .layoutPriority(2)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityLabel("首页")
+            // With the tabs in the middle, the two sides take equal shares
+            // so the tabs sit on the window's centre line.
+            .frame(maxWidth: tabs == nil ? nil : .infinity, alignment: .leading)
 
-            Spacer(minLength: 4)
-
-            topBarIconButton(
-                systemName: session.appearanceIconName,
-                label: "外观：\(session.appearanceModeLabel)"
-            ) {
-                session.cycleAppearanceMode()
+            if let tabs {
+                NativePadTabStrip(selection: tabs)
+                    .layoutPriority(3)
+            } else {
+                Spacer(minLength: 4)
             }
 
-            topBarIconButton(systemName: "arrow.clockwise", label: "刷新页面", action: onRefresh)
+            HStack(spacing: 4) {
+                topBarIconButton(
+                    systemName: session.appearanceIconName,
+                    label: "外观：\(session.appearanceModeLabel)"
+                ) {
+                    session.cycleAppearanceMode()
+                }
 
-            topBarIconButton(
-                systemName: "bell",
-                label: session.notificationButtonLabel,
-                badge: session.unreadNotificationCount,
-                action: onNotifications
-            )
+                topBarIconButton(systemName: "arrow.clockwise", label: "刷新页面", action: onRefresh)
+                    .keyboardShortcut("r", modifiers: .command)
 
-            topBarIconButton(systemName: "ellipsis.circle", label: "更多", action: onMenu)
+                topBarIconButton(
+                    systemName: "bell",
+                    label: session.notificationButtonLabel,
+                    badge: session.unreadNotificationCount,
+                    action: onNotifications
+                )
+
+                topBarIconButton(systemName: "ellipsis.circle", label: "更多", action: onMenu)
+            }
+            .frame(maxWidth: tabs == nil ? nil : .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, tabs == nil ? 12 : 16)
         .frame(minHeight: 56)
         .padding(.vertical, 4)
         .background(.ultraThinMaterial)
@@ -1773,7 +1828,63 @@ private struct NativeTopBar: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
+        .hoverEffect(.highlight)
         .accessibilityLabel(label)
+    }
+}
+
+/// Whether the shell draws its tabs in the top bar and hides the system tab
+/// bar. iPad only: an iPhone keeps the tab bar at the foot, and on an
+/// unfolded iPhone Duo the system moves the bars to the trailing edge itself.
+/// A narrow split or Slide Over window is compact and gets the phone's shell.
+enum NativePadChrome {
+    @MainActor
+    static func isOn(_ horizontal: UserInterfaceSizeClass?) -> Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontal == .regular
+    }
+}
+
+/// The five tabs as one capsule in the iPad's top bar. ⌘1–⌘5 pick a tab
+/// from a keyboard.
+@available(iOS 17.0, *)
+struct NativePadTabStrip: View {
+    @Binding var selection: ShellTab
+    @Namespace private var pill
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(ShellTab.allCases.enumerated()), id: \.element) { index, tab in
+                let selected = selection == tab
+                Button {
+                    selection = tab
+                } label: {
+                    Label(tab.label, systemImage: tab.systemImage)
+                        .labelStyle(.titleAndIcon)
+                        .font(.subheadline.weight(selected ? .semibold : .medium))
+                        .lineLimit(1)
+                        .foregroundStyle(selected ? Color.cpuBrand : Color.primary.opacity(0.78))
+                        .padding(.horizontal, 13)
+                        .frame(height: 36)
+                        .background {
+                            if selected {
+                                Capsule().fill(Color.cpuBrand.opacity(0.15))
+                                    .matchedGeometryEffect(id: "selected", in: pill)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+            }
+        }
+        .padding(3)
+        .background(Color.primary.opacity(0.06), in: Capsule())
+        .animation(.snappy(duration: 0.22), value: selection)
+        .fixedSize()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("页面")
     }
 }
 
@@ -1782,6 +1893,8 @@ private struct WebTabScreen: View {
     @ObservedObject var session: HybridWebViewStore
     let tab: ShellTab
     let isActive: Bool
+    /// The iPad's top bar carries the tabs, so the system tab bar stays hidden.
+    var hidesTabBar = false
     var showsNativePostButton = false
     var onNativePost: (() -> Void)? = nil
 
@@ -1821,7 +1934,7 @@ private struct WebTabScreen: View {
         .overlay(alignment: .top) {
             if isActive, session.isLoading { ProgressView().padding(8) }
         }
-        .toolbar(NativePageChrome.usesPageNavigation(session.currentPath) ? .hidden : .visible, for: .tabBar)
+        .toolbar(hidesTabBar || NativePageChrome.usesPageNavigation(session.currentPath) ? .hidden : .visible, for: .tabBar)
     }
 
     private var unavailableState: (title: String, message: String)? {

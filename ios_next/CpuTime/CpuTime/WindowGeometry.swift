@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// The size of the window the app is drawn in. `UIScreen.main` is one fixed
@@ -46,6 +47,21 @@ enum NativeTextSizeLimit {
             for window in scene.windows {
                 window.traitOverrides.preferredContentSizeCategory = limited
             }
+        }
+    }
+}
+
+extension View {
+    /// A sheet with a long list or an editor in it. An iPad presents sheets as
+    /// a small form by default, which cuts such content off and makes it
+    /// scroll in a window with room to spare; as a page it gets most of the
+    /// window's height. An iPhone's sheets are not changed by this.
+    @ViewBuilder
+    func padPageSheet() -> some View {
+        if #available(iOS 18.0, *) {
+            presentationSizing(.page)
+        } else {
+            self
         }
     }
 }
