@@ -9,6 +9,7 @@ import {
   reduceKeyboardBaseline,
   reduceKeyboardGeometry,
   settleKeyboardGeometryClose,
+  unfittedVisualScale,
   type KeyboardViewportState,
   type ViewportSample,
 } from "../src/utils/keyboardViewport";
@@ -157,4 +158,26 @@ test("only phones assume a keyboard as soon as an editor is focused", () => {
   assert.equal(assumesKeyboardOnFocus("phone", { ...focus, withinFocusGrace: false }), false);
   assert.equal(assumesKeyboardOnFocus("phone", { ...focus, editorFocused: false }), false);
   assert.equal(assumesKeyboardOnFocus("phone", { ...focus, editorFocused: false, fullHeightContent: true }), true);
+});
+
+test("a narrow Android phone's designed fit is not a zoom: the keyboard is still detected", () => {
+  // 360dp phone laid out 393 wide: the browser reports scale 360/393 while nothing is zoomed.
+  const fit = 360 / 393;
+  assert.equal(unfittedVisualScale(fit, fit), 1);
+  assert.equal(unfittedVisualScale(1, undefined), 1);
+  assert.equal(unfittedVisualScale(1, Number.NaN), 1);
+  assert.equal(unfittedVisualScale(undefined, fit), 1);
+  // A shell that ignored the fixed width reports 1, and a real zoom on top of the fit is still a zoom.
+  assert.equal(unfittedVisualScale(1, fit), 1);
+  assert.equal(unfittedVisualScale(1.6, fit), 1.6);
+  assert.equal(unfittedVisualScale(2, undefined), 2);
+
+  const scaled = (innerHeight: number, visualHeight = innerHeight) =>
+    view(393, innerHeight, visualHeight, { visualScale: unfittedVisualScale(fit, fit) });
+  let state = replay([scaled(678)], { editableFocused: false });
+  assert.equal(state.baseHeight, 678);
+  // The keyboard opens: Android shrinks the window, so both heights drop together.
+  state = step(state, scaled(360), { editableFocused: true }).state;
+  assert.equal(state.geometryOpen, true);
+  assert.equal(measureKeyboardInset(state, scaled(360)), 318);
 });

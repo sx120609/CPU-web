@@ -19,6 +19,33 @@
   const themeColor = document.querySelector("meta[name='theme-color']");
   if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#0e1012" : "#f8fafc");
 
+  // 安卓 App 里的窄屏手机（360dp，或系统“显示大小”调大后的 320dp）：同样的字号和间距比 iPhone 上显得大一圈，
+  // 一屏放的内容也少。这里把页面按 393 宽的手机来排，再整体缩到窗口宽。比例只看设备的短边，横屏、分屏时
+  // 不变；宽度按窗口实际宽度换算。短边不到 384 的才缩，够宽的手机和平板保持原样。原生界面用的是同一套数（CpuTheme.kt）。
+  const viewportMeta = document.querySelector("meta[name='viewport']");
+  if (viewportMeta && typeof screen !== "undefined" && window.addEventListener
+    && /Android/.test(navigator.userAgent) && /CPUWebScheduleApp|CPUTimeNative/.test(navigator.userAgent)) {
+    const designWidth = 393;
+    const fullWidth = 384;
+    const smallestScale = 0.84;
+    const deviceViewport = viewportMeta.getAttribute("content");
+    const fitViewport = () => {
+      const shortSide = Math.min(screen.width, screen.height);
+      const scale = shortSide > 0 && shortSide < fullWidth ? Math.max(shortSide / designWidth, smallestScale) : 1;
+      // outerWidth 是窗口的宽（不随 viewport 变）；拿不到或不可信时用屏幕宽。
+      const outer = window.outerWidth;
+      const windowWidth = outer > 0 && outer <= Math.max(screen.width, screen.height) + 1 ? outer : screen.width;
+      const layoutWidth = Math.round(windowWidth / scale);
+      const content = scale < 1 ? "width=" + layoutWidth + ", viewport-fit=cover, user-scalable=no" : deviceViewport;
+      if (viewportMeta.getAttribute("content") !== content) viewportMeta.setAttribute("content", content);
+      // 键盘检测（utils/keyboardViewport.ts）靠它分清“按设计缩小”和“用户放大了页面”。
+      if (scale < 1) root.dataset.cpuViewportScale = String(windowWidth / layoutWidth);
+      else delete root.dataset.cpuViewportScale;
+    };
+    fitViewport();
+    window.addEventListener("resize", fitViewport);
+  }
+
   const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   if (!isIos || !window.matchMedia) return;

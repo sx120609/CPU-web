@@ -437,6 +437,7 @@ import {
   settleKeyboardGeometryClose,
   type KeyboardViewportState,
   type ViewportSample,
+  unfittedVisualScale,
 } from "@/utils/keyboardViewport";
 import { isRegisteredMobileApp } from "../../../shared/appFiling";
 
@@ -934,7 +935,7 @@ function readViewportSample(): ViewportSample {
     innerWidth: window.innerWidth,
     innerHeight: window.innerHeight,
     visualHeight: viewport?.height ?? window.innerHeight,
-    visualScale: viewport?.scale ?? 1,
+    visualScale: unfittedVisualScale(viewport?.scale, Number(document.documentElement.dataset.cpuViewportScale)),
     keyboardInset: getVirtualKeyboardInset(),
   };
 }

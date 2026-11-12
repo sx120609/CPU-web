@@ -45,6 +45,18 @@ export const initialKeyboardViewportState: KeyboardViewportState = Object.freeze
   geometryOpen: false,
 });
 
+/**
+ * visualViewport.scale with the page's designed fit taken out. In the Android app a narrow phone lays
+ * the page out wider than the window and shrinks it to fit (public/appearance-bootstrap.js records that
+ * scale in `data-cpu-viewport-scale`), so the browser reports e.g. 0.916 while nothing is zoomed. A scale
+ * that matches the recorded fit reads as 1; anything else is returned as it is.
+ */
+export function unfittedVisualScale(scale: number | undefined, fitScale: number | undefined) {
+  const actual = scale && scale > 0 ? scale : 1;
+  if (!fitScale || !(fitScale > 0) || fitScale >= 1) return actual;
+  return Math.abs(actual - fitScale) <= SCALE_TOLERANCE ? 1 : actual;
+}
+
 export function isViewportScaled(sample: ViewportSample) {
   return Math.abs((sample.visualScale ?? 1) - 1) > SCALE_TOLERANCE;
 }
