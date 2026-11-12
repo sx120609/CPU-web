@@ -151,3 +151,20 @@ test("only the HarmonyOS app hides the client download entries (AppGallery revie
   assert.equal(client("Mozilla/5.0 (Linux; Android 15) CPUWebScheduleApp/61 CPUTimeNative/1").hidesClientDownloads(), false);
   assert.equal(client(iphone, { touch: 5 }).hidesClientDownloads(), false);
 });
+
+test("guests and the restricted account are the limited audience in the iOS and HarmonyOS apps only", () => {
+  const ios = client(`${iphone} CPUWebIOSApp/83 CPUTimeNative/1`, { touch: 5 });
+  const harmony = client("Mozilla/5.0 (Phone; OpenHarmony 5.0) CPUWebHarmonyApp/30 CPUTimeNative/1", { touch: 10 });
+  for (const api of [ios, harmony]) {
+    assert.equal(api.isStoreAppRestrictedViewer(false, undefined), true);
+    assert.equal(api.isStoreAppRestrictedViewer(true, " 2020240384 "), true);
+    assert.equal(api.isStoreAppRestrictedViewer(true, "2020240444"), false);
+    assert.equal(api.shouldHideNativeMiniGames(false, undefined), true);
+    assert.equal(api.shouldHideNativeMiniGames(true, "2020240444"), false);
+  }
+  const android = client("Mozilla/5.0 (Linux; Android 15) CPUWebScheduleApp/61 CPUTimeNative/1");
+  for (const api of [android, client(iphone, { touch: 5 })]) {
+    assert.equal(api.isStoreAppRestrictedViewer(false, undefined), false);
+    assert.equal(api.isStoreAppRestrictedViewer(true, "2020240384"), false);
+  }
+});

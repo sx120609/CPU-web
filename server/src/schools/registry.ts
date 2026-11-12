@@ -83,7 +83,7 @@ export type SchoolFeaturedLink = {
   /** 卡片图标的色调。 */
   tone: string;
   url: string;
-  /** iOS、鸿蒙 App 内不出现：交友这类站外内容先不放进要过应用市场审核的 App。 */
+  /** iOS、鸿蒙 App 内不给游客和内网限制账号看（和小游戏同一条判断），其他账号照常显示。 */
   hiddenInStoreApps?: boolean;
 };
 
