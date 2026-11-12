@@ -939,7 +939,8 @@ export struct NativeScheduleBody {
       .border({ width: 1, radius: 20, color: this.blockPhase(block, this.view.selectedDay) === 'completed'
         ? scheduleAlpha(scheduleMetaText(this.store.dark), 0.16)
         : scheduleCourseBorder(scheduleStyleCourseColor(block.course.name, this.store.palette), this.store.dark) })
-      .shadow({ radius: this.blockPhase(block, this.view.selectedDay) === 'completed' ? 0 : 7, offsetY: 3,
+      // A finished card has no shadow. Targeting API 26, a 0 radius draws a hard-edged one; a negative radius draws none.
+      .shadow({ radius: this.blockPhase(block, this.view.selectedDay) === 'completed' ? -1 : 7, offsetY: 3,
         color: this.store.dark ? '#2E000000' : '#12000000' })
       .opacity(this.tileOpacity(block)).grayscale(block.whole.cancelled ? 1 : 0)
       .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))

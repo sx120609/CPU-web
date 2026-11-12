@@ -1,6 +1,6 @@
 # 药大拾间 HarmonyOS App
 
-这是与新版 iOS 客户端采用同一结构的 HarmonyOS Stage 模型应用：ArkUI 原生五栏外壳与原生课表负责高频交互，其他校园模块继续使用同一个 ArkWeb 实例加载现有站点。课表外观按网页版重绘，数据与缓存沿用 `ios_next` 的共享课表桥。最低 HarmonyOS 6.0（API 20），目标 HarmonyOS 6.1.1（API 24）。
+这是与新版 iOS 客户端采用同一结构的 HarmonyOS Stage 模型应用：ArkUI 原生五栏外壳与原生课表负责高频交互，其他校园模块继续使用同一个 ArkWeb 实例加载现有站点。课表外观按网页版重绘，数据与缓存沿用 `ios_next` 的共享课表桥。最低 HarmonyOS 6.0（API 20），目标 HarmonyOS 7（API 26.0.0）。
 
 ## 原生应用能力
 
@@ -60,7 +60,7 @@
 
 ## 构建
 
-本机需要 DevEco Studio / HarmonyOS SDK。项目不包含开发者账号的签名路径或凭据；首次打开后请使用当前“药大拾间”开发者账号配置自动签名或导入该账号签发的发布证书。
+本机需要 DevEco Studio 26.0.0 或更新版本（随附 HarmonyOS SDK API 26.0.0）；更早的 DevEco Studio 不认识 `targetSdkVersion` 的 `26.0.0`。项目不包含开发者账号的签名路径或凭据；首次打开后请使用当前“药大拾间”开发者账号配置自动签名或导入该账号签发的发布证书。
 
 先安装 `web` 的依赖，在仓库根目录生成共享桥和主题资源：
 
@@ -79,12 +79,14 @@ node --test harmony/tests/*.test.mjs ios_next/tests/web-schedule-bridge.test.mjs
 当前开发机命令行构建：
 
 ```powershell
-$env:DEVECO_SDK_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.1.1.300\sdk'
-$env:NODE_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.1.1.300\tools\node'
+$env:DEVECO_SDK_HOME = 'D:\DevTools\Huawei\DevEcoStudio-26.0.0.865\sdk'
+$env:NODE_HOME = 'D:\DevTools\Huawei\DevEcoStudio-26.0.0.865\tools\node'
 $env:Path = "$env:NODE_HOME;$env:Path"
-& 'D:\DevTools\Huawei\DevEcoStudio-6.1.1.300\tools\hvigor\bin\hvigorw.bat' `
+& 'D:\DevTools\Huawei\DevEcoStudio-26.0.0.865\tools\hvigor\bin\hvigorw.bat' `
   --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon
 ```
+
+用 API 26 的 SDK 编译时，`Circle().fill()`／`.stroke()` 会各报一条“26.0.0 起支持、当前兼容版本 6.0.0(20)”的警告：API 26 为 `Circle` 增加了可传 `ColorMetrics` 的重载，本项目只传颜色字符串和资源，旧系统上调用的仍是原有方法。阴影半径为 0 在目标版本 26.0.0 起会画出不带模糊的阴影，不要阴影时传 `-1`。
 
 无签名构建只能证明 ArkTS、资源和打包流程可编译，不能证明真机登录、服务卡片权限、后台刷新或上架签名可用。真机验收需覆盖登录恢复、本科／研究生课表、快速切周、账号切换、断网恢复、所有桌面／锁屏卡片尺寸、深浅模式及冷／热启动深链。
 
