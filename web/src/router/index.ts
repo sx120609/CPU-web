@@ -312,7 +312,26 @@ export const router = createRouter({
 // Registered ahead of the guard below, so a layout flip while that guard awaits never cancels the navigation.
 installForumListLayoutSync(router, forumListRouteOptions);
 
+/**
+ * 旧版鸿蒙 App 把邀请链接拼在了带参数的启动地址后面：
+ * /home?client=harmony-app&appVersionCode=33&appVersionName=3.2.0/schedule?couple=1&code=…
+ * 课表路径落进了 appVersionName 里。这里把它还原成真正的课表地址，并丢掉本不属于浏览器的客户端参数。
+ */
+export function legacyHarmonyInviteLocation(path: string, query: Record<string, unknown>) {
+  if (path !== "/home" || typeof query.appVersionName !== "string") return null;
+  const match = /(\/schedule(?:\/share\/[A-Za-z0-9]+)?)(?:\?(.*))?$/.exec(query.appVersionName);
+  if (!match) return null;
+  const restored: Record<string, string> = {};
+  for (const [key, value] of new URLSearchParams(match[2] || "")) restored[key] = value;
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string" && !["client", "appVersionCode", "appVersionName"].includes(key)) restored[key] = value;
+  }
+  return { path: match[1], query: restored };
+}
+
 router.beforeEach(async (to, from) => {
+  const legacyInvite = legacyHarmonyInviteLocation(to.path, to.query);
+  if (legacyInvite) return { ...legacyInvite, replace: true };
   if (hidesClientDownloads() && /^\/downloads?(\/|$)/.test(to.path)) {
     return { path: "/services", replace: true };
   }
