@@ -165,6 +165,7 @@ const {
   academicDataUnavailable,
   campusPortal,
   publicServiceLinks,
+  featuredLinks,
   clientApps,
   libraryAvailable,
   loadToolMetas,
@@ -204,6 +205,14 @@ const shortcuts = computed(() => [
     sub: "桌面端与手机端",
     open: () => { void router.push("/download"); },
   }]),
+  ...featuredLinks.value.map((link) => ({
+    key: link.url,
+    icon: link.icon,
+    tone: link.tone,
+    title: link.name,
+    sub: link.summary,
+    open: () => { window.open(link.url, "_blank", "noopener,noreferrer"); },
+  })),
 ]);
 
 const matchedShortcuts = computed(() => shortcuts.value.filter((item) => matches(item.title, item.sub)));

@@ -25,6 +25,7 @@ function publicSchool(school: SchoolProfile) {
     campuses: school.campuses,
     userGroup: school.userGroup ?? null,
     publicLinks: school.publicLinks,
+    featuredLinks: school.featuredLinks ?? [],
     periods: school.defaultPeriods,
     /** 校庆期内才给：网页据此提供并默认使用校庆主题。 */
     celebration: activeCelebration(school),

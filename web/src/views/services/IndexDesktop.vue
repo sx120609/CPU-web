@@ -32,6 +32,19 @@
         <span><b>{{ clientShortcut.title }}</b><small>{{ clientShortcut.sub }}</small></span>
         <el-icon aria-hidden="true"><ArrowRight /></el-icon>
       </button>
+      <a
+        v-for="link in featuredLinks"
+        :key="link.url"
+        class="svc-d-shortcut"
+        :style="{ '--tone': link.tone }"
+        :href="link.url"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <span class="pk-tile" aria-hidden="true"><AppIcon :name="link.icon" /></span>
+        <span><b>{{ link.name }}</b><small>{{ link.summary }}</small></span>
+        <el-icon aria-hidden="true"><TopRight /></el-icon>
+      </a>
     </div>
 
     <section class="svc-d-section" aria-labelledby="svc-d-tools-title">
@@ -108,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowRight, InfoFilled, Lock, Tools } from "@element-plus/icons-vue";
+import { ArrowRight, InfoFilled, Lock, Tools, TopRight } from "@element-plus/icons-vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
@@ -128,6 +141,7 @@ const {
   academicDataUnavailable,
   campusPortal,
   publicServiceLinks,
+  featuredLinks,
   clientApps,
   libraryAvailable,
   loadToolMetas,
@@ -161,6 +175,7 @@ const clientShortcut = canOfferDesktopClient()
   color: inherit;
   font: inherit;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition: border-color .15s ease;
 }

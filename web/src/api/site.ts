@@ -89,6 +89,8 @@ export type SchoolSummary = {
   userGroup?: { qq: string; joinUrl: string } | null;
   /** 游客的公开校园入口。 */
   publicLinks?: Array<{ name: string; icon: string; url: string }>;
+  /** 服务页顶部的站外推荐入口。 */
+  featuredLinks?: Array<{ name: string; summary: string; icon: string; tone: string; url: string; hiddenInStoreApps?: boolean }>;
   /** 这所学校的默认作息（节次从 1 起连续编号）。 */
   periods?: Array<{ no: number; name: string; start: string; end: string }>;
   /** 校庆期内才有：建校年份、校庆日（北京时间 YYYY-MM-DD）、主题口号、校庆主题提供到哪天。 */

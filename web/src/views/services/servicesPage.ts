@@ -8,7 +8,7 @@ import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
-import { hidesClientDownloads, shouldHideNativeMiniGames } from "@/utils/clientInfo";
+import { hidesClientDownloads, isIosOrHarmonyNativeApp, shouldHideNativeMiniGames } from "@/utils/clientInfo";
 import { detectVenueLaunchMode, openVenueReservationWithoutReferrer } from "@/utils/venueReservation";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
 
@@ -167,11 +167,17 @@ export function useServicesPage() {
   const publicServiceLinks = computed(() => site.publicLinks);
   const clientApps = computed(() => site.clientAppsAvailable);
   const libraryAvailable = computed(() => site.pathEnabled("/library"));
+  /** 学校档案给的站外推荐入口；标了 hiddenInStoreApps 的在 iOS、鸿蒙 App 内不出现。 */
+  const featuredLinks = computed(() => {
+    const inStoreApp = isIosOrHarmonyNativeApp();
+    return site.featuredLinks.filter((link) => !(inStoreApp && link.hiddenInStoreApps));
+  });
   return {
     ...tools,
     jwxt,
     campusPortal,
     publicServiceLinks,
+    featuredLinks,
     clientApps,
     libraryAvailable,
     electricOpen,

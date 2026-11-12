@@ -67,11 +67,24 @@ export type SchoolProfile = {
   userGroup?: { qq: string; joinUrl: string };
   /** 没登录教务时服务页给游客的公开校园入口（图书馆、教务处、新闻网等）。 */
   publicLinks: ReadonlyArray<{ name: string; icon: string; url: string }>;
+  /** 服务页顶部的站外推荐入口，在新页面打开；没有就不显示。 */
+  featuredLinks?: ReadonlyArray<SchoolFeaturedLink>;
   defaultPeriods: readonly SchoolPeriod[];
   /** 校庆：在 until 之前网页提供校庆主题并默认使用，首页显示校庆横幅。没有校庆的学校不填。 */
   celebration?: SchoolCelebration;
   /** 这所学校默认开着哪些功能；没列出的功能默认关闭。 */
   defaultModules: readonly string[];
+};
+
+export type SchoolFeaturedLink = {
+  name: string;
+  summary: string;
+  icon: string;
+  /** 卡片图标的色调。 */
+  tone: string;
+  url: string;
+  /** iOS、鸿蒙 App 内不出现：交友这类站外内容先不放进要过应用市场审核的 App。 */
+  hiddenInStoreApps?: boolean;
 };
 
 export type SchoolCelebration = {
