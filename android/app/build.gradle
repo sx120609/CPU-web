@@ -52,8 +52,8 @@ android {
         applicationId resolvedApplicationId
         minSdk 24
         targetSdk 35
-        versionCode 67
-        versionName "4.2.1"
+        versionCode 68
+        versionName "4.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "boolean", "WEB_DEBUG", (project.findProperty("webDebug") == "true").toString()
