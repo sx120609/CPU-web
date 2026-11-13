@@ -42,4 +42,18 @@ The 「协议更新」 answer that blocked 4.20's submission on 2026-11-12 did n
 
 At about 14:25 a student at 南京中医药大学 showed a Live Activity announcing their 14:00 class for 14:25: the server timed every school by the default school's bells. The user asked for that to be fixed before anything ships, so the submission was cancelled at about 14:30 (the version reads 被开发者拒绝, the submission 已移除); build 84 was never reviewed.
 
-The fix is mostly the server's (each school's activities follow its own table, see `docs/live-activity-v2-implementation.md`), and reaches installed versions once the server is deployed. The app's part, declaring the timetable's own bells and not carrying one account's timing to the next, is not in build 84: 4.21 needs a new build before it is submitted again.
+The fix is mostly the server's (each school's activities follow its own table, see `docs/live-activity-v2-implementation.md`), and reaches installed versions once the server is deployed. The app's part, declaring the timetable's own bells and not carrying one account's timing to the next, is not in build 84.
+
+## Build 85
+
+Archived the same day from `6ac0998c` (the fix) plus the build number; all four targets carry 4.21 (85), `check-legacy-linkage.py` passed as before. The archive is `~/Library/Developer/Xcode/Archives/2026-11-13/CpuTime-4.21-85.xcarchive`. Organizer's first attempt again answered 「Unable to authenticate with App Store Connect」 and the retry uploaded it: 「CpuTime 4.21 (85) uploaded」.
+
+Besides build 84's contents it carries the app's side of the bells fix: the timetable's own period table goes along when the Live Activity config is read, the config is asked for again when a table has no channels yet, and timing issued to one account is not used for the next. Checked with `check-live-activity.sh` and Debug and Release builds; not on a device.
+
+In App Store Connect build 84 was replaced by 85 on version 4.21 and it was submitted again at about 15:16; it is 正在等待审核, still set to release automatically. The export compliance answer for build 85 is the same, chosen with the user's authorization. 「此版本的新增内容」 is the six lines above and a seventh the user approved:
+
+> · 修复部分学校的课程实时活动上课时间显示不对的问题。
+
+The review notes' first line:
+
+> 本次更新：新增本周课表小组件，小组件支持文字大小等显示设置和实时倒计时；情侣课表和叠加课表的周视图可选并排或合并；新增课表使用指引；修复部分学校实时活动的上课时间；若干界面修复。
