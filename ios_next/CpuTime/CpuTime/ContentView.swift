@@ -568,13 +568,19 @@ private enum NativeScheduleDebugFixture {
                                                location: "教学楼 B305"),
             ]
         }
+        // `CPU_DEBUG_UNSCHEDULED=1`: two courses the school lists without a time.
+        let unscheduled = ProcessInfo.processInfo.environment["CPU_DEBUG_UNSCHEDULED"] == "1" ? [
+            NativeScheduleUnscheduledCourse(name: "毕业实习", weeks: "1-16周", note: "实践课程", credits: 8),
+            NativeScheduleUnscheduledCourse(name: "大学生职业发展与就业指导", weeks: "3-10周", note: "网络课程", credits: 1.5),
+        ] : []
         let result = NativeScheduleResult(
             source: .jwxt,
             semesters: semesters,
             weeks: weeks,
             currentSemester: semester,
             currentWeek: "1",
-            cells: cells
+            cells: cells,
+            unscheduled: unscheduled
         )
         return NativeScheduleSnapshot(
             completeSemester: true,

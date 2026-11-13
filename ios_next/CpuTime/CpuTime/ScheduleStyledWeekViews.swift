@@ -363,6 +363,8 @@ struct ScheduleMinimalCourseCard: View {
     let course: NativeScheduleCourse
     var compact = false
     var showLocation = true
+    /// The card sits on today's tinted column: a deeper fill and an edge keep it apart from the wash.
+    var onTodayWash = false
 
     static let cornerRadius: CGFloat = 9
 
@@ -398,9 +400,15 @@ struct ScheduleMinimalCourseCard: View {
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         }
         .background {
-            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                .fill(tint.fill(dark: scheme == .dark, hasBackground: hasBackground))
-                .allowsHitTesting(false)
+            let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+            if onTodayWash {
+                shape.fill(tint.todayFill(dark: scheme == .dark))
+                    .overlay { shape.strokeBorder(tint.todayBorder(dark: scheme == .dark), lineWidth: 1) }
+                    .allowsHitTesting(false)
+            } else {
+                shape.fill(tint.fill(dark: scheme == .dark, hasBackground: hasBackground))
+                    .allowsHitTesting(false)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .accessibilityElement(children: .combine)
@@ -839,7 +847,8 @@ struct NativeScheduleStyledDayColumn: View {
         let narrow = compactCards || columnWidth < 70
         return Group {
             if style == .minimal {
-                ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation)
+                ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation,
+                                          onTodayWash: marksToday && drawsTodayBackground)
             } else {
                 ScheduleStyledCourseTile(course: block.course, compact: narrow,
                                          start: clocks.first { $0.number == block.startSlot }?.start,
@@ -869,7 +878,8 @@ struct NativeScheduleStyledDayColumn: View {
                 ScheduleOverlayHollowTile(course: block.course, ownerTitle: couple?.ownerTitle ?? "TA 的课",
                                           showLocation: showLocation, together: block.together, tiny: tiny)
             } else if style == .minimal {
-                ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation)
+                ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation,
+                                          onTodayWash: marksToday && drawsTodayBackground)
             } else {
                 ScheduleStyledCourseTile(course: block.course, compact: narrow,
                                          start: tiny ? nil : clocks.first { $0.number == block.startSlot }?.start,

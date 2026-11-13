@@ -8,6 +8,7 @@ struct CPUWebWidgetBundle: WidgetBundle {
         UpcomingScheduleWidget()
         TodayScheduleWidget()
         TwoDayScheduleWidget()
+        WeekScheduleWidget()
         AgendaWidget()
         liveActivity
         // Control Center buttons.
@@ -454,7 +455,7 @@ private struct ScheduleLiveActivityCountdown: View {
 
     var body: some View {
         VStack(alignment: centered ? .center : .trailing, spacing: compact ? 1 : 3) {
-            Text(state.phase == .idle ? "课间" : state.phase == .inProgress ? "距下课" : "距上课")
+            Text(state.countdownTitle)
                 .font(.system(size: compact ? 10 : 11, weight: .medium))
                 .foregroundStyle(ScheduleLiveActivityPalette.accent)
             ScheduleLiveActivityTimer(state: state, alignment: centered ? .center : .trailing)
@@ -774,7 +775,17 @@ private enum ScheduleLiveActivityFormatting {
 }
 
 private extension ScheduleLiveActivityAttributes.ContentState {
-    var phaseTitle: String { phase == .idle ? "已结束或暂不可用" : phase == .inProgress ? "正在上课" : phase == .intermission ? "课间休息" : "即将上课" }
+    /// A 日程 is not a class: it starts and ends, it is not attended.
+    var phaseTitle: String {
+        if isAgenda { return phase == .idle ? "已结束或暂不可用" : phase == .inProgress ? "正在进行" : "即将开始" }
+        return phase == .idle ? "已结束或暂不可用" : phase == .inProgress ? "正在上课" : phase == .intermission ? "课间休息" : "即将上课"
+    }
+
+    /// What the countdown counts to.
+    var countdownTitle: String {
+        if isAgenda { return phase == .idle ? "日程" : phase == .inProgress ? "距结束" : "距开始" }
+        return phase == .idle ? "课间" : phase == .inProgress ? "距下课" : "距上课"
+    }
 
     /// The partner's course on a row of its own. A class taken together is
     /// shown once, with a tag, so it has no second row.
@@ -879,10 +890,30 @@ private struct TwoDayScheduleWidget: Widget {
         .supportedFamilies([
             .systemMedium,
             .systemLarge,
+            // iPad。
+            .systemExtraLarge,
             .accessoryInline,
             .accessoryCircular,
             .accessoryRectangular,
         ])
+    }
+}
+
+private struct WeekScheduleWidget: Widget {
+    let kind = "cn.cputime.mobile.widget.week"
+
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(
+            kind: kind,
+            intent: WeekScheduleWidgetIntent.self,
+            provider: ScheduleIntentTimelineProvider<WeekScheduleWidgetIntent>()
+        ) { entry in
+            ScheduleWidgetView(kind: .week, entry: entry)
+        }
+        .configurationDisplayName("本周课表")
+        .description("一天一列看完这一周的课；周末上完后换成下一周。")
+        // 超大号只有 iPad 有。
+        .supportedFamilies([.systemLarge, .systemExtraLarge])
     }
 }
 

@@ -30,6 +30,8 @@ export interface ScheduleResult {
   currentSemester: string;
   currentWeek: string;
   cells: ScheduleCell[];
+  /** 教务里没有排到具体星期和节次的课（实践课、网课）；教务不给这份数据的学校没有。 */
+  unscheduled?: { name: string; weeks?: string; note?: string; credits?: number }[];
 }
 
 export interface CalendarWeek {

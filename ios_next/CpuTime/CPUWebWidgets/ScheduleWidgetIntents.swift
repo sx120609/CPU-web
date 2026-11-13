@@ -14,6 +14,36 @@ struct ScheduleWidgetConfiguration: Sendable {
     var layout: ScheduleWidgetLayoutStyle = .timeline
     /// 这一个小组件自己的文字大小；不选就跟着 App 里「iPhone 小组件」的设置。
     var textSize: ScheduleWidgetTextSize? = nil
+    /// 本周课表要不要画周六、周日两列。
+    var weekend: ScheduleWidgetWeekendStyle = .whenNeeded
+}
+
+/// 本周课表的周末两列。
+enum ScheduleWidgetWeekendStyle: String, Sendable {
+    /// 那一天有课才画。
+    case whenNeeded
+    case always
+    case never
+}
+
+@available(iOS 17.0, *)
+enum WeekendOption: String, AppEnum {
+    case whenNeeded, always, never
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "周末"
+    static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+        .whenNeeded: "有课时显示",
+        .always: "总是显示",
+        .never: "不显示",
+    ]
+
+    var style: ScheduleWidgetWeekendStyle {
+        switch self {
+        case .whenNeeded: return .whenNeeded
+        case .always: return .always
+        case .never: return .never
+        }
+    }
 }
 
 /// 「编辑小组件」里的文字大小。默认跟随 App 里的设置，同一种小组件放两个可以一大一小。
@@ -281,7 +311,30 @@ struct TwoDayScheduleWidgetIntent: ScheduleWidgetIntent {
     }
 }
 
-/// 三个小组件共用同一条时间线，只是各自带上自己的配置。
+@available(iOS 17.0, *)
+struct WeekScheduleWidgetIntent: ScheduleWidgetIntent {
+    static let title: LocalizedStringResource = "本周课表"
+    static let description = IntentDescription("选择本周课表要不要显示周末，以及文字大小。")
+
+    @Parameter(title: "周末", default: .whenNeeded)
+    var weekend: WeekendOption
+
+    @Parameter(title: "文字大小", default: .follow)
+    var textSize: TextSizeOption
+
+    static var parameterSummary: some ParameterSummary {
+        Summary {
+            \.$weekend
+            \.$textSize
+        }
+    }
+
+    var configuration: ScheduleWidgetConfiguration {
+        ScheduleWidgetConfiguration(textSize: textSize.size, weekend: weekend.style)
+    }
+}
+
+/// 几个课表小组件共用同一条时间线，只是各自带上自己的配置。
 @available(iOS 17.0, *)
 struct ScheduleIntentTimelineProvider<Configuration: ScheduleWidgetIntent>: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ScheduleEntry { .placeholder }

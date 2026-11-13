@@ -661,6 +661,25 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
     }
 }
 
+/// A course the school lists without a weekday or periods (a practice course,
+/// an online course). It has no place in the grid and is listed on its own.
+public struct NativeScheduleUnscheduledCourse: Codable, Equatable, Sendable, Identifiable {
+    public let name: String
+    /// The weeks as the school writes them, e.g. "1-16周".
+    public let weeks: String?
+    public let note: String?
+    public let credits: Double?
+
+    public var id: String { [name, weeks ?? "", note ?? ""].joined(separator: "|") }
+
+    public init(name: String, weeks: String? = nil, note: String? = nil, credits: Double? = nil) {
+        self.name = name
+        self.weeks = weeks
+        self.note = note
+        self.credits = credits
+    }
+}
+
 public struct NativeScheduleResult: Codable, Equatable, Sendable {
     public let source: NativeScheduleSource?
     public let semesters: [NativeScheduleSemester]
@@ -668,6 +687,8 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
     public let currentSemester: String
     public let currentWeek: String
     public let cells: [NativeScheduleCell]
+    /// Courses without a fixed time. Empty when the school does not report them.
+    public let unscheduled: [NativeScheduleUnscheduledCourse]
 
     public init(
         source: NativeScheduleSource? = nil,
@@ -675,7 +696,8 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
         weeks: [NativeScheduleWeek] = [],
         currentSemester: String = "",
         currentWeek: String = "",
-        cells: [NativeScheduleCell] = []
+        cells: [NativeScheduleCell] = [],
+        unscheduled: [NativeScheduleUnscheduledCourse] = []
     ) {
         self.source = source
         self.semesters = semesters
@@ -683,10 +705,11 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
         self.currentSemester = currentSemester
         self.currentWeek = currentWeek
         self.cells = cells
+        self.unscheduled = unscheduled
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, semesters, weeks, currentSemester, currentWeek, cells
+        case source, semesters, weeks, currentSemester, currentWeek, cells, unscheduled
     }
 
     public init(from decoder: Decoder) throws {
@@ -713,7 +736,10 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
             weeks: weeks,
             currentSemester: try values.decodeFlexibleString(forKey: .currentSemester) ?? "",
             currentWeek: currentWeek ?? "",
-            cells: (try? values.decodeIfPresent([NativeScheduleCell].self, forKey: .cells)) ?? []
+            cells: (try? values.decodeIfPresent([NativeScheduleCell].self, forKey: .cells)) ?? [],
+            // A malformed list never costs the timetable itself.
+            unscheduled: ((try? values.decodeIfPresent([NativeScheduleUnscheduledCourse].self, forKey: .unscheduled)) ?? [])
+                .filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         )
     }
 }
@@ -1425,7 +1451,12 @@ public final class NativeScheduleStore: ObservableObject {
         publishPriorities()
     }
 
+    /// Called with every semester's priorities when they change, and with
+    /// none when the account is reset. The widget timetable follows them.
+    public var onPrioritiesChange: (([String: [String: Int]]) -> Void)?
+
     private func publishPriorities() {
+        if !isReadOnly { onPrioritiesChange?(prioritiesBySemester) }
         #if os(iOS) && canImport(ActivityKit)
         if #available(iOS 17.0, *), !isReadOnly {
             NativeLiveActivityController.shared.setDisplayPriorities(prioritiesBySemester)
@@ -1839,6 +1870,7 @@ public final class NativeScheduleStore: ObservableObject {
         guard !isReadOnly else { return }
         prioritiesBySemester = [:]
         priorityDefaults?.removeObject(forKey: Self.prioritiesKey)
+        onPrioritiesChange?([:])
         onWatchReset?()
         #if os(iOS) && canImport(ActivityKit)
         if #available(iOS 17.0, *) {

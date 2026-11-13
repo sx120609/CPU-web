@@ -1,4 +1,4 @@
-import { currentTiming, retainTiming, timingVersion, endChannelKey } from "./liveActivitySchedule";
+import { clockChannelKey, clockLabel, clockMarks, clockStepMinutes, currentTiming, retainTiming, timingVersion, endChannelKey, startChannelKey } from "./liveActivitySchedule";
 import { prisma } from "../prisma";
 import { appleReferenceSeconds, sendLiveActivityBroadcast } from "./apnsClient";
 import { getApnsConfig, withApnsConfigLock } from "./apnsConfig";
@@ -50,11 +50,21 @@ async function readBroadcastConfig(environment: string, bundleID: string, local:
         const timing = await currentTiming(db);
         const issuedAt = Date.now() / 1000;
         if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000), db);
+        const channel = (key: string) => config.configured ? config.channels[key] || null : null;
         return { protocolVersion: 2, scheduleId: timing.scheduleId, scheduleVersion: timing.id,
           timezone: timing.timezone, periods: timing.periods, issuedAt,
           usableUntil: issuedAt + 7 * 86400, broadcastUntil: issuedAt + 8 * 86400,
+          // 上课时收起: the server ends an activity at its first period's start.
+          // A client only offers the option when this is advertised.
+          endsAtClassStart: true,
+          // 日程: a channel for each mark of the day ("0805" → channel) ends an activity at that time.
+          // Only the marks whose channel exists are listed; none while the feature is off.
+          clock: local && config.configured ? { stepMinutes: clockStepMinutes(), channels: Object.fromEntries(clockMarks()
+            .map(minute => [clockLabel(minute), config.channels[clockChannelKey(environment, minute)]] as const)
+            .filter(([, id]) => id)) } : null,
           windows: local ? timing.periods.map(p => ({ id: String(p.id), startHour: 0, endHour: 24,
-            channelID: config.configured ? config.channels[endChannelKey(environment, timing.id, p.id)] || null : null })) : [] };
+            channelID: channel(endChannelKey(environment, timing.id, p.id)),
+            startChannelID: channel(startChannelKey(environment, timing.id, p.id)) })) : [] };
       });
     } catch (error) {
       // The advisory lock also fences channel retirement against retention.
@@ -83,19 +93,57 @@ export function broadcastPayload(dateKey: string, timestamp: number, ended = fal
 
 /** Every held timing version broadcasts every day, including holidays. */
 export function schoolBroadcastEvents(term: Pick<ScheduleTermConfigValue, "periods">, dateKey: string, _daily = false, version = timingVersion(term.periods)) {
-  return term.periods.flatMap((final, index) => {
-    const seconds = (clock: string) => new Date(`${dateKey}T${clock}:00+08:00`).getTime() / 1000;
+  const seconds = (clock: string) => new Date(`${dateKey}T${clock}:00+08:00`).getTime() / 1000;
+  const midnight = seconds("00:00") + 86400;
+  const lateEnd = (fireAt: number) => new Date(Math.max(fireAt + 60, Math.min(fireAt + END_GRACE_SECONDS, midnight)) * 1000);
+  const boundaries = term.periods.flatMap((final, index) => {
     const end = seconds(final.end);
-    const midnight = seconds("00:00") + 86400;
     return [...new Set(term.periods.slice(0, index + 1).flatMap(p => [seconds(p.start), seconds(p.end)]))]
       .sort((a, b) => a - b).map(fireAt => ({
         windowID: `${version}:${final.id}`, eventID: `v2-${version}-${dateKey}-${final.id}-${fireAt}`,
         fireAt: new Date(fireAt * 1000),
-        expiresAt: new Date((fireAt === end ? Math.max(fireAt + 60, Math.min(fireAt + END_GRACE_SECONDS, midnight)) : fireAt + 60) * 1000),
+        expiresAt: fireAt === end ? lateEnd(fireAt) : new Date((fireAt + 60) * 1000),
         payload: JSON.stringify(broadcastPayload(dateKey, fireAt, fireAt === end, version)),
         event: fireAt === end ? "end" : "update",
       }));
   });
+  // 上课时收起: each period also has a channel that says nothing until that
+  // period starts, then ends whatever is subscribed to it.
+  const starts = term.periods.map(period => {
+    const fireAt = seconds(period.start);
+    return {
+      windowID: `${version}:start:${period.id}`, eventID: `v2-${version}-${dateKey}-start-${period.id}-${fireAt}`,
+      fireAt: new Date(fireAt * 1000), expiresAt: lateEnd(fireAt),
+      payload: JSON.stringify(broadcastPayload(dateKey, fireAt, true, version)),
+      event: "end",
+    };
+  });
+  return [...boundaries, ...starts];
+}
+
+/** 日程: every mark of the day ends whatever is subscribed to its channel. */
+export function clockBroadcastEvents(dateKey: string, step = clockStepMinutes()) {
+  const midnight = new Date(`${dateKey}T00:00:00+08:00`).getTime() / 1000;
+  return clockMarks(step).map(minute => {
+    const fireAt = midnight + minute * 60;
+    return {
+      windowID: `clock:${minute}`, eventID: `v2-clock-${dateKey}-${clockLabel(minute)}`,
+      fireAt: new Date(fireAt * 1000),
+      // Late by up to an hour it still clears the screen; later the item is long over.
+      expiresAt: new Date(Math.max(fireAt + 60, Math.min(fireAt + 3600, midnight + 86400)) * 1000),
+      payload: JSON.stringify(broadcastPayload(dateKey, fireAt, true, "clock")),
+      event: "end",
+    };
+  });
+}
+
+/** The channel key of a broadcast window: `version:period`, `version:start:period`, or `clock:minute`. */
+export function windowChannelKey(environment: string, windowID: string) {
+  const parts = windowID.split(":");
+  if (parts[0] === "clock") return clockChannelKey(environment, Number(parts[1]));
+  return parts.length === 3 && parts[1] === "start"
+    ? startChannelKey(environment, parts[0], Number(parts[2]))
+    : endChannelKey(environment, parts[0], Number(parts[1]));
 }
 
 export async function ensureBroadcastEvents(now: number) {
@@ -111,10 +159,10 @@ export async function ensureBroadcastEvents(now: number) {
   });
   const digest = JSON.stringify([dateKey, config.bundleID, config.channels, versions]);
   if (digest === materializedDigest) { lastBroadcastMaterializedAt = now; return; }
-  const events = versions.flatMap(v => schoolBroadcastEvents({ periods: JSON.parse(v.periods) }, dateKey, false, v.id));
+  const events = [...versions.flatMap(v => schoolBroadcastEvents({ periods: JSON.parse(v.periods) }, dateKey, false, v.id)),
+    ...clockBroadcastEvents(dateKey)];
   const rows = events.flatMap(({ windowID, ...event }) => ["production", "sandbox"].flatMap(environment => {
-    const [version, period] = windowID.split(":");
-    const channelID = config.channels[endChannelKey(environment, version, Number(period))];
+    const channelID = config.channels[windowChannelKey(environment, windowID)];
     return channelID ? [{ ...event, environment, channelID, bundleID: config.bundleID }] : [];
   }));
   // Retire old protocol events and obsolete times after timetable edits.

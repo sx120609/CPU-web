@@ -76,6 +76,16 @@ export interface ScheduleCell {
   courses: ScheduleCourse[];
 }
 
+/** 教务里没有排到具体星期和节次的课（实践课、网课）：不进课表格子，客户端单独列出来。 */
+export interface UnscheduledCourse {
+  name: string;
+  /** 教务写的起止周，原样给出，如 "1-16周"。 */
+  weeks?: string;
+  /** 教务写的上课形式或说明。 */
+  note?: string;
+  credits?: number;
+}
+
 export interface ScheduleResult {
   title: string;
   /** 响应中存在真实课表结构；即使新生暂时没有课程，这个值仍为 true。 */
@@ -89,6 +99,8 @@ export interface ScheduleResult {
   currentWeek: string;
   /** 单元格列表（已展开） */
   cells: ScheduleCell[];
+  /** 没有排到具体时间的课。教务不给这份数据的学校没有这一项。 */
+  unscheduled?: UnscheduledCourse[];
   /** 调试：原表头 */
   headers?: string[];
 }

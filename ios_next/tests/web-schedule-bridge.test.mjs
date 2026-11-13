@@ -783,3 +783,14 @@ test('native login lists every configured school and switches the school choice'
   assert.equal(begun, 1);
   assert.equal(plain.school.ssoLogin, false);
 });
+
+test('courses without a fixed time reach the native timetable beside the cells', async () => {
+  const ctx = setup();
+  const unscheduled = [{ name: '毕业实习', weeks: '1-16周', note: '实践课程', credits: 8 }];
+  ctx.api.schedule = async () => ({ parsed: { ...sample(), unscheduled } });
+  const snapshot = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', true);
+  assert.equal(snapshot.error, undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.data.unscheduled)), unscheduled);
+  // They never become grid cells.
+  assert.ok(snapshot.data.cells.every(cell => cell.courses.every(course => course.name !== '毕业实习')));
+});

@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { currentTiming, endChannelKey } from "./liveActivitySchedule";
+import { clockChannelKey, clockMarks, currentTiming, endChannelKey, startChannelKey } from "./liveActivitySchedule";
 import { createLiveActivityChannel, deleteLiveActivityChannel } from "./apnsClient";
 import { getApnsConfig, withApnsConfigLock, type ApnsConfig } from "./apnsConfig";
 
 const MAX_CHANNELS_PER_ENVIRONMENT = 9000;
+// The clock channels (日程) are a few hundred per environment. Creating them is
+// spread over passes, so one pass never keeps the broadcast loop waiting long.
+const MAX_NEW_CLOCK_CHANNELS_PER_PASS = 12;
+const CLOCK_SUFFIX = /:clock-\d{4}$/;
 const LEASE_KEY = "apns.channels.lease";
 const GC_KEY = "apns.channels.pending-deletions";
 // Apple requests time out after 15s. Renew before each request and fence writes.
@@ -22,7 +26,12 @@ export function schoolDate(now = Date.now()) {
 }
 export async function requiredChannelSuffixes(_now = Date.now(), db?: Prisma.TransactionClient) {
   const timing = await currentTiming(db);
-  return timing.periods.map(p => endChannelKey("production", timing.id, p.id).slice("production:".length));
+  // The end channels come first: activities already on screen depend on them,
+  // while a missing start channel only keeps 上课时收起 from being offered.
+  return [
+    ...[endChannelKey, startChannelKey].flatMap(key => timing.periods.map(p => key("production", timing.id, p.id))),
+    ...clockMarks().map(minute => clockChannelKey("production", minute)),
+  ].map(key => key.slice("production:".length));
 }
 async function readSetting<T>(db: Prisma.TransactionClient, key: string, fallback: T): Promise<T> {
   const row = await db.siteSetting.findUnique({ where: { key } });
@@ -68,7 +77,7 @@ export async function provisionApnsChannels(now = Date.now(), prune = false, tra
       let changed = false;
       for (const [key, channel] of Object.entries(config.channels)) {
         const dated = DATED_CHANNEL.exec(key);
-        const versioned = /^(production|sandbox):main-campus:([a-f0-9]+):end-period-\d+$/.exec(key);
+        const versioned = /^(production|sandbox):main-campus:([a-f0-9]+):(?:end|start)-period-\d+$/.exec(key);
         const match = LEGACY_CHANNEL.exec(key) ?? /^(production|sandbox):cpu-(?:day|block(?::\d+)?)$/.exec(key)
           ?? (dated && dated[2] < schoolDate(now - 86400_000) ? dated : null)
           ?? (versioned && expiredIds.has(versioned[2]) ? versioned : null);
@@ -106,9 +115,12 @@ export async function provisionApnsChannels(now = Date.now(), prune = false, tra
     const published = await step(async (_db, config) => config);
     for (const environment of ["production", "sandbox"] as const) {
       let channelCount = Object.keys(published.channels).filter(k => k.startsWith(environment + ":")).length;
+      let clockBudget = MAX_NEW_CLOCK_CHANNELS_PER_PASS;
       for (const suffix of suffixes) {
         const key = environment + ":" + suffix;
         if (published.channels[key]) continue;
+        // The rest of the clock channels wait for the next pass.
+        if (CLOCK_SUFFIX.test(key) && clockBudget-- <= 0) continue;
         if (channelCount >= MAX_CHANNELS_PER_ENVIRONMENT) throw new Error("APNs channel limit reached");
         const config = await step(async (_db, config) => config);
         let created: string | undefined;

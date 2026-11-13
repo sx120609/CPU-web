@@ -286,6 +286,136 @@ struct NativeLiveActivityChecks {
         ranked.reset()
         await settle()
         print("Display priority, cared-timetable and partner merging passed")
+        // 上课时收起: on screen from the reminder until class starts, ended by the
+        // channel of the first period's start; ignored until the server offers it.
+        clock = start.addingTimeInterval(-900)
+        let collapse = NativeLiveActivityController(now: { clock })
+        collapse.accept(fixture(account: "collapse-account"))
+        collapse.installTiming(config)
+        collapse.localHandoffComplete = true
+        collapse.setBeforeClassOnly(true)
+        await settle()
+        precondition(!collapse.supportsBeforeClassOnly && !collapse.collapsesInClass, "an older server cannot end at class start")
+        precondition(live.count == 2 && live.allSatisfy { $0.attributes.broadcastChannel?.hasPrefix("end-") == true },
+                     "without server support the option changes nothing")
+        precondition(live.contains { $0.attributes.reservationEnd == start.addingTimeInterval(6000) })
+        let collapsing = NativeLiveActivityController.TimingConfig(protocolVersion: 2, scheduleId: config.scheduleId, scheduleVersion: config.scheduleVersion,
+            timezone: config.timezone, periods: config.periods, issuedAt: config.issuedAt, usableUntil: config.usableUntil, broadcastUntil: config.broadcastUntil,
+            windows: [1, 2, 3].map { .init(id: String($0), startHour: 0, endHour: 24, channelID: "end-\($0)", startChannelID: "start-\($0)") },
+            endsAtClassStart: true)
+        collapse.installTiming(collapsing)
+        await settle()
+        precondition(collapse.collapsesInClass)
+        precondition(live.count == 2, "both classes still get a reminder")
+        let beforeA = live.first { $0.attributes.reservationStart == start }!
+        precondition(beforeA.attributes.reservationEnd == start, "the activity leaves when class starts")
+        precondition(beforeA.attributes.broadcastChannel == "start-1", "ended by the first period's start, not the last period's end")
+        precondition(beforeA.attributes.reminderDate == start.addingTimeInterval(-collapse.leadTime), "the reminder time is unchanged")
+        precondition(beforeA.content.state.endDate == start.addingTimeInterval(6000), "the class itself still runs to 09:40")
+        let beforeC = live.first { $0.attributes.reservationStart == start.addingTimeInterval(6900) }!
+        precondition(beforeC.attributes.broadcastChannel == "start-3" && beforeC.attributes.reservationEnd == start.addingTimeInterval(6900))
+        precondition(beforeC.attributes.reminderDate == start.addingTimeInterval(6000), "the next reminder waits for the class before it to end")
+        precondition(collapse.remoteStartWindows().count == 2)
+        // Class has started: the first activity is gone and is not planned again.
+        clock = start.addingTimeInterval(60)
+        collapse.foreground()
+        await settle()
+        precondition(beforeA.activityState == .ended, "collapsed at the start of class")
+        precondition(live.count == 1 && live[0].id == beforeC.id)
+        precondition(collapse.remoteStartWindows().count == 1)
+        // Turned off again, the class still to come goes back to ending with its last period.
+        collapse.setBeforeClassOnly(false)
+        await settle()
+        precondition(live.count == 1 && live[0].attributes.broadcastChannel == "end-3"
+                     && live[0].attributes.reservationEnd == start.addingTimeInterval(9600))
+        collapse.reset()
+        await settle()
+        // A class right after another has no time before it to show in.
+        clock = start.addingTimeInterval(-900)
+        let tight = NativeLiveActivityController(now: { clock })
+        let tightPeriods = [NativeSchedulePeriod(number: 1, startTime: "08:00", endTime: "08:45"), .init(number: 2, startTime: "08:55", endTime: "09:40"),
+                            .init(number: 3, startTime: "09:40", endTime: "10:25")]
+        let tightConfig = NativeLiveActivityController.TimingConfig(protocolVersion: 2, scheduleId: config.scheduleId, scheduleVersion: "tight-version",
+            timezone: config.timezone, periods: tightPeriods.map { .init(id: $0.number, name: String($0.number), start: $0.startTime, end: $0.endTime) },
+            issuedAt: config.issuedAt, usableUntil: config.usableUntil, broadcastUntil: config.broadcastUntil,
+            windows: collapsing.windows, endsAtClassStart: true)
+        tight.setBeforeClassOnly(true)
+        tight.accept(fixture(account: "tight-account"))
+        tight.installTiming(tightConfig)
+        tight.localHandoffComplete = true
+        tight.accept(fixture(account: "tight-account"))
+        await settle()
+        precondition(live.count == 1 && live[0].attributes.reservationStart == start, "the class that follows with no gap is left out")
+        precondition(tight.coverageStatus.contains("共 1 次，已安排 1 次"), "and is not reported as failed")
+        tight.setBeforeClassOnly(false)
+        tight.reset()
+        await settle()
+        print("上课时收起 passed")
+        // 日程: an activity of its own from the reminder to the end, ended by the clock
+        // mark at or after it; off unless chosen and unless the server keeps clock channels.
+        clock = start.addingTimeInterval(-900)
+        let notes = NativeLiveActivityController(now: { clock })
+        let meeting = NativeLiveActivityController.AgendaEntry(id: "agenda-meeting-20260916", title: "组会", location: "药学楼 302", dateKey: "2026-09-16",
+            start: start.addingTimeInterval(3600), end: start.addingTimeInterval(3600 + 67 * 60))
+        let deadline = NativeLiveActivityController.AgendaEntry(id: "agenda-deadline-20260916", title: "交报告", location: "", dateKey: "2026-09-16",
+            start: start.addingTimeInterval(5 * 3600), end: nil)
+        let camp = NativeLiveActivityController.AgendaEntry(id: "agenda-camp-20260917", title: "野外实习", location: "", dateKey: "2026-09-17",
+            start: start.addingTimeInterval(86400), end: start.addingTimeInterval(86400 + 9 * 3600))
+        let over = NativeLiveActivityController.AgendaEntry(id: "agenda-over-20260915", title: "昨天的事", location: "", dateKey: "2026-09-15",
+            start: start.addingTimeInterval(-86400), end: start.addingTimeInterval(-82800))
+        notes.accept(fixture(account: "notes-account"))
+        notes.installTiming(collapsing)
+        notes.localHandoffComplete = true
+        notes.setAgenda([meeting, deadline, camp, over])
+        notes.setShowsAgenda(true)
+        await settle()
+        precondition(!notes.supportsAgenda && live.count == 2 && notes.remoteNotes().isEmpty, "no clock channels: classes only")
+        var marks: [String: String] = [:]
+        for minute in stride(from: 0, to: 1440, by: 5) { let label = String(format: "%02d%02d", minute / 60, minute % 60); marks[label] = "clock-\(label)" }
+        let clocked = NativeLiveActivityController.TimingConfig(protocolVersion: 2, scheduleId: config.scheduleId, scheduleVersion: config.scheduleVersion,
+            timezone: config.timezone, periods: config.periods, issuedAt: config.issuedAt, usableUntil: config.usableUntil, broadcastUntil: config.broadcastUntil,
+            windows: collapsing.windows, endsAtClassStart: true, clock: .init(stepMinutes: 5, channels: marks))
+        notes.installTiming(clocked)
+        await settle()
+        precondition(notes.supportsAgenda)
+        precondition(notes.remoteStartWindows().count == 2, "the class plan is unchanged")
+        precondition(notes.remoteNotes().map(\.occurrenceId) == [meeting.id, deadline.id, camp.id], "what is over is left out")
+        precondition(live.count == 5, "two classes and three 日程")
+        let meetingActivity = live.first { $0.attributes.occurrenceId == meeting.id }!
+        // 09:00–10:07 in school time: it overlaps class A and still starts at its own reminder.
+        precondition(meetingActivity.attributes.reminderDate == meeting.start.addingTimeInterval(-notes.leadTime))
+        precondition(meetingActivity.attributes.reservationEnd == meeting.end)
+        precondition(meetingActivity.attributes.broadcastChannel == "clock-1010", "ended by the mark after 10:07")
+        precondition(meetingActivity.content.state.isAgenda && meetingActivity.content.state.courseName == "组会")
+        precondition(meetingActivity.content.state.phase == .upcoming && meetingActivity.content.state.startDate == meeting.start)
+        let deadlineActivity = live.first { $0.attributes.occurrenceId == deadline.id }!
+        precondition(deadlineActivity.attributes.reservationEnd == deadline.start && deadlineActivity.attributes.broadcastChannel == "clock-1300",
+                     "without an end time it leaves when it starts")
+        let campActivity = live.first { $0.attributes.occurrenceId == camp.id }!
+        precondition(campActivity.attributes.reservationEnd == camp.start && campActivity.attributes.broadcastChannel == "clock-0800",
+                     "longer than an activity may last: shown until it starts")
+        precondition(live.filter { $0.attributes.broadcastChannel?.hasPrefix("end-") == true }.count == 2, "classes keep their own channels")
+        // The widget tells a 日程 from a class when it redraws from the saved snapshot.
+        let saved = try JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self,
+            from: defaults.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)!)
+        let redrawn = marker.resolvedForBroadcast(attributes: meetingActivity.attributes, now: meeting.start.addingTimeInterval(60), cachedCourses: saved)
+        precondition(redrawn.isAgenda && redrawn.phase == .inProgress && redrawn.endDate == meeting.end)
+        let ended = marker.resolvedForBroadcast(attributes: meetingActivity.attributes, now: meeting.end!.addingTimeInterval(1), cachedCourses: saved)
+        precondition(ended.courseName == "日程已结束" && ended.isAgenda)
+        let classRedrawn = marker.resolvedForBroadcast(attributes: live.first { $0.attributes.reservationStart == start }!.attributes, now: start, cachedCourses: saved)
+        precondition(!classRedrawn.isAgenda)
+        precondition(NativeLiveActivityController.clockLabel(meeting.start, clock: clocked.clock, timezone: "Asia/Shanghai") == "0900")
+        precondition(NativeLiveActivityController.clockLabel(start.addingTimeInterval(15 * 3600 + 58 * 60), clock: clocked.clock, timezone: "Asia/Shanghai") == "0000")
+        // Ticked off or removed: its activity goes; turned off: all of them go and the classes stay.
+        notes.setAgenda([deadline, camp])
+        await settle()
+        precondition(meetingActivity.activityState == .ended && live.count == 4)
+        notes.setShowsAgenda(false)
+        await settle()
+        precondition(live.count == 2 && notes.remoteNotes().isEmpty && live.allSatisfy { !$0.content.state.isAgenda })
+        notes.reset()
+        await settle()
+        print("日程 in Live Activities passed")
         // The countdown's column is as wide as its longest value.
         let at = Date(timeIntervalSince1970: 1_800_000_000)
         func template(_ seconds: TimeInterval) -> String { ScheduleLiveActivityAttributes.countdownTemplate(at...at.addingTimeInterval(seconds)) }

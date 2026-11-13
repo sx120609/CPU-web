@@ -11,7 +11,7 @@ import WidgetKit
 ///
 /// `CPU_DEBUG_WIDGET_GALLERY=1` shows it instead of the app. Narrow it with
 /// `CPU_DEBUG_WIDGET_GALLERY_STYLE` (minimal, table, paper, board),
-/// `CPU_DEBUG_WIDGET_GALLERY_KIND` (upcoming, today, twoDay, agenda, states, sizes),
+/// `CPU_DEBUG_WIDGET_GALLERY_KIND` (upcoming, today, twoDay, week, agenda, states, sizes, pad),
 /// `CPU_DEBUG_WIDGET_GALLERY_MODE` (fullColor, accented) and
 /// `CPU_DEBUG_WIDGET_GALLERY_SCHEME` (light, dark). The system appearance
 /// (`xcrun simctl ui <udid> appearance dark`) picks the scheme when none is
@@ -100,7 +100,7 @@ struct NativeWidgetGallery: View {
 /// One kind of widget in one style, scheme and rendering mode: every family.
 @available(iOS 17.0, *)
 struct GallerySheet: View, Identifiable {
-    enum Kind: String, CaseIterable { case upcoming, today, twoDay, agenda, states, sizes }
+    enum Kind: String, CaseIterable { case upcoming, today, twoDay, week, agenda, states, sizes, pad }
     enum Mode: String, CaseIterable { case fullColor, accented }
 
     let kind: Kind
@@ -118,7 +118,8 @@ struct GallerySheet: View, Identifiable {
             content
         }
         .padding(.horizontal, 16)
-        .frame(width: 400, alignment: .leading)
+        // The iPad's extra-large widgets are wider than an iPhone.
+        .frame(width: kind == .pad ? 750 : 400, alignment: .leading)
         .environment(\.colorScheme, scheme)
     }
 
@@ -130,6 +131,8 @@ struct GallerySheet: View, Identifiable {
         case .agenda: "日程"
         case .states: "其他状态"
         case .sizes: "文字大小与显示开关"
+        case .week: "本周课表"
+        case .pad: "iPad 超大号"
         }
     }
 
@@ -163,6 +166,16 @@ struct GallerySheet: View, Identifiable {
             cell("中号", .systemMedium) { schedule(.twoDay, .systemMedium, now: now) }
             cell("大号 · 列表", .systemLarge) { schedule(.twoDay, .systemLarge, now: now, layout: .list) }
             cell("大号 · 时间线 · 周五晚上", .systemLarge) { schedule(.twoDay, .systemLarge, now: GallerySample.fridayEvening, layout: .timeline) }
+        case .week:
+            cell("大号 · 周三上课中", .systemLarge) { schedule(.week, .systemLarge, now: now) }
+            cell("大号 · 周五晚上（换成下一周）", .systemLarge) { schedule(.week, .systemLarge, now: GallerySample.fridayEvening) }
+            cell("大号 · 总是显示周末 · 文字大", .systemLarge) { schedule(.week, .systemLarge, now: now, size: .large, weekend: .always) }
+            cell("大号 · 暑假", .systemLarge) { schedule(.week, .systemLarge, now: GallerySample.summer) }
+        case .pad:
+            cell("本周课表 · 超大号", .systemExtraLarge) { schedule(.week, .systemExtraLarge, now: now) }
+            cell("本周课表 · 超大号 · 总是显示周末", .systemExtraLarge) { schedule(.week, .systemExtraLarge, now: GallerySample.afternoon, weekend: .always) }
+            cell("两日课表 · 超大号 · 时间线", .systemExtraLarge) { schedule(.twoDay, .systemExtraLarge, now: now, layout: .timeline) }
+            cell("两日课表 · 超大号 · 列表 · 周五晚上", .systemExtraLarge) { schedule(.twoDay, .systemExtraLarge, now: GallerySample.fridayEvening, layout: .list) }
         case .agenda:
             HStack(alignment: .top, spacing: 12) {
                 cell("小号", .systemSmall) { agenda(.systemSmall, now: now) }
@@ -233,11 +246,12 @@ struct GallerySheet: View, Identifiable {
     private func schedule(_ widget: ScheduleWidgetKind, _ family: WidgetFamily, now: Date,
                           layout: ScheduleWidgetLayoutStyle = .timeline, count: Int = 2,
                           size: ScheduleWidgetTextSize? = nil,
+                          weekend: ScheduleWidgetWeekendStyle = .whenNeeded,
                           adjust: (inout ScheduleWidgetDisplayOptions) -> Void = { _ in }) -> some View {
         let entry = ScheduleEntry(
             date: now,
             state: GallerySample.state(at: now),
-            configuration: ScheduleWidgetConfiguration(upcomingCourseCount: count, layout: layout, textSize: size)
+            configuration: ScheduleWidgetConfiguration(upcomingCourseCount: count, layout: layout, textSize: size, weekend: weekend)
         )
         var options = ScheduleWidgetDisplayOptions.default
         adjust(&options)
@@ -308,9 +322,10 @@ struct GallerySheet: View, Identifiable {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(red: 0.16, green: 0.2, blue: 0.3)))
     }
 
-    /// iPhone 17 Pro.
+    /// iPhone 17 Pro; the extra-large size is the 11-inch iPad's.
     static func size(_ family: WidgetFamily) -> CGSize {
         switch family {
+        case .systemExtraLarge: CGSize(width: 716, height: 342)
         case .systemSmall: CGSize(width: 170, height: 170)
         case .systemMedium: CGSize(width: 364, height: 170)
         case .systemLarge: CGSize(width: 364, height: 382)

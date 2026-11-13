@@ -280,6 +280,41 @@ enum NativeAgendaRules {
         return (Self.date(ofDay: day), Int((shifted - Double(day) * dayMilliseconds) / 60_000))
     }
 
+    /// The 日程 a Live Activity can show: those with a start time that are not ticked off, from
+    /// today through the next `days` days, earliest first. `end` is nil without a later end time.
+    /// The identity is stable for one item on one day and safe to send (letters, digits, - and _).
+    static func activities(_ items: [NativeAgendaItem], now: Date, days: Int = 8, limit: Int = 60) -> [NativeAgendaActivity] {
+        guard let today = dayNumber(chinaParts(now).date) else { return [] }
+        var result: [NativeAgendaActivity] = []
+        for item in items {
+            guard let clock = minutes(item.start), let first = dayNumber(item.date) else { continue }
+            var day = max(first, today)
+            while day <= today + days {
+                let date = Self.date(ofDay: day)
+                if occurs(item, on: date), !isDone(item, on: date) {
+                    func moment(_ minute: Int) -> Date {
+                        Date(timeIntervalSince1970: (Double(day) * dayMilliseconds + Double(minute) * 60_000 - chinaOffset) / 1000)
+                    }
+                    let end = minutes(item.end).flatMap { $0 > clock ? moment($0) : nil }
+                    if (end ?? moment(clock)) > now {
+                        let safe = String(item.id.unicodeScalars.map { scalar in
+                            CharacterSet.alphanumerics.contains(scalar) && scalar.isASCII || scalar == "-" || scalar == "_" ? Character(scalar) : "_"
+                        }.prefix(100))
+                        result.append(NativeAgendaActivity(id: "agenda-\(safe)-\(date.replacingOccurrences(of: "-", with: ""))",
+                                                           itemID: item.id, date: date, title: item.title, location: item.location,
+                                                           start: moment(clock), end: end))
+                    }
+                }
+                if !item.repeats { break }
+                day += 1
+            }
+        }
+        // Two items whose identities read the same once made safe: keep the earlier, so
+        // the plan they are sent in never carries a duplicate.
+        var seen = Set<String>()
+        return Array(result.sorted { ($0.start, $0.id) < ($1.start, $1.id) }.filter { seen.insert($0.id).inserted }.prefix(limit))
+    }
+
     /// The reminders due in (from, until], earliest first; an occurrence already ticked off is skipped.
     static func reminders(_ items: [NativeAgendaItem], from: Date, until: Date, limit: Int) -> [NativeAgendaReminder] {
         guard let today = dayNumber(chinaParts(from).date),
@@ -311,4 +346,16 @@ enum NativeAgendaRules {
         }
         return Array(result.sorted { $0.at < $1.at }.prefix(limit))
     }
+}
+
+/// One 日程 on one day, as a Live Activity shows it (`NativeAgendaRules.activities`).
+struct NativeAgendaActivity: Equatable, Sendable {
+    let id: String
+    let itemID: String
+    let date: String
+    let title: String
+    let location: String
+    let start: Date
+    /// Nil when the item has no end time after its start.
+    let end: Date?
 }

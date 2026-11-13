@@ -99,6 +99,8 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         public var contentVersion: String?
         /// The partner's courses around this one. Optional: older snapshots have none.
         public var companions: [Companion]?
+        /// A 日程, not a class: the activity counts to its start and its end in those words. Nil for a class.
+        public var agenda: Bool?
         public let dateKey: String
         public let period: Int
         public let name: String
@@ -174,6 +176,9 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         /// Optional and never sent by the server: the widget fills it from the
         /// timetable saved on the device, like the course text itself.
         public var companion: Companion? = nil
+        /// A 日程, not a class. Optional and filled on the device, like `companion`.
+        public var agenda: Bool? = nil
+        public var isAgenda: Bool { agenda == true }
 
         // Missing only when enumerating retired activities for cleanup. New content always encodes 2.
         public let protocolVersion: Int?
@@ -290,7 +295,11 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
                   let timeline = ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: course.mode ?? .whole, now: now) else {
                 return Self(phase: .idle, courseName: now >= finalEnd ? "课程已结束" : "课程信息暂不可用", startDate: now, endDate: finalEnd, updatedAt: now)
             }
-            if timeline.phase == .finished { return Self(phase: .idle, courseName: "课程已结束", startDate: finalEnd, endDate: finalEnd, updatedAt: now) }
+            if timeline.phase == .finished {
+                var ended = Self(phase: .idle, courseName: course.agenda == true ? "日程已结束" : "课程已结束", startDate: finalEnd, endDate: finalEnd, updatedAt: now)
+                ended.agenda = course.agenda
+                return ended
+            }
             let phase: Phase = timeline.phase == .upcoming ? .upcoming : timeline.phase == .intermission ? .intermission : .inProgress
             var resolved = Self(phase: phase, courseName: course.name, teacher: course.teacher, location: course.location,
                 periodLabel: course.periodLabel, dateLabel: attributes.dateKey, weekRangeLabel: course.weekRangeLabel,
@@ -298,6 +307,7 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
                 endDate: phase == .upcoming ? timeline.finalEnd : timeline.courseEnd,
                 adjustmentNote: course.adjustmentNote, updatedAt: now)
             resolved.companion = ScheduleLiveActivityAttributes.resolveCompanion(course.companions, mode: course.mode ?? .whole, now: now)
+            resolved.agenda = course.agenda
             return resolved
 
         }

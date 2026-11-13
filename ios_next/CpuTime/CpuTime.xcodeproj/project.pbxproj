@@ -642,7 +642,7 @@
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "CpuTime" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				EXCLUDED_SOURCE_FILE_NAMES = "WidgetModels.swift ScheduleWidgetIntents.swift ScheduleWidgetStyle.swift ScheduleWidgetLayouts.swift ScheduleWidgetViews.swift AgendaWidget.swift";
+				EXCLUDED_SOURCE_FILE_NAMES = AgendaWidget.swift;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = CpuTime/CpuTime.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";

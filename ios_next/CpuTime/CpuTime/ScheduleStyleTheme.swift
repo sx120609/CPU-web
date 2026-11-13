@@ -376,6 +376,22 @@ struct ScheduleStyleCourseColor: Equatable {
         NativeSchedulePalette.hsl(hue, min(50, saturation), dark ? 70 : 55, dark ? 0.34 : 0.22).color
     }
 
+    /// The fill of a course that sits on today's wash (the minimal week view tints
+    /// today's whole column with the theme colour). The ordinary fill is nearly as
+    /// pale as that wash, and with a course of the theme's hue (every course, in a
+    /// single-colour palette) the card disappeared into it. A step deeper and
+    /// opaque, so the wash never shows through, it reads as a card again.
+    func todayFill(dark: Bool) -> Color {
+        let saturation = min(52, saturation)
+        if dark { return NativeSchedulePalette.hsl(hue, saturation, 50, 0.38).color }
+        return NativeSchedulePalette.hsl(hue, saturation, max(87, backgroundLightness - 5)).color
+    }
+
+    /// The edge that goes with `todayFill`: the course colour, clear of the wash in any hue.
+    func todayBorder(dark: Bool) -> Color {
+        NativeSchedulePalette.hsl(hue, min(60, saturation), dark ? 72 : 48, dark ? 0.6 : 0.42).color
+    }
+
     private static func hueSaturation(red: Double, green: Double, blue: Double) -> (Double, Double) {
         let maxValue = max(red, green, blue), minValue = min(red, green, blue)
         let delta = maxValue - minValue

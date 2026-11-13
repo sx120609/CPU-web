@@ -47,6 +47,31 @@ final class NativeLiveActivityController: ObservableObject {
     static let glassKey = "cpu.liveActivity.glass"
     var glassBackground: Bool { defaults.bool(forKey: Self.glassKey) }
     func setGlassBackground(_ value: Bool) { defaults.set(value, forKey: Self.glassKey); reconfigure() }
+    /// 上课时收起: an activity is on screen from its reminder until class starts, not until class ends.
+    static let beforeClassOnlyKey = "cpu.liveActivity.beforeClassOnly"
+    var beforeClassOnly: Bool { defaults.bool(forKey: Self.beforeClassOnlyKey) }
+    func setBeforeClassOnly(_ value: Bool) { defaults.set(value, forKey: Self.beforeClassOnlyKey); reconfigure() }
+    /// The server has to end the activity at the start of class (a channel per
+    /// period start). Until it says it does, the option is neither offered nor applied.
+    var supportsBeforeClassOnly: Bool { timing?.endsAtClassStart == true }
+    var collapsesInClass: Bool { beforeClassOnly && supportsBeforeClassOnly }
+    /// 日程也显示实时活动: a 日程 with a time gets an activity of its own, from its reminder to its end. Off unless chosen.
+    static let agendaKey = "cpu.liveActivity.agenda"
+    var showsAgenda: Bool { defaults.bool(forKey: Self.agendaKey) }
+    func setShowsAgenda(_ value: Bool) { defaults.set(value, forKey: Self.agendaKey); reconfigure() }
+    /// A 日程 ends at any time of day, so the server has to keep a channel per mark of the clock.
+    var supportsAgenda: Bool { (timing?.clock?.stepMinutes ?? 0) > 0 && timing?.clock?.channels.isEmpty == false }
+    /// One 日程 as the activity shows it. `end` is nil when it has no end time.
+    struct AgendaEntry: Equatable {
+        let id: String; let title: String; let location: String; let dateKey: String; let start: Date; let end: Date?
+    }
+    private var agenda: [AgendaEntry] = []
+    /// The 日程 of the coming days that have a time and are not ticked off (see `NativeAgendaRules.activities`).
+    func setAgenda(_ entries: [AgendaEntry]) {
+        guard entries != agenda else { return }
+        agenda = entries
+        if showsAgenda { reconfigure() }
+    }
     /// Single meetings the user said not to show (这次不显示实时活动), as "yyyy-MM-dd|source".
     private static let skippedKey = "cpu.liveActivity.skipped"
     var skipped: Set<String> { Set(defaults.stringArray(forKey: Self.skippedKey) ?? []) }
@@ -99,7 +124,11 @@ final class NativeLiveActivityController: ObservableObject {
     private(set) var busyIntervals: [BusyInterval] = []
     private var unsupported: [String] = []
     private var failures: [String: String] = [:]
-    struct BroadcastWindow: Codable, Equatable { let id: String; let startHour: Int; let endHour: Int; let channelID: String? }
+    struct BroadcastWindow: Codable, Equatable {
+        let id: String; let startHour: Int; let endHour: Int; let channelID: String?
+        /// The channel that ends an activity when this period starts (上课时收起). Older servers send none.
+        var startChannelID: String? = nil
+    }
     var broadcastWindows: [BroadcastWindow] = []
     struct TimingConfig: Codable, Equatable {
         struct Period: Codable, Equatable { let id: Int; let name: String; let start: String; let end: String }
@@ -112,6 +141,11 @@ final class NativeLiveActivityController: ObservableObject {
         let usableUntil: Double
         let broadcastUntil: Double
         let windows: [BroadcastWindow]
+        /// The server ends an activity at its first period's start on request. Older servers do not say.
+        var endsAtClassStart: Bool? = nil
+        /// 日程: the channel of each mark of the day ("0805"), `stepMinutes` apart. Older servers send none.
+        struct Clock: Codable, Equatable { let stepMinutes: Int; let channels: [String: String] }
+        var clock: Clock? = nil
     }
     private(set) var timing: TimingConfig?
     func installTiming(_ value: TimingConfig) {
@@ -197,10 +231,19 @@ final class NativeLiveActivityController: ObservableObject {
         var plannedStart: Date
         /// The partner's courses shown beside this one.
         var companions: [Attributes.Companion] = []
+        /// 上课时收起: the activity leaves the screen here, at the start of class. Nil: at the end of class.
+        var visibleEnd: Date? = nil
+        /// A 日程, not a class: one segment from its start to its end (or to its start when it has no end).
+        var isAgenda = false
         var start: Date { segments.first!.startAt }
         var end: Date { segments.last!.endAt }
+        /// When the activity is due off the screen.
+        var leaves: Date { visibleEnd ?? end }
         var endPeriod: Int { segments.last!.period }
-        var signature: String { segments.map { "\($0.period):\($0.startAt.timeIntervalSince1970):\($0.endAt.timeIntervalSince1970)" }.joined(separator: ",") }
+        var signature: String {
+            segments.map { "\($0.period):\($0.startAt.timeIntervalSince1970):\($0.endAt.timeIntervalSince1970)" }.joined(separator: ",")
+                + (visibleEnd == nil ? "" : "|before-class")
+        }
     }
     private var currentActivity: Activity<Attributes>? { Activity<Attributes>.activities.first { $0.activityState == .active || $0.activityState == .stale } }
     init(now: @escaping () -> Date = { .now }, sharedDefaults: UserDefaults? = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)) {
@@ -254,7 +297,8 @@ final class NativeLiveActivityController: ObservableObject {
         guard !isPreviewActive else { return }
         if let account = snapshot.auth.account, snapshot.auth.authenticated {
             loadAccount(account)
-            occurrences = expand(snapshot)
+            // Classes in the order they are planned, then 日程 beside them by start.
+            occurrences = (expand(snapshot) + agendaOccurrences()).sorted { ($0.start, $0.id) < ($1.start, $1.id) }
             saveBroadcastCourses()
         } else { occurrences = []; conflicts = [] }
         planDidChange?()
@@ -329,17 +373,53 @@ final class NativeLiveActivityController: ObservableObject {
             endDate: phase == .upcoming ? timeline.finalEnd : timeline.courseEnd,
             adjustmentNote: c.adjustmentNote, updatedAt: now())
         state.companion = Attributes.resolveCompanion(c.companions, mode: timingMode, now: now())
+        if c.isAgenda { state.agenda = true }
         return state
     }
     private func attributes(_ c: Occurrence, channel: String?) -> Attributes {
         var a = Attributes(semester: lastSnapshot?.data?.currentSemester ?? "", dateKey: c.dateKey, week: c.week,
-            broadcastWindow: String(c.endPeriod), broadcastChannel: channel, reservationStart: c.start, reservationEnd: c.end, reminderDate: c.plannedStart)
+            broadcastWindow: String(c.endPeriod), broadcastChannel: channel, reservationStart: c.start, reservationEnd: c.leaves, reminderDate: c.plannedStart)
         a.occurrenceId = c.id; a.accountScope = loadedAccount; a.scheduleId = timing?.scheduleId; a.scheduleVersion = timing?.scheduleVersion
         return a
     }
     private func channel(_ c: Occurrence) -> String? {
         guard let timing, c.start.timeIntervalSince1970 < timing.usableUntil, c.end.timeIntervalSince1970 <= timing.broadcastUntil else { return nil }
+        // A 日程 is ended by the clock mark at or after the moment it leaves.
+        if c.isAgenda { return Self.clockLabel(c.leaves, clock: timing.clock, timezone: timing.timezone).flatMap { timing.clock?.channels[$0] } }
+        // 上课时收起: the channel of the first period's start ends it; otherwise the last period's end does.
+        if c.visibleEnd != nil { return timing.windows.first { $0.id == String(c.segments[0].period) }?.startChannelID }
         return timing.windows.first { $0.id == String(c.endPeriod) }?.channelID
+    }
+    /// The mark ("0805") whose channel ends something due at `date`: that minute if it is a mark, else the next; past the last, midnight.
+    static func clockLabel(_ date: Date, clock: TimingConfig.Clock?, timezone: String) -> String? {
+        guard let clock, clock.stepMinutes > 0, let zone = TimeZone(identifier: timezone) else { return nil }
+        let local = date.timeIntervalSince1970 + TimeInterval(zone.secondsFromGMT(for: date))
+        let minute = Int((local.truncatingRemainder(dividingBy: 86400) / 60).rounded(.up))
+        let mark = Int((Double(minute) / Double(clock.stepMinutes)).rounded(.up)) * clock.stepMinutes % 1440
+        return String(format: "%02d%02d", mark / 60, mark % 60)
+    }
+    /// The 日程 that get an activity: with a time, still ahead, in the next week.
+    private func agendaOccurrences() -> [Occurrence] {
+        guard showsAgenda, supportsAgenda else { return [] }
+        let current = now()
+        return agenda.compactMap { entry in
+            let end = max(entry.end ?? entry.start, entry.start)
+            guard end > current, entry.start < current.addingTimeInterval(7 * 86400) else { return nil }
+            let plannedStart = entry.start.addingTimeInterval(-leadTime)
+            return Occurrence(id: entry.id, supersedes: [], name: entry.title, teacher: "", location: entry.location,
+                periodLabel: "日程", dateKey: entry.dateKey, week: 0, weekRangeLabel: "", adjustmentNote: "",
+                segments: [Attributes.Segment(period: 0, startAt: entry.start, endAt: end)], plannedStart: plannedStart,
+                // An activity lasts eight hours at most: a longer 日程 is shown until it starts.
+                visibleEnd: end.timeIntervalSince(plannedStart) >= 8 * 3600 ? entry.start : nil, isAgenda: true)
+        }
+    }
+    struct RemoteNote: Codable, Equatable { let occurrenceId: String; let startAt: Double; let endAt: Double }
+    /// 日程 for the remote plan: an identity and two times, nothing else.
+    func remoteNotes() -> [RemoteNote] {
+        guard isEnabled, ActivityAuthorizationInfo().areActivitiesEnabled else { return [] }
+        return occurrences.filter { $0.isAgenda && $0.leaves > now() }.map {
+            RemoteNote(occurrenceId: $0.id, startAt: $0.start.timeIntervalSince1970, endAt: $0.end.timeIntervalSince1970)
+        }
     }
     private func reconcile(_ epoch: Int) async {
         guard valid(epoch), ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -363,7 +443,7 @@ final class NativeLiveActivityController: ObservableObject {
             let id = a.attributes.occurrenceId ?? ""
             let c = occurrences.first { $0.id == id }
             let active = a.activityState == .active || a.activityState == .stale
-            let changed = c.map { a.attributes.reservationStart != $0.start || a.attributes.reservationEnd != $0.end || a.attributes.scheduleVersion != timing?.scheduleVersion || ledger[id]?.signature != nil && ledger[id]?.signature != $0.signature + (timing?.scheduleVersion ?? "") } ?? true
+            let changed = c.map { a.attributes.reservationStart != $0.start || a.attributes.reservationEnd != $0.leaves || a.attributes.scheduleVersion != timing?.scheduleVersion || ledger[id]?.signature != nil && ledger[id]?.signature != $0.signature + (timing?.scheduleVersion ?? "") } ?? true
             if active, ledger[id] == nil {
                 if let c { record(c, state: "active", activityID: a.id) }
                 else if !id.isEmpty {
@@ -371,7 +451,7 @@ final class NativeLiveActivityController: ObservableObject {
                     persist()
                 }
             }
-            if a.attributes.accountScope != loadedAccount || c == nil || c!.end <= current || ledger[id]?.state == "terminal" || active && changed {
+            if a.attributes.accountScope != loadedAccount || c == nil || c!.leaves <= current || ledger[id]?.state == "terminal" || active && changed {
                 if active {
                     if let c, ledger[id] == nil { record(c, state: "active", activityID: a.id) }
                     mark(id, state: "terminal", reason: "courseChanged")
@@ -391,13 +471,16 @@ final class NativeLiveActivityController: ObservableObject {
             }
             seen.insert(id)
             record(c, state: active ? "active" : "pending", activityID: a.id)
-            if active { await a.update(ActivityContent(state: state(c), staleDate: c.end)) }
+            if active { await a.update(ActivityContent(state: state(c), staleDate: c.leaves)) }
         }
         guard valid(epoch) else { return }
-        for c in occurrences where c.end <= current {
+        for c in occurrences where c.leaves <= current {
             if ledger[c.id] != nil { mark(c.id, state: "terminal", reason: "finished") }
         }
-        let targets = occurrences.filter { $0.end > current && $0.start < current.addingTimeInterval(7 * 86400) }
+        // 上课时收起: a class that follows another with no gap has no time before it to show in.
+        let targets = occurrences.filter {
+            $0.leaves > current && $0.start < current.addingTimeInterval(7 * 86400) && ($0.visibleEnd == nil || $0.plannedStart < $0.leaves)
+        }
         failures = [:]
         var arranged = 0
         for c in targets {
@@ -412,7 +495,7 @@ final class NativeLiveActivityController: ObservableObject {
             if let entry = ledger[c.id], ["dismissed", "missing"].contains(entry.state), entry.session == session, entry.cancellation == nil {
                 failures[c.id] = "下次打开 App 时恢复"; continue
             }
-            guard c.end.timeIntervalSince(c.plannedStart) < 8 * 3600, c.plannedStart < c.end else { failures[c.id] = "课程及提醒达到 8 小时上限"; continue }
+            guard c.leaves.timeIntervalSince(c.plannedStart) < 8 * 3600, c.plannedStart < c.leaves else { failures[c.id] = "课程及提醒达到 8 小时上限"; continue }
             if committedRemote.contains(c.id), c.plannedStart > current { failures[c.id] = "已有远程提交记录，等待核对"; continue }
             var channelID = channel(c)
             var scheduled = false
@@ -431,7 +514,7 @@ final class NativeLiveActivityController: ObservableObject {
                 guard c.plannedStart <= current else { continue }
                 if #available(iOS 18.0, *) { failures[c.id] = "等待启动配置"; continue }
             }
-            guard c.end > now().addingTimeInterval(scheduled ? 1 : 0) else { continue }
+            guard c.leaves > now().addingTimeInterval(scheduled ? 1 : 0) else { continue }
             do {
                 try request(c, channel: channelID, scheduled: scheduled)
                 arranged += 1
@@ -488,12 +571,12 @@ final class NativeLiveActivityController: ObservableObject {
     }
     private func request(_ c: Occurrence, channel: String?, scheduled: Bool) throws {
         record(c, state: "requesting")
-        let content = ActivityContent(state: state(c), staleDate: c.end)
+        let content = ActivityContent(state: state(c), staleDate: c.leaves)
         let activity: Activity<Attributes>
         if #available(iOS 26.0, *), scheduled, let channel {
             activity = try Activity.request(attributes: attributes(c, channel: channel), content: content,
                 pushType: .channel(channel), style: .standard,
-                alertConfiguration: AlertConfiguration(title: "课程提醒", body: LocalizedStringResource(stringLiteral: c.name), sound: .default),
+                alertConfiguration: AlertConfiguration(title: c.isAgenda ? "日程提醒" : "课程提醒", body: LocalizedStringResource(stringLiteral: c.name), sound: .default),
                 start: max(c.plannedStart, now().addingTimeInterval(1)))
         } else if #available(iOS 18.0, *), let channel {
             activity = try Activity.request(attributes: attributes(c, channel: channel), content: content, pushType: .channel(channel))
@@ -505,7 +588,7 @@ final class NativeLiveActivityController: ObservableObject {
     }
     func remoteStartWindows() -> [RemoteStartWindow] {
         guard isEnabled, ActivityAuthorizationInfo().areActivitiesEnabled else { return [] }
-        return occurrences.filter { $0.end > now() && $0.start < now().addingTimeInterval(370 * 86400) }.map {
+        return occurrences.filter { !$0.isAgenda && $0.leaves > now() && $0.start < now().addingTimeInterval(370 * 86400) }.map {
             RemoteStartWindow(occurrenceId: $0.id, supersedes: $0.supersedes, dateKey: $0.dateKey, startPeriod: $0.segments[0].period, endPeriod: $0.endPeriod)
         }
     }
@@ -518,6 +601,7 @@ final class NativeLiveActivityController: ObservableObject {
                 periodLabel: c.periodLabel, startDate: c.start, endDate: c.end, weekRangeLabel: c.weekRangeLabel, adjustmentNote: c.adjustmentNote)
             r.occurrenceId = c.id; r.accountScope = loadedAccount; r.segments = c.segments; r.mode = timingMode; r.contentVersion = c.signature
             r.companions = c.companions.isEmpty ? nil : c.companions
+            if c.isAgenda { r.agenda = true }
             return r
         }
         if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: Attributes.broadcastCoursesKey) }
@@ -692,6 +776,7 @@ final class NativeLiveActivityController: ObservableObject {
             let busyEnd = busyIntervals.filter { $0.startAt < result[index].start.timeIntervalSince1970 }.map { Date(timeIntervalSince1970: $0.endAt) }.max() ?? .distantPast
             result[index].plannedStart = max(result[index].plannedStart, previousEnd, busyEnd)
             previousEnd = max(previousEnd, result[index].end)
+            if collapsesInClass { result[index].visibleEnd = result[index].start }
         }
         var protectedIDs = Set(ledger.filter { $0.value.state == "terminal" || $0.value.state == "active" }.map(\.key)).union(committedRemote)
         var changed = true

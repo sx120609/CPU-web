@@ -123,6 +123,11 @@ final class LiveActivityPushService: ObservableObject {
                         "leadMinutes": controller.leadMinutes, "token": token,
                         "busyIntervals": try JSONSerialization.jsonObject(with: JSONEncoder().encode(controller.busyIntervals)),
                         "items": try JSONSerialization.jsonObject(with: JSONEncoder().encode(items))]) { _, b in b }
+                    // 上课时收起. Sent only when on, so a plan made without it keeps its digest.
+                    if controller.collapsesInClass { body["beforeClassOnly"] = true }
+                    // 日程, as an identity and two times each. Sent only when there are any.
+                    let notes = controller.remoteNotes()
+                    if !notes.isEmpty { body["notes"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(notes)) }
                     let sentRevision = configurationRevision
                     let digest = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
                     if defaults.data(forKey: key("acceptedDigest", account)) != digest {

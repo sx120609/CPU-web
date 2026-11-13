@@ -206,3 +206,30 @@ test('hourly refill skips idle devices and materializes courses as they enter th
     assert.equal(plans[0].state, 'cancelled', 'old-version pending plans must be retired');
   } finally { periods[1].end = originalEnd; }
 });
+test('上课时收起: the start push carries a reservation and stale date that end when class starts', () => {
+  const plain = service.parseCoursePlan(input(), periods, now / 1000)[0];
+  const c = service.parseCoursePlan({ ...input(), beforeClassOnly: true }, periods, now / 1000)[0];
+  const aps = service.remoteStartPayload(c, 'start-1', now / 1000, 'account-scope-0001', version).aps;
+  assert.equal(aps['stale-date'], c.start);
+  assert.equal(aps.attributes.reservationEnd, aps.attributes.reservationStart);
+  assert.equal(aps.attributes.broadcastChannel, 'start-1');
+  assert.equal(aps['content-state'].phase, 'upcoming');
+  // The class itself is unchanged: only how long the activity stays differs.
+  assert.equal(c.end, plain.end);
+  assert.equal(aps['content-state'].endDate, service.remoteStartPayload(plain, 'end-2', now / 1000, 'account-scope-0001', version).aps['content-state'].endDate);
+});
+test('日程: a plan carries notes beside its classes, and the digest tells plans with and without them apart', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  devices.length = 0; plans.length = 0;
+  const notes = [{ occurrenceId: 'note-a', startAt: now / 1000 + 3600, endAt: now / 1000 + 5400 }];
+  const result = await service.syncRemoteStarts(4, { ...input(1, 'installation-note'), notes });
+  const rows = plans.filter(p => p.deviceId === result.deviceID);
+  assert.deepEqual(rows.map(p => p.itemID).sort(), ['course-a', 'note-a']);
+  const note = JSON.parse(rows.find(p => p.itemID === 'note-a').payload);
+  assert.equal(note.clock, 9 * 60 + 15, 'ends on the clock mark of 09:15');
+  assert.equal(note.plannedStart, note.start - 900);
+  // The same revision with the notes changed is a different plan.
+  await assert.rejects(service.syncRemoteStarts(4, { ...input(1, 'installation-note'), notes: [] }), /计划版本冲突/);
+  await service.syncRemoteStarts(4, { ...input(2, 'installation-note') });
+  assert.equal(plans.find(p => p.itemID === 'note-a').state, 'cancelled', 'dropped from the plan: its start is withdrawn');
+});

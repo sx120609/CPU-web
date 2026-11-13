@@ -26,7 +26,7 @@ test('widget views draw the moment of their timeline entry', async () => {
   }
 });
 
-test('the widget gallery is Debug only and Release leaves the views out of the app', async () => {
+test('the widget gallery is Debug only; the app draws the schedule widget views for its settings preview', async () => {
   const gallery = await read(`${app}/NativeWidgetGallery.swift`);
   assert.match(gallery, /^#if DEBUG\n/);
   assert.match(gallery.trimEnd(), /#endif$/);
@@ -39,10 +39,15 @@ test('the widget gallery is Debug only and Release leaves the views out of the a
     assert.match(project, new RegExp(`CPUWebWidgets/${file.replace('.', '\\.')} in Sources \\*/,`), file);
   }
   const release = project.slice(project.indexOf('/* Release configuration for PBXNativeTarget "CpuTime" */ = {'));
-  const excluded = release.slice(0, release.indexOf('};')).match(/EXCLUDED_SOURCE_FILE_NAMES = "([^"]+)"/)?.[1] ?? '';
-  for (const file of shared) assert.ok(excluded.split(' ').includes(file), `Release app excludes ${file}`);
-  // The 日程 bridge needs the snapshot model in every configuration.
-  assert.ok(!excluded.includes('AgendaWidgetSnapshot.swift'));
+  const excluded = (release.slice(0, release.indexOf('};')).match(/EXCLUDED_SOURCE_FILE_NAMES = "?([^";]+)"?;/)?.[1] ?? '').split(' ');
+  // The settings page previews the schedule widgets in every configuration; only the
+  // 日程 widget's views, which nothing in the app draws outside the gallery, stay out of Release.
+  assert.deepEqual(excluded, ['AgendaWidget.swift']);
+  const page = await read(`${app}/NativeWidgetSetupView.swift`);
+  assert.match(page, /ScheduleWidgetView\(kind: size\.kind, entry: Self\.sample, overrides: overrides\)/);
+  assert.match(page, /\.safeAreaInset\(edge: \.top, spacing: 0\)/);
+  // The preview pins its own moment, so it cannot run the system's timers.
+  assert.match(page.slice(page.indexOf('struct NativeWidgetPreview')), /staticClock: true/);
 });
 
 test('the 日程 widget ticks off through the app, never the site', async () => {
@@ -85,8 +90,8 @@ test('text size scales the whole widget and never the lock screen', async () => 
   }
   // Each schedule widget can pick its own size in 编辑小组件; the default follows the app.
   const intents = await read(`${widgets}/ScheduleWidgetIntents.swift`);
-  assert.equal((intents.match(/@Parameter\(title: "文字大小", default: \.follow\)/g) ?? []).length, 3);
-  assert.equal((intents.match(/textSize: textSize\.size/g) ?? []).length, 3);
+  assert.equal((intents.match(/@Parameter\(title: "文字大小", default: \.follow\)/g) ?? []).length, 4);
+  assert.equal((intents.match(/textSize: textSize\.size/g) ?? []).length, 4);
   assert.match(code(await read(`${widgets}/ScheduleWidgetViews.swift`)), /entry\.configuration\.textSize \?\? displayOptions\.textSize/);
 });
 
@@ -129,4 +134,38 @@ test('countdown and progress are system timers anchored to the timeline entry', 
   // The gallery pins its moments and cannot run the system's timers.
   const gallery = await read(`${app}/NativeWidgetGallery.swift`);
   assert.match(gallery, /staticClock: true/);
+});
+
+test('overlapping courses reach the widgets in display-priority order', async () => {
+  const local = await read(`${app}/NativeWidgetLocalSchedule.swift`);
+  // The same rule as the timetable grid: a course in front covers the periods it shares.
+  assert.match(local, /NativeSchedulePriority\.place\(merged, priorities: priorities\)/);
+  assert.match(local, /store\.onPrioritiesChange = /);
+  assert.match(local, /startSlot: piece\.startSlot,\n\s+endSlot: piece\.endSlot/);
+  const store = await read(`${app}/NativeScheduleStore.swift`);
+  assert.match(store, /if !isReadOnly \{ onPrioritiesChange\?\(prioritiesBySemester\) \}/);
+  // Signing out clears them for the next account.
+  assert.match(store, /onPrioritiesChange\?\(\[:\]\)/);
+});
+
+test('the week widget and the iPad sizes', async () => {
+  const bundle = await read(`${widgets}/ScheduleWidgets.swift`);
+  assert.match(bundle, /kind = "cn\.cputime\.mobile\.widget\.week"/);
+  assert.match(bundle, /\.supportedFamilies\(\[\.systemLarge, \.systemExtraLarge\]\)/);
+  const twoDay = bundle.slice(bundle.indexOf('struct TwoDayScheduleWidget'), bundle.indexOf('struct WeekScheduleWidget'));
+  assert.match(twoDay, /\.systemExtraLarge/);
+  const views = code(await read(`${widgets}/ScheduleWidgetViews.swift`));
+  // Each extra-large column is as wide as a large widget and is drawn as one.
+  assert.match(views, /TwoDayScheduleView\(payload: payload, wide: true\)\s+\.environment\(\\\.scheduleWidgetFamily, \.systemLarge\)/);
+  // Once the rest of the week is free, the grid moves on to the next week.
+  assert.match(views, /let next = hasMore \? \[\] : sevenDays\(startingDaysFromToday: 7 - sinceMonday\)/);
+});
+
+test('the lock screen shows the class in progress live', async () => {
+  const views = code(await read(`${widgets}/ScheduleWidgetViews.swift`));
+  const lock = views.slice(views.indexOf('struct LockScreenScheduleView'), views.indexOf('struct UpcomingColumn'));
+  assert.match(lock, /ProgressView\(timerInterval: live\.interval, countsDown: false\)/);
+  assert.match(lock, /\.progressViewStyle\(\.circular\)/);
+  assert.match(lock, /CourseProgressBar\(course: course\)/);
+  assert.match(lock, /guard options\.showProgress, OtherDay\.offset\(of: day, now: now\) == nil/);
 });

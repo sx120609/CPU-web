@@ -4,8 +4,8 @@ import { prisma } from '../prisma';
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from './jwxtSessionCrypto';
 import { getApnsConfig, lockApnsConfig } from './apnsConfig';
 import { appleReferenceSeconds, sendLiveActivityPayload } from './apnsClient';
-import { currentTiming, endChannelKey, timingVersion } from './liveActivitySchedule';
-import { parseCoursePlan, type Occurrence } from './liveActivityTimeline';
+import { clockChannelKey, clockMark, currentTiming, endChannelKey, startChannelKey, timingVersion } from './liveActivitySchedule';
+import { parseCoursePlan, parseNotes, visibleEnd, type Occurrence } from './liveActivityTimeline';
 export { parseCoursePlan } from './liveActivityTimeline';
 const PURPOSE = 'live-activity-start-token';
 const EVENT = 'course-start-v2';
@@ -20,6 +20,9 @@ function installation(userId: number, input: any) {
     || typeof input.accountScope !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(input.accountScope)) throw new Error('设备或账号隔离标识无效');
   return { userId, installationId: input.installationId };
 }
+/** The channel that ends an occurrence's activity: a 日程's clock mark, a class's final period's end, or with 上课时收起 its first period's start. */
+const channelKey = (environment: string, version: string, c: Occurrence) => c.clock !== undefined ? clockChannelKey(environment, c.clock)
+  : c.visibleEnd === undefined ? endChannelKey(environment, version, c.endPeriod) : startChannelKey(environment, version, c.startPeriod);
 function capability(d: { id: string; userId: number; installationId: string | null }) {
   return encryptJwxtSensitiveJson('live-activity-revoke', 'v2', { id: d.id, userId: d.userId, installationId: d.installationId });
 }
@@ -28,7 +31,7 @@ async function cancelUnsubmitted(tx: Prisma.TransactionClient, deviceId: string,
 }
 async function materialize(tx: Prisma.TransactionClient, device: any, snapshot: Snapshot) {
   const now = Date.now() / 1000;
-  if (!snapshot.courses.some(c => c.end > now && c.plannedStart <= now + 48 * 3600)) return;
+  if (!snapshot.courses.some(c => visibleEnd(c) > now && c.plannedStart <= now + 48 * 3600)) return;
   const history = await tx.liveActivityPlan.findMany({ where: { deviceId: device.id },
     select: { itemID: true, state: true, revision: true, payload: true } });
   const historyById = new Map(history.map(r => [r.itemID, r]));
@@ -42,10 +45,10 @@ async function materialize(tx: Prisma.TransactionClient, device: any, snapshot: 
     }
   }
   for (const c of snapshot.courses) {
-    if (c.end <= now || c.plannedStart > now + 48 * 3600) continue;
+    if (visibleEnd(c) <= now || c.plannedStart > now + 48 * 3600) continue;
     const prior = historyById.get(c.occurrenceId);
     if (prior && (protectedStates.includes(prior.state) || prior.revision === device.planRevision)) continue;
-    const blocked = protectedIds.has(c.occurrenceId) || c.end - c.plannedStart >= 8 * 3600 || c.plannedStart >= c.end;
+    const blocked = protectedIds.has(c.occurrenceId) || visibleEnd(c) - c.plannedStart >= 8 * 3600 || c.plannedStart >= visibleEnd(c);
     const data = { event: EVENT, fireAt: new Date(c.plannedStart * 1000), expiresAt: new Date(c.expiresAt * 1000),
       payload: JSON.stringify(c), revision: device.planRevision, state: blocked ? 'terminal' : 'pending',
       detail: blocked ? '实例已提交、已终止或超过活动时长' : '', nextAttemptAt: new Date(), claimedUntil: null };
@@ -60,10 +63,15 @@ export async function syncRemoteStarts(userId: number, input: any) {
   if (!['sandbox', 'production'].includes(input.environment) || !config.configured || input.bundleID !== config.bundleID) throw new Error('APNs 配置不匹配');
   const timing = await currentTiming();
   if (input.scheduleId !== timing.scheduleId || input.scheduleVersion !== timing.id) throw new Error('作息版本已改变，请重新同步');
-  const courses = parseCoursePlan(input, timing.periods);
+  // Classes, then 日程 beside them: each starts at its own reminder.
+  const courses = [...parseCoursePlan(input, timing.periods), ...parseNotes(input, clockMark)]
+    .sort((a, b) => a.plannedStart - b.plannedStart || a.start - b.start || a.occurrenceId.localeCompare(b.occurrenceId));
   const tokenHash = hash(input.token.toLowerCase());
+  // The option joins the digest only when set: plans already accepted keep theirs.
   const digest = hash(JSON.stringify([input.scheduleId, input.scheduleVersion, input.coverageStart, input.coverageEndExclusive, input.leadMinutes,
-    input.items, input.busyIntervals, input.environment, input.bundleID, input.accountScope, tokenHash]));
+    input.items, input.busyIntervals, input.environment, input.bundleID, input.accountScope, tokenHash,
+    ...(input.beforeClassOnly === true ? ['beforeClassOnly'] : []),
+    ...(Array.isArray(input.notes) && input.notes.length ? [input.notes] : [])]));
   return prisma.$transaction(async tx => {
     await lock(tx, `${userId}:${identity.installationId}`);
     let device = await tx.liveActivityDevice.findUnique({ where: { userId_installationId: identity } });
@@ -134,11 +142,11 @@ export async function takeOverOccurrence(userId: number, input: any) {
     const c = JSON.parse(row.payload) as Occurrence;
     const snapshot = device.planSnapshot ? JSON.parse(device.planSnapshot) as Snapshot : null;
     const version = snapshot?.input.scheduleVersion || input.scheduleVersion;
-    if (version !== timing.id || c.end <= Date.now() / 1000 || c.plannedStart > Date.now() / 1000) throw new Error('本次课程尚不能恢复，请同步作息');
+    if (version !== timing.id || visibleEnd(c) <= Date.now() / 1000 || c.plannedStart > Date.now() / 1000) throw new Error('本次课程尚不能恢复，请同步作息');
     if (!protectedStates.includes(row.state)) await tx.liveActivityPlan.update({ where: { id: row.id }, data: { state: 'local', detail: '前台恢复已接管' } });
     await lockApnsConfig(tx);
     await tx.liveActivityScheduleVersion.updateMany({ where: { id: version, broadcastUntil: { lt: new Date(c.end * 1000) } }, data: { broadcastUntil: new Date(c.end * 1000) } });
-    return { occurrenceId: c.occurrenceId, state: protectedStates.includes(row.state) ? row.state : 'local', channelID: config.channels[endChannelKey(device.environment, version, c.endPeriod)] || null, scheduleVersion: version };
+    return { occurrenceId: c.occurrenceId, state: protectedStates.includes(row.state) ? row.state : 'local', channelID: config.channels[channelKey(device.environment, version, c)] || null, scheduleVersion: version };
   });
 }
 export function remoteStartPayload(c: Occurrence, channel: string, now: number, accountScope: string, scheduleVersion: string) {
@@ -146,11 +154,12 @@ export function remoteStartPayload(c: Occurrence, channel: string, now: number, 
     'attributes-type': 'ScheduleLiveActivityAttributes',
     attributes: { semester: '', week: 0, dateKey: c.dateKey, occurrenceId: c.occurrenceId, accountScope,
       scheduleId: 'main-campus', scheduleVersion, broadcastWindow: String(c.endPeriod), broadcastChannel: channel,
-      reservationStart: appleReferenceSeconds(c.start), reservationEnd: appleReferenceSeconds(c.end), reminderDate: appleReferenceSeconds(c.plannedStart) },
+      // 上课时收起: the reservation, like the activity, ends when class starts.
+      reservationStart: appleReferenceSeconds(c.start), reservationEnd: appleReferenceSeconds(visibleEnd(c)), reminderDate: appleReferenceSeconds(c.plannedStart) },
     'content-state': { protocolVersion: 2, scheduleId: 'main-campus', scheduleVersion, eventType: 'start', eventTime: appleReferenceSeconds(now),
       phase: now >= c.start ? 'inProgress' : 'upcoming', courseName: '', teacher: '', location: '',
       startDate: appleReferenceSeconds(c.start), endDate: appleReferenceSeconds(c.end), updatedAt: appleReferenceSeconds(now), broadcastDateKey: c.dateKey },
-    'stale-date': Math.floor(c.end), alert: { title: '课程提醒', body: '课表实时活动已开始' } } };
+    'stale-date': Math.floor(visibleEnd(c)), alert: { title: '课程提醒', body: '课表实时活动已开始' } } };
 }
 export const START_BATCH_SIZE = Math.max(1, Math.min(10000, Number(process.env.LIVE_ACTIVITY_START_BATCH) || 2000));
 // Bound transaction workers independently of the batch size. Five-connection
@@ -175,7 +184,7 @@ async function refillWindow(timingId: string) {
         const d = devices[index++];
         const snapshot = JSON.parse(d.planSnapshot!) as Snapshot;
         if (snapshot.input.scheduleVersion === timingId &&
-          !snapshot.courses.some(c => c.end > now && c.plannedStart <= now + 48 * 3600)) continue;
+          !snapshot.courses.some(c => visibleEnd(c) > now && c.plannedStart <= now + 48 * 3600)) continue;
         await prisma.$transaction(async tx => {
           await lock(tx, `${d.userId}:${d.installationId}`);
           const current = await tx.liveActivityDevice.findUnique({ where: { id: d.id } });
@@ -222,11 +231,11 @@ export async function tickRemoteStarts(send = sendLiveActivityPayload) {
         if (!published || timingVersion(JSON.parse(published.periods)) !== timing.id) return null;
         const snapshot = JSON.parse(row.device.planSnapshot || '{}') as Snapshot;
         const c = JSON.parse(row.payload) as Occurrence;
-        if (snapshot.input?.scheduleVersion !== timing.id || row.expiresAt <= new Date() || c.end * 1000 <= Date.now()) {
+        if (snapshot.input?.scheduleVersion !== timing.id || row.expiresAt <= new Date() || visibleEnd(c) * 1000 <= Date.now()) {
           outcomes.expired = (outcomes.expired || 0) + 1;
           await tx.liveActivityPlan.update({ where: { id: row.id }, data: { state: 'cancelled', detail: '计划过期或作息已改变' } }); return null;
         }
-        const channel = config.channels[endChannelKey(row.device.environment, timing.id, c.endPeriod)];
+        const channel = config.channels[channelKey(row.device.environment, timing.id, c)];
         if (!channel) {
           await tx.liveActivityPlan.update({ where: { id: row.id }, data: { nextAttemptAt: new Date(Date.now() + 30000), detail: "等待结束频道" } });
           return null;

@@ -67,7 +67,8 @@ Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=p
 - 数据在课表编辑里多一个可选字段 `priority`（课名 → 正整数，越大越靠前），接口仍是 `/api/jwxt/schedule-edits`。iOS 保存时总是带上这个字段；请求里没带它时服务端沿用已保存的值，所以还不认识它的安卓、鸿蒙客户端保存编辑不会把它抹掉（`server/src/shared/schedulePriority.ts`）。
 - 课表页按学期读取并缓存在本机（`nativeSchedule.displayPriorities.v1`），换账号或退出登录时清掉。
 - 实时活动用同一个答案：有唯一一门优先级最高的课时自动取它，设备设置里「请选择课程」只剩没人排过先后的节次；原来按日期逐节的选择仍然有效，作为没有优先级时的回退。
-- 小组件和其他三端目前仍然把重叠的课都列出来。
+- iPhone 小组件用同一个答案：App 写给小组件的按日课表（`NativeWidgetLocalSchedule`）先过一遍 `NativeSchedulePriority.place`，排在前面的课盖住重叠的节次，被盖住一部分的课只写露出来的那几节，没排过先后的照旧都写；调了优先级立刻重写并刷新小组件。快捷指令、Spotlight 和上课闹钟读的是同一份，也跟着变。
+- 其他三端目前仍然把重叠的课都列出来。
 
 ### 共享课表
 
@@ -169,20 +170,37 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 实时活动回归脚本在 macOS 编译执行实际控制器与网络协调器，验证提前量、远程计划、调休、权限、退出及迟到响应撤销。iOS 18 及以上上传启动 token 与已加载学期的最小时间计划，远程启动直接订阅学校时段频道，无需每天打开 App；提前量可自定义 0–60 分钟，默认 15 分钟。课程详情从本地课表读取，不上传教师、地点或课程名称。iOS 17 仅提供前台本地活动。服务端凭据在后台「APNs 推送」配置，正式 Bundle ID 为 `cn.cputime.mobile`。模拟器可用 `CPU_DEBUG_MOCK_SCHEDULE=1` 检查本地呈现，APNs 仍需真机验证。详情见 [APNs 配置与验收](../docs/apns.md)。
 
+## 实时活动的可选项
+
+实时活动设置里还有两个默认关闭的开关，都要服务端支持（`broadcast-config` 里的 `endsAtClassStart`、`clock`），服务端没给时不显示：
+
+- **上课时收起**：活动只在提醒时刻到上课这一段显示，上课那一刻由第一节的 `start-period` 频道结束，下课后等下一节课的提醒时间再出现；紧接上一节的课不显示。`NativeLiveActivityController.collapsesInClass`、`Occurrence.visibleEnd`。
+- **日程也显示实时活动**：有开始时间、没勾掉的日程（未来 8 天，`NativeAgendaRules.activities`）各有一个活动，到结束时间由钟点频道结束，文案是「距开始」「距结束」；没有结束时间或太长的到开始时收起。日程由 `NativeAgendaWidgetBridge` 和小组件用的同一份列表送进 `NativeLiveActivityController.setAgenda`。
+
+协议、频道和服务端开关（`LIVE_ACTIVITY_CLOCK_STEP_MINUTES`）见 `docs/live-activity-v2-implementation.md` 的 2026-11-13 一节。两项都还没有真机验收。
+
+简约风格的周课表给「今天」整列铺了一层主题色，课程卡片的底色和它差不多浅，课程色相和主题接近时（单色配色下是每一门课）卡片会融进去：今天这一列里的卡片改用深一档、不透明的底色并描一圈课程色的边（`ScheduleStyleCourseColor.todayFill`／`todayBorder`）。
+
+## 自由时间课程
+
+教务里列了、却没有排具体星期和节次的课（实践课、网课）进不了课表格子。服务端的课表结果多一个可选字段 `unscheduled`（课名、教务写的起止周、上课形式、学分；`ScheduleResult.unscheduled`，`server/src/services/jwxtParser.ts`），目前只有南京医科大学的教务给这份数据（课表响应里的 `sjkList`，`server/src/schools/njmu/driver.ts`），药大和其余学校没有这一项。Web 桥原样带给原生端（`NativeScheduleResult.unscheduled`，缺失或格式不对时为空，不影响课表本身），「更多 › 日历与日程」里有课时才出现「自由时间课程」一行，点开列出这些课。它们不进格子、小组件、实时活动、日历导出和共享课表；Web、安卓和鸿蒙目前不显示。Debug 构建用 `CPU_DEBUG_UNSCHEDULED=1`（配 `CPU_DEBUG_MOCK_SCHEDULE=1`）给示例课表加两门，`CPU_DEBUG_SCHEDULE_ACTION=unscheduled` 直接打开这一页。
+
 ## iOS 小组件
 
-四个小组件，界面与规则跟 NapTable 对齐（`CPUWebWidgets/ScheduleWidgetViews.swift`、`AgendaWidget.swift`）：
+五个小组件，界面与规则跟 NapTable 对齐（`CPUWebWidgets/ScheduleWidgetViews.swift`、`AgendaWidget.swift`）：
 
 | 小组件 | 尺寸 | 内容 |
 | --- | --- | --- |
 | 临近课程 | 小／中／大、锁屏矩形／圆形／单行 | 当前与下一节；大号是今天的完整课表（时间线或列表） |
 | 今日课表 | 小／中／大、锁屏三种 | 小号列今天还没上完的课；锁屏矩形列剩下的课，圆形是今天的进度，单行一句话 |
-| 两日课表 | 中／大、锁屏三种 | 今天和明天（默认最近有课的一天）；中号两列各放两三门 |
+| 两日课表 | 中／大／超大（iPad）、锁屏三种 | 今天和明天（默认最近有课的一天）；中号两列各放两三门，超大号两列各有一个大号那么宽、按大号的字号和卡片画 |
+| 本周课表 | 大／超大（iPad） | 一天一列，课按上午、下午、晚上对齐成行；过去的日子和下了课的课压暗，正在上的描一圈。这一周剩下的日子都没课了就换成下一周。周末两列默认有课才画，「编辑小组件」里可选总是或不显示 |
 | 日程 | 小／中／大、锁屏三种 | 逾期待办、接下来两周的日程和没有日期的待办，点圆圈直接勾选完成 |
 
 - **风格**：小组件跟随课表风格（App Group 的 `scheduleVisualStyle`），设备设置「小组件风格」可以单独指定。经典、格子与简约在小组件里是同一个样子（原来的样子），表格、素笺、站牌各有字体、纸色和装饰；颜色主题仍是九种。切换课表风格会刷新小组件。
 - **文字大小**：设备设置「iPhone 小组件 › 文字与排版」选自适应、小、标准（默认）或大，「编辑小组件」里可以给单个小组件另选（默认跟随 App）。大小是整块内容一起缩放的：内容排在 `1 / 比例` 大小的画布里再放大回去（`WidgetTextScaled`，`ScheduleWidgetLayouts.swift`），字、色条和间距同一个比例，里面按高度挑排法的梯子照常工作，放大后放不下的课收进「后面还有 N 门课」，不会挤出去。「自适应」从 1.16、1.08 往下试，最满的排法放得下就用，否则是标准大小，所以课少的日子字大、课多的日子和原来一样。锁屏三种尺寸不缩放。日程小组件跟 App 里的设置。
 - **倒计时与进度**：临近课程的「当前」「下一节」标题右边是「距下课 23:10」「距上课 12:40」，正在上的课下面（时间线卡片、列表行、站牌票面里）有一条进度。都是系统驱动的实时计时（`Text(timerInterval:)`、`ProgressView(timerInterval:)`），从条目的时刻数到上下课，不花刷新预算；「距上课」在上课前一小时出现，时间线为此在那一刻多排一条条目（`SchedulePayload.countdownLeadMinutes`）。「上课倒计时与进度」可以关。
+- **锁屏**：临近课程的锁屏圆形在上课时是这节课的实时进度环（中间是距下课的倒计时），矩形在时间右边写倒计时、下面一条进度；没在上课时和原来一样。
 - **其余显示开关**：「隐藏已上完的课」（今日课表和两日课表今天那列不再把上完的课灰着留着；都上完时显示休息状态或「今日课程已结束」）、「时间线标出课间休息」、日期栏的「周次」。都存在同一份 `scheduleWidgetDisplayOptions` JSON 里，旧版本存的设置缺这些字段时取默认值。
 - **日期栏**：中号、大号整宽的日期栏把假期倒计时收到「第 N 周」下面，不再单占一行；小号、两日课表的半宽列和站牌风格照旧在第二行。
 - **下一次课预告**：大号今日课表今天的课都放得下、底下还空着时，接着列下一个有课日开头的几门（标注「明天 周四」，字小一号），连一门都放不下时退成一行「08:00 药物设计学 等 2 门」。时间线只在今天一两门课时预告（三门以上卡片本来就铺满），列表放得下就预告；选了「只看今天」不预告。
@@ -191,7 +209,9 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 - **染色、待机**：强调色都标了 `widgetAccentable()`；非全彩模式和系统去掉背景时（待机）不再用纸墨色，改用系统主色。
 - **日程勾选**：小组件进程没有登录会话，勾选先写进 App Group（`widget-agenda-done-v1.json`）并立刻隐藏那一项；App 回到前台、网站确认登录后由 `NativeAgendaWidgetBridge` 经 `NativeAgendaService.toggle` 保存，再清空。日程列表变了 App 只重写 `widget-agenda-v1.json`（标题、时间、地点，不带备注），内容不变不写。点日程打开它的编辑表单（`action=agenda-item`），列表和「记一笔」分别是 `action=agenda-list`、`action=agenda-new`。检查脚本 `bash ios_next/scripts/check-agenda-widget.sh`。
 
-**小组件画廊（Debug）**：模拟器桌面没法用脚本添加小组件，Debug 构建用 `CPU_DEBUG_WIDGET_GALLERY=1` 启动时不进 App，换成按 iPhone 17 Pro 实际尺寸（小 170×170、中 364×170、大 364×382、锁屏矩形 172×76、圆形 76×76）画的全部小组件，用的是扩展里同一份视图（`ScheduleWidgetViews.swift` 等在 Debug 下也编进 App，Release 用 `EXCLUDED_SOURCE_FILE_NAMES` 排除）。`CPU_DEBUG_WIDGET_GALLERY_STYLE=minimal|table|paper|board`、`..._KIND=upcoming|today|twoDay|agenda|states|sizes`、`..._MODE=fullColor|accented`（染色桌面）、`..._SCHEME=light|dark` 缩小范围，不给 `SCHEME` 时跟系统外观（`xcrun simctl ui <udid> appearance dark`）；`CPU_DEBUG_WIDGET_GALLERY_EXPORT=/目录` 另外把每一页存成 PNG（不缩小范围时 4 种风格 × 6 页 × 浅深色共 48 张）。示例课表钉在 2026-11-11 10:20（周三第二节课中），「其他状态」页是暑假、课表过期、国庆、晚上切到明天、列表排法和等待同步，「文字大小与显示开关」页是各档文字大小、自适应、隐藏已上完的课和下一次课预告。画廊钉着过去的时刻，倒计时和进度条按那一刻画成静止的（`ScheduleWidgetOverrides.staticClock`），真机上才是实时的。系统外观是近似：桌面圆角与 16pt 边距、锁屏按灰度画在深色壁纸上、染色桌面按白色蒙版画在深色玻璃上。
+**设置页预览**：「iPhone 小组件」设置页顶上钉着一个预览（小号、中号、大号、本周可切），用扩展里同一份视图按当前的开关、文字大小、主题和风格画一份示例课表（钉在本周三 10:20，倒计时和进度是静止的），往下翻开关时一直看得见。为此课表小组件的视图（`WidgetModels.swift`、`ScheduleWidgetIntents.swift`、`ScheduleWidgetStyle.swift`、`ScheduleWidgetLayouts.swift`、`ScheduleWidgetViews.swift`）在 Release 下也编进 App；日程小组件的 `AgendaWidget.swift` 只有画廊用，Release 仍用 `EXCLUDED_SOURCE_FILE_NAMES` 排除。
+
+**小组件画廊（Debug）**：模拟器桌面没法用脚本添加小组件，Debug 构建用 `CPU_DEBUG_WIDGET_GALLERY=1` 启动时不进 App，换成按 iPhone 17 Pro 实际尺寸（小 170×170、中 364×170、大 364×382、锁屏矩形 172×76、圆形 76×76）画的全部小组件，用的是扩展里同一份视图。`CPU_DEBUG_WIDGET_GALLERY_STYLE=minimal|table|paper|board`、`..._KIND=upcoming|today|twoDay|week|agenda|states|sizes|pad`、`..._MODE=fullColor|accented`（染色桌面）、`..._SCHEME=light|dark` 缩小范围，不给 `SCHEME` 时跟系统外观（`xcrun simctl ui <udid> appearance dark`）；`CPU_DEBUG_WIDGET_GALLERY_EXPORT=/目录` 另外把每一页存成 PNG（不缩小范围时 4 种风格 × 8 页 × 浅深色共 64 张；「iPad 超大号」页按 11 英寸 iPad 的 716×342 画）。示例课表钉在 2026-11-11 10:20（周三第二节课中），「其他状态」页是暑假、课表过期、国庆、晚上切到明天、列表排法和等待同步，「文字大小与显示开关」页是各档文字大小、自适应、隐藏已上完的课和下一次课预告。画廊钉着过去的时刻，倒计时和进度条按那一刻画成静止的（`ScheduleWidgetOverrides.staticClock`），真机上才是实时的。系统外观是近似：桌面圆角与 16pt 边距、锁屏按灰度画在深色壁纸上、染色桌面按白色蒙版画在深色玻璃上。
 
 ```sh
 SIMCTL_CHILD_CPU_DEBUG_WIDGET_GALLERY=1 SIMCTL_CHILD_CPU_DEBUG_WIDGET_GALLERY_EXPORT=/tmp/widget-gallery \

@@ -36,6 +36,7 @@ struct NativeScheduleView: View {
     @State private var scheduleToolsPresented = false
     @State private var backgroundEditorPresented = false
     @State private var stylePickerPresented = false
+    @State private var unscheduledPresented = false
     @State private var sharingPresented = false
     @State private var couplePresented = false
     @State private var calendarPresented = false
@@ -535,6 +536,9 @@ struct NativeScheduleView: View {
                         commonFreePresented = true
                     case "style-picker":
                         stylePickerPresented = true
+                    // With `CPU_DEBUG_UNSCHEDULED=1`: the courses without a fixed time.
+                    case "unscheduled":
+                        unscheduledPresented = true
                     // With `CPU_DEBUG_AGENDA=1`: `agenda-edit` opens a sample 日程 in its editor,
                     // `agenda-add` taps the first empty period of the week, `agenda-new` picks
                     // 添加日程 there, and `agenda-list` opens 日程与待办.
@@ -670,6 +674,19 @@ struct NativeScheduleView: View {
             .presentationDragIndicator(.visible)
             .padPageSheet()
         }
+        .sheet(isPresented: $unscheduledPresented) {
+            NavigationStack {
+                NativeUnscheduledCoursesView(courses: store.result?.unscheduled ?? [])
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { unscheduledPresented = false }
+                        }
+                    }
+            }
+            .tint(.cpuBrand)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $stylePickerPresented) {
             NavigationStack {
                 ScheduleStylePicker(palette: preferences.palette)
@@ -796,6 +813,7 @@ struct NativeScheduleView: View {
                 }
             })
         }
+        // A partner's timetable carries only what the grid draws.
         let schedule = NativeScheduleResult(source: result.source, semesters: result.semesters, weeks: result.weeks,
                                             currentSemester: result.currentSemester, currentWeek: result.currentWeek, cells: cells)
         return NativeSharedSchedule(
@@ -1464,6 +1482,15 @@ struct NativeScheduleView: View {
                     ) {
                         scheduleToolsPresented = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { calendarPresented = true }
+                    }
+                    // 教务里没排具体星期和节次的课（实践课、网课）：进不了格子，有才显示这一行。
+                    if !result.unscheduled.isEmpty {
+                        scheduleToolDivider
+                        scheduleToolRow("自由时间课程", detail: "\(result.unscheduled.count) 门没有固定上课时间的课",
+                                        systemImage: "clock.badge.questionmark", tint: .teal) {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { unscheduledPresented = true }
+                        }
                     }
                     if !isReadOnly {
                         scheduleToolDivider
@@ -5781,4 +5808,53 @@ private struct NativeActivityView: UIViewControllerRepresentable {
 
 #Preview {
     Text("NativeScheduleView requires a NativeScheduleStore")
+}
+
+/// 自由时间课程：教务列了、却没有排具体星期和节次的课（实践课、网课）。课表格子里没有它们的位置，
+/// 在「更多」里单独列出来：课名，下面是教务写的起止周、上课形式和学分。
+@available(iOS 17.0, *)
+struct NativeUnscheduledCoursesView: View {
+    let courses: [NativeScheduleUnscheduledCourse]
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(courses) { course in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(course.name)
+                            .font(.body.weight(.medium))
+                        let detail = Self.detail(course)
+                        if !detail.isEmpty {
+                            Text(detail)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                }
+            } footer: {
+                Text("这些课教务没有排具体的星期和节次，不会出现在课表格子、小组件和实时活动里。上课安排以任课老师的通知为准。")
+            }
+        }
+        .overlay {
+            if courses.isEmpty {
+                ContentUnavailableView("没有自由时间课程", systemImage: "clock.badge.questionmark",
+                                       description: Text("这个学期的课都排了具体时间。"))
+            }
+        }
+        .navigationTitle("自由时间课程")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// 「1-16周 · 网络课程 · 2 学分」，教务没写的就不写。
+    static func detail(_ course: NativeScheduleUnscheduledCourse) -> String {
+        var parts = [course.weeks, course.note]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if let credits = course.credits, credits > 0 {
+            parts.append("\(credits.formatted(.number.precision(.fractionLength(0...1)))) 学分")
+        }
+        return parts.joined(separator: " · ")
+    }
 }

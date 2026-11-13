@@ -554,6 +554,21 @@ struct NativeScheduleStoreChecks {
         precondition(!String(decoding: stored, as: UTF8.self).contains("sourceNote"),
                      "The kept note stays out of the stored course")
 
-        print("Native schedule checks passed: decoding, selection, cache, auth, races, failed-week isolation, cold start, week paging, course notes")
+        // Courses the school lists without a time ride beside the cells. An older
+        // server sends none, and a malformed list never costs the timetable.
+        let withUnscheduled = try JSONDecoder().decode(NativeScheduleResult.self, from: Data("""
+        {"currentSemester":"2026-2027-1","currentWeek":"1","weeks":[{"value":"1","label":"第 1 周","current":true}],"cells":[],
+         "unscheduled":[{"name":"毕业实习","weeks":"1-16周","note":"实践课程","credits":8},{"name":"  "}]}
+        """.utf8))
+        precondition(withUnscheduled.unscheduled == [NativeScheduleUnscheduledCourse(name: "毕业实习", weeks: "1-16周", note: "实践课程", credits: 8)],
+                     "Unscheduled courses decode and blank names are dropped")
+        let stored2 = try JSONDecoder().decode(NativeScheduleResult.self, from: JSONEncoder().encode(withUnscheduled))
+        precondition(stored2.unscheduled == withUnscheduled.unscheduled, "Unscheduled courses survive the cold-start archive")
+        for body in ["{\"currentSemester\":\"s\",\"cells\":[]}", "{\"currentSemester\":\"s\",\"cells\":[],\"unscheduled\":\"oops\"}"] {
+            let decoded = try JSONDecoder().decode(NativeScheduleResult.self, from: Data(body.utf8))
+            precondition(decoded.unscheduled.isEmpty && decoded.currentSemester == "s", "A missing or malformed list is empty")
+        }
+
+        print("Native schedule checks passed: decoding, selection, cache, auth, races, failed-week isolation, cold start, week paging, course notes, unscheduled courses")
     }
 }

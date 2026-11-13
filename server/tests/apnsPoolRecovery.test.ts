@@ -1,6 +1,8 @@
 import test, { before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
+// These tests are about the period channels; the clock channels (日程) have their own.
+process.env.LIVE_ACTIVITY_CLOCK_STEP_MINUTES = '0';
 process.env.DATABASE_URL = 'postgresql://unit-test-only/apns';
 let settings = new Map<string, any>();
 let versions = new Map<string, any>();
@@ -59,15 +61,17 @@ let provisionApnsChannels: typeof import('../src/services/apnsChannels').provisi
 let liveActivityBroadcastConfig: typeof import('../src/services/liveActivityPush').liveActivityBroadcastConfig;
 let withApnsConfigLock: typeof import('../src/services/apnsConfig').withApnsConfigLock;
 let endChannelKey: typeof import('../src/services/liveActivitySchedule').endChannelKey;
+let startChannelKey: typeof import('../src/services/liveActivitySchedule').startChannelKey;
 let version: string;
 before(async () => {
   ({ provisionApnsChannels } = await import('../src/services/apnsChannels'));
   ({ liveActivityBroadcastConfig } = await import('../src/services/liveActivityPush'));
   ({ withApnsConfigLock } = await import('../src/services/apnsConfig'));
   const schedule = await import('../src/services/liveActivitySchedule');
-  endChannelKey = schedule.endChannelKey; version = schedule.timingVersion(periods);
+  endChannelKey = schedule.endChannelKey; startChannelKey = schedule.startChannelKey; version = schedule.timingVersion(periods);
 });
 const key = (env: string) => endChannelKey(env, version, 1);
+const startKey = (env: string) => startChannelKey(env, version, 1);
 function put(name: string, value: unknown) {
   settings.set(name, { key: name, value: typeof value === 'string' ? value : JSON.stringify(value), updatedAt: new Date() });
 }
@@ -164,11 +168,12 @@ test('slow Apple request holds zero database connections; another worker reuses 
   await first;
   const saved = channels();
   await provisionApnsChannels(Date.now(), false, transport);
-  assert.equal(created, 2, 'one channel per environment, no recreation on another tick');
+  // An end channel and a start channel (上课时收起) for the one period, in each environment.
+  assert.equal(created, 4, 'two channels per environment, no recreation on another tick');
   assert.deepEqual(channels(), saved);
 });
 
-test('checking sixty existing channels uses a fixed number of transactions', async () => {
+test('checking a hundred and twenty existing channels uses a fixed number of transactions', async () => {
   const original = [...periods];
   try {
     periods.splice(0, periods.length, ...Array.from({ length: 30 }, (_, i) => ({
@@ -176,8 +181,10 @@ test('checking sixty existing channels uses a fixed number of transactions', asy
       end: `00:${String(i * 2 + 1).padStart(2, '0')}`,
     })));
     const { timingVersion } = await import('../src/services/liveActivitySchedule');
-    const mapping = Object.fromEntries(['production', 'sandbox'].flatMap(env =>
-      periods.map(p => [endChannelKey(env, timingVersion(periods), p.id), env + p.id])));
+    const mapping = Object.fromEntries(['production', 'sandbox'].flatMap(env => periods.flatMap(p => [
+      [endChannelKey(env, timingVersion(periods), p.id), env + p.id],
+      [startChannelKey(env, timingVersion(periods), p.id), env + 'start' + p.id],
+    ])));
     put('apns.channels', mapping);
     const before = transactions;
     const result = await provisionApnsChannels(Date.now(), false, {
@@ -196,8 +203,12 @@ test('partial create success persists immediately and only missing channels are 
   const first = await provisionApnsChannels(Date.now(), false, transport);
   assert.equal(first.channelErrors.length, 1);
   assert.equal(channels()[key('production')], 'id-1');
+  // Four were wanted (end and start, two environments); the one that failed is the only one asked for again.
+  assert.equal(calls, 4);
+  assert.equal(Object.keys(channels()).length, 3);
   await provisionApnsChannels(Date.now(), false, transport);
-  assert.equal(calls, 3);
+  assert.equal(calls, 5);
+  assert.equal(Object.keys(channels()).length, 4);
   assert.equal(channels()[key('production')], 'id-1');
 });
 
@@ -218,7 +229,8 @@ test('expired owner cannot replace a successor ID or release its lease', async (
 });
 
 test('retired channel deletion is outside transactions and survives failure for later retry', async () => {
-  put('apns.channels', { 'production:cpu-morning': 'old', [key('production')]: 'keep-prod', [key('sandbox')]: 'keep-sandbox' });
+  put('apns.channels', { 'production:cpu-morning': 'old', [key('production')]: 'keep-prod', [key('sandbox')]: 'keep-sandbox',
+    [startKey('production')]: 'keep-prod-start', [startKey('sandbox')]: 'keep-sandbox-start' });
   let deletionCount = 0;
   const transport = {
     create: async () => { throw Error('existing channels must be reused'); },
@@ -230,7 +242,7 @@ test('retired channel deletion is outside transactions and survives failure for 
   await provisionApnsChannels(Date.now(), true, transport);
   assert.equal(deletionCount, 2);
   assert.deepEqual(JSON.parse(settings.get('apns.channels.pending-deletions').value), []);
-  assert.deepEqual(Object.values(channels()).sort(), ['keep-prod', 'keep-sandbox']);
+  assert.deepEqual(Object.values(channels()).sort(), ['keep-prod', 'keep-prod-start', 'keep-sandbox', 'keep-sandbox-start']);
 });
 
 test('global advisory contention releases its connection without invoking the operation', async () => {
@@ -251,4 +263,31 @@ test('provider rotation during Apple I/O cannot publish a stale channel', async 
   await rejected;
   assert.deepEqual(channels(), {});
   assert.equal(JSON.parse(settings.get('apns.channels.pending-deletions').value)[0].provider.bundleID, 'test.app');
+});
+test('日程: clock channels are created a few per pass, after the period channels, and never retired', async () => {
+  process.env.LIVE_ACTIVITY_CLOCK_STEP_MINUTES = '60';
+  try {
+    const { clockChannelKey } = await import('../src/services/liveActivitySchedule');
+    put('apns.channels', {});
+    let created = 0;
+    const transport = { create: async () => 'clock-test-' + ++created, delete: async () => assert.fail('nothing is retired') };
+    await provisionApnsChannels(Date.now(), true, transport);
+    // One period: its end and start channel, then twelve of the day's twenty-four marks, in each environment.
+    assert.equal(created, 2 * (2 + 12));
+    assert.ok(channels()[key('production')] && channels()[startKey('production')], 'the period channels come first');
+    assert.ok(channels()[clockChannelKey('production', 0)] && channels()[clockChannelKey('sandbox', 11 * 60)]);
+    assert.equal(channels()[clockChannelKey('production', 12 * 60)], undefined, 'the rest wait for the next pass');
+    await provisionApnsChannels(Date.now(), true, transport);
+    assert.equal(created, 2 * (2 + 24));
+    assert.ok(channels()[clockChannelKey('sandbox', 23 * 60)]);
+    const saved = channels();
+    await provisionApnsChannels(Date.now(), true, transport);
+    assert.equal(created, 2 * (2 + 24), 'complete: nothing more is created and pruning keeps them');
+    assert.deepEqual(channels(), saved);
+    const config = await liveActivityBroadcastConfig('sandbox', 'test.app', true);
+    assert.equal(config.clock!.stepMinutes, 60);
+    assert.equal(Object.keys(config.clock!.channels).length, 24);
+    assert.equal(config.clock!.channels['0800'], saved[clockChannelKey('sandbox', 8 * 60)]);
+    assert.equal((await liveActivityBroadcastConfig('sandbox', 'test.app', false)).clock, null, 'only local scheduling needs the mapping');
+  } finally { process.env.LIVE_ACTIVITY_CLOCK_STEP_MINUTES = '0'; }
 });

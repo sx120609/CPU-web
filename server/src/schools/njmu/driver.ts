@@ -17,6 +17,7 @@ import {
   parseZfGrades,
   parseZfPeriods,
   parseZfSchedule,
+  parseZfUnscheduledCourses,
   semesterValue,
   zfTerm,
   ZF_LAST_TEACHING_PERIOD,
@@ -114,7 +115,9 @@ export async function getSchedule(token: string, args: { semester?: string; week
   if (returned && returned !== semester) throw Errors.badGateway("南医教务返回的课表学期与请求不一致");
   const enrollYear = Number(String(info.NJDM_ID ?? info.NJMC ?? "").slice(0, 4)) || Number(String(info.XH ?? "").slice(0, 4));
   const parsed = parseZfSchedule(raw, { semester, week: args.week, knownSemesters: semestersSince(enrollYear, current > semester ? current : semester) });
-  return { ...parsed, source: "modern" as const };
+  // 同一份响应里的 sjkList：没排到具体时间的实践课、网课，客户端在课表之外单独列。
+  const unscheduled = parseZfUnscheduledCourses(raw);
+  return { ...parsed, ...(unscheduled.length ? { unscheduled } : {}), source: "modern" as const };
 }
 
 export async function getGrades(token: string, args: { semester?: string } = {}) {

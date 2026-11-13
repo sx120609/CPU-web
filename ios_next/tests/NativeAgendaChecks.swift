@@ -98,6 +98,36 @@ struct NativeAgendaChecks {
                      item("late0002", "c", date: "2026-10-24"), item("late0001", "d", date: "2026-10-20"),
                      item("timed001", "e", date: "2026-10-20", start: "09:00"), item("today001", "f", date: "2026-10-26")]
         precondition(NativeAgendaRules.openTodos(todos, today: "2026-10-26").map(\.id) == ["late0001", "late0002", "undated01", "undated02"])
+        // 日程 for the Live Activities: with a time, not ticked off, still ahead, each day of a repeating one.
+        let liveNow = ISO8601DateFormatter().date(from: "2026-10-21T02:00:00Z")!   // 10:00 in China
+        func chinaTime(_ date: String, _ clock: String) -> Date { ISO8601DateFormatter().date(from: "\(date)T\(clock):00+08:00")! }
+        let liveItems = [
+            NativeAgendaItem(id: "组会/1", title: "组会", date: "2026-10-21", start: "14:00", end: "15:30", location: "药学楼 302"),
+            NativeAgendaItem(id: "no-end", title: "交报告", date: "2026-10-21", start: "18:00"),
+            NativeAgendaItem(id: "bad-end", title: "讲座", date: "2026-10-22", start: "19:00", end: "18:00"),
+            NativeAgendaItem(id: "allday", title: "校庆", date: "2026-10-21"),
+            NativeAgendaItem(id: "todo", kind: "todo", title: "领实验服", date: "2026-10-21"),
+            NativeAgendaItem(id: "done", title: "已做完", date: "2026-10-21", start: "16:00", done: true),
+            NativeAgendaItem(id: "morning", title: "早读", date: "2026-10-21", start: "07:00", end: "07:40"),
+            NativeAgendaItem(id: "run", title: "晨跑", date: "2026-10-19", start: "06:30", end: "07:00", repeatRule: "daily",
+                             until: "2026-10-23", doneDates: ["2026-10-22"]),
+            NativeAgendaItem(id: "far", title: "下个月", date: "2026-11-21", start: "09:00"),
+        ]
+        let live = NativeAgendaRules.activities(liveItems, now: liveNow)
+        precondition(live.map(\.title) == ["组会", "交报告", "讲座", "晨跑"],
+                     "all-day items, to-dos without a time, ticked-off, finished and far-off ones are left out: \(live.map(\.title))")
+        precondition(live[0].start == chinaTime("2026-10-21", "14:00") && live[0].end == chinaTime("2026-10-21", "15:30"))
+        precondition(live[0].id == "agenda-___1-20261021" && live[0].itemID == "组会/1", "the identity is safe to send: \(live[0].id)")
+        precondition(live[1].end == nil && live[2].end == nil, "no end, or an end before the start, is no end")
+        // The daily run: today's is over, tomorrow's is ticked off, the day after is the last before `until`.
+        precondition(live[3].date == "2026-10-23" && live[3].id == "agenda-run-20261023")
+        precondition(NativeAgendaRules.activities(liveItems, now: chinaTime("2026-10-21", "06:00")).filter { $0.itemID == "run" }.map(\.date)
+                        == ["2026-10-21", "2026-10-23"])
+        precondition(NativeAgendaRules.activities(liveItems, now: liveNow, limit: 2).count == 2)
+        let twins = [NativeAgendaItem(id: "a/b", title: "一", date: "2026-10-21", start: "12:00"),
+                     NativeAgendaItem(id: "a_b", title: "二", date: "2026-10-21", start: "13:00")]
+        precondition(NativeAgendaRules.activities(twins, now: liveNow).map(\.title) == ["一"], "identities are unique after being made safe")
+
         print("NativeAgendaChecks passed")
     }
 }

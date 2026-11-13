@@ -42,6 +42,10 @@ final class NativeAgendaWidgetBridge {
         guard let service else { return }
         if service.available { applyPending(service) }
         write(service)
+        // The same list feeds 日程 into the Live Activities (off unless chosen there).
+        NativeLiveActivityController.shared.setAgenda(NativeAgendaRules.activities(service.items, now: Date()).map {
+            .init(id: $0.id, title: $0.title, location: $0.location, dateKey: $0.date, start: $0.start, end: $0.end)
+        })
     }
 
     /// The line in 设备与服务 → iPhone 小组件.

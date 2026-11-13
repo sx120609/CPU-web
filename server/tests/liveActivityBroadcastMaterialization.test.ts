@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+// These tests are about the period channels; the clock channels (日程) have their own.
+process.env.LIVE_ACTIVITY_CLOCK_STEP_MINUTES = '0';
 process.env.DATABASE_URL = 'postgresql://unit-test-only/apns';
 const periods = [{ id: 1, name: '1', start: '08:00', end: '08:45' }];
 const versions: any[] = [];

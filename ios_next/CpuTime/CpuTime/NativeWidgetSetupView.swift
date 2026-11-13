@@ -1,5 +1,6 @@
 import SwiftUI
 import ActivityKit
+import WidgetKit
 
 /// Native companion settings are intentionally split by product surface. The
 /// entry page stays short; each destination owns the controls for one thing.
@@ -124,7 +125,7 @@ private struct NativeWidgetSettingsPage: View {
     @ObservedObject var session: HybridWebViewStore
 
     var body: some View {
-        Form { WidgetSettingsSection(session: session) }
+        WidgetSettingsSection(session: session)
             .navigationTitle("iPhone 小组件")
             .navigationBarTitleDisplayMode(.inline)
     }
@@ -459,6 +460,14 @@ private struct LiveActivitySettingsSection: View {
                         Text("1 小时").tag(60)
                     }
                 }
+                if controller.supportsBeforeClassOnly {
+                    Toggle("上课时收起", isOn: Binding(get: { controller.beforeClassOnly },
+                                                   set: { controller.setBeforeClassOnly($0) }))
+                }
+                if controller.supportsAgenda {
+                    Toggle("日程也显示实时活动", isOn: Binding(get: { controller.showsAgenda },
+                                                       set: { controller.setShowsAgenda($0) }))
+                }
                 if #available(iOS 26.0, *) {
                     Toggle("锁屏玻璃背景", isOn: Binding(get: { controller.glassBackground },
                                                      set: { controller.setGlassBackground($0) }))
@@ -519,6 +528,12 @@ private struct LiveActivitySettingsSection: View {
             Label("灵动岛", systemImage: "rectangle.topthird.inset.filled")
         } footer: {
             Text("iOS 26 及以上每次打开 App 安排未来 7 天课程；iOS 18–25 使用远程启动。每次课程独立计时，在最后一节下课时收起。手动移除后，下次打开 App 可恢复尚未结束的课程。")
+            if controller.supportsAgenda {
+                Text("日程也显示实时活动：有具体时间、还没勾掉的日程，和课程一样提前显示倒计时，到结束时间收起；没有结束时间的到开始时收起。结束时间按 \(controller.timing?.clock?.stepMinutes ?? 5) 分钟取整。")
+            }
+            if controller.supportsBeforeClassOnly {
+                Text("上课时收起：只在课前提醒到上课这段时间显示，上课那一刻收起，下课后等下一节课的提醒时间再出现。紧接着上一节的课，课前没有可显示的时间，不显示。")
+            }
             Text(controller.broadcastStatus)
         }
     }
@@ -551,9 +566,7 @@ struct NativeWidgetSetupView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                WidgetSettingsSection(session: session)
-            }
+            WidgetSettingsSection(session: session)
             .navigationTitle("iPhone 小组件")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -572,6 +585,7 @@ private struct WidgetSettingsSection: View {
     @State private var theme: String
     @State private var widgetStyle: String
     @State private var options: WidgetDisplayOptions
+    @State private var previewSize = NativeWidgetPreview.Size.medium
 
     private let themes = [
         ("color-glass", "彩色玻璃"), ("green", "绿"), ("blue", "蓝"),
@@ -587,12 +601,34 @@ private struct WidgetSettingsSection: View {
         _options = State(initialValue: WidgetDisplayOptions.load(defaults: defaults))
     }
 
-    @ViewBuilder
+    /// The form, under a preview that stays in view while the switches below it are flipped.
     var body: some View {
+        Form { sections }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 10) {
+                    NativeWidgetPreview(size: previewSize, options: options, theme: theme, widgetStyle: widgetStyle)
+                    Picker("预览尺寸", selection: $previewSize) {
+                        ForEach(NativeWidgetPreview.Size.allCases, id: \.self) { size in
+                            Text(size.title).tag(size)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity)
+                .background(.bar)
+            }
+    }
+
+    @ViewBuilder
+    private var sections: some View {
         Section {
             LabeledContent("状态", value: session.widgetSettings.isConfigured ? "课表已同步" : "等待课表同步")
         } footer: {
-            Text("在桌面或锁屏添加“临近课程”“今日课表”“两日课表”或“日程”。小组件直接用 App 里的课表，打开 App 同步后自动更新。")
+            Text("上面是按现在的设置画的示例课表。在桌面或锁屏添加“临近课程”“今日课表”“两日课表”“本周课表”或“日程”，小组件直接用 App 里的课表，打开 App 同步后自动更新。")
         }
 
         Section {
@@ -673,7 +709,7 @@ private struct WidgetSettingsSection: View {
         } header: {
             Label("每个小组件单独设置", systemImage: "hand.tap")
         } footer: {
-            Text("今天的课上完后显示什么、小号显示几节课、两日课表显示哪两天、大号用时间线还是列表，以及这一个小组件的文字大小。")
+            Text("今天的课上完后显示什么、小号显示几节课、两日课表显示哪两天、本周课表要不要周末、大号用时间线还是列表，以及这一个小组件的文字大小。")
         }
 
         Section {
@@ -693,5 +729,139 @@ private struct WidgetSettingsSection: View {
                 session.widgetSettings.setScheduleWidgetDisplayOptions(options)
             }
         )
+    }
+}
+
+/// The widget as it will look with the settings on this page, drawn by the
+/// extension's own views over a sample day (Wednesday-like: one class over,
+/// one on, two to come). The countdown and progress stand still at the
+/// sample's moment; on the home screen they run.
+@available(iOS 17.0, *)
+struct NativeWidgetPreview: View {
+    enum Size: String, CaseIterable {
+        case small, medium, large, week
+
+        var title: String {
+            switch self {
+            case .small: "小号"
+            case .medium: "中号"
+            case .large: "大号"
+            case .week: "本周"
+            }
+        }
+
+        var family: WidgetFamily {
+            switch self {
+            case .small: .systemSmall
+            case .medium: .systemMedium
+            case .large, .week: .systemLarge
+            }
+        }
+
+        var kind: ScheduleWidgetKind {
+            switch self {
+            case .small, .medium: .upcoming
+            case .large: .today
+            case .week: .week
+            }
+        }
+
+        /// iPhone 17 Pro points.
+        var points: CGSize {
+            switch self {
+            case .small: CGSize(width: 170, height: 170)
+            case .medium: CGSize(width: 364, height: 170)
+            case .large, .week: CGSize(width: 364, height: 382)
+            }
+        }
+    }
+
+    let size: Size
+    let options: WidgetDisplayOptions
+    let theme: String
+    let widgetStyle: String
+
+    /// The pinned preview never takes more of the screen than this.
+    private static let maxHeight: CGFloat = 196
+
+    var body: some View {
+        let points = size.points
+        let style = widgetStyle == "follow"
+            ? WidgetStyle.load(from: UserDefaults(suiteName: NextWidgetConfiguration.appGroup))
+            : WidgetStyle(timetableStyle: widgetStyle)
+        let overrides = ScheduleWidgetOverrides(
+            family: size.family,
+            style: style,
+            theme: ScheduleWidgetTheme(rawValue: theme) ?? .colorGlass,
+            options: Self.extensionOptions(options),
+            staticClock: true
+        )
+        // Sized by the space there is, then the widget is scaled into it.
+        Color.clear
+            .aspectRatio(points.width / points.height, contentMode: .fit)
+            .frame(maxWidth: points.width, maxHeight: Self.maxHeight)
+            .overlay {
+                GeometryReader { proxy in
+                    let scale = min(proxy.size.width / points.width, proxy.size.height / points.height)
+                    ScheduleWidgetView(kind: size.kind, entry: Self.sample, overrides: overrides)
+                        .padding(16)
+                        .frame(width: points.width, height: points.height)
+                        .background(ScheduleWidgetBackground(style: style))
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+                        .scaleEffect(scale)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+            }
+            .frame(height: min(Self.maxHeight, points.height))
+            .frame(maxWidth: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(size.title)小组件预览")
+    }
+
+    /// The extension reads the same JSON the app writes, so go through it.
+    private static func extensionOptions(_ options: WidgetDisplayOptions) -> ScheduleWidgetDisplayOptions {
+        guard let data = try? JSONEncoder().encode(options),
+              let value = try? JSONDecoder().decode(ScheduleWidgetDisplayOptions.self, from: data) else { return .default }
+        return value
+    }
+
+    /// This week with a sample timetable, at 10:20 on its Wednesday: the second class is on,
+    /// with days before and after it, whatever day it really is.
+    private static var sample: ScheduleEntry {
+        let calendar = ChineseCalendarInfo.gregorian
+        let realToday = calendar.startOfDay(for: Date())
+        let today = calendar.date(byAdding: .day, value: 2 - (calendar.component(.weekday, from: realToday) + 5) % 7,
+                                  to: realToday) ?? realToday
+        func course(_ name: String, _ start: String, _ end: String, _ room: String, _ teacher: String) -> ScheduleCourse {
+            ScheduleCourse(name: name, teacher: teacher, location: room, note: nil, slotNote: nil,
+                           startTime: start, endTime: end, startSlot: nil, endSlot: nil)
+        }
+        let full = [
+            course("药物化学", "08:00", "09:40", "A201", "王老师"),
+            course("药理学", "10:00", "11:40", "B305", "李老师"),
+            course("药物分析实验", "14:00", "17:20", "实验楼 B402", "陈老师"),
+            course("形势与政策", "19:00", "20:40", "A102", "孙老师"),
+        ]
+        let light = [
+            course("物理化学", "08:00", "09:40", "C101", "周老师"),
+            course("体育（羽毛球）", "14:00", "15:40", "体育馆", "赵老师"),
+        ]
+        let sinceMonday = (calendar.component(.weekday, from: today) + 5) % 7
+        // Today and every other weekday are full days, the days between are light, weekends are free.
+        let days = (-sinceMonday..<(14 - sinceMonday)).map { offset -> ScheduleDay in
+            let date = calendar.date(byAdding: .day, value: offset, to: today) ?? today
+            let empty = ScheduleDay.empty(date: ChineseCalendarInfo.dateString(date), offset: offset)
+            let weekday = empty.day ?? 1
+            let courses = offset == 0 ? full : (weekday > 5 ? [] : (abs(offset) % 2 == 0 ? full : light))
+            return ScheduleDay(day: empty.day, label: empty.label, date: empty.date, week: 10 + (offset + sinceMonday) / 7,
+                               isToday: offset == 0, courses: courses)
+        }
+        let payload = SchedulePayload(
+            title: nil, generatedAt: nil, cachedAt: nil, semester: nil, week: 10, currentWeek: 10, displayWeek: 10,
+            strictDate: true, stale: false, today: days.first { $0.isToday == true }, days: nil, weekDays: days
+        )
+        return ScheduleEntry(date: today.addingTimeInterval((10 * 60 + 20) * 60), state: .loaded(payload))
     }
 }

@@ -38,9 +38,19 @@ enum NativeWidgetLocalSchedule {
         var termEnd: String? = nil
     }
 
+    /// 各学期的「优先显示」（课名 → 优先级）。重叠的课在小组件里和课表、实时活动一样只留排在前面的。
+    private static var priorities: [String: [String: Int]] = [:]
+
     static func connect(to store: NativeScheduleStore) {
         removeLegacyEndpoint()
+        priorities = store.prioritiesBySemester
         store.onLatestSnapshotChange = { snapshot in accept(snapshot) }
+        store.onPrioritiesChange = { [weak store] value in
+            guard value != priorities else { return }
+            priorities = value
+            // 调了优先级：按新的先后重写一遍，小组件跟着刷新。
+            if let snapshot = store?.latestSnapshot { accept(snapshot) }
+        }
         accept(store.latestSnapshot)
     }
 
@@ -52,14 +62,18 @@ enum NativeWidgetLocalSchedule {
             return
         }
         guard snapshot.auth.authenticated, snapshot.error == nil,
-              let record = record(from: snapshot, merging: read()) else { return }
+              let record = record(from: snapshot, merging: read(),
+                                  priorities: priorities[snapshot.data?.currentSemester ?? ""] ?? [:]) else { return }
         // App 里的课表、月视图也按这份放假安排显示假期。
         ChineseCalendarInfo.usePublishedHolidays(record.holidays ?? [])
         write(record)
     }
 
     /// `existing` 是上一次写的那份：只按周取的快照缺别的周的课，同一学期时保留那些日子。
-    static func record(from snapshot: NativeScheduleSnapshot, merging existing: Record? = nil) -> Record? {
+    /// `priorities` 是这个学期的「优先显示」：同一时段有先后时只写排在前面的课，被盖住一部分的课
+    /// 只写露出来的那几节（和课表格子的规则一样，`NativeSchedulePriority.place`）；没排过先后的照旧都写。
+    static func record(from snapshot: NativeScheduleSnapshot, merging existing: Record? = nil,
+                       priorities: [String: Int] = [:]) -> Record? {
         guard let data = snapshot.data, let calendar = snapshot.calendar,
               !data.currentSemester.isEmpty else { return nil }
         let coveredWeeks: Set<Int>
@@ -95,9 +109,14 @@ enum NativeWidgetLocalSchedule {
                         ))
                     }
                 }
-                let courses = NativeScheduleCourseBlockMerger.merge(blocks).map { block -> Course in
+                let merged = NativeScheduleCourseBlockMerger.merge(blocks)
+                let courses = NativeSchedulePriority.place(merged, priorities: priorities).map { piece -> Course in
+                    let block = piece.block
                     let course = block.course
                     let slotNote = course.slotNote?.trimmedNonEmpty
+                    // 自定的起止时间是整门课的：被盖掉开头或结尾的那一段按节次的时间算。
+                    let customStart = piece.startSlot == block.startSlot ? course.customStartTime?.trimmedNonEmpty : nil
+                    let customEnd = piece.endSlot == block.endSlot ? course.customEndTime?.trimmedNonEmpty : nil
                     return Course(
                         name: course.name,
                         teacher: course.teacher,
@@ -105,10 +124,10 @@ enum NativeWidgetLocalSchedule {
                         // 和服务端一样：先节次备注，没有就写上课周次。
                         note: slotNote ?? course.weeks.trimmedNonEmpty,
                         slotNote: slotNote,
-                        startTime: course.customStartTime?.trimmedNonEmpty ?? byNumber[block.startSlot]?.startTime,
-                        endTime: course.customEndTime?.trimmedNonEmpty ?? byNumber[block.endSlot]?.endTime,
-                        startSlot: block.startSlot,
-                        endSlot: block.endSlot
+                        startTime: customStart ?? byNumber[piece.startSlot]?.startTime,
+                        endTime: customEnd ?? byNumber[piece.endSlot]?.endTime,
+                        startSlot: piece.startSlot,
+                        endSlot: piece.endSlot
                     )
                 }
                 .sorted { ($0.startTime ?? "", $0.name) < ($1.startTime ?? "", $1.name) }
