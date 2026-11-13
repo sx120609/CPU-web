@@ -37,6 +37,8 @@ struct NativeScheduleView: View {
     @State private var backgroundEditorPresented = false
     @State private var stylePickerPresented = false
     @State private var unscheduledPresented = false
+    /// What the overlay strip (情侣课表, a shared timetable on top) was last built from, and its days.
+    @State private var overlayStripMemo = ScheduleOverlayStripMemo()
     @State private var sharingPresented = false
     @State private var couplePresented = false
     @State private var calendarPresented = false
@@ -2026,7 +2028,19 @@ struct NativeScheduleView: View {
     private func overlayStrip(_ result: NativeScheduleResult, layer: NativeCoupleLayer) -> some View {
         let metrics = overlayStripMetrics
         let today = Self.todayDate
-        let pages = overlayStripPages(result)
+        // This body runs on every selection, scroll offset and sheet state of the page.
+        // The strip's days depend on none of those: they are built once per change of
+        // what they are made from, and so is the list of dates.
+        let memo = overlayStripMemo
+        memo.sync(.init(result: result, calendar: store.calendar, layer: layer,
+                        occurrenceChanges: isReadOnly ? nil : store.occurrenceChanges,
+                        priorities: store.displayPriorities, today: today,
+                        weekend: [preferences.showSaturday, preferences.showSunday, preferences.sundayFirst]))
+        let pages = memo.pages { overlayStripPages(result) }
+        let revision = ScheduleOverlayStripRevision(
+            data: memo.revision, palette: preferences.palette, showLocation: preferences.showLocation,
+            showTeacher: preferences.showTeacher, showPeriod: preferences.showPeriod, showWeeks: preferences.showWeeks,
+            density: preferences.density, rowHeight: weekRowHeight)
         let selection = rawDayDate(selectedDay, week: weekNumber(store.selectedWeek), result: result)
         return GeometryReader { proxy in
             ScheduleOverlayStrip(
@@ -2037,7 +2051,8 @@ struct NativeScheduleView: View {
                 otherName: layer.partnerName,
                 today: today,
                 showsNow: preferences.showNowIndicator,
-                day: { overlayStripDay($0, layer: layer, today: today, result: result) },
+                revision: AnyHashable(revision),
+                day: { page in memo.day(page) { overlayStripDay(page, layer: layer, today: today, result: result) } },
                 axis: { overlayStripAxis(leading: $0) },
                 column: { value, side, width in overlayStripColumn(value, side: side, width: width, result: result) },
                 onSelect: { selectOverlayStripPage($0, result: result) },

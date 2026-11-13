@@ -181,6 +181,8 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 简约风格的周课表给「今天」整列铺了一层主题色，课程卡片的底色和它差不多浅，课程色相和主题接近时（单色配色下是每一门课）卡片会融进去：今天这一列里的卡片改用深一档、不透明的底色并描一圈课程色的边（`ScheduleStyleCourseColor.todayFill`／`todayBorder`）。
 
+情侣课表和叠加的共享课表（`ScheduleOverlayStrip`）翻页：横向的懒加载栈会留着所有滑过的日子，而每滑过一天、每次选中的日期变化，整条的 body 都会重跑，原来每次都把留着的每一天重算一遍（两个人的课、调休、合并重叠）并重画两列，滑得越远越卡。现在一天是一个可比较的条目（`ScheduleOverlayStripDayItem`，键里是日期、布局、风格和一个版本号），键没变就整个跳过；日期列表和每天的数据记在 `ScheduleOverlayStripMemo` 里，课表、校历、对方的课表、单次调整、优先级、今天的日期或周末设置变了才清空；滑到的日子等条停稳（140 毫秒没再变）才报给页面，滑动中途不再重画整页。检查在 `ios_next/tests/overlay-strip.test.mjs`。
+
 ## 自由时间课程
 
 教务里列了、却没有排具体星期和节次的课（实践课、网课）进不了课表格子。服务端的课表结果多一个可选字段 `unscheduled`（课名、教务写的起止周、上课形式、学分；`ScheduleResult.unscheduled`，`server/src/services/jwxtParser.ts`），目前只有南京医科大学的教务给这份数据（课表响应里的 `sjkList`，`server/src/schools/njmu/driver.ts`），药大和其余学校没有这一项。Web 桥原样带给原生端（`NativeScheduleResult.unscheduled`，缺失或格式不对时为空，不影响课表本身），「更多 › 日历与日程」里有课时才出现「自由时间课程」一行，点开列出这些课。它们不进格子、小组件、实时活动、日历导出和共享课表；Web、安卓和鸿蒙目前不显示。Debug 构建用 `CPU_DEBUG_UNSCHEDULED=1`（配 `CPU_DEBUG_MOCK_SCHEDULE=1`）给示例课表加两门，`CPU_DEBUG_SCHEDULE_ACTION=unscheduled` 直接打开这一页。

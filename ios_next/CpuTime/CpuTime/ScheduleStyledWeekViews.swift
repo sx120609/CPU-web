@@ -363,7 +363,8 @@ struct ScheduleMinimalCourseCard: View {
     let course: NativeScheduleCourse
     var compact = false
     var showLocation = true
-    /// The card sits on today's tinted column: a deeper fill and an edge keep it apart from the wash.
+    /// The card sits on today's tinted column (the week grid's own wash, or the one the
+    /// overlay strip draws behind today): a deeper fill and an edge keep it apart from it.
     var onTodayWash = false
 
     static let cornerRadius: CGFloat = 9
@@ -848,7 +849,7 @@ struct NativeScheduleStyledDayColumn: View {
         return Group {
             if style == .minimal {
                 ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation,
-                                          onTodayWash: marksToday && drawsTodayBackground)
+                                          onTodayWash: marksToday)
             } else {
                 ScheduleStyledCourseTile(course: block.course, compact: narrow,
                                          start: clocks.first { $0.number == block.startSlot }?.start,
@@ -879,7 +880,7 @@ struct NativeScheduleStyledDayColumn: View {
                                           showLocation: showLocation, together: block.together, tiny: tiny)
             } else if style == .minimal {
                 ScheduleMinimalCourseCard(course: block.course, compact: narrow, showLocation: showLocation,
-                                          onTodayWash: marksToday && drawsTodayBackground)
+                                          onTodayWash: marksToday)
             } else {
                 ScheduleStyledCourseTile(course: block.course, compact: narrow,
                                          start: tiny ? nil : clocks.first { $0.number == block.startSlot }?.start,

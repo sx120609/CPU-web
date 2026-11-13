@@ -23,7 +23,7 @@ struct ScheduleOverlayStripDay {
 enum ScheduleOverlayStripSide { case mine, theirs }
 
 /// The overlay strip's measures, from the style of the week grid it replaces.
-struct ScheduleOverlayStripMetrics {
+struct ScheduleOverlayStripMetrics: Equatable {
     var axisWidth: CGFloat
     var headerHeight: CGFloat
     var rowHeight: CGFloat
@@ -78,6 +78,10 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
     let otherName: String
     let today: String?
     let showsNow: Bool
+    /// Stands for everything the days are drawn from besides the page itself: the two
+    /// timetables, the calendar and the display settings `day` and `column` read. A day
+    /// already built is rebuilt only when this changes, not for every day slid past.
+    let revision: AnyHashable
     let day: (ScheduleOverlayStripPage) -> ScheduleOverlayStripDay
     let axis: (ScheduleOverlayStripPage?) -> Axis
     let column: (ScheduleOverlayStripDay, Side, CGFloat) -> Column
@@ -97,9 +101,11 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
     /// halfway states and must not scroll the strip.
     @State private var reported: String?
     @State private var reportedTask: Task<Void, Never>?
+    /// The strip is still sliding: the day it rests on is reported once it has settled.
+    @State private var settleTask: Task<Void, Never>?
 
     init(pages: [ScheduleOverlayStripPage], selection: String?, width: CGFloat, metrics: Metrics,
-         otherName: String, today: String?, showsNow: Bool,
+         otherName: String, today: String?, showsNow: Bool, revision: AnyHashable,
          day: @escaping (ScheduleOverlayStripPage) -> ScheduleOverlayStripDay,
          axis: @escaping (ScheduleOverlayStripPage?) -> Axis,
          column: @escaping (ScheduleOverlayStripDay, Side, CGFloat) -> Column,
@@ -112,6 +118,7 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
         self.otherName = otherName
         self.today = today
         self.showsNow = showsNow
+        self.revision = revision
         self.day = day
         self.axis = axis
         self.column = column
@@ -140,7 +147,20 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 0) {
                     ForEach(pages) { page in
-                        ScheduleOverlayStripColumnHost { dayView(day(page)) }
+                        // The stack keeps every day slid past, and this body runs again for each
+                        // new leftmost day and each selection that follows it. Building a day (both
+                        // people's courses, placed and merged) and its two columns every time made
+                        // the slide stutter, more with every day passed: a day whose key is
+                        // unchanged is skipped instead.
+                        ScheduleOverlayStripColumnHost {
+                            ScheduleOverlayStripDayItem(
+                                key: .init(page: page, revision: revision, style: style, dark: dark, dayWidth: dayWidth,
+                                           columnWidth: columnWidth, metrics: metrics, isToday: page.date == today,
+                                           showsNow: showsNow, otherName: otherName),
+                                content: { dayView(day(page)) }
+                            )
+                            .equatable()
+                        }
                     }
                 }
                 .scrollTargetLayout()
@@ -174,8 +194,13 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
                 return
             }
             guard let value, let index = pages.firstIndex(where: { $0.id == value }),
-                  index != Self.leadingIndex(for: selection, in: pages, count: count) else { return }
-            report(pages[index])
+                  index != Self.leadingIndex(for: selection, in: pages, count: count) else {
+                // Back where the selection already is: nothing to report.
+                settleTask?.cancel()
+                settleTask = nil
+                return
+            }
+            reportWhenSettled(pages[index])
         }
         .onChange(of: selection) { _, _ in follow(animated: true) }
         .onChange(of: pages) { _, _ in follow(animated: false) }
@@ -183,6 +208,8 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
         .onDisappear {
             endFollow()
             endReport()
+            settleTask?.cancel()
+            settleTask = nil
         }
     }
 
@@ -200,6 +227,9 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
         }
         guard let index = Self.leadingIndex(for: selection, in: pages, count: count),
               leading != pages[index].id else { return }
+        // The page chose a day itself: a day the strip was about to report gives way.
+        settleTask?.cancel()
+        settleTask = nil
         let target = pages[index].id
         guard animated, !reduceMotion, leading != nil else {
             endFollow()
@@ -219,6 +249,22 @@ struct ScheduleOverlayStrip<Axis: View, Column: View>: View {
         }
         withAnimation(.smooth) { leading = target }
     }
+
+    /// A slide passes several days. Telling the page about each one redrew the whole
+    /// timetable page under the moving strip; the day is reported once the leftmost
+    /// day has stopped changing for a moment.
+    private func reportWhenSettled(_ page: ScheduleOverlayStripPage) {
+        settleTask?.cancel()
+        settleTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(Self.settleMilliseconds))
+            guard !Task.isCancelled else { return }
+            settleTask = nil
+            guard followTarget == nil, leading == page.id else { return }
+            report(page)
+        }
+    }
+
+    static var settleMilliseconds: Int { 140 }
 
     /// Hands a day the user scrolled to over to the page, and holds off
     /// following the selection until it has settled there (half a second at
@@ -495,6 +541,32 @@ enum ScheduleOverlayStripDate {
     }
 }
 
+/// One day of the strip, built only when its key changes. `content` is not compared:
+/// everything it reads is in the key (the page, the layout, the look) or stands
+/// behind `revision`; what the columns take from the environment reaches them anyway.
+@available(iOS 17.0, *)
+private struct ScheduleOverlayStripDayItem<Content: View>: View, Equatable {
+    struct Key: Equatable {
+        let page: ScheduleOverlayStripPage
+        let revision: AnyHashable
+        let style: ScheduleStyle
+        let dark: Bool
+        let dayWidth: CGFloat
+        let columnWidth: CGFloat
+        let metrics: ScheduleOverlayStripMetrics
+        let isToday: Bool
+        let showsNow: Bool
+        let otherName: String
+    }
+
+    let key: Key
+    let content: () -> Content
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.key == rhs.key }
+
+    var body: some View { content() }
+}
+
 /// A lazy stack keeps days that scrolled away, at their old places. Jumping
 /// back to today, they came back inside the animation and flew in from there.
 /// The update that brings a day back on screen is not animated.
@@ -594,5 +666,66 @@ struct ScheduleOverlayHollowTile: View {
         .accessibilityLabel([ownerTitle, together ? "一起上的课" : nil, course.name,
                              showLocation ? ScheduleStyleTime.location(course.location) : nil]
             .compactMap { $0 }.joined(separator: "，"))
+    }
+}
+
+/// What the page's display settings contribute to a day of the strip, beside the data
+/// counted by `ScheduleOverlayStripMemo.revision`. A change here rebuilds the days.
+struct ScheduleOverlayStripRevision: Hashable {
+    let data: Int
+    let palette: String
+    let showLocation: Bool
+    let showTeacher: Bool
+    let showPeriod: Bool
+    let showWeeks: Bool
+    let density: String
+    let rowHeight: CGFloat
+}
+
+/// Keeps the overlay strip's dates and built days between two evaluations of the page
+/// that holds it, for as long as what they are made from stays the same. The page's
+/// body runs many times while the strip slides; working out a term of dates and both
+/// people's courses for every day on each run is what made sliding stutter.
+@available(iOS 17.0, *)
+@MainActor
+final class ScheduleOverlayStripMemo {
+    /// Everything the strip's dates and days are computed from.
+    struct Inputs: Equatable {
+        let result: NativeScheduleResult
+        let calendar: NativeScheduleCalendar?
+        let layer: NativeCoupleLayer
+        let occurrenceChanges: [NativeScheduleOccurrenceChange]?
+        let priorities: [String: Int]
+        let today: String?
+        /// The weekend settings, which decide the dates the strip pages through.
+        let weekend: [Bool]
+    }
+
+    private var inputs: Inputs?
+    private var cachedPages: [ScheduleOverlayStripPage]?
+    private var days: [String: ScheduleOverlayStripDay] = [:]
+    /// Goes up each time the inputs change.
+    private(set) var revision = 0
+
+    func sync(_ next: Inputs) {
+        guard next != inputs else { return }
+        inputs = next
+        revision += 1
+        cachedPages = nil
+        days = [:]
+    }
+
+    func pages(_ make: () -> [ScheduleOverlayStripPage]) -> [ScheduleOverlayStripPage] {
+        if let cachedPages { return cachedPages }
+        let made = make()
+        cachedPages = made
+        return made
+    }
+
+    func day(_ page: ScheduleOverlayStripPage, _ make: () -> ScheduleOverlayStripDay) -> ScheduleOverlayStripDay {
+        if let day = days[page.id] { return day }
+        let made = make()
+        days[page.id] = made
+        return made
     }
 }
