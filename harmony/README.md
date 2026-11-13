@@ -28,6 +28,8 @@
 - 与 iOS 4.18／4.19 对齐的 NapTable 功能：
   - 课程只有点按一种操作（不再有长按菜单）：点任何视图里的课程都打开课程速览，速览底部按情况给出按钮——编辑整门课（主按钮）、调整这一次、在这节课加日程，最后是红字「这次停课」（先确认）；调过的课带「调」，按钮换成再调整这一次、恢复原安排；停课的那节原位灰显「已停课」，点开速览写明哪天停课，只给「恢复这节课」；对方、共享课表、本周不上的课只读，没有按钮。规则在 `ScheduleOccurrences.ets` 的 `courseQuickActions`。「调整这一次」（`NativeOccurrenceEditor.ets`）选学期内日期（放假、补班日不行）、先点第一节再点最后一节、教室和备注，和别的课冲突只提示。保存经随包桥 `CPUHarmonyEditor` 的 `occurrence`，每个合并来源的编辑键一条（服务端 `scheduleOccurrences.ts`）；快照没有 `occurrenceChanges` 时单次调整类按钮隐藏。
   - 「叠加到我的课表」（`NativeOverlayPicker.ets`）：情侣、任一份已保存的分享课表或不叠加；别校的课按钟点放到自己的节次上并保留真实时间（`ScheduleOverlay.ets`）。叠加或情侣课表显示时，周视图换成几天并排的双栏日条（`ScheduleOverlayStrip.ets`，左自己、右对方空心描边，半宽列里重叠的合成一张带「+N」的卡），横滑到哪天周次就跟到哪周。分享和情侣上传带上学校名。
+  - 「一起看的周视图」：并排（默认，上面的双栏日条）或合并（两人的课排在同一张周课表里，双栏日条之前的样子），对情侣课表和叠加课表都生效，按设备保存（`coupleWeekLayout`，认不出的值当并排；判断在 `ScheduleOverlay.ets` 的 `overlayStripWanted`）。入口在情侣课表管理页和「更多 › 课表风格、配色与背景」（后者只在绑定了情侣课表或正在叠加时出现）。双栏日条第一次显示时上方有一条提示「两人的课并排显示，左右滑动换天。」，带「改回合并」和关闭；关掉、选过排法或在指引里看过就不再出现。站牌风格合并周视图里一个人的卡片上，上课时间改用小字、不带色块，原来会被卡片边裁掉。
+  - 「课表怎么用」（`ScheduleGuide.ets`、`NativeSchedulePage.ets` 的 `guideSheet`）：每台设备自动弹一次（`guideSeen` 记看过的版本，改了指引就把 `SCHEDULE_GUIDE_VERSION` 加一），在自己的课表带着课程显示出来、上面没有别的面板时弹，只读的共享课表不弹；「更多 › 使用指引」随时再打开。条目是「点一下课程」「课表风格」（当前是简约时带「换回经典」）、「和 TA 一起看」（绑定了情侣课表或正在叠加时才有，带「改回合并」）和「更多」。
   - 「找共同空闲」（`NativeCommonFree.ets`、`ScheduleCommonFree.ets`）：和情侣、已保存的分享课表比，按日期范围、至少空出多久和时段列出每天的空闲，可直接建日程。
   - 课程速览列「这节课的日程」；月视图点一天只选中，下方「当天安排」列课程和日程（可勾选、添加、跳日视图），有未完成日程的日子带橙点，左右拖动换月；与课程同时段的日程是课程右边框上的细条。
   - 「更多」改为分组面板：刷新、添加课程、添加日程、分享，日历与日程、一起看、外观与设置。
@@ -36,7 +38,7 @@
   - 桌面快捷方式：今日课表、添加日程、找共同空闲（`resources/base/profile/shortcuts_config.json`）。
   - 宿舍课表是原生面板（`NativeDormSheet.ets`：一周、空闲、早八、宿舍），不再打开网页 `/dorm-schedule`；邀请链接打开它并填好宿舍码。随包桥 `CPUHarmonyDorm`（`harmony/bridge/dorm.ts`）调 `/api/dorm`，并直接用网页的 `dorm.ts`、`dormWeek.ts` 算出总表、空闲和早八，结果与网页一致；在宿舍里时上传当前学期课表（内容不变 12 小时内不重传）。
   - 服务卡片跟随课表风格（卡片面板也可单独选）：表格有边框，素笺是纸色加描边，站牌是浅底加粗顶线，其余同原样；可设一张卡片背景照片和覆盖的底色浓淡。新增「日程」卡片（2×2、2×4、4×4）：逾期待办、两周内日程和无日期待办，点圆圈直接勾选，先记在本机，下次打开 App 再交给站点（`ScheduleCardExtras.ets`、`AgendaCard.ets`）。
-  - 验收壳开关：`--ps occurrences 1`、`overlay 1`、`background 1|dark`、`crop x,y,w,h`、`holiday 国庆快乐`、`dorm active`，`--ps panel occurrence|occurrenceCancelled|courseDetail|tools|commonFree|overlayPicker|crop|shareCard|cards|dormWeek|dormFree|dormMorning|dormRoom|dormJoin`。`verify-schedule-emulator.mjs` 增加了对应的交互组。
+  - 验收壳开关：`--ps occurrences 1`、`overlay 1`、`background 1|dark`、`crop x,y,w,h`、`holiday 国庆快乐`、`dorm active`，`--ps panel occurrence|occurrenceCancelled|courseDetail|tools|commonFree|overlayPicker|crop|shareCard|cards|dormWeek|dormFree|dormMorning|dormRoom|dormJoin`。`verify-schedule-emulator.mjs` 增加了对应的交互组。`--ps coupleLayout merged|split` 选一起看的周视图，`--ps stripHint true` 让双栏日条带上一次性提示，`--ps panel guide` 打开「课表怎么用」，`--ps guideAuto true` 当作这台设备没看过指引（它会自己弹一次），`--ps panel layoutRow` 是课表样式里「一起看的周视图」那一项。
 - ArkUI 原生顶栏保留应用 Logo、刷新、消息和更多入口，同步网页登录、未读数和路由标题；有独立导航的页面保留自己的顶栏。原生底栏高度为 56vp，保留完整系统底部安全区并至少预留 28vp，投稿按钮和页面留白使用同一避让距离，网页弹层及帖子详情收起原生底栏。网页入场恢复 220ms 淡入，课表切换使用原生淡入和轻移，保持同一个 ArkWeb 实例。
 - 手动刷新直接请求选中周，校历与个人修改并行读取；失败保留已有周缓存，重复刷新合并。会话失效仍使用现有重试恢复流程，实际等待时间取决于教务响应。
 

@@ -182,7 +182,7 @@ import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
 import { DayShareCardData, dayShareCard, dayShareCardData } from '../schedule/ScheduleDayShareCard';
 import { shareSnapshotImage } from '../schedule/ScheduleImageShare';
 import fs from '@ohos.file.fs';
-import { CoupleApiData, CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
+import { CoupleApiData, CoupleApiReply, CoupleApiRequest, CoupleWeekLayoutRow, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
 import { normalizeScheduleStyle, scheduleClockMinutes, SCHEDULE_STYLES } from '../schedule/ScheduleStyle';
 import { NativeTabBar } from '../common/NativeTabBar';
 import { nativeNavigationBottomInset, nativeNavigationClearance } from '../common/NativeNavigationLayout';
@@ -235,6 +235,13 @@ struct ScheduleAcceptance {
   @StorageProp('qaClean') private clean: boolean = false;
   @StorageProp('qaOccurrences') private seedOccurrences: string = '';
   @StorageProp('qaOverlay') private overlaySeed: string = '';
+  // \`--ps coupleLayout merged|split\`: 一起看的周视图. \`--ps stripHint true\` shows the strip's one-time note.
+  // \`--ps panel guide\` opens 课表怎么用; \`--ps panel layoutRow\` the row 课表样式 gets while somebody's courses are drawn.
+  @StorageProp('qaCoupleLayout') private coupleLayout: string = '';
+  @StorageProp('qaStripHint') private stripHint: boolean = false;
+  // \`--ps guideAuto true\`: the guide has not been seen on this device, so it opens by itself once.
+  @StorageProp('qaGuideAuto') private guideAuto: boolean = false;
+  @State private layoutRowShown: boolean = false;
   @State private overlayPicker: boolean = false;
   @State private commonFree: boolean = false;
   // \`--ps panel cards\`: today's card in the four card styles, the last over a photo.
@@ -368,6 +375,9 @@ struct ScheduleAcceptance {
     this.attachAgenda();
     this.sharing.attach((request: ShareApiRequest) => this.shareApi(request), () => undefined);
     this.couple.attach((request: CoupleApiRequest) => this.coupleApi(request), () => undefined);
+    this.couple.restore(true, '', this.coupleLayout, !this.stripHint);
+    if (this.guideAuto) this.store.guideSeen = 0;
+    if (this.panel === 'layoutRow') setTimeout(() => this.layoutRowShown = true, 900);
     const picked = this.coupleColors.split(',');
     if (picked.length === 2) { this.coupleMine = picked[0].trim(); this.coupleTheirs = picked[1].trim(); }
     if (this.coupleState) void this.couple.refresh(true);
@@ -572,6 +582,14 @@ struct ScheduleAcceptance {
   private panelSheet() {
     if (this.dorm.visible) {
       NativeDormSheet({ model: this.dorm, dark: this.store.dark })
+    } else if (this.layoutRowShown) {
+      // As 课表样式 places it (Index.ets): a card of its own under 课表网格.
+      Column({ space: 20 }) {
+        Text('课表样式').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.app_text_primary')).width('100%')
+        Column() {
+          CoupleWeekLayoutRow({ model: this.couple })
+        }.width('100%').padding({ left: 14, right: 14 }).borderRadius(16).backgroundColor($r('app.color.app_control'))
+      }.width('100%').height('100%').padding({ left: 20, right: 20, top: 32, bottom: 40 }).backgroundColor($r('app.color.app_surface'))
     } else if (this.commonFree) {
       NativeCommonFree({ store: this.store, couple: this.couple, sharing: this.sharing,
         onAgenda: (date: string, start: string) => this.agendaEditor.openNew(date, start), onDone: () => this.commonFree = false })
@@ -746,7 +764,8 @@ struct ScheduleAcceptance {
         onStyle: () => this.cycleStyle(), onAppearance: () => this.toggleAppearance(), onWidgets: () => this.cycleTheme(),
         onEdit: (block: NativeCourseBlock) => this.openEditor(block), onTools: () => this.openEditor(),
         onAddSlot: (day: number, slot: number) => this.openEditor(undefined, day, slot),
-        onSharing: () => this.sharing.open(), onAgenda: () => this.agendaEditor.openList(), debugAction: this.panel })
+        onSharing: () => this.sharing.open(), onAgenda: () => this.agendaEditor.openList(), debugAction: this.panel,
+        onClassic: () => { this.store.visualStyle = 'classic'; }, guideAllowed: this.guideAuto })
         .padding({ top: this.topPadding() })
       NativeTabBar({ selected: 2, dark: this.store.dark })
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
@@ -801,9 +820,9 @@ struct ScheduleAcceptance {
         }.width('100%').height('100%').padding({ top: this.topPadding() }).backgroundColor(scheduleSurface(this.store.dark))
       }
     }.width('100%').height('100%').backgroundColor(scheduleSurface(this.store.dark))
-      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible || this.agendaEditor.visible || this.overlayPicker || this.commonFree || this.dorm.visible, this.panelSheet(),
+      .bindSheet(this.editor.visible || this.sharing.visible || this.couple.sheetVisible || this.agendaEditor.visible || this.overlayPicker || this.commonFree || this.dorm.visible || this.layoutRowShown, this.panelSheet(),
         { height: SheetSize.LARGE, showClose: true, dragBar: true,
-        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); this.agendaEditor.close(); this.overlayPicker = false; this.commonFree = false; this.dorm.close(); } })
+        onDisappear: () => { this.editor.cancel(); this.sharing.close(); this.couple.close(); this.agendaEditor.close(); this.overlayPicker = false; this.commonFree = false; this.dorm.close(); this.layoutRowShown = false; } })
   }
 }
 `);
@@ -828,6 +847,9 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaClean', String(want.parameters?.clean ?? 'false') === 'true');
     AppStorage.setOrCreate('qaOccurrences', String(want.parameters?.occurrences ?? ''));
     AppStorage.setOrCreate('qaOverlay', String(want.parameters?.overlay ?? ''));
+    AppStorage.setOrCreate('qaCoupleLayout', String(want.parameters?.coupleLayout ?? ''));
+    AppStorage.setOrCreate('qaStripHint', String(want.parameters?.stripHint ?? 'false') === 'true');
+    AppStorage.setOrCreate('qaGuideAuto', String(want.parameters?.guideAuto ?? 'false') === 'true');
     AppStorage.setOrCreate('qaBackground', String(want.parameters?.background ?? ''));
     AppStorage.setOrCreate('qaCrop', String(want.parameters?.crop ?? ''));
     AppStorage.setOrCreate('qaHoliday', String(want.parameters?.holiday ?? ''));
