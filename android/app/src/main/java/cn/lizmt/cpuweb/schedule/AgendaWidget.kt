@@ -150,6 +150,16 @@ class AgendaWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             views.setOnClickPendingIntent(R.id.agenda_header, open)
+            // 文字大小跟 App 里的小组件设置。这里是系统排的文字，量不了放不放得下，「自适应」按标准大小。
+            val scale = when (ScheduleWidgetDisplay.load(context).textSize) {
+                ScheduleWidgetDisplay.SMALL -> 0.9f
+                ScheduleWidgetDisplay.LARGE -> 1.12f
+                else -> 1f
+            }
+            fun size(view: Int, dp: Float) = views.setTextViewTextSize(view, android.util.TypedValue.COMPLEX_UNIT_DIP, dp * scale)
+            size(R.id.agenda_heading, 15f)
+            size(R.id.agenda_count, 12f)
+            size(R.id.agenda_empty, 13f)
             val left = entries.count { !it.done }
             views.setTextViewText(R.id.agenda_count, if (left == 0) "" else "$left 项")
             views.setViewVisibility(R.id.agenda_empty, if (entries.isEmpty()) View.VISIBLE else View.GONE)
@@ -164,6 +174,8 @@ class AgendaWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(row, View.VISIBLE)
                 views.setTextViewText(title, entry.title)
                 views.setTextViewText(meta, entry.meta)
+                size(title, 14f)
+                size(meta, 12f)
                 views.setInt(title, "setPaintFlags", if (entry.done) android.graphics.Paint.STRIKE_THRU_TEXT_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG
                     else android.graphics.Paint.ANTI_ALIAS_FLAG)
                 views.setImageViewResource(check, if (entry.done) R.drawable.ic_agenda_checked else R.drawable.ic_agenda_unchecked)

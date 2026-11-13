@@ -55,10 +55,22 @@ class ScheduleWidgetConfigureActivity : ComponentActivity() {
                         if (mode == ScheduleWidgetProvider.WidgetMode.LARGE || mode == ScheduleWidgetProvider.WidgetMode.TODAY_LARGE) {
                             Choice("显示方式", "时间线", "列表", !options.timeline) { options.timeline = !it }
                         }
+                        Heading("文字大小")
+                        var textSize by remember { mutableStateOf(options.textSize.orEmpty()) }
+                        SettingsSegmented(
+                            listOf(
+                                "" to "跟随 App", ScheduleWidgetDisplay.AUTO to "自适应", ScheduleWidgetDisplay.SMALL to "小",
+                                ScheduleWidgetDisplay.STANDARD to "标准", ScheduleWidgetDisplay.LARGE to "大",
+                            ),
+                            textSize,
+                        ) { textSize = it; options.textSize = it }
+                        Spacer(Modifier.height(12.dp))
+                        Heading("课程信息")
                         Toggle("课程名称", options.showCourseName) { options.showCourseName = it }
                         Toggle("教室", options.showRoom) { options.showRoom = it }
                         Toggle("教师", options.showTeacher) { options.showTeacher = it }
                         Toggle("上课时间", options.showTime) { options.showTime = it }
+                        Heading("日期栏")
                         Toggle("农历日期", options.showLunarDate) { options.showLunarDate = it }
                         Toggle("节假日提示", options.showHoliday) { options.showHoliday = it }
                         Spacer(Modifier.height(16.dp))
@@ -93,6 +105,14 @@ private fun Choice(title: String, first: String, second: String, initial: Boolea
         }
     }
     Spacer(Modifier.height(12.dp))
+}
+
+/** A group title, like the ones over the choices. */
+@Composable
+private fun Heading(title: String) {
+    Spacer(Modifier.height(8.dp))
+    Text(title, style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(4.dp))
 }
 
 @Composable

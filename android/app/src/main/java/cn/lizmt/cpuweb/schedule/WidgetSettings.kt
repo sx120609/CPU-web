@@ -155,6 +155,19 @@ class WidgetSettings(private val activity: MainActivity) {
         revision += 1
     }
 
+    /** 文字大小、倒计时与进度 and the other settings every schedule widget shares. */
+    var display by mutableStateOf(ScheduleWidgetDisplay.load(activity))
+        private set
+
+    fun updateDisplay(change: (ScheduleWidgetDisplay) -> Unit) {
+        val next = display.copy().also(change)
+        next.save(context)
+        display = next
+        redraw()
+        // The 日程 widget follows the text size.
+        AgendaWidgetProvider.updateAll(context)
+    }
+
     fun pinAgenda(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val manager = activity.getSystemService(AppWidgetManager::class.java) ?: return false
@@ -273,65 +286,100 @@ fun WidgetSettingsSheet(activity: MainActivity, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
-        SettingsSection("风格")
-        // Classic, grid and minimal draw alike on a widget: they are one choice here.
-        SettingsSegmented(
-            listOf("" to "跟随课表", "classic" to "经典", "table" to "表格", "paper" to "素笺", "board" to "站牌"),
-            widgets.styleChoice,
-        ) { widgets.selectStyle(it) }
-        SettingsSection("配色")
-        PaletteChoices(widgets.theme) { widgets.selectTheme(it) }
-        SettingsSection("小组件背景")
-        SettingsValueRow(if (widgets.hasPhoto) "已设置" else "未设置") {
-            if (widgets.hasPhoto) androidx.compose.material3.TextButton(onClick = { widgets.setPhoto(null) }) { Text("清除") }
-            androidx.compose.material3.TextButton(onClick = { activity.pickWidgetBackground() }) { Text(if (widgets.hasPhoto) "更换" else "从相册选择") }
-        }
-        if (widgets.hasPhoto) {
-            SettingsValueRow("文字底色") { Text("${(widgets.veil * 100).toInt()}%", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            androidx.compose.material3.Slider(
-                value = widgets.veil, onValueChange = { widgets.updateVeil(it) }, onValueChangeFinished = { widgets.redraw() },
-                valueRange = 0.2f..0.9f, modifier = Modifier.semantics { contentDescription = "小组件背景上文字底色的浓度" },
-            )
-        }
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = { widgets.refresh(activity.schedule, activity.web) },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
-        ) { Text("刷新小组件") }
+        Spacer(Modifier.height(14.dp))
         if (widgets.canPin()) {
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
+            Button(
                 onClick = {
                     if (!widgets.pin(selected)) activity.toast("请长按桌面空白处，在小组件里找到“药大拾间”的课表")
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
             ) { Text("添加“${selected.title} ${selected.size}”到桌面") }
-        }
-        if (widgets.canPin()) {
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { if (!widgets.pinAgenda()) activity.toast("请长按桌面空白处，在小组件里找到“日程与待办”") },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
-            ) { Text("添加“日程与待办”小组件到桌面") }
         }
+        OutlinedButton(
+            onClick = { widgets.refresh(activity.schedule, activity.web) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+        ) { Text("刷新小组件") }
         if (widgets.message.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Text(widgets.message, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
         }
-        Spacer(Modifier.height(16.dp))
+        val muted = MaterialTheme.colorScheme.onSurfaceVariant
+        val display = widgets.display
+
+        SettingsSection("文字与排版")
+        SettingsValueRow("文字大小") {
+            SettingsSegmented(
+                listOf(
+                    ScheduleWidgetDisplay.AUTO to "自适应", ScheduleWidgetDisplay.SMALL to "小",
+                    ScheduleWidgetDisplay.STANDARD to "标准", ScheduleWidgetDisplay.LARGE to "大",
+                ),
+                display.textSize,
+            ) { size -> widgets.updateDisplay { it.textSize = size } }
+        }
+        SettingsSwitchRow("上课倒计时与进度", display.showProgress, detail = "上课前一小时起倒计时，正在上的课带进度条") { on ->
+            widgets.updateDisplay { it.showProgress = on }
+        }
+        SettingsSwitchRow("隐藏已上完的课", display.hideCompleted) { on -> widgets.updateDisplay { it.hideCompleted = on } }
+        SettingsSwitchRow("时间线标出课间休息", display.showBreaks) { on -> widgets.updateDisplay { it.showBreaks = on } }
+        Text("文字和间距一起缩放，放不下的课收进“后面还有几门”；“自适应”在课少时自动放大。",
+            fontSize = 12.sp, lineHeight = 16.sp, color = muted)
+
+        SettingsSection("日期栏")
+        SettingsSwitchRow("周次", display.showWeek) { on -> widgets.updateDisplay { it.showWeek = on } }
+        SettingsSwitchRow("最近节假日常驻", display.holidayAlwaysVisible, detail = "中号、大号的日期栏里显示最近假期的倒计时") { on ->
+            widgets.updateDisplay { it.holidayAlwaysVisible = on }
+        }
+
+        SettingsSection("外观")
+        Text("风格", fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp, bottom = 8.dp))
+        // Classic, grid and minimal draw alike on a widget: they are one choice here.
+        SettingsSegmented(
+            listOf("" to "跟随课表", "classic" to "经典", "table" to "表格", "paper" to "素笺", "board" to "站牌"),
+            widgets.styleChoice,
+        ) { widgets.selectStyle(it) }
+        Text("配色", fontSize = 15.sp, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
+        PaletteChoices(widgets.theme) { widgets.selectTheme(it) }
+        Spacer(Modifier.height(6.dp))
+        SettingsValueRow("背景照片") {
+            if (widgets.hasPhoto) androidx.compose.material3.TextButton(onClick = { widgets.setPhoto(null) }) { Text("清除") }
+            androidx.compose.material3.TextButton(onClick = { activity.pickWidgetBackground() }) { Text(if (widgets.hasPhoto) "更换" else "从相册选择") }
+        }
+        if (widgets.hasPhoto) {
+            SettingsValueRow("文字底色") { Text("${(widgets.veil * 100).toInt()}%", fontSize = 13.sp, color = muted) }
+            androidx.compose.material3.Slider(
+                value = widgets.veil, onValueChange = { widgets.updateVeil(it) }, onValueChangeFinished = { widgets.redraw() },
+                valueRange = 0.2f..0.9f, modifier = Modifier.semantics { contentDescription = "小组件背景上文字底色的浓度" },
+            )
+        }
+
+        SettingsSection("每个小组件单独设置")
         val manager = AppWidgetManager.getInstance(activity)
         val installed = WidgetKind.entries.flatMap { kind ->
             manager.getAppWidgetIds(ComponentName(activity, kind.provider)).map { kind to it }
         }
-        if (installed.isNotEmpty()) {
-            SettingsSection("桌面上的小组件")
-            installed.forEachIndexed { index, (kind, id) ->
-                SettingsNavRow("${kind.title} ${kind.size}" + if (installed.size > 1) " · ${index + 1}" else "", value = "编辑") {
-                    activity.startActivity(Intent(activity, ScheduleWidgetConfigureActivity::class.java)
-                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
-                }
+        installed.forEachIndexed { index, (kind, id) ->
+            SettingsNavRow("${kind.title} ${kind.size}" + if (installed.size > 1) " · ${index + 1}" else "", value = "编辑") {
+                activity.startActivity(Intent(activity, ScheduleWidgetConfigureActivity::class.java)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
             }
         }
+        Text(
+            if (installed.isEmpty()) "添加到桌面后，可以在这里给每个小组件单独选课后显示什么、显示方式、课程信息和文字大小。"
+            else "课后显示什么、显示方式、课程信息，以及这一个小组件的文字大小。也可以长按桌面上的小组件进入。",
+            fontSize = 12.sp, lineHeight = 16.sp, color = muted,
+        )
+
+        SettingsSection("日程")
+        if (widgets.canPin()) {
+            OutlinedButton(
+                onClick = { if (!widgets.pinAgenda()) activity.toast("请长按桌面空白处，在小组件里找到“日程与待办”") },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+            ) { Text("添加“日程与待办”小组件到桌面") }
+            Spacer(Modifier.height(6.dp))
+        }
+        Text("列出待办和接下来两周的日程，点圆圈直接勾选完成；文字大小跟上面的设置。",
+            fontSize = 12.sp, lineHeight = 16.sp, color = muted)
         WidgetReliabilitySection(activity)
         Spacer(Modifier.height(14.dp))
         Text("也可以长按桌面空白处，在“小组件”里找到“药大拾间”拖到桌面。",
