@@ -61,22 +61,11 @@
 - `cpuweb://schedule` 从桌面或锁屏卡片进入原生课表并重新读取当前学期／本周。
 - 网页“存储与缓存”页通过 `CPUHarmony.getStorageUsage` / `clearStorage` 统计并清理 ArkWeb 的网络缓存（`WebviewController.removeCache`）和临时文件。ArkWeb 的站点数据（登录状态、Local Storage、IndexedDB、Service Worker）与课表缓存、背景图不在清理范围内；目录遍历在任务池中执行。
 
-## 赞助（华为应用内支付）
-
-鸿蒙 App 里的赞助走 IAP Kit 的消耗型商品，网页的易支付赞助在 App 里始终不出现。
-
-- 界面是网页：`/sponsor/app`（`web/src/views/profile/HarmonySponsor.vue`），入口在「我的 › 支持拾间 › 去赞助」，App 里的 `/sponsor` 链接也到这里。页面上不出现支付方式的名字或图标（IAP Kit 接入规范），也不出现别的应用市场。
-- 原生只有一层薄桥：`CPUHarmony.iapRequest(id, action, payloadJson)`（`common/HarmonyIap.ets`），动作是 `environment`、`products`、`purchase`、`unfinished`、`finish`，结果用 `window.__cpuHarmonyIapResult(id, replyJson)` 送回页面。只有站点自己的页面能调用。没有这个方法的旧版 App 里没有任何赞助入口。
-- 一笔购买的顺序：收银台付款 → 页面把 `purchaseData` 交给 `POST /api/payments/huawei/sponsor/purchases` → 服务端按华为文档验签（ES256，x5c 链挂在 Huawei CBG Root CA G2 下，叶子证书带 IAP 的扩展 OID），核对应用 ID、商品、币种和下单账号（`developerPayload`）后记一笔赞助 → 页面再向 IAP Kit 确认发货。中途断掉的订单在下次打开页面时从 IAP Kit 查出来补交，同一笔订单只记一次。
-- 权益与网页一致（VIP、赞助墙、赞助类别、留言），AI 点数按华为抽成后的 70% 折算。沙盒订单照样发 VIP 和点数，但不计入公开金额。退款由服务端关键事件通知处理：通知地址 `https://cputime.cn/api/payments/huawei/notifications`，在开发者中心的应用内购买服务参数里配置，通知版本 v3。
-- 商品在开发者中心「商品管理」里配置，ID 和价格要和 `server/src/services/huaweiIap.ts` 的 `HUAWEI_SPONSOR_PRODUCTS` 一致：`sponsor_6`、`sponsor_18`、`sponsor_30`、`sponsor_68`、`sponsor_128`（人民币 6、18、30、68、128 元）。首个数字商品必须随新的应用版本一起提交审核。
-- 沙盒测试要 debug 签名的包和开发者中心里登记的沙盒测试账号；模拟器上没有验证过。
-
 ## 基础信息
 
 - 应用名：药大拾间（与 APP 备案的服务名称一致；改名须先完成备案变更。App 内按所选学校显示品牌，例如南医拾间）
 - 包名：`cn.lizmt.cpuweb`
-- 版本：`3.4.0 (36)`
+- 版本：`3.3.0 (35)`
 - 默认打开原生课表；后台会话入口：`https://cputime.cn/home`
 
 ## 构建

@@ -9,8 +9,6 @@ import { boardApi } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import {
   hidesClientDownloads,
-  HARMONY_SPONSOR_PATH,
-  hasHarmonySponsor,
   hidesNativeCommerce,
   openNativeIosSponsor,
   isLikelyIosDevice,
@@ -303,7 +301,6 @@ export const router = createRouter({
         { path: "profile/verification", name: "profile-verification", component: () => import("@/views/profile/Verification.vue"), meta: { title: "拾间认证" } },
         { path: "vip", name: "vip", component: () => import("@/views/profile/Vip.vue"), meta: { title: "VIP 中心" } },
         { path: "sponsor", name: "sponsor", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "支持拾间", public: true } },
-        { path: "sponsor/app", name: "sponsor-app", component: () => import("@/views/profile/HarmonySponsor.vue"), meta: { title: "支持拾间" } },
         { path: "sponsor-wall", redirect: "/sponsor" },
         { path: "u/:id", name: "user", component: () => import("@/views/profile/User.vue"), meta: { title: "用户", public: true } },
         { path: "admin", name: "admin", component: () => import("@/views/admin/Index.vue"), meta: { title: "管理后台", requireMod: true } },
@@ -321,13 +318,6 @@ router.beforeEach(async (to, from) => {
   if (legacyInvite) return { ...legacyInvite, replace: true };
   if (hidesClientDownloads() && /^\/downloads?(\/|$)/.test(to.path)) {
     return { path: "/services", replace: true };
-  }
-  // 鸿蒙 App 的应用内赞助页（华为应用内支付）：有支付桥的版本里 /sponsor 链接都去它；别的客户端打不开它。
-  if (hasHarmonySponsor()) {
-    if (/^\/(sponsor|sponsor-wall)\/?$/.test(to.path)) return { path: HARMONY_SPONSOR_PATH, replace: true };
-    if (to.path === HARMONY_SPONSOR_PATH) return true;
-  } else if (to.path === HARMONY_SPONSOR_PATH) {
-    return { path: "/sponsor", replace: true };
   }
   // 新版 iOS App 用原生赞助页（Apple 内购）：/sponsor 链接打开它，网页留在原处。
   if (/^\/(sponsor|sponsor-wall)(\/|$)/.test(to.path) && openNativeIosSponsor()) {

@@ -35,13 +35,11 @@ import {
 import { awardSponsorAssistantPoints } from "../services/campusAssistantPoints";
 import { iosCommerceUnavailable } from "../middleware/iosCommerce";
 import { appleSponsorRouter } from "./appleSponsor";
-import { huaweiSponsorRouter } from "./huaweiSponsor";
 import { createWindowBudget } from "../utils/loadShield";
 
 export const paymentsRouter = Router();
 // iOS 客户端只能用 Apple 内购赞助（/payments/apple），网页的易支付赞助对它关着。
 paymentsRouter.use("/apple", appleSponsorRouter);
-paymentsRouter.use("/huawei", huaweiSponsorRouter);
 paymentsRouter.use("/sponsor", iosCommerceUnavailable);
 
 function requestOrigin(req: any) {

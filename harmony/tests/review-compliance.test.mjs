@@ -92,7 +92,7 @@ function loadMainRouteGuard({ user = null, hideGame = false, hideAssistant = fal
     router: { beforeEach: (callback) => { guard = callback; } },
     window: { location: { replace() {} } }, document: {},
     applyRouteTitle: () => {},
-    hidesNativeCommerce: () => false, hidesClientDownloads: () => false, openNativeIosSponsor: () => false, hasHarmonySponsor: () => false, HARMONY_SPONSOR_PATH: '/sponsor/app', isNativeScheduleShell: () => false,
+    hidesNativeCommerce: () => false, hidesClientDownloads: () => false, openNativeIosSponsor: () => false, isNativeScheduleShell: () => false,
     usesImmediateIosScroll: () => false,
     useAuthStore: () => ({ ready: true, user, token: user ? 'session' : '', canAccessForum: true }),
     useSiteStore: () => ({ loaded: true, features: {}, pathEnabled: () => true }),
@@ -224,58 +224,3 @@ for (const [file, name] of [
     assert.equal(warnings.length, 1);
   });
 }
-
-test('Harmony sponsorship goes through the in-app purchase bridge and never names a payment method or another store', () => {
-  const code = buildSync({
-    entryPoints: [fileURLToPath(new URL('../../web/src/utils/clientInfo.ts', import.meta.url))],
-    bundle: true, write: false, format: 'cjs',
-    alias: { '@': fileURLToPath(new URL('../../web/src', import.meta.url)) },
-  }).outputFiles[0].text;
-  const load = (host) => {
-    const context = vm.createContext({ module: { exports: {} }, URLSearchParams,
-      navigator: { userAgent: 'Chrome', maxTouchPoints: 0 },
-      window: { location: { search: '' }, CPUHarmony: host }, sessionStorage: { getItem: () => null, setItem() {} },
-    });
-    vm.runInContext(code, context);
-    return context.module.exports;
-  };
-  const harmony = 'CPUWebHarmonyApp/36 CPUWebHarmonyAppVersion/3.4.0';
-  // Older Harmony builds have no bridge: every sponsor entry stays hidden there.
-  assert.equal(load({ copyText() {} }).hasHarmonySponsor(harmony), false);
-  assert.equal(load(undefined).hasStoreSponsor(harmony), false);
-  const bridged = load({ iapRequest() {} });
-  assert.equal(bridged.hasHarmonySponsor(harmony), true);
-  assert.equal(bridged.hasStoreSponsor(harmony), true);
-  // The web checkout (易支付) stays hidden in the Harmony app either way.
-  assert.equal(bridged.hidesNativeCommerce(harmony), true);
-  // The bridge object alone does not turn another client into a Harmony one.
-  for (const ua of ['Chrome', 'CPUWebScheduleApp/68 CPUTimeNative/1', 'CPUWebIOSApp/1 CPUTimeNative/1']) {
-    assert.equal(bridged.hasHarmonySponsor(ua), false);
-  }
-  assert.equal(bridged.HARMONY_SPONSOR_PATH, '/sponsor/app');
-
-  const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
-  const page = read('../../web/src/views/profile/HarmonySponsor.vue');
-  const visible = page.slice(0, page.indexOf('<script')).replace(/<!--[\s\S]*?-->/g, '');
-  const scriptStrings = page.slice(page.indexOf('<script'), page.indexOf('<style'))
-    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  for (const text of [visible, scriptStrings, read('../../web/src/utils/harmonyIap.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')]) {
-    assert.doesNotMatch(text, /App Store|应用市场|支付宝|微信|易支付|华为支付|鸿蒙支付|应用内支付|alipay|wxpay/i);
-  }
-  const profile = read('../../web/src/views/profile/profilePage.ts');
-  assert.match(profile, /hasHarmonySponsor\(\)\s*\?\s*"赞助后开通 VIP 并获得 AI 点数，也可以在赞助墙留下一句话。"/);
-
-  const router = read('../../web/src/router/index.ts');
-  assert.match(router, /path: "sponsor\/app"[^\n]+HarmonySponsor\.vue/);
-  assert.match(router, /if \(hasHarmonySponsor\(\)\) \{[\s\S]{0,200}HARMONY_SPONSOR_PATH, replace: true/);
-
-  // Native side: one proxy method, only on the site's own pages, results sent back by id.
-  const bridge = read('../entry/src/main/ets/common/HarmonyBridge.ets');
-  const index = read('../entry/src/main/ets/pages/Index.ets');
-  assert.match(index, /'iapRequest',/);
-  assert.match(index, /setIapChannel\(\(\) => \{[\s\S]{0,120}isAppOrigin\(this\.controller\.getUrl\(\)\)/);
-  assert.match(bridge, /!IAP_ACTIONS\.includes\(name\) \|\| !this\.iapGate\?\.\(\)/);
-  const iap = read('../entry/src/main/ets/common/HarmonyIap.ets');
-  assert.match(iap, /productType: iap\.ProductType\.CONSUMABLE,\s+queryType: iap\.PurchaseQueryType\.UNFINISHED/);
-  assert.match(iap, /iap\.IAPErrorCode\.PURCHASE_FINISHED/);
-});

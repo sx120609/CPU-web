@@ -92,30 +92,7 @@ export function navigateToEpayCheckout(result: { checkoutUrl: string; paymentUrl
   window.location.assign(target.href);
 }
 
-/** 鸿蒙 App 应用内赞助页的配置：固定档位（华为应用内支付的消耗型商品），不带支付方式。 */
-export type HarmonySponsorOptions = {
-  enabled: boolean;
-  title: string;
-  description: string;
-  allowMessage: boolean;
-  wallEnabled: boolean;
-  developerPayload: string;
-  pointsRatio: number;
-  products: { productId: string; amount: string; amountCents: number; assistantPoints: number }[];
-  categories: SponsorCategory[];
-};
-
-export type HarmonySponsorPurchaseResult = {
-  order: { id: number; outTradeNo: string; amount: string; status: string; categoryTitle: string; assistantPointsAwarded?: number };
-  created: boolean;
-  finish: { productType: number; purchaseToken: string; purchaseOrderId: string };
-};
-
 export const paymentsApi = {
-  harmonySponsorOptions: (options?: RequestOptions) => request.get<HarmonySponsorOptions>("/payments/huawei/sponsor/options", undefined, options),
-  harmonySponsorOrders: (options?: RequestOptions) => request.get<{ list: any[] }>("/payments/huawei/sponsor/orders", undefined, options),
-  submitHarmonySponsorPurchase: (payload: { purchaseData: string; categoryId?: string; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
-    request.post<HarmonySponsorPurchaseResult>("/payments/huawei/sponsor/purchases", payload, { suppressErrorMessage: true }),
   sponsorOptions: (options?: RequestOptions) => request.get<SponsorOptions>("/payments/sponsor/options", undefined, options),
   sponsorWall: (options?: RequestOptions) =>
     request.get<{ enabled: boolean; total: number; totalAmount?: string; categories: SponsorCategory[]; list: SponsorWallItem[] }>("/payments/sponsor/wall", undefined, options),

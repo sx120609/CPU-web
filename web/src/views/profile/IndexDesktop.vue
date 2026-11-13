@@ -188,7 +188,7 @@
       <div class="sponsor-main">
         <div class="sponsor-copy">
           <h3 class="cpu-section-title">支持拾间</h3>
-          <p>{{ nativeSponsorCopy }}</p>
+          <p>通过 App Store 付款，赞助后开通 VIP 并获得 AI 点数，也可以在赞助墙留下一句话。</p>
           <strong>已赞助 ¥{{ formatMoney(user?.sponsorAmount) }}</strong>
           <div class="sponsor-actions">
             <el-button v-if="site.features.sponsor" type="primary" @click="openNativeSponsor">去赞助</el-button>
@@ -542,7 +542,6 @@ const siteTheme = useSiteThemeStore();
 const {
   commerceHidden,
   nativeSponsorVisible,
-  nativeSponsorCopy,
   openNativeSponsor,
   auth,
   site,
