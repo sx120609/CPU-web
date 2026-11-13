@@ -15,6 +15,10 @@ public final class ScheduleWidgetOptions {
     public boolean showTime = true;
     public boolean showLunarDate = true;
     public boolean showHoliday = true;
+    /** 这一个小组件自己的文字大小；空着就跟 App 里的设置（ScheduleWidgetDisplay.textSize）。 */
+    public String textSize = "";
+    /** The app-wide settings in force for this drawing; not part of the instance's own record. */
+    public ScheduleWidgetDisplay display = new ScheduleWidgetDisplay();
 
     public static ScheduleWidgetOptions defaults(ScheduleWidgetProvider.WidgetMode mode) {
         ScheduleWidgetOptions value = new ScheduleWidgetOptions();
@@ -36,13 +40,22 @@ public final class ScheduleWidgetOptions {
             value.showTime = data.optBoolean("showTime", true);
             value.showLunarDate = data.optBoolean("showLunarDate", true);
             value.showHoliday = data.optBoolean("showHoliday", true);
+            String size = data.optString("textSize", "");
+            value.textSize = size.isEmpty() ? "" : ScheduleWidgetDisplay.normalizeSize(size);
         } catch (Exception ignored) { /* Missing/older settings retain defaults. */ }
         return value;
     }
 
     public static ScheduleWidgetOptions load(Context context, int id, ScheduleWidgetProvider.WidgetMode mode) {
-        return decode(context.getSharedPreferences("schedule_widget", Context.MODE_PRIVATE)
+        ScheduleWidgetOptions value = decode(context.getSharedPreferences("schedule_widget", Context.MODE_PRIVATE)
                 .getString("instance_" + id, "{}"), mode);
+        value.display = ScheduleWidgetDisplay.load(context);
+        return value;
+    }
+
+    /** The scales this widget tries, largest first: its own 文字大小, else the app's. */
+    public float[] textScales() {
+        return ScheduleWidgetDisplay.scales(textSize == null || textSize.isEmpty() ? display.textSize : textSize);
     }
 
     public void save(Context context, int id) {
@@ -51,7 +64,8 @@ public final class ScheduleWidgetOptions {
                     .put("courseCount", courseCount).put("timeline", timeline)
                     .put("showCourseName", showCourseName).put("showRoom", showRoom)
                     .put("showTeacher", showTeacher).put("showTime", showTime)
-                    .put("showLunarDate", showLunarDate).put("showHoliday", showHoliday);
+                    .put("showLunarDate", showLunarDate).put("showHoliday", showHoliday)
+                    .put("textSize", textSize == null ? "" : textSize);
             context.getSharedPreferences("schedule_widget", Context.MODE_PRIVATE).edit()
                     .putString("instance_" + id, data.toString()).apply();
         } catch (Exception error) { throw new IllegalStateException(error); }

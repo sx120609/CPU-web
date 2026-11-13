@@ -15,7 +15,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
 import android.widget.Toast;
@@ -50,6 +52,11 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     // 今天的课上完后，往后找最近有课的一天，最远看这么多天（见 docs/schedule-widget-rules.md）。
     static final int LOOKAHEAD_DAYS = 21;
     private static final long FALLBACK_REFRESH_MILLIS = 30L * 60L * 1000L;
+    // 正在上课时每隔这么久重画一次，进度条才往前走。倒计时由系统的 Chronometer 自己走，不靠它。
+    static final long PROGRESS_REFRESH_MILLIS = 5L * 60L * 1000L;
+    // 逼近倒计时终点：每一步定在剩余时间的这么多处（0.55 × 1.75 < 1，最晚送达也到不了终点之后），剩这么短时直接定在终点。
+    static final double COUNTDOWN_STEP = 0.55;
+    static final long COUNTDOWN_FINAL_MILLIS = 4_000L;
     private static final long BROADCAST_BUDGET_MILLIS = 8_000L;
     private static final int COURSE_ALARM_REQUEST = 2002;
     private static final int DAY_ALARM_REQUEST = 2003;
@@ -123,6 +130,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        ScheduleWidgetClock.load(context);
         String action = intent == null ? null : intent.getAction();
         if (redrawsWidgets(action)) {
             Context appContext = context.getApplicationContext();
@@ -209,6 +217,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             int appWidgetId,
             WidgetMode mode
     ) {
+        ScheduleWidgetClock.load(context);
         EXECUTOR.execute(() -> {
             // 优先读 App 写在本地的课表；本地没有（还没打开过新版 App）才退回服务端小组件接口。
             JSONObject record = ScheduleWidgetLocalDays.read(context);
@@ -319,18 +328,70 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     static void scheduleRefreshAlarms(Context context, JSONObject data) {
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarms == null) return;
-        long now = System.currentTimeMillis();
+        ScheduleWidgetClock.load(context);
+        long now = ScheduleWidgetClock.millis();
         JSONObject today = data == null ? null : fullDayForDate(data, deviceDateOffset(0), 0);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
         Intent tick = new Intent(context, ScheduleWidgetProvider.class).setAction(ACTION_WIDGET_TICK);
         try {
-            alarms.setWindow(AlarmManager.RTC, nextRefreshAt(today, now), 60_000L,
+            ScheduleWidgetDisplay display = ScheduleWidgetDisplay.load(context);
+            long next = nextRefreshAt(today, now, display);
+            // 只有「临近课程」有倒计时：桌面上有它时才一步步逼近上下课的整点。
+            long step = hasCountdownWidget(context) ? countdownStepAt(today, now, display) : Long.MAX_VALUE;
+            // 系统会把窗口放宽到离现在的 0.75 倍（最多 10 分钟），并且多半拖到窗口末尾才送达：
+            // 逼近的那几步把窗口要到最小，别的刷新照旧给一分钟。
+            alarms.setWindow(AlarmManager.RTC, ScheduleWidgetClock.toSystem(Math.min(next, step)), step <= next ? 1_000L : 60_000L,
                     PendingIntent.getBroadcast(context, COURSE_ALARM_REQUEST, tick, flags));
-            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextDayRolloverAt(now),
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, ScheduleWidgetClock.toSystem(nextDayRolloverAt(now)),
                     PendingIntent.getBroadcast(context, DAY_ALARM_REQUEST, tick, flags));
         } catch (RuntimeException ignored) {
             // Some ROMs cap the number of alarms per app; the periodic widget update still runs.
         }
+    }
+
+    private static boolean hasCountdownWidget(Context context) {
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        if (manager == null) return false;
+        for (Class<?> provider : new Class<?>[]{ScheduleWidgetProvider.class, ScheduleWidgetProviderWide.class}) {
+            int[] ids = manager.getAppWidgetIds(new ComponentName(context, provider));
+            if (ids != null && ids.length > 0) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 倒计时数到头的那一刻必须重画，不然 Chronometer 会接着数成负数。闹钟不能要求准时：系统把窗口放宽到
+     * 「离现在的 0.75 倍」、而且常常拖到窗口末尾才送达。所以不直接定在整点，而是每次定在剩余时间的一半多一点处：
+     * 最晚送达也不超过整点，送达后再定下一步，越来越近；只剩 4 秒时才定在整点上，晚也晚不过 3 秒。
+     * 返回下一步的时刻；现在没有倒计时在走（或关了开关）返回 Long.MAX_VALUE。
+     */
+    static long countdownStepAt(JSONObject today, long nowMillis, ScheduleWidgetDisplay display) {
+        if (display == null || !display.showProgress) return Long.MAX_VALUE;
+        JSONArray courses = coursesOf(today);
+        if (courses == null) return Long.MAX_VALUE;
+        Calendar midnight = Calendar.getInstance();
+        midnight.setTimeInMillis(nowMillis);
+        midnight.set(Calendar.HOUR_OF_DAY, 0);
+        midnight.set(Calendar.MINUTE, 0);
+        midnight.set(Calendar.SECOND, 0);
+        midnight.set(Calendar.MILLISECOND, 0);
+        long dayStart = midnight.getTimeInMillis();
+        long next = Long.MAX_VALUE;
+        for (int i = 0; i < courses.length(); i++) {
+            JSONObject course = courses.optJSONObject(i);
+            int start = courseStartMinutes(course);
+            int end = courseEndMinutes(course);
+            if (start < 0 || end <= start) continue;
+            long startAt = dayStart + start * 60_000L;
+            long endAt = dayStart + end * 60_000L;
+            long target;
+            if (nowMillis >= startAt && nowMillis < endAt) target = endAt;
+            else if (nowMillis < startAt && nowMillis >= startAt - ScheduleWidgetDisplay.COUNTDOWN_LEAD_MINUTES * 60_000L) target = startAt;
+            else continue;
+            long remaining = target - nowMillis;
+            next = Math.min(next, remaining <= COUNTDOWN_FINAL_MILLIS ? target : nowMillis + (long) (remaining * COUNTDOWN_STEP));
+        }
+        return next;
     }
 
     static void cancelRefreshAlarms(Context context) {
@@ -359,8 +420,17 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         return midnight.getTimeInMillis() + 60_000L;
     }
 
-    /** 下一次刷新：今天每节课开始、结束后 1 分钟，次日 00:01，最迟 30 分钟兜底。 */
     static long nextRefreshAt(JSONObject today, long nowMillis) {
+        return nextRefreshAt(today, nowMillis, null);
+    }
+
+    /**
+     * 下一次刷新：今天每节课开始、结束后 1 分钟，次日 00:01，最迟 30 分钟兜底。
+     * 开着「上课倒计时与进度」时另有：每节课上课前一小时（「距上课」从这一刻出现）、正在上课时每 5 分钟
+     *（进度条往前走）。倒计时数到头的那一刻另由 countdownStepAt 一步步逼近。
+     */
+    static long nextRefreshAt(JSONObject today, long nowMillis, ScheduleWidgetDisplay display) {
+        boolean live = display != null && display.showProgress;
         Calendar midnight = Calendar.getInstance();
         midnight.setTimeInMillis(nowMillis);
         midnight.set(Calendar.HOUR_OF_DAY, 0);
@@ -375,10 +445,18 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         for (int i = 0; i < courses.length(); i++) {
             JSONObject course = courses.optJSONObject(i);
             if (course == null) continue;
-            for (int minute : new int[]{courseStartMinutes(course), courseEndMinutes(course)}) {
+            int start = courseStartMinutes(course);
+            int end = courseEndMinutes(course);
+            for (int minute : new int[]{start, end}) {
                 if (minute < 0) continue;
                 long at = dayStart + (minute + 1) * 60_000L;
                 if (at > nowMillis && at < next) next = at;
+            }
+            if (!live || start < 0 || end <= start) continue;
+            long lead = dayStart + (start - ScheduleWidgetDisplay.COUNTDOWN_LEAD_MINUTES) * 60_000L;
+            if (lead > nowMillis && lead < next) next = lead;
+            if (nowMillis >= dayStart + start * 60_000L && nowMillis < dayStart + end * 60_000L) {
+                next = Math.min(next, nowMillis + PROGRESS_REFRESH_MILLIS);
             }
         }
         return next;
@@ -448,6 +526,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
      * at the family's nominal size. Null when there is no local record yet.
      */
     static Bitmap preview(Context context, WidgetMode mode, boolean dark) {
+        ScheduleWidgetClock.load(context);
         JSONObject record = ScheduleWidgetLocalDays.read(context);
         if (record == null) return null;
         String today = deviceDateOffset(0);
@@ -456,7 +535,10 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         ChineseCalendarInfo.usePublishedHolidays(ScheduleWidgetLocalDays.holidays(record));
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
         ScheduleWidgetCardRenderer.Family family = family(mode);
-        return painter(data, mode, today, currentMinutes()).paint(ScheduleWidgetCardRenderer.Frame.fit(
+        // 预览用这种小组件的默认选项，加上 App 里统一设的显示方式；倒计时画成这一刻的数字。
+        ScheduleWidgetOptions options = ScheduleWidgetOptions.defaults(mode);
+        options.display = ScheduleWidgetDisplay.load(context);
+        return painterAt(data, mode, today, currentSeconds(), options).paint(ScheduleWidgetCardRenderer.Frame.fit(
                 family, family.width, family.height, metrics.density, 1_200_000,
                 ScheduleWidgetPalette.of(context, ScheduleWidgetPrefs.theme(context), dark)));
     }
@@ -479,12 +561,38 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     static Painter painter(JSONObject data, WidgetMode mode, String todayDate, int now, ScheduleWidgetOptions options) {
+        return painterAt(data, mode, todayDate, now * 60, options);
+    }
+
+    /**
+     * `nowSeconds` 是今天的第几秒：选课、灰显按分钟，倒计时和进度条按秒。
+     * 文字大小在这里落实：按 options.textScales() 从大到小试，最满的排法放得下就用（自适应），
+     * 都放不下用最后一个；选中的比例、倒计时的位置记回传进来的 frame 上。
+     */
+    static Painter painterAt(JSONObject data, WidgetMode mode, String todayDate, int nowSeconds, ScheduleWidgetOptions options) {
+        int now = nowSeconds / 60;
         Painter content;
         if (mode == WidgetMode.LARGE) content = twoDayPainter(data, todayDate, now, options);
         else if (mode == WidgetMode.TODAY_WIDE || mode == WidgetMode.TODAY_LARGE) {
             content = todayPainter(data, todayDate, now, mode == WidgetMode.TODAY_LARGE, options);
         } else content = upcomingPainter(data, todayDate, now, mode == WidgetMode.WIDE, options);
-        return frame -> content.paint(frame.withOptions(options));
+        float[] scales = options.textScales();
+        return frame -> {
+            Bitmap result = null;
+            for (int index = 0; index < scales.length; index++) {
+                ScheduleWidgetCardRenderer.Frame scaled = frame.scaled(scales[index]);
+                scaled.options = options;
+                scaled.nowSeconds = nowSeconds;
+                result = content.paint(scaled);
+                frame.countdown = scaled.countdown;
+                frame.tight = scaled.tight;
+                frame.drawnScale = scales[index];
+                frame.previewRows = scaled.previewRows;
+                if (!(scaled.tight || scaled.clipped) || index == scales.length - 1) break;
+                result.recycle();
+            }
+            return result;
+        };
     }
 
     private static void renderSchedule(
@@ -496,7 +604,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             WidgetMode mode
     ) {
         showBitmap(context, manager, appWidgetId, views, mode,
-                painter(data, mode, deviceDateOffset(0), currentMinutes(), ScheduleWidgetOptions.load(context, appWidgetId, mode)));
+                painterAt(data, mode, deviceDateOffset(0), currentSeconds(), ScheduleWidgetOptions.load(context, appWidgetId, mode)));
         if (mode == WidgetMode.LARGE || mode == WidgetMode.TODAY_LARGE) {
             String date = deviceDateOffset(0);
             JSONObject today = fullDayForDate(data, date, 0);
@@ -563,8 +671,11 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         JSONObject shown = today;
         String tag = "";
         int shownNow = now;
+        JSONObject preview = null;
+        String previewTag = "";
+        boolean finished = nextCourses(today, now, 1).isEmpty();
         // 今天上完了：换到 21 天内最近有课的一天；都没课就是休息状态（docs/schedule-widget-rules.md 第 2 节）。
-        if (nextCourses(today, now, 1).isEmpty() && !options.todayOnly) {
+        if (finished && !options.todayOnly) {
             int offset = nextClassDayOffset(data, todayDate);
             if (offset > 0) {
                 shown = dayForDate(data, addDays(todayDate, offset));
@@ -573,12 +684,24 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             } else {
                 shown = new JSONObject();
             }
+        } else if (finished && options.display.hideCompleted) {
+            // 「隐藏已上完的课」时「只看今天」也没有课可留了，和没课一样显示休息状态。
+            shown = new JSONObject();
+        } else if (large && !finished && !options.todayOnly) {
+            // 大号上今天的课少、底下空着一截时，接着预告下一次课（选了「只看今天」就不预告）。
+            int offset = nextClassDayOffset(data, todayDate);
+            if (offset > 0) {
+                preview = dayForDate(data, addDays(todayDate, offset));
+                previewTag = courseDayBanner(offset, ScheduleWidgetJson.text(preview, "date", ""));
+            }
         }
         JSONObject day = shown;
         String shownTag = tag;
         int minutes = shownNow;
+        JSONObject next = preview;
+        String nextTag = previewTag;
         String week = weekForDay(data, today);
-        return frame -> ScheduleWidgetCardRenderer.renderToday(frame, today, week, day, shownTag, large, minutes);
+        return frame -> ScheduleWidgetCardRenderer.renderToday(frame, today, week, day, shownTag, large, minutes, next, nextTag);
     }
 
     private static Painter twoDayPainter(JSONObject data, String todayDate, int now, ScheduleWidgetOptions options) {
@@ -676,17 +799,65 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         int screen = Math.max(1, metrics.widthPixels) * Math.max(1, metrics.heightPixels);
         int maxPixels = Math.min(2_400_000, both ? screen * 6 / 10 : screen);
         ScheduleWidgetCardRenderer.Family family = family(mode);
+        // 临近课程的倒计时由桌面上的 Chronometer 实时走，图里只留位置；别的小组件没有倒计时。
+        boolean liveClock = mode == WidgetMode.COMPACT || mode == WidgetMode.WIDE;
+        long drawnAt = ScheduleWidgetClock.millis();
+        ScheduleWidgetCardRenderer.Frame first = ScheduleWidgetCardRenderer.Frame.fit(family, width, height,
+                metrics.density, maxPixels, ScheduleWidgetPalette.of(context, theme, both ? false : isNightMode(context)));
+        first.staticClock = !liveClock;
+        ScheduleWidgetCardRenderer.Frame second = null;
         if (both) {
-            Bitmap light = painter.paint(ScheduleWidgetCardRenderer.Frame.fit(family, width, height,
-                    metrics.density, maxPixels, ScheduleWidgetPalette.of(context, theme, false)));
-            Bitmap dark = painter.paint(ScheduleWidgetCardRenderer.Frame.fit(family, width, height,
-                    metrics.density, maxPixels, ScheduleWidgetPalette.of(context, theme, true)));
+            second = ScheduleWidgetCardRenderer.Frame.fit(family, width, height,
+                    metrics.density, maxPixels, ScheduleWidgetPalette.of(context, theme, true));
+            second.staticClock = !liveClock;
+            Bitmap light = painter.paint(first);
+            Bitmap dark = painter.paint(second);
             views.setIcon(R.id.widget_content_image, "setImageIcon",
                     Icon.createWithBitmap(light), Icon.createWithBitmap(dark));
         } else {
-            views.setImageViewBitmap(R.id.widget_content_image, painter.paint(
-                    ScheduleWidgetCardRenderer.Frame.fit(family, width, height, metrics.density, maxPixels,
-                            ScheduleWidgetPalette.of(context, theme, isNightMode(context)))));
+            views.setImageViewBitmap(R.id.widget_content_image, painter.paint(first));
+        }
+        if (liveClock) {
+            float heightDp = height > 0f && width > 0f ? height : family.height;
+            showCountdown(views, first.countdown, second == null ? null : second.countdown,
+                    first.palette, heightDp, drawnAt);
+        }
+    }
+
+    /**
+     * 把倒计时的 Chronometer 摆到图里留出的位置上。位置按占宽、高的比例给（外层横排的 weightSum 定右边缘，
+     * 里层竖排的 weightSum 定这一行的底），不依赖桌面报的尺寸准不准；数字靠右、靠底对齐。
+     * 没有倒计时就整个藏起来。
+     */
+    static void showCountdown(RemoteViews views, ScheduleWidgetCardRenderer.Countdown light,
+            ScheduleWidgetCardRenderer.Countdown dark, ScheduleWidgetPalette palette, float heightDp, long drawnAt) {
+        int[] faces = {R.id.widget_countdown_sans, R.id.widget_countdown_serif, R.id.widget_countdown_mono};
+        if (light == null) {
+            views.setViewVisibility(R.id.widget_countdown, View.GONE);
+            for (int id : faces) views.setChronometer(id, 0L, null, false);
+            return;
+        }
+        // 素笺是衬线字、站牌是等宽数字，和图里的字一个样。
+        int shown = palette.paper() ? R.id.widget_countdown_serif : palette.board() ? R.id.widget_countdown_mono : R.id.widget_countdown_sans;
+        views.setViewVisibility(R.id.widget_countdown, View.VISIBLE);
+        views.setFloat(R.id.widget_countdown, "setWeightSum", 1f / Math.max(0.05f, Math.min(1f, light.right)));
+        views.setFloat(R.id.widget_countdown_column, "setWeightSum", 1f / Math.max(0.05f, Math.min(1f, light.bottom)));
+        for (int id : faces) {
+            views.setViewVisibility(id, id == shown ? View.VISIBLE : View.GONE);
+            if (id != shown) views.setChronometer(id, 0L, null, false);
+        }
+        Calendar clock = Calendar.getInstance();
+        clock.setTimeInMillis(drawnAt);
+        long ofDay = ((clock.get(Calendar.HOUR_OF_DAY) * 60L + clock.get(Calendar.MINUTE)) * 60L + clock.get(Calendar.SECOND)) * 1000L
+                + clock.get(Calendar.MILLISECOND);
+        long remaining = light.targetSecond * 1000L - ofDay - (ScheduleWidgetClock.millis() - drawnAt);
+        views.setChronometerCountDown(shown, true);
+        views.setChronometer(shown, SystemClock.elapsedRealtime() + remaining, null, true);
+        views.setTextViewTextSize(shown, TypedValue.COMPLEX_UNIT_DIP, light.size * heightDp);
+        if (dark != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            views.setColorInt(shown, "setTextColor", light.color, dark.color);
+        } else {
+            views.setTextColor(shown, light.color);
         }
     }
 
@@ -873,6 +1044,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     private static String deviceDateOffset(int offset) {
         SimpleDateFormat output = new SimpleDateFormat("yyyy-MM-dd", Locale.CHINA);
         Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(ScheduleWidgetClock.millis());
         calendar.add(Calendar.DAY_OF_YEAR, offset);
         return output.format(calendar.getTime());
     }
@@ -888,8 +1060,14 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static int currentMinutes() {
+        return currentSeconds() / 60;
+    }
+
+    /** 现在是今天的第几秒。 */
+    private static int currentSeconds() {
         Calendar calendar = Calendar.getInstance();
-        return calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE);
+        calendar.setTimeInMillis(ScheduleWidgetClock.millis());
+        return (calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)) * 60 + calendar.get(Calendar.SECOND);
     }
 
     private static String cacheBustedEndpoint(String endpoint) {

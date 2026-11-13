@@ -14,6 +14,70 @@
         android:scaleType="fitCenter"
         android:src="@drawable/widget_schedule_upcoming_compact_preview" />
 
+    <!-- 「距下课 23:10」的数字：系统的 Chronometer 自己走，不用小组件刷新。位置由
+         ScheduleWidgetProvider.showCountdown 按比例定：外层横排的 weightSum 定右边缘，
+         里层竖排的 weightSum 定这一行的底，数字靠右、靠底对齐到图里留出的位置。
+         三种字体对应三种画法（默认、素笺的衬线字、站牌的等宽数字），一次只显示一个。 -->
+    <LinearLayout
+        android:id="@+id/widget_countdown"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:baselineAligned="false"
+        android:importantForAccessibility="no"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/widget_countdown_column"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <Chronometer
+                android:id="@+id/widget_countdown_sans"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:countDown="true"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="bottom|end"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:textSize="11dp" />
+
+            <Chronometer
+                android:id="@+id/widget_countdown_serif"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:countDown="true"
+                android:fontFamily="serif"
+                android:fontFeatureSettings="tnum"
+                android:gravity="bottom|end"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:textSize="11dp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <Chronometer
+                android:id="@+id/widget_countdown_mono"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:countDown="true"
+                android:fontFamily="monospace"
+                android:gravity="bottom|end"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:textSize="11dp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+
     <TextView
         android:id="@+id/widget_message"
         android:layout_width="match_parent"
