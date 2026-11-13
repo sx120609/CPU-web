@@ -3,6 +3,7 @@ import fs from '@ohos.file.fs';
 import preferences from '@ohos.data.preferences';
 import { NativeAgendaItem } from '../schedule/NativeScheduleStore';
 import { AgendaCardRow, agendaCardRows, agendaToggled } from '../schedule/NativeAgenda';
+import { parseWidgetDisplayOptions } from './ScheduleWidgetOptions';
 
 // What the service cards carry besides the timetable: the style they are drawn in (iOS widgets follow
 // the timetable style: 表格, 素笺 and 站牌 have their own paper and rules, the rest the original look),
@@ -12,6 +13,8 @@ const CARD_PREFS = 'schedule_widget';
 const STYLE_KEY = 'cardStyle';
 const BACKGROUND_KEY = 'cardBackground';
 const VEIL_KEY = 'cardVeil';
+// The display options the timetable cards use (ScheduleWidgetService); the 日程 card follows their text size.
+const OPTIONS_KEY = 'displayOptions';
 const AGENDA_PREFS = 'native_agenda';
 const PENDING_KEY = 'pending';
 
@@ -89,6 +92,8 @@ export interface AgendaCardBinding {
   count: number;
   dimension: number;
   cardStyle: string;
+  // auto | small | standard | large
+  textSize: string;
 }
 
 function readItems(raw: string): NativeAgendaItem[] {
@@ -107,12 +112,15 @@ export async function agendaCardBinding(context: common.Context, dimension: numb
   const raw = String(await prefs.get('items', ''));
   const decor = await cardDecor(context);
   for (const key of Object.keys(decor.images)) { try { fs.closeSync(decor.images[key]); } catch (_) {} }
-  if (!raw) return { state: 'empty', title: '日程', rows: '[]', count: 0, dimension, cardStyle: decor.cardStyle };
+  const card = await preferences.getPreferences(context, CARD_PREFS);
+  const textSize = parseWidgetDisplayOptions(String(await card.get(OPTIONS_KEY, ''))).textSize;
+  if (!raw) return { state: 'empty', title: '日程', rows: '[]', count: 0, dimension, cardStyle: decor.cardStyle, textSize };
   const items = readItems(raw);
   const all = agendaCardRows(items, todayKey(), 200);
-  const rows: AgendaCardRow[] = all.slice(0, dimension === 4 ? 9 : 4);
+  // A row or two more than the standard size shows: the card draws as many as fit at its text size.
+  const rows: AgendaCardRow[] = all.slice(0, dimension === 4 ? 9 : 5);
   return { state: 'ready', title: '日程', rows: JSON.stringify(rows), count: all.filter((row: AgendaCardRow) => !row.done).length,
-    dimension, cardStyle: decor.cardStyle };
+    dimension, cardStyle: decor.cardStyle, textSize };
 }
 
 /**

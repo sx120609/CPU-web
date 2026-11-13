@@ -43,6 +43,17 @@ struct ScheduleCard {
   @LocalStorageProp('cardStyle') private cardStyle: string = 'classic';
   @LocalStorageProp('background') private cardPhoto: string = '';
   @LocalStorageProp('veil') private veil: number = 0.55;
+  @LocalStorageProp('textSize') private textSize: string = 'standard';
+  @LocalStorageProp('showProgress') private showProgress: boolean = true;
+  @LocalStorageProp('showWeek') private showWeek: boolean = true;
+  @LocalStorageProp('hideCompleted') private hideCompleted: boolean = false;
+  @LocalStorageProp('countdown') private countdown: string = '';
+  @LocalStorageProp('primaryEmpty') private primaryEmpty: string = '';
+  @LocalStorageProp('previewLabel') private previewLabel: string = '';
+  @LocalStorageProp('previewDetail') private previewDetail: string = '';
+  @LocalStorageProp('previewCourses') private previewCourses: string = '[]';
+  @LocalStorageProp('previewCount') private previewCount: number = 0;
+  @LocalStorageProp('previewSummary') private previewSummary: string = '';
 
   build() {
     Column() {
@@ -84,7 +95,18 @@ struct ScheduleCard {
       cardStyle: this.cardStyle,
       cardPhoto: this.cardPhoto,
       veil: this.veil,
-      lockDay: this.lockDay
+      lockDay: this.lockDay,
+      textSize: this.textSize,
+      showProgress: this.showProgress,
+      showWeek: this.showWeek,
+      hideCompleted: this.hideCompleted,
+      countdown: this.countdown,
+      primaryEmpty: this.primaryEmpty,
+      previewLabel: this.previewLabel,
+      previewDetail: this.previewDetail,
+      previewCourses: this.previewCourses,
+      previewCount: this.previewCount,
+      previewSummary: this.previewSummary
     })
     }.width('100%').height('100%')
     .onClick(() => {

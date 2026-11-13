@@ -1,4 +1,38 @@
 import { widgetChipFill } from '../common/ScheduleWidgetPalette';
+import { widgetTextScales } from '../common/ScheduleWidgetOptions';
+import {
+  CARD_COLUMN_LABEL,
+  CARD_COLUMN_SUMMARY,
+  CARD_COMPACT_NEXT,
+  CARD_FITTED_PROGRESS_EXTRA,
+  CARD_FITTED_SUMMARY,
+  CARD_HEADER_HEIGHT,
+  CARD_HINT_HEIGHT,
+  CARD_LARGE_ROW,
+  CARD_MEDIUM_ROW,
+  CARD_PREVIEW_ROW,
+  CARD_PREVIEW_SUMMARY,
+  CARD_PROGRESS_EXTRA,
+  CARD_REMAINING,
+  CARD_ROOMY_SUMMARY,
+  CARD_TWO_DAY_ROW,
+  CardCountdown,
+  LargeTodayPlan,
+  MediumTodayPlan,
+  cardClock,
+  cardCountdown,
+  cardEnded,
+  cardEndedPrefix,
+  cardInProgress,
+  cardPreviewHeight,
+  cardProgress,
+  chooseCardScale,
+  largeTodayHeight,
+  largeTodayPlan,
+  mediumTodayPlan,
+  twoDayHeight,
+  twoDayPlan
+} from './ScheduleCardLayout';
 
 interface WidgetCourseRow {
   name: string;
@@ -9,26 +43,19 @@ interface WidgetCourseRow {
   accent: string;
   tint: string;
   colorIndex?: number;
+  // 今天的课的上下课时刻（毫秒），别的日子的课没有。
+  startAt?: number;
+  endAt?: number;
 }
 
-// 版式照 iOS ScheduleWidgets.swift 逐项对齐：pt 按 1:1 换成 vp，字号用 fp。
-// 下面的行高约为字号的 1.2 倍，对应 iOS 系统字体的行高，用来算一张卡片放得下几门课。
-const HEADER_HEIGHT = 24;
-// 「明天的课」胶囊一行：9fp 字 11 行高 + 上下各 2 的内边距，再隔上一行 4。
-const HINT_HEIGHT = 19;
-// 今日课表大号一行：色条 40 + 上下各 6。
-const LARGE_ROW_HEIGHT = 52;
-// 今日课表中号一行：色条 29 + 上下各 3。
-const MEDIUM_ROW_HEIGHT = 35;
-// 两日课表一行：课名、地点、时间三行文字 40 + 上下各 4。
-const TWO_DAY_ROW_HEIGHT = 48;
-// 「后面还有 N 门课」：9fp 字 11 行高。
-const REMAINING_HEIGHT = 11;
-// 小号放两节时第一节的色条跟着文字走：课名 18 + 3 + 地点 12 + 3 + 时间 13。
-const FITTED_SUMMARY_HEIGHT = 49;
-// 小号第二节课的色条高。
-const COMPACT_NEXT_HEIGHT = 27;
+const NO_COURSE: WidgetCourseRow = { name: '', start: '', time: '', meta: '', ended: false, accent: '', tint: '' };
 
+// 版式照 iOS ScheduleWidgets.swift 逐项对齐：pt 按 1:1 换成 vp，字号用 fp。行高和放得下几门课的算法在
+// ScheduleCardLayout.ets。
+//
+// @Builder 的参数是按值传的，调用处算好的值只在第一次渲染时取。这里的 builder 只收两种参数：
+// 调用处写死的字符串（哪一列、哪种行），和 ForEach 给的那门课（键里带着这门课的全部内容，变了就重建）。
+// 其余一律在 builder 里面从 this 读，日期、课程和时钟变了才跟得上。
 @Component
 export struct ScheduleCardView {
   @Prop state: string = 'loading';
@@ -71,15 +98,55 @@ export struct ScheduleCardView {
   @Prop cardStyle: string = 'classic';
   @Prop cardPhoto: string = '';
   @Prop veil: number = 0.55;
+  // 显示开关（ScheduleWidgetOptions）：文字大小、上课倒计时与进度、周次、隐藏已上完的课。
+  @Prop textSize: string = 'standard';
+  @Prop showProgress: boolean = true;
+  @Prop showWeek: boolean = true;
+  @Prop hideCompleted: boolean = false;
+  // 日期栏常驻的假期倒计时「距国庆节还有 5 天」。
+  @Prop countdown: string = '';
+  @Prop primaryEmpty: string = '';
+  // 大号今日课表课少时接着预告的下一次课。
+  @Prop previewLabel: string = '';
+  @Prop previewDetail: string = '';
+  @Prop previewCourses: string = '[]';
+  @Prop previewCount: number = 0;
+  @Prop previewSummary: string = '';
+  // 样张钉住的时刻（毫秒）。大于 0 时倒计时和进度按这一刻画成静止的，不走时钟。
+  @Prop pinnedNow: number = 0;
+  @State private cardWidth: number = 0;
   @State private cardHeight: number = 0;
+  // 卡片自己的时钟。系统最快 5 分钟才肯刷新一次卡片、一天还有次数上限，倒计时和进度等不起：
+  // 一个看不见的计时器每秒看一眼时间，画面要变了才更新这个值。
+  @State private nowMs: number = 0;
+  private ticker: TextTimerController = new TextTimerController();
+  private parsedRows: Map<string, WidgetCourseRow[]> = new Map<string, WidgetCourseRow[]>();
+
+  aboutToAppear(): void {
+    this.nowMs = Date.now();
+  }
+
+  private clock(): number {
+    return this.pinnedNow > 0 ? this.pinnedNow : this.nowMs;
+  }
 
   private rows(value: string): WidgetCourseRow[] {
+    const cached = this.parsedRows.get(value);
+    if (cached) return cached;
+    let rows: WidgetCourseRow[] = [];
     try {
-      const rows = JSON.parse(value) as WidgetCourseRow[];
-      return Array.isArray(rows) ? rows : [];
+      const parsed = JSON.parse(value) as WidgetCourseRow[];
+      rows = Array.isArray(parsed) ? parsed : [];
     } catch (_) {
-      return [];
+      rows = [];
     }
+    if (this.parsedRows.size > 8) this.parsedRows.clear();
+    this.parsedRows.set(value, rows);
+    return rows;
+  }
+
+  private rowKey(course: WidgetCourseRow, index: number): string {
+    return `${index}|${JSON.stringify(course)}`;
   }
 
   private surface(): ResourceColor {
@@ -112,100 +179,311 @@ export struct ScheduleCardView {
     return this.isLockScreen() ? 0 : this.dimension === 4 ? 16 : 14;
   }
 
-  private contentHeight(): number {
+  // 没放大缩小时内容区的高度。
+  private baseHeight(): number {
     const height = this.cardHeight > 0 ? this.cardHeight : this.dimension === 4 ? 340 : 158;
     return height - this.cardPadding() * 2;
   }
 
-  private headerHeight(hint: string): number {
-    return HEADER_HEIGHT + (hint ? HINT_HEIGHT : 0);
+  // 文字大小：整块内容排在 1 / 比例 大小的画布里再放大回去，字、色条和间距同一个比例，
+  // 下面按高度算放几门课的地方看到的是真实剩下的地方，放大后放不下的课照常数进「后面还有 N 门课」。
+  // 自适应从大到小试，最满的排法放得下才放大。锁屏卡片和提示状态不缩放。
+  private textScale(): number {
+    if (this.isLockScreen() || this.state !== 'ready' || this.cardHeight <= 0 || this.cardWidth <= 0) return 1;
+    const scales = widgetTextScales(this.textSize);
+    return scales.length === 1 ? scales[0] : chooseCardScale(scales, this.baseHeight(), this.fullestHeight());
   }
 
-  // 已计算好的课程色（单色主题就是主题色）。
-  private courseAccent(course: WidgetCourseRow): string {
-    return course.accent || this.accent;
+  private contentHeight(): number {
+    return this.baseHeight() / this.textScale();
   }
 
-  // 课程块底色：浅色是各自的浅底，深色是强调色叠 18%，由资源随系统深浅色切换。
-  private courseTint(course: WidgetCourseRow): Resource {
-    if (this.theme === 'color-glass') {
-      const glass: Resource[] = [$r('app.color.widget_tint_glass_0'), $r('app.color.widget_tint_glass_1'),
-        $r('app.color.widget_tint_glass_2'), $r('app.color.widget_tint_glass_3'), $r('app.color.widget_tint_glass_4'),
-        $r('app.color.widget_tint_glass_5')];
-      const index = Math.floor(course.colorIndex ?? 0);
-      return glass[index >= 0 && index < glass.length ? index : 0];
-    }
-    if (this.theme === 'green') return $r('app.color.widget_tint_green');
-    if (this.theme === 'blue') return $r('app.color.widget_tint_blue');
-    if (this.theme === 'teal') return $r('app.color.widget_tint_teal');
-    if (this.theme === 'indigo') return $r('app.color.widget_tint_indigo');
-    if (this.theme === 'violet') return $r('app.color.widget_tint_violet');
-    if (this.theme === 'orange') return $r('app.color.widget_tint_orange');
-    if (this.theme === 'rose') return $r('app.color.widget_tint_rose');
-    return $r('app.color.widget_tint_slate');
+  private canvasWidth(): Length {
+    return this.textScale() === 1 ? '100%' : (this.cardWidth - this.cardPadding() * 2) / this.textScale();
   }
 
-  // 今日课表大号：从 7 行往下试，挑第一个连同「后面还有」一起放得下的行数。
-  private largeTodayRows(value: string, remaining: number): WidgetCourseRow[] {
-    const rows = this.rows(value).slice(0, 7);
-    const available = this.contentHeight() - this.headerHeight(this.dayNote) - 8;
-    for (let count = rows.length; count > 1; count -= 1) {
-      const hidden = rows.length - count + remaining;
-      const needed = count * LARGE_ROW_HEIGHT + (count - 1) * 8 + (hidden > 0 ? 10 + REMAINING_HEIGHT : 0);
-      if (needed <= available) return rows.slice(0, count);
-    }
-    return rows.slice(0, 1);
+  private canvasHeight(): Length {
+    return this.textScale() === 1 ? '100%' : this.contentHeight();
   }
 
-  // 今日课表中号固定两门：放不下时两门之间的间隔从 7 一档档收到 4。
-  private mediumRowSpacing(count: number, remaining: number): number {
-    const available = this.contentHeight() - this.headerHeight(this.dayNote) - 5;
-    const footer = remaining > 0 ? 8 + REMAINING_HEIGHT : 0;
-    for (const spacing of [7, 6, 5]) {
-      if (count * MEDIUM_ROW_HEIGHT + (count - 1) * spacing + footer <= available) return spacing;
-    }
-    return 4;
+  // 日期栏的高度。kind 见 dateHeader：整宽的日期栏把「明天的课」放在同一行右边，其余的在下面另起一行。
+  private headerHeight(kind: string): number {
+    return CARD_HEADER_HEIGHT + (kind !== 'wide' && this.headerHint(kind) ? CARD_HINT_HEIGHT : 0);
   }
 
-  // 两日课表每列最多 5 门，卡片矮时少放几门。
-  private twoDayRows(value: string, hint: string): WidgetCourseRow[] {
-    const rows = this.rows(value).slice(0, 5);
-    const available = this.contentHeight() - this.headerHeight(hint) - 18;
-    for (let count = rows.length; count > 1; count -= 1) {
-      const footer = count < rows.length ? 8 + REMAINING_HEIGHT : 0;
-      if (count * TWO_DAY_ROW_HEIGHT + (count - 1) * 7 + footer <= available) return rows.slice(0, count);
-    }
-    return rows.slice(0, 1);
+  // ---- 时钟：倒计时、进度、上完没有 ----
+
+  private rowEnded(course: WidgetCourseRow): boolean {
+    return course.ended || cardEnded(course.endAt ?? 0, this.clock());
   }
 
-  // 小号默认放两节（同 iOS 默认）；卡片矮到放不下时只放一节。
+  private rowProgressing(course: WidgetCourseRow): boolean {
+    return this.showProgress && cardInProgress(course.startAt ?? 0, course.endAt ?? 0, this.clock());
+  }
+
+  // 临近课程第一节带进度时多出来的高度。fitted：小号放两节，行距收紧过。
+  private leadExtra(fitted: boolean): number {
+    if (!this.rowProgressing(this.upcomingRow(0))) return 0;
+    return fitted ? CARD_FITTED_PROGRESS_EXTRA : CARD_PROGRESS_EXTRA;
+  }
+
+  private progressWidth(course: WidgetCourseRow): string {
+    const percent = cardProgress(course.startAt ?? 0, course.endAt ?? 0, this.clock()) * 100;
+    return `${Math.max(3, Math.round(percent * 10) / 10)}%`;
+  }
+
+  private endedPrefix(rows: WidgetCourseRow[]): number {
+    return cardEndedPrefix(rows.map((course: WidgetCourseRow) => course.endAt ?? 0), this.clock());
+  }
+
+  // 临近课程放的两节。服务端多给了两节：两次刷新之间下课了，自己往后挪。
+  private upcomingRows(): WidgetCourseRow[] {
+    const rows = this.rows(this.primaryCourses);
+    if (this.mode !== 'today') return rows.slice(0, 2);
+    const skip = this.endedPrefix(rows);
+    return rows.slice(skip, skip + 2);
+  }
+
+  private upcomingRow(index: number): WidgetCourseRow {
+    const rows = this.upcomingRows();
+    return index < rows.length ? rows[index] : NO_COURSE;
+  }
+
+  // 今日课表、两日课表今天那列的课。「隐藏已上完的课」时，两次刷新之间上完的课也不留着。
+  private todayRows(): WidgetCourseRow[] {
+    const rows = this.rows(this.primaryCourses);
+    if (!this.hideCompleted || this.mode !== 'today') return rows;
+    const skip = this.endedPrefix(rows);
+    return skip > 0 ? rows.slice(skip) : rows;
+  }
+
+  private startedLead(): boolean {
+    const first = this.upcomingRow(0);
+    return (first.startAt ?? 0) > 0 && this.clock() >= (first.startAt ?? 0);
+  }
+
+  // 两栏的标签跟着时钟走：第一节开始上了就是「当前 / 接下来」。
+  private leadText(): string {
+    if (this.mode !== 'today' || (this.upcomingRow(0).startAt ?? 0) <= 0) return this.leadLabel;
+    return this.startedLead() ? '当前' : '下一节';
+  }
+
+  private trailText(): string {
+    if (this.mode !== 'today' || (this.upcomingRow(0).startAt ?? 0) <= 0) return this.trailLabel;
+    return this.startedLead() ? '接下来' : '之后';
+  }
+
+  // 「距下课 23:10」「距上课 12:40」：只给今天的第一节，上课前一小时才出现。
+  private leadCountdown(): CardCountdown {
+    if (!this.showProgress || this.mode !== 'today' || this.effectiveLayout() !== 'upcoming') return { title: '', seconds: 0 };
+    const first = this.upcomingRow(0);
+    return cardCountdown(first.startAt ?? 0, first.endAt ?? 0, this.clock());
+  }
+
+  // 今天还有没上完的课时才用得着时钟。
+  private ticks(): boolean {
+    if (this.pinnedNow > 0 || this.isLockScreen() || this.state !== 'ready') return false;
+    const now = this.clock();
+    return this.rows(this.primaryCourses).some((course: WidgetCourseRow) => (course.endAt ?? 0) > 0 && !cardEnded(course.endAt ?? 0, now));
+  }
+
+  // 每秒来一次。画面上有按秒走的倒计时才每秒更新，否则换了分钟才更新，免得整张卡片每秒重算。
+  private tick(): void {
+    const now = Date.now();
+    const first = this.upcomingRow(0);
+    const seconds = this.showProgress && this.mode === 'today' && this.effectiveLayout() === 'upcoming'
+      && cardCountdown(first.startAt ?? 0, first.endAt ?? 0, now).title.length > 0;
+    if (seconds || Math.floor(now / 60000) !== Math.floor(this.nowMs / 60000)) this.nowMs = now;
+  }
+
+  // ---- 放得下几门 ----
+
+  private largePlan(): LargeTodayPlan {
+    const rows = this.todayRows().slice(0, 7);
+    const available = this.contentHeight() - this.headerHeight('wide') - 8;
+    return largeTodayPlan(available, rows.length, this.primaryRemaining, this.mode === 'today' ? this.previewCount : 0);
+  }
+
+  private largeRows(): WidgetCourseRow[] {
+    return this.todayRows().slice(0, this.largePlan().rows);
+  }
+
+  private mediumPlan(): MediumTodayPlan {
+    const available = this.contentHeight() - this.headerHeight('wide') - 5;
+    return mediumTodayPlan(available, this.todayRows().length, this.primaryRemaining);
+  }
+
+  private mediumRows(): WidgetCourseRow[] {
+    return this.todayRows().slice(0, this.mediumPlan().rows);
+  }
+
+  private columnRows(side: string): WidgetCourseRow[] {
+    return (side === 'left' ? this.todayRows() : this.rows(this.secondaryCourses)).slice(0, 5);
+  }
+
+  private columnRemaining(side: string): number {
+    return side === 'left' ? this.primaryRemaining : this.secondaryRemaining;
+  }
+
+  private columnShown(side: string): WidgetCourseRow[] {
+    const rows = this.columnRows(side);
+    const available = this.contentHeight() - this.headerHeight('left') - 18;
+    return rows.slice(0, twoDayPlan(available, rows.length, this.columnRemaining(side)));
+  }
+
+  // 没显示出来的课有几门。kind：large、medium 是今日课表，left、right 是两日课表的两列。
+  private hiddenCount(kind: string): number {
+    if (kind === 'large') return this.todayRows().length - this.largeRows().length + this.primaryRemaining;
+    if (kind === 'medium') return this.todayRows().length - this.mediumRows().length + this.primaryRemaining;
+    return this.columnRows(kind).length - this.columnShown(kind).length + this.columnRemaining(kind);
+  }
+
+  // 小号默认放两节（同 iOS 默认）；卡片矮到放不下（或文字放大了）时只放一节。
   private smallShowsNext(): boolean {
-    if (this.rows(this.primaryCourses).length < 2) return false;
-    const needed = this.headerHeight(this.dayNote) + 8 + FITTED_SUMMARY_HEIGHT + 6 + COMPACT_NEXT_HEIGHT;
+    if (this.upcomingRows().length < 2) return false;
+    const needed = this.headerHeight('small') + 8 + CARD_FITTED_SUMMARY + this.leadExtra(true) + 6 + CARD_COMPACT_NEXT;
     return needed <= this.contentHeight();
   }
 
+  // 中号一栏里课名两行放不下（文字放大了）时只写一行。
+  private columnTitleLines(): number {
+    const needed = this.headerHeight('wide') + 8 + CARD_COLUMN_LABEL + CARD_COLUMN_SUMMARY + this.leadExtra(false);
+    return needed <= this.contentHeight() ? 2 : 1;
+  }
+
+  // 标准大小下最满的排法要多高：自适应拿它定放大到哪一档。
+  private fullestHeight(): number {
+    const layout = this.effectiveLayout();
+    const rest = CARD_HEADER_HEIGHT + 8 + 60;
+    if (layout === 'upcoming') {
+      const rows = this.upcomingRows();
+      const header = this.headerHeight(this.dimension === 2 ? 'small' : 'wide');
+      if (rows.length === 0) return rest;
+      if (this.dimension !== 2) return header + 8 + CARD_COLUMN_LABEL + CARD_COLUMN_SUMMARY + this.leadExtra(false);
+      return rows.length > 1 ? header + 8 + CARD_FITTED_SUMMARY + this.leadExtra(true) + 6 + CARD_COMPACT_NEXT
+        : header + 8 + CARD_ROOMY_SUMMARY + this.leadExtra(false);
+    }
+    if (layout === 'today') {
+      const header = this.headerHeight('wide');
+      const all = this.todayRows();
+      if (all.length === 0) return rest;
+      if (this.dimension === 4) {
+        const rows = all.slice(0, 7);
+        const preview = this.mode === 'today' && this.primaryRemaining === 0 && this.previewCount > 0
+          ? cardPreviewHeight(Math.min(3, this.previewCount)) : 0;
+        return header + 8 + largeTodayHeight(rows.length, this.primaryRemaining) + preview;
+      }
+      const rows = Math.min(2, all.length);
+      const hidden = all.length - rows + this.primaryRemaining;
+      return header + 5 + rows * CARD_MEDIUM_ROW + (rows - 1) * 7 + (hidden > 0 ? 8 + CARD_REMAINING : 0);
+    }
+    const header = this.headerHeight('left') + 18;
+    const left = this.columnRows('left');
+    const right = this.columnRows('right');
+    return Math.max(
+      left.length > 0 ? header + twoDayHeight(left.length, this.primaryRemaining) : rest,
+      right.length > 0 ? header + twoDayHeight(right.length, this.secondaryRemaining) : rest
+    );
+  }
+
+  // ---- 日期栏 ----
+
+  // kind：small 是 2×2，wide 是整宽的（中号、大号），left、right 是两日课表的两列。
+  private headerTitle(kind: string): string {
+    return kind === 'right' ? this.rightTitle : this.leftTitle;
+  }
+
+  // 日期栏下面挂的「明天的课」。
+  private headerHint(kind: string): string {
+    return kind === 'left' || kind === 'right' ? this.rightNote : this.dayNote;
+  }
+
+  private headerBadge(kind: string): string {
+    return kind === 'right' ? this.rightBadge : this.badge;
+  }
+
+  private headerStatutory(kind: string): boolean {
+    return kind === 'right' ? this.rightBadgeStatutory : this.badgeStatutory;
+  }
+
+  private headerWeek(kind: string): number {
+    if (!this.showWeek) return 0;
+    return kind === 'right' ? this.secondaryWeek : this.primaryWeek;
+  }
+
   // 「9.28 周一」拆成日期和星期。
-  private titleDate(title: string): string {
-    return title.split(' ')[0];
+  private headerDate(kind: string): string {
+    return this.headerTitle(kind).split(' ')[0];
   }
 
-  private titleWeekday(title: string): string {
-    return title.split(' ').slice(1).join('');
+  private headerWeekday(kind: string): string {
+    return this.headerTitle(kind).split(' ').slice(1).join('');
   }
 
-  private isWeekend(weekday: string): boolean {
-    return weekday === '周六' || weekday === '周日';
+  private weekdayColor(kind: string): ResourceColor {
+    const weekday = this.headerWeekday(kind);
+    return weekday === '周六' || weekday === '周日' ? $r('app.color.widget_pink') : this.accent;
   }
 
   // 星期旁边那一列：宽卡片放农历（节日另有右侧徽标），窄卡片没有徽标，节日优先顶上来。
-  private headerDetail(badge: string, lunar: string, compact: boolean): string {
-    return compact && badge ? badge : lunar;
+  private headerDetail(kind: string): string {
+    const lunar = kind === 'right' ? this.rightLunar : this.lunar;
+    return kind !== 'wide' && this.headerBadge(kind) ? this.headerBadge(kind) : lunar;
   }
 
-  private detailColor(badge: string, statutory: boolean, compact: boolean): ResourceColor {
-    if (!compact || !badge) return $r('app.color.widget_secondary');
-    return statutory ? $r('app.color.widget_pink') : this.accent;
+  // 窄日期栏（2×2、两日课表的半宽列）右边那一小格有多宽。没法量文字，按字数估：日期 19fp 粗体每个数字
+  // 约 10.8vp、小数点 4.8，星期和农历各一列约 11，加上竖线和间隔；宁可少算一点地方。
+  private compactRoom(kind: string, withDetail: boolean): number {
+    const padding = this.cardPadding() * 2;
+    const canvas = ((this.cardWidth > 0 ? this.cardWidth : this.dimension === 2 ? 149 : 320) - padding) / this.textScale();
+    const column = kind === 'small' ? canvas : (canvas - 26.5) / 2;
+    const date = this.headerDate(kind);
+    const dots = date.split('.').length - 1;
+    return column - (date.length - dots) * 10.8 - dots * 4.8 - (withDetail ? 44.8 : 24.8);
+  }
+
+  // 2×2 的倒计时比右边那一格宽（还有一个多小时下课，或文字放大了）时，让出农历那一列。
+  // 倒计时 11fp 每个数字约 5.6vp，上面的「距下课」约 24vp。
+  private showsDetail(kind: string): boolean {
+    if (!this.headerDetail(kind)) return false;
+    if (kind !== 'small' || this.footer || !this.leadCountdown().title) return true;
+    const clock = cardClock(this.leadCountdown().seconds);
+    const colons = clock.split(':').length - 1;
+    return this.compactRoom(kind, true) >= Math.max(24, (clock.length - colons) * 5.6 + colons * 3) + 1;
+  }
+
+  // 「第 N 周」。窄日期栏放不下时先去掉空格、缩一号字，再放不下就不显示；「第」不省，
+  // 单写「5周」像是说五个星期。也不去挤左边的日期。
+  private weekLabel(kind: string): string {
+    const week = this.headerWeek(kind);
+    if (week <= 0) return '';
+    if (kind === 'wide') return `第 ${week} 周`;
+    const digits = `${week}`.length;
+    const room = this.compactRoom(kind, this.headerDetail(kind).length > 0);
+    // 10fp 写全要 25.6 + 每个数字 6；差一点时由文字自己缩到 9fp，所以按九成算。
+    if (room >= (25.6 + digits * 6) * 0.9) return `第 ${week} 周`;
+    return room >= 14.4 + digits * 4.8 ? `第${week}周` : '';
+  }
+
+  private weekFontSize(kind: string): number {
+    return this.weekLabel(kind).includes(' ') ? 10 : 8;
+  }
+
+  private detailColor(kind: string): ResourceColor {
+    if (kind === 'wide' || !this.headerBadge(kind)) return $r('app.color.widget_secondary');
+    return this.headerStatutory(kind) ? $r('app.color.widget_pink') : this.accent;
+  }
+
+  // 整宽的日期栏右边有的是地方：没有跨日标注要写时，假期倒计时收在「第 N 周」下面，不单占一行。
+  private headerCountdown(kind: string): string {
+    return kind === 'wide' && !this.dayNote && !this.footer ? this.countdown : '';
+  }
+
+  // 「距国庆节还有 5 天」里的天数，用主题色大一号。
+  private countdownPart(index: number): string {
+    const match = /^(.*?)(\d+)(.*)$/.exec(this.countdown);
+    if (!match) return index === 0 ? this.countdown : '';
+    return match[index + 1];
   }
 
   @Builder
@@ -215,38 +493,77 @@ export struct ScheduleCardView {
 
   // 一个字一行的竖排。两个字正好和左边的日期一样高；三个字的节日名收一号字。
   @Builder
-  private verticalText(value: string, weight: FontWeight, color: ResourceColor) {
-    Text(value.split('').join('\n'))
-      .fontSize(value.length > 2 ? 8 : 10)
-      .lineHeight(value.length > 2 ? 9 : 12)
-      .fontWeight(weight)
-      .fontColor(color)
+  private weekdayColumn(kind: string) {
+    Text(this.headerWeekday(kind).split('').join('\n'))
+      .fontSize(this.headerWeekday(kind).length > 2 ? 8 : 10)
+      .lineHeight(this.headerWeekday(kind).length > 2 ? 9 : 12)
+      .fontWeight(FontWeight.Bold)
+      .fontColor(this.weekdayColor(kind))
       .textAlign(TextAlign.Center)
       .flexShrink(0)
   }
 
-  // 「明天的课」和节日徽标：9fp 粗体，胶囊底是同色 16%。
   @Builder
-  private capsule(title: string, color: ResourceColor, fill: ResourceColor) {
-    Text(title)
+  private detailColumn(kind: string) {
+    Text(this.headerDetail(kind).split('').join('\n'))
+      .fontSize(this.headerDetail(kind).length > 2 ? 8 : 10)
+      .lineHeight(this.headerDetail(kind).length > 2 ? 9 : 12)
+      .fontWeight(FontWeight.Medium)
+      .fontColor(this.detailColor(kind))
+      .textAlign(TextAlign.Center)
+      .flexShrink(0)
+  }
+
+  // 节日徽标：9fp 粗体，胶囊底是同色 16%。
+  @Builder
+  private badgeCapsule(kind: string) {
+    Text(this.headerBadge(kind))
       .fontSize(9)
       .lineHeight(11)
       .fontWeight(FontWeight.Bold)
-      .fontColor(color)
+      .fontColor(this.headerStatutory(kind) ? $r('app.color.widget_pink') : this.accent)
       .maxLines(1)
       .padding({ left: 5, right: 5, top: 2, bottom: 2 })
-      .backgroundColor(fill)
+      .backgroundColor(this.headerStatutory(kind) ? $r('app.color.widget_pink_soft') : widgetChipFill(this.accent))
       .borderRadius(8)
       .flexShrink(0)
   }
 
-  // 日期栏永远是那一列的日子；hint 标出课程区显示的是哪天（「明天的课」），hideHint 只占位不显示。
   @Builder
-  private dateHeader(title: string, week: number, hint: string, hideHint: boolean, badge: string,
-    statutory: boolean, lunar: string, compact: boolean) {
+  private weekText(kind: string, lineHeight: number) {
+    Text(this.weekLabel(kind))
+      .fontSize(this.weekFontSize(kind))
+      .maxFontSize(this.weekFontSize(kind))
+      .minFontSize(this.weekFontSize(kind) - 1)
+      .lineHeight(lineHeight)
+      .fontWeight(600)
+      .fontColor($r('app.color.widget_secondary'))
+      .maxLines(1)
+      .flexShrink(1)
+  }
+
+  // 「明天的课」：9fp 粗体，胶囊底是同色 16%。
+  @Builder
+  private hintCapsule(kind: string) {
+    Text(this.headerHint(kind))
+      .fontSize(9)
+      .lineHeight(11)
+      .fontWeight(FontWeight.Bold)
+      .fontColor(this.accent)
+      .maxLines(1)
+      .padding({ left: 5, right: 5, top: 2, bottom: 2 })
+      .backgroundColor(widgetChipFill(this.accent))
+      .borderRadius(8)
+      .flexShrink(0)
+  }
+
+  // 日期栏永远是那一列的日子；标注说课程区显示的是哪天（「明天的课」）：整宽的日期栏放在同一行右边，
+  // 窄的另起一行，两日课表今天那列只占位不显示。
+  @Builder
+  private dateHeader(kind: string) {
     Column() {
-      Row({ space: compact ? 4 : 6 }) {
-        Text(this.titleDate(title))
+      Row({ space: kind === 'wide' ? 6 : 4 }) {
+        Text(this.headerDate(kind))
           .fontSize(19)
           .lineHeight(23)
           .fontWeight(FontWeight.Bold)
@@ -254,34 +571,68 @@ export struct ScheduleCardView {
           .maxLines(1)
           .flexShrink(0)
         this.columnRule()
-        if (this.titleWeekday(title)) {
-          this.verticalText(this.titleWeekday(title), FontWeight.Bold,
-            this.isWeekend(this.titleWeekday(title)) ? $r('app.color.widget_pink') : this.accent)
+        if (this.headerWeekday(kind)) {
+          this.weekdayColumn(kind)
         }
-        if (this.titleWeekday(title) && this.headerDetail(badge, lunar, compact)) {
+        if (this.headerWeekday(kind) && this.showsDetail(kind)) {
           this.columnRule()
         }
-        if (this.headerDetail(badge, lunar, compact)) {
-          this.verticalText(this.headerDetail(badge, lunar, compact), FontWeight.Medium,
-            this.detailColor(badge, statutory, compact))
+        if (this.showsDetail(kind)) {
+          this.detailColumn(kind)
         }
         Row({ space: 6 }) {
-          if (!compact && badge) {
-            this.capsule(badge, statutory ? $r('app.color.widget_pink') : this.accent,
-              statutory ? $r('app.color.widget_pink_soft') : widgetChipFill(this.accent))
+          if (kind === 'wide' && this.headerHint(kind)) {
+            this.hintCapsule(kind)
+          }
+          if (kind === 'wide' && this.headerBadge(kind)) {
+            this.badgeCapsule(kind)
           }
           if (this.footer) {
             Text('缓存').fontSize(10).fontWeight(600).fontColor($r('app.color.widget_secondary')).maxLines(1)
-          } else if (week > 0) {
-            // 放不下时先缩字，「第」不省：单写「5周」像是说五个星期。
-            Text(`第 ${week} 周`)
-              .fontSize(10)
-              .maxFontSize(10)
-              .minFontSize(8)
+          } else if (kind === 'small' && this.leadCountdown().title) {
+            // 2×2 放不下「当前」那一行标签：倒计时两行叠在日期栏右边，这会儿让出「第 N 周」。
+            Column() {
+              Text(this.leadCountdown().title)
+                .fontSize(8)
+                .lineHeight(10)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.widget_muted'))
+                .maxLines(1)
+              // 还有一个多小时下课时是「1:15:00」，比这一小格宽：缩字，不截断。
+              Text(cardClock(this.leadCountdown().seconds))
+                .fontSize(11)
+                .maxFontSize(11)
+                .minFontSize(7)
+                .lineHeight(13)
+                .fontWeight(600)
+                .fontFeature('"tnum" on')
+                .fontColor(this.courseAccent(this.upcomingRow(0)))
+                .maxLines(1)
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.End)
+          } else if (this.headerCountdown(kind)) {
+            // 周数在上、倒计时在下，两行靠右，合起来和左边的日期数字一样高。
+            Column({ space: 1 }) {
+              if (this.weekLabel(kind)) {
+                this.weekText(kind, 11)
+              }
+              Text() {
+                Span(this.countdownPart(0))
+                Span(this.countdownPart(1)).fontSize(11).fontWeight(FontWeight.Bold).fontColor(this.accent)
+                Span(this.countdownPart(2))
+              }
+              .fontSize(9)
+              .lineHeight(12)
               .fontWeight(600)
               .fontColor($r('app.color.widget_secondary'))
               .maxLines(1)
-              .flexShrink(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+            .alignItems(HorizontalAlign.End)
+            .flexShrink(1)
+          } else if (this.weekLabel(kind)) {
+            this.weekText(kind, 12)
           }
         }
         .layoutWeight(1)
@@ -289,26 +640,28 @@ export struct ScheduleCardView {
         .justifyContent(FlexAlign.End)
       }
       .width('100%')
-      .constraintSize({ minHeight: HEADER_HEIGHT })
+      .constraintSize({ minHeight: CARD_HEADER_HEIGHT })
       .alignItems(VerticalAlign.Center)
-      if (hint) {
+      if (kind !== 'wide' && this.headerHint(kind)) {
         Row() {
           Blank()
-          this.capsule(hint, this.accent, widgetChipFill(this.accent))
+          this.hintCapsule(kind)
         }
         .width('100%')
         .margin({ top: 4 })
-        .opacity(hideHint ? 0 : 1)
+        .opacity(kind === 'left' ? 0 : 1)
       }
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
   }
 
+  // 两日课表里没有课可列的一列。祝福只属于今天：明天那列没课就照常说「没有课程」；
+  // 今天有课但都上完、又选了隐藏，就说「今日课程已结束」。
   @Builder
-  private emptyCourses(message: string) {
+  private emptyCourses(side: string) {
     Column() {
-      Text(message)
+      Text(side === 'left' ? (this.primaryEmpty || this.restTitle) : '没有课程')
         .fontSize(12)
         .fontWeight(600)
         .fontColor($r('app.color.widget_muted'))
@@ -359,39 +712,87 @@ export struct ScheduleCardView {
     .justifyContent(FlexAlign.Center)
   }
 
-  // 临近课程的一节：roomy 是小号（15fp 课名），否则是中号的一栏（13fp）。fits 时课名只占一行。
+  // ---- 课程 ----
+
+  // 已计算好的课程色（单色主题就是主题色）。
+  private courseAccent(course: WidgetCourseRow): string {
+    return course.accent || this.accent;
+  }
+
+  // 课程块底色：浅色是各自的浅底，深色是强调色叠 18%，由资源随系统深浅色切换。
+  private courseTint(course: WidgetCourseRow): Resource {
+    if (this.theme === 'color-glass') {
+      const glass: Resource[] = [$r('app.color.widget_tint_glass_0'), $r('app.color.widget_tint_glass_1'),
+        $r('app.color.widget_tint_glass_2'), $r('app.color.widget_tint_glass_3'), $r('app.color.widget_tint_glass_4'),
+        $r('app.color.widget_tint_glass_5')];
+      const index = Math.floor(course.colorIndex ?? 0);
+      return glass[index >= 0 && index < glass.length ? index : 0];
+    }
+    if (this.theme === 'green') return $r('app.color.widget_tint_green');
+    if (this.theme === 'blue') return $r('app.color.widget_tint_blue');
+    if (this.theme === 'teal') return $r('app.color.widget_tint_teal');
+    if (this.theme === 'indigo') return $r('app.color.widget_tint_indigo');
+    if (this.theme === 'violet') return $r('app.color.widget_tint_violet');
+    if (this.theme === 'orange') return $r('app.color.widget_tint_orange');
+    if (this.theme === 'rose') return $r('app.color.widget_tint_rose');
+    return $r('app.color.widget_tint_slate');
+  }
+
+  // 正在上的这节课上到哪了：一条细进度，跟着卡片的时钟走。这是临近课程第一节的，画在时间下面；
+  // 这节课换了人（上一节下课、下一节顶上来）也要跟上，所以不收参数。
   @Builder
-  private courseSummary(course: WidgetCourseRow, roomy: boolean, fits: boolean, barHeight: number) {
-    Row({ space: roomy ? 9 : 7 }) {
+  private leadProgressTrack() {
+    Stack({ alignContent: Alignment.Start }) {
+      Column().width('100%').height(4).borderRadius(2).backgroundColor($r('app.color.widget_rule'))
+      Column().width(this.progressWidth(this.upcomingRow(0))).height(4).borderRadius(2)
+        .backgroundColor(this.courseAccent(this.upcomingRow(0)))
+    }
+    .width('100%')
+    .height(4)
+    .accessibilityText('本节课程进度')
+  }
+
+  // 临近课程的一节：小号 15fp 课名，中号的一栏 13fp；色条跟着文字一样高。
+  // kind：fitted 是小号放两节时的第一节（课名一行），roomy 是小号只放一节，column 是中号的一栏。
+  @Builder
+  private courseSummary(index: number, kind: string) {
+    Row({ space: kind === 'column' ? 7 : 9 }) {
       Column()
         .width(5)
-        .height(barHeight)
+        .alignSelf(ItemAlign.Stretch)
         .borderRadius(3)
-        .backgroundColor(this.courseAccent(course))
-      Column({ space: roomy ? 3 : 2 }) {
-        Text(course.name)
-          .fontSize(roomy ? 15 : 13)
-          .maxFontSize(roomy ? 15 : 13)
-          .minFontSize(roomy ? 12 : 10)
-          .lineHeight(roomy ? 18 : 16)
+        .backgroundColor(this.courseAccent(this.upcomingRow(index)))
+      Column({ space: kind === 'column' || (kind === 'fitted' && this.leadExtra(true) > 0) ? 2 : 3 }) {
+        Text(this.upcomingRow(index).name)
+          .fontSize(kind === 'column' ? 13 : 15)
+          .maxFontSize(kind === 'column' ? 13 : 15)
+          .minFontSize(kind === 'column' ? 10 : 12)
+          .lineHeight(kind === 'column' ? 16 : 18)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.widget_text'))
-          .maxLines(fits ? 1 : 2)
+          .maxLines(kind === 'fitted' ? 1 : kind === 'column' ? this.columnTitleLines() : 2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(course.meta)
-          .fontSize(roomy ? 10 : 9)
-          .lineHeight(roomy ? 12 : 11)
-          .fontColor($r('app.color.widget_secondary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(course.time)
-          .fontSize(roomy ? 11 : 10)
-          .maxFontSize(roomy ? 11 : 10)
-          .minFontSize(8)
-          .lineHeight(roomy ? 13 : 12)
-          .fontWeight(600)
-          .fontColor($r('app.color.widget_text'))
-          .maxLines(1)
+        if (this.upcomingRow(index).meta) {
+          Text(this.upcomingRow(index).meta)
+            .fontSize(kind === 'column' ? 9 : 10)
+            .lineHeight(kind === 'column' ? 11 : 12)
+            .fontColor($r('app.color.widget_secondary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        if (this.upcomingRow(index).time) {
+          Text(this.upcomingRow(index).time)
+            .fontSize(kind === 'column' ? 10 : 11)
+            .maxFontSize(kind === 'column' ? 10 : 11)
+            .minFontSize(8)
+            .lineHeight(kind === 'column' ? 12 : 13)
+            .fontWeight(600)
+            .fontColor($r('app.color.widget_text'))
+            .maxLines(1)
+        }
+        if (index === 0 && this.rowProgressing(this.upcomingRow(0))) {
+          this.leadProgressTrack()
+        }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -402,22 +803,22 @@ export struct ScheduleCardView {
 
   // 小号的第二节：短色条，课名一行，时间用次要色。
   @Builder
-  private compactNextCourse(course: WidgetCourseRow) {
+  private compactNextCourse() {
     Row({ space: 8 }) {
       Column()
         .width(5)
-        .height(COMPACT_NEXT_HEIGHT)
+        .height(CARD_COMPACT_NEXT)
         .borderRadius(3)
-        .backgroundColor(this.courseAccent(course))
+        .backgroundColor(this.courseAccent(this.upcomingRow(1)))
       Column({ space: 1 }) {
-        Text(course.name)
+        Text(this.upcomingRow(1).name)
           .fontSize(12)
           .lineHeight(14)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.widget_text'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(course.meta ? `${course.meta} · ${course.time}` : course.time)
+        Text([this.upcomingRow(1).meta, this.upcomingRow(1).time].filter((value: string) => value.length > 0).join(' · '))
           .fontSize(9)
           .lineHeight(11)
           .fontColor($r('app.color.widget_secondary'))
@@ -435,28 +836,26 @@ export struct ScheduleCardView {
   @Builder
   private smallUpcoming() {
     Column() {
-      this.dateHeader(this.leftTitle, this.primaryWeek, this.dayNote, false, this.badge, this.badgeStatutory,
-        this.lunar, true)
-      if (!this.firstCourse()) {
+      this.dateHeader('small')
+      if (this.upcomingRows().length === 0) {
         this.restCourses()
       } else if (this.smallShowsNext()) {
         Blank(8)
         Column() {
-          this.courseSummary(this.rows(this.primaryCourses)[0], true, true, FITTED_SUMMARY_HEIGHT)
+          this.courseSummary(0, 'fitted')
         }
         .grayscale(this.mode === 'ahead' ? 1 : 0)
         .opacity(this.mode === 'ahead' ? 0.56 : 1)
         Blank(6)
         Column() {
-          this.compactNextCourse(this.rows(this.primaryCourses)[1])
+          this.compactNextCourse()
         }
         .grayscale(this.mode === 'ahead' ? 1 : 0)
         .opacity(this.mode === 'ahead' ? 0.56 : 1)
       } else {
         Blank(8)
         Column() {
-          this.courseSummary(this.rows(this.primaryCourses)[0], true, false,
-            Math.max(24, Math.min(58, this.contentHeight() - this.headerHeight(this.dayNote) - 8)))
+          this.courseSummary(0, 'roomy')
         }
         .grayscale(this.mode === 'ahead' ? 1 : 0)
         .opacity(this.mode === 'ahead' ? 0.56 : 1)
@@ -467,17 +866,41 @@ export struct ScheduleCardView {
     .alignItems(HorizontalAlign.Start)
   }
 
+  // 中号的一栏：标签，右边是倒计时（只有第一栏、今天的课才有），下面是课程。
   @Builder
-  private upcomingColumn(label: string, index: number, barHeight: number) {
+  private upcomingColumn(index: number) {
     Column({ space: 7 }) {
-      Text(label)
-        .fontSize(11)
-        .lineHeight(13)
-        .fontWeight(600)
-        .fontColor($r('app.color.widget_secondary'))
-        .maxLines(1)
-      if (this.rows(this.primaryCourses).length > index) {
-        this.courseSummary(this.rows(this.primaryCourses)[index], false, false, barHeight)
+      Row({ space: 3 }) {
+        Text(index === 0 ? this.leadText() : this.trailText())
+          .fontSize(11)
+          .lineHeight(13)
+          .fontWeight(600)
+          .fontColor($r('app.color.widget_secondary'))
+          .maxLines(1)
+          .flexShrink(0)
+        Blank()
+        if (index === 0 && this.leadCountdown().title) {
+          Text(this.leadCountdown().title)
+            .fontSize(10)
+            .lineHeight(13)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.widget_muted'))
+            .maxLines(1)
+            .flexShrink(0)
+          Text(cardClock(this.leadCountdown().seconds))
+            .fontSize(11)
+            .lineHeight(13)
+            .fontWeight(600)
+            .fontFeature('"tnum" on')
+            .fontColor(this.courseAccent(this.upcomingRow(0)))
+            .maxLines(1)
+            .flexShrink(0)
+        }
+      }
+      .width('100%')
+      .height(13)
+      if (this.upcomingRows().length > index) {
+        this.courseSummary(index, 'column')
       } else {
         Text('暂无课程').fontSize(11).fontColor($r('app.color.widget_muted')).maxLines(1)
       }
@@ -491,21 +914,18 @@ export struct ScheduleCardView {
   @Builder
   private upcomingView() {
     Column() {
-      this.dateHeader(this.leftTitle, this.primaryWeek, this.dayNote, false, this.badge, this.badgeStatutory,
-        this.lunar, false)
-      if (this.rows(this.primaryCourses).length === 0) {
+      this.dateHeader('wide')
+      if (this.upcomingRows().length === 0) {
         this.restCourses()
       } else {
         Row({ space: 14 }) {
-          this.upcomingColumn(this.leadLabel, 0,
-            Math.max(24, Math.min(62, this.contentHeight() - this.headerHeight(this.dayNote) - 8 - 13 - 7)))
+          this.upcomingColumn(0)
           Divider()
             .vertical(true)
             .height('100%')
             .strokeWidth(0.5)
             .color($r('app.color.widget_divider'))
-          this.upcomingColumn(this.trailLabel, 1,
-            Math.max(24, Math.min(62, this.contentHeight() - this.headerHeight(this.dayNote) - 8 - 13 - 7)))
+          this.upcomingColumn(1)
         }
         .width('100%')
         .layoutWeight(1)
@@ -521,137 +941,212 @@ export struct ScheduleCardView {
   }
 
   @Builder
-  private courseTime(course: WidgetCourseRow, large: boolean) {
+  private courseTime(course: WidgetCourseRow, kind: string) {
     Text(course.time)
-      .fontSize(large ? 10 : 9)
-      .lineHeight(large ? 12 : 11)
+      .fontSize(kind === 'large' ? 10 : 9)
+      .lineHeight(kind === 'large' ? 12 : 11)
       .fontWeight(600)
       .fontColor($r('app.color.widget_text'))
       .maxLines(1)
       .flexShrink(0)
   }
 
-  // 今日课表、两日课表的一行：色块底 + 5vp 色条。已下课或不是今天的课去色并压到 0.56。
+  private rowHeight(kind: string): number {
+    return kind === 'large' ? CARD_LARGE_ROW : kind === 'column' ? CARD_TWO_DAY_ROW : kind === 'preview' ? CARD_PREVIEW_ROW
+      : CARD_MEDIUM_ROW;
+  }
+
+  // 已下课、或今日课表整张换成了别的日子的课：去色并压到 0.56。预告的课不压。
+  private rowDimmed(course: WidgetCourseRow, kind: string): boolean {
+    if (kind === 'preview') return false;
+    return this.rowEnded(course) || ((kind === 'large' || kind === 'medium') && this.mode === 'ahead');
+  }
+
+  // 今日课表、两日课表的一行：色块底 + 5vp 色条。kind：large 大号，medium 中号，column 两日课表（时间另起一行），
+  // preview 大号下面预告的课。正在上的课沿这一行的底边有一条进度：不占文字的地方，行高不变。
   @Builder
-  private todayCourseRow(course: WidgetCourseRow, large: boolean, separateTime: boolean, completed: boolean) {
-    Row({ space: large ? 9 : 6 }) {
-      Column()
-        .width(5)
-        .height(large ? 40 : separateTime ? 39 : 29)
-        .borderRadius(3)
-        .backgroundColor(this.courseAccent(course))
-      Column({ space: 2 }) {
-        Text(course.name)
-          .fontSize(large ? 14 : 12)
-          .lineHeight(large ? 17 : 14)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.widget_text'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(course.meta)
-          .fontSize(large ? 10 : 9)
-          .lineHeight(large ? 12 : 11)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.widget_secondary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        if (separateTime) {
-          this.courseTime(course, large)
+  private todayCourseRow(course: WidgetCourseRow, kind: string) {
+    Stack({ alignContent: Alignment.BottomStart }) {
+      Row({ space: kind === 'large' ? 9 : 6 }) {
+        Column()
+          .width(5)
+          .height(kind === 'large' ? 40 : kind === 'column' ? 39 : 29)
+          .borderRadius(3)
+          .backgroundColor(this.courseAccent(course))
+        Column({ space: 2 }) {
+          Text(course.name)
+            .fontSize(kind === 'large' ? 14 : 12)
+            .lineHeight(kind === 'large' ? 17 : 14)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.widget_text'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          if (course.meta) {
+            Text(course.meta)
+              .fontSize(kind === 'large' ? 10 : 9)
+              .lineHeight(kind === 'large' ? 12 : 11)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.widget_secondary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+          if (kind === 'column' && course.time) {
+            this.courseTime(course, kind)
+          }
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        if (kind !== 'column' && course.time) {
+          this.courseTime(course, kind)
         }
       }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-      if (!separateTime) {
-        this.courseTime(course, large)
+      .width('100%')
+      .height('100%')
+      .padding({ left: kind === 'large' ? 9 : 7, right: kind === 'large' ? 9 : 7 })
+      if (kind !== 'preview' && this.rowProgressing(course)) {
+        Stack({ alignContent: Alignment.Start }) {
+          Column().width('100%').height(3).backgroundColor($r('app.color.widget_rule'))
+          Column().width(this.progressWidth(course)).height(3).backgroundColor(this.courseAccent(course))
+        }
+        .width('100%')
+        .height(3)
+        .accessibilityText('本节课程进度')
       }
     }
     .width('100%')
-    .height(large ? LARGE_ROW_HEIGHT : separateTime ? TWO_DAY_ROW_HEIGHT : MEDIUM_ROW_HEIGHT)
-    .padding({ left: large ? 9 : 7, right: large ? 9 : 7 })
-    .borderRadius(large ? 11 : 8)
+    .height(this.rowHeight(kind))
+    .borderRadius(kind === 'large' ? 11 : 8)
+    .clip(true)
     .backgroundColor(this.courseTint(course))
-    .grayscale(completed ? 1 : 0)
-    .opacity(completed ? 0.56 : 1)
+    .grayscale(this.rowDimmed(course, kind) ? 1 : 0)
+    .opacity(this.rowDimmed(course, kind) ? 0.56 : 1)
   }
 
   // 没显示的课都排在最后一行之后（已经上完的才会被省在前面），所以说「后面」。
   @Builder
-  private remainingText(count: number, top: number) {
-    Text(`后面还有 ${count} 门课`)
+  private remainingText(kind: string) {
+    Text(`后面还有 ${this.hiddenCount(kind)} 门课`)
       .width('100%')
       .fontSize(9)
-      .lineHeight(REMAINING_HEIGHT)
+      .lineHeight(CARD_REMAINING)
       .fontWeight(FontWeight.Medium)
       .fontColor($r('app.color.widget_muted'))
       .textAlign(TextAlign.End)
       .maxLines(1)
-      .margin({ top: top })
+      .margin({ top: kind === 'large' ? 10 : kind === 'medium' ? this.mediumPlan().footerGap : 8 })
   }
 
-  // 今日课表：大号贴顶排、最多 7 行；中号固定两门，整块竖着居中。
+  // 大号今日课表课少的日子，今天的课下面接着预告下一次课：「明天 周四」的标注，下面是那天开头的几门。
+  // 只剩一行的地方时不列课，标注后面写第一门课和一共几门。
+  @Builder
+  private nextDayPreview() {
+    Column({ space: 6 }) {
+      Row({ space: 5 }) {
+        Text(this.previewLabel)
+          .fontSize(10)
+          .lineHeight(12)
+          .fontWeight(FontWeight.Bolder)
+          .fontColor('#FFFFFF')
+          .maxLines(1)
+          .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+          .backgroundColor(this.accent)
+          .borderRadius(8)
+          .flexShrink(0)
+        Text(this.previewDetail)
+          .fontSize(10)
+          .lineHeight(12)
+          .fontWeight(600)
+          .fontColor($r('app.color.widget_secondary'))
+          .maxLines(1)
+          .flexShrink(0)
+        if (this.largePlan().preview === CARD_PREVIEW_SUMMARY) {
+          Text(this.previewSummary)
+            .layoutWeight(1)
+            .fontSize(11)
+            .lineHeight(13)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.widget_secondary'))
+            .textAlign(TextAlign.End)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        } else if (this.previewCount > this.largePlan().preview) {
+          Text(`后面还有 ${this.previewCount - this.largePlan().preview} 门课`)
+            .layoutWeight(1)
+            .fontSize(9)
+            .lineHeight(CARD_REMAINING)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.widget_muted'))
+            .textAlign(TextAlign.End)
+            .maxLines(1)
+        }
+      }
+      .width('100%')
+      .height(16)
+      ForEach(this.rows(this.previewCourses).slice(0, Math.max(0, this.largePlan().preview)), (course: WidgetCourseRow) => {
+        this.todayCourseRow(course, 'preview')
+      }, (course: WidgetCourseRow, index: number) => this.rowKey(course, index))
+    }
+    .width('100%')
+    .margin({ top: this.largePlan().preview === CARD_PREVIEW_SUMMARY ? 12 : 16 })
+  }
+
+  // 今日课表：大号贴顶排、最多 7 行；中号最多两门，整块竖着居中。
   @Builder
   private todayView() {
     Column() {
-      this.dateHeader(this.leftTitle, this.primaryWeek, this.dayNote, false, this.badge, this.badgeStatutory,
-        this.lunar, false)
-      if (this.rows(this.primaryCourses).length === 0) {
+      this.dateHeader('wide')
+      if (this.todayRows().length === 0) {
         this.restCourses()
       } else if (this.dimension === 4) {
         Column({ space: 8 }) {
-          ForEach(this.largeTodayRows(this.primaryCourses, this.primaryRemaining), (course: WidgetCourseRow) => {
-            this.todayCourseRow(course, true, false, course.ended || this.mode === 'ahead')
-          }, (course: WidgetCourseRow) => `${course.time}|${course.name}|${course.meta}`)
+          ForEach(this.largeRows(), (course: WidgetCourseRow) => {
+            this.todayCourseRow(course, 'large')
+          }, (course: WidgetCourseRow, index: number) => this.rowKey(course, index))
         }
         .width('100%')
         .margin({ top: 8 })
-        if (this.rows(this.primaryCourses).length - this.largeTodayRows(this.primaryCourses, this.primaryRemaining).length
-          + this.primaryRemaining > 0) {
-          this.remainingText(this.rows(this.primaryCourses).length
-            - this.largeTodayRows(this.primaryCourses, this.primaryRemaining).length + this.primaryRemaining, 10)
+        if (this.hiddenCount('large') > 0) {
+          this.remainingText('large')
+        }
+        if (this.largePlan().preview !== 0) {
+          this.nextDayPreview()
         }
       } else {
-        Column({ space: this.mediumRowSpacing(this.rows(this.primaryCourses).slice(0, 2).length, this.primaryRemaining) }) {
-          ForEach(this.rows(this.primaryCourses).slice(0, 2), (course: WidgetCourseRow) => {
-            this.todayCourseRow(course, false, false, course.ended || this.mode === 'ahead')
-          }, (course: WidgetCourseRow) => `${course.time}|${course.name}|${course.meta}`)
+        Column({ space: this.mediumPlan().spacing }) {
+          ForEach(this.mediumRows(), (course: WidgetCourseRow) => {
+            this.todayCourseRow(course, 'medium')
+          }, (course: WidgetCourseRow, index: number) => this.rowKey(course, index))
         }
         .width('100%')
         .margin({ top: 5 })
-        if (this.rows(this.primaryCourses).length - Math.min(2, this.rows(this.primaryCourses).length)
-          + this.primaryRemaining > 0) {
-          this.remainingText(this.rows(this.primaryCourses).length - Math.min(2, this.rows(this.primaryCourses).length)
-            + this.primaryRemaining,
-            this.mediumRowSpacing(this.rows(this.primaryCourses).slice(0, 2).length, this.primaryRemaining) > 4 ? 8 : 4)
+        if (this.hiddenCount('medium') > 0) {
+          this.remainingText('medium')
         }
       }
     }
     .width('100%')
     .height('100%')
     .alignItems(HorizontalAlign.Start)
-    .justifyContent(this.dimension === 4 || this.rows(this.primaryCourses).length === 0
-      ? FlexAlign.Start : FlexAlign.Center)
+    .justifyContent(this.dimension === 4 || this.todayRows().length === 0 ? FlexAlign.Start : FlexAlign.Center)
   }
 
   // 两日课表的一列：没有标题、没有边框，日期栏和第一门课隔开 18。
   @Builder
-  private dayColumn(title: string, week: number, value: string, isToday: boolean) {
+  private dayColumn(side: string) {
     Column() {
-      this.dateHeader(title, week, this.rightNote, isToday, isToday ? this.badge : this.rightBadge,
-        isToday ? this.badgeStatutory : this.rightBadgeStatutory, isToday ? this.lunar : this.rightLunar, true)
-      if (this.rows(value).length === 0) {
-        // 祝福只属于今天：明天那列没课就照常说「没有课程」。
-        this.emptyCourses(isToday ? this.restTitle : '没有课程')
+      this.dateHeader(side)
+      if (this.columnRows(side).length === 0) {
+        this.emptyCourses(side)
       } else {
         Column({ space: 7 }) {
-          ForEach(this.twoDayRows(value, this.rightNote), (course: WidgetCourseRow) => {
-            this.todayCourseRow(course, false, true, isToday && course.ended)
-          }, (course: WidgetCourseRow) => `${course.time}|${course.name}|${course.meta}`)
+          ForEach(this.columnShown(side), (course: WidgetCourseRow) => {
+            this.todayCourseRow(course, 'column')
+          }, (course: WidgetCourseRow, index: number) => this.rowKey(course, index))
         }
         .width('100%')
         .margin({ top: 18 })
-        if (this.twoDayRows(value, this.rightNote).length < this.rows(value).length) {
-          this.remainingText(this.rows(value).length - this.twoDayRows(value, this.rightNote).length
-            + (isToday ? this.primaryRemaining : this.secondaryRemaining), 8)
+        if (this.hiddenCount(side) > 0) {
+          this.remainingText(side)
         }
       }
     }
@@ -663,13 +1158,13 @@ export struct ScheduleCardView {
   @Builder
   private twoDayView() {
     Row({ space: 13 }) {
-      this.dayColumn(this.leftTitle, this.primaryWeek, this.primaryCourses, true)
+      this.dayColumn('left')
       Divider()
         .vertical(true)
         .height('100%')
         .strokeWidth(0.5)
         .color($r('app.color.widget_divider'))
-      this.dayColumn(this.rightTitle, this.secondaryWeek, this.secondaryCourses, false)
+      this.dayColumn('right')
     }
     .width('100%')
     .height('100%')
@@ -707,7 +1202,7 @@ export struct ScheduleCardView {
   private lockInlineText(): string {
     const course = this.firstCourse();
     if (!course) return this.lockLine;
-    const day = this.lockDay || this.titleWeekday(this.leftTitle) || this.leftTitle;
+    const day = this.lockDay || this.headerWeekday('small') || this.leftTitle;
     return [day, course.start, course.name, course.meta].filter((value: string) => value.length > 0).join(' ');
   }
 
@@ -919,35 +1414,55 @@ export struct ScheduleCardView {
   }
 
   build() {
-    Stack() {
-    if (this.cardPhoto && !this.isLockScreen()) {
-      Image(this.cardPhoto).width('100%').height('100%').objectFit(ImageFit.Cover)
-      Column().width('100%').height('100%').backgroundColor(this.surface()).opacity(this.veil)
-    }
-    Column() {
-      if (this.isLockScreen() && this.state !== 'ready') {
-        this.lockStatusView()
-      } else if (this.variant === 'lock-inline') {
-        this.lockInlineView()
-      } else if (this.variant === 'lock-circular') {
-        this.lockCircularView()
-      } else if (this.variant === 'lock-rectangular') {
-        this.lockRectangularView()
-      } else if (this.state !== 'ready') {
-        this.statusView()
-      } else if (this.effectiveLayout() === 'upcoming' && this.dimension === 2) {
-        this.smallUpcoming()
-      } else if (this.effectiveLayout() === 'upcoming') {
-        this.upcomingView()
-      } else if (this.effectiveLayout() === 'today') {
-        this.todayView()
-      } else {
-        this.twoDayView()
+    Stack({ alignContent: Alignment.TopStart }) {
+      if (this.cardPhoto && !this.isLockScreen()) {
+        Image(this.cardPhoto).width('100%').height('100%').objectFit(ImageFit.Cover)
+        Column().width('100%').height('100%').backgroundColor(this.surface()).opacity(this.veil)
       }
-    }
-    .width('100%')
-    .height('100%')
-    .padding(this.cardPadding())
+      Column() {
+        Column() {
+          if (this.isLockScreen() && this.state !== 'ready') {
+            this.lockStatusView()
+          } else if (this.variant === 'lock-inline') {
+            this.lockInlineView()
+          } else if (this.variant === 'lock-circular') {
+            this.lockCircularView()
+          } else if (this.variant === 'lock-rectangular') {
+            this.lockRectangularView()
+          } else if (this.state !== 'ready') {
+            this.statusView()
+          } else if (this.effectiveLayout() === 'upcoming' && this.dimension === 2) {
+            this.smallUpcoming()
+          } else if (this.effectiveLayout() === 'upcoming') {
+            this.upcomingView()
+          } else if (this.effectiveLayout() === 'today') {
+            this.todayView()
+          } else {
+            this.twoDayView()
+          }
+        }
+        .width(this.canvasWidth())
+        .height(this.canvasHeight())
+        .scale({ x: this.textScale(), y: this.textScale(), centerX: 0, centerY: 0 })
+      }
+      .width('100%')
+      .height('100%')
+      .padding(this.cardPadding())
+      .alignItems(HorizontalAlign.Start)
+      if (this.ticks()) {
+        // 看不见的秒表：系统驱动，卡片不可见时自己停，回来接着走；时间一律从系统时钟读，不靠它累计。
+        TextTimer({ controller: this.ticker })
+          .format('mm:ss')
+          .fontSize(1)
+          .width(1)
+          .height(1)
+          .opacity(0)
+          .onAppear(() => {
+            this.ticker.start();
+            this.nowMs = Date.now();
+          })
+          .onTimer(() => this.tick())
+      }
     }
     .width('100%')
     .height('100%')
@@ -955,6 +1470,10 @@ export struct ScheduleCardView {
     .backgroundColor(this.isLockScreen() || this.cardPhoto ? Color.Transparent : this.surface())
     .borderRadius(this.isLockScreen() ? 0 : this.cardStyle === 'paper' || this.cardStyle === 'board' ? 6 : this.cardStyle === 'table' ? 10 : 22)
     .border(this.isLockScreen() ? { width: 0 } : this.frame())
-    .onAreaChange((_previous: Area, area: Area) => this.cardHeight = Number(area.height))
+    // onAreaChange 在卡片里不可用；onSizeChange 可以。
+    .onSizeChange((_previous: SizeOptions, size: SizeOptions) => {
+      this.cardWidth = Number(size.width ?? 0);
+      this.cardHeight = Number(size.height ?? 0);
+    })
   }
 }

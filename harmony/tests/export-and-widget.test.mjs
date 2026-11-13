@@ -305,3 +305,180 @@ test('two-day right column carries its own lunar date and the lock cards name th
   value = h.updates.at(-1);
   assert.equal(value.lockTitle, '9.8 周二'); assert.equal(value.lockDay, '周二');
 });
+
+// ---- iOS 350e5e1c: text size, countdown and progress, hidden finished classes, next-day preview ----
+const optionsModule = compileTree('../entry/src/main/ets/common/ScheduleWidgetOptions.ets', {});
+const withOptions = (h, patch) => h.service.saveScheduleWidgetDisplayOptions({}, { ...optionsModule.defaultWidgetDisplayOptions(), ...patch });
+
+test('display options written by an older app default field by field', async () => {
+  const defaults = optionsModule.defaultWidgetDisplayOptions();
+  assert.deepEqual({ ...defaults }, { showCourseName: true, showRoom: true, showTeacher: true, showTime: true, showLunarDate: true,
+    showHoliday: true, holidayAlwaysVisible: true, textSize: 'standard', showWeek: true, showBreaks: true, showProgress: true,
+    hideCompleted: false });
+  for (const raw of ['', 'not json', '[]', 'null', '{}']) assert.deepEqual({ ...optionsModule.parseWidgetDisplayOptions(raw) }, { ...defaults });
+  // A switch someone turned off stays off when the newer fields are missing.
+  const old = optionsModule.parseWidgetDisplayOptions(JSON.stringify({ showTeacher: false, showLunarDate: false }));
+  assert.equal(old.showTeacher, false); assert.equal(old.showLunarDate, false);
+  assert.equal(old.textSize, 'standard'); assert.equal(old.showProgress, true); assert.equal(old.hideCompleted, false);
+  // A size a later version wrote reads as the standard size instead of voiding the settings.
+  const later = optionsModule.parseWidgetDisplayOptions(JSON.stringify({ textSize: 'huge', hideCompleted: true, showWeek: 'no' }));
+  assert.equal(later.textSize, 'standard'); assert.equal(later.hideCompleted, true); assert.equal(later.showWeek, true);
+  assert.deepEqual([...optionsModule.widgetTextScales('auto')], [1.16, 1.08, 1]);
+  assert.deepEqual(['small', 'standard', 'large', 'other'].map(size => optionsModule.widgetTextScales(size)[0]), [0.9, 1, 1.12, 1]);
+  // The stored options reach the card.
+  const h = await calendarHarness(); h.setNow(new Date(2026,8,8,7).getTime());
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_today');
+  let value = h.updates.at(-1);
+  assert.deepEqual([value.textSize, value.showProgress, value.showWeek, value.hideCompleted], ['standard', true, true, false]);
+  await withOptions(h, { textSize: 'auto', showProgress: false, showWeek: false, hideCompleted: true });
+  assert.deepEqual({ ...(await h.service.readScheduleWidgetDisplayOptions({})) }, { ...defaults, textSize: 'auto', showProgress: false, showWeek: false, hideCompleted: true });
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_today'); value = h.updates.at(-1);
+  assert.deepEqual([value.textSize, value.showProgress, value.showWeek, value.hideCompleted], ['auto', false, false, true]);
+  // The week itself still travels: the switch only hides it.
+  assert.equal(value.primaryWeek, 2);
+});
+
+test('rows of today carry their class times for the clock of the card; other days carry none', async () => {
+  const h = await calendarHarness(); h.setNow(new Date(2026,8,8,8,30).getTime());
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+  const rows = JSON.parse(h.updates.at(-1).primaryCourses);
+  assert.equal(rows[0].startAt, new Date(2026,8,8,8,0).getTime()); assert.equal(rows[0].endAt, new Date(2026,8,8,9,0).getTime());
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_two_day');
+  assert.ok(JSON.parse(h.updates.at(-1).primaryCourses).every(row => row.startAt > 0 && row.endAt > row.startAt));
+  assert.ok(JSON.parse(h.updates.at(-1).secondaryCourses).every(row => row.startAt === 0 && row.endAt === 0));
+  // Desktop upcoming cards get two rows more than they show, to move on between refreshes; lock cards do not.
+  await h.service.refreshScheduleForm({}, 'card', 2, 'schedule_upcoming');
+  assert.deepEqual(JSON.parse(h.updates.at(-1).primaryCourses).map(row => row.start), ['08:00', '09:00', '10:00', '11:00']);
+  await h.service.refreshScheduleForm({}, 'card', 1, 'schedule_lock_rectangular');
+  assert.equal(JSON.parse(h.updates.at(-1).primaryCourses).length, 2);
+  // After the last class the card shows the first two of tomorrow, without times to count against.
+  h.setNow(localDate().now);
+  await h.service.refreshScheduleForm({}, 'card', 2, 'schedule_upcoming');
+  const ahead = JSON.parse(h.updates.at(-1).primaryCourses);
+  assert.equal(ahead.length, 2); assert.ok(ahead.every(row => row.startAt === 0));
+});
+
+test('hidden finished classes leave the window whether or not the rest would fit', async () => {
+  const h = await calendarHarness(); h.setNow(new Date(2026,8,8,10,30).getTime());
+  h.payload.today.courses = h.payload.today.courses.slice(0, 4);
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+  assert.deepEqual(JSON.parse(h.updates.at(-1).primaryCourses).map(row => row.ended), [true, true, false, false]);
+  await withOptions(h, { hideCompleted: true });
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+  assert.deepEqual(JSON.parse(h.updates.at(-1).primaryCourses).map(row => row.start), ['10:00', '11:00']);
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_today');
+  assert.deepEqual(JSON.parse(h.updates.at(-1).primaryCourses).map(row => row.start), ['10:00', '11:00']);
+  assert.equal(h.updates.at(-1).primaryRemaining, 0);
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_two_day');
+  let value = h.updates.at(-1);
+  assert.deepEqual(JSON.parse(value.primaryCourses).map(row => row.start), ['10:00', '11:00']); assert.equal(value.primaryEmpty, '');
+  // All over: the today column of the two-day card says so rather than 今日无课.
+  h.setNow(new Date(2026,8,8,20).getTime());
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_two_day'); value = h.updates.at(-1);
+  assert.equal(value.primaryCourses, '[]'); assert.equal(value.primaryEmpty, '今日课程已结束');
+  await withOptions(h, { hideCompleted: false });
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_two_day'); value = h.updates.at(-1);
+  assert.equal(JSON.parse(value.primaryCourses).length, 4); assert.equal(value.primaryEmpty, '');
+  // A day without classes keeps its own wording.
+  h.payload.today.courses = [];
+  await withOptions(h, { hideCompleted: true });
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_two_day');
+  assert.equal(h.updates.at(-1).primaryEmpty, '');
+});
+
+test('the large today card previews the next course day while today still has classes', async () => {
+  const h = await calendarHarness(); h.setNow(new Date(2026,8,8,8,30).getTime());
+  h.payload.today.courses = h.payload.today.courses.slice(0, 2);
+  h.payload.weekDays[1].courses = [0, 1, 2, 3].map(index => ({ name: `明天${index}`, startTime: `${String(8 + index).padStart(2,'0')}:00`,
+    endTime: `${String(9 + index).padStart(2,'0')}:00`, location: '教学楼A101', teacher: '张老师' }));
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+  let value = h.updates.at(-1);
+  assert.deepEqual([value.previewLabel, value.previewDetail, value.previewCount], ['明天', '周三', 4]);
+  assert.deepEqual(JSON.parse(value.previewCourses).map(row => row.name), ['明天0', '明天1', '明天2']);
+  assert.ok(JSON.parse(value.previewCourses).every(row => !row.ended && row.startAt === 0));
+  assert.equal(value.previewSummary, '08:00 明天0 等 4 门');
+  await withOptions(h, { showTime: false });
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+  assert.equal(h.updates.at(-1).previewSummary, '明天0 等 4 门');
+  await withOptions(h, {});
+  // Only the large today card previews, and only while it is showing today.
+  for (const [dimension, name] of [[3, 'schedule_today'], [3, 'schedule_upcoming'], [4, 'schedule_two_day']]) {
+    await h.service.refreshScheduleForm({}, 'card', dimension, name);
+    assert.equal(h.updates.at(-1).previewCount, 0, name); assert.equal(h.updates.at(-1).previewCourses, '[]');
+  }
+  h.setNow(localDate().now);
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today'); value = h.updates.at(-1);
+  assert.equal(value.mode, 'ahead'); assert.equal(value.previewCount, 0);
+  // Further than the day after tomorrow, the label counts days and the date is written out.
+  const far = sparseHarness('2026-09-30'); far.setNow(new Date(2026,8,26,8,30).getTime());
+  far.payload.today.courses = [{ name: '今天的课', startTime: '09:00', endTime: '10:00' }];
+  await far.service.saveScheduleWidgetConfiguration({}, JSON.stringify({ endpoint: endpoint('A') }));
+  await far.service.refreshScheduleForm({}, 'card', 4, 'schedule_today'); value = far.updates.at(-1);
+  assert.deepEqual([value.previewLabel, value.previewDetail, value.previewCount, value.previewSummary], ['4 天后', '9.30 周', 1, '08:00 药理学']);
+});
+
+test('the nearest holiday rides the date header, except in the rest state and on the two-day card', async () => {
+  const h = sparseHarness('2026-09-27'); h.setNow(new Date(2026,8,26,8,30).getTime());
+  h.payload.today.courses = [{ name: '今天的课', startTime: '09:00', endTime: '10:00' }];
+  await h.service.saveScheduleWidgetConfiguration({}, JSON.stringify({ endpoint: endpoint('A') }));
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_today');
+  assert.equal(h.updates.at(-1).countdown, '距国庆节还有 5 天');
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_two_day');
+  assert.equal(h.updates.at(-1).countdown, '');
+  await withOptions(h, { holidayAlwaysVisible: false });
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_today');
+  assert.equal(h.updates.at(-1).countdown, '');
+  // 节假日提示 off: no badge, no countdown, and the rest state only says 今日无课.
+  await withOptions(h, { showHoliday: false, showLunarDate: false });
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_today');
+  assert.deepEqual([h.updates.at(-1).countdown, h.updates.at(-1).lunar], ['', '']);
+  const rest = sparseHarness(''); rest.setNow(new Date(2026,9,2,9).getTime());
+  await rest.service.saveScheduleWidgetConfiguration({}, JSON.stringify({ endpoint: endpoint('A') }));
+  await rest.service.refreshScheduleForm({}, 'card', 3, 'schedule_upcoming');
+  assert.deepEqual([rest.updates.at(-1).badge, rest.updates.at(-1).restTitle, rest.updates.at(-1).countdown], ['国庆节', '国庆快乐', '']);
+  await withOptions(rest, { showHoliday: false });
+  await rest.service.refreshScheduleForm({}, 'card', 3, 'schedule_upcoming');
+  const value = rest.updates.at(-1);
+  assert.deepEqual([value.badge, value.badgeStatutory, value.restTitle, value.restDetail, value.lockLine], ['', false, '今日无课', '', '今日无课']);
+});
+
+test('the course switches pick what a row says, the next shown field standing in for a hidden name', async () => {
+  const h = await calendarHarness(); h.setNow(new Date(2026,8,8,7).getTime());
+  h.payload.today.courses = [{ name: '药理学', startTime: '08:00', endTime: '09:40', location: '教学楼A101', teacher: '张老师' },
+    { name: '没有教室', startTime: '10:00', endTime: '11:40' }];
+  const rows = async patch => {
+    await withOptions(h, patch);
+    await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+    return JSON.parse(h.updates.at(-1).primaryCourses).map(row => [row.name, row.meta, row.time]);
+  };
+  assert.deepEqual(await rows({}), [['药理学', 'A101 · 张老师', '08:00 - 09:40'], ['没有教室', '地点待确认', '10:00 - 11:40']]);
+  assert.deepEqual(await rows({ showRoom: false }), [['药理学', '张老师', '08:00 - 09:40'], ['没有教室', '', '10:00 - 11:40']]);
+  assert.deepEqual(await rows({ showTeacher: false, showTime: false }), [['药理学', 'A101', ''], ['没有教室', '地点待确认', '']]);
+  assert.deepEqual(await rows({ showCourseName: false }), [['A101', '张老师', '08:00 - 09:40'], ['10:00 - 11:40', '', '']]);
+  assert.deepEqual(await rows({ showCourseName: false, showRoom: false }), [['张老师', '', '08:00 - 09:40'], ['10:00 - 11:40', '', '']]);
+  assert.deepEqual(await rows({ showCourseName: false, showRoom: false, showTeacher: false, showTime: false }), [['', '', ''], ['', '', '']]);
+  // The colour stays the one of the course whatever stands in for its name.
+  await withOptions(h, { showCourseName: false });
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+  assert.equal(JSON.parse(h.updates.at(-1).primaryCourses)[0].colorIndex, 5);
+});
+
+test('a sample card is drawn at its pinned moment and leaves the clock alone', async () => {
+  const h = await calendarHarness();
+  const record = { semester: '2026-2027-1', days: [
+    { day: 2, label: '周二', date: '2026-09-08', week: 2, courses: [{ name: '药理学', startTime: '08:00', endTime: '09:40' }, { name: '药剂学', startTime: '10:00', endTime: '11:40' }] },
+    { day: 3, label: '周三', date: '2026-09-09', week: 2, courses: [{ name: '药物分析', startTime: '08:00', endTime: '09:40' }] }] };
+  const at = (hour, minute, options) => h.service.scheduleWidgetBindingAt(record, 3, 'schedule_upcoming', 'blue', options, new Date(2026,8,8,hour,minute).getTime());
+  let value = at(8, 30);
+  assert.equal(value.state, 'ready'); assert.equal(value.theme, 'blue'); assert.deepEqual([value.leadLabel, value.trailLabel], ['当前', '接下来']);
+  assert.equal(JSON.parse(value.primaryCourses)[0].startAt, new Date(2026,8,8,8,0).getTime());
+  value = at(9, 45, { ...optionsModule.defaultWidgetDisplayOptions(), textSize: 'large' });
+  assert.deepEqual([value.leadLabel, value.textSize, JSON.parse(value.primaryCourses).length], ['下一节', 'large', 1]);
+  assert.equal(at(22, 0).dayNote, '明天的课');
+  // Back on the device clock (20:00 that day in this harness).
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_upcoming');
+  assert.equal(h.updates.at(-1).dayNote, '明天的课');
+  h.setNow(new Date(2026,8,8,7).getTime());
+  await h.service.refreshScheduleForm({}, 'card', 3, 'schedule_upcoming');
+  assert.equal(h.updates.at(-1).dayNote, '');
+});
