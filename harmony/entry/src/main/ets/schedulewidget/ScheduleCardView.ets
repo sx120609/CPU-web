@@ -162,6 +162,18 @@ export struct ScheduleCardView {
     return { width: 0 };
   }
 
+  // 表格、素笺的外框和站牌顶上的粗线画在卡片里面，占掉内容的地方：算宽高时要一起扣掉，
+  // 不然半宽列里的「第 N 周」按多出来的两三 vp 排，最后一个字被裁掉。
+  private frameInsetX(): number {
+    if (this.isLockScreen()) return 0;
+    return this.cardStyle === 'table' ? 2 : this.cardStyle === 'paper' ? 3 : 0;
+  }
+
+  private frameInsetY(): number {
+    if (this.isLockScreen()) return 0;
+    return this.cardStyle === 'table' ? 2 : this.cardStyle === 'paper' ? 3 : this.cardStyle === 'board' ? 4 : 0;
+  }
+
   private effectiveLayout(): string {
     return this.layout || (this.dimension === 2 ? 'upcoming' : this.dimension === 3 ? 'today' : 'two-day');
   }
@@ -182,7 +194,7 @@ export struct ScheduleCardView {
   // 没放大缩小时内容区的高度。
   private baseHeight(): number {
     const height = this.cardHeight > 0 ? this.cardHeight : this.dimension === 4 ? 340 : 158;
-    return height - this.cardPadding() * 2;
+    return height - this.cardPadding() * 2 - this.frameInsetY();
   }
 
   // 文字大小：整块内容排在 1 / 比例 大小的画布里再放大回去，字、色条和间距同一个比例，
@@ -199,7 +211,7 @@ export struct ScheduleCardView {
   }
 
   private canvasWidth(): Length {
-    return this.textScale() === 1 ? '100%' : (this.cardWidth - this.cardPadding() * 2) / this.textScale();
+    return this.textScale() === 1 ? '100%' : (this.cardWidth - this.cardPadding() * 2 - this.frameInsetX()) / this.textScale();
   }
 
   private canvasHeight(): Length {
@@ -434,7 +446,7 @@ export struct ScheduleCardView {
   // 窄日期栏（2×2、两日课表的半宽列）右边那一小格有多宽。没法量文字，按字数估：日期 19fp 粗体每个数字
   // 约 10.8vp、小数点 4.8，星期和农历各一列约 11，加上竖线和间隔；宁可少算一点地方。
   private compactRoom(kind: string, withDetail: boolean): number {
-    const padding = this.cardPadding() * 2;
+    const padding = this.cardPadding() * 2 + this.frameInsetX();
     const canvas = ((this.cardWidth > 0 ? this.cardWidth : this.dimension === 2 ? 149 : 320) - padding) / this.textScale();
     const column = kind === 'small' ? canvas : (canvas - 26.5) / 2;
     const date = this.headerDate(kind);
@@ -460,9 +472,10 @@ export struct ScheduleCardView {
     if (kind === 'wide') return `第 ${week} 周`;
     const digits = `${week}`.length;
     const room = this.compactRoom(kind, this.headerDetail(kind).length > 0);
-    // 10fp 写全要 25.6 + 每个数字 6；差一点时由文字自己缩到 9fp，所以按九成算。
-    if (room >= (25.6 + digits * 6) * 0.9) return `第 ${week} 周`;
-    return room >= 14.4 + digits * 4.8 ? `第${week}周` : '';
+    // 10fp 写全要 25.6 + 每个数字 6。地方是按字数估的，实际比估的少三四 vp（两日课表的半宽列里
+    // 两位数的周次曾被裁成「第 10」），所以多留 3，不指望文字自己缩字来救。
+    if (room >= 25.6 + digits * 6 + 3) return `第 ${week} 周`;
+    return room >= 14.4 + digits * 4.8 + 2 ? `第${week}周` : '';
   }
 
   private weekFontSize(kind: string): number {
