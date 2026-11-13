@@ -1,48 +1,57 @@
 {
   "schemaVersion": 1,
-  "versionCode": 67,
-  "versionName": "4.2.1",
+  "versionCode": 68,
+  "versionName": "4.3.0",
   "packageName": "cn.lizmt.cpuweb",
-  "fileName": "CPU-Web-Android-V67.apk",
-  "size": 8645179,
-  "sha256": "e5d103a553f76751b0cf481f3242fbb31d2a0cae1f7cf976212faf9468cf92cf",
+  "fileName": "CPU-Web-Android-V68.apk",
+  "size": 8694331,
+  "sha256": "6179794eb5a5d7d752f167a626c0cdfe2b2cfdceb012f1cdb4e06a83e9bca71c",
   "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
-  "sourceCommit": "6ee127823fdd8775be409f9993abca24a37f5446",
-  "buildRun": 43148248115,
+  "sourceCommit": "988ce6a80e135ef5ceeb9bcaea0909d7bf506837",
+  "buildRun": 43361018769,
   "notes": [
-    "课表、弹窗和底部导航的文字不再跟着系统“字体大小”放大。之前把系统字号调大后，星期、上课时间和课程名会被裁掉，弹窗里的字也挤在一起，现在都能完整显示。想让课程卡片上的字大一点，在“课表设置 → 文字大小”里调。",
-    "屏幕较窄的手机（包括把系统“显示大小”调大的）界面整体收紧了一些，课表、首页和帖子一屏能看到的内容和 iPhone 上一样多，不再显得大一圈。",
-    "桌面小组件的文字不再被系统字号撑大。",
-    "修复横屏时日期选择器的日期挤在一起的问题。"
+    "桌面小组件可以调文字大小：自适应、小、标准、大。选“自适应”时课少的日子字会自动放大，课多时和原来一样；每个小组件还能在自己的编辑页单独选。",
+    "小组件上能看到“距下课”“距上课”的倒计时，正在上的课下面有一条进度。倒计时在上课前一小时出现，不想要可以在小组件设置里关掉。",
+    "小组件新增几个开关：隐藏已上完的课、时间线标出课间休息、周次、最近节假日常驻。大号今日课表底下有空位时，会接着预告下一次课。",
+    "桌面小组件的设置按“文字与排版、日期栏、外观”分了组，更好找。",
+    "情侣课表和叠加同学课表的周视图可以选“并排”或“合并”：不习惯每天两栏的，可以改回两人的课排在同一张周课表里。在课表设置或情侣课表里选。",
+    "新增“课表怎么用”指引：第一次打开课表时出现一次，之后在“更多 → 使用指引”里随时能看；想把风格换回“经典”，在里面点一下就行。"
   ],
   "patches": [
     {
+      "fromVersionCode": 67,
+      "fromSha256": "e5d103a553f76751b0cf481f3242fbb31d2a0cae1f7cf976212faf9468cf92cf",
+      "fileName": "CPU-Web-Android-V67-V68.cpupatch",
+      "size": 909616,
+      "sha256": "dbafb5ffa6a7e1411f8684888ed5e371277ea6f6495caddb65be5168ea4afa4d"
+    },
+    {
       "fromVersionCode": 66,
       "fromSha256": "768a97169f5ecaa1c43cc49ddbd472e4203dbd19ef3abc00235d8c040471e1b8",
-      "fileName": "CPU-Web-Android-V66-V67.cpupatch",
-      "size": 803804,
-      "sha256": "08babfc7d3125c9bf91b1f7ef1143bbcf105dfcec1c79d02f926a9dc878ad395"
+      "fileName": "CPU-Web-Android-V66-V68.cpupatch",
+      "size": 972317,
+      "sha256": "d39d2ff9483bd6a604b2e8045214fd0ebef0e9e2b698db6e1e4072b30e1eae39"
     },
     {
       "fromVersionCode": 65,
       "fromSha256": "cc06702188f985ac5dbf5147d75e07b1e796ac2881fa2de258f7e88ee01eccdf",
-      "fileName": "CPU-Web-Android-V65-V67.cpupatch",
-      "size": 843046,
-      "sha256": "70719a50f0da6f9382ebd083e4ec29a543d39d7cda7c269358237268d1e49dfa"
+      "fileName": "CPU-Web-Android-V65-V68.cpupatch",
+      "size": 990475,
+      "sha256": "7af5e1e926ae3f869975aae04e8dfc1a415aafa660af8d699ef7d8e3b2db2252"
     },
     {
       "fromVersionCode": 64,
       "fromSha256": "16df828a3eb2c7a2e2ea9ebddfb6a46db67edb2f212f0dbd91f8967b643409b6",
-      "fileName": "CPU-Web-Android-V64-V67.cpupatch",
-      "size": 843135,
-      "sha256": "a6b2e1a676a0fa77d36ca6471d0eb6facb4615549b92250abe1276ef7a23014c"
+      "fileName": "CPU-Web-Android-V64-V68.cpupatch",
+      "size": 995682,
+      "sha256": "0674d6fa0a9fd09caac01aa4abf04f701af5e8994369ae90ccd0df4c0440c62e"
     },
     {
       "fromVersionCode": 63,
       "fromSha256": "5b1ec441f5504cf86dcac8d91f5245fe280af9dc4df85edf8c86bd7639813268",
-      "fileName": "CPU-Web-Android-V63-V67.cpupatch",
-      "size": 1406751,
-      "sha256": "03f5b9838b912d3a34d5755a20b10804eb6fce4816fe359a64d8586e95e2a1f7"
+      "fileName": "CPU-Web-Android-V63-V68.cpupatch",
+      "size": 1453160,
+      "sha256": "d147b2e3d2c4d9e79dce3af2fdc244d01e3d834798a881a944722d51e2b6d4da"
     }
   ]
 }
