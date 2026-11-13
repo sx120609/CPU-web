@@ -46,6 +46,13 @@ struct NativeDeviceSettingsView: View {
                         }
                     }
                     SettingsDestinationRow(
+                        title: "课程通知",
+                        detail: NativeClassReminders.shared.enabled ? "每节课前 \(NativeClassReminders.shared.lead) 分钟提醒" : "课前提醒和课表变化提醒",
+                        systemImage: "bell.badge"
+                    ) {
+                        NativeClassReminderSettingsPage()
+                    }
+                    SettingsDestinationRow(
                         title: "上课闹钟",
                         detail: NativeRoutineAlarms.shared.morningOn || NativeRoutineAlarms.shared.napOn ? "已开启" : "早课和午休后叫醒你",
                         systemImage: "alarm"

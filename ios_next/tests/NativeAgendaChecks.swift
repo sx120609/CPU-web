@@ -128,6 +128,59 @@ struct NativeAgendaChecks {
                      NativeAgendaItem(id: "a_b", title: "二", date: "2026-10-21", start: "13:00")]
         precondition(NativeAgendaRules.activities(twins, now: liveNow).map(\.title) == ["一"], "identities are unique after being made safe")
 
+        // 考试安排: 教务's time text, each school's own way of writing it.
+        precondition(NativeExamRules.parse("2026-07-08(09:00-12:00)") == .init(date: "2026-07-08", start: "09:00", end: "12:00"), "南医")
+        precondition(NativeExamRules.parse("2027-01-05 09:30~11:30") == .init(date: "2027-01-05", start: "09:30", end: "11:30"), "南中医")
+        precondition(NativeExamRules.parse("2027年1月5日 9：30") == .init(date: "2027-01-05", start: "09:30", end: ""))
+        precondition(NativeExamRules.parse("2027/1/5") == .init(date: "2027-01-05", start: "", end: ""))
+        precondition(NativeExamRules.parse("2027-01-05 14:00:00-13:00:00") == .init(date: "2027-01-05", start: "14:00", end: ""), "an end before the start is no end")
+        precondition(NativeExamRules.parse("") == nil && NativeExamRules.parse("第18周") == nil && NativeExamRules.parse("2027-02-30 09:00") == nil)
+        let exams = [
+            NativeExam(courseName: "药理学", examTime: "2026-10-22 09:30~11:30", location: "仙林校区 B11-209", seat: "23", examType: "期末考试", semester: "2026-2027-1"),
+            NativeExam(courseName: "诊断学", examTime: "2026-10-21(14:00-16:00)", location: "江宁校区 博学楼", examName: "2026-2027学年第一学期期末考试"),
+            NativeExam(courseName: "统计学", examTime: ""),
+            NativeExam(courseName: "生理学", examTime: "2026-10-01 09:00~11:00"),
+            NativeExam(courseName: "解剖学", examTime: "2026-09-20 09:00~11:00"),
+        ]
+        precondition(NativeExamRules.ordered(exams, today: "2026-10-21").map(\.courseName) == ["诊断学", "药理学", "统计学", "生理学", "解剖学"],
+                     "ahead soonest first, then the undated, then the past newest first")
+        let examItems = NativeExamRules.agendaItems(exams + [exams[0]], today: "2026-10-21")
+        precondition(examItems.map(\.title) == ["考试 · 药理学", "考试 · 诊断学"], "only dated exams still ahead, each once")
+        precondition(examItems[0].start == "09:30" && examItems[0].end == "11:30" && examItems[0].location == "仙林校区 B11-209 · 座位 23")
+        precondition(examItems[0].remind == 1440 && examItems[0].kind == "event" && examItems[1].note == "期末考试", "南医's long title is cut to the kind")
+        precondition(examItems.allSatisfy { NativeExamRules.isExam($0.id) } && !NativeExamRules.isExam("ab12"))
+        precondition(exams[0].id == NativeExam(courseName: "药理学", examTime: "2026-10-22 09:30~11:30", semester: "2026-2027-1").id, "the same arrangement is the same exam")
+        precondition(exams[0].id != NativeExam(courseName: "药理学", examTime: "2026-10-23 09:30~11:30", semester: "2026-2027-1").id, "a moved exam is a new one")
+        precondition(NativeExamRules.countdown("2026-10-21", today: "2026-10-21") == "今天" && NativeExamRules.countdown("2026-10-22", today: "2026-10-21") == "明天")
+        precondition(NativeExamRules.countdown("2026-11-01", today: "2026-10-21") == "11 天后" && NativeExamRules.countdown("2026-10-01", today: "2026-10-21") == "已结束")
+        // They are drawn and reminded of like any 日程: on the day, and a day ahead.
+        precondition(NativeAgendaRules.on(examItems, date: "2026-10-22").map(\.item.title) == ["考试 · 药理学"])
+        let examReminders = NativeAgendaRules.reminders(examItems, from: chinaTime("2026-10-20", "08:00"), until: chinaTime("2026-11-20", "08:00"), limit: 10)
+        precondition(examReminders.map(\.at) == [chinaTime("2026-10-20", "14:00"), chinaTime("2026-10-21", "09:30")])
+        // A row with a field missing or of another type still reads; one without a course is dropped by the caller.
+        let loose = try! JSONDecoder().decode([NativeExam].self, from: Data(#"[{"courseName":" 药理学 ","examTime":null,"seat":12},{}]"#.utf8))
+        precondition(loose[0].courseName == "药理学" && loose[0].examTime.isEmpty && loose[0].seat.isEmpty && loose[1].courseName.isEmpty)
+
+        // 作业: a to-do tied to its course by its title.
+        let homeworkItems = [
+            NativeAgendaItem(id: "h1", kind: "todo", title: "药理学：第三章习题", date: "2026-10-28", createdAt: 2),
+            NativeAgendaItem(id: "h2", kind: "todo", title: "药理学: 实验报告", date: "2026-10-23", createdAt: 3),
+            NativeAgendaItem(id: "h3", kind: "todo", title: "药理学：预习", createdAt: 1),
+            NativeAgendaItem(id: "h4", kind: "todo", title: "药理学：交过了", date: "2026-10-20", done: true),
+            NativeAgendaItem(id: "h5", kind: "todo", title: "药理学实验：报告", date: "2026-10-22"),
+            NativeAgendaItem(id: "h6", kind: "event", title: "药理学：答疑", date: "2026-10-22", start: "19:00"),
+        ]
+        precondition(NativeAgendaRules.homework(homeworkItems, course: " 药理学 ").map(\.id) == ["h2", "h1", "h3"],
+                     "open to-dos of that course only, due soonest first, undated last")
+        precondition(NativeAgendaRules.homework(homeworkItems, course: "药理学实验").map(\.id) == ["h5"] && NativeAgendaRules.homework(homeworkItems, course: "").isEmpty)
+        let draft = NativeAgendaRules.homeworkDraft(course: "药理学", due: "2026-10-28", start: "14:00")
+        precondition(draft.id.isEmpty && draft.kind == "todo" && draft.title == "药理学：" && draft.date == "2026-10-28" && draft.start == "14:00" && draft.remind == 1440)
+        let undated = NativeAgendaRules.homeworkDraft(course: "药理学", due: "", start: "14:00")
+        precondition(undated.date.isEmpty && undated.start.isEmpty && undated.remind == -1, "no later meeting: no day, no reminder")
+        let meetings = [(date: "2026-10-21", start: "14:00"), (date: "2026-10-28", start: "14:00"), (date: "2026-10-23", start: "08:00")]
+        precondition(NativeAgendaRules.nextMeeting(meetings, after: "2026-10-21")! == (date: "2026-10-23", start: "08:00"))
+        precondition(NativeAgendaRules.nextMeeting(meetings, after: "2026-10-28") == nil)
+
         print("NativeAgendaChecks passed")
     }
 }

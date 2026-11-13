@@ -15,12 +15,20 @@ nonisolated enum ScheduleWireProtocol {
         static let snapshotID = "snapshotID"
         static let receivedAt = "receivedAt"
         static let accepted = "accepted"
+        /// 日程: the encoded `WatchAgenda`, and the three parts of one tick.
+        static let agenda = "agenda"
+        static let itemID = "itemID"
+        static let date = "date"
+        static let done = "done"
     }
 
     enum MessageType {
         static let snapshot = "schedule.snapshot"
         static let refresh = "schedule.refresh"
         static let receipt = "schedule.receipt"
+        /// 日程, both queued with `transferUserInfo`: the phone's list, and a tick made on the watch.
+        static let agendaList = "agenda.list"
+        static let agendaTick = "agenda.tick"
     }
 }
 

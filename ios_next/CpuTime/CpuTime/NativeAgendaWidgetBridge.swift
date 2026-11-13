@@ -85,7 +85,11 @@ final class NativeAgendaWidgetBridge {
         }
         if AgendaWidgetStore.write(snapshot) {
             WidgetCenter.shared.reloadTimelines(ofKind: AgendaWidgetSnapshot.widgetKind)
+            // 今日概览 counts the same items.
+            WidgetCenter.shared.reloadTimelines(ofKind: AppWidgetConfiguration.overviewKind)
         }
+        // And the Apple Watch lists them.
+        PhoneWatchAgenda.publish(snapshot)
     }
 }
 

@@ -78,14 +78,17 @@ final class PhoneWatchScheduleStore: ObservableObject {
     init() {
         let provider = NativeWatchScheduleProvider()
         self.provider = provider
+        let transport = WatchSessionTransport()
         coordinator = ScheduleSyncCoordinator(
             role: .phone,
             repository: CourseRepository(storage: FileScheduleStorage.local()),
-            transport: WatchSessionTransport(),
+            transport: transport,
             provider: provider,
             defaults: .standard
         )
         coordinator.onChange = { [weak self] in self?.objectWillChange.send() }
+        // 日程 for the watch ride the same session.
+        if #available(iOS 17.0, *) { PhoneWatchAgenda.attach(transport) }
     }
 
     var showsStatusEntry: Bool {
@@ -109,6 +112,8 @@ final class PhoneWatchScheduleStore: ObservableObject {
         coordinator.start()
         guard coordinator.transport.connection.installed else { return }
         coordinator.foreground()
+        // The watch may have been paired, or its app installed, since the list last changed.
+        if #available(iOS 17.0, *) { PhoneWatchAgenda.resend() }
     }
 }
 

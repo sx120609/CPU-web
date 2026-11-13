@@ -13,12 +13,21 @@ enum NativeAgendaPresentation: Identifiable, Equatable {
     /// A new item on `date` (empty for none) at `start`.
     case create(date: String, start: String)
     case list
+    /// A new item with some of it filled in already: homework from a class.
+    case draft(NativeAgendaItem)
+    /// One exam arrangement, read-only.
+    case exam(NativeExam)
+    /// 考试安排.
+    case exams
 
     var id: String {
         switch self {
         case .edit(let item): return "edit:\(item.id)"
         case .create(let date, let start): return "create:\(date):\(start)"
         case .list: return "list"
+        case .draft(let item): return "draft:\(item.title):\(item.date):\(item.start)"
+        case .exam(let exam): return exam.id
+        case .exams: return "exams"
         }
     }
 }
@@ -64,6 +73,10 @@ final class NativeAgendaService: ObservableObject {
     /// The sheet the timetable shows over itself.
     @Published var presentation: NativeAgendaPresentation?
 
+    /// The 日程 the site holds, without the exams `items` also carries.
+    private var saved: [NativeAgendaItem] = []
+    /// 教务's exams still ahead, as 日程 (`NativeExamRules.agendaItems`). Never saved or sent.
+    private var examItems: [NativeAgendaItem] = []
     private weak var store: NativeScheduleStore?
     /// Brings the timetable tab to the front, for a reminder or a Web link.
     private var showSchedule: (() -> Void)?
@@ -95,7 +108,8 @@ final class NativeAgendaService: ObservableObject {
     }
 
     init() {
-        items = Self.readCache()
+        saved = Self.readCache()
+        items = saved
         // The 日程 widget follows the list, and its ticks come back through it.
         NativeAgendaWidgetBridge.shared.start(self)
     }
@@ -137,8 +151,10 @@ final class NativeAgendaService: ObservableObject {
 
     /// Ticks an occurrence off or back on: shown at once, then saved through the page.
     func toggle(_ entry: NativeAgendaOccurrence) {
+        // An exam is 教务's, not something to tick off.
+        guard !NativeExamRules.isExam(entry.item.id) else { return }
         let done = !entry.done
-        items = items.map { item in
+        saved = saved.map { item in
             guard item.id == entry.item.id else { return item }
             var copy = item
             if !copy.repeats {
@@ -150,6 +166,7 @@ final class NativeAgendaService: ObservableObject {
             }
             return copy
         }
+        items = saved + examItems
 #if DEBUG
         if debugPinned { return }
 #endif
@@ -161,7 +178,24 @@ final class NativeAgendaService: ObservableObject {
 
     /// Opens an item in the editor over the timetable.
     func open(_ entry: NativeAgendaOccurrence) {
-        presentation = .edit(entry.item)
+        if NativeExamRules.isExam(entry.item.id) {
+            presentation = NativeExamService.shared.exams.first { $0.id == entry.item.id }.map { .exam($0) }
+        } else {
+            presentation = .edit(entry.item)
+        }
+    }
+
+    /// 教务's exams changed: the timetable, the widgets and the reminders follow.
+    func setExamItems(_ next: [NativeAgendaItem]) {
+        guard next != examItems else { return }
+        examItems = next
+        merge()
+    }
+
+    private func merge() {
+        let next = saved + examItems
+        if next != items { items = next }
+        NativeAgendaReminders.sync(next)
     }
 
     /// A new item, on `date` (none when it is not a date) at `start`.
@@ -169,6 +203,11 @@ final class NativeAgendaService: ObservableObject {
         let day = date.flatMap { NativeAgendaRules.dayNumber($0) != nil ? $0 : nil } ?? ""
         let time = start.flatMap { NativeAgendaRules.minutes($0) != nil ? $0 : nil } ?? ""
         presentation = .create(date: day, start: day.isEmpty ? "" : time)
+    }
+
+    /// 记作业: a to-do for `course`, due at its next meeting.
+    func openHomework(course: String, due: String, start: String) {
+        presentation = .draft(NativeAgendaRules.homeworkDraft(course: course, due: due, start: start))
     }
 
     /// 日程与待办.
@@ -211,10 +250,12 @@ final class NativeAgendaService: ObservableObject {
         if debugPinned {
             var stored = item
             if stored.id.isEmpty { stored.id = "debug\(Int(Date().timeIntervalSince1970))" }
-            items = items.filter { $0.id != stored.id } + [stored]
+            saved = saved.filter { $0.id != stored.id } + [stored]
+            items = saved + examItems
             return nil
         }
 #endif
+        guard !NativeExamRules.isExam(item.id) else { return "考试安排来自教务，不能在这里修改" }
         var data = item
         data.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !data.title.isEmpty else { return "先写个标题" }
@@ -230,7 +271,8 @@ final class NativeAgendaService: ObservableObject {
     func remove(id: String) async -> String? {
 #if DEBUG
         if debugPinned {
-            items = items.filter { $0.id != id }
+            saved = saved.filter { $0.id != id }
+            items = saved + examItems
             return nil
         }
 #endif
@@ -337,15 +379,15 @@ final class NativeAgendaService: ObservableObject {
         available = false
         relay = false
         pendingItem = nil
-        if !items.isEmpty { items = [] }
+        saved = []
         Self.writeCache([])
-        NativeAgendaReminders.sync([])
+        merge()
     }
 
     private func flushPendingItem() {
         guard let id = pendingItem, let item = items.first(where: { $0.id == id }) else { return }
         pendingItem = nil
-        presentation = .edit(item)
+        open(NativeAgendaOccurrence(item: item, date: item.date, done: false))
     }
 
     /// One request through the page; the reply when it answered for an account, else nil.
@@ -373,9 +415,9 @@ final class NativeAgendaService: ObservableObject {
         var seen = Set<String>()
         let next = (reply.items ?? []).compactMap { $0.value?.sanitized }.filter { seen.insert($0.id).inserted }
         available = true
-        if next != items { items = next }
+        saved = next
         Self.writeCache(next)
-        NativeAgendaReminders.sync(next)
+        merge()
         flushPendingItem()
     }
 
@@ -416,7 +458,7 @@ final class NativeAgendaService: ObservableObject {
         let day = NativeAgendaRules.dayNumber(today) ?? 0
         let monday = day - ((NativeAgendaRules.weekday(today) ?? 1) - 1)
         func weekDate(_ offset: Int) -> String { NativeAgendaRules.date(ofDay: monday + offset) }
-        items = [
+        saved = [
             NativeAgendaItem(id: "debugrun0001", title: "晨跑", date: weekDate(0), start: "07:00", end: "07:40", repeatRule: "weekdays",
                              doneDates: [weekDate(0)], createdAt: 1),
             NativeAgendaItem(id: "debugmeet001", title: "组会", date: weekDate(2), start: "14:00", end: "15:30", location: "药学楼302",
@@ -426,17 +468,19 @@ final class NativeAgendaService: ObservableObject {
             NativeAgendaItem(id: "debugball001", title: "羽毛球", date: weekDate(1), start: "19:00", end: "20:30", location: "体育馆",
                              repeatRule: "weekly", createdAt: 5),
         ]
+        items = saved + examItems
         available = true
     }
 #endif
 }
 
-/// Local notifications for the 日程 reminders. iOS keeps at most 64 pending per app, so the
-/// earliest 48 of the coming month are scheduled again whenever the list changes.
+/// Local notifications for the 日程 reminders. iOS keeps at most 64 pending per app and the
+/// timetable's own notifications need some (`NativeNotificationBudget`), so the earliest 40 of
+/// the coming month are scheduled again whenever the list changes.
 @available(iOS 17.0, *)
 enum NativeAgendaReminders {
     private static let prefix = "cpu.agenda."
-    private static let limit = 48
+    private static let limit = NativeNotificationBudget.agenda
     @MainActor private static var running: Task<Void, Never>?
 
     static let itemKey = "cpuAgendaItem"
@@ -464,8 +508,10 @@ enum NativeAgendaReminders {
         guard !reminders.isEmpty else { return }
         switch await center.notificationSettings().authorizationStatus {
         case .notDetermined:
-            // Asked once, the first time an item wants a reminder.
-            guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+            // Asked once, the first time an item the user made wants a reminder. An exam 教务
+            // listed is no reason to ask: it is reminded of once notifications are allowed.
+            guard reminders.contains(where: { !NativeExamRules.isExam($0.id) }),
+                  (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
         case .denied:
             return
         default:

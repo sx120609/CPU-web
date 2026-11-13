@@ -90,8 +90,9 @@ test('text size scales the whole widget and never the lock screen', async () => 
   }
   // Each schedule widget can pick its own size in 编辑小组件; the default follows the app.
   const intents = await read(`${widgets}/ScheduleWidgetIntents.swift`);
-  assert.equal((intents.match(/@Parameter\(title: "文字大小", default: \.follow\)/g) ?? []).length, 4);
-  assert.equal((intents.match(/textSize: textSize\.size/g) ?? []).length, 4);
+  // 临近课程, 今日课表, 两日课表, 本周课表 and 今日概览.
+  assert.equal((intents.match(/@Parameter\(title: "文字大小", default: \.follow\)/g) ?? []).length, 5);
+  assert.equal((intents.match(/textSize: textSize\.size/g) ?? []).length, 5);
   assert.match(code(await read(`${widgets}/ScheduleWidgetViews.swift`)), /entry\.configuration\.textSize \?\? displayOptions\.textSize/);
 });
 
@@ -168,4 +169,32 @@ test('the lock screen shows the class in progress live', async () => {
   assert.match(lock, /\.progressViewStyle\(\.circular\)/);
   assert.match(lock, /CourseProgressBar\(course: course\)/);
   assert.match(lock, /guard options\.showProgress, OtherDay\.offset\(of: day, now: now\) == nil/);
+});
+
+test('今日概览 puts the next class, what is left of today and the 日程 still to do in one widget', async () => {
+  const views = code(await read(`${widgets}/ScheduleWidgetViews.swift`));
+  const bundle = await read(`${widgets}/ScheduleWidgets.swift`);
+  const models = await read(`${widgets}/WidgetModels.swift`);
+  assert.match(views, /case upcoming, today, twoDay, week, overview/);
+  assert.match(views, /case \.overview: OverviewScheduleView\(payload: payload\)/);
+  // It counts the 日程 widget's own file with the pending ticks applied, unless a preview pins it.
+  assert.match(views, /AgendaWidgetRules\.entries\(snapshot, pending: AgendaWidgetStore\.pending\(\), now: now\)/);
+  assert.match(views, /pinnedAgenda \?\? ScheduleOverviewAgenda\.load\(now: now\)/);
+  assert.match(bundle, /OverviewScheduleWidget\(\)/);
+  assert.match(bundle, /let kind = AppWidgetConfiguration\.overviewKind[\s\S]*?\.supportedFamilies\(\[\.systemSmall, \.systemMedium\]\)/);
+  assert.match(models, /static let overviewKind = "cn\.cputime\.mobile\.widget\.overview"/);
+  // The app reloads it when the 日程 it counts change.
+  const bridge = await read(`${app}/NativeAgendaWidgetBridge.swift`);
+  assert.match(bridge, /reloadTimelines\(ofKind: AppWidgetConfiguration\.overviewKind\)/);
+});
+
+test('a class the partner also takes is marked 一起 in the widgets, and nothing else of theirs is written', async () => {
+  const local = await read(`${app}/NativeWidgetLocalSchedule.swift`);
+  const models = await read(`${widgets}/WidgetModels.swift`);
+  assert.match(local, /var together: Bool\? = nil/);
+  assert.match(local, /NativeClassReminderRules\.isTogether\(/);
+  // The partner's classes stay in memory; the record type has only the flag.
+  assert.doesNotMatch(local.match(/struct Record: Codable, Equatable \{[\s\S]*?\n    \}/)[0], /partner/i);
+  assert.match(models, /var together: Bool\? = nil/);
+  assert.match(models, /isTogether \? "♥ 一起" : nil/);
 });

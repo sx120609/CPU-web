@@ -78,6 +78,8 @@ final class NativeCoupleService: ObservableObject {
         NativeLiveActivityController.shared.setPartner(
             layer?.partner.snapshot(), label: layer?.partnerName,
             hue: layer.map { CoupleRules.hue($0.partnerColor) }, ownHue: layer.map { CoupleRules.hue($0.myColor) })
+        // Shared free time, 「TA 下课了」 and the widgets' 「一起」 follow the same timetable.
+        NativeCoupleExtras.shared.update(layer: layer)
         #endif
     }
 

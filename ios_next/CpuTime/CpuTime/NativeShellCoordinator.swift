@@ -93,6 +93,8 @@ final class NativeShellCoordinator: ObservableObject {
         NativeAgendaService.shared.connect(to: scheduleStore) { [weak self] in
             self?.userSelected(.schedule)
         }
+        // 教务's exam arrangements, where the school has them, travel the same way.
+        NativeExamService.shared.connect(to: scheduleStore)
         // The dorm sheet shows over the timetable, whichever tab asked for it.
         NativeDormService.shared.onPresent = { [weak self] in
             self?.userSelected(.schedule)
@@ -217,6 +219,7 @@ final class NativeShellCoordinator: ObservableObject {
                 } else {
                     scheduleStore?.handleAuthChanged(account: "")
                     NativeAgendaService.shared.clear()
+                    NativeExamService.shared.clear()
                     self.accountKey = ""
                     self.applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
                 }

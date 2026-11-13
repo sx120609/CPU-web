@@ -198,6 +198,34 @@ enum NativeAgendaRules {
         return overdue + candidates.filter { $0.date.isEmpty }.sorted { $0.createdAt < $1.createdAt }
     }
 
+    /// 作业: a to-do written from a class. It is an ordinary 日程 and is stored as one; what ties
+    /// it to the course is its title, which begins with the course's name and a colon. That
+    /// survives the site, other devices and the Web page, none of which know about courses.
+    static func homeworkTitle(_ course: String) -> String { course + "：" }
+
+    /// The to-dos still open that were written for `course`, due soonest first, undated last.
+    static func homework(_ items: [NativeAgendaItem], course: String) -> [NativeAgendaItem] {
+        let name = course.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return [] }
+        return items.filter { item in
+            item.kind == "todo" && !item.done && !item.repeats && (item.title.hasPrefix(name + "：") || item.title.hasPrefix(name + ":"))
+        }
+        .sorted { ($0.date.isEmpty ? "9999" : $0.date, $0.createdAt) < ($1.date.isEmpty ? "9999" : $1.date, $1.createdAt) }
+    }
+
+    /// A new piece of homework for `course`, due when the course next meets (`due`, at `start`)
+    /// and reminded of the day before. With no later meeting it is left undated.
+    static func homeworkDraft(course: String, due: String, start: String) -> NativeAgendaItem {
+        let dated = dayNumber(due) != nil
+        return NativeAgendaItem(id: "", kind: "todo", title: homeworkTitle(course.trimmingCharacters(in: .whitespacesAndNewlines)),
+                                date: dated ? due : "", start: dated && minutes(start) != nil ? start : "", remind: dated ? 1440 : -1)
+    }
+
+    /// The first of `meetings` (each a date and a start clock) after `date`.
+    static func nextMeeting(_ meetings: [(date: String, start: String)], after date: String) -> (date: String, start: String)? {
+        meetings.filter { $0.date > date }.min { ($0.date, $0.start) < ($1.date, $1.start) }
+    }
+
     /// Today in China time.
     static func today(_ now: Date = Date()) -> String { chinaParts(now).date }
 

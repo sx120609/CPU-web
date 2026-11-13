@@ -14,6 +14,8 @@ enum AppWidgetConfiguration {
     }
     /// App 按日期展开写好的本地课表（`NativeWidgetLocalSchedule`），小组件只读这一份。
     static let localDaysFileName = "schedule-widget-local-days.json"
+    /// 今日概览. The app reloads it when the 日程 it counts change.
+    static let overviewKind = "cn.cputime.mobile.widget.overview"
     static let themeKey = "scheduleWidgetTheme"
     static let displayOptionsKey = "scheduleWidgetDisplayOptions"
     /// App 里选的课表风格（`ScheduleStyle.storageKey`）。
@@ -219,10 +221,13 @@ struct ScheduleCourse: Decodable, Identifiable {
     let endTime: String?
     let startSlot: Int?
     let endSlot: Int?
+    /// 情侣课表开着、TA 也上这节课时 App 写 true；旧文件和别的课没有这一项。
+    var together: Bool? = nil
 
     var id: String {
         [name, startTime, endTime, location].compactMap { $0 }.joined(separator: "|")
     }
+    var isTogether: Bool { together == true }
 
     var displayName: String { normalized(name) ?? "课程" }
     var startLabel: String { normalized(startTime) ?? "--:--" }
@@ -232,7 +237,7 @@ struct ScheduleCourse: Decodable, Identifiable {
     var normalizedTeacher: String? { normalized(teacher) }
 
     var metadata: String {
-        let values = [normalized(location), normalized(teacher), normalized(note) ?? normalized(slotNote)]
+        let values = [isTogether ? "♥ 一起" : nil, normalized(location), normalized(teacher), normalized(note) ?? normalized(slotNote)]
             .compactMap { $0 }
         return values.isEmpty ? "地点待确认" : values.joined(separator: " · ")
     }

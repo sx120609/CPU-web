@@ -12,6 +12,9 @@ final class WatchSessionTransport: NSObject, ScheduleTransport, WCSessionDelegat
     var onAcknowledgement: ((String, Date) -> Void)?
     var onError: ((ScheduleFailure) -> Void)?
     var onClear: (() -> Void)?
+    /// 日程. Watch: the phone's list arrived. Phone: a tick made on the watch arrived.
+    var onAgenda: ((Data) -> Void)?
+    var onAgendaTick: ((_ itemID: String, _ date: String, _ done: Bool) -> Void)?
 
     init(session: WCSession? = WCSession.isSupported() ? .default : nil) {
         self.session = session
@@ -76,6 +79,68 @@ final class WatchSessionTransport: NSObject, ScheduleTransport, WCSessionDelegat
         }, errorHandler: { _ in
             Task { @MainActor in completion(.failure(.syncFailed)) }
         })
+    }
+
+    /// 日程 travel apart from the timetable's application context, which is replaced whole on
+    /// every update: they are queued transfers, delivered in order whenever the other side is
+    /// next around. A list still waiting is dropped when a newer one is sent.
+    func sendAgenda(_ data: Data) {
+        guard let session, connection.activated, connection.installed else { return }
+        for transfer in session.outstandingUserInfoTransfers
+        where transfer.userInfo[ScheduleWireProtocol.Key.messageType] as? String == ScheduleWireProtocol.MessageType.agendaList {
+            transfer.cancel()
+        }
+        session.transferUserInfo([
+            ScheduleWireProtocol.Key.schemaVersion: ScheduleWireProtocol.schemaVersion,
+            ScheduleWireProtocol.Key.messageType: ScheduleWireProtocol.MessageType.agendaList,
+            ScheduleWireProtocol.Key.agenda: data,
+        ])
+    }
+
+    func sendAgendaTick(itemID: String, date: String, done: Bool) {
+        guard let session, connection.activated else { return }
+        session.transferUserInfo([
+            ScheduleWireProtocol.Key.schemaVersion: ScheduleWireProtocol.schemaVersion,
+            ScheduleWireProtocol.Key.messageType: ScheduleWireProtocol.MessageType.agendaTick,
+            ScheduleWireProtocol.Key.itemID: itemID,
+            ScheduleWireProtocol.Key.date: date,
+            ScheduleWireProtocol.Key.done: done,
+        ])
+    }
+
+    private func receiveUserInfo(_ info: [String: Any]) {
+        guard info[ScheduleWireProtocol.Key.schemaVersion] as? Int == ScheduleWireProtocol.schemaVersion else { return }
+        switch info[ScheduleWireProtocol.Key.messageType] as? String {
+        case ScheduleWireProtocol.MessageType.agendaList:
+            if let data = info[ScheduleWireProtocol.Key.agenda] as? Data { onAgenda?(data) }
+        case ScheduleWireProtocol.MessageType.agendaTick:
+            guard let itemID = info[ScheduleWireProtocol.Key.itemID] as? String, !itemID.isEmpty, itemID.count <= 128,
+                  let date = info[ScheduleWireProtocol.Key.date] as? String, date.count <= 10,
+                  let done = info[ScheduleWireProtocol.Key.done] as? Bool else { return }
+            onAgendaTick?(itemID, date, done)
+        default:
+            break
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        // Only plist values cross to the main actor.
+        let type = userInfo[ScheduleWireProtocol.Key.messageType] as? String
+        let version = userInfo[ScheduleWireProtocol.Key.schemaVersion] as? Int
+        let agenda = userInfo[ScheduleWireProtocol.Key.agenda] as? Data
+        let itemID = userInfo[ScheduleWireProtocol.Key.itemID] as? String
+        let date = userInfo[ScheduleWireProtocol.Key.date] as? String
+        let done = userInfo[ScheduleWireProtocol.Key.done] as? Bool
+        Task { @MainActor [weak self] in
+            var info: [String: Any] = [:]
+            info[ScheduleWireProtocol.Key.messageType] = type
+            info[ScheduleWireProtocol.Key.schemaVersion] = version
+            info[ScheduleWireProtocol.Key.agenda] = agenda
+            info[ScheduleWireProtocol.Key.itemID] = itemID
+            info[ScheduleWireProtocol.Key.date] = date
+            info[ScheduleWireProtocol.Key.done] = done
+            self?.receiveUserInfo(info)
+        }
     }
 
     private func receive(_ context: [String: Any]) {

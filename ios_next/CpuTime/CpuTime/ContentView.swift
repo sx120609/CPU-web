@@ -50,6 +50,7 @@ final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             // Set before launch finishes, so a tapped 日程 reminder that
             // launched the app is delivered here.
             UNUserNotificationCenter.current().delegate = self
+            NativeScheduleNotifications.registerCategories()
         }
         // Subscribe early: MetricKit delivers pending crash reports at launch.
         ClientDiagnosticsCollector.shared.start()
@@ -62,13 +63,16 @@ final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     /// the system's default of not showing.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        guard #available(iOS 17.0, *), NativeAgendaReminders.isAgenda(notification) else { return [] }
+        guard #available(iOS 17.0, *),
+              NativeAgendaReminders.isAgenda(notification) || NativeScheduleNotifications.isOurs(notification) else { return [] }
         return [.banner, .list, .sound]
     }
 
     /// A tapped 日程 reminder opens its item on the Web page.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard #available(iOS 17.0, *) else { return }
+        // 课前提醒, a partner's class ending, a changed timetable: these open the timetable.
+        if await NativeScheduleNotifications.handle(response) { return }
         let info = response.notification.request.content.userInfo
         guard let id = info[NativeAgendaReminders.itemKey] as? String else { return }
         let date = info[NativeAgendaReminders.dateKey] as? String ?? ""
@@ -249,6 +253,13 @@ struct ContentView: View {
                 NativeScheduleSharingService.shared.connect(to: scheduleStore)
                 NativeCoupleService.shared.connect(to: scheduleStore)
                 NativeDormService.shared.connect(to: scheduleStore)
+                NativeScheduleChangeAlerts.connect(to: scheduleStore)
+                // What a background wake-up does besides the Live Activity: see whether 教务
+                // changed the timetable, then arrange the reminders from the result.
+                LiveActivityBackgroundRefresh.shared.timetableWork = { [weak scheduleStore] in
+                    if NativeScheduleChangeAlerts.enabled { await scheduleStore?.refreshForChanges(minimumInterval: 60 * 60) }
+                    if NativeClassReminders.shared.enabled { await NativeClassReminders.shared.refreshNow() }
+                }
                 await shell.resolveInitialAuth(webSession: webSession)
                 IosClientHeartbeat.shared.report()
             }
@@ -263,9 +274,18 @@ struct ContentView: View {
                     Task { await NativeCoupleService.shared.refresh() }
                     // 日程 edited on another device or on the Web page.
                     Task { await NativeAgendaService.shared.refresh() }
+                    // 教务's exam arrangements, at most every half hour.
+                    Task { await NativeExamService.shared.refresh() }
                     // Class alarms for the coming week, from the timetable as it is now.
                     if NativeRoutineAlarms.shared.morningOn || NativeRoutineAlarms.shared.napOn { NativeRoutineAlarms.shared.refresh() }
+                    // 课前提醒 only holds the next few classes: carry on from where it stopped.
+                    if NativeClassReminders.shared.enabled { NativeClassReminders.shared.refresh() }
+                    if NativeCoupleExtras.shared.classOverOn { NativeCoupleExtras.shared.refresh() }
+                    // Whatever page the app opens on, see whether 教务 changed the timetable.
+                    Task { await scheduleStore.refreshForChanges() }
                     if #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
+                } else if phase == .background {
+                    LiveActivityBackgroundRefresh.shared.enteredBackground()
                 }
             }
     }

@@ -26,6 +26,8 @@ enum NativeWidgetLocalSchedule {
         let endTime: String?
         let startSlot: Int?
         let endSlot: Int?
+        /// 情侣课表开着、TA 也上这节课（同名同时间）时为 true，小组件在这节课上写「一起」。别的时候不写这一项。
+        var together: Bool? = nil
     }
 
     struct Record: Codable, Equatable {
@@ -40,9 +42,20 @@ enum NativeWidgetLocalSchedule {
 
     /// 各学期的「优先显示」（课名 → 优先级）。重叠的课在小组件里和课表、实时活动一样只留排在前面的。
     private static var priorities: [String: [String: Int]] = [:]
+    /// TA 的课，按日期。只用来判断哪节课是一起上的；写进小组件文件的只有那个「一起」标记，没有 TA 的课表。
+    private static var partnerMeetings: [String: [NativeClassReminderRules.Meeting]] = [:]
+    private static weak var store: NativeScheduleStore?
+
+    /// 情侣课表显示、隐藏或 TA 的课表变了：重写一遍，小组件上的「一起」跟着变。
+    static func setPartner(_ meetings: [String: [NativeClassReminderRules.Meeting]]) {
+        guard meetings != partnerMeetings else { return }
+        partnerMeetings = meetings
+        if let snapshot = store?.latestSnapshot { accept(snapshot) }
+    }
 
     static func connect(to store: NativeScheduleStore) {
         removeLegacyEndpoint()
+        self.store = store
         priorities = store.prioritiesBySemester
         store.onLatestSnapshotChange = { snapshot in accept(snapshot) }
         store.onPrioritiesChange = { [weak store] value in
@@ -117,6 +130,15 @@ enum NativeWidgetLocalSchedule {
                     // 自定的起止时间是整门课的：被盖掉开头或结尾的那一段按节次的时间算。
                     let customStart = piece.startSlot == block.startSlot ? course.customStartTime?.trimmedNonEmpty : nil
                     let customEnd = piece.endSlot == block.endSlot ? course.customEndTime?.trimmedNonEmpty : nil
+                    let startTime = customStart ?? byNumber[piece.startSlot]?.startTime
+                    let endTime = customEnd ?? byNumber[piece.endSlot]?.endTime
+                    var together: Bool?
+                    if let theirs = partnerMeetings[date], let start = startTime.flatMap(ScheduleShortcutReader.minutes),
+                       let end = endTime.flatMap(ScheduleShortcutReader.minutes),
+                       NativeClassReminderRules.isTogether(
+                        NativeClassReminderRules.Meeting(name: course.name, location: nil, date: date, start: start, end: end), with: theirs) {
+                        together = true
+                    }
                     return Course(
                         name: course.name,
                         teacher: course.teacher,
@@ -124,10 +146,11 @@ enum NativeWidgetLocalSchedule {
                         // 和服务端一样：先节次备注，没有就写上课周次。
                         note: slotNote ?? course.weeks.trimmedNonEmpty,
                         slotNote: slotNote,
-                        startTime: customStart ?? byNumber[piece.startSlot]?.startTime,
-                        endTime: customEnd ?? byNumber[piece.endSlot]?.endTime,
+                        startTime: startTime,
+                        endTime: endTime,
                         startSlot: piece.startSlot,
-                        endSlot: piece.endSlot
+                        endSlot: piece.endSlot,
+                        together: together
                     )
                 }
                 .sorted { ($0.startTime ?? "", $0.name) < ($1.startTime ?? "", $1.name) }
@@ -205,6 +228,10 @@ enum NativeWidgetLocalSchedule {
         defer {
             // So do the class alarms, once the file is written.
             if NativeRoutineAlarms.shared.morningOn || NativeRoutineAlarms.shared.napOn { NativeRoutineAlarms.shared.refresh() }
+            // And 课前提醒.
+            if #available(iOS 17.0, *), NativeClassReminders.shared.enabled { NativeClassReminders.shared.refresh() }
+            // And 「TA 下课了」, whose wording depends on the user's own classes.
+            if #available(iOS 17.0, *), NativeCoupleExtras.shared.classOverOn { NativeCoupleExtras.shared.refresh() }
         }
         guard let url else { return }
         guard let record else {

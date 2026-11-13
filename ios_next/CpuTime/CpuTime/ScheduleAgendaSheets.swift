@@ -19,6 +19,12 @@ struct NativeAgendaSheet: View {
                 NavigationStack { NativeAgendaEditor(draft: NativeAgendaItem(id: "", title: "", date: date, start: start)) }
             case .list:
                 NativeAgendaListView()
+            case .draft(let item):
+                NavigationStack { NativeAgendaEditor(draft: item) }
+            case .exam(let exam):
+                NavigationStack { NativeExamDetailView(exam: exam) }
+            case .exams:
+                NativeExamListView()
             }
         }
         // The app has no Chinese localization, so pickers would otherwise read
@@ -29,7 +35,7 @@ struct NativeAgendaSheet: View {
     }
 }
 
-private enum AgendaText {
+enum AgendaText {
     static let remindChoices: [(Int, String)] = [
         (-1, "不提醒"), (0, "准时"), (5, "5 分钟前"), (15, "15 分钟前"), (30, "30 分钟前"), (60, "1 小时前"), (1440, "1 天前"),
     ]
@@ -620,7 +626,12 @@ struct NativeAgendaListView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
             }
             .navigationDestination(item: $editing) { item in
+                // An exam among the days is 教务's: shown, not edited.
+                if let exam = NativeExamService.shared.exams.first(where: { $0.id == item.id }) {
+                    NativeExamDetailView(exam: exam)
+                } else {
                 NativeAgendaEditor(draft: item) { editing = nil }
+                }
             }
             .navigationDestination(item: $extracting) { source in
                 NativeAgendaEditor(draft: NativeAgendaItem(id: "", title: ""), source: source) { extracting = nil }

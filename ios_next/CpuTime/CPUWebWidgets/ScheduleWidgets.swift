@@ -9,6 +9,7 @@ struct CPUWebWidgetBundle: WidgetBundle {
         TodayScheduleWidget()
         TwoDayScheduleWidget()
         WeekScheduleWidget()
+        OverviewScheduleWidget()
         AgendaWidget()
         liveActivity
         // Control Center buttons.
@@ -914,6 +915,23 @@ private struct WeekScheduleWidget: Widget {
         .description("一天一列看完这一周的课；周末上完后换成下一周。")
         // 超大号只有 iPad 有。
         .supportedFamilies([.systemLarge, .systemExtraLarge])
+    }
+}
+
+private struct OverviewScheduleWidget: Widget {
+    let kind = AppWidgetConfiguration.overviewKind
+
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(
+            kind: kind,
+            intent: OverviewScheduleWidgetIntent.self,
+            provider: ScheduleIntentTimelineProvider<OverviewScheduleWidgetIntent>()
+        ) { entry in
+            ScheduleWidgetView(kind: .overview, entry: entry)
+        }
+        .configurationDisplayName("今日概览")
+        .description("下一节课、今天还剩几节和要办的日程，放在一个小组件里。")
+        .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
 

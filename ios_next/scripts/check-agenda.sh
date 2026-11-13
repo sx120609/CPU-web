@@ -7,6 +7,7 @@ cd "$repo_dir"
 swiftc -swift-version 5 -parse-as-library \
     ios_next/CpuTime/CpuTime/NativeScheduleStore.swift \
     ios_next/CpuTime/CpuTime/NativeAgendaRules.swift \
+    ios_next/CpuTime/CpuTime/NativeExamRules.swift \
     ios_next/tests/NativeAgendaChecks.swift \
     -o "$check_dir/checks"
 "$check_dir/checks"

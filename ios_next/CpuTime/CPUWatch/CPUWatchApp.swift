@@ -8,9 +8,15 @@ final class WatchScheduleStore: ObservableObject {
     static let shared = WatchScheduleStore()
     let coordinator: ScheduleSyncCoordinator
     init() {
+        let transport = WatchSessionTransport()
+        // 日程 ride the same session: the phone's list comes in, ticks made here go out.
+        transport.onAgenda = { data in WatchAgendaStore.shared.accept(data) }
+        WatchAgendaStore.shared.send = { [weak transport] itemID, date, done in
+            transport?.sendAgendaTick(itemID: itemID, date: date, done: done)
+        }
         coordinator = ScheduleSyncCoordinator(role: .watch,
             repository: CourseRepository(storage: FileScheduleStorage.local()),
-            transport: WatchSessionTransport())
+            transport: transport)
         coordinator.onChange = { [weak self] in self?.objectWillChange.send() }
         coordinator.onSnapshotChange = {
             WidgetCenter.shared.reloadTimelines(ofKind: WatchScheduleWidgetConfiguration.kind)

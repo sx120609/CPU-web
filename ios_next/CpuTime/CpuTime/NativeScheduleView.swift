@@ -20,6 +20,7 @@ struct NativeScheduleView: View {
     /// The share code of a saved timetable laid over the user's; empty for none.
     @AppStorage("cpu.schedule.overlay.v1") private var overlayCode = ""
     @ObservedObject private var agendaService = NativeAgendaService.shared
+    @ObservedObject private var examService = NativeExamService.shared
     @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
@@ -467,6 +468,10 @@ struct NativeScheduleView: View {
             if !isBackgroundPreview, !isReadOnly, ProcessInfo.processInfo.environment["CPU_DEBUG_AGENDA"] == "1" {
                 NativeAgendaService.shared.installDebugSample()
             }
+            // `CPU_DEBUG_EXAMS=1` adds sample exams the same way.
+            if !isBackgroundPreview, !isReadOnly, ProcessInfo.processInfo.environment["CPU_DEBUG_EXAMS"] == "1" {
+                NativeExamService.shared.installDebugSample()
+            }
             if !isBackgroundPreview, !isReadOnly,
                let action = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_ACTION"] {
                 for _ in 0..<40 where store.result == nil {
@@ -566,6 +571,8 @@ struct NativeScheduleView: View {
                     case "style-picker":
                         stylePickerPresented = true
                     // With `CPU_DEBUG_UNSCHEDULED=1`: the courses without a fixed time.
+                    case "exams":
+                        agendaService.presentation = .exams
                     case "unscheduled":
                         unscheduledPresented = true
                     // 课表怎么用, as it is shown the first time.
@@ -797,6 +804,29 @@ struct NativeScheduleView: View {
 
     /// Somebody else's shared timetable: everything that would change it is off.
     private var isReadOnly: Bool { store.isReadOnly }
+
+    /// When `course` next meets after `date`: the day homework set today is due.
+    private func homeworkDue(course: String, after date: String) -> (date: String, start: String)? {
+        guard let snapshot = store.latestSnapshot else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = NativeScheduleOccurrences.timeZone
+        formatter.dateFormat = "HH:mm"
+        let name = course.filter { !$0.isWhitespace }
+        return NativeAgendaRules.nextMeeting(
+            NativeScheduleOccurrences.make(snapshot)
+                .filter { $0.course.name.filter { !$0.isWhitespace } == name }
+                .map { (date: $0.date, start: formatter.string(from: $0.start)) },
+            after: date)
+    }
+
+    /// The nearest exam, for the 考试安排 row.
+    private var examToolDetail: String {
+        let today = NativeAgendaRules.today()
+        guard let next = NativeExamRules.ordered(examService.exams, today: today).first,
+              let when = next.when, when.date >= today else { return "教务排出的考试时间和地点" }
+        return "\(next.courseName) · \(NativeExamRules.countdown(when.date, today: today))"
+    }
 
     /// Lets the tools sheet finish closing before a 日程 sheet opens over the timetable.
     private func presentAgendaAfterTools(_ present: @escaping () -> Void) {
@@ -1533,6 +1563,13 @@ struct NativeScheduleView: View {
                         scheduleToolRow("日程与待办", detail: "作业、考试和自己的安排", systemImage: "checklist", tint: .orange) {
                             scheduleToolsPresented = false
                             presentAgendaAfterTools { agendaService.openList() }
+                        }
+                        if examService.supported {
+                            scheduleToolDivider
+                            scheduleToolRow("考试安排", detail: examToolDetail, systemImage: "pencil.and.list.clipboard", tint: .red) {
+                                scheduleToolsPresented = false
+                                presentAgendaAfterTools { agendaService.presentation = .exams }
+                            }
                         }
                     }
                 }
@@ -2629,6 +2666,18 @@ struct NativeScheduleView: View {
             more.append(ScheduleCourseMenuAction("在这节课加日程", systemImage: "calendar.badge.plus") {
                 agendaService.openNew(date: date, start: start)
             })
+            let name = block.course.name
+            more.append(ScheduleCourseMenuAction("记作业", systemImage: "square.and.pencil") {
+                // Due when the course next meets; found only now, since it reads the whole term.
+                let due = homeworkDue(course: name, after: date)
+                agendaService.openHomework(course: name, due: due?.date ?? "", start: due?.start ?? "")
+            })
+            let open = NativeAgendaRules.homework(agendaService.items, course: name).count
+            if open > 0 {
+                more.append(ScheduleCourseMenuAction("这门课的作业（\(open) 项没交）", systemImage: "checklist") {
+                    agendaService.openList()
+                })
+            }
         }
         return [first, once, more]
     }

@@ -100,7 +100,7 @@ struct NativeWidgetGallery: View {
 /// One kind of widget in one style, scheme and rendering mode: every family.
 @available(iOS 17.0, *)
 struct GallerySheet: View, Identifiable {
-    enum Kind: String, CaseIterable { case upcoming, today, twoDay, week, agenda, states, sizes, pad }
+    enum Kind: String, CaseIterable { case upcoming, today, twoDay, week, overview, agenda, states, sizes, pad }
     enum Mode: String, CaseIterable { case fullColor, accented }
 
     let kind: Kind
@@ -132,6 +132,7 @@ struct GallerySheet: View, Identifiable {
         case .states: "其他状态"
         case .sizes: "文字大小与显示开关"
         case .week: "本周课表"
+        case .overview: "今日概览"
         case .pad: "iPad 超大号"
         }
     }
@@ -166,6 +167,18 @@ struct GallerySheet: View, Identifiable {
             cell("中号", .systemMedium) { schedule(.twoDay, .systemMedium, now: now) }
             cell("大号 · 列表", .systemLarge) { schedule(.twoDay, .systemLarge, now: now, layout: .list) }
             cell("大号 · 时间线 · 周五晚上", .systemLarge) { schedule(.twoDay, .systemLarge, now: GallerySample.fridayEvening, layout: .timeline) }
+        case .overview:
+            HStack(alignment: .top, spacing: 12) {
+                cell("小号 · 上课中", .systemSmall) { schedule(.overview, .systemSmall, now: now) }
+                cell("小号 · 课前", .systemSmall) { schedule(.overview, .systemSmall, now: GallerySample.beforeClass) }
+            }
+            cell("中号 · 上课中", .systemMedium) { schedule(.overview, .systemMedium, now: now) }
+            cell("中号 · 课前", .systemMedium) { schedule(.overview, .systemMedium, now: GallerySample.beforeClass) }
+            HStack(alignment: .top, spacing: 12) {
+                cell("小号 · 晚上（明天的课）", .systemSmall) { schedule(.overview, .systemSmall, now: GallerySample.evening) }
+                cell("小号 · 文字大", .systemSmall) { schedule(.overview, .systemSmall, now: now, size: .large) }
+            }
+            cell("中号 · 晚上", .systemMedium) { schedule(.overview, .systemMedium, now: GallerySample.evening) }
         case .week:
             cell("大号 · 周三上课中", .systemLarge) { schedule(.week, .systemLarge, now: now) }
             cell("大号 · 周五晚上（换成下一周）", .systemLarge) { schedule(.week, .systemLarge, now: GallerySample.fridayEvening) }
@@ -255,7 +268,10 @@ struct GallerySheet: View, Identifiable {
         )
         var options = ScheduleWidgetDisplayOptions.default
         adjust(&options)
-        return ScheduleWidgetView(kind: widget, entry: entry, overrides: overrides(family, options: options))
+        var pinned = overrides(family, options: options)
+        // 今日概览 would otherwise count whatever 日程 file the simulator has.
+        pinned.agenda = ScheduleOverviewAgenda(count: 3, titles: ["交实验报告", "组会", "取快递"])
+        return ScheduleWidgetView(kind: widget, entry: entry, overrides: pinned)
     }
 
     private func agenda(_ family: WidgetFamily, now: Date, state: AgendaWidgetEntry.State? = nil,

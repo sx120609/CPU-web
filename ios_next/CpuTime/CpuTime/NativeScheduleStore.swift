@@ -1378,6 +1378,10 @@ public final class NativeScheduleStore: ObservableObject {
     private var cache: [CacheKey: CacheEntry] = [:]
     private var backgroundRefreshTasks: [CacheKey: Task<Void, Never>] = [:]
     private var lastBackgroundRefreshAt: [CacheKey: Date] = [:]
+    private var lastChangeCheckAt: Date?
+    /// 教务 changed the timetable on screen. The sheet over the timetable shows it; this is for
+    /// telling the user when they are not looking at it.
+    public var onScheduleChangeNotice: ((NativeScheduleChangeNotice) -> Void)?
     private var refreshStartedAt: [String: Date] = [:]
     private var requestGeneration = 0
     private var displayedKey: CacheKey?
@@ -1659,6 +1663,11 @@ public final class NativeScheduleStore: ObservableObject {
         await webViewLoader?.agenda(requestJSON)
     }
 
+    /// One request to the page's 考试安排 bridge. See `NativeScheduleWebViewLoader.exams`.
+    public func exams(_ requestJSON: String) async -> String? {
+        await webViewLoader?.exams(requestJSON)
+    }
+
     /// The account fingerprint of the timetable on screen, empty when unknown.
     public var accountFingerprint: String { accountKey }
 
@@ -1796,6 +1805,17 @@ public final class NativeScheduleStore: ObservableObject {
 
     public func dismissScheduleChangeNotice() {
         scheduleChangeNotice = nil
+    }
+
+    /// Asks 教务 again for the timetable on screen, quietly: when the app comes forward on
+    /// whatever page, or a background refresh runs. It returns once the answer is in, or at once
+    /// when there is nothing to compare with, no page to ask through, or it was asked within
+    /// `minimumInterval`. A change found this way is announced like any other.
+    public func refreshForChanges(minimumInterval: TimeInterval = 15 * 60) async {
+        guard loader != nil, result != nil, state != .loading else { return }
+        if let lastChangeCheckAt, Date.now.timeIntervalSince(lastChangeCheckAt) < minimumInterval { return }
+        lastChangeCheckAt = .now
+        await load(semester: selectedSemester.trimmedNonEmpty, week: selectedWeek.trimmedNonEmpty, force: true, background: true)
     }
 
     private func refreshInBackground(semester: String?, week: String?) {
@@ -1955,6 +1975,7 @@ public final class NativeScheduleStore: ObservableObject {
            isVisibleSelection(key: key, data: data),
            let notice = makeScheduleChangeNotice(previous: previousSnapshot, next: snapshot) {
             scheduleChangeNotice = notice
+            onScheduleChangeNotice?(notice)
         }
         let entry = CacheEntry(snapshot: snapshot)
         if !snapshot.completeSemester {
@@ -2744,6 +2765,18 @@ public final class NativeScheduleWebViewLoader {
         let raw = try? await webView.callAsyncJavaScript("""
         if (typeof window.CPUTimeNativeAgenda !== 'function') return JSON.stringify({missing: true});
         return JSON.stringify(await window.CPUTimeNativeAgenda(JSON.parse(requestJSON)));
+        """, arguments: ["requestJSON": requestJSON], in: nil, contentWorld: .page)
+        return raw as? String
+    }
+
+    /// One request to the page's 考试安排 bridge `CPUTimeNativeExams`
+    /// (web/src/utils/nativeExamsBridge.ts), answered as its JSON. A site without the bridge
+    /// answers `{"missing":true}`; nil when the page did not answer.
+    public func exams(_ requestJSON: String) async -> String? {
+        guard let webView else { return nil }
+        let raw = try? await webView.callAsyncJavaScript("""
+        if (typeof window.CPUTimeNativeExams !== 'function') return JSON.stringify({missing: true});
+        return JSON.stringify(await window.CPUTimeNativeExams(JSON.parse(requestJSON)));
         """, arguments: ["requestJSON": requestJSON], in: nil, contentWorld: .page)
         return raw as? String
     }

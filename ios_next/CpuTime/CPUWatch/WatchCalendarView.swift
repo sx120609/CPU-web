@@ -166,9 +166,16 @@ private struct WatchScheduleOptionsView: View {
     let returnToday: () -> Void
     let refresh: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var agenda = WatchAgendaStore.shared
 
     var body: some View {
         List {
+            NavigationLink {
+                WatchAgendaListView()
+            } label: {
+                let open = agenda.openToday(WatchAgendaStore.days().today)
+                Label(open > 0 ? "日程 · 今天 \(open) 项" : "日程与待办", systemImage: "checklist")
+            }
             if canReturnToday {
                 Button("回到今天", systemImage: "calendar") {
                     returnToday()

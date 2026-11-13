@@ -170,6 +170,18 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 实时活动回归脚本在 macOS 编译执行实际控制器与网络协调器，验证提前量、远程计划、调休、权限、退出及迟到响应撤销。iOS 18 及以上上传启动 token 与已加载学期的最小时间计划，远程启动直接订阅学校时段频道，无需每天打开 App；提前量可自定义 0–60 分钟，默认 15 分钟。课程详情从本地课表读取，不上传教师、地点或课程名称。iOS 17 仅提供前台本地活动。服务端凭据在后台「APNs 推送」配置，正式 Bundle ID 为 `cn.cputime.mobile`。模拟器可用 `CPU_DEBUG_MOCK_SCHEDULE=1` 检查本地呈现，APNs 仍需真机验证。详情见 [APNs 配置与验收](../docs/apns.md)。
 
+## 课程通知、考试、作业和情侣课表的主动功能
+
+这几项都在手机上用已经拿到的数据完成，不向服务端新增任何个人数据；检查脚本是 `bash ios_next/scripts/check-class-reminders.sh`（提醒、下课通知、共同空闲、一起上的课、手表日程）和 `check-agenda.sh`（考试时间解析、作业）。
+
+- **课前提醒**（设备与设置 → 课程通知，默认关）：每节课前发一条本地通知，写上课时间和教室；提前 5–30 分钟可选，上一节课还没下课时等它下课再提醒，长按通知可选「今天不再提醒」。课程来自小组件用的那份按日期展开的课表，所以放假、调休、停课、调课和「优先显示」都已算在内。iOS 每个 App 最多排 64 条待发通知，三类通知分着用（`NativeNotificationBudget`：日程 40、课前提醒 14、TA 下课 8），课前提醒只排最近 14 节，课表写入、App 回到前台和后台唤醒时接着往后排。规则在 `NativeClassReminderRules.swift`，调度和设置页在 `NativeClassReminders.swift`。
+- **课表变化提醒**（同一页，默认开，但不会主动申请通知权限）：App 回到前台时不管停在哪一页都悄悄向教务重取一次当前课表（15 分钟内不重复），离开前台后请求系统两小时后唤醒一次（`LiveActivityBackgroundRefresh`，系统不保证时间）。比较仍是 `NativeScheduleStore` 原有的那套；发现变化时 App 不在前台就发通知（同一处变化只说一次），在前台则由课表上原有的提示框说。刷新必须经过已登录的网页，所以 App 被系统彻底关闭后要等下次打开才能发现。
+- **考试安排**（南医、南中医；药大教务没有考试数据，不显示入口）：网页桥 `window.CPUTimeNativeExams`（`web/src/utils/nativeExamsBridge.ts`）走的就是「考试安排」页那个接口，原生端按各校的写法读出日期和时间（`NativeExamRules.parse`），存在本机 `exam-cache.json`。还没考的考试以日程的形式并进 `NativeAgendaService.items`，于是周、日、月视图、日程小组件、提前一天的提醒都直接有；它们从不存成日程、不上传、不能勾选或编辑（`NativeExamRules.isExam`）。「更多 → 考试安排」是带倒计时的列表。Debug 构建用 `CPU_DEBUG_EXAMS=1` 加示例考试，`CPU_DEBUG_SCHEDULE_ACTION=exams` 直接打开列表。
+- **作业**：长按课程 →「记作业」，打开一条预填好的待办：标题是「课程名：」，日期是这门课下一次上课那天，提前一天提醒。它就是一条普通日程，按日程原有的方式保存和同步，没有新增字段；靠标题开头的课程名认出是哪门课的作业（`NativeAgendaRules.homework`），长按菜单里会显示这门课还有几项没交。
+- **情侣课表**：情侣面板多了「一起的时间」（今天和明天两人都没课的时段、一起上的课）和「TA 下课时提醒我」开关（默认关；TA 一段连着的课上完时通知，写着两人接下来都有空到几点）。小组件里两人一起上的课标「♥ 一起」：写进小组件文件的只有自己课程上的这一个标记，没有 TA 的课表。都在 `NativeCoupleExtras.swift`，用的是情侣绑定已经带到手机上的那份课表。
+- **今日概览小组件**（小号、中号）：下一节课和倒计时、今天还剩几节、今天要办的日程数，一个小组件看全。日程数读的是日程小组件那份文件（含还没同步的勾选）。画廊里是 `CPU_DEBUG_WIDGET_GALLERY_KIND=overview`。
+- **Apple Watch 上的日程**：手表「课表选项 → 日程」列出未来一周的日程和待办，可以直接勾选。列表和勾选都用 WatchConnectivity 的排队传输（`transferUserInfo`），不占用课表同步用的 application context；勾选回到手机后并入桌面小组件的待同步勾选，由 App 下次有登录页面时一并保存。考试会显示但不能勾。
+
 ## 实时活动按本校作息
 
 实时活动的节次时间来自服务端的 `broadcast-config`，结束靠对应作息的频道。服务端按账号所在学校给作息：药大是后台那一张，其他学校是本校的表。App 取配置时带上课表自己的作息（`periods=0820-0900_…`，`NativeLiveActivityController.declaredPeriods`），校区作息和学校默认不一样时以它为准。作息缓存只给它发给的那个账号用，换账号后先按课表快照的作息算时间。背景和服务端规则见 [`docs/live-activity-v2-implementation.md`](../docs/live-activity-v2-implementation.md) 的「各校按自己的作息」。

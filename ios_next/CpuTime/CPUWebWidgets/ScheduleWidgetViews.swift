@@ -16,7 +16,34 @@ import WidgetKit
 /// Which schedule widget a view draws.
 @available(iOS 17.0, *)
 enum ScheduleWidgetKind: String, CaseIterable, Sendable {
-    case upcoming, today, twoDay, week
+    case upcoming, today, twoDay, week, overview
+}
+
+/// The 日程 今日概览 counts: what is still to do today (and overdue), read from the file the
+/// 日程 widget uses, with its pending ticks applied.
+struct ScheduleOverviewAgenda: Equatable, Sendable {
+    var count = 0
+    /// The first few titles, soonest first.
+    var titles: [String] = []
+
+    static func load(now: Date) -> ScheduleOverviewAgenda {
+        guard case .loaded(let snapshot) = AgendaWidgetStore.read() else { return ScheduleOverviewAgenda() }
+        let due = AgendaWidgetRules.entries(snapshot, pending: AgendaWidgetStore.pending(), now: now)
+            .filter { $0.group == .today || $0.group == .overdue }
+        return ScheduleOverviewAgenda(count: due.count, titles: due.prefix(3).map { $0.item.title })
+    }
+}
+
+private struct ScheduleOverviewAgendaKey: EnvironmentKey {
+    static let defaultValue: ScheduleOverviewAgenda? = nil
+}
+
+extension EnvironmentValues {
+    /// Pinned by the gallery and the settings preview; nil reads the 日程 widget's file.
+    var scheduleOverviewAgenda: ScheduleOverviewAgenda? {
+        get { self[ScheduleOverviewAgendaKey.self] }
+        set { self[ScheduleOverviewAgendaKey.self] = newValue }
+    }
 }
 
 /// What the gallery pins instead of reading the App Group and the system.
@@ -29,6 +56,8 @@ struct ScheduleWidgetOverrides {
     /// Draw countdowns and progress as they stand at the entry's date rather
     /// than as live timers, which run on the real clock.
     var staticClock = false
+    /// 今日概览's 日程, instead of the 日程 widget's file.
+    var agenda: ScheduleOverviewAgenda? = nil
 }
 
 /// A whole schedule widget: the root that resolves settings, state and
@@ -46,7 +75,111 @@ struct ScheduleWidgetView: View {
             case .today: TodayScheduleWidgetContent(payload: payload)
             case .twoDay: TwoDayScheduleWidgetContent(payload: payload)
             case .week: WeekScheduleView(payload: payload)
+            case .overview: OverviewScheduleView(payload: payload)
             }
+        }
+        .environment(\.scheduleOverviewAgenda, overrides.agenda)
+    }
+}
+
+/// 今日概览: the next class, how much of today is left and the 日程 still to do, in one widget
+/// instead of two or three side by side.
+@available(iOS 17.0, *)
+private struct OverviewScheduleView: View {
+    let payload: SchedulePayload
+    @Environment(\.scheduleWidgetFamily) private var family
+    @Environment(\.scheduleWidgetNow) private var now
+    @Environment(\.scheduleWidgetStyle) private var style
+    @Environment(\.scheduleOverviewAgenda) private var pinnedAgenda
+    @WidgetStyleColors private var widgetColors
+
+    var body: some View {
+        let today = payload.currentDay(now: now)
+        let remaining = payload.remainingCourses(in: today, now: now)
+        let agenda = pinnedAgenda ?? ScheduleOverviewAgenda.load(now: now)
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetDateHeader(day: today, hidesCountdown: true)
+            Spacer(minLength: 6)
+            if family == .systemMedium {
+                HStack(alignment: .top, spacing: 14) {
+                    next(today: today, remaining: remaining)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    details(today: today, remaining: remaining, agenda: agenda)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+            } else {
+                next(today: today, remaining: remaining)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                summary(today: today, remaining: remaining, agenda: agenda)
+            }
+        }
+    }
+
+    /// The class going on or coming up; after the last one, the next day that has any.
+    @ViewBuilder
+    private func next(today: ScheduleDay, remaining: [ScheduleCourse]) -> some View {
+        if let course = remaining.first {
+            VStack(alignment: .leading, spacing: 4) {
+                CompactNextCourse(course: course, inProgress: course.isInProgress(at: SchedulePayload.minutesSinceMidnight(now)))
+                CourseCountdownLabel(course: course)
+                // The medium size has room for the class after it.
+                if family == .systemMedium, remaining.count > 1 {
+                    CompactNextCourse(course: remaining[1]).padding(.top, 2)
+                }
+            }
+        } else if let later = payload.nextCourseDay(after: now), let course = later.day.courseList.first {
+            VStack(alignment: .leading, spacing: 4) {
+                OtherDayBanner(day: later.day)
+                CompactNextCourse(course: course)
+            }
+        } else {
+            RestStateView(hadCourses: !today.courseList.isEmpty)
+        }
+    }
+
+    /// Small: one line under the class.
+    private func summary(today: ScheduleDay, remaining: [ScheduleCourse], agenda: ScheduleOverviewAgenda) -> some View {
+        HStack(spacing: 8) {
+            if !today.courseList.isEmpty {
+                fact("book.closed", remaining.isEmpty ? "课上完了" : "还有 \(remaining.count) 节")
+            }
+            if agenda.count > 0 {
+                fact("checklist", "日程 \(agenda.count)")
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Medium: the right-hand column.
+    private func details(today: ScheduleDay, remaining: [ScheduleCourse], agenda: ScheduleOverviewAgenda) -> some View {
+        let total = today.courseList.count
+        return VStack(alignment: .leading, spacing: 5) {
+            fact("book.closed", total == 0 ? "今天没课" : remaining.isEmpty ? "今天 \(total) 节都上完了" : "今天 \(total) 节，还有 \(remaining.count) 节")
+            if let together = remaining.first(where: \.isTogether) {
+                fact("heart.fill", "和 TA 一起：\(together.displayName)")
+            }
+            fact("checklist", agenda.count == 0 ? "今天没有待办的日程" : "日程 \(agenda.count) 项")
+            ForEach(Array(agenda.titles.prefix(2).enumerated()), id: \.offset) { _, title in
+                Text("· \(title)")
+                    .font(style.widgetFont(size: 10, weight: .regular))
+                    .foregroundStyle(widgetColors.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func fact(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(widgetColors.muted)
+                .frame(width: 12)
+            Text(text)
+                .font(style.widgetFont(size: 10, weight: .medium))
+                .foregroundStyle(widgetColors.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
     }
 }

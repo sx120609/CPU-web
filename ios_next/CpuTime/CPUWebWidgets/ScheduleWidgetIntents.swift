@@ -334,6 +334,25 @@ struct WeekScheduleWidgetIntent: ScheduleWidgetIntent {
     }
 }
 
+@available(iOS 17.0, *)
+struct OverviewScheduleWidgetIntent: ScheduleWidgetIntent {
+    static let title: LocalizedStringResource = "今日概览"
+    static let description = IntentDescription("选择今日概览的文字大小。")
+
+    @Parameter(title: "文字大小", default: .follow)
+    var textSize: TextSizeOption
+
+    static var parameterSummary: some ParameterSummary {
+        Summary {
+            \.$textSize
+        }
+    }
+
+    var configuration: ScheduleWidgetConfiguration {
+        ScheduleWidgetConfiguration(textSize: textSize.size)
+    }
+}
+
 /// 几个课表小组件共用同一条时间线，只是各自带上自己的配置。
 @available(iOS 17.0, *)
 struct ScheduleIntentTimelineProvider<Configuration: ScheduleWidgetIntent>: AppIntentTimelineProvider {
