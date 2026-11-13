@@ -59,7 +59,10 @@ import { scheduleTodayDate } from '../schedule/ScheduleStyle';
 import { NativeAgendaItem, NativeOccurrenceChange, NativeOccurrenceRequest, nativeScheduleStoreOf } from '../schedule/NativeScheduleStore';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
-import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidgetPreview, saveScheduleWidgetTheme, refreshAllScheduleForms, clearScheduleWidgetAccount, readScheduleWidgetSettings, saveLocalScheduleSnapshot } from '../common/ScheduleWidgetService';
+import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidgetPreview, saveScheduleWidgetTheme, refreshAllScheduleForms, clearScheduleWidgetAccount, readScheduleWidgetSettings, saveLocalScheduleSnapshot,
+  readScheduleWidgetDisplayOptions, saveScheduleWidgetDisplayOptions } from '../common/ScheduleWidgetService';
+import { ScheduleWidgetDisplayOptions, defaultWidgetDisplayOptions } from '../common/ScheduleWidgetOptions';
+import { ScheduleCardSettings } from '../schedule/ScheduleCardSettings';
 
 // What an /agenda link asks for (web/src/router/index.ts): one item, a new one, or the list.
 interface AgendaOpenRequest {
@@ -137,6 +140,7 @@ struct Index {
   @State private cardStyleChoice: string = 'follow';
   @State private cardBackground: string = '';
   @State private cardVeil: number = 0.55;
+  @State private cardOptions: ScheduleWidgetDisplayOptions = defaultWidgetDisplayOptions();
   // 宿舍课表, a native sheet over the timetable.
   @State private dormModel: NativeDormModel = new NativeDormModel();
   // 分享这一天: the card drawn off screen.
@@ -998,6 +1002,17 @@ struct Index {
     const background = await readCardBackground(context);
     this.cardBackground = background[0];
     this.cardVeil = Number(background[1]) || 0.55;
+    this.cardOptions = await readScheduleWidgetDisplayOptions(context);
+  }
+
+  // 卡片面板里改了一项显示开关：存下来，刷新桌面上的卡片和面板里的样张。
+  private async updateCardOptions(options: ScheduleWidgetDisplayOptions): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.cardOptions = options;
+    await saveScheduleWidgetDisplayOptions(context, options);
+    void refreshAllScheduleForms(context).catch(() => undefined);
+    void this.loadWidgetPreview(true);
   }
 
   private async chooseCardStyle(choice: string): Promise<void> {
@@ -2525,11 +2540,12 @@ struct Index {
     void this.controller.runJavaScript(`document.documentElement.style.setProperty('--cpu-harmony-bottom-clearance', '${this.bottomContentClearance()}px')`).catch(() => undefined);
   }
 
-  private async loadWidgetPreview(): Promise<void> {
+  // keep：换显示开关时不先退回「正在同步」，样张直接换成新的，不闪。
+  private async loadWidgetPreview(keep: boolean = false): Promise<void> {
     const revision = ++this.widgetPreviewRevision;
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
-    this.widgetPreview = initialScheduleWidgetBinding(this.widgetDimension, this.widgetFormName);
+    if (!keep) this.widgetPreview = initialScheduleWidgetBinding(this.widgetDimension, this.widgetFormName);
     const preview = await readScheduleWidgetPreview(context, this.widgetDimension, this.widgetFormName);
     if (revision !== this.widgetPreviewRevision || !this.widgetPanelVisible) return;
     this.widgetPreview = preview;
@@ -2595,20 +2611,29 @@ struct Index {
             trailLabel: this.widgetPreview.trailLabel, rightNote: this.widgetPreview.rightNote,
             lunar: this.widgetPreview.lunar, badgeStatutory: this.widgetPreview.badgeStatutory,
             rightLunar: this.widgetPreview.rightLunar, rightBadge: this.widgetPreview.rightBadge,
-            rightBadgeStatutory: this.widgetPreview.rightBadgeStatutory
+            rightBadgeStatutory: this.widgetPreview.rightBadgeStatutory,
+            textSize: this.widgetPreview.textSize, showProgress: this.widgetPreview.showProgress,
+            showWeek: this.widgetPreview.showWeek, hideCompleted: this.widgetPreview.hideCompleted,
+            countdown: this.widgetPreview.countdown, primaryEmpty: this.widgetPreview.primaryEmpty,
+            previewLabel: this.widgetPreview.previewLabel, previewDetail: this.widgetPreview.previewDetail,
+            previewCourses: this.widgetPreview.previewCourses, previewCount: this.widgetPreview.previewCount,
+            previewSummary: this.widgetPreview.previewSummary
           })
-            // 按 iOS 小号 170×170、中号 364×170、大号 364×382 的比例预览。
-            .width(this.widgetDimension === 2 ? 170 : '100%')
-            .constraintSize({ maxWidth: 364 })
-            .aspectRatio(this.widgetDimension === 2 ? 1 : this.widgetDimension === 3 ? 364 / 170 : 364 / 382)
+            // 按手机桌面上卡片的实际大小预览（2×2 约 149×149，2×4 约 320×149，4×4 约 320×340），
+            // 文字大小和放得下几门课才和桌面上一样。
+            .width(this.widgetDimension === 2 ? 149 : 320)
+            .height(this.widgetDimension === 4 ? 340 : 149)
             .clip(true).borderRadius(22).border({ width: 0.5, color: $r('app.color.app_divider') })
         }.width('100%').justifyContent(FlexAlign.Center)
+        ScheduleCardSettings({ options: this.cardOptions,
+          onChange: (options: ScheduleWidgetDisplayOptions) => { void this.updateCardOptions(options); } })
+        Text('外观').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
         Column({ space: 8 }) {
-          Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Text('课程配色').fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
           this.paletteChoices(this.widgetTheme, true)
         }.width('100%')
         Column({ space: 8 }) {
-          Text('卡片风格').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Text('卡片风格').fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
           Row({ space: 2 }) {
             ForEach(['follow', 'classic', 'table', 'paper', 'board'], (choice: string) => {
               Text(choice === 'follow' ? '跟随课表' : choice === 'classic' ? '经典' : choice === 'table' ? '表格' : choice === 'paper' ? '素笺' : '站牌')
@@ -2623,7 +2648,7 @@ struct Index {
             .fontColor($r('app.color.app_text_tertiary')).width('100%')
         }.width('100%')
         Column({ space: 8 }) {
-          Text('卡片背景').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Text('卡片背景').fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
           Row({ space: 8 }) {
             Button(this.cardBackground ? '换一张照片' : '从相册选择').type(ButtonType.Normal).height(40).layoutWeight(1).borderRadius(12)
               .fontSize(13).fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_control'))
@@ -2661,6 +2686,11 @@ struct Index {
           }.width('100%')
           Column() { this.lockCardPreview('lock-inline') }
             .width('100%').height(42).backgroundColor('#35443C').borderRadius(14)
+        }.width('100%')
+        Column({ space: 8 }) {
+          Text('日程').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Text('“日程”卡片列出待办和接下来两周的日程，点圆圈直接勾选完成；文字大小跟上面的设置。')
+            .fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
         }.width('100%')
         Column({ space: 8 }) {
           Text('上课闹钟').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
