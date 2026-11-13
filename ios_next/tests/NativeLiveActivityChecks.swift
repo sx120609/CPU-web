@@ -204,6 +204,40 @@ struct NativeLiveActivityChecks {
             .init(number: 1, startTime: "09:00", endTime: "09:45"),
             .init(number: -1, startTime: "08:00", endTime: "08:45")])
         precondition(valid.count == 1 && valid[0].startTime == "08:00")
+        // The timetable's own bells as the server reads them. A school other than the default
+        // one is timed by these, so a 14:00 class is never announced for 14:25.
+        let declare = NativeLiveActivityController.declaredPeriods
+        precondition(declare([.init(number: 1, startTime: "08:20", endTime: "09:00"), .init(number: 2, startTime: "9:10", endTime: "09:50"),
+                              .init(number: 3, startTime: "14:00", endTime: "14:40")]) == "0820-0900_0910-0950_1400-1440")
+        precondition(declare([]) == nil)
+        precondition(declare([.init(number: 1, startTime: "08:20", endTime: "09:00"), .init(number: 3, startTime: "10:00", endTime: "10:40")]) == nil, "periods are named by number: a gap is no table")
+        precondition(declare([.init(number: 2, startTime: "08:20", endTime: "09:00")]) == nil)
+        precondition(declare([.init(number: 1, startTime: "08:20", endTime: "bad")]) == nil)
+        precondition(declare((1...21).map { .init(number: $0, startTime: String(format: "%02d:00", $0), endTime: String(format: "%02d:30", $0)) }) == nil)
+        let ownBells = NativeLiveActivityController(now: { start })
+        precondition(ownBells.declaredTimetable == nil)
+        ownBells.accept(fixture(account: "own-bells"))
+        precondition(ownBells.declaredTimetable == nil, "the bundled table that stands in for a missing one is never declared")
+        let table = [NativeSchedulePeriod(number: 1, startTime: "08:20", endTime: "09:00"), .init(number: 2, startTime: "09:10", endTime: "09:50")]
+        ownBells.accept(NativeScheduleSnapshot(completeSemester: true, source: .cache, periods: table,
+            data: NativeScheduleResult(currentSemester: "s", currentWeek: "3", cells: []),
+            calendar: NativeScheduleCalendar(currentSemester: "s", currentWeek: 3, weeks: [], periods: table),
+            auth: NativeScheduleAuth(authenticated: true, account: "own-bells")))
+        precondition(ownBells.declaredTimetable == "0820-0900_0910-0950")
+        // Timing is issued to an account: the next account, perhaps at another school, does not inherit it.
+        ownBells.installTiming(config)
+        precondition(ownBells.timing == config)
+        let sameAccount = NativeLiveActivityController(now: { start })
+        precondition(sameAccount.timing == config, "the cache is there at launch")
+        sameAccount.accept(fixture(account: "own-bells"))
+        precondition(sameAccount.timing == config, "and stays for the account it was issued to")
+        let otherAccount = NativeLiveActivityController(now: { start })
+        otherAccount.accept(fixture(account: "another-school"))
+        precondition(otherAccount.timing == nil && otherAccount.broadcastWindows.isEmpty, "another account is timed by its own timetable until its timing arrives")
+        precondition(defaults.data(forKey: "cpu.liveActivity.timing.v2") == nil)
+        for controller in [ownBells, sameAccount, otherAccount] { controller.reset() }
+        await settle()
+        print("Own bells: declared table and account-scoped timing passed")
         // A course set to show first settles an overlap without a per-period choice.
         defaults.removeObject(forKey: "cpu.liveActivity.timing.v2")
         let ranked = NativeLiveActivityController(now: { start.addingTimeInterval(-900) })

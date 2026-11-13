@@ -54,6 +54,21 @@ final class LiveActivityPushService: ObservableObject {
         }
         scheduleSync()
     }
+    private var channelRetries = 0
+    private var channelRetryTask: Task<Void, Never>?
+    /// A table the server has only just taken in has no channels for a minute or so, and a class
+    /// is not arranged without one. Ask again then, rather than wait for the app's next launch.
+    private func retryForChannels(_ config: NativeLiveActivityController.TimingConfig) {
+        guard config.windows.contains(where: { $0.channelID == nil }) else { channelRetries = 0; return }
+        guard channelRetries < 3, channelRetryTask == nil else { return }
+        channelRetries += 1
+        channelRetryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(75))
+            guard let self, !Task.isCancelled else { return }
+            channelRetryTask = nil
+            scheduleSync()
+        }
+    }
     private func deviceBody(_ account: String) -> [String: Any] {
         ["installationId": installationId, "accountScope": account, "environment": Self.environment,
          "bundleID": Bundle.main.bundleIdentifier ?? "cn.cputime.mobile"]
@@ -99,11 +114,14 @@ final class LiveActivityPushService: ObservableObject {
                     // Cached mappings remain usable offline; fetching never extends
                     // their lease unless the server actually issues a new mapping.
                     let bundle = Bundle.main.bundleIdentifier ?? "cn.cputime.mobile"
-                    let data = try await request("/api/live-activities/broadcast-config?mode=local&environment=\(Self.environment)&bundleID=\(bundle)", "GET", nil)
+                    // The timetable's own bells go along: a school other than the default is timed by them.
+                    let declared = controller.declaredTimetable.map { "&periods=\($0)" } ?? ""
+                    let data = try await request("/api/live-activities/broadcast-config?mode=local&environment=\(Self.environment)&bundleID=\(bundle)\(declared)", "GET", nil)
                     let result = try Self.decode(data)
                     let config = try JSONDecoder().decode(NativeLiveActivityController.TimingConfig.self, from: JSONSerialization.data(withJSONObject: result))
                     guard stillValid() else { return }
                     if controller.timing != config { controller.installTiming(config) }
+                    retryForChannels(config)
                     if localScheduling {
                         controller.localHandoffComplete = true
                         controller.broadcastStatus = "每次打开 App 滚动安排未来 7 天，结束由学校节次频道处理。"

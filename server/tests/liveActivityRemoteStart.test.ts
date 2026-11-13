@@ -4,6 +4,8 @@ const periods = [{ id: 1, name: '1', start: '08:00', end: '08:45' }, { id: 2, na
 const devices: any[] = [], plans: any[] = [], versions: any[] = [];
 let seq = 0;
 let deviceScans = 0;
+/** Channels beside the default school's, by key. */
+const extraChannels: Record<string, string> = {};
 let historyReads = 0;
 function matches(row: any, where: any): boolean {
   return Object.entries(where || {}).every(([k, v]: [string, any]) => {
@@ -41,13 +43,14 @@ function model(rows: any[]) {
       if (!row) { row = { id: String(++seq), enabled: true, launchMode: 'remote', modeRevision: 0, planRevision: 0, state: 'pending', attempts: 0, broadcastUntil: new Date(0), ...create }; rows.push(row); return assign(row, {}); }
       return assign(row, update);
     },
+    async count({ where }: any) { return rows.filter(r => matches(r, where)).length; },
     async update({ where, data }: any) { const row = rows.find(r => matches(r, where)); assert.ok(row); return assign(row, data); },
     async updateMany({ where, data }: any) { const found = rows.filter(r => matches(r, where)); found.forEach(r => assign(r, data)); return { count: found.length }; },
   };
 }
 const db: any = {
   $queryRaw: async () => [{ acquired: true }], $transaction: async (fn: any) => fn(db),
-  siteSetting: { findMany: async () => Object.entries({ keyPath: '/test.p8', keyID: 'KEY', teamID: 'TEAM', bundleID: 'cn.cputime.mobile', channels: JSON.stringify({ [`production:main-campus:${version}:end-period-2`]: 'test-end-2' }) }).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })) },
+  siteSetting: { findMany: async () => Object.entries({ keyPath: '/test.p8', keyID: 'KEY', teamID: 'TEAM', bundleID: 'cn.cputime.mobile', channels: JSON.stringify({ [`production:main-campus:${version}:end-period-2`]: 'test-end-2', ...extraChannels }) }).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })) },
   schedulePeriodConfig: { findUnique: async () => ({ periods: JSON.stringify(periods) }) },
   liveActivityDevice: model(devices), liveActivityPlan: model(plans), liveActivityScheduleVersion: model(versions),
 };
@@ -232,4 +235,71 @@ test('日程: a plan carries notes beside its classes, and the digest tells plan
   await assert.rejects(service.syncRemoteStarts(4, { ...input(1, 'installation-note'), notes: [] }), /计划版本冲突/);
   await service.syncRemoteStarts(4, { ...input(2, 'installation-note') });
   assert.equal(plans.find(p => p.itemID === 'note-a').state, 'cancelled', 'dropped from the plan: its start is withdrawn');
+});
+
+test("another school's plan is timed, held and ended by its own table, and outlives a change of the default school's bells", async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  devices.length = 0; plans.length = 0; versions.length = 0;
+  const schedule = await import('../src/services/liveActivitySchedule');
+  const own = [{ id: 1, name: '1', start: '08:20', end: '09:00' }, { id: 2, name: '2', start: '09:10', end: '09:50' }];
+  const ownVersion = schedule.timingVersion(own);
+  const body = { ...input(1, 'installation-own-bells'), scheduleVersion: ownVersion };
+  // A table nobody was handed is not a plan's to name.
+  await assert.rejects(service.syncRemoteStarts(7, body, 'njucm'), /作息版本已改变/);
+  versions.push({ id: ownVersion, scheduleId: 'main-campus', timezone: 'Asia/Shanghai', periods: JSON.stringify(own), broadcastUntil: new Date(0) });
+  // The default school's students have one table, and it is not this one.
+  await assert.rejects(service.syncRemoteStarts(7, body), /作息版本已改变/);
+  await assert.rejects(service.syncRemoteStarts(7, body, 'cpu'), /作息版本已改变/);
+  await service.syncRemoteStarts(7, body, 'njucm');
+  devices[0].user = { schoolId: 'njucm' };
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].fireAt.toISOString(), new Date('2026-09-22T08:05:00+08:00').toISOString(), 'fifteen minutes before 08:20, not before 08:00');
+  assert.equal(JSON.parse(plans[0].payload).end, Date.parse('2026-09-22T09:50:00+08:00') / 1000);
+  const held = () => versions.find(v => v.id === ownVersion).broadcastUntil.getTime();
+  assert.ok(held() >= now + 3 * 86400_000, 'the plan keeps its table held, so its channels exist when the class comes');
+
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+  const originalEnd = periods[1].end;
+  const sent: any[] = [];
+  try {
+    // The default school's bells change. That retires its own plans, never another school's.
+    periods[1].end = '09:41';
+    t.mock.timers.tick(5000);
+    await service.tickRemoteStarts(async (message: any) => { sent.push(message); }); await settle();
+    assert.equal(plans[0].state, 'pending');
+    assert.equal(sent.length, 0);
+
+    // Until the table's channel exists the start waits; it is never sent on the default school's.
+    t.mock.timers.setTime(Date.parse('2026-09-22T08:05:00+08:00'));
+    await service.tickRemoteStarts(async (message: any) => { sent.push(message); }); await settle();
+    assert.equal(sent.length, 0);
+    assert.equal(plans[0].detail, '等待结束频道');
+    extraChannels[`production:main-campus:${ownVersion}:end-period-2`] = 'own-end-2';
+    t.mock.timers.tick(31000);
+    await service.tickRemoteStarts(async (message: any) => { sent.push(message); }); await settle();
+    assert.equal(sent.length, 1);
+    const aps = sent[0].payload.aps;
+    assert.equal(aps['input-push-channel'], 'own-end-2');
+    assert.equal(aps.attributes.scheduleVersion, ownVersion);
+    assert.equal(aps['stale-date'], Date.parse('2026-09-22T09:50:00+08:00') / 1000);
+    assert.equal(plans[0].state, 'submitted');
+    assert.ok(held() >= Date.parse('2026-09-22T09:50:00+08:00'));
+  } finally { periods[1].end = originalEnd; delete extraChannels[`production:main-campus:${ownVersion}:end-period-2`]; }
+});
+test("a plan another school's student synced while every school was timed by the default bells is retired, not sent", async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  devices.length = 0; plans.length = 0;
+  // As it was accepted then: the default school's version, its 08:00 start, no mark of its own bells.
+  await service.syncRemoteStarts(8, input(1, 'installation-borrowed'));
+  devices[0].user = { schoolId: 'njucm' };
+  assert.equal(plans[0].fireAt.toISOString(), new Date('2026-09-22T07:45:00+08:00').toISOString());
+  const sent: any[] = [];
+  await service.tickRemoteStarts(async (message: any) => { sent.push(message); });
+  assert.equal(sent.length, 0, 'a class at 08:20 is not announced for 08:00');
+  assert.equal(plans[0].state, 'cancelled');
+  // The same plan from a student of the default school still goes out.
+  devices.length = 0; plans.length = 0;
+  await service.syncRemoteStarts(9, input(1, 'installation-default'));
+  await service.tickRemoteStarts(async (message: any) => { sent.push(message); });
+  assert.equal(sent.length, 1);
 });

@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { clockChannelKey, clockMarks, currentTiming, endChannelKey, startChannelKey } from "./liveActivitySchedule";
 import { createLiveActivityChannel, deleteLiveActivityChannel } from "./apnsClient";
 import { getApnsConfig, withApnsConfigLock, type ApnsConfig } from "./apnsConfig";
+import { prisma } from "../prisma";
 
 const MAX_CHANNELS_PER_ENVIRONMENT = 9000;
 // The clock channels (日程) are a few hundred per environment. Creating them is
@@ -24,12 +25,17 @@ const providerOnly = (c: ApnsConfig): ApnsConfig => ({ ...c, channels: {} });
 export function schoolDate(now = Date.now()) {
   return new Date(now + 8 * 3600_000).toISOString().slice(0, 10);
 }
-export async function requiredChannelSuffixes(_now = Date.now(), db?: Prisma.TransactionClient) {
+export async function requiredChannelSuffixes(now = Date.now(), db?: Prisma.TransactionClient) {
   const timing = await currentTiming(db);
+  // Other schools' bells, and campuses that ring differently, are tables of their own. Each is
+  // held while someone uses it and needs its channels as the default school's table does.
+  const held = await (db ?? prisma).liveActivityScheduleVersion.findMany({
+    where: { id: { not: timing.id }, broadcastUntil: { gte: new Date(now) } }, select: { id: true, periods: true }, orderBy: { id: "asc" } });
+  const tables = [timing, ...held.map(row => ({ id: row.id, periods: JSON.parse(row.periods) as Array<{ id: number }> }))];
   // The end channels come first: activities already on screen depend on them,
   // while a missing start channel only keeps 上课时收起 from being offered.
   return [
-    ...[endChannelKey, startChannelKey].flatMap(key => timing.periods.map(p => key("production", timing.id, p.id))),
+    ...tables.flatMap(table => [endChannelKey, startChannelKey].flatMap(key => table.periods.map(p => key("production", table.id, p.id)))),
     ...clockMarks().map(minute => clockChannelKey("production", minute)),
   ].map(key => key.slice("production:".length));
 }

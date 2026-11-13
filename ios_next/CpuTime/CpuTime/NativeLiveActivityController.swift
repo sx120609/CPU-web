@@ -156,8 +156,28 @@ final class NativeLiveActivityController: ObservableObject {
         timing = value
         broadcastWindows = value.windows
         if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: "cpu.liveActivity.timing.v2") }
+        defaults.set(loadedAccount, forKey: Self.timingAccountKey)
         reconfigure()
     }
+    /// The account the cached timing was issued to. The server times each school by its own bells,
+    /// so one account's timing says nothing about another's.
+    private static let timingAccountKey = "cpu.liveActivity.timing.account"
+    /// The timetable's own bells as the server reads them, `0820-0900_0910-0950…` from period 1.
+    /// A school other than the default one is timed by this table, since a campus can ring
+    /// differently from its school's usual hours and only the timetable says how. Nil when the
+    /// table is not numbered from 1 without gaps, has more than twenty periods or a bad time.
+    static func declaredPeriods(_ values: [NativeSchedulePeriod]) -> String? {
+        let periods = validPeriods(values)
+        guard !periods.isEmpty, periods.count == values.count, periods.count <= 20,
+              periods.enumerated().allSatisfy({ $0.element.number == $0.offset + 1 }) else { return nil }
+        func digits(_ time: String) -> String {
+            let parts = time.split(separator: ":").compactMap { Int($0) }
+            return String(format: "%02d%02d", parts[0], parts[1])
+        }
+        return periods.map { "\(digits($0.startTime))-\(digits($0.endTime))" }.joined(separator: "_")
+    }
+    /// The table to declare: the calendar's own, never the bundled one that stands in for a missing table.
+    var declaredTimetable: String? { lastSnapshot?.calendar.flatMap { Self.declaredPeriods($0.periods) } }
     struct LedgerEntry: Codable {
         var state: String
         var activityID: String?
@@ -276,6 +296,14 @@ final class NativeLiveActivityController: ObservableObject {
         guard loadedAccount != account else { return }
         localHandoffComplete = false
         loadedAccount = account
+        // Timing issued to another account may be another school's bells. Without it classes are
+        // timed by the timetable's own table until this account's timing arrives.
+        if let owner = defaults.string(forKey: Self.timingAccountKey), owner != account {
+            timing = nil
+            broadcastWindows = []
+            defaults.removeObject(forKey: "cpu.liveActivity.timing.v2")
+            defaults.removeObject(forKey: Self.timingAccountKey)
+        }
         ledger = defaults.data(forKey: "cpu.liveActivity.v2.\(account).ledger").flatMap { try? JSONDecoder().decode([String: LedgerEntry].self, from: $0) } ?? [:]
         identityRecords = defaults.data(forKey: "cpu.liveActivity.v2.\(account).identities").flatMap { try? JSONDecoder().decode([String: [IdentityRecord]].self, from: $0) } ?? [:]
         choices = defaults.data(forKey: "cpu.liveActivity.v2.\(account).choices").flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]

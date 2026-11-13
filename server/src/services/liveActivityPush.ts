@@ -1,4 +1,4 @@
-import { clockChannelKey, clockLabel, clockMarks, clockStepMinutes, currentTiming, retainTiming, timingVersion, endChannelKey, startChannelKey } from "./liveActivitySchedule";
+import { clockChannelKey, clockLabel, clockMarks, clockStepMinutes, currentTiming, declaredPeriods, retainTiming, timingFor, timingVersion, endChannelKey, startChannelKey } from "./liveActivitySchedule";
 import { prisma } from "../prisma";
 import { appleReferenceSeconds, sendLiveActivityBroadcast } from "./apnsClient";
 import { getApnsConfig, withApnsConfigLock } from "./apnsConfig";
@@ -24,14 +24,19 @@ let materializedDigest = "";
 type BroadcastConfig = Awaited<ReturnType<typeof readBroadcastConfig>>;
 const broadcastReads = new Map<string, Promise<BroadcastConfig>>();
 
-export async function liveActivityBroadcastConfig(environment: string, bundleID: string, local = false) {
+/**
+ * `schoolId` is the reader's school and `periods` the table their app declares (see `declaredPeriods`):
+ * a school other than the default is timed by its own bells, never by the default school's.
+ */
+export async function liveActivityBroadcastConfig(environment: string, bundleID: string, local = false, schoolId?: string | null, periods?: unknown) {
   if (!["production", "sandbox"].includes(environment)) throw new Error("APNs 环境无效");
   if (bundleID.length > 256) throw Errors.badRequest("Bundle ID 无效");
-  const key = JSON.stringify([environment, bundleID, local]);
+  const declared = declaredPeriods(periods);
+  const key = JSON.stringify([environment, bundleID, local, schoolId ?? "", declared ? timingVersion(declared) : ""]);
   let pending = broadcastReads.get(key);
   if (!pending) {
     if (broadcastReads.size >= 32) throw Errors.busy();
-    pending = readBroadcastConfig(environment, bundleID, local);
+    pending = readBroadcastConfig(environment, bundleID, local, schoolId, declared);
     broadcastReads.set(key, pending);
     const cleanup = () => { if (broadcastReads.get(key) === pending) broadcastReads.delete(key); };
     pending.then(cleanup, cleanup);
@@ -41,13 +46,13 @@ export async function liveActivityBroadcastConfig(environment: string, bundleID:
   return structuredClone(await pending);
 }
 
-async function readBroadcastConfig(environment: string, bundleID: string, local: boolean) {
+async function readBroadcastConfig(environment: string, bundleID: string, local: boolean, schoolId: string | null | undefined, declared: ReturnType<typeof declaredPeriods>) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await withApnsConfigLock(async db => {
         const config = await getApnsConfig(db);
         if (config.configured && bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
-        const timing = await currentTiming(db);
+        const timing = await timingFor(schoolId, declared, db);
         const issuedAt = Date.now() / 1000;
         if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000), db);
         const channel = (key: string) => config.configured ? config.channels[key] || null : null;

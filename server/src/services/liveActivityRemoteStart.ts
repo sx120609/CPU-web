@@ -4,13 +4,23 @@ import { prisma } from '../prisma';
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from './jwxtSessionCrypto';
 import { getApnsConfig, lockApnsConfig } from './apnsConfig';
 import { appleReferenceSeconds, sendLiveActivityPayload } from './apnsClient';
-import { clockChannelKey, clockMark, currentTiming, endChannelKey, startChannelKey, timingVersion } from './liveActivitySchedule';
+import { admitsTiming, clockChannelKey, clockMark, currentTiming, endChannelKey, hasOwnBells, retainTiming, startChannelKey, timingByVersion, timingVersion } from './liveActivitySchedule';
 import { parseCoursePlan, parseNotes, visibleEnd, type Occurrence } from './liveActivityTimeline';
 export { parseCoursePlan } from './liveActivityTimeline';
 const PURPOSE = 'live-activity-start-token';
 const EVENT = 'course-start-v2';
 const protectedStates = ['submitting', 'submitted', 'submissionUnknown', 'terminal', 'local'];
-type Snapshot = { input: any; courses: Occurrence[]; acceptedAt: number };
+/**
+ * `ownBells` marks a plan timed by its school's own table. One accepted from another school's
+ * student before that existed was timed by the default school's bells: it is retired, not sent.
+ */
+type Snapshot = { input: any; courses: Occurrence[]; acceptedAt: number; ownBells?: boolean };
+const BORROWED_BELLS = '原计划按默认学校作息计时，需要重同步';
+// A school other than the default is timed by its own table (see `timingFor`). Nothing reads that
+// table's config on a remote device's behalf, so its plan keeps it held: three days from each
+// sync and each refill, which run far more often than that.
+const OWN_TIMING_HOLD_MS = 3 * 86400_000;
+const userSchool = { user: { select: { schoolId: true } } } as const;
 const hash = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 async function lock(tx: Prisma.TransactionClient, key: string) {
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 7419))::text`;
@@ -56,13 +66,17 @@ async function materialize(tx: Prisma.TransactionClient, device: any, snapshot: 
       create: { deviceId: device.id, itemID: c.occurrenceId, ...data }, update: data });
   }
 }
-export async function syncRemoteStarts(userId: number, input: any) {
+export async function syncRemoteStarts(userId: number, input: any, schoolId?: string | null) {
   const identity = installation(userId, input);
   if (!/^(?:[a-fA-F0-9]{2}){16,256}$/.test(input.token || '')) throw new Error('启动 token 无效');
   const config = await getApnsConfig();
   if (!['sandbox', 'production'].includes(input.environment) || !config.configured || input.bundleID !== config.bundleID) throw new Error('APNs 配置不匹配');
-  const timing = await currentTiming();
-  if (input.scheduleId !== timing.scheduleId || input.scheduleVersion !== timing.id) throw new Error('作息版本已改变，请重新同步');
+  // The default school has one table and a plan must name it. Another school's plan names the
+  // table its app was given: any table handed out, taken back in while there is room for it.
+  const own = hasOwnBells(schoolId);
+  const timing = own ? await timingByVersion(input.scheduleVersion) : await currentTiming();
+  if (!timing || input.scheduleId !== timing.scheduleId || input.scheduleVersion !== timing.id
+    || own && !await admitsTiming(timing.id)) throw new Error('作息版本已改变，请重新同步');
   // Classes, then 日程 beside them: each starts at its own reminder.
   const courses = [...parseCoursePlan(input, timing.periods), ...parseNotes(input, clockMark)]
     .sort((a, b) => a.plannedStart - b.plannedStart || a.start - b.start || a.occurrenceId.localeCompare(b.occurrenceId));
@@ -78,7 +92,7 @@ export async function syncRemoteStarts(userId: number, input: any) {
     if (device?.launchMode === 'local') throw new Error('设备已切换本地预约，旧远程请求不能恢复计划');
     if (device && (input.planRevision < device.planRevision || input.planRevision === device.planRevision && digest !== device.planDigest)) throw new Error(`计划版本冲突:${device.planRevision}`);
     if (device && device.planRevision === input.planRevision) return { deviceID: device.id, revoke: capability(device), planRevision: device.planRevision };
-    const snapshot: Snapshot = { input: { ...input, token: undefined, replaces: undefined }, courses, acceptedAt: Date.now() / 1000 };
+    const snapshot: Snapshot = { input: { ...input, token: undefined, replaces: undefined }, courses, acceptedAt: Date.now() / 1000, ...(own ? { ownBells: true } : {}) };
     await tx.liveActivityDevice.updateMany({ where: { startTokenHash: tokenHash, NOT: identity }, data: { startTokenHash: null, startTokenCiphertext: null, enabled: false } });
     const data = { ...identity, accountScope: input.accountScope, enabled: true, startTokenHash: tokenHash,
       startTokenCiphertext: encryptJwxtSensitiveJson(PURPOSE, tokenHash, { token: input.token.toLowerCase() }),
@@ -86,6 +100,7 @@ export async function syncRemoteStarts(userId: number, input: any) {
       planSnapshot: JSON.stringify(snapshot), lastError: null };
     device = await tx.liveActivityDevice.upsert({ where: { userId_installationId: identity }, create: data, update: data });
     await cancelUnsubmitted(tx, device.id, '已被完整计划替换');
+    if (own) { await lockApnsConfig(tx); await retainTiming(timing.id, new Date(Date.now() + OWN_TIMING_HOLD_MS), tx); }
     await materialize(tx, device, snapshot);
     return { deviceID: device.id, revoke: capability(device), planRevision: device.planRevision, scheduledThrough: courses.at(-1)?.dateKey ?? null };
   }, { timeout: 30000 });
@@ -129,8 +144,9 @@ export async function switchToLocal(userId: number, input: any) {
     return result;
   });
 }
-export async function takeOverOccurrence(userId: number, input: any) {
+export async function takeOverOccurrence(userId: number, input: any, schoolId?: string | null) {
   const identity = installation(userId, input);
+  const own = hasOwnBells(schoolId);
   const timing = await currentTiming();
   const config = await getApnsConfig();
   return prisma.$transaction(async tx => {
@@ -142,7 +158,7 @@ export async function takeOverOccurrence(userId: number, input: any) {
     const c = JSON.parse(row.payload) as Occurrence;
     const snapshot = device.planSnapshot ? JSON.parse(device.planSnapshot) as Snapshot : null;
     const version = snapshot?.input.scheduleVersion || input.scheduleVersion;
-    if (version !== timing.id || visibleEnd(c) <= Date.now() / 1000 || c.plannedStart > Date.now() / 1000) throw new Error('本次课程尚不能恢复，请同步作息');
+    if ((own ? !await timingByVersion(version, tx) : version !== timing.id) || visibleEnd(c) <= Date.now() / 1000 || c.plannedStart > Date.now() / 1000) throw new Error('本次课程尚不能恢复，请同步作息');
     if (!protectedStates.includes(row.state)) await tx.liveActivityPlan.update({ where: { id: row.id }, data: { state: 'local', detail: '前台恢复已接管' } });
     await lockApnsConfig(tx);
     await tx.liveActivityScheduleVersion.updateMany({ where: { id: version, broadcastUntil: { lt: new Date(c.end * 1000) } }, data: { broadcastUntil: new Date(c.end * 1000) } });
@@ -175,7 +191,7 @@ async function refillWindow(timingId: string) {
   let cursor: string | undefined;
   while (true) {
     const devices = await prisma.liveActivityDevice.findMany({ where: { enabled: true, launchMode: 'remote', planSnapshot: { not: null } },
-      orderBy: { id: 'asc' }, take: 250, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+      orderBy: { id: 'asc' }, take: 250, include: userSchool, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
     if (!devices.length) break;
     const now = Date.now() / 1000;
     let index = 0;
@@ -183,14 +199,19 @@ async function refillWindow(timingId: string) {
       while (index < devices.length) {
         const d = devices[index++];
         const snapshot = JSON.parse(d.planSnapshot!) as Snapshot;
-        if (snapshot.input.scheduleVersion === timingId &&
+        // A plan on another school's table never goes stale with the default school's bells.
+        const own = hasOwnBells(d.user?.schoolId);
+        if ((own || snapshot.input.scheduleVersion === timingId) &&
           !snapshot.courses.some(c => visibleEnd(c) > now && c.plannedStart <= now + 48 * 3600)) continue;
         await prisma.$transaction(async tx => {
           await lock(tx, `${d.userId}:${d.installationId}`);
           const current = await tx.liveActivityDevice.findUnique({ where: { id: d.id } });
           if (!current?.enabled || current.launchMode !== 'remote' || !current.planSnapshot) return;
           const snapshot = JSON.parse(current.planSnapshot) as Snapshot;
-          if (snapshot.input.scheduleVersion !== timingId) { await cancelUnsubmitted(tx, d.id, '作息已改变，需要重同步'); return; }
+          if (!own && snapshot.input.scheduleVersion !== timingId) { await cancelUnsubmitted(tx, d.id, '作息已改变，需要重同步'); return; }
+          if (own && !snapshot.ownBells) { await cancelUnsubmitted(tx, d.id, BORROWED_BELLS); return; }
+          // Classes are due within two days: the table's channels have to be there by then.
+          if (own) { await lockApnsConfig(tx); await retainTiming(String(snapshot.input.scheduleVersion), new Date(Date.now() + OWN_TIMING_HOLD_MS), tx); }
           await materialize(tx, current, snapshot);
         }, { timeout: 30000 });
       }
@@ -215,7 +236,7 @@ export async function tickRemoteStarts(send = sendLiveActivityPayload) {
   }
   await prisma.liveActivityPlan.updateMany({ where: { state: 'submitting', updatedAt: { lt: new Date(Date.now() - 60000) } }, data: { state: 'submissionUnknown', detail: '提交后未收到确定结果' } });
   const rows = await prisma.liveActivityPlan.findMany({ where: { event: EVENT, state: 'pending', fireAt: { lte: new Date() }, nextAttemptAt: { lte: new Date() }, device: { enabled: true, launchMode: 'remote' } },
-    orderBy: { fireAt: 'asc' }, take: START_BATCH_SIZE, include: { device: true } });
+    orderBy: { fireAt: 'asc' }, take: START_BATCH_SIZE, include: { device: { include: userSchool } } });
   let index = 0;
   const delays: number[] = [];
   const outcomes: Record<string, number> = {};
@@ -224,36 +245,41 @@ export async function tickRemoteStarts(send = sendLiveActivityPayload) {
       const candidate = rows[index++];
       const ready = await prisma.$transaction(async tx => {
         await lock(tx, `${candidate.device.userId}:${candidate.device.installationId}`);
-        const row = await tx.liveActivityPlan.findUnique({ where: { id: candidate.id }, include: { device: true } });
+        const row = await tx.liveActivityPlan.findUnique({ where: { id: candidate.id }, include: { device: { include: userSchool } } });
         if (!row || row.state !== 'pending' || !row.device.enabled || row.device.launchMode !== 'remote' || row.revision !== row.device.planRevision || row.nextAttemptAt > new Date()) return null;
         await lockApnsConfig(tx);
-        const published = await tx.schedulePeriodConfig.findUnique({ where: { id: 1 } });
-        if (!published || timingVersion(JSON.parse(published.periods)) !== timing.id) return null;
         const snapshot = JSON.parse(row.device.planSnapshot || '{}') as Snapshot;
+        // Another school's class is timed and ended by the table its plan names, not the default school's.
+        const own = hasOwnBells(row.device.user?.schoolId);
+        const version: string = own ? String(snapshot.input?.scheduleVersion || '') : timing.id;
+        if (!own) {
+          const published = await tx.schedulePeriodConfig.findUnique({ where: { id: 1 } });
+          if (!published || timingVersion(JSON.parse(published.periods)) !== timing.id) return null;
+        }
         const c = JSON.parse(row.payload) as Occurrence;
-        if (snapshot.input?.scheduleVersion !== timing.id || row.expiresAt <= new Date() || visibleEnd(c) * 1000 <= Date.now()) {
+        if (snapshot.input?.scheduleVersion !== version || own && !snapshot.ownBells || row.expiresAt <= new Date() || visibleEnd(c) * 1000 <= Date.now()) {
           outcomes.expired = (outcomes.expired || 0) + 1;
           await tx.liveActivityPlan.update({ where: { id: row.id }, data: { state: 'cancelled', detail: '计划过期或作息已改变' } }); return null;
         }
-        const channel = config.channels[channelKey(row.device.environment, timing.id, c)];
+        const channel = config.channels[channelKey(row.device.environment, version, c)];
         if (!channel) {
           await tx.liveActivityPlan.update({ where: { id: row.id }, data: { nextAttemptAt: new Date(Date.now() + 30000), detail: "等待结束频道" } });
           return null;
         }
         const { value } = decryptJwxtSensitiveJson<{ token: string }>(PURPOSE, row.device.startTokenHash!, row.device.startTokenCiphertext!);
-        await tx.liveActivityScheduleVersion.updateMany({ where: { id: timing.id, broadcastUntil: { lt: new Date(c.end * 1000) } }, data: { broadcastUntil: new Date(c.end * 1000) } });
+        await tx.liveActivityScheduleVersion.updateMany({ where: { id: version, broadcastUntil: { lt: new Date(c.end * 1000) } }, data: { broadcastUntil: new Date(c.end * 1000) } });
         // Persist intent before external I/O; a transaction rollback after APNs
         // acceptance must never make the same occurrence eligible again.
         await tx.liveActivityPlan.update({ where: { id: row.id }, data: { state: 'submitting' } });
-        return { row, c, channel, token: value.token };
+        return { row, c, channel, token: value.token, version };
       });
       if (!ready) continue;
-      const { row, c, channel, token } = ready;
+      const { row, c, channel, token, version } = ready;
       let state = 'submitted', detail = '';
       delays.push(Date.now() - row.fireAt.getTime());
       try {
         await send({ token, environment: row.device.environment as 'production' | 'sandbox', bundleID: row.device.bundleID,
-          payload: remoteStartPayload(c, channel, Date.now() / 1000, row.device.accountScope!, timing.id), config });
+          payload: remoteStartPayload(c, channel, Date.now() / 1000, row.device.accountScope!, version), config });
       } catch (error: any) {
         const status = Number(error?.status || 0);
         detail = String(error?.message || error).slice(0, 500);

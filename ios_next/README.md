@@ -170,6 +170,10 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 实时活动回归脚本在 macOS 编译执行实际控制器与网络协调器，验证提前量、远程计划、调休、权限、退出及迟到响应撤销。iOS 18 及以上上传启动 token 与已加载学期的最小时间计划，远程启动直接订阅学校时段频道，无需每天打开 App；提前量可自定义 0–60 分钟，默认 15 分钟。课程详情从本地课表读取，不上传教师、地点或课程名称。iOS 17 仅提供前台本地活动。服务端凭据在后台「APNs 推送」配置，正式 Bundle ID 为 `cn.cputime.mobile`。模拟器可用 `CPU_DEBUG_MOCK_SCHEDULE=1` 检查本地呈现，APNs 仍需真机验证。详情见 [APNs 配置与验收](../docs/apns.md)。
 
+## 实时活动按本校作息
+
+实时活动的节次时间来自服务端的 `broadcast-config`，结束靠对应作息的频道。服务端按账号所在学校给作息：药大是后台那一张，其他学校是本校的表。App 取配置时带上课表自己的作息（`periods=0820-0900_…`，`NativeLiveActivityController.declaredPeriods`），校区作息和学校默认不一样时以它为准。作息缓存只给它发给的那个账号用，换账号后先按课表快照的作息算时间。背景和服务端规则见 [`docs/live-activity-v2-implementation.md`](../docs/live-activity-v2-implementation.md) 的「各校按自己的作息」。
+
 ## 实时活动的可选项
 
 实时活动设置里还有两个默认关闭的开关，都要服务端支持（`broadcast-config` 里的 `endsAtClassStart`、`clock`），服务端没给时不显示：

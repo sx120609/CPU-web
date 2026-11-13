@@ -33,7 +33,10 @@ const models: any = {
       if (row && row.broadcastUntil < where.broadcastUntil.lt) Object.assign(row, data);
       return { count: row ? 1 : 0 };
     },
-    findMany: async ({ where }: any) => [...versions.values()].filter(v => v.id !== where.id.not && v.broadcastUntil < where.broadcastUntil.lt),
+    // Two readers: the tables no longer held (`lt`, to retire) and those still held (`gte`, to provision).
+    findMany: async ({ where }: any) => [...versions.values()].filter(v => v.id !== where.id.not
+      && (where.broadcastUntil.lt === undefined || v.broadcastUntil < where.broadcastUntil.lt)
+      && (where.broadcastUntil.gte === undefined || v.broadcastUntil >= where.broadcastUntil.gte)),
   },
 };
 const tx = { ...models, $queryRaw: async () => [{ acquired: !lockBusy }] };

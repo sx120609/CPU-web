@@ -37,3 +37,9 @@ The export compliance answer for build 84 is 「不属于上述的任意一种�
 > 本次更新：新增本周课表小组件，小组件支持文字大小等显示设置和实时倒计时；情侣课表和叠加课表的周视图可选并排或合并；新增课表使用指引；若干界面修复。
 
 The 「协议更新」 answer that blocked 4.20's submission on 2026-11-12 did not come up.
+
+### Withdrawn the same afternoon
+
+At about 14:25 a student at 南京中医药大学 showed a Live Activity announcing their 14:00 class for 14:25: the server timed every school by the default school's bells. The user asked for that to be fixed before anything ships, so the submission was cancelled at about 14:30 (the version reads 被开发者拒绝, the submission 已移除); build 84 was never reviewed.
+
+The fix is mostly the server's (each school's activities follow its own table, see `docs/live-activity-v2-implementation.md`), and reaches installed versions once the server is deployed. The app's part, declaring the timetable's own bells and not carrying one account's timing to the next, is not in build 84: 4.21 needs a new build before it is submitted again.
