@@ -170,6 +170,13 @@ import { librarySave, RawShareDocument, readSharedSchedule, SharedSchedule, Shar
 import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
 import { NativeCommonFree } from '../schedule/NativeCommonFree';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
+import { ScheduleWidgetBinding, refreshAllScheduleForms, saveLocalScheduleSnapshot, saveScheduleWidgetDisplayOptions,
+  scheduleWidgetBindingAt } from '../common/ScheduleWidgetService';
+import { ScheduleWidgetDisplayOptions, defaultWidgetDisplayOptions } from '../common/ScheduleWidgetOptions';
+import { ScheduleCardSettings } from '../schedule/ScheduleCardSettings';
+import { LocalScheduleRecord, localScheduleRecord } from '../schedule/NativeWidgetLocalSchedule';
+import { NativeScheduleCell } from '../schedule/NativeScheduleStore';
+import preferences from '@ohos.data.preferences';
 import { DormReply, DormRequest, DormViewReply, NativeDormModel, NativeDormSheet } from '../schedule/NativeDormSheet';
 import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
 import { DayShareCardData, dayShareCard, dayShareCardData } from '../schedule/ScheduleDayShareCard';
@@ -184,10 +191,13 @@ import { scheduleSurface } from '../schedule/ScheduleLayout';
 import common from '@ohos.app.ability.common';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import window from '@ohos.window';
+import { LengthMetrics } from '@kit.ArkUI';
 
 interface QaEditorReply { session?: string; hidden?: string[]; priority?: Record<string, number>; saved?: boolean; }
 interface QaAgendaRequest { action?: string; id?: string; date?: string; done?: boolean; on?: boolean; text?: string; data?: NativeAgendaItem; }
 interface QaExtractReply { items: NativeAgendaExtracted[]; message: string; }
+// One card of the gallery: a kind and size of card at a pinned moment, under a set of display options.
+interface QaCardSample { caption: string; binding: ScheduleWidgetBinding; width: number; height: number; now: number; }
 
 @Entry
 @Component
@@ -229,6 +239,19 @@ struct ScheduleAcceptance {
   @State private commonFree: boolean = false;
   // \`--ps panel cards\`: today's card in the four card styles, the last over a photo.
   @State private cardsShown: boolean = false;
+  // \`--ps panel cardGallery --ps cards live|sizes|today|preview|twoDay|options|states\`: the service cards at their
+  // desktop sizes (2×2 149×149, 2×4 320×149, 4×4 320×340), each at a pinned moment of week 10 of the fixture;
+  // \`--ps cardStyle classic|table|paper|board\` draws them in that card style. \`--ps panel cardSettings\` shows the
+  // display options of the cards panel over a sample card. \`--ps cardOptions large,hideCompleted,noWeek,...\`
+  // (auto, small, large, hideCompleted, noProgress, noWeek, noLunar, noHoliday, noResident, noName, noRoom,
+  // noTeacher, noTime; \`default\` for none) saves those options for the cards on the desktop and refreshes them;
+  // the desktop cards read the fixture timetable, which this page writes down like the app does.
+  @StorageProp('qaCards') private cardsPage: string = '';
+  @StorageProp('qaCardStyle') private qaCardStyle: string = 'classic';
+  @StorageProp('qaCardOptions') private cardOptionFlags: string = '';
+  @State private gallery: QaCardSample[] = [];
+  @State private cardSettingsShown: boolean = false;
+  @State private cardOptions: ScheduleWidgetDisplayOptions = defaultWidgetDisplayOptions();
   private cardRows: string = ${JSON.stringify(JSON.stringify([
     { name: '药物化学', start: '08:00', time: '08:00–09:45', meta: '@B202', ended: false, accent: '#2563EB', tint: '#DBEAFE', colorIndex: 1 },
     { name: '药理学', start: '10:00', time: '10:00–11:45', meta: '@C101', ended: false, accent: '#0F766E', tint: '#CCFBF1', colorIndex: 3 },
@@ -356,6 +379,9 @@ struct ScheduleAcceptance {
     if (this.panel === 'overlayPicker') setTimeout(() => this.overlayPicker = true, 600);
     if (this.panel === 'commonFree') setTimeout(() => this.commonFree = true, 600);
     if (this.panel === 'cards') setTimeout(() => this.cardsShown = true, 600);
+    if (this.panel === 'cardGallery') setTimeout(() => this.buildGallery(), 600);
+    if (this.panel === 'cardSettings') setTimeout(() => { this.buildSettingsSample(); this.cardSettingsShown = true; }, 600);
+    this.seedDesktopCards();
     this.dorm.attach((request: DormRequest) => this.dormApi(request), () => undefined);
     if (this.panel.startsWith('dorm')) setTimeout(() => {
       this.dorm.page = this.panel === 'dormFree' ? 'free' : this.panel === 'dormMorning' ? 'morning' : this.panel === 'dormRoom' ? 'room' : 'week';
@@ -563,6 +589,149 @@ struct ScheduleAcceptance {
         onOpen: (schedule: SharedSchedule) => this.openShared(schedule) })
     }
   }
+  private qaCardOptions(flags: string): ScheduleWidgetDisplayOptions {
+    const options = defaultWidgetDisplayOptions();
+    flags.split(',').forEach((raw: string) => {
+      const flag = raw.trim();
+      if (flag === 'auto' || flag === 'small' || flag === 'large') options.textSize = flag;
+      if (flag === 'hideCompleted') options.hideCompleted = true;
+      if (flag === 'noProgress') options.showProgress = false;
+      if (flag === 'noWeek') options.showWeek = false;
+      if (flag === 'noLunar') options.showLunarDate = false;
+      if (flag === 'noHoliday') options.showHoliday = false;
+      if (flag === 'noResident') options.holidayAlwaysVisible = false;
+      if (flag === 'noName') options.showCourseName = false;
+      if (flag === 'noRoom') options.showRoom = false;
+      if (flag === 'noTeacher') options.showTeacher = false;
+      if (flag === 'noTime') options.showTime = false;
+    });
+    return options;
+  }
+  private fixtureRecord(): LocalScheduleRecord | undefined {
+    const snapshot = JSON.parse(this.snapshotJson()) as NativeScheduleSnapshot;
+    return localScheduleRecord(snapshot, (cells: NativeScheduleCell[], day: number, week: number) => this.store.blocksInWeek(cells, day, week), undefined);
+  }
+  // "2026-11-11 10:20" on the device's clock.
+  private qaMoment(value: string): number {
+    return new Date(Number(value.substring(0, 4)), Number(value.substring(5, 7)) - 1, Number(value.substring(8, 10)),
+      Number(value.substring(11, 13)), Number(value.substring(14, 16))).getTime();
+  }
+  private cardSample(record: LocalScheduleRecord, caption: string, formName: string, dimension: number, moment: string, flags: string): QaCardSample {
+    const now = this.qaMoment(moment);
+    const binding = scheduleWidgetBindingAt(record, dimension, formName, this.theme, this.qaCardOptions(flags), now);
+    return { caption: caption, binding: binding, width: dimension === 2 ? 149 : 320, height: dimension === 4 ? 340 : 149, now: now };
+  }
+  // Week 10 of the fixture: Mon 11.09 … Sun 11.15, on the bundled bell times the cards fall back to. Wed has
+  // 09:55–11:35 and 13:30–15:10, Fri 09:55–11:35 and 18:30–21:05, Sat four classes (the first over by ten, the
+  // second on until 15:10), Mon 08:00–09:40 and 13:30–17:05, Sun none.
+  private buildGallery(): void {
+    const record = this.fixtureRecord();
+    if (!record) return;
+    const page = this.cardsPage || 'live';
+    const upcoming = 'schedule_upcoming';
+    const today = 'schedule_today';
+    const twoDay = 'schedule_two_day';
+    const samples: QaCardSample[] = [];
+    const add = (caption: string, formName: string, dimension: number, moment: string, flags: string): void => {
+      samples.push(this.cardSample(record, caption, formName, dimension, moment, flags));
+    };
+    if (page === 'live') {
+      add('临近课程 2×2 · 上课中', upcoming, 2, '2026-11-11 11:12', '');
+      add('临近课程 2×2 · 上课前 25 分钟', upcoming, 2, '2026-11-13 18:05', '');
+      add('临近课程 2×4 · 上课中，还有一个多小时', upcoming, 3, '2026-11-11 10:20', '');
+      add('临近课程 2×4 · 上课前 25 分钟', upcoming, 3, '2026-11-13 18:05', '');
+      add('今日课表 2×4 · 上课中', today, 3, '2026-11-11 10:20', '');
+      add('临近课程 2×4 · 关掉倒计时与进度', upcoming, 3, '2026-11-11 10:20', 'noProgress');
+    } else if (page === 'sizes') {
+      add('临近课程 2×2 · 小', upcoming, 2, '2026-11-11 10:20', 'small');
+      add('临近课程 2×2 · 大', upcoming, 2, '2026-11-11 10:20', 'large');
+      add('只剩一节 · 标准', upcoming, 2, '2026-11-13 18:05', '');
+      add('只剩一节 · 自适应', upcoming, 2, '2026-11-13 18:05', 'auto');
+      add('临近课程 2×4 · 大 · 上课前 25 分钟', upcoming, 3, '2026-11-13 18:05', 'large');
+      add('今日课表 2×4 · 小', today, 3, '2026-11-11 10:20', 'small');
+      add('今日课表 2×4 · 大', today, 3, '2026-11-11 10:20', 'large');
+    } else if (page === 'today') {
+      add('今日课表 4×4 · 周六四门课 · 标准', today, 4, '2026-11-14 10:20', '');
+      add('今日课表 4×4 · 周六四门课 · 大', today, 4, '2026-11-14 10:20', 'large');
+    } else if (page === 'preview') {
+      add('今日课表 4×4 · 自适应 · 周三两门课，预告周四', today, 4, '2026-11-11 10:20', 'auto');
+      add('今日课表 4×4 · 大 · 隐藏已上完的课，预告只剩一行', today, 4, '2026-11-14 10:20', 'hideCompleted,large');
+    } else if (page === 'preview2') {
+      add('今日课表 4×4 · 周五傍晚，预告周六', today, 4, '2026-11-13 18:05', '');
+      add('今日课表 4×4 · 隐藏已上完的课、不显示周次', today, 4, '2026-11-09 14:00', 'hideCompleted,noWeek');
+    } else if (page === 'twoDay') {
+      add('两日课表 4×4 · 周三上课中 · 标准', twoDay, 4, '2026-11-11 10:20', '');
+      add('两日课表 4×4 · 周六 · 大', twoDay, 4, '2026-11-14 10:20', 'large');
+    } else if (page === 'twoDay2') {
+      add('两日课表 4×4 · 今天的课都上完并隐藏', twoDay, 4, '2026-11-09 17:30', 'hideCompleted');
+      add('两日课表 4×4 · 小 · 关掉倒计时与进度', twoDay, 4, '2026-11-14 10:20', 'small,noProgress');
+    } else if (page === 'options') {
+      add('不显示周次、农历、节假日', today, 3, '2026-11-11 10:20', 'noWeek,noLunar,noHoliday');
+      add('不常驻最近节假日', today, 3, '2026-11-11 10:20', 'noResident');
+      add('不显示教室和老师', today, 3, '2026-11-11 10:20', 'noRoom,noTeacher');
+      add('不显示课程名称和上课时间', upcoming, 3, '2026-11-11 10:20', 'noName,noTime');
+    } else {
+      add('明天的课（周日）', upcoming, 2, '2026-11-15 10:00', '');
+      add('明天的课 · 大', upcoming, 2, '2026-11-15 10:00', 'large');
+      add('今日课表 2×4 · 明天的课', today, 3, '2026-11-15 10:00', '');
+      add('寒假 · 休息状态', upcoming, 3, '2027-01-26 10:00', '');
+      add('寒假 · 休息状态 · 自适应', today, 3, '2027-01-26 10:00', 'auto');
+    }
+    this.gallery = samples;
+  }
+  private buildSettingsSample(): void {
+    const record = this.fixtureRecord();
+    if (!record) return;
+    const now = this.qaMoment('2026-11-11 10:20');
+    this.gallery = [{ caption: '', binding: scheduleWidgetBindingAt(record, 3, 'schedule_today', this.theme, this.cardOptions, now),
+      width: 320, height: 149, now: now }];
+  }
+  // The cards on the desktop read what the app writes down: the fixture timetable, the display options
+  // of \`--ps cardOptions\` and the sample 日程.
+  private seedDesktopCards(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.store.attachSnapshotListener((snapshot?: NativeScheduleSnapshot) => {
+      void saveLocalScheduleSnapshot(context, snapshot, (cells: NativeScheduleCell[], day: number, week: number) => {
+        return this.store.blocksInWeek(cells, day, week);
+      }).catch(() => undefined);
+    });
+    if (!this.cardOptionFlags) return;
+    void saveScheduleWidgetDisplayOptions(context, this.qaCardOptions(this.cardOptionFlags)).then(async () => {
+      const prefs = await preferences.getPreferences(context, 'native_agenda');
+      await prefs.put('items', JSON.stringify(this.agendaItems));
+      await prefs.flush();
+      await refreshAllScheduleForms(context);
+    }).catch(() => undefined);
+  }
+  @Builder
+  private galleryCard(sample: QaCardSample) {
+    Column({ space: 4 }) {
+      if (sample.caption) {
+        Text(sample.caption).fontSize(11).fontColor('#FFFFFF').maxLines(1).width(sample.width)
+      }
+      Column() {
+        ScheduleCardView({ state: sample.binding.state, title: sample.binding.title, subtitle: sample.binding.subtitle,
+          leftTitle: sample.binding.leftTitle, rightTitle: sample.binding.rightTitle,
+          primaryCourses: sample.binding.primaryCourses, secondaryCourses: sample.binding.secondaryCourses,
+          footer: sample.binding.footer, theme: sample.binding.theme, accent: sample.binding.accent,
+          semester: sample.binding.semester, currentWeek: sample.binding.currentWeek,
+          primaryWeek: sample.binding.primaryWeek, secondaryWeek: sample.binding.secondaryWeek,
+          primaryRemaining: sample.binding.primaryRemaining, secondaryRemaining: sample.binding.secondaryRemaining,
+          dimension: sample.binding.dimension, variant: sample.binding.variant, layout: sample.binding.layout,
+          mode: sample.binding.mode, dayNote: sample.binding.dayNote, badge: sample.binding.badge,
+          restTitle: sample.binding.restTitle, restDetail: sample.binding.restDetail, lockLine: sample.binding.lockLine,
+          leadLabel: sample.binding.leadLabel, trailLabel: sample.binding.trailLabel, rightNote: sample.binding.rightNote,
+          lunar: sample.binding.lunar, badgeStatutory: sample.binding.badgeStatutory, rightLunar: sample.binding.rightLunar,
+          rightBadge: sample.binding.rightBadge, rightBadgeStatutory: sample.binding.rightBadgeStatutory,
+          cardStyle: this.qaCardStyle, textSize: sample.binding.textSize, showProgress: sample.binding.showProgress,
+          showWeek: sample.binding.showWeek, hideCompleted: sample.binding.hideCompleted, countdown: sample.binding.countdown,
+          primaryEmpty: sample.binding.primaryEmpty, previewLabel: sample.binding.previewLabel,
+          previewDetail: sample.binding.previewDetail, previewCourses: sample.binding.previewCourses,
+          previewCount: sample.binding.previewCount, previewSummary: sample.binding.previewSummary, pinnedNow: sample.now })
+      }.width(sample.width).height(sample.height)
+    }
+  }
   private cycleTheme(): void {
     const index = SCHEDULE_PALETTES.findIndex((item) => item.key === this.store.palette);
     this.store.palette = SCHEDULE_PALETTES[(index + 1) % SCHEDULE_PALETTES.length].key;
@@ -593,6 +762,28 @@ struct ScheduleAcceptance {
             }, (style: string) => style)
           }.width('100%').padding({ left: 16, right: 16, top: 60, bottom: 120 })
         }.width('100%').height('100%').backgroundColor('#8090A0').onClick(() => this.cardsShown = false)
+      }
+      if (this.gallery.length > 0 && !this.cardSettingsShown) {
+        Scroll() {
+          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center, space: { main: LengthMetrics.vp(12), cross: LengthMetrics.vp(10) } }) {
+            ForEach(this.gallery, (sample: QaCardSample) => {
+              this.galleryCard(sample)
+            }, (sample: QaCardSample) => sample.caption + sample.now)
+          }.width('100%').padding({ left: 12, right: 12, top: this.topPadding() + 8, bottom: 24 })
+        }.width('100%').height('100%').backgroundColor(this.store.dark ? '#28323C' : '#8090A0').scrollBar(BarState.Off)
+      }
+      if (this.cardSettingsShown) {
+        Scroll() {
+          Column({ space: 20 }) {
+            ForEach(this.gallery, (sample: QaCardSample) => {
+              this.galleryCard(sample)
+            }, (sample: QaCardSample) => JSON.stringify(sample.binding))
+            ScheduleCardSettings({ options: this.cardOptions, onChange: (options: ScheduleWidgetDisplayOptions) => {
+              this.cardOptions = options;
+              this.buildSettingsSample();
+            } })
+          }.width('100%').padding({ left: 20, right: 20, top: this.topPadding() + 8, bottom: 40 })
+        }.width('100%').height('100%').backgroundColor($r('app.color.app_surface')).scrollBar(BarState.Off)
       }
       if (this.cardShown) {
         Scroll() { Column() { this.shareCardBuilder() }.scale({ x: 0.66, y: 0.66 }) }.width('100%').height('100%')
@@ -641,6 +832,9 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaCrop', String(want.parameters?.crop ?? ''));
     AppStorage.setOrCreate('qaHoliday', String(want.parameters?.holiday ?? ''));
     AppStorage.setOrCreate('qaDorm', String(want.parameters?.dorm ?? ''));
+    AppStorage.setOrCreate('qaCards', String(want.parameters?.cards ?? ''));
+    AppStorage.setOrCreate('qaCardStyle', String(want.parameters?.cardStyle ?? 'classic'));
+    AppStorage.setOrCreate('qaCardOptions', String(want.parameters?.cardOptions ?? ''));
     const routedUrl =`);
 put('entry/src/main/ets/entryability/EntryAbility.ets', ability);
 // A photo for the background checks.
