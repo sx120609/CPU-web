@@ -16,8 +16,16 @@ function hash(value: string) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function randomCode() {
-  return crypto.randomBytes(8).toString("base64url").replace(/[-_]/g, "").toUpperCase().replace(/[01IO]/g, "X").slice(0, 8);
+// Thirty-two characters, none of 0 1 I O: every byte maps to one of them evenly.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/**
+ * Always eight characters of `CODE_PATTERN`. The code used to be cut from base64url with `-` and
+ * `_` dropped, so about one in six thousand came out shorter than eight and could be published
+ * but never read back.
+ */
+export function randomShareCode() {
+  return Array.from(crypto.randomBytes(8), (byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join("");
 }
 
 export function normalizeSchedulePayload(input: ScheduleShareInput) {
@@ -85,10 +93,10 @@ export async function createScheduleShare(userId: number, input: ScheduleShareIn
     });
     return { ...publicShare(row), created: false, changed: true };
   }
-  let code = randomCode();
+  let code = randomShareCode();
   for (let attempt = 0; attempt < 5; attempt += 1) {
     if (!await prisma.scheduleShare.findUnique({ where: { code }, select: { code: true } })) break;
-    code = randomCode();
+    code = randomShareCode();
   }
   const writeToken = `cpu_share_${crypto.randomBytes(24).toString("base64url")}`;
   const row = await prisma.scheduleShare.create({

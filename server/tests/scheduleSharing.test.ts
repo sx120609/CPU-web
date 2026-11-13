@@ -5,7 +5,7 @@ import express from "express";
 import { prisma } from "../src/prisma";
 import { errorHandler } from "../src/middleware/error";
 import { scheduleShareRouter } from "../src/routes/scheduleShares";
-import { normalizeSchedulePayload } from "../src/services/scheduleSharing";
+import { normalizeSchedulePayload, randomShareCode } from "../src/services/scheduleSharing";
 import { signToken } from "../src/utils/jwt";
 
 // 这里不连数据库：用内存里的表顶替 prisma.scheduleShare 和 prisma.user，
@@ -184,4 +184,12 @@ test("the body the iOS app publishes is accepted and comes back unchanged", asyn
     assert.deepEqual(read.schedule, body.schedule);
     assert.deepEqual(read.calendar, body.calendar);
   });
+});
+
+test("every share code can be read back: eight characters, none of them 0 1 I O", () => {
+  // The old generator dropped `-` and `_` from base64url and sometimes ran short of eight.
+  const codes = Array.from({ length: 50_000 }, randomShareCode);
+  assert.ok(codes.every((code) => /^[A-HJ-NP-Z2-9]{8}$/.test(code)));
+  assert.ok(new Set(codes).size > 49_990, "and they do not repeat");
+  assert.equal(new Set(codes.join("")).size, 32, "all thirty-two characters turn up");
 });
