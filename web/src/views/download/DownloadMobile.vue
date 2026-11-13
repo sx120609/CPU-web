@@ -53,6 +53,11 @@
       <span class="dl-m-item-id"><b>不安装也能用</b><small>临时访问可直接打开网页版</small></span>
       <AppIcon class="dl-m-chevron" name="arrow-right" />
     </router-link>
+    <router-link class="dl-m-web" to="/changelog">
+      <span class="dl-tile" aria-hidden="true"><AppIcon name="document" /></span>
+      <span class="dl-m-item-id"><b>更新日志</b><small>每个版本带来了什么</small></span>
+      <AppIcon class="dl-m-chevron" name="arrow-right" />
+    </router-link>
   </div>
 </template>
 

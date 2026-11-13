@@ -106,6 +106,11 @@ export type SchoolInfo = SchoolSummary & {
   tools: Array<{ slug: string; module: string }>;
 };
 
+export type ChangelogPlatform = "android" | "harmony" | "ios";
+/** 一个已发布的版本；date 只知道月份时写成 "2026-11"，不清楚时没有。 */
+export type ChangelogRelease = { version: string; build: number; date?: string; notes: string[] };
+export type AppChangelog = Record<ChangelogPlatform, ChangelogRelease[]>;
+
 export const siteApi = {
   features: () => request.get<FeatureMap>("/site/features"),
   school: () => request.get<SchoolInfo>("/schools/current", undefined, { suppressErrorMessage: true }),
@@ -117,6 +122,7 @@ export const siteApi = {
   macDesktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop-mac", undefined, { suppressErrorMessage: true }),
   iosAppUpdate: () => request.get<IosAppUpdateStatus>("/app-clients/ios/update", undefined, { suppressErrorMessage: true }),
   harmonyAppUpdate: (versionCode: number) => request.get<HarmonyAppUpdateStatus>("/app-clients/harmony/update", { versionCode }, { suppressErrorMessage: true }),
+  changelog: () => request.get<AppChangelog>("/app-clients/changelog", undefined, { suppressErrorMessage: true }),
   assessmentFormDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/assessment-form", undefined, { suppressErrorMessage: true }),
 };
 

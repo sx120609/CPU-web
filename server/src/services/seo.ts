@@ -134,6 +134,11 @@ const STATIC_PAGES: Record<string, StaticPage> = {
     description: `${SEO_SCHOOL.brandName}使用教程：课表、日程、教务数据、论坛、校园服务和各端 App 的用法，按章节挑着看。`,
     sitemap: true,
   },
+  "/changelog": {
+    title: "更新日志",
+    description: `${SEO_SCHOOL.brandName}安卓、鸿蒙和 iOS App 每个版本的更新内容。`,
+    sitemap: true,
+  },
   "/thanks": { title: "致谢", description: `感谢为${SEO_SCHOOL.brandName}提供帮助、建议和支持的同学与朋友。`, sitemap: true },
   "/sponsor": { title: `支持${SEO_SCHOOL.brandName}`, description: `支持${SEO_SCHOOL.brandName}的持续运营。` },
   "/search": { title: "拾间AI", description: `${SEO_SCHOOL.brandName}的 AI 助手，可以查询校园事务、部门联系方式和最新通知。` },

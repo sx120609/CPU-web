@@ -1014,6 +1014,12 @@ export const guideChapters: GuideChapter[] = [
           "第一次打开时，Windows 可能提示“已保护你的电脑”，点「更多信息」→「仍要运行」；Mac 到「系统设置」→「隐私与安全性」里点「仍要打开」。",
         ],
       },
+      {
+        id: "changelog",
+        title: "每个版本更新了什么",
+        body: ["「更新日志」页按安卓、鸿蒙、iOS 分开列出每个版本带来的变化，最新的排在最前面，点开某一版看它的内容。在 App 里打开时，会标出你手上的是哪一版。"],
+        link: { label: "更新日志", to: "/changelog" },
+      },
     ],
   },
 

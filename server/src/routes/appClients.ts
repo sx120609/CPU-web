@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { androidClientHeartbeatSchema, androidClientMetricsSchema, recordAndroidClientHeartbeat, recordAndroidClientMetrics } from "../services/androidClientStats";
+import { getChangelog } from "../services/changelog";
 import { desktopInstallReportSchema, recordDesktopInstallReport } from "../services/desktopInstallReports";
 import { harmonyClientHeartbeatSchema, recordHarmonyClientHeartbeat } from "../services/harmonyClientStats";
 import { getHarmonyAppUpdateStatus } from "../services/harmonyAppUpdate";
@@ -49,6 +50,15 @@ appClientRouter.get("/harmony/update", async (req, res, next) => {
   if (!Number.isSafeInteger(versionCode) || versionCode < 1) return ok(res, { updateAvailable: false });
   try {
     ok(res, await getHarmonyAppUpdateStatus(versionCode));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// What each released version of the apps brought, for the /changelog page.
+appClientRouter.get("/changelog", async (_req, res, next) => {
+  try {
+    ok(res, await getChangelog());
   } catch (error) {
     next(error);
   }

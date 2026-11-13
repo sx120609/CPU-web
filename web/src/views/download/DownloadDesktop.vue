@@ -55,7 +55,7 @@
     <section class="dl-d-all" aria-labelledby="dl-d-all-title">
       <header class="dl-d-section-head">
         <h2 id="dl-d-all-title">全部平台</h2>
-        <p>桌面端版本信息实时读取发布源</p>
+        <p>桌面端版本信息实时读取发布源 · <router-link to="/changelog">手机端更新日志</router-link></p>
       </header>
 
       <div v-for="group in groups" :key="group.key" class="dl-d-group">
@@ -233,6 +233,7 @@ function forwardDownload(platform: DownloadPlatform, event: MouseEvent) {
 .dl-d-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0 2px; }
 .dl-d-section-head h2 { font-size: var(--cpu-fs-xl); font-weight: 700; }
 .dl-d-section-head p { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.dl-d-section-head p a { color: var(--cpu-primary); text-decoration: none; }
 .dl-d-group { display: flex; flex-direction: column; gap: 8px; }
 .dl-d-group h3 { padding: 0 2px; }
 

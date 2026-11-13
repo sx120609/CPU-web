@@ -609,6 +609,16 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["鸣谢墙", "赞助", "支持网站", "支持药大拾间", "赞助计划", "捐助", "赞助者"],
   },
   {
+    id: "changelog",
+    label: "更新日志",
+    description: "查看药大拾间安卓、鸿蒙和 iOS App 每个版本的更新内容",
+    url: "/changelog",
+    icon: "🆕",
+    owner: "药大拾间",
+    requireLogin: false,
+    keywords: ["更新日志", "更新内容", "新版本", "版本更新", "更新了什么", "新功能", "版本记录"],
+  },
+  {
     id: "guide",
     label: "使用教程",
     description: "按章节查看药大拾间各项功能和各端 App 的用法",
@@ -1244,6 +1254,14 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     source: "药大拾间使用教程页面",
     sourceRef: "https://cputime.cn/guide",
     verifiedAt: "2026-11-11",
+  },
+  {
+    id: "changelog-page-2026-11",
+    relatedActionIds: ["changelog"],
+    fact: "更新日志：https://cputime.cn/changelog 按安卓、鸿蒙、iOS 分开列出药大拾间 App 每个已发布版本带来的新功能和修复，最新的排在最前面；在 App 里打开会标出手上的是哪一版。页脚、手机“我的”和客户端下载页都有入口。",
+    source: "药大拾间更新日志页面",
+    sourceRef: "https://cputime.cn/changelog",
+    verifiedAt: "2026-11-13",
   },
   {
     id: "thanks-page-2026-10",

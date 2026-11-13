@@ -156,6 +156,8 @@ $candidatePath = [IO.Path]::GetFullPath((Join-Path $outDir 'candidate.json'))
 
 `$versionCode` / `$versionName` 取自实际候选 Gradle 文件。使用无 BOM 的 UTF-8，避免 Windows 文本编码导致 JSON 解析失败。`notes` 必填，取自 `android/release-notes.json` 里同一 versionCode 的条目，网页更新弹窗、App 的“应用更新”面板和更新后的“更新完成”提示都显示它；发布清单的 `notes` 与该文件不一致时 CI 失败。
 
+同一次提交在 `server/src/releases/changelog.json` 的 `android` 最前面补上这一版（`version`、`build` 即 versionCode、发布日期 `date`、`notes`），网页的“更新日志”（`/changelog`）按它显示。`notes` 只写这一版相对上一版新增的内容，不重复前几版已经列过的条目。没有这一条时 `server/tests/changelog.test.ts` 会让 CI 失败。鸿蒙、iOS 提交商店审核时在同一文件的 `harmony`、`ios` 里补一条并写 `"pending": true`：商店在售版本达到它之后才会显示，不用再回来改。
+
    接着为上一版生成增量包。底版必须是当时发布到企业盘的那个签名 APK（`web/public/downloads/` 里上一版的副本或企业盘原文件），逐字节相同：
 
    ```powershell

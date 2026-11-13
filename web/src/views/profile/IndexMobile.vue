@@ -338,6 +338,7 @@
         <ProfileRowMobile v-if="!hidesClientDownloads()" :icon="Download" title="客户端下载" tone="#2563eb" @click="router.push('/download')" />
         <ProfileRowMobile v-if="!inWechat" :icon="ChatDotRound" title="关注服务号" tone="#07c160" @click="wechatFollowOpen = true" />
         <ProfileRowMobile :icon="Reading" title="使用教程" tone="#0f766e" @click="router.push('/guide')" />
+        <ProfileRowMobile v-if="site.clientAppsAvailable" :icon="Clock" title="更新日志" tone="#7c3aed" @click="router.push('/changelog')" />
         <ProfileRowMobile :icon="Medal" title="致谢" tone="#b45309" @click="router.push('/thanks')" />
       </div>
     </section>
@@ -506,6 +507,7 @@ import {
   Camera,
   ChatDotRound,
   CircleCheck,
+  Clock,
   Coin,
   Download,
   EditPen,

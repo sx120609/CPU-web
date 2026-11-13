@@ -24,6 +24,7 @@
           <h2>关于</h2>
           <a href="/about.html">了解我们</a>
           <router-link to="/thanks">致谢</router-link>
+          <router-link v-if="site.clientAppsAvailable" to="/changelog">更新日志</router-link>
           <a href="https://status.cputime.cn" target="_blank" rel="noopener noreferrer">服务状态</a>
           <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
