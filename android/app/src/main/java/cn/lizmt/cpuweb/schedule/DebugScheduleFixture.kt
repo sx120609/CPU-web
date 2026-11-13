@@ -111,6 +111,19 @@ object DebugScheduleFixture {
         intent.getStringExtra("debugWidgetBackground")?.let { path ->
             android.graphics.BitmapFactory.decodeFile(path)?.let { activity.widgets.setPhoto(it) }
         }
+        // "debugWidgetNow 2026-11-11T10:20": the moment the widgets and their previews draw (absent: the real clock).
+        ScheduleWidgetClock.pin(activity, intent.getStringExtra("debugWidgetNow"))
+        // 小组件的显示设置, e.g. "auto,hideCompleted,noBreaks,noWeek,noProgress,noHoliday" (absent: left as they are).
+        intent.getStringExtra("debugWidgetDisplay")?.split(',')?.map { it.trim() }?.let { flags ->
+            activity.widgets.updateDisplay { display ->
+                display.textSize = flags.firstOrNull { it in setOf("auto", "small", "large") } ?: "standard"
+                display.hideCompleted = "hideCompleted" in flags
+                display.showBreaks = "noBreaks" !in flags
+                display.showWeek = "noWeek" !in flags
+                display.showProgress = "noProgress" !in flags
+                display.holidayAlwaysVisible = "noHoliday" !in flags
+            }
+        }
         sheet = intent.getStringExtra("debugSheet").orEmpty()
         // Display settings for a screenshot, e.g. "sundayFirst,offWeek,teacher,rows=140".
         intent.getStringExtra("debugDisplay")?.split(',')?.map { it.trim() }?.let { flags ->
