@@ -639,11 +639,15 @@ export struct NativeScheduleBody {
         if (scheduleStyleLayout(this.store.visualStyle).course === 'departure' && !this.tileTiny(block, dayRow)) {
           Row({ space: 3 }) {
             // The board has no fill and no bar, so a small course-colour mark sits beside the start time.
-            Column().width(this.tileSmall(block, dayRow) ? 5 : 7).height(this.tileSmall(block, dayRow) ? 5 : 7).borderRadius(1)
-              .backgroundColor(this.coupleTintOf(block) ? this.tileAccent(block)
-                : scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette),
-                  this.tileInverse(block, day) ? !this.store.dark : this.store.dark))
-            Text(this.blockStart(block)).fontSize(this.tileSmall(block, dayRow) ? 10 : 14).fontWeight(FontWeight.Bolder)
+            // A person's card in the week grid is filled in their colour already and has no room for it.
+            if (!this.tileTight(block, dayRow)) {
+              Column().width(this.tileSmall(block, dayRow) ? 5 : 7).height(this.tileSmall(block, dayRow) ? 5 : 7).borderRadius(1)
+                .backgroundColor(this.coupleTintOf(block) ? this.tileAccent(block)
+                  : scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette),
+                    this.tileInverse(block, day) ? !this.store.dark : this.store.dark))
+            }
+            Text(this.blockStart(block)).fontSize(this.tileSmall(block, dayRow) || this.tileTight(block, dayRow) ? 10 : 14)
+              .fontWeight(FontWeight.Bolder)
               .fontFamily('monospace').fontColor(this.tileInk(block, day)).maxLines(1)
           }
         }
@@ -671,8 +675,9 @@ export struct NativeScheduleBody {
       }.width('100%').height('100%')
         .alignItems(this.tileCentered(dayRow) ? HorizontalAlign.Center : HorizontalAlign.Start)
         .justifyContent(this.tileCentered(dayRow) || dayRow ? FlexAlign.Center : FlexAlign.Start)
-        .padding({ left: this.tileStripe() + (dayRow ? 12 : this.tileSmall(block, dayRow) ? 3 : 7),
-          right: (dayRow ? 12 : this.tileSmall(block, dayRow) ? 3 : 7) + (dayRow && block.lanes === 1 && this.tileStatus(block, day) ? 84 : 0),
+        .padding({ left: this.tileStripe() + (dayRow ? 12 : this.tileSmall(block, dayRow) || this.tileTight(block, dayRow) ? 3 : 7),
+          right: (dayRow ? 12 : this.tileSmall(block, dayRow) || this.tileTight(block, dayRow) ? 3 : 7)
+            + (dayRow && block.lanes === 1 && this.tileStatus(block, day) ? 84 : 0),
           top: this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6,
           bottom: (this.tileTiny(block, dayRow) ? 1 : this.tileCompact(dayRow) ? 2 : this.tileShort(block, dayRow) ? 3 : 6)
             + (this.tileNoted(block) ? COUPLE_NOTE_SPACE : 0) })
@@ -1616,6 +1621,12 @@ export struct NativeScheduleBody {
   }
   private tileCentered(dayRow: boolean): boolean { return scheduleStyleLayout(this.store.visualStyle).centered && !dayRow; }
   // The course-colour bar on the leading edge; the text clears it by the same amount.
+  // The board's start time in a person's bordered card of the merged week grid: the full-size time
+  // was cut off at the card's edge («08:0»), so it is set small, without the colour mark, on a narrow margin.
+  private tileTight(block: PlacedCourseBlock, dayRow: boolean): boolean {
+    return !dayRow && this.store.visualStyle === 'board' && !!this.coupleTintOf(block);
+  }
+
   private tileStripe(): number {
     const course = scheduleStyleLayout(this.store.visualStyle).course;
     return course === 'stripe' ? 3 : course === 'ink' ? 2 : 0;

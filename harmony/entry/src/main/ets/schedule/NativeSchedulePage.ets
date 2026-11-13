@@ -15,6 +15,9 @@ import { COUPLE_ACCENT, NativeScheduleCoupleModel } from './NativeScheduleCouple
 import { couplePersonTone } from './ScheduleCouple';
 import { NativeOccurrenceEditor, NativeOccurrenceEditorModel } from './NativeOccurrenceEditor';
 import { ScheduleOverlayStrip } from './ScheduleOverlayStrip';
+import { overlayStripHintDue, overlayStripWanted } from './ScheduleOverlay';
+import { SCHEDULE_GUIDE_VERSION, scheduleGuideDue, scheduleGuideItems, scheduleGuideLayoutAction,
+  scheduleGuideStyleAction } from './ScheduleGuide';
 import { backgroundCropRect } from './NativeBackgroundCrop';
 import { cancelledKeysOf, courseQuickActions, CourseQuickAction, movedKeys, occurrenceDateText, occurrenceKeysOf,
   originalSlotsOf } from './ScheduleOccurrences';
@@ -27,7 +30,8 @@ const STYLED_STRIP: number = 50;
 
 @Component
 export struct NativeSchedulePage {
-  @ObjectLink store: NativeScheduleStore;
+  // Watched so the guide can open as soon as the courses arrive.
+  @ObjectLink @Watch('checkGuide') store: NativeScheduleStore;
   // The couple timetable; a read-only shared timetable gets one that is not bound.
   @ObjectLink couple: NativeScheduleCoupleModel;
   @Prop bottomClearance: number = 100;
@@ -54,6 +58,12 @@ export struct NativeSchedulePage {
   onAgenda?: () => void;
   // Closes a read-only shared timetable.
   onClose: () => void = () => undefined;
+  // 课表怎么用: the timetable is what the user is looking at and no other panel is open, so the guide may open.
+  @Prop @Watch('checkGuide') guideAllowed: boolean = false;
+  // The guide opened by itself: remember it on this device.
+  onGuideSeen: () => void = () => undefined;
+  // 换回经典 in the guide: the style changes and is saved.
+  onClassic: () => void = () => undefined;
   // Pins "now" (minutes since midnight) for acceptance screenshots; -1 follows the clock.
   @Prop @Watch('tick') pinnedNow: number = -1;
   // The acceptance harness opens a sheet of this page once the timetable is there (`--ps panel …`).
@@ -81,6 +91,11 @@ export struct NativeSchedulePage {
   @State private occurrence: NativeOccurrenceEditorModel = new NativeOccurrenceEditorModel();
   // 更多: NapTable's grouped tools sheet.
   @State private toolsVisible: boolean = false;
+  // 课表怎么用.
+  @State private guideVisible: boolean = false;
+  // 换回经典 was pressed in the guide that is open.
+  @State private guideRestored: boolean = false;
+  private guideTimer: number = -1;
   private detailBlock?: NativeCourseBlock;
   private weekController: SwiperController = new SwiperController();
   private dayController: SwiperController = new SwiperController();
@@ -95,6 +110,35 @@ export struct NativeSchedulePage {
 
   aboutToDisappear(): void {
     clearInterval(this.nowTimer);
+    clearTimeout(this.guideTimer);
+  }
+
+  // The guide opens by itself once, a moment after the user's own courses are on screen.
+  private guideDue(): boolean {
+    return scheduleGuideDue(this.store.guideSeen, !!this.store.result && this.store.weekOptions().length > 0, this.store.readOnly,
+      this.guideAllowed, this.sheetOpen());
+  }
+
+  private checkGuide(): void {
+    if (this.guideTimer >= 0 || !this.guideDue()) return;
+    this.guideTimer = setTimeout(() => {
+      this.guideTimer = -1;
+      if (!this.guideDue()) return;
+      this.store.guideSeen = SCHEDULE_GUIDE_VERSION;
+      this.onGuideSeen();
+      this.openGuide();
+    }, 900);
+  }
+
+  private openGuide(): void {
+    this.guideRestored = false;
+    // The guide's 和 TA 一起看 says what the strip's note says.
+    if (this.couple.together()) this.couple.markStripHintSeen();
+    this.guideVisible = true;
+  }
+
+  private sheetOpen(): boolean {
+    return this.store.detailVisible || this.store.weekPickerVisible || this.occurrence.visible || this.toolsVisible || this.guideVisible;
   }
 
   private runDebugAction(): void {
@@ -111,12 +155,14 @@ export struct NativeSchedulePage {
       }
       if (action === 'courseDetail' && blocks.length) this.openDetail(blocks[0], day, '', date);
       if (action === 'tools') this.toolsVisible = true;
+      if (action === 'guide') this.openGuide();
     }, 600);
   }
 
   private tick(): void {
     const minutes = this.pinnedNow >= 0 ? this.pinnedNow : scheduleMinutesNow(Date.now());
     if (this.store.nowMinutes !== minutes) this.store.nowMinutes = minutes;
+    this.checkGuide();
   }
 
   build() {
@@ -176,14 +222,17 @@ export struct NativeSchedulePage {
             }.width('100%').height('100%')
           } else if (this.stripShown()) {
             // Somebody else's timetable laid over: NapTable's strip of days side by side.
-            Scroll() {
-              ScheduleOverlayStrip({ store: this.store, couple: this.couple, pageWidth: this.pageWidth, contentHeight: this.contentHeight,
-                selection: this.store.rawDate(this.store.selectedDay),
-                revision: `${this.store.selectedSemester}|${this.store.dataRevision}|${this.couple.revision}|${this.store.periods.length}`,
-                onCourse: (block: NativeCourseBlock, shownDay: number, date: string) => this.openDetail(block, shownDay, '', date),
-                onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
-                onOpenDay: (date: string) => { this.store.openDate(date); } })
-            }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
+            Column() {
+              if (overlayStripHintDue(true, this.couple.stripHintSeen)) this.stripHint()
+              Scroll() {
+                ScheduleOverlayStrip({ store: this.store, couple: this.couple, pageWidth: this.pageWidth, contentHeight: this.contentHeight,
+                  selection: this.store.rawDate(this.store.selectedDay),
+                  revision: `${this.store.selectedSemester}|${this.store.dataRevision}|${this.couple.revision}|${this.store.periods.length}`,
+                  onCourse: (block: NativeCourseBlock, shownDay: number, date: string) => this.openDetail(block, shownDay, '', date),
+                  onPeek: (block: NativeCourseBlock, shownDay: number, note: string) => this.openDetail(block, shownDay, note || ' '),
+                  onOpenDay: (date: string) => { this.store.openDate(date); } })
+              }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
+            }.width('100%').height('100%')
           } else if (this.store.weekOptions().length) {
             Swiper(this.weekController) {
               ForEach(this.store.weekOptions(), (week: NativeScheduleWeek, index: number) => {
@@ -220,11 +269,12 @@ export struct NativeSchedulePage {
         .padding({ left: scheduleGridMetrics(this.pageWidth, this.contentHeight).inset, right: scheduleGridMetrics(this.pageWidth, this.contentHeight).inset, top: 4 })
     }.width('100%').height('100%')
       .onAreaChange((_old: Area, next: Area) => { this.pageWidth = Number(next.width); this.pageHeight = Number(next.height); })
-      .bindSheet(this.store.detailVisible || this.store.weekPickerVisible || this.occurrence.visible || this.toolsVisible, this.scheduleSheet(), {
+      .bindSheet(this.sheetOpen(), this.scheduleSheet(), {
         height: SheetSize.FIT_CONTENT, showClose: true, dragBar: true,
         onWillDismiss: (action: DismissSheetAction) => { if (!this.occurrence.busy) action.dismiss(); },
         onDisappear: () => {
           this.store.detailVisible = false; this.store.weekPickerVisible = false; this.occurrence.visible = false; this.toolsVisible = false;
+          this.guideVisible = false;
         }
       })
   }
@@ -409,9 +459,29 @@ export struct NativeSchedulePage {
       .backgroundColor(this.store.backgroundPath ? this.surfaceColor() : Color.Transparent)
   }
 
-  // The week view while somebody else's timetable is laid over the user's.
+  // The week view while somebody else's timetable is laid over the user's and 一起看的周视图 is 并排.
+  // With 合并 the week is the one grid both people's courses are drawn in.
   private stripShown(): boolean {
-    return this.store.viewMode === 'week' && !this.store.readOnly && this.couple.showing() && !!this.store.calendar?.weeks?.length;
+    return overlayStripWanted(this.store.viewMode, this.store.readOnly, this.couple.showing(), !!this.store.calendar?.weeks?.length,
+      this.couple.weekLayout);
+  }
+
+  // Shown over the strip until it is closed or the layout is chosen: the strip replaced a grid people knew.
+  @Builder
+  private stripHint() {
+    Row({ space: 6 }) {
+      Text('两人的课并排显示，左右滑动换天。').fontSize(12).fontColor(this.textColor()).layoutWeight(1)
+        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text('改回合并').fontSize(12).fontWeight(600).fontColor(this.accentColor()).padding({ left: 8, right: 8, top: 6, bottom: 6 })
+        .borderRadius(10).backgroundColor(scheduleTint(this.accentColor(), 0.14))
+        .id('schedule-strip-merge').accessibilityText('改回合并，两人的课排在同一张周课表里')
+        .onClick(() => this.couple.setWeekLayout('merged'))
+      SymbolGlyph($r('sys.symbol.xmark')).fontSize(12).fontColor([this.secondaryColor()]).padding(6)
+        .responseRegion({ x: -8, y: -8, width: 40, height: 40 })
+        .id('schedule-strip-hint-close').accessibilityText('关闭提示')
+        .onClick(() => this.couple.markStripHintSeen())
+    }.width('100%').padding({ left: 12, right: 6, top: 4, bottom: 4 }).margin({ bottom: 6 }).borderRadius(12)
+      .backgroundColor(this.softSurfaceColor())
   }
 
   @Builder
@@ -609,6 +679,8 @@ export struct NativeSchedulePage {
     // 更多 keeps its title still and scrolls only the list, so the sheet's close button never sits on a row.
     if (this.toolsVisible) {
       this.toolsSheet()
+    } else if (this.guideVisible) {
+      this.guideSheet()
     } else {
     Scroll() {
     if (this.occurrence.visible) {
@@ -854,6 +926,81 @@ export struct NativeSchedulePage {
     });
   }
 
+  // ---- 课表怎么用 ----
+
+  // A few short rows; two of them can undo what recent versions changed by themselves (the default style
+  // and the strip of days), right here.
+  @Builder
+  private guideSheet() {
+    Column({ space: 14 }) {
+      Text('课表怎么用').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.textColor()).width('100%')
+        .padding({ right: 48 })
+      Column() {
+        ForEach(scheduleGuideItems(this.couple.together()), (item: string, index: number) => {
+          if (index > 0) Divider().color(scheduleAlpha(this.secondaryColor(), 0.18)).margin({ left: 56 })
+          this.guideRow(item)
+        }, (item: string) => item)
+      }.width('100%').borderRadius(16).backgroundColor(this.softSurfaceColor()).clip(true)
+      Button('知道了').width('100%').height(44).fontSize(15).fontColor($r('app.color.app_on_accent'))
+        .backgroundColor($r('app.color.app_accent')).id('schedule-guide-done')
+        .onClick(() => this.guideVisible = false)
+    }.width('100%').padding({ left: 16, right: 16, top: 24, bottom: 24 }).backgroundColor(this.surfaceColor())
+  }
+
+  // One fixed string in: what the row shows is read from `this`, so the buttons follow the style and the layout.
+  @Builder
+  private guideRow(item: string) {
+    Row({ space: 12 }) {
+      Stack() { SymbolGlyph(this.guideIcon(item)).fontSize(17).fontColor(['#FFFFFF']) }
+        .width(30).height(30).borderRadius(9).backgroundColor(this.guideTint(item))
+      Column({ space: 3 }) {
+        Text(this.guideTitle(item)).fontSize(15).fontWeight(600).fontColor(this.textColor()).width('100%')
+        Text(this.guideDetail(item)).fontSize(12).fontColor(this.secondaryColor()).width('100%')
+      }.layoutWeight(1)
+      if (this.guideAction(item) === 'offer') {
+        Text(item === 'style' ? '换回经典' : '改回合并').fontSize(12).fontWeight(600).fontColor(this.accentColor())
+          .padding({ left: 10, right: 10, top: 7, bottom: 7 }).borderRadius(10)
+          .backgroundColor(scheduleTint(this.accentColor(), 0.14))
+          .id('schedule-guide-' + item)
+          .onClick(() => {
+            if (item === 'style') { this.guideRestored = true; this.onClassic(); }
+            else this.couple.setWeekLayout('merged');
+          })
+      } else if (this.guideAction(item) === 'done') {
+        Text(item === 'style' ? '已换回' : '已改回').fontSize(12).fontColor(this.secondaryColor())
+          .padding({ left: 10, right: 10, top: 7, bottom: 7 }).id('schedule-guide-' + item + '-done')
+      }
+    }.width('100%').padding({ left: 14, right: 12, top: 12, bottom: 12 }).alignItems(VerticalAlign.Center)
+      .accessibilityGroup(this.guideAction(item) !== 'offer')
+  }
+
+  private guideAction(item: string): string {
+    if (item === 'style') return scheduleGuideStyleAction(this.store.visualStyle, this.guideRestored);
+    if (item === 'together') return scheduleGuideLayoutAction(this.couple.weekLayout);
+    return '';
+  }
+
+  private guideIcon(item: string): Resource {
+    return item === 'tap' ? $r('sys.symbol.calendar') : item === 'style' ? $r('sys.symbol.paintpalette')
+      : item === 'together' ? $r('sys.symbol.heart_fill') : $r('sys.symbol.square_grid_2x2');
+  }
+
+  private guideTint(item: string): string {
+    return item === 'tap' ? '#2563EB' : item === 'style' ? '#DB2777' : item === 'together' ? '#E2568A' : '#0284C7';
+  }
+
+  private guideTitle(item: string): string {
+    return item === 'tap' ? '点一下课程' : item === 'style' ? '课表风格' : item === 'together' ? '和 TA 一起看' : '更多';
+  }
+
+  private guideDetail(item: string): string {
+    if (item === 'tap') return '点开能看详情，也能编辑整门课、调整这一次或这次停课。';
+    if (item === 'style') return '现在默认是“简约”，原来的样子叫“经典”。在“更多 › 课表风格”里随时可换。';
+    if (item === 'together') return this.couple.weekLayout === 'merged' ? '周视图里两人的课排在同一张周课表里。在“更多 › 课表风格”里可以改成并排。'
+      : '周视图里两人的课并排显示，左右滑动换天。';
+    return '课表风格、服务卡片、日程和共享课表，都在右上角的“更多”里。';
+  }
+
   // ---- 更多 ----
 
   // NapTable's 更多: four quick actions, then 日历与日程, 一起看 and 外观与设置.
@@ -894,6 +1041,7 @@ export struct NativeSchedulePage {
         this.toolRow('桌面与锁屏服务卡片', '卡片风格、背景和上课闹钟', $r('sys.symbol.square_grid_2x2'), '#0284C7', 'tools-widgets',
           () => this.onWidgets())
         this.toolRow('应用外观', '跟随系统、浅色或深色', $r('sys.symbol.sun_max'), '#CA8A04', 'tools-appearance', () => this.onAppearance())
+        this.toolRow('使用指引', '课表怎么用', $r('sys.symbol.book_pages'), '#0F766E', 'tools-guide', () => this.openGuide())
       }.width('100%').borderRadius(16).backgroundColor(this.softSurfaceColor()).clip(true)
     }.width('100%').padding({ left: 16, right: 16, top: 2, bottom: 28 })
     }.width('100%').scrollBar(BarState.Off).align(Alignment.Top)

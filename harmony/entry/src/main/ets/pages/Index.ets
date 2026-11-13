@@ -13,7 +13,9 @@ import { systemShare } from '@kit.ShareKit';
 import { scheduleText, scheduleCalendar, scheduleSemesterCalendar } from '../schedule/ScheduleExport';
 import { SCHEDULE_STYLES, normalizeScheduleStyle, scheduleStyleSubtitle, scheduleStyleTitle } from '../schedule/ScheduleStyle';
 import { NativeScheduleSharing, NativeScheduleSharingModel, ShareApiReply, ShareApiRequest } from '../schedule/NativeScheduleSharing';
-import { CoupleApiReply, CoupleApiRequest, NativeScheduleCouple, NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
+import { CoupleApiReply, CoupleApiRequest, CoupleWeekLayoutRow, NativeScheduleCouple,
+  NativeScheduleCoupleModel } from '../schedule/NativeScheduleCouple';
+import { SCHEDULE_GUIDE_VERSION } from '../schedule/ScheduleGuide';
 import { NativeOverlayPicker } from '../schedule/NativeOverlayPicker';
 import { NativeCommonFree } from '../schedule/NativeCommonFree';
 import { NativeBackgroundCrop } from '../schedule/NativeBackgroundCrop';
@@ -341,7 +343,10 @@ struct Index {
         this.scheduleStore.showBackToWeek = Boolean(await prefs.get('backToWeek', true));
         this.scheduleStore.showNowIndicator = Boolean(await prefs.get('now', true));
         this.scheduleStore.restorePriorities(String(await prefs.get('priorities', '')));
-        this.coupleModel.restore(String(await prefs.get('coupleVisible', '1')) !== '0', String(await prefs.get('coupleSync', '')));
+        this.coupleModel.restore(String(await prefs.get('coupleVisible', '1')) !== '0', String(await prefs.get('coupleSync', '')),
+          String(await prefs.get('coupleWeekLayout', 'split')), String(await prefs.get('coupleStripHint', '')) === '1');
+        // 「课表怎么用」每台设备自动弹一次；读到这个值之前（-1）不弹。
+        this.scheduleStore.guideSeen = Math.max(0, Number(await prefs.get('guideSeen', 0)) || 0);
         this.restoreOverlay(String(await prefs.get('overlayCode', '')));
         this.dormModel.restore(String(await prefs.get('dormSync', '')));
         this.scheduleStore.alarmMorning = Number(await prefs.get('alarmMorning', 0)) || 0;
@@ -961,7 +966,8 @@ struct Index {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
     void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
-      await prefs.put(key === 'visible' ? 'coupleVisible' : key === 'overlay' ? 'overlayCode' : key === 'dorm' ? 'dormSync' : 'coupleSync', value);
+      await prefs.put(key === 'visible' ? 'coupleVisible' : key === 'overlay' ? 'overlayCode' : key === 'dorm' ? 'dormSync'
+        : key === 'weekLayout' ? 'coupleWeekLayout' : key === 'stripHint' ? 'coupleStripHint' : 'coupleSync', value);
       await prefs.flush();
     }).catch(() => undefined);
   }
@@ -1584,7 +1590,10 @@ struct Index {
               onAppearance: () => this.chooseAppearance(),
               onShare: () => this.shareSchedule(),
               onExport: () => { void this.exportSchedule(); },
-              onSharing: () => this.openSharing()
+              onSharing: () => this.openSharing(),
+              guideAllowed: this.scheduleGuideAllowed(),
+              onGuideSeen: () => this.saveGuideSeen(),
+              onClassic: () => { this.scheduleStore.visualStyle = 'classic'; this.saveScheduleStyle(); }
             }).opacity(this.nativeScheduleVisible ? 1 : 0)
               .translate({ y: this.nativeScheduleVisible ? 0 : 8 })
               .animation({ duration: 220, curve: Curve.EaseOut })
@@ -1942,6 +1951,23 @@ struct Index {
     })
   }
 
+  // 「课表怎么用」只在用户正看着自己的课表、上面没有别的面板时自己弹出。
+  private scheduleGuideAllowed(): boolean {
+    return this.nativeScheduleVisible && this.startupFinished && !this.requiresLogin && !this.failed && !this.sharedVisible
+      && this.cropTarget === '' && !(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible
+      || this.sharingModel.visible || this.coupleModel.sheetVisible || this.agendaEditor.visible || this.overlayPickerVisible
+      || this.commonFreeVisible || this.dormModel.visible);
+  }
+
+  private saveGuideSeen(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
+      await prefs.put('guideSeen', SCHEDULE_GUIDE_VERSION);
+      await prefs.flush();
+    }).catch(() => undefined);
+  }
+
   private openCourseEditor(block?: NativeCourseBlock, day?: number, slot?: number): void {
     if (!this.scheduleStore.result || this.scheduleStore.source === 'graduate') {
       promptAction.showToast({ message: '请先加载本科课表，研究生课表暂不支持个人修改' });
@@ -2164,6 +2190,12 @@ struct Index {
             .enabled(!this.scheduleStore.displayIsDefault())
             .onClick(() => { this.scheduleStore.resetDisplay(); this.saveScheduleStyle(); })
         }.width('100%')
+        if (this.coupleModel.together()) {
+          // 情侣课表或叠加课表在用时才有这一项：周视图并排还是合并。
+          Column() {
+            CoupleWeekLayoutRow({ model: this.coupleModel })
+          }.width('100%').padding({ left: 14, right: 14 }).borderRadius(16).backgroundColor($r('app.color.app_control'))
+        }
         Column({ space: 8 }) {
           Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
           this.paletteChoices(this.scheduleStore.palette, false)

@@ -122,3 +122,24 @@ export function overlayStripLeading(selection: string, dates: string[], count: n
   if (index < 0) index = dates.length - 1;
   return Math.max(0, Math.min(index, dates.length - count));
 }
+
+// ---- 一起看的周视图：并排 or 合并 ----
+
+/** `split` (并排, the two-column strip) unless the stored value says `merged` (合并, one week grid). */
+export function coupleWeekLayout(raw: string): string {
+  return raw === 'merged' ? 'merged' : 'split';
+}
+
+/**
+ * Whether the week view is the two-column strip. With 合并 the week goes back to the one grid both
+ * people's courses were drawn in before the strip.
+ */
+export function overlayStripWanted(viewMode: string, readOnly: boolean, showing: boolean, hasWeeks: boolean,
+  layout: string): boolean {
+  return viewMode === 'week' && !readOnly && showing && hasWeeks && coupleWeekLayout(layout) === 'split';
+}
+
+/** The one-time note over the strip: until it was closed, the layout was changed, or the guide told the same. */
+export function overlayStripHintDue(stripShown: boolean, hintSeen: boolean): boolean {
+  return stripShown && !hintSeen;
+}

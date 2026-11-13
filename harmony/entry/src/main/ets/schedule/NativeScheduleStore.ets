@@ -319,6 +319,8 @@ export class NativeScheduleStore {
   showSlotTime: boolean = true;
   showBackToWeek: boolean = true;
   showNowIndicator: boolean = true;
+  // 「课表怎么用」这台设备看过的版本；-1 表示还没读到（验收壳里一直是 -1，指引不会自己弹出）。
+  guideSeen: number = -1;
   // 课表时区（Asia/Shanghai）里现在是当天第几分钟，由页面每分钟写入；-1 表示未知。
   nowMinutes: number = -1;
   completeSemester: boolean = false;

@@ -1,7 +1,7 @@
 import { NativeCourseBlock, NativeSchedulePeriod, NativeScheduleRequest, NativeScheduleStore } from './NativeScheduleStore';
 import { RawShareDocument, readSharedSchedule, shareDateKey, SharedSchedule, sharedScheduleName, SharePublishBody,
   sharedScheduleSnapshot } from './ScheduleSharing';
-import { OverlayPeriod, overlayPeriods, overlayRemap } from './ScheduleOverlay';
+import { coupleWeekLayout, OverlayPeriod, overlayPeriods, overlayRemap } from './ScheduleOverlay';
 import { COUPLE_COLORS, coupleColorName, coupleDaysTogether, coupleFingerprint, coupleInvitation, coupleNowText,
   couplePersonTone, coupleRelativeTime, CoupleStatus, coupleStatusFrom, CoupleTimedCourse, CoupleTint, emptyCoupleStatus,
   RawCoupleParty, RawCoupleStatus } from './ScheduleCouple';
@@ -48,13 +48,17 @@ export class NativeScheduleCoupleModel {
   visible: boolean = true;
   // Goes up whenever what the grid draws for the partner changes.
   revision: number = 0;
+  // 一起看的周视图: `split` (并排, the two-column strip) or `merged` (合并, one week grid); kept on this device.
+  weekLayout: string = 'split';
+  // The one-time note over the strip was closed (or never needs showing: the default until `restore`).
+  stripHintSeen: boolean = true;
   // '' | load | change
   busy: string = '';
   error: string = '';
   notice: string = '';
   codeInput: string = '';
   private api?: CoupleApi;
-  // Saves `visible` ("1" / "0") and the mark of the last upload.
+  // Saves `visible` ("1" / "0"), the mark of the last upload, the week layout and the strip's note.
   private persistence?: (key: string, value: string) => void;
   // A store laid out with the partner's own calendar; undefined while there is no snapshot of theirs.
   private partner?: NativeScheduleStore;
@@ -83,10 +87,31 @@ export class NativeScheduleCoupleModel {
     this.persistence = persistence;
   }
 
-  restore(visible: boolean, syncMark: string): void {
+  restore(visible: boolean, syncMark: string, weekLayout: string = 'split', stripHintSeen: boolean = true): void {
     this.visible = visible;
     this.syncMark = syncMark;
+    this.weekLayout = coupleWeekLayout(weekLayout);
+    this.stripHintSeen = stripHintSeen;
   }
+
+  /** 并排 or 合并 for the week view; choosing either also settles the strip's one-time note. */
+  setWeekLayout(value: string): void {
+    const layout = coupleWeekLayout(value);
+    this.markStripHintSeen();
+    if (layout === this.weekLayout) return;
+    this.weekLayout = layout;
+    this.revision += 1;
+    this.persistence?.('weekLayout', layout);
+  }
+
+  markStripHintSeen(): void {
+    if (this.stripHintSeen) return;
+    this.stripHintSeen = true;
+    this.persistence?.('stripHint', '1');
+  }
+
+  /** Somebody's timetable can be drawn with the user's: a partner is bound, or a shared one is laid over. */
+  together(): boolean { return this.bound() || this.overlaying(); }
 
   /** Everything belongs to one account: another one signing in starts from nothing. */
   adopt(account: string): void {
@@ -347,6 +372,34 @@ export class NativeScheduleCoupleModel {
   }
 }
 
+// 一起看的周视图: 并排 or 合并. One row, used by the couple sheet and by 课表样式.
+@Component
+export struct CoupleWeekLayoutRow {
+  @ObjectLink model: NativeScheduleCoupleModel;
+
+  build() {
+    Column({ space: 6 }) {
+      Row({ space: 12 }) {
+        Text('一起看的周视图').fontSize(14).fontColor($r('app.color.app_text_secondary')).layoutWeight(1)
+        Row({ space: 2 }) {
+          ForEach(['split', 'merged'], (layout: string) => {
+            Button(layout === 'split' ? '并排' : '合并').type(ButtonType.Normal).height(30).borderRadius(8)
+              .padding({ left: 14, right: 14 }).fontSize(13)
+              .fontWeight(this.model.weekLayout === layout ? 600 : 400)
+              .fontColor(this.model.weekLayout === layout ? $r('app.color.app_accent') : $r('app.color.app_text_secondary'))
+              .backgroundColor(this.model.weekLayout === layout ? $r('app.color.app_surface') : Color.Transparent)
+              .id('couple-week-layout-' + layout)
+              .accessibilityText(layout === 'split' ? '并排' : '合并').accessibilitySelected(this.model.weekLayout === layout)
+              .onClick(() => this.model.setWeekLayout(layout))
+          }, (layout: string) => layout)
+        }.padding(2).borderRadius(10).backgroundColor($r('app.color.app_divider'))
+      }.width('100%')
+      Text('并排：每天两栏，左边是你，右边是 TA。合并：两人的课排在同一张周课表里。').fontSize(12)
+        .fontColor($r('app.color.app_text_tertiary')).width('100%')
+    }.width('100%').padding({ top: 10, bottom: 10 })
+  }
+}
+
 @Component
 export struct NativeScheduleCouple {
   @ObjectLink model: NativeScheduleCoupleModel;
@@ -459,6 +512,8 @@ export struct NativeScheduleCouple {
         Toggle({ type: ToggleType.Switch, isOn: this.model.visible }).selectedColor($r('app.color.app_accent'))
           .id('schedule-couple-visible').onChange((value: boolean) => this.model.setVisible(value))
       }.width('100%').constraintSize({ minHeight: 44 })
+      Divider().color($r('app.color.app_divider'))
+      CoupleWeekLayoutRow({ model: this.model })
       Divider().color($r('app.color.app_divider'))
       Row({ space: 12 }) {
         Text('纪念日').fontSize(14).fontColor($r('app.color.app_text_secondary')).layoutWeight(1)
