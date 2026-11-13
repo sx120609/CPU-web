@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 
 const databaseUrl = process.env.APNS_TEST_DATABASE_URL;
+// This test is about the period channels and the pool; the clock channels (日程) are
+// created a few per pass by design and are covered in apnsPoolRecovery.test.ts.
+process.env.LIVE_ACTIVITY_CLOCK_STEP_MINUTES = '0';
 test('real PostgreSQL: one-connection pool survives concurrent config reads, lock contention and slow Apple I/O', { skip: !databaseUrl, timeout: 30000 }, async () => {
   const url = new URL(databaseUrl!);
   assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname));
@@ -71,7 +74,8 @@ test('real PostgreSQL: one-connection pool survives concurrent config reads, loc
     assert.match(competing.channelErrors[0].message, /in progress/);
     releaseApple!(); await provision;
     await provisionApnsChannels(Date.now(), false, transport);
-    assert.equal(created, 2, 'existing channel IDs remain stable');
+    // One period: an end channel and a start channel (上课时收起) in each environment, created once.
+    assert.equal(created, 4, 'existing channel IDs remain stable');
   } finally {
     releaseApple?.(); releaseLock?.();
     await db.$disconnect();
