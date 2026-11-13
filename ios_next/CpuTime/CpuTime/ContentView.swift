@@ -299,6 +299,8 @@ struct ContentView: View {
         NativeCoupleService.shared.connect(to: scheduleStore)
     }
 
+    @State private var debugDeviceSettingsPresented = false
+
     /// The sample timetable on its own, or with `CPU_DEBUG_MOCK_TABS=1` inside
     /// the same tab bar as the signed-in shell, so a screenshot of it looks
     /// like the app does. The other tabs are web pages and stay empty here.
@@ -315,7 +317,12 @@ struct ContentView: View {
                 TabView(selection: .constant(ShellTab.schedule)) {
                     ForEach([ShellTab.home, .academic, .schedule, .services, .profile], id: \.self) { tab in
                         Group {
-                            if tab == .schedule { NativeScheduleView(store: scheduleStore) } else { Color.clear }
+                            if tab == .schedule {
+                                // The settings pages open here too, so they can be seen without signing in.
+                                NativeScheduleView(store: scheduleStore, onDeviceSettings: { debugDeviceSettingsPresented = true })
+                            } else {
+                                Color.clear
+                            }
                         }
                         .toolbar(padChrome ? .hidden : .visible, for: .tabBar)
                         .tabItem { Label(tab.label, systemImage: tab.systemImage) }
@@ -324,6 +331,10 @@ struct ContentView: View {
                 }
             }
             .tint(.cpuBrand)
+            .sheet(isPresented: $debugDeviceSettingsPresented) {
+                NativeDeviceSettingsView(session: webSession, watchStore: watchSchedule, scheduleStore: scheduleStore)
+                    .padPageSheet()
+            }
         } else {
             NativeScheduleView(store: scheduleStore)
         }

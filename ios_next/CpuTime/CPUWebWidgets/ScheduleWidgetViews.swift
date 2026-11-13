@@ -26,6 +26,9 @@ struct ScheduleWidgetOverrides {
     var style: WidgetStyle? = nil
     var theme: ScheduleWidgetTheme? = nil
     var options: ScheduleWidgetDisplayOptions? = nil
+    /// Draw countdowns and progress as they stand at the entry's date rather
+    /// than as live timers, which run on the real clock.
+    var staticClock = false
 }
 
 /// A whole schedule widget: the root that resolves settings, state and
@@ -116,6 +119,11 @@ private struct ScheduleWidgetNoticeEnvironmentKey: EnvironmentKey {
 }
 
 @available(iOS 17.0, *)
+private struct ScheduleWidgetStaticClockEnvironmentKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+@available(iOS 17.0, *)
 private struct ScheduleWidgetNowEnvironmentKey: EnvironmentKey {
     /// 只有没经过 `ScheduleWidgetRoot` 的视图才会读到这个。
     static var defaultValue: Date { Date.now }
@@ -154,6 +162,13 @@ extension EnvironmentValues {
         get { self[ScheduleWidgetNowEnvironmentKey.self] }
         set { self[ScheduleWidgetNowEnvironmentKey.self] = newValue }
     }
+
+    /// 倒计时和进度条按条目那一刻画成静止的。小组件里它们是系统驱动的实时计时，
+    /// 走真实时间；预览画廊钉着别的时刻，得自己算出那一刻的样子。
+    var scheduleWidgetStaticClock: Bool {
+        get { self[ScheduleWidgetStaticClockEnvironmentKey.self] }
+        set { self[ScheduleWidgetStaticClockEnvironmentKey.self] = newValue }
+    }
 }
 
 @available(iOS 17.0, *)
@@ -170,7 +185,9 @@ private struct ScheduleWidgetRoot<Content: View>: View {
         let theme = overrides.theme ?? AppWidgetConfiguration.scheduleTheme
         let style = overrides.style ?? WidgetStyle.load(from: defaults)
         let displayOptions = overrides.options ?? AppWidgetConfiguration.displayOptions
-        return Group {
+        // 锁屏的几种尺寸本来就按系统给的那一小块排满了，不跟着缩放。
+        let textSize: ScheduleWidgetTextSize = family.isAccessory ? .standard : (entry.configuration.textSize ?? displayOptions.textSize)
+        return WidgetTextScaled(size: textSize) {
             switch entry.state {
             case .loaded(let payload):
                 content(payload)
@@ -207,6 +224,7 @@ private struct ScheduleWidgetRoot<Content: View>: View {
         .environment(\.scheduleWidgetCelebrating, entry.celebrating)
         .environment(\.scheduleWidgetFamily, family)
         .environment(\.scheduleWidgetNow, entry.date)
+        .environment(\.scheduleWidgetStaticClock, overrides.staticClock)
         .widgetURL(entry.appURL)
         .containerBackground(for: .widget) {
             if family.isAccessory {
@@ -392,7 +410,7 @@ private struct UpcomingScheduleView: View {
         switch layout {
         case let .column(bottom, size, titleLines):
             let label = Self.columnLabels(first: course, otherDay: otherDay != nil, now: now).first
-            UpcomingColumn(label: label, course: course, size: size, otherDay: otherDay, titleLines: titleLines)
+            UpcomingColumn(label: label, course: course, size: size, otherDay: otherDay, titleLines: titleLines, live: otherDay == nil)
                 .padding(.bottom, bottom)
         case let .summary(size, titleLines):
             CourseSummary(course: course, size: size, titleLines: titleLines)
@@ -416,7 +434,8 @@ private struct UpcomingScheduleView: View {
                     label: otherDay == nil && fallback.labels ? labels.first : nil,
                     course: selection.1.first,
                     size: fallback.size,
-                    titleLines: fallback.titleLines
+                    titleLines: fallback.titleLines,
+                    live: otherDay == nil
                 )
                 Divider()
                 UpcomingColumn(
@@ -489,7 +508,7 @@ private struct UpcomingScheduleView: View {
                         let label = Self.columnLabels(first: course, otherDay: otherDay != nil, now: now).first
                         ViewThatFits(in: .vertical) {
                             ForEach([14, 8, 0] as [CGFloat], id: \.self) { bottom in
-                                UpcomingColumn(label: label, course: course, size: .large, otherDay: otherDay)
+                                UpcomingColumn(label: label, course: course, size: .large, otherDay: otherDay, live: otherDay == nil)
                                     .padding(.bottom, bottom)
                             }
                             if otherDay != nil {
@@ -714,6 +733,8 @@ private struct UpcomingColumn: View {
     /// 课是别的日子的：标题换成「明天 周二」「3 天后 10.1 周四」。
     var otherDay: ScheduleDay? = nil
     var titleLines = 2
+    /// 这一节是今天的当前或下一节：标题右边带倒计时，正在上时课程下面带进度。别的日子的课不能给。
+    var live = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -721,13 +742,21 @@ private struct UpcomingColumn: View {
             if let otherDay {
                 OtherDayBanner(day: otherDay)
             } else if let label, style != .board {
-                Text(label)
-                    .font(style.widgetFont(size: 11, weight: .semibold))
-                    .foregroundStyle(widgetColors.secondary)
-                    .frame(height: OtherDayBanner.height, alignment: .leading)
+                HStack(spacing: 4) {
+                    Text(label)
+                        .font(style.widgetFont(size: 11, weight: .semibold))
+                        .foregroundStyle(widgetColors.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    Spacer(minLength: 0)
+                    if live, let course {
+                        CourseCountdownLabel(course: course)
+                    }
+                }
+                .frame(height: OtherDayBanner.height, alignment: .leading)
             }
             if let course {
-                CourseSummary(course: course, size: size, titleLines: titleLines)
+                CourseSummary(course: course, size: size, titleLines: titleLines, showsProgress: live && otherDay == nil)
             } else {
                 Text("暂无课程")
                     .font(style.widgetFont(size: 11))
@@ -753,6 +782,8 @@ struct StationCourseTicket: View {
     var horizontal = false
     var verticalPadding: CGFloat = 6
     var ruleSpacing: CGFloat = 2
+    /// 这节课是今天的：正在上时在课程信息下面画一条实时进度。
+    var showsProgress = false
     @Environment(\.scheduleWidgetDisplayOptions) private var options
     @Environment(\.scheduleWidgetTheme) private var theme
     @Environment(\.scheduleWidgetFamily) private var family
@@ -849,6 +880,10 @@ struct StationCourseTicket: View {
                     color: colors.secondary
                 )
             }
+            if showsProgress {
+                CourseProgressBar(course: course)
+                    .padding(.top, 2)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -937,6 +972,8 @@ private struct CourseSummary: View {
     var titleLines = 2
     /// 课名、教室老师、时间三行之间的间距。小号放两节挤不下时收紧。
     var lineSpacing: CGFloat = 3
+    /// 这节课是今天的：正在上时在时间下面画一条实时进度。
+    var showsProgress = false
     @Environment(\.scheduleWidgetTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scheduleWidgetDisplayOptions) private var options
@@ -944,7 +981,7 @@ private struct CourseSummary: View {
 
     var body: some View {
         if style == .board {
-            StationCourseTicket(course: course, titleSize: titleLines == 1 ? 13 : size.title, titleLines: titleLines)
+            StationCourseTicket(course: course, titleSize: titleLines == 1 ? 13 : size.title, titleLines: titleLines, showsProgress: showsProgress)
         } else {
             let appearance = ScheduleWidgetStylePalette(style: style, dark: colorScheme == .dark)
             // 色条跟着文字一样高，不拉到底。
@@ -969,6 +1006,10 @@ private struct CourseSummary: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                     }
+                    if showsProgress {
+                        CourseProgressBar(course: course)
+                            .padding(.top, 1)
+                    }
                 }
             }
             .multilineTextAlignment(.leading)
@@ -977,6 +1018,118 @@ private struct CourseSummary: View {
                 WidgetCourseRule(color: widgetColors.primary)
             }
             .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// 一节课在 `now` 那一天的起止时刻。没有具体时间的课没有。
+private extension ScheduleCourse {
+    func interval(onDayOf now: Date) -> ClosedRange<Date>? {
+        guard let start = startMinutes, endMinutes > start else { return nil }
+        let day = ChineseCalendarInfo.gregorian.startOfDay(for: now)
+        return day.addingTimeInterval(TimeInterval(start * 60))...day.addingTimeInterval(TimeInterval(endMinutes * 60))
+    }
+}
+
+/// 「距下课 23:10」「距上课 12:40」：正在上的课数到下课，快开始的课（一小时之内）数到上课。
+/// 数字是系统驱动的实时计时，不用小组件刷新；时间线在上课前一小时有一条条目，倒计时从那时出现
+///（`SchedulePayload.countdownLeadMinutes`）。只能用在今天的课上。
+@available(iOS 17.0, *)
+private struct CourseCountdownLabel: View {
+    let course: ScheduleCourse
+    @Environment(\.scheduleWidgetStyle) private var style
+    @Environment(\.scheduleWidgetTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
+    @Environment(\.scheduleWidgetNow) private var now
+    @Environment(\.scheduleWidgetStaticClock) private var staticClock
+    @WidgetStyleColors private var widgetColors
+
+    var body: some View {
+        if options.showProgress, let target {
+            let seconds = max(0, Int(target.date.timeIntervalSince(now)))
+            HStack(spacing: 3) {
+                Text(target.title)
+                    .font(style.widgetFont(size: 10, weight: .medium))
+                    .foregroundStyle(widgetColors.muted)
+                // 实时计时的文字会把给它的宽度占满：垫一段同样长的隐藏文字定宽，数字靠右叠在上面。
+                Text(seconds >= 36_000 ? "00:00:00" : (seconds >= 3600 ? "0:00:00" : "00:00"))
+                    .hidden()
+                    .overlay(alignment: .trailing) {
+                        if staticClock {
+                            Text(Self.clock(seconds))
+                        } else {
+                            Text(timerInterval: now...max(now, target.date), countsDown: true)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    .font(style.timeFont(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(widgetColors.accent(for: course, theme: theme, colorScheme: colorScheme))
+                    .widgetAccentable()
+            }
+            .lineLimit(1)
+            .fixedSize()
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var target: (title: String, date: Date)? {
+        guard let interval = course.interval(onDayOf: now) else { return nil }
+        if course.isInProgress(at: SchedulePayload.minutesSinceMidnight(now)) {
+            return interval.upperBound > now ? ("距下课", interval.upperBound) : nil
+        }
+        let lead = interval.lowerBound.timeIntervalSince(now)
+        guard lead > 0, lead <= TimeInterval(SchedulePayload.countdownLeadMinutes * 60) else { return nil }
+        return ("距上课", interval.lowerBound)
+    }
+
+    private static func clock(_ seconds: Int) -> String {
+        let hours = seconds / 3600, minutes = seconds % 3600 / 60, rest = seconds % 60
+        return hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, rest) : String(format: "%d:%02d", minutes, rest)
+    }
+}
+
+/// 正在上的这节课上到哪了：一条细进度，由系统实时推进，不用小组件刷新。
+/// 没在上课、没有具体时间或关了「上课倒计时与进度」时什么都不画。只能用在今天的课上。
+@available(iOS 17.0, *)
+private struct CourseProgressBar: View {
+    let course: ScheduleCourse
+    @Environment(\.scheduleWidgetTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
+    @Environment(\.scheduleWidgetNow) private var now
+    @Environment(\.scheduleWidgetStaticClock) private var staticClock
+    @WidgetStyleColors private var widgetColors
+
+    var body: some View {
+        if options.showProgress, let interval = course.interval(onDayOf: now),
+           course.isInProgress(at: SchedulePayload.minutesSinceMidnight(now)) {
+            let tint = widgetColors.accent(for: course, theme: theme, colorScheme: colorScheme)
+            Group {
+                if staticClock {
+                    // 画廊出图用的渲染器画不了系统的进度条，照着它的样子画一条。
+                    let total = interval.upperBound.timeIntervalSince(interval.lowerBound)
+                    let fraction = min(max(now.timeIntervalSince(interval.lowerBound) / total, 0), 1)
+                    Capsule().fill(widgetColors.muted.opacity(0.25))
+                        .overlay(alignment: .leading) {
+                            GeometryReader { proxy in
+                                Capsule().fill(tint).frame(width: max(4, proxy.size.width * fraction))
+                            }
+                        }
+                } else {
+                    ProgressView(timerInterval: interval, countsDown: false) {
+                        EmptyView()
+                    } currentValueLabel: {
+                        // 默认会在进度条下面再画一个时钟。
+                        EmptyView()
+                    }
+                    .progressViewStyle(.linear)
+                    .tint(tint)
+                }
+            }
+            .frame(height: 4)
+            .widgetAccentable()
+            .accessibilityLabel("本节课程进度")
         }
     }
 }
@@ -1031,6 +1184,7 @@ private struct TodayScheduleView: View {
     let payload: SchedulePayload
     @Environment(\.scheduleWidgetFamily) private var family
     @Environment(\.scheduleWidgetConfiguration) private var configuration
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
     @Environment(\.scheduleWidgetNotice) private var notice
     @Environment(\.scheduleWidgetNow) private var now
 
@@ -1045,7 +1199,12 @@ private struct TodayScheduleView: View {
         let next = finished && configuration.afterClass == .nextCourseDay
             ? payload.nextCourseDay(after: now)
             : nil
-        let rests = today.courseList.isEmpty || (finished && configuration.afterClass == .nextCourseDay)
+        // 「隐藏已上完的课」时「只看今天」也没有课可留了，和没课一样显示休息状态。
+        let rests = today.courseList.isEmpty || (finished && (configuration.afterClass == .nextCourseDay || options.hideCompleted))
+        // 大号上今天的课少、底下空着一截时，接着预告下一次课（选了「只看今天」就不预告）。
+        let preview = family == .systemLarge && !rests && configuration.afterClass == .nextCourseDay
+            ? payload.nextCourseDay(after: now)?.day
+            : nil
         Group {
             if let next {
                 courseList(day: next.day, nowMinutes: nil, otherDay: true, headerDay: today)
@@ -1068,7 +1227,7 @@ private struct TodayScheduleView: View {
                 }
                 .frame(maxHeight: .infinity)
             } else {
-                courseList(day: today, nowMinutes: nowMinutes)
+                courseList(day: today, nowMinutes: nowMinutes, preview: preview)
             }
         }
         // 大号的课排不满时，系统默认把整块内容竖着居中，日期栏就飘在半空；贴顶放。
@@ -1085,17 +1244,25 @@ private struct TodayScheduleView: View {
         day: ScheduleDay,
         nowMinutes: Int?,
         otherDay: Bool = false,
-        headerDay: ScheduleDay? = nil
+        headerDay: ScheduleDay? = nil,
+        preview: ScheduleDay? = nil
     ) -> some View {
         let maxLimit = family == .systemLarge ? 7 : 2
         if family == .systemLarge {
             // 大号写死 7 行放不下，多出来的课会被悄悄截掉。从多到少试，挑第一个放得下的，
             // 这样「后面还有几门」才数得准。列表在同样门数下先试课名两行，课少时不用把长课名截掉。
             let lineOptions = usesTimeline ? [1] : [2, 1]
-            let variants = stride(from: maxLimit, through: 1, by: -1).flatMap { limit in lineOptions.map { [limit, $0] } }
+            let listed = day.courseList.count - (options.hideCompleted ? day.completedPrefixCount(nowMinutes: nowMinutes) : 0)
+            // 今天要列的课都放得下、底下还有地方时，接着预告下一次课，能放几门放几门。
+            // 时间线会把课拉高铺满，三门以上本来就不空，只在一两门课时预告。
+            // 连一门都放不下时退成一行：标注后面跟着第一门课（`NextDayPreview.summaryOnly`）。
+            let previewRows: [Int] = preview != nil && listed <= (usesTimeline ? 2 : maxLimit) ? [3, 2, 1, NextDayPreview.summaryOnly] : []
+            let variants = previewRows.flatMap { rows in lineOptions.map { [max(listed, 1), $0, rows] } }
+                + stride(from: maxLimit, through: 1, by: -1).flatMap { limit in lineOptions.map { [limit, $0, 0] } }
             ViewThatFits(in: .vertical) {
                 ForEach(variants, id: \.self) { variant in
-                    courses(today: day, nowMinutes: nowMinutes, limit: variant[0], titleLines: variant[1], otherDay: otherDay, headerDay: headerDay)
+                    courses(today: day, nowMinutes: nowMinutes, limit: variant[0], titleLines: variant[1], otherDay: otherDay, headerDay: headerDay,
+                            preview: variant[2] != 0 ? preview : nil, previewRows: variant[2])
                 }
             }
         } else {
@@ -1104,7 +1271,7 @@ private struct TodayScheduleView: View {
             // 一档档收，但不低于 4，再挤就粘在一起了；提示和上面那门课之间的距离不动。
             // 还放不下（小屏手机）才把提示贴到右下角，往下探进系统留的边距里。
             // 别的日子多一条标注：上方间距统一收紧，标注仍与下面的课程成组。
-            let window = day.courseWindow(limit: maxLimit, nowMinutes: nowMinutes)
+            let window = day.courseWindow(limit: maxLimit, nowMinutes: nowMinutes, hidesCompleted: options.hideCompleted)
             let gaps: [(header: CGFloat, banner: CGFloat, row: CGFloat)] = otherDay
                 ? [(12, 6, 7), (10, 6, 7), (9, 5, 6), (8, 4, 6), (7, 4, 5), (6, 4, 4)]
                 : [(12, 0, 7), (10, 0, 7), (8, 0, 7), (5, 0, 7), (5, 0, 6), (5, 0, 5), (5, 0, 4)]
@@ -1143,9 +1310,11 @@ private struct TodayScheduleView: View {
         rowSpacing: CGFloat? = nil,
         showsRemaining: Bool = true,
         otherDay: Bool = false,
-        headerDay: ScheduleDay? = nil
+        headerDay: ScheduleDay? = nil,
+        preview: ScheduleDay? = nil,
+        previewRows: Int = 0
     ) -> some View {
-        let window = today.courseWindow(limit: limit, nowMinutes: nowMinutes)
+        let window = today.courseWindow(limit: limit, nowMinutes: nowMinutes, hidesCompleted: options.hideCompleted)
         return VStack(alignment: .leading, spacing: 0) {
             // 日期栏和第一门课拉开得比课与课之间松，不然日期像是第一门课的标题。
             WidgetDateHeader(day: headerDay ?? today, tableName: payload.title)
@@ -1165,6 +1334,7 @@ private struct TodayScheduleView: View {
                             large: family == .systemLarge,
                             timeOnSeparateLine: false,
                             completed: nowMinutes.map { course.hasEnded(at: $0) } ?? false,
+                            inProgress: nowMinutes.map { course.isInProgress(at: $0) } ?? false,
                             verticalPadding: family == .systemLarge ? nil : 3,
                             maxTitleLines: titleLines
                         )
@@ -1176,6 +1346,10 @@ private struct TodayScheduleView: View {
                 remainingText(window.remainingCount)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.top, family == .systemLarge ? 10 : 8)
+            }
+            if let preview, previewRows != 0 {
+                NextDayPreview(day: preview, rows: previewRows)
+                    .padding(.top, previewRows == NextDayPreview.summaryOnly ? 12 : 16)
             }
         }
         // 时间线要把剩下的高度吃满，不能按理想高度钉死；ViewThatFits 量的仍是理想高度，挑行数不受影响。
@@ -1195,6 +1369,8 @@ private struct TodayCourseRow: View {
     let large: Bool
     let timeOnSeparateLine: Bool
     let completed: Bool
+    /// 现在正在上：课程信息下面带一条实时进度。
+    var inProgress = false
     /// 整块只有半宽的列（两日课表的每一列）：课名、教室和时间三行挤在窄列里，
     /// 字号各收一号、行距和上下留白放宽，才不会糊成一团。
     var compact = false
@@ -1224,7 +1400,7 @@ private struct TodayCourseRow: View {
         if style == .board {
             // 票券样式的 `compact` 会把「教室 · 老师」整行去掉，两日课表只是列窄，
             // 内容照旧要全：只把字号传小一号。
-            StationCourseTicket(course: course, titleSize: titleSize, titleLines: titleLines, horizontal: !timeOnSeparateLine)
+            StationCourseTicket(course: course, titleSize: titleSize, titleLines: titleLines, horizontal: !timeOnSeparateLine, showsProgress: inProgress)
                 .opacity(completed ? 0.56 : 1)
         } else {
             let appearance = ScheduleWidgetStylePalette(style: style, dark: colorScheme == .dark)
@@ -1234,7 +1410,7 @@ private struct TodayCourseRow: View {
                     .fill(widgetColors.accent(for: course, theme: theme, colorScheme: colorScheme))
                     .frame(width: compact ? 4 : 5)
                     // 课名可以折行时色条跟着文字长高（外面按理想高度钉住），否则固定高度。
-                    .frame(minHeight: barHeight, maxHeight: titleLines > 1 ? .infinity : barHeight)
+                    .frame(minHeight: barHeight, maxHeight: titleLines > 1 || showsProgress ? .infinity : barHeight)
                 VStack(alignment: .leading, spacing: lineSpacing) {
                     if let primary = options.primaryValue(for: course) {
                         Text(primary)
@@ -1245,6 +1421,9 @@ private struct TodayCourseRow: View {
                     CourseMetadataLine(course: course, font: style.widgetFont(size: metadataSize, weight: .medium), color: widgetColors.secondary)
                     if timeOnSeparateLine && options.showTime {
                         timeLabel
+                    }
+                    if inProgress {
+                        CourseProgressBar(course: course)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1271,11 +1450,14 @@ private struct TodayCourseRow: View {
             .overlay {
                 WidgetCourseRule(color: widgetColors.primary)
             }
-            .fixedSize(horizontal: false, vertical: titleLines > 1)
+            .fixedSize(horizontal: false, vertical: titleLines > 1 || showsProgress)
             .saturation(completed ? 0 : 1)
             .opacity(completed ? 0.56 : 1)
         }
     }
+
+    /// 进度条多占一行：色条跟着长高，整行按实际高度占位。
+    private var showsProgress: Bool { inProgress && options.showProgress }
 
     private var timeLabel: some View {
         Text(course.timeRange)
@@ -1283,6 +1465,52 @@ private struct TodayCourseRow: View {
             .foregroundStyle(widgetColors.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.72)
+    }
+}
+
+/// 大号今日课表课少的日子，今天的课下面接着预告下一次课：「明天 周四」的标注，下面是那天开头的几门。
+/// 字比今天的课小一号，看得出主次。只剩一行的地方时不列课，标注后面写第一门课和一共几门。
+@available(iOS 17.0, *)
+private struct NextDayPreview: View {
+    /// `rows` 取这个值：只有一行，不列课。
+    static let summaryOnly = -1
+
+    let day: ScheduleDay
+    let rows: Int
+    @Environment(\.scheduleWidgetStyle) private var style
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
+    @WidgetStyleColors private var widgetColors
+
+    var body: some View {
+        let shown = Array(day.courseList.prefix(max(rows, 0)))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                OtherDayBanner(day: day)
+                Spacer(minLength: 0)
+                if rows == Self.summaryOnly {
+                    Text(summary)
+                        .font(style.widgetFont(size: 11, weight: .medium))
+                        .foregroundStyle(widgetColors.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else if day.courseList.count > shown.count {
+                    RemainingCoursesText(count: day.courseList.count - shown.count)
+                }
+            }
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, course in
+                TodayCourseRow(course: course, large: false, timeOnSeparateLine: false, completed: false, verticalPadding: 4)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// 「08:00 药物设计学 等 2 门」。
+    private var summary: String {
+        guard let first = day.courseList.first else { return "" }
+        let lead = [options.showTime ? first.startLabel : nil, options.primaryValue(for: first)]
+            .compactMap { $0 }
+            .joined(separator: " ")
+        return day.courseList.count > 1 ? "\(lead) 等 \(day.courseList.count) 门" : lead
     }
 }
 
@@ -1305,16 +1533,17 @@ private struct DayTimeline: View {
             ForEach(Array(courses.enumerated()), id: \.offset) { index, course in
                 if index > 0 {
                     let gap = Self.gapMinutes(from: courses[index - 1], to: course)
+                    let labeled = gap >= Self.labeledGap && options.showBreaks
                     TimelineGap(
                         minutes: gap,
-                        labeled: gap >= Self.labeledGap,
+                        labeled: labeled,
                         showsTimeColumn: options.showTime,
                         isNow: nowMinutes.map { courses[index - 1].hasEnded(at: $0) && !course.hasEnded(at: $0) && !course.isInProgress(at: $0) } ?? false,
                         metrics: metrics
                     )
                     // 课间按一半的比例长高：午休两个多小时不该比一门课还高。
                     .layoutValue(key: ProportionalWeight.self, value: CGFloat(gap) * 0.5)
-                    .layoutValue(key: ProportionalMaxHeight.self, value: gap >= Self.labeledGap ? metrics.labeledGapCap : 12)
+                    .layoutValue(key: ProportionalMaxHeight.self, value: labeled ? metrics.labeledGapCap : 12)
                 }
                 TimelineCourseRow(
                     course: course,
@@ -1433,25 +1662,32 @@ private struct TimelineCourseRow: View {
                 // 教室贴着卡片底边（和左边的下课时间对齐），课名、老师照旧在上面，卡片拉高时中间空出来。
                 // 课多挤成最矮、放不下三行时退回原来的两行：课名，下面「教室 · 老师」。
                 // 两日课表的列窄，一行只有五六个字：高度够时课名先放到三行。最后一种最矮，量尺寸按它。
-                FirstThatFitsVertically {
-                    if let room {
+                VStack(alignment: .leading, spacing: 4) {
+                    FirstThatFitsVertically {
+                        if let room {
+                            ForEach(titleLineOptions, id: \.self) { lines in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    titleText(lines: lines)
+                                    if let teacher { metaText(teacher) }
+                                    Spacer(minLength: 2)
+                                    metaText(room)
+                                }
+                            }
+                        }
                         ForEach(titleLineOptions, id: \.self) { lines in
                             VStack(alignment: .leading, spacing: 2) {
                                 titleText(lines: lines)
-                                if let teacher { metaText(teacher) }
-                                Spacer(minLength: 2)
-                                metaText(room)
+                                CourseMetadataLine(course: course, font: style.widgetFont(size: metrics.metaFont, weight: .medium), color: widgetColors.secondary)
                             }
                         }
                     }
-                    ForEach(titleLineOptions, id: \.self) { lines in
-                        VStack(alignment: .leading, spacing: 2) {
-                            titleText(lines: lines)
-                            CourseMetadataLine(course: course, font: style.widgetFont(size: metrics.metaFont, weight: .medium), color: widgetColors.secondary)
-                        }
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    // 正在上的这门课：卡片底边一条实时进度，和左边的起止时间一起看得出上到哪了。
+                    if inProgress {
+                        CourseProgressBar(course: course)
                     }
                 }
-                .lineLimit(1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             .padding(.horizontal, metrics.cardPadding)
@@ -1652,18 +1888,24 @@ private struct DayColumn: View {
     /// 两列的第一节课才对得齐。
     let companionHeader: WidgetDateHeader
     @Environment(\.scheduleWidgetNow) private var now
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
 
     /// 一列最多试着放几门。再多半宽的列也放不下，剩下的写进「后面还有 N 门课」。
     private static let maxLimit = 8
 
+    /// 这一列要列的课有几门：「隐藏已上完的课」时不算今天开头已经上完的。
+    private var listedCount: Int {
+        day.courseList.count - (options.hideCompleted ? day.completedPrefixCount(nowMinutes: nowMinutes) : 0)
+    }
+
     var body: some View {
-        if day.courseList.isEmpty {
+        if listedCount == 0 {
             column(limit: 0)
         } else {
             // 以前写死 5 门，多出来的课会被悄悄截掉。和今日课表一样从多到少试，挑第一个放得下的，
             // 「后面还有几门」才数得准。
             ViewThatFits(in: .vertical) {
-                ForEach(Array(stride(from: min(day.courseList.count, Self.maxLimit), through: 1, by: -1)), id: \.self) { limit in
+                ForEach(Array(stride(from: min(listedCount, Self.maxLimit), through: 1, by: -1)), id: \.self) { limit in
                     column(limit: limit)
                 }
             }
@@ -1671,7 +1913,8 @@ private struct DayColumn: View {
     }
 
     private func column(limit: Int) -> some View {
-        let window = day.courseWindow(limit: limit, nowMinutes: nowMinutes)
+        let window = day.courseWindow(limit: limit, nowMinutes: nowMinutes, hidesCompleted: options.hideCompleted)
+        let empty = listedCount == 0
         return VStack(alignment: .leading, spacing: 9) {
             ZStack(alignment: .topLeading) {
                 companionHeader.hidden()
@@ -1679,14 +1922,14 @@ private struct DayColumn: View {
             }
                 // 日期栏和下面的课拉开到 20（加上外面 VStack 的 9），比课与课之间松。
                 .padding(.bottom, 11)
-            if day.courseList.isEmpty {
-                // 这一支本来就是「这天没有课」，所以今天那列固定说「今日无课」；
-                // 今天是法定假日就换成带图标和假期进度的祝福，整列不再只有一行灰字。
-                if isToday, let greeting = ChineseCalendarInfo.restGreeting(for: now) {
+            if empty {
+                // 这天没有课：今天那列说「今日无课」，今天是法定假日就换成带图标和假期进度的祝福，
+                // 整列不再只有一行灰字。有课但都上完、又选了隐藏，就说「今日课程已结束」。
+                if isToday, day.courseList.isEmpty, let greeting = ChineseCalendarInfo.restGreeting(for: now) {
                     HolidayGreetingView(greeting: greeting)
                 } else {
                     EmptyCoursesView(
-                        message: isToday ? RestState.message(now: now) : "没有课程"
+                        message: !day.courseList.isEmpty ? "今日课程已结束" : (isToday ? RestState.message(now: now) : "没有课程")
                     )
                 }
             } else {
@@ -1700,6 +1943,7 @@ private struct DayColumn: View {
                                 large: false,
                                 timeOnSeparateLine: true,
                                 completed: nowMinutes.map { course.hasEnded(at: $0) } ?? false,
+                                inProgress: nowMinutes.map { course.isInProgress(at: $0) } ?? false,
                                 compact: true,
                                 verticalPadding: 6,
                                 // 半宽列里课名只写一行：折行会把卡片撑成一坨，截断的课名
@@ -1717,7 +1961,7 @@ private struct DayColumn: View {
             }
         }
         // 时间线要往下铺满整列；列表照旧按内容高度贴顶。ViewThatFits 量的是理想高度，挑行数不受影响。
-        .fixedSize(horizontal: false, vertical: !timeline && !day.courseList.isEmpty)
+        .fixedSize(horizontal: false, vertical: !timeline && !empty)
         .frame(maxWidth: .infinity, maxHeight: timeline ? .infinity : nil, alignment: .topLeading)
     }
 }
@@ -1789,9 +2033,9 @@ private struct WidgetDateHeader: View {
             if style == .board {
                 stationHeader
             } else {
-                header(isCompact: isCompact)
+                header(isCompact: isCompact, countdown: inlineCountdown)
             }
-            secondaryLine
+            secondaryLine(countdown: inlineCountdown == nil ? holidayCountdown : nil)
                 // 竖线比字高，靠负边距把这行收回去，贴着上一行的文字底部。「明天的课」带着
                 // 胶囊底色，比字高，再往上收就压住上一行的「第 N 周」，反过来留一点空。
                 // 中号（2×1）的小组件里课表名紧跟在日期下方，额外留一点间隔更易读。
@@ -1820,7 +2064,7 @@ private struct WidgetDateHeader: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(day.displayLabel)
                     .font(style.widgetFont(size: 10, weight: .semibold))
-                if !hidesWeek, let week = day.week, week > 0 {
+                if showsWeek, let week = day.week, week > 0 {
                     Text("第 \(week) 周")
                         .font(style.widgetFont(size: 8))
                         .foregroundStyle(widgetColors.secondary)
@@ -1837,12 +2081,25 @@ private struct WidgetDateHeader: View {
         }
     }
 
+    private var showsWeek: Bool { !hidesWeek && options.showWeek }
+
+    private var normalizedTableName: String? {
+        let name = tableName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    /// 中号、大号整宽的日期栏右边有的是地方：第二行没有课表名和跨日标注要写时，假期倒计时
+    /// 收到「第 N 周」下面，不再单占一行，省下的高度留给课程。小号和两日课表的半宽列放不下，照旧在第二行。
+    private var inlineCountdown: ChineseHolidayCountdown? {
+        guard style != .board, !compact, family != .systemSmall,
+              normalizedTableName == nil, dayHint == nil else { return nil }
+        return holidayCountdown
+    }
+
     /// 第二行保留课表归属、跨日标注和用户开启的假期倒计时。
     @ViewBuilder
-    private var secondaryLine: some View {
-        let trimmedName = tableName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let name: String? = trimmedName.isEmpty ? nil : trimmedName
-        let countdown = holidayCountdown
+    private func secondaryLine(countdown: ChineseHolidayCountdown?) -> some View {
+        let name = normalizedTableName
         if name != nil || dayHint != nil || countdown != nil {
             ViewThatFits(in: .horizontal) {
                 if dayHint == nil || hidesDayHint || countdown == nil {
@@ -1887,7 +2144,7 @@ private struct WidgetDateHeader: View {
         }
     }
 
-    private func header(isCompact: Bool) -> some View {
+    private func header(isCompact: Bool, countdown: ChineseHolidayCountdown?) -> some View {
         let weekday = day.displayLabel.isEmpty ? nil : day.displayLabel
         // 小号一行要塞下日期、星期、农历和「第 N 周」，各列之间收紧一点。
         return HStack(spacing: isCompact ? 4 : (isLarge ? 8 : 6)) {
@@ -1924,7 +2181,16 @@ private struct WidgetDateHeader: View {
                 HolidayBadge(title: badge, highlighted: calendarDay?.isStatutoryHoliday ?? false)
             }
 
-            if !hidesWeek, let week = day.week, week > 0 {
+            if let countdown {
+                // 周数在上、倒计时在下，两行靠右，合起来和左边的日期数字差不多高。
+                VStack(alignment: .trailing, spacing: isLarge ? 3 : 1) {
+                    if showsWeek, let week = day.week, week > 0 {
+                        weekLabel("第 \(week) 周")
+                    }
+                    HolidayCountdownChip(countdown: countdown, sizeBoost: min(sizeBoost, 2))
+                        .fixedSize()
+                }
+            } else if showsWeek, let week = day.week, week > 0 {
                 // 放不下「第 N 周」先去掉空格、再缩字，都放不下才不显示；「第」不省，
                 // 单写「5周」像是说五个星期。也别去挤左边的日期。
                 VStack(alignment: isCompact ? .center : .trailing, spacing: 2) {

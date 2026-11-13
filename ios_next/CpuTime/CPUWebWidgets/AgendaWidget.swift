@@ -192,7 +192,8 @@ struct AgendaWidgetView: View {
         let defaults = UserDefaults(suiteName: AppWidgetConfiguration.appGroup)
         let style = overrides.style ?? WidgetStyle.load(from: defaults)
         let theme = overrides.theme ?? AppWidgetConfiguration.scheduleTheme
-        content
+        let textSize = family.isAccessory ? .standard : (overrides.options ?? AppWidgetConfiguration.displayOptions).textSize
+        WidgetTextScaled(size: textSize) { content }
             .environment(\.scheduleWidgetStyle, style)
             .environment(\.scheduleWidgetTheme, theme)
             .environment(\.scheduleWidgetFamily, family)

@@ -67,3 +67,66 @@ test('changing the timetable style refreshes the widgets', async () => {
   const models = await read(`${widgets}/WidgetModels.swift`);
   assert.match(models, /timetableStyleKey = "scheduleVisualStyle"/);
 });
+
+test('text size scales the whole widget and never the lock screen', async () => {
+  const layouts = await read(`${widgets}/ScheduleWidgetLayouts.swift`);
+  // One canvas per scale, laid out at 1/scale and scaled back: fitting ladders see the real room.
+  assert.match(layouts, /struct WidgetTextScaled<Content: View>: View/);
+  assert.match(layouts, /\.scaleEffect\(scale, anchor: \.topLeading\)/);
+  assert.match(layouts, /ProposedViewSize\(width: bounds\.width \/ scale, height: bounds\.height \/ scale\)/);
+  const models = await read(`${widgets}/WidgetModels.swift`);
+  // 自适应 ends at the standard size, so a full day is never drawn smaller than before.
+  assert.match(models, /case \.auto: return \[1\.16, 1\.08, 1\]/);
+  assert.match(models, /case \.standard: return \[1\]/);
+  for (const file of ['ScheduleWidgetViews.swift', 'AgendaWidget.swift']) {
+    const source = await read(`${widgets}/${file}`);
+    assert.match(source, /family\.isAccessory \? \.standard : /, file);
+    assert.match(source, /WidgetTextScaled\(size: textSize\)/, file);
+  }
+  // Each schedule widget can pick its own size in 编辑小组件; the default follows the app.
+  const intents = await read(`${widgets}/ScheduleWidgetIntents.swift`);
+  assert.equal((intents.match(/@Parameter\(title: "文字大小", default: \.follow\)/g) ?? []).length, 3);
+  assert.equal((intents.match(/textSize: textSize\.size/g) ?? []).length, 3);
+  assert.match(code(await read(`${widgets}/ScheduleWidgetViews.swift`)), /entry\.configuration\.textSize \?\? displayOptions\.textSize/);
+});
+
+test('display options added later default when an older app wrote the settings', async () => {
+  const added = { textSize: 'standard', showWeek: 'true', showBreaks: 'true', showProgress: 'true', hideCompleted: 'false' };
+  const extension = await read(`${widgets}/WidgetModels.swift`);
+  const settings = await read(`${app}/NativeWidgetSettings.swift`);
+  for (const [key, fallback] of Object.entries(added)) {
+    for (const [name, source] of [['extension', extension], ['app', settings]]) {
+      const decode = key === 'textSize'
+        ? /decodeIfPresent\(String\.self, forKey: \.textSize\)/
+        : new RegExp(`${key}: try flag\\(\\.${key}, ${fallback}\\)`);
+      assert.match(source, decode, `${name} decodes ${key} with a default`);
+    }
+  }
+  // The app writes the sizes the extension can read.
+  const sizes = [...settings.matchAll(/\("(\w+)", "[^"]+"\)/g)].map(match => match[1])
+    .filter(value => ['auto', 'small', 'standard', 'large'].includes(value));
+  assert.deepEqual(sizes, ['auto', 'small', 'standard', 'large']);
+  assert.match(extension, /case auto\n\s+case small\n\s+case standard\n\s+case large/);
+  const page = await read(`${app}/NativeWidgetSetupView.swift`);
+  for (const key of ['showProgress', 'hideCompleted', 'showBreaks', 'showWeek']) {
+    assert.match(page, new RegExp(`optionBinding\\(\\\\\\.${key}\\)`), key);
+  }
+});
+
+test('countdown and progress are system timers anchored to the timeline entry', async () => {
+  const views = code(await read(`${widgets}/ScheduleWidgetViews.swift`));
+  // Live without a reload: the timers run from the entry's date to the class boundary.
+  assert.match(views, /Text\(timerInterval: now\.\.\.max\(now, target\.date\), countsDown: true\)/);
+  assert.match(views, /ProgressView\(timerInterval: interval, countsDown: false\)/);
+  const countdown = views.slice(views.indexOf('struct CourseCountdownLabel'), views.indexOf('struct CourseProgressBar'));
+  assert.match(countdown, /options\.showProgress/);
+  assert.match(countdown, /SchedulePayload\.countdownLeadMinutes \* 60/);
+  // The countdown to a class needs an entry at the moment it appears.
+  const models = await read(`${widgets}/WidgetModels.swift`);
+  assert.match(models, /\[\$0 - Self\.countdownLeadMinutes, \$0\]/);
+  // A hidden finished course leaves the window whether or not the rest would fit.
+  assert.match(models, /hidesCompleted \? completedPrefix : min\(overflow, completedPrefix\)/);
+  // The gallery pins its moments and cannot run the system's timers.
+  const gallery = await read(`${app}/NativeWidgetGallery.swift`);
+  assert.match(gallery, /staticClock: true/);
+});

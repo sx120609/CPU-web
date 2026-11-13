@@ -12,6 +12,33 @@ struct ScheduleWidgetConfiguration: Sendable {
     var twoDayStart: TwoDayStartOption = .nextCourseDay
     /// 大号今日课表和两日课表的课怎么排。
     var layout: ScheduleWidgetLayoutStyle = .timeline
+    /// 这一个小组件自己的文字大小；不选就跟着 App 里「iPhone 小组件」的设置。
+    var textSize: ScheduleWidgetTextSize? = nil
+}
+
+/// 「编辑小组件」里的文字大小。默认跟随 App 里的设置，同一种小组件放两个可以一大一小。
+@available(iOS 17.0, *)
+enum TextSizeOption: String, AppEnum {
+    case follow, auto, small, standard, large
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "文字大小"
+    static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+        .follow: "跟随 App 设置",
+        .auto: "自适应",
+        .small: "小",
+        .standard: "标准",
+        .large: "大",
+    ]
+
+    var size: ScheduleWidgetTextSize? {
+        switch self {
+        case .follow: return nil
+        case .auto: return .auto
+        case .small: return .small
+        case .standard: return .standard
+        case .large: return .large
+        }
+    }
 }
 
 /// 大号上的课怎么排。中号、小号放不下时间线，一律是列表。
@@ -133,7 +160,7 @@ protocol ScheduleWidgetIntent: WidgetConfigurationIntent {
 @available(iOS 17.0, *)
 struct TodayScheduleWidgetIntent: ScheduleWidgetIntent {
     static let title: LocalizedStringResource = "今日课表"
-    static let description = IntentDescription("选择今天的课上完后小组件显示什么，以及大号的显示方式。")
+    static let description = IntentDescription("选择今天的课上完后小组件显示什么、文字大小，以及大号的显示方式。")
 
     @Parameter(title: "今天的课上完后", default: .nextCourseDay)
     var afterClass: AfterClassOption
@@ -141,29 +168,34 @@ struct TodayScheduleWidgetIntent: ScheduleWidgetIntent {
     @Parameter(title: "显示方式", default: .timeline)
     var layout: LayoutOption
 
+    @Parameter(title: "文字大小", default: .follow)
+    var textSize: TextSizeOption
+
     /// 小号、中号和锁屏只放得下几门课，没有时间线可选。
     static var parameterSummary: some ParameterSummary {
         When(widgetFamily: .equalTo, .systemLarge) {
             Summary {
                 \.$afterClass
                 \.$layout
+                \.$textSize
             }
         } otherwise: {
             Summary {
                 \.$afterClass
+                \.$textSize
             }
         }
     }
 
     var configuration: ScheduleWidgetConfiguration {
-        ScheduleWidgetConfiguration(afterClass: afterClass.style, layout: layout.style)
+        ScheduleWidgetConfiguration(afterClass: afterClass.style, layout: layout.style, textSize: textSize.size)
     }
 }
 
 @available(iOS 17.0, *)
 struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
     static let title: LocalizedStringResource = "临近课程"
-    static let description = IntentDescription("选择今天的课上完后显示什么、小号显示几节课，以及大号的显示方式。")
+    static let description = IntentDescription("选择今天的课上完后显示什么、小号显示几节课、文字大小，以及大号的显示方式。")
 
     // 默认：今天上完就换到最近有课的一天，小号显示当前和下一节。
     @Parameter(title: "今天的课上完后", default: .nextCourseDay)
@@ -175,6 +207,9 @@ struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
     @Parameter(title: "显示方式", default: .timeline)
     var layout: LayoutOption
 
+    @Parameter(title: "文字大小", default: .follow)
+    var textSize: TextSizeOption
+
     /// 中号本来就是「当前 / 接下来」两栏，锁屏也只放得下一节，节数只在小号上给选；
     /// 大号放的是今天的完整课表，可以选时间线或列表。
     static var parameterSummary: some ParameterSummary {
@@ -182,16 +217,19 @@ struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
             Summary {
                 \.$afterClass
                 \.$courseCount
+                \.$textSize
             }
         } otherwise: {
             When(widgetFamily: .equalTo, .systemLarge) {
                 Summary {
                     \.$afterClass
                     \.$layout
+                    \.$textSize
                 }
             } otherwise: {
                 Summary {
                     \.$afterClass
+                    \.$textSize
                 }
             }
         }
@@ -201,7 +239,8 @@ struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
         ScheduleWidgetConfiguration(
             afterClass: afterClass.style,
             upcomingCourseCount: courseCount.rawValue,
-            layout: layout.style
+            layout: layout.style,
+            textSize: textSize.size
         )
     }
 }
@@ -209,7 +248,7 @@ struct UpcomingScheduleWidgetIntent: ScheduleWidgetIntent {
 @available(iOS 17.0, *)
 struct TwoDayScheduleWidgetIntent: ScheduleWidgetIntent {
     static let title: LocalizedStringResource = "两日课表"
-    static let description = IntentDescription("选择两日课表显示哪两天，以及大号的显示方式。")
+    static let description = IntentDescription("选择两日课表显示哪两天、文字大小，以及大号的显示方式。")
 
     // 默认值：右边是最近有课的一天。
     @Parameter(title: "显示哪两天", default: .nextCourseDay)
@@ -219,21 +258,26 @@ struct TwoDayScheduleWidgetIntent: ScheduleWidgetIntent {
     @Parameter(title: "显示方式", default: .list)
     var layout: LayoutOption
 
+    @Parameter(title: "文字大小", default: .follow)
+    var textSize: TextSizeOption
+
     static var parameterSummary: some ParameterSummary {
         When(widgetFamily: .equalTo, .systemLarge) {
             Summary {
                 \.$start
                 \.$layout
+                \.$textSize
             }
         } otherwise: {
             Summary {
                 \.$start
+                \.$textSize
             }
         }
     }
 
     var configuration: ScheduleWidgetConfiguration {
-        ScheduleWidgetConfiguration(twoDayStart: start, layout: layout.style)
+        ScheduleWidgetConfiguration(twoDayStart: start, layout: layout.style, textSize: textSize.size)
     }
 }
 

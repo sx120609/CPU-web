@@ -11,7 +11,7 @@ import WidgetKit
 ///
 /// `CPU_DEBUG_WIDGET_GALLERY=1` shows it instead of the app. Narrow it with
 /// `CPU_DEBUG_WIDGET_GALLERY_STYLE` (minimal, table, paper, board),
-/// `CPU_DEBUG_WIDGET_GALLERY_KIND` (upcoming, today, twoDay, agenda, states),
+/// `CPU_DEBUG_WIDGET_GALLERY_KIND` (upcoming, today, twoDay, agenda, states, sizes),
 /// `CPU_DEBUG_WIDGET_GALLERY_MODE` (fullColor, accented) and
 /// `CPU_DEBUG_WIDGET_GALLERY_SCHEME` (light, dark). The system appearance
 /// (`xcrun simctl ui <udid> appearance dark`) picks the scheme when none is
@@ -100,7 +100,7 @@ struct NativeWidgetGallery: View {
 /// One kind of widget in one style, scheme and rendering mode: every family.
 @available(iOS 17.0, *)
 struct GallerySheet: View, Identifiable {
-    enum Kind: String, CaseIterable { case upcoming, today, twoDay, agenda, states }
+    enum Kind: String, CaseIterable { case upcoming, today, twoDay, agenda, states, sizes }
     enum Mode: String, CaseIterable { case fullColor, accented }
 
     let kind: Kind
@@ -129,6 +129,7 @@ struct GallerySheet: View, Identifiable {
         case .twoDay: "两日课表"
         case .agenda: "日程"
         case .states: "其他状态"
+        case .sizes: "文字大小与显示开关"
         }
     }
 
@@ -192,27 +193,64 @@ struct GallerySheet: View, Identifiable {
                 }
                 cell("暑假 · 锁屏矩形", .accessoryRectangular) { schedule(.upcoming, .accessoryRectangular, now: GallerySample.summer) }
             }
+        case .sizes:
+            HStack(alignment: .top, spacing: 12) {
+                cell("临近课程小号 · 小", .systemSmall) { schedule(.upcoming, .systemSmall, now: now, size: .small) }
+                cell("临近课程小号 · 大", .systemSmall) { schedule(.upcoming, .systemSmall, now: now, size: .large) }
+            }
+            HStack(alignment: .top, spacing: 12) {
+                cell("只显示一节 · 标准", .systemSmall) { schedule(.upcoming, .systemSmall, now: now, count: 1) }
+                cell("只显示一节 · 自适应", .systemSmall) { schedule(.upcoming, .systemSmall, now: now, count: 1, size: .auto) }
+            }
+            HStack(alignment: .top, spacing: 12) {
+                cell("今日课表小号 · 自适应", .systemSmall) { schedule(.today, .systemSmall, now: GallerySample.afternoon, size: .auto) }
+                cell("日程小号 · 大", .systemSmall) { agenda(.systemSmall, now: now, size: .large) }
+            }
+            cell("临近课程中号 · 大 · 上课前 25 分钟", .systemMedium) { schedule(.upcoming, .systemMedium, now: GallerySample.beforeClass, size: .large) }
+            cell("今日课表中号 · 小", .systemMedium) { schedule(.today, .systemMedium, now: now, size: .small) }
+            cell("今日课表大号 · 自适应 · 周五只有一门课", .systemLarge) { schedule(.today, .systemLarge, now: GallerySample.fridayClass, size: .auto) }
+            cell("今日课表大号 · 自适应 · 周三四门课", .systemLarge) { schedule(.today, .systemLarge, now: now, size: .auto) }
+            cell("今日课表大号 · 隐藏已上完的课、不标课间、不显示周次", .systemLarge) {
+                schedule(.today, .systemLarge, now: GallerySample.afternoon) { options in
+                    options.hideCompleted = true
+                    options.showBreaks = false
+                    options.showWeek = false
+                }
+            }
+            cell("两日课表大号 · 列表 · 大", .systemLarge) { schedule(.twoDay, .systemLarge, now: now, layout: .list, size: .large) }
+            cell("两日课表大号 · 时间线 · 小 · 关掉倒计时与进度", .systemLarge) {
+                schedule(.twoDay, .systemLarge, now: now, layout: .timeline, size: .small) { $0.showProgress = false }
+            }
         }
     }
 
-    private func overrides(_ family: WidgetFamily) -> ScheduleWidgetOverrides {
-        ScheduleWidgetOverrides(family: family, style: style, theme: .colorGlass, options: .default)
+    /// The gallery pins its moments, so countdowns and progress are drawn as they stand then.
+    private func overrides(_ family: WidgetFamily, options: ScheduleWidgetDisplayOptions = .default) -> ScheduleWidgetOverrides {
+        ScheduleWidgetOverrides(family: family, style: style, theme: .colorGlass, options: options, staticClock: true)
     }
 
+    /// `size` is the widget's own 文字大小 from 编辑小组件; `adjust` changes the app's display options.
     private func schedule(_ widget: ScheduleWidgetKind, _ family: WidgetFamily, now: Date,
-                          layout: ScheduleWidgetLayoutStyle = .timeline, count: Int = 2) -> some View {
+                          layout: ScheduleWidgetLayoutStyle = .timeline, count: Int = 2,
+                          size: ScheduleWidgetTextSize? = nil,
+                          adjust: (inout ScheduleWidgetDisplayOptions) -> Void = { _ in }) -> some View {
         let entry = ScheduleEntry(
             date: now,
             state: GallerySample.state(at: now),
-            configuration: ScheduleWidgetConfiguration(upcomingCourseCount: count, layout: layout)
+            configuration: ScheduleWidgetConfiguration(upcomingCourseCount: count, layout: layout, textSize: size)
         )
-        return ScheduleWidgetView(kind: widget, entry: entry, overrides: overrides(family))
+        var options = ScheduleWidgetDisplayOptions.default
+        adjust(&options)
+        return ScheduleWidgetView(kind: widget, entry: entry, overrides: overrides(family, options: options))
     }
 
-    private func agenda(_ family: WidgetFamily, now: Date, state: AgendaWidgetEntry.State? = nil) -> some View {
+    private func agenda(_ family: WidgetFamily, now: Date, state: AgendaWidgetEntry.State? = nil,
+                        size: ScheduleWidgetTextSize = .standard) -> some View {
         var entry = AgendaWidgetEntry.sample(at: now)
         if let state { entry.state = state }
-        return AgendaWidgetView(entry: entry, overrides: overrides(family))
+        var options = ScheduleWidgetDisplayOptions.default
+        options.textSize = size
+        return AgendaWidgetView(entry: entry, overrides: overrides(family, options: options))
     }
 
     /// One widget at its size on its surface, with a caption.
@@ -290,6 +328,12 @@ enum GallerySample {
     /// Wednesday 11 November 2026, 10:20: the second class of the day is on.
     static let classTime = at("2026-11-11", "10:20")
     static let lunch = at("2026-11-11", "12:10")
+    /// Twenty-five minutes before the afternoon class: the countdown to it is showing.
+    static let beforeClass = at("2026-11-11", "13:35")
+    /// The afternoon class is on and the morning's two are over.
+    static let afternoon = at("2026-11-11", "15:10")
+    /// Friday's only class is on.
+    static let fridayClass = at("2026-11-13", "14:30")
     static let evening = at("2026-11-11", "21:40")
     static let fridayEvening = at("2026-11-13", "19:30")
     static let holiday = at("2026-10-02", "10:00")

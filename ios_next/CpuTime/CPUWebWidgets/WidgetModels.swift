@@ -50,6 +50,26 @@ enum AppWidgetConfiguration {
     }
 }
 
+/// 小组件的文字大小。大小是整块内容一起缩放的（字、色条、间距同一个比例），
+/// 所以放大后放不下的课会照常收进「后面还有 N 门课」，不会挤出去。
+enum ScheduleWidgetTextSize: String, Codable, CaseIterable, Sendable {
+    /// 内容少、放得下时自动放大一两档，放不下就是标准大小。
+    case auto
+    case small
+    case standard
+    case large
+
+    /// 依次试的缩放比例：第一个整块放得下的就用，都放不下用最后一个。
+    var scales: [CGFloat] {
+        switch self {
+        case .auto: return [1.16, 1.08, 1]
+        case .small: return [0.9]
+        case .standard: return [1]
+        case .large: return [1.12]
+        }
+    }
+}
+
 /// User-selectable widget fields. The app writes this value to the shared App
 /// Group; all iOS widget families and the Watch complication read the same
 /// keys so their content stays consistent.
@@ -64,6 +84,16 @@ struct ScheduleWidgetDisplayOptions: Codable, Equatable {
     var showHoliday: Bool
     /// 最近的节假日常驻在日期栏右侧（「距国庆节还有 5 天」），而不是只在休息时才出现。
     var holidayAlwaysVisible: Bool
+    /// 桌面小组件的文字大小；「编辑小组件」里可以给单个小组件另选。
+    var textSize: ScheduleWidgetTextSize
+    /// 日期栏右边的「第 N 周」。
+    var showWeek: Bool
+    /// 时间线上长课间的「休息 2 小时」。
+    var showBreaks: Bool
+    /// 正在上的课带一条实时进度，标题旁边是「距下课」「距上课」的倒计时。
+    var showProgress: Bool
+    /// 今天已经上完的课不再灰着留在列表里。
+    var hideCompleted: Bool
 
     static let `default` = ScheduleWidgetDisplayOptions(
         showCourseName: true,
@@ -79,7 +109,12 @@ struct ScheduleWidgetDisplayOptions: Codable, Equatable {
         showTime: Bool,
         showLunarDate: Bool = true,
         showHoliday: Bool = true,
-        holidayAlwaysVisible: Bool = true
+        holidayAlwaysVisible: Bool = true,
+        textSize: ScheduleWidgetTextSize = .standard,
+        showWeek: Bool = true,
+        showBreaks: Bool = true,
+        showProgress: Bool = true,
+        hideCompleted: Bool = false
     ) {
         self.showCourseName = showCourseName
         self.showRoom = showRoom
@@ -88,21 +123,35 @@ struct ScheduleWidgetDisplayOptions: Codable, Equatable {
         self.showLunarDate = showLunarDate
         self.showHoliday = showHoliday
         self.holidayAlwaysVisible = holidayAlwaysVisible
+        self.textSize = textSize
+        self.showWeek = showWeek
+        self.showBreaks = showBreaks
+        self.showProgress = showProgress
+        self.hideCompleted = hideCompleted
     }
 
-    /// 旧版本写进 App Group 的 JSON 没有农历、节假日和常驻字段；中间有几版去掉过常驻，
-    /// 那时存下的设置也没有它。缺字段时按默认值补齐，
+    /// 旧版本写进 App Group 的 JSON 没有后来加的字段（农历、节假日、常驻、文字大小、进度……）；
+    /// 中间有几版去掉过常驻，那时存下的设置也没有它。缺字段时按默认值补齐，
     /// 否则整份显示设置会解码失败、把用户已经关掉的开关又打开。
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        func flag(_ key: CodingKeys, _ fallback: Bool) throws -> Bool {
+            try values.decodeIfPresent(Bool.self, forKey: key) ?? fallback
+        }
         self.init(
-            showCourseName: try values.decodeIfPresent(Bool.self, forKey: .showCourseName) ?? true,
-            showRoom: try values.decodeIfPresent(Bool.self, forKey: .showRoom) ?? true,
-            showTeacher: try values.decodeIfPresent(Bool.self, forKey: .showTeacher) ?? true,
-            showTime: try values.decodeIfPresent(Bool.self, forKey: .showTime) ?? true,
-            showLunarDate: try values.decodeIfPresent(Bool.self, forKey: .showLunarDate) ?? true,
-            showHoliday: try values.decodeIfPresent(Bool.self, forKey: .showHoliday) ?? true,
-            holidayAlwaysVisible: try values.decodeIfPresent(Bool.self, forKey: .holidayAlwaysVisible) ?? true
+            showCourseName: try flag(.showCourseName, true),
+            showRoom: try flag(.showRoom, true),
+            showTeacher: try flag(.showTeacher, true),
+            showTime: try flag(.showTime, true),
+            showLunarDate: try flag(.showLunarDate, true),
+            showHoliday: try flag(.showHoliday, true),
+            holidayAlwaysVisible: try flag(.holidayAlwaysVisible, true),
+            // 认不出的值（以后的版本写的）当标准大小，不让整份设置作废。
+            textSize: (try values.decodeIfPresent(String.self, forKey: .textSize)).flatMap(ScheduleWidgetTextSize.init(rawValue:)) ?? .standard,
+            showWeek: try flag(.showWeek, true),
+            showBreaks: try flag(.showBreaks, true),
+            showProgress: try flag(.showProgress, true),
+            hideCompleted: try flag(.hideCompleted, false)
         )
     }
 
@@ -261,13 +310,20 @@ struct ScheduleDay: Decodable, Identifiable {
         return "\(day)"
     }
 
-    func courseWindow(limit: Int, nowMinutes: Int?) -> ScheduleCourseWindow {
-        let safeLimit = max(0, limit)
-        let overflow = max(0, courseList.count - safeLimit)
-        let completedPrefix = nowMinutes.map { minutes in
+    /// 这一天开头已经上完的课有几门（`nowMinutes` 为空时是别的日子，一门都不算）。
+    func completedPrefixCount(nowMinutes: Int?) -> Int {
+        nowMinutes.map { minutes in
             courseList.prefix { $0.hasEnded(at: minutes) }.count
         } ?? 0
-        let skippedCompletedCount = min(overflow, completedPrefix)
+    }
+
+    /// 放得下 `limit` 门时显示哪几门。开头已经上完的课，放不下时才省掉；
+    /// `hidesCompleted`（「隐藏已上完的课」）时一律省掉。
+    func courseWindow(limit: Int, nowMinutes: Int?, hidesCompleted: Bool = false) -> ScheduleCourseWindow {
+        let safeLimit = max(0, limit)
+        let overflow = max(0, courseList.count - safeLimit)
+        let completedPrefix = completedPrefixCount(nowMinutes: nowMinutes)
+        let skippedCompletedCount = hidesCompleted ? completedPrefix : min(overflow, completedPrefix)
         let visible = Array(courseList.dropFirst(skippedCompletedCount).prefix(safeLimit))
         let remainingCount = max(0, courseList.count - skippedCompletedCount - visible.count)
         return ScheduleCourseWindow(
@@ -498,8 +554,8 @@ struct SchedulePayload: Decodable {
 
     /// 小组件的一整条时间线：从 `now` 起画面会变的每个时刻各一条，`reload` 是次日零点。
     ///
-    /// 画面只在这几种时刻变：一节课开始、一节课下课后一分钟（下课那一分钟里课还算没结束）、
-    /// 零点换日。所以一次把今天剩下的边界和零点都排好，系统按条目自己换，不用每个边界回来
+    /// 画面只在这几种时刻变：一节课开始前一小时（倒计时出现）、一节课开始、一节课下课后一分钟
+    ///（下课那一分钟里课还算没结束）、零点换日。所以一次把今天剩下的边界和零点都排好，系统按条目自己换，不用每个边界回来
     /// 要一次，一天只花一次刷新预算。明天的边界也带上：零点那次刷新被系统推迟时，明早照样换得过来。
     func timelinePlan(from now: Date) -> ScheduleWidgetTimelinePlan {
         let calendar = ChineseCalendarInfo.gregorian
@@ -512,10 +568,14 @@ struct SchedulePayload: Decodable {
         return ScheduleWidgetTimelinePlan(dates: dates, reload: midnight)
     }
 
+    /// 上课前多久开始显示「距上课」的倒计时。时间线在这一刻有一条条目，倒计时才出得来。
+    static let countdownLeadMinutes = 60
+
     private func displayChanges(on startOfDay: Date, until endOfDay: Date, after moment: Date) -> [Date] {
         let day = currentDay(now: startOfDay)
         let minutes = day.courseList.flatMap { course -> [Int] in
-            let start = course.startMinutes.map { [$0] } ?? []
+            // 上课前一小时那一刻：「距上课」的倒计时从这里出现。
+            let start = course.startMinutes.map { [$0 - Self.countdownLeadMinutes, $0] } ?? []
             let end = course.endMinutes > 0 ? [course.endMinutes + 1] : []
             return start + end
         }

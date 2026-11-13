@@ -159,3 +159,90 @@ struct FirstThatFitsHorizontally: Layout {
         } ?? subviews.count - 1
     }
 }
+
+// MARK: - Text size
+
+/// Draws a widget's content at the chosen text size by scaling the whole
+/// content: it is laid out in a canvas `1 / scale` the size of the widget and
+/// scaled back up, so type, colour bars and gaps keep their proportions and
+/// every fitting ladder inside (how many courses, one-line titles…) answers to
+/// the room that is really left. A larger size shows fewer courses and counts
+/// the rest in 后面还有 N 门课; it never pushes content out of the widget.
+///
+/// 自适应 tries its scales from the largest: the first at which the content's
+/// fullest arrangement fits is used, so a light day is drawn larger and a full
+/// day at the standard size.
+@available(iOS 17.0, *)
+struct WidgetTextScaled<Content: View>: View {
+    let size: ScheduleWidgetTextSize
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        let scales = size.scales
+        if scales == [1] {
+            content()
+        } else {
+            WidgetScaleLayout(scales: scales) {
+                ForEach(scales, id: \.self) { scale in
+                    content()
+                        // Fill the canvas like the system's own centring would.
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .scaleEffect(scale, anchor: .topLeading)
+                }
+            }
+        }
+    }
+}
+
+/// One subview per scale, each already scaled about its top leading corner.
+/// A scale effect does not change a view's layout size, so each is measured
+/// and placed in its own unscaled canvas.
+@available(iOS 17.0, *)
+struct WidgetScaleLayout: Layout {
+    let scales: [CGFloat]
+
+    func makeCache(subviews: Subviews) -> WidgetLayoutMeasurementCache { .init() }
+
+    func updateCache(_ cache: inout WidgetLayoutMeasurementCache, subviews: Subviews) { cache = .init() }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout WidgetLayoutMeasurementCache) -> CGSize {
+        guard let last = subviews.indices.last, last < scales.count else { return .zero }
+        if let width = proposal.width, let height = proposal.height, width.isFinite, height.isFinite {
+            return CGSize(width: width, height: height)
+        }
+        let scale = scales[last]
+        let ideal = idealSize(at: last, width: proposal.width.map { $0 / scale }, subviews: subviews, cache: &cache)
+        return CGSize(width: proposal.width ?? ideal.width * scale, height: proposal.height ?? ideal.height * scale)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout WidgetLayoutMeasurementCache) {
+        guard !subviews.isEmpty, subviews.count <= scales.count else { return }
+        let index = chosen(in: bounds.size, subviews: subviews, cache: &cache)
+        for (offset, subview) in subviews.enumerated() {
+            if offset == index {
+                let scale = scales[offset]
+                subview.place(
+                    at: bounds.origin,
+                    anchor: .topLeading,
+                    proposal: ProposedViewSize(width: bounds.width / scale, height: bounds.height / scale)
+                )
+            } else {
+                subview.place(at: CGPoint(x: bounds.minX, y: bounds.minY - 10_000), anchor: .topLeading, proposal: .zero)
+            }
+        }
+    }
+
+    private func idealSize(at index: Int, width: CGFloat?, subviews: Subviews, cache: inout WidgetLayoutMeasurementCache) -> CGSize {
+        let proposal = ProposedViewSize(width: width, height: nil)
+        return cache.size(of: index, proposal: proposal) { subviews[index].sizeThatFits(proposal) }
+    }
+
+    private func chosen(in size: CGSize, subviews: Subviews, cache: inout WidgetLayoutMeasurementCache) -> Int {
+        guard subviews.count > 1 else { return 0 }
+        return subviews.indices.first { index in
+            let scale = scales[index]
+            let ideal = idealSize(at: index, width: size.width / scale, subviews: subviews, cache: &cache)
+            return ideal.height * scale <= size.height + 0.5
+        } ?? subviews.count - 1
+    }
+}

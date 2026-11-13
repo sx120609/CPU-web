@@ -587,20 +587,64 @@ private struct WidgetSettingsSection: View {
         _options = State(initialValue: WidgetDisplayOptions.load(defaults: defaults))
     }
 
+    @ViewBuilder
     var body: some View {
         Section {
             LabeledContent("状态", value: session.widgetSettings.isConfigured ? "课表已同步" : "等待课表同步")
+        } footer: {
+            Text("在桌面或锁屏添加“临近课程”“今日课表”“两日课表”或“日程”。小组件直接用 App 里的课表，打开 App 同步后自动更新。")
+        }
 
+        Section {
             Toggle("课程名称", isOn: optionBinding(\.showCourseName))
             Toggle("教室", isOn: optionBinding(\.showRoom))
             Toggle("老师", isOn: optionBinding(\.showTeacher))
             Toggle("上课时间", isOn: optionBinding(\.showTime))
+        } header: {
+            Label("课程信息", systemImage: "text.badge.checkmark")
+        } footer: {
+            Text("关掉的信息让出位置，剩下的内容自动重新排版。")
+        }
 
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("文字大小")
+                Picker("文字大小", selection: Binding(
+                    get: { options.textSize },
+                    set: { value in
+                        options.textSize = value
+                        session.widgetSettings.setScheduleWidgetDisplayOptions(options)
+                    }
+                )) {
+                    ForEach(WidgetDisplayOptions.textSizes, id: \.value) { size in
+                        Text(size.title).tag(size.value)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            Toggle("上课倒计时与进度", isOn: optionBinding(\.showProgress))
+            Toggle("隐藏已上完的课", isOn: optionBinding(\.hideCompleted))
+            Toggle("时间线标出课间休息", isOn: optionBinding(\.showBreaks))
+        } header: {
+            Label("文字与排版", systemImage: "textformat.size")
+        } footer: {
+            Text("文字和间距一起缩放，放不下的课收进“后面还有几门”。“自适应”在课少、放得下时自动放大，课多时回到标准大小。倒计时在上课前一小时出现，正在上的课带一条实时进度。单个小组件想用别的大小，长按它选“编辑小组件”。")
+        }
+
+        Section {
+            Toggle("周次", isOn: optionBinding(\.showWeek))
             Toggle("农历日期", isOn: optionBinding(\.showLunarDate))
             Toggle("节假日提示", isOn: optionBinding(\.showHoliday))
             Toggle("最近节假日常驻", isOn: optionBinding(\.holidayAlwaysVisible))
                 .disabled(!options.showHoliday)
+        } header: {
+            Label("日期栏", systemImage: "calendar")
+        } footer: {
+            Text("节假日只标法定假日和传统节日，没课时显示最近假期的倒计时；开启“最近节假日常驻”后，有课时日期栏也会显示。")
+        }
 
+        Section {
             Picker("颜色主题", selection: $theme) {
                 ForEach(themes, id: \.0) { value in
                     Text(value.1).tag(value.0)
@@ -619,13 +663,23 @@ private struct WidgetSettingsSection: View {
                 session.widgetSettings.setScheduleWidgetStyle(value)
             }
         } header: {
-            Label("iPhone 小组件", systemImage: "square.grid.2x2")
+            Label("外观", systemImage: "paintpalette")
         } footer: {
-            Text("选择要显示的信息后，打开桌面或锁屏添加“临近课程”“今日课表”“两日课表”或“日程”。小组件直接用 App 里的课表，打开 App 同步课表后自动更新；风格默认跟着课表风格走（经典、格子与简约同一个样子）。节假日只标法定假日和传统节日，没课时显示最近假期的倒计时；开启「最近节假日常驻」后，有课时日期栏也会显示。今天的课上完后显示什么、两日课表显示哪两天、大号用时间线还是列表，长按小组件选“编辑小组件”设置。")
+            Text("风格默认跟着课表风格走（经典、格子与简约同一个样子）。背景图在“课表 › 背景”里设置。")
+        }
+
+        Section {
+            LabeledContent("长按小组件", value: "编辑小组件")
+        } header: {
+            Label("每个小组件单独设置", systemImage: "hand.tap")
+        } footer: {
+            Text("今天的课上完后显示什么、小号显示几节课、两日课表显示哪两天、大号用时间线还是列表，以及这一个小组件的文字大小。")
         }
 
         Section {
             LabeledContent("日程小组件", value: NativeAgendaWidgetBridge.statusText)
+        } header: {
+            Label("日程", systemImage: "checklist")
         } footer: {
             Text("“日程”小组件列出待办和接下来两周的日程，点圆圈直接勾选完成。勾选先记在手机上，下次打开 App 时同步到网站和其他设备；只写标题、时间和地点，不带备注。")
         }

@@ -39,6 +39,21 @@ struct WidgetDisplayOptions: Codable, Equatable {
     var showHoliday: Bool
     /// 最近的节假日常驻在日期栏右侧（「距国庆节还有 5 天」），而不是只在休息时才出现。
     var holidayAlwaysVisible: Bool
+    /// 桌面小组件的文字大小：`auto`（自适应）、`small`、`standard`、`large`，
+    /// 和扩展里的 `ScheduleWidgetTextSize` 一一对应。从这里往下都只有 iPhone 小组件用。
+    var textSize: String
+    /// 日期栏右边的「第 N 周」。
+    var showWeek: Bool
+    /// 时间线上长课间的「休息 2 小时」。
+    var showBreaks: Bool
+    /// 正在上的课的实时进度，和「距下课」「距上课」的倒计时。
+    var showProgress: Bool
+    /// 今天已经上完的课不再灰着留在列表里。
+    var hideCompleted: Bool
+
+    static let textSizes: [(value: String, title: String)] = [
+        ("auto", "自适应"), ("small", "小"), ("standard", "标准"), ("large", "大"),
+    ]
 
     static let `default` = WidgetDisplayOptions(
         showCourseName: true,
@@ -54,7 +69,12 @@ struct WidgetDisplayOptions: Codable, Equatable {
         showTime: Bool,
         showLunarDate: Bool = true,
         showHoliday: Bool = true,
-        holidayAlwaysVisible: Bool = true
+        holidayAlwaysVisible: Bool = true,
+        textSize: String = "standard",
+        showWeek: Bool = true,
+        showBreaks: Bool = true,
+        showProgress: Bool = true,
+        hideCompleted: Bool = false
     ) {
         self.showCourseName = showCourseName
         self.showRoom = showRoom
@@ -63,20 +83,33 @@ struct WidgetDisplayOptions: Codable, Equatable {
         self.showLunarDate = showLunarDate
         self.showHoliday = showHoliday
         self.holidayAlwaysVisible = holidayAlwaysVisible
+        self.textSize = Self.textSizes.contains { $0.value == textSize } ? textSize : "standard"
+        self.showWeek = showWeek
+        self.showBreaks = showBreaks
+        self.showProgress = showProgress
+        self.hideCompleted = hideCompleted
     }
 
-    /// 旧版本存的 JSON 没有农历、节假日和常驻字段（中间有几版去掉过常驻）。缺字段时按默认值补齐，否则整份设置
-    /// 解码失败，已经关掉的开关又会被打开。
+    /// 旧版本存的 JSON 没有后来加的字段（农历、节假日、常驻、文字大小、进度……；中间有几版去掉过常驻）。
+    /// 缺字段时按默认值补齐，否则整份设置解码失败，已经关掉的开关又会被打开。
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        func flag(_ key: CodingKeys, _ fallback: Bool) throws -> Bool {
+            try values.decodeIfPresent(Bool.self, forKey: key) ?? fallback
+        }
         self.init(
-            showCourseName: try values.decodeIfPresent(Bool.self, forKey: .showCourseName) ?? true,
-            showRoom: try values.decodeIfPresent(Bool.self, forKey: .showRoom) ?? true,
-            showTeacher: try values.decodeIfPresent(Bool.self, forKey: .showTeacher) ?? true,
-            showTime: try values.decodeIfPresent(Bool.self, forKey: .showTime) ?? true,
-            showLunarDate: try values.decodeIfPresent(Bool.self, forKey: .showLunarDate) ?? true,
-            showHoliday: try values.decodeIfPresent(Bool.self, forKey: .showHoliday) ?? true,
-            holidayAlwaysVisible: try values.decodeIfPresent(Bool.self, forKey: .holidayAlwaysVisible) ?? true
+            showCourseName: try flag(.showCourseName, true),
+            showRoom: try flag(.showRoom, true),
+            showTeacher: try flag(.showTeacher, true),
+            showTime: try flag(.showTime, true),
+            showLunarDate: try flag(.showLunarDate, true),
+            showHoliday: try flag(.showHoliday, true),
+            holidayAlwaysVisible: try flag(.holidayAlwaysVisible, true),
+            textSize: try values.decodeIfPresent(String.self, forKey: .textSize) ?? "standard",
+            showWeek: try flag(.showWeek, true),
+            showBreaks: try flag(.showBreaks, true),
+            showProgress: try flag(.showProgress, true),
+            hideCompleted: try flag(.hideCompleted, false)
         )
     }
 

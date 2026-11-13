@@ -85,7 +85,7 @@ Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=p
 
 服务端接口在 `/api/schedule-shares`：`POST /`（发布或更新，每账号每小时 30 次）、`GET /mine`、`GET /:code`、`GET /:code/meta`（只含更新时间等摘要，不缓存）、`DELETE /:code`（发布者本人登录即可，不再需要写入凭证）。
 
-Debug 构建的 `CPU_DEBUG_SCHEDULE_ACTION` 还支持 `sharing`、`shared-view`（用示例数据打开共享课表页或只读课表页）；配合 `CPU_DEBUG_MOCK_SCHEDULE=1`、`CPU_DEBUG_API_ORIGIN`、`CPU_DEBUG_API_TOKEN` 可以让示例课表直连一台本机服务端，用 `share-open`、`share-publish`、`share-import`、`share-import-view`（配 `CPU_DEBUG_SHARE_CODE`、`CPU_DEBUG_SHARE_REMARK`）把发布、导入、刷新和撤销实际走一遍。`style-picker` 打开课表风格页，`live-activity` 启动设备设置里那节演示课的实时活动（`CPU_DEBUG_LIVE_MINUTES=215` 让它还剩这么多分钟，用来看四节连上那样的长倒计时；灵动岛和锁屏的倒计时按它最长的值留宽度，不再是固定宽度）；`CPU_DEBUG_MOCK_TABS=1` 给示例课表套上和登录后一样的底部标签栏（其余标签页是空的），用来截商店图。连本机服务端（`CPU_APP_URL`）拍课表以外的页面时，`CPU_DEBUG_LOGIN_USER`、`CPU_DEBUG_LOGIN_PASSWORD` 用种子数据里的示例账号自动登录，`CPU_DEBUG_TAB` 选标签页，`CPU_DEBUG_OPEN_PATH=/lost-found` 在首页标签里打开指定页面。`CPU_DEBUG_SCHEDULE_NOTE=带实验报告` 给示例课表（`CPU_DEBUG_VISUAL_SCHEDULE=1`）的第一门课加一条手写备注，`CPU_DEBUG_SCHEDULE_OVERLAP=1` 给示例课表加一门重叠的课，`CPU_DEBUG_SCHEDULE_PRIORITY=课名,课名` 按顺序指定优先显示的课。
+Debug 构建的 `CPU_DEBUG_SCHEDULE_ACTION` 还支持 `sharing`、`shared-view`（用示例数据打开共享课表页或只读课表页）；配合 `CPU_DEBUG_MOCK_SCHEDULE=1`、`CPU_DEBUG_API_ORIGIN`、`CPU_DEBUG_API_TOKEN` 可以让示例课表直连一台本机服务端，用 `share-open`、`share-publish`、`share-import`、`share-import-view`（配 `CPU_DEBUG_SHARE_CODE`、`CPU_DEBUG_SHARE_REMARK`）把发布、导入、刷新和撤销实际走一遍。`style-picker` 打开课表风格页，`live-activity` 启动设备设置里那节演示课的实时活动（`CPU_DEBUG_LIVE_MINUTES=215` 让它还剩这么多分钟，用来看四节连上那样的长倒计时；灵动岛和锁屏的倒计时按它最长的值留宽度，不再是固定宽度）；`CPU_DEBUG_MOCK_TABS=1` 给示例课表套上和登录后一样的底部标签栏（其余标签页是空的），用来截商店图；这时「更多 › 课表、设备与小组件」也照常打开设置页，不登录就能看各个设置页。连本机服务端（`CPU_APP_URL`）拍课表以外的页面时，`CPU_DEBUG_LOGIN_USER`、`CPU_DEBUG_LOGIN_PASSWORD` 用种子数据里的示例账号自动登录，`CPU_DEBUG_TAB` 选标签页，`CPU_DEBUG_OPEN_PATH=/lost-found` 在首页标签里打开指定页面。`CPU_DEBUG_SCHEDULE_NOTE=带实验报告` 给示例课表（`CPU_DEBUG_VISUAL_SCHEDULE=1`）的第一门课加一条手写备注，`CPU_DEBUG_SCHEDULE_OVERLAP=1` 给示例课表加一门重叠的课，`CPU_DEBUG_SCHEDULE_PRIORITY=课名,课名` 按顺序指定优先显示的课。
 
 ### 日程
 
@@ -181,12 +181,17 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 | 日程 | 小／中／大、锁屏三种 | 逾期待办、接下来两周的日程和没有日期的待办，点圆圈直接勾选完成 |
 
 - **风格**：小组件跟随课表风格（App Group 的 `scheduleVisualStyle`），设备设置「小组件风格」可以单独指定。经典、格子与简约在小组件里是同一个样子（原来的样子），表格、素笺、站牌各有字体、纸色和装饰；颜色主题仍是九种。切换课表风格会刷新小组件。
+- **文字大小**：设备设置「iPhone 小组件 › 文字与排版」选自适应、小、标准（默认）或大，「编辑小组件」里可以给单个小组件另选（默认跟随 App）。大小是整块内容一起缩放的：内容排在 `1 / 比例` 大小的画布里再放大回去（`WidgetTextScaled`，`ScheduleWidgetLayouts.swift`），字、色条和间距同一个比例，里面按高度挑排法的梯子照常工作，放大后放不下的课收进「后面还有 N 门课」，不会挤出去。「自适应」从 1.16、1.08 往下试，最满的排法放得下就用，否则是标准大小，所以课少的日子字大、课多的日子和原来一样。锁屏三种尺寸不缩放。日程小组件跟 App 里的设置。
+- **倒计时与进度**：临近课程的「当前」「下一节」标题右边是「距下课 23:10」「距上课 12:40」，正在上的课下面（时间线卡片、列表行、站牌票面里）有一条进度。都是系统驱动的实时计时（`Text(timerInterval:)`、`ProgressView(timerInterval:)`），从条目的时刻数到上下课，不花刷新预算；「距上课」在上课前一小时出现，时间线为此在那一刻多排一条条目（`SchedulePayload.countdownLeadMinutes`）。「上课倒计时与进度」可以关。
+- **其余显示开关**：「隐藏已上完的课」（今日课表和两日课表今天那列不再把上完的课灰着留着；都上完时显示休息状态或「今日课程已结束」）、「时间线标出课间休息」、日期栏的「周次」。都存在同一份 `scheduleWidgetDisplayOptions` JSON 里，旧版本存的设置缺这些字段时取默认值。
+- **日期栏**：中号、大号整宽的日期栏把假期倒计时收到「第 N 周」下面，不再单占一行；小号、两日课表的半宽列和站牌风格照旧在第二行。
+- **下一次课预告**：大号今日课表今天的课都放得下、底下还空着时，接着列下一个有课日开头的几门（标注「明天 周四」，字小一号），连一门都放不下时退成一行「08:00 药物设计学 等 2 门」。时间线只在今天一两门课时预告（三门以上卡片本来就铺满），列表放得下就预告；选了「只看今天」不预告。
 - **时间线**：一次排好今天剩下和明天的每个上下课时刻，次日零点再要新的；视图从时间线条目的日期读「现在」（`\.scheduleWidgetNow`），不读 `Date.now`。课表在 App 里变了由 App 立刻刷新。
 - **寒暑假与过期**：本地课表带上学期起止（`termStart`／`termEnd`），学期外显示「暑假ing · 距开学还有 N 天」，学期内却没有今天的数据时提示「打开 App 更新课表」。
 - **染色、待机**：强调色都标了 `widgetAccentable()`；非全彩模式和系统去掉背景时（待机）不再用纸墨色，改用系统主色。
 - **日程勾选**：小组件进程没有登录会话，勾选先写进 App Group（`widget-agenda-done-v1.json`）并立刻隐藏那一项；App 回到前台、网站确认登录后由 `NativeAgendaWidgetBridge` 经 `NativeAgendaService.toggle` 保存，再清空。日程列表变了 App 只重写 `widget-agenda-v1.json`（标题、时间、地点，不带备注），内容不变不写。点日程打开它的编辑表单（`action=agenda-item`），列表和「记一笔」分别是 `action=agenda-list`、`action=agenda-new`。检查脚本 `bash ios_next/scripts/check-agenda-widget.sh`。
 
-**小组件画廊（Debug）**：模拟器桌面没法用脚本添加小组件，Debug 构建用 `CPU_DEBUG_WIDGET_GALLERY=1` 启动时不进 App，换成按 iPhone 17 Pro 实际尺寸（小 170×170、中 364×170、大 364×382、锁屏矩形 172×76、圆形 76×76）画的全部小组件，用的是扩展里同一份视图（`ScheduleWidgetViews.swift` 等在 Debug 下也编进 App，Release 用 `EXCLUDED_SOURCE_FILE_NAMES` 排除）。`CPU_DEBUG_WIDGET_GALLERY_STYLE=minimal|table|paper|board`、`..._KIND=upcoming|today|twoDay|agenda|states`、`..._MODE=fullColor|accented`（染色桌面）、`..._SCHEME=light|dark` 缩小范围，不给 `SCHEME` 时跟系统外观（`xcrun simctl ui <udid> appearance dark`）；`CPU_DEBUG_WIDGET_GALLERY_EXPORT=/目录` 另外把每一页存成 PNG（不缩小范围时 4 种风格 × 5 页 × 浅深色共 40 张）。示例课表钉在 2026-11-11 10:20（周三第二节课中），「其他状态」页是暑假、课表过期、国庆、晚上切到明天、列表排法和等待同步。系统外观是近似：桌面圆角与 16pt 边距、锁屏按灰度画在深色壁纸上、染色桌面按白色蒙版画在深色玻璃上。
+**小组件画廊（Debug）**：模拟器桌面没法用脚本添加小组件，Debug 构建用 `CPU_DEBUG_WIDGET_GALLERY=1` 启动时不进 App，换成按 iPhone 17 Pro 实际尺寸（小 170×170、中 364×170、大 364×382、锁屏矩形 172×76、圆形 76×76）画的全部小组件，用的是扩展里同一份视图（`ScheduleWidgetViews.swift` 等在 Debug 下也编进 App，Release 用 `EXCLUDED_SOURCE_FILE_NAMES` 排除）。`CPU_DEBUG_WIDGET_GALLERY_STYLE=minimal|table|paper|board`、`..._KIND=upcoming|today|twoDay|agenda|states|sizes`、`..._MODE=fullColor|accented`（染色桌面）、`..._SCHEME=light|dark` 缩小范围，不给 `SCHEME` 时跟系统外观（`xcrun simctl ui <udid> appearance dark`）；`CPU_DEBUG_WIDGET_GALLERY_EXPORT=/目录` 另外把每一页存成 PNG（不缩小范围时 4 种风格 × 6 页 × 浅深色共 48 张）。示例课表钉在 2026-11-11 10:20（周三第二节课中），「其他状态」页是暑假、课表过期、国庆、晚上切到明天、列表排法和等待同步，「文字大小与显示开关」页是各档文字大小、自适应、隐藏已上完的课和下一次课预告。画廊钉着过去的时刻，倒计时和进度条按那一刻画成静止的（`ScheduleWidgetOverrides.staticClock`），真机上才是实时的。系统外观是近似：桌面圆角与 16pt 边距、锁屏按灰度画在深色壁纸上、染色桌面按白色蒙版画在深色玻璃上。
 
 ```sh
 SIMCTL_CHILD_CPU_DEBUG_WIDGET_GALLERY=1 SIMCTL_CHILD_CPU_DEBUG_WIDGET_GALLERY_EXPORT=/tmp/widget-gallery \
