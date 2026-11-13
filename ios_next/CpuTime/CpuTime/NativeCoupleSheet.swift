@@ -215,6 +215,7 @@ struct NativeCoupleSheet: View {
         } footer: {
             Text("开着显示时，你的课都用你的颜色、TA 的课都用 TA 的颜色。颜色双方看到的一样；选 TA 正在用的那个，两人就互换。")
         }
+        ScheduleCoupleWeekLayoutSection()
         Section {
             Button("解除绑定", role: .destructive) { confirmsUnbind = true }
                 .disabled(busy)

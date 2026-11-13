@@ -183,6 +183,13 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 情侣课表和叠加的共享课表（`ScheduleOverlayStrip`）翻页：横向的懒加载栈会留着所有滑过的日子，而每滑过一天、每次选中的日期变化，整条的 body 都会重跑，原来每次都把留着的每一天重算一遍（两个人的课、调休、合并重叠）并重画两列，滑得越远越卡。现在一天是一个可比较的条目（`ScheduleOverlayStripDayItem`，键里是日期、布局、风格和一个版本号），键没变就整个跳过；日期列表和每天的数据记在 `ScheduleOverlayStripMemo` 里，课表、校历、对方的课表、单次调整、优先级、今天的日期或周末设置变了才清空；滑到的日子等条停稳（140 毫秒没再变）才报给页面，滑动中途不再重画整页。检查在 `ios_next/tests/overlay-strip.test.mjs`。
 
+**一起看的周视图：并排／合并，和使用指引**（安卓、鸿蒙同样的三项，文案一致）。11-11 起，绑定情侣课表或叠加共享课表时周视图换成了双栏日条，有用户要原来的样子：
+
+- 设置项 `coupleWeekLayout`（`NativeSchedulePreferences`，键 `nativeSchedule.coupleWeekLayout`，按设备保存）：`split` 并排（默认，双栏日条）或 `merged` 合并（两人的课排在同一张周课表里：一人一种颜色，对方和自己撞课时在自己的课下面写「TA …」，一起上的写「♥ 一起」），缺省或认不出的值取 `split`。合并的画法是 51ff6609 删掉的那一套（`coupleColumn`／`coupleClashes`、`ScheduleCouplePersonTile`、`ScheduleCoupleNote`）接回来的，由环境值 `scheduleCoupleMerged` 告诉列视图。入口在课表设置和情侣课表页的「一起看的周视图」，前者只在绑定了情侣课表或正在叠加时出现；切换立即生效。
+- 并排视图第一次出现时，上方有一条可关的提示「两人的课并排显示，左右滑动换天。」和「改回合并」，看过（显示超过三秒后离开，或关掉）就不再出现（`nativeSchedule.coupleSplitHintSeen`）。
+- 「课表怎么用」面板（`ScheduleGuideSheet`）：自己的课表第一次带数据显示、又没有别的面板开着时自动弹一次（`nativeSchedule.guideSeen` 记版本号，现在是 1；只读的共享课表不弹），「更多 › 使用指引」随时再开。条目是点一下课程、课表风格（当前是简约时给「换回经典」）、和 TA 一起看（绑定或叠加时才有，给「改回合并」）、更多。
+- Debug：`CPU_DEBUG_COUPLE_LAYOUT=merged|split` 设置这一项，`CPU_DEBUG_SCHEDULE_ACTION=guide` 打开指引；示例课表（`CPU_DEBUG_MOCK_SCHEDULE=1`）不会自动弹指引，免得挡住截图。检查在 `ios_next/tests/couple-week-layout.test.mjs`。
+
 ## 自由时间课程
 
 教务里列了、却没有排具体星期和节次的课（实践课、网课）进不了课表格子。服务端的课表结果多一个可选字段 `unscheduled`（课名、教务写的起止周、上课形式、学分；`ScheduleResult.unscheduled`，`server/src/services/jwxtParser.ts`），目前只有南京医科大学的教务给这份数据（课表响应里的 `sjkList`，`server/src/schools/njmu/driver.ts`），药大和其余学校没有这一项。Web 桥原样带给原生端（`NativeScheduleResult.unscheduled`，缺失或格式不对时为空，不影响课表本身），「更多 › 日历与日程」里有课时才出现「自由时间课程」一行，点开列出这些课。它们不进格子、小组件、实时活动、日历导出和共享课表；Web、安卓和鸿蒙目前不显示。Debug 构建用 `CPU_DEBUG_UNSCHEDULED=1`（配 `CPU_DEBUG_MOCK_SCHEDULE=1`）给示例课表加两门，`CPU_DEBUG_SCHEDULE_ACTION=unscheduled` 直接打开这一页。

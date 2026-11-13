@@ -248,6 +248,7 @@ private struct ScheduleSettingsSection: View {
         }
 
         ScheduleWeekDisplaySettings(preferences: preferences)
+        ScheduleCoupleWeekLayoutSetting()
 
         Section {
             NavigationLink {
@@ -310,6 +311,7 @@ private struct NativeScheduleSettingsView: View {
             }
 
             ScheduleWeekDisplaySettings(preferences: preferences)
+            ScheduleCoupleWeekLayoutSetting()
 
             Section {
                 Picker("默认视图", selection: $preferences.defaultView) {

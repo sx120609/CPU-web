@@ -640,6 +640,9 @@ struct NativeScheduleStyledDayColumn: View {
     var completedBeforeMinutes: Int? = nil
     /// Courses that do not run this week, faded under the others.
     var offWeekBlocks: [NativeScheduleCourseBlock] = []
+    /// The merged week view: the partner's courses that meet one of the user's, named
+    /// in a line at the foot of that course instead of getting a tile.
+    var coupleClashes: [NativeScheduleCourseBlock] = []
     /// "yyyy-MM-dd" when the column draws the user's 日程; nil for none.
     var agendaDate: String? = nil
     /// Off in the overlay strip, which fills today's whole day at once.
@@ -648,6 +651,7 @@ struct NativeScheduleStyledDayColumn: View {
     private var marksToday: Bool { isToday && !staticRendering }
     @Environment(\.scheduleCouple) private var couple
     @Environment(\.scheduleAgenda) private var agenda
+    @Environment(\.scheduleCoupleMerged) private var coupleMerged
 
     /// Lane count of each card's overlap cluster. Courses that overlap, directly
     /// or through a chain, share the width; everything else stays full width.
@@ -874,7 +878,12 @@ struct NativeScheduleStyledDayColumn: View {
         // Three or more side by side: a tile two characters wide keeps the name only.
         let tiny = lanes > 2
         return ZStack(alignment: .trailing) {
-            if block.owner == .partner {
+            if coupleMerged, let owner = block.owner, let couple {
+                // The merged week: one colour per person, and what the other does meanwhile.
+                ScheduleCouplePersonTile(course: block.course, layer: couple, partner: owner == .partner,
+                                         compact: narrow, showLocation: showLocation,
+                                         note: ScheduleCoupleNote.kind(for: block, clashes: coupleClashes), tiny: tiny)
+            } else if block.owner == .partner {
                 // Somebody else's course in the overlay strip.
                 ScheduleOverlayHollowTile(course: block.course, ownerTitle: couple?.ownerTitle ?? "TA 的课",
                                           showLocation: showLocation, together: block.together, tiny: tiny)
@@ -909,7 +918,15 @@ struct NativeScheduleStyledDayColumn: View {
     }
 
     private func block(at point: CGPoint, _ laneCounts: [String: Int]) -> NativeScheduleCourseBlock? {
-        blocks.reversed().first { frame(of: $0, lanes: laneCounts[$0.id] ?? 1).contains(point) }
+        guard let block = blocks.reversed().first(where: { frame(of: $0, lanes: laneCounts[$0.id] ?? 1).contains(point) }) else { return nil }
+        // The merged week: the line at the foot of the tile opens the partner's course.
+        let lanes = laneCounts[block.id] ?? 1
+        if coupleMerged, couple != nil, lanes < 3,
+           case .partner(let theirs) = ScheduleCoupleNote.kind(for: block, clashes: coupleClashes),
+           ScheduleCoupleNote.tapArea(in: frame(of: block, lanes: lanes)).contains(point) {
+            return theirs[0]
+        }
+        return block
     }
 
     private func slot(at point: CGPoint) -> Int? {
@@ -974,6 +991,8 @@ struct ScheduleStyledDay: Identifiable {
     let blocks: [NativeScheduleCourseBlock]
     /// Courses that do not run this week, for the periods left free.
     var offWeekBlocks: [NativeScheduleCourseBlock] = []
+    /// The merged week view: the partner's courses that meet one of the user's.
+    var coupleClashes: [NativeScheduleCourseBlock] = []
 
     var id: Int { day }
 }
@@ -1055,6 +1074,7 @@ struct ScheduleStyledWeekRows: View {
                     onEmptySlot: { onEmptySlot(day, $0) },
                     nowMinutes: day.isToday ? now : nil,
                     offWeekBlocks: day.offWeekBlocks,
+                    coupleClashes: day.coupleClashes,
                     agendaDate: staticRendering ? nil : day.rawDate
                 )
             }

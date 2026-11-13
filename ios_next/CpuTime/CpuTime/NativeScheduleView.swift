@@ -37,6 +37,12 @@ struct NativeScheduleView: View {
     @State private var backgroundEditorPresented = false
     @State private var stylePickerPresented = false
     @State private var unscheduledPresented = false
+    /// 课表怎么用: shown once per device (`ScheduleGuideSheet.version`), and from 更多.
+    @State private var guidePresented = false
+    @AppStorage(ScheduleGuideSheet.seenKey) private var guideSeen = 0
+    /// The line over the two-column strip, until it has been seen once.
+    @AppStorage("nativeSchedule.coupleSplitHintSeen") private var coupleSplitHintSeen = false
+    @State private var coupleSplitHintShownAt: Date?
     /// What the overlay strip (情侣课表, a shared timetable on top) was last built from, and its days.
     @State private var overlayStripMemo = ScheduleOverlayStripMemo()
     @State private var sharingPresented = false
@@ -284,12 +290,29 @@ struct NativeScheduleView: View {
                             .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
                         }
 
-                        if viewMode == .week, let layer = coupleLayer {
+                        if viewMode == .week, !mergesOverlay, let layer = coupleLayer {
+                            if !coupleSplitHintSeen, !isBackgroundPreview {
+                                // Once: what the two columns are, and the way back.
+                                ScheduleCoupleSplitHint(
+                                    onMerge: {
+                                        coupleSplitHintSeen = true
+                                        preferences.coupleWeekLayout = "merged"
+                                    },
+                                    onClose: { withAnimation(.snappy(duration: 0.2)) { coupleSplitHintSeen = true } }
+                                )
+                                .onAppear { coupleSplitHintShownAt = Date() }
+                                .onDisappear {
+                                    // Seen for a moment counts as seen: it does not come back.
+                                    if let shown = coupleSplitHintShownAt, Date().timeIntervalSince(shown) > 3 { coupleSplitHintSeen = true }
+                                }
+                            }
                             // Somebody else's timetable on top: two columns a day instead of the week grid.
                             overlayStrip(result, layer: layer)
                         } else if viewMode == .week {
+                            // With 一起看的周视图 on 合并, both people's courses share this grid.
                             weekGrid(result)
                                 .padding(.horizontal, -Self.contentInset)
+                                .environment(\.scheduleCoupleMerged, mergesOverlay && coupleLayer != nil)
                         } else if viewMode == .day, let side = sideColumnWidth {
                             // A wide window: the day keeps the leading column, and a
                             // small month with the day's 日程 stands beside it.
@@ -399,6 +422,10 @@ struct NativeScheduleView: View {
             // `share-import` or `share-import-view` with `CPU_DEBUG_SHARE_CODE`.
             // `CPU_DEBUG_COUPLE=active` binds the sample timetable to a sample
             // partner (`pending` shows an invite); the `couple` action opens the sheet.
+            // `CPU_DEBUG_COUPLE_LAYOUT=merged|split` sets 一起看的周视图 for this launch.
+            if !isBackgroundPreview, let layout = ProcessInfo.processInfo.environment["CPU_DEBUG_COUPLE_LAYOUT"] {
+                preferences.coupleWeekLayout = NativeSchedulePreferences.normalizedCoupleWeekLayout(layout)
+            }
             if !isBackgroundPreview, !isReadOnly,
                let state = ProcessInfo.processInfo.environment["CPU_DEBUG_COUPLE"] {
                 for _ in 0..<40 where store.result == nil || store.calendar == nil {
@@ -541,6 +568,9 @@ struct NativeScheduleView: View {
                     // With `CPU_DEBUG_UNSCHEDULED=1`: the courses without a fixed time.
                     case "unscheduled":
                         unscheduledPresented = true
+                    // 课表怎么用, as it is shown the first time.
+                    case "guide":
+                        guidePresented = true
                     // With `CPU_DEBUG_AGENDA=1`: `agenda-edit` opens a sample 日程 in its editor,
                     // `agenda-add` taps the first empty period of the week, `agenda-new` picks
                     // 添加日程 there, and `agenda-list` opens 日程与待办.
@@ -599,6 +629,10 @@ struct NativeScheduleView: View {
             // Once the week has settled on screen.
             do { try await Task.sleep(for: .milliseconds(900)) } catch { return }
             checkOverlapNotice()
+            presentGuideIfNeeded()
+        }
+        .sheet(isPresented: $guidePresented) {
+            ScheduleGuideSheet(overlayIsOn: overlayIsOn)
         }
         .alert(ScheduleOverlapNotice.title, isPresented: Binding(
             get: { overlapNotice != nil }, set: { if !$0 { overlapNotice = nil } }
@@ -1552,6 +1586,11 @@ struct NativeScheduleView: View {
                             scheduleToolsPresented = false
                             DispatchQueue.main.async { onDeviceSettings() }
                         }
+                        scheduleToolDivider
+                        scheduleToolRow("使用指引", detail: "课表怎么用", systemImage: "questionmark.circle.fill", tint: .indigo) {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { guidePresented = true }
+                        }
                     }
                 }
             }
@@ -1899,7 +1938,8 @@ struct NativeScheduleView: View {
             days: (columns.map { Array(days[$0]) } ?? days).map { day in
                 // With Sunday first, the Sunday column belongs to the week before.
                 let dayWeek = columnWeek(day, week: week, days: days)
-                let shown = columnBlocks(for: day, week: week, days: days, result: result)
+                let shown = columnBlocks(for: day, week: week, days: days, result: result, couple: !isStatic)
+                let clashes = isStatic ? [] : coupleClashes(for: day, week: week, days: days, result: result)
                 return ScheduleStyledDay(
                     day: day,
                     dateText: dayDate(day, week: dayWeek, result: result),
@@ -1907,7 +1947,8 @@ struct NativeScheduleView: View {
                     isToday: dayIsToday(day, week: dayWeek, result: result),
                     adjustmentKind: adjustment(day: day, week: dayWeek, result: result)?.kind,
                     blocks: shown,
-                    offWeekBlocks: isStatic ? [] : offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown)
+                    offWeekBlocks: isStatic ? [] : offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown + clashes),
+                    coupleClashes: clashes
                 )
             },
             columnWidth: columnWidth,
@@ -1938,10 +1979,12 @@ struct NativeScheduleView: View {
         let sundayWeek = preferences.sundayFirst ? week.map { $0 - 1 } : week
         var kept = Set<Int>()
         if adjustment(day: 6, week: week, result: result) != nil
-            || !blocks(for: 6, week: week, result: result).isEmpty { kept.insert(6) }
+            || !blocks(for: 6, week: week, result: result).isEmpty
+            || (mergesOverlay && partnerHasCourse(day: 6, week: week, result: result)) { kept.insert(6) }
         if adjustment(day: 7, week: sundayWeek, result: result) != nil
             || ((sundayWeek == week || hasCalendarWeek(sundayWeek))
-                && !blocks(for: 7, week: sundayWeek, result: result).isEmpty) { kept.insert(7) }
+                && (!blocks(for: 7, week: sundayWeek, result: result).isEmpty
+                    || (mergesOverlay && partnerHasCourse(day: 7, week: sundayWeek, result: result)))) { kept.insert(7) }
         return preferences.weekColumns(adjustedDays: kept)
     }
 
@@ -1960,10 +2003,11 @@ struct NativeScheduleView: View {
     /// The courses a week-view column shows. The Sunday before the term's
     /// first week has none.
     private func columnBlocks(for day: Int, week: Int?, days: [Int],
-                              result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+                              result: NativeScheduleResult, couple: Bool = true) -> [NativeScheduleCourseBlock] {
         let dayWeek = columnWeek(day, week: week, days: days)
         if dayWeek != week, !hasCalendarWeek(dayWeek) { return [] }
-        return blocks(for: day, week: dayWeek, result: result)
+        let mine = blocks(for: day, week: dayWeek, result: result)
+        return couple ? coupleBlocks(mine, date: rawDayDate(day, week: dayWeek, result: result)) : mine
     }
 
     // MARK: Couple timetable
@@ -2009,6 +2053,49 @@ struct NativeScheduleView: View {
             return .init(number: slot.number, start: start, end: end)
         }
         return blocks.map { ScheduleOverlayTiming.remap($0, theirs: theirs, mine: mine) }
+    }
+
+    /// 一起看的周视图 on 合并: the other timetable's courses are drawn in the week grid
+    /// itself instead of the two-columns-a-day strip.
+    private var mergesOverlay: Bool { preferences.mergesCoupleWeek }
+
+    /// The user's courses of `date` as the merged week view draws them beside the
+    /// partner's: `tiles` are whole cells (the user's courses, and the partner's
+    /// that meet none of them), `clashes` are the partner's courses that do meet
+    /// one, named in a line at the foot of that course. Outside the merged view
+    /// the user's courses come back as they are.
+    private func coupleColumn(_ mine: [NativeScheduleCourseBlock], date: String?)
+        -> (tiles: [NativeScheduleCourseBlock], clashes: [NativeScheduleCourseBlock]) {
+        guard mergesOverlay, let layer = coupleLayer else { return (mine, []) }
+        let theirs = Self.partnerBlocks(on: date, layer: layer) ?? []
+        func piece(_ block: NativeScheduleCourseBlock) -> CoupleRules.Piece {
+            .init(startSlot: block.courseStartSlot, endSlot: block.courseEndSlot, name: block.course.name)
+        }
+        var tiles: [NativeScheduleCourseBlock] = [], clashes: [NativeScheduleCourseBlock] = []
+        for placed in CoupleRules.merge(mine: mine.map(piece), theirs: theirs.map(piece)) {
+            var block = (placed.fromPartner ? theirs : mine)[placed.index]
+            block.owner = placed.owner
+            block.coupleMeets = placed.meets
+            if placed.fromPartner {
+                // The grid draws the day of its column, whatever their calendar calls it.
+                block.date = date
+            }
+            if placed.fromPartner && placed.meets { clashes.append(block) } else { tiles.append(block) }
+        }
+        return (tiles, clashes)
+    }
+
+    private func coupleBlocks(_ mine: [NativeScheduleCourseBlock], date: String?) -> [NativeScheduleCourseBlock] {
+        coupleColumn(mine, date: date).tiles
+    }
+
+    /// The partner's courses of a week-view column that meet one of the user's.
+    private func coupleClashes(for day: Int, week: Int?, days: [Int], result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+        guard mergesOverlay, coupleLayer != nil else { return [] }
+        let dayWeek = columnWeek(day, week: week, days: days)
+        if dayWeek != week, !hasCalendarWeek(dayWeek) { return [] }
+        return coupleColumn(blocks(for: day, week: dayWeek, result: result),
+                            date: rawDayDate(day, week: dayWeek, result: result)).clashes
     }
 
     /// Whether the partner has a course on that column's date: a hidden
@@ -2885,7 +2972,7 @@ struct NativeScheduleView: View {
     /// The week view's height at a given row height: the grid, or the
     /// two-columns-a-day strip while somebody's timetable is laid on top.
     private func weekSurfaceHeight(rowHeight: CGFloat) -> CGFloat {
-        overlayIsOn ? overlayStripMetrics(rowHeight: rowHeight).height : weekGridHeight(rowHeight: rowHeight)
+        overlayIsOn && !mergesOverlay ? overlayStripMetrics(rowHeight: rowHeight).height : weekGridHeight(rowHeight: rowHeight)
     }
 
     /// Whether the week view is drawn as the overlay strip (`coupleLayer`).
@@ -3092,7 +3179,8 @@ struct NativeScheduleView: View {
                 // With Sunday first, the Sunday column belongs to the week before.
                 let dayWeek = columnWeek(day, week: week, days: days)
                 let effective = effectiveSlot(day: day, week: dayWeek, result: result)
-                let shown = columnBlocks(for: day, week: week, days: days, result: result)
+                let shown = columnBlocks(for: day, week: week, days: days, result: result, couple: days.count > 1)
+                let clashes = days.count > 1 ? coupleClashes(for: day, week: week, days: days, result: result) : []
                 NativeScheduleDayColumn(
                     day: day,
                     dateText: dayDate(day, week: dayWeek, result: result),
@@ -3120,7 +3208,8 @@ struct NativeScheduleView: View {
                                          date: rawDayDate(day, week: dayWeek, result: result))
                     },
                     offWeekBlocks: days.count > 1 && showsNow
-                        ? offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown) : [],
+                        ? offWeekBlocks(for: day, week: dayWeek, result: result, taken: shown + clashes) : [],
+                    coupleClashes: clashes,
                     // The day view lists its 日程 above the grid instead.
                     agendaDate: days.count > 1 && showsNow ? rawDayDate(day, week: dayWeek, result: result) : nil
                 )
@@ -3575,7 +3664,7 @@ struct NativeScheduleView: View {
     private func moveWeek(_ offset: Int, result: NativeScheduleResult) {
         guard !weekPaging, let target = adjacentWeekValue(offset, result: result) else { return }
         // The overlay strip scrolls itself to the same weekday of that week.
-        guard viewMode == .week, coupleLayer == nil else {
+        guard viewMode == .week, coupleLayer == nil || mergesOverlay else {
             Task { await store.selectWeek(target) }
             return
         }
@@ -3830,6 +3919,22 @@ struct NativeScheduleView: View {
     /// Points out, once per place, two different courses of the user's own
     /// that the shown week draws side by side. Somebody else's timetable and
     /// the partner's courses are left out, and nothing is raised over another sheet.
+    /// 课表怎么用, once per device: when the user's own timetable first has something
+    /// to show and nothing else is up. A read-only shared timetable never raises it.
+    private func presentGuideIfNeeded() {
+        guard guideSeen < ScheduleGuideSheet.version, !isBackgroundPreview, !isReadOnly, store.result != nil,
+              overlapNotice == nil, !guidePresented,
+              courseEditorPresentation == nil, !weekPickerPresented, !scheduleToolsPresented, !backgroundEditorPresented,
+              !stylePickerPresented, !sharingPresented, !couplePresented, !unscheduledPresented else { return }
+#if DEBUG
+        // The sample timetable is for screenshots: the guide comes only when asked for
+        // (`CPU_DEBUG_SCHEDULE_ACTION=guide`).
+        if ProcessInfo.processInfo.environment["CPU_DEBUG_MOCK_SCHEDULE"] == "1" { return }
+#endif
+        guideSeen = ScheduleGuideSheet.version
+        guidePresented = true
+    }
+
     private func checkOverlapNotice() {
         guard !isBackgroundPreview, !isReadOnly, overlapNotice == nil, let result = store.result,
               let week = weekNumber(store.selectedWeek),
@@ -4117,6 +4222,9 @@ struct NativeScheduleCourseBlock: Identifiable {
     var owner: CoupleOwner? = nil
     /// The couple timetable: a class of the partner's the user attends too.
     var together = false
+    /// The merged week view: this course of the user's meets one of the
+    /// partner's and names it in a line at its foot.
+    var coupleMeets = false
     /// The date (yyyy-MM-dd) and weekday of the column or page it is drawn
     /// on; nil where a block is not tied to a date.
     var date: String? = nil
@@ -4150,6 +4258,7 @@ struct NativeScheduleCourseBlock: Identifiable {
                                              lane: lane, courseStartSlot: courseStartSlot, courseEndSlot: courseEndSlot)
         copy.owner = owner
         copy.together = together
+        copy.coupleMeets = coupleMeets
         copy.date = date
         copy.day = day
         copy.cancelledOccurrence = cancelledOccurrence
@@ -4199,6 +4308,7 @@ struct NativeScheduleCourseBlock: Identifiable {
                                              startSlot: courseStartSlot, endSlot: courseEndSlot, lane: lane)
         copy.owner = owner
         copy.together = together
+        copy.coupleMeets = coupleMeets
         copy.date = date
         copy.day = day
         copy.cancelledOccurrence = cancelledOccurrence
@@ -4344,6 +4454,7 @@ private struct NativeAdjustmentBadge: View {
 @available(iOS 17.0, *)
 private struct NativeScheduleDayColumn: View {
     @Environment(\.scheduleCouple) private var couple
+    @Environment(\.scheduleCoupleMerged) private var coupleMerged
     @Environment(\.scheduleAgenda) private var agenda
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scheduleWeekDisplay) private var weekDisplay
@@ -4378,6 +4489,8 @@ private struct NativeScheduleDayColumn: View {
     let onEmptySlot: (Int) -> Void
     /// Courses that do not run this week, faded under the others.
     let offWeekBlocks: [NativeScheduleCourseBlock]
+    /// The merged week view: the partner's courses that meet one of the user's, named at the foot of that course.
+    var coupleClashes: [NativeScheduleCourseBlock] = []
     /// "yyyy-MM-dd" when the column draws the user's 日程; nil for none.
     var agendaDate: String? = nil
     /// The corner of an empty period; nil for the grid's own (8 with a date header, 12 without).
@@ -4401,10 +4514,12 @@ private struct NativeScheduleDayColumn: View {
         onCourseSelected: @escaping (NativeScheduleCourseBlock) -> Void,
         onEmptySlot: @escaping (Int) -> Void,
         offWeekBlocks: [NativeScheduleCourseBlock] = [],
+        coupleClashes: [NativeScheduleCourseBlock] = [],
         agendaDate: String? = nil,
         cellCornerRadius: CGFloat? = nil
     ) {
         self.offWeekBlocks = offWeekBlocks
+        self.coupleClashes = coupleClashes
         self.agendaDate = agendaDate
         self.cellCornerRadius = cellCornerRadius
         self.day = day
@@ -4530,7 +4645,15 @@ private struct NativeScheduleDayColumn: View {
                     Button {
                         onCourseSelected(block)
                     } label: {
-                        if block.owner == .partner {
+                        if coupleMerged, let owner = block.owner, let couple {
+                            // The merged week: one colour per person, and what the other does meanwhile.
+                            ScheduleCouplePersonTile(
+                                course: block.course, layer: couple, partner: owner == .partner,
+                                compact: compactCards || laneWidth < 70, showLocation: showLocation,
+                                note: ScheduleCoupleNote.kind(for: block, clashes: coupleClashes), tiny: blockLaneCount > 2
+                            )
+                            .frame(width: cardWidth, height: cardHeight)
+                        } else if block.owner == .partner {
                             // Somebody else's course in the overlay strip.
                             ScheduleOverlayHollowTile(
                                 course: block.course, ownerTitle: couple?.ownerTitle ?? "TA 的课",
@@ -4614,6 +4737,12 @@ private struct NativeScheduleDayColumn: View {
                 height: height
             )
             guard rect.contains(point) else { continue }
+            // The merged week: the line at the foot of the card opens the partner's course.
+            if coupleMerged, couple != nil, blockLaneCount < 3,
+               case .partner(let theirs) = ScheduleCoupleNote.kind(for: block, clashes: coupleClashes),
+               ScheduleCoupleNote.tapArea(in: rect).contains(point) {
+                return theirs[0]
+            }
             return block
         }
         return nil

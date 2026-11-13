@@ -20,6 +20,12 @@ final class NativeSchedulePreferences: ObservableObject {
     /// The week view runs Sunday to Saturday: its first column is the Sunday
     /// before that Monday, which belongs to the previous teaching week.
     @Published var sundayFirst: Bool { didSet { persist() } }
+    /// The week view while the partner's or a shared timetable is laid over the user's:
+    /// "split" (并排, each day in two columns, the default) or "merged" (合并, both
+    /// people's courses in the one week grid). Kept on the device.
+    @Published var coupleWeekLayout: String { didSet { persist() } }
+    var mergesCoupleWeek: Bool { coupleWeekLayout == "merged" }
+    static func normalizedCoupleWeekLayout(_ value: String?) -> String { value == "merged" ? "merged" : "split" }
     /// Week-view row height in percent of the standard row.
     @Published var rowHeight: Double { didSet { persist() } }
     /// "small", "standard" or "large": the text of the week view's cards.
@@ -64,6 +70,7 @@ final class NativeSchedulePreferences: ObservableObject {
         static let showSaturday = "nativeSchedule.showSaturday"
         static let showSunday = "nativeSchedule.showSunday"
         static let sundayFirst = "nativeSchedule.sundayFirst"
+        static let coupleWeekLayout = "nativeSchedule.coupleWeekLayout"
         static let rowHeight = "nativeSchedule.rowHeight"
         static let textSize = "nativeSchedule.textSize"
         static let showTeacherInWeek = "nativeSchedule.showTeacherInWeek"
@@ -94,6 +101,7 @@ final class NativeSchedulePreferences: ObservableObject {
         showSaturday = defaults.object(forKey: Key.showSaturday) as? Bool ?? weekend
         showSunday = defaults.object(forKey: Key.showSunday) as? Bool ?? weekend
         sundayFirst = defaults.object(forKey: Key.sundayFirst) as? Bool ?? false
+        coupleWeekLayout = Self.normalizedCoupleWeekLayout(defaults.string(forKey: Key.coupleWeekLayout))
         rowHeight = Self.normalizedRowHeight(defaults.object(forKey: Key.rowHeight) as? Double ?? 100)
         textSize = Self.normalizedTextSize(defaults.string(forKey: Key.textSize))
         showTeacherInWeek = defaults.object(forKey: Key.showTeacherInWeek) as? Bool ?? false
@@ -269,6 +277,7 @@ final class NativeSchedulePreferences: ObservableObject {
         showSaturday = true
         showSunday = true
         sundayFirst = false
+        coupleWeekLayout = "split"
         rowHeight = 100
         textSize = "standard"
         showTeacherInWeek = false
@@ -348,6 +357,7 @@ final class NativeSchedulePreferences: ObservableObject {
         defaults.set(showSaturday, forKey: Key.showSaturday)
         defaults.set(showSunday, forKey: Key.showSunday)
         defaults.set(sundayFirst, forKey: Key.sundayFirst)
+        defaults.set(Self.normalizedCoupleWeekLayout(coupleWeekLayout), forKey: Key.coupleWeekLayout)
         defaults.set(Self.normalizedRowHeight(rowHeight), forKey: Key.rowHeight)
         defaults.set(Self.normalizedTextSize(textSize), forKey: Key.textSize)
         defaults.set(showTeacherInWeek, forKey: Key.showTeacherInWeek)
