@@ -12,6 +12,7 @@ import { installIosNextScheduleBridge } from "./utils/iosNextScheduleBridge";
 import { installNativeLoginSchools } from "./utils/nativeLoginSchools";
 import { installNativeAgendaBridge } from "./utils/nativeAgendaBridge";
 import { installNativeDormBridge } from "./utils/nativeDormBridge";
+import { installNativeExamsBridge } from "@/utils/nativeExamsBridge";
 import {
   isAndroidNativeApp,
   isDesktopNativeApp,
@@ -488,6 +489,7 @@ installIosNextScheduleBridge(router, { reportRefreshFailures: isIosNativeApp() }
 installNativeLoginSchools();
 installNativeAgendaBridge(router);
 installNativeDormBridge(router);
+installNativeExamsBridge();
 installJwxtDataPrewarmTriggers();
 // 安卓小组件读 App 写的本地课表：退出登录、换账号时要删掉。只在支持的安卓壳里按需加载。
 if (typeof (window as any).CPUAndroid?.saveScheduleWidgetLocalDays === "function") {
