@@ -15,6 +15,7 @@ import {
 import { NativeScheduleHost } from '../schedule/NativeScheduleHost';
 import { STORAGE_NETWORK, STORAGE_TEMP, StorageDirectories, parseStorageCategories } from './StorageCleaner';
 import { clearTemporaryStorage, measureStorage } from './StorageTasks';
+import { IAP_ACTIONS, runIapRequest } from './HarmonyIap';
 
 export interface NativePreviewImage {
   url: string;
@@ -39,6 +40,9 @@ export class HarmonyBridge {
   private previewRequestHandler?: (images: NativePreviewImage[], index: number) => void;
   private widgetConfigurationHandler?: (configured: boolean) => void;
   private webCacheClearer?: () => void;
+  private iapGate?: () => boolean;
+  private iapReplier?: (id: string, reply: string) => void;
+  private iapPurchasing: boolean = false;
   private readonly imageSaveTimeoutMs: number = 15000;
 
   attachContext(context: common.UIAbilityContext): void {
@@ -60,6 +64,37 @@ export class HarmonyBridge {
   /** ArkWeb 的缓存只能由持有 WebviewController 的页面来清。 */
   setWebCacheClearer(handler: () => void): void {
     this.webCacheClearer = handler;
+  }
+
+  /**
+   * 华为应用内支付桥（见 HarmonyIap.ets）。`gate` 判断当前页面是不是站点自己的页面，
+   * `replier` 把结果送回页面的 window.__cpuHarmonyIapResult。
+   */
+  setIapChannel(gate: () => boolean, replier: (id: string, reply: string) => void): void {
+    this.iapGate = gate;
+    this.iapReplier = replier;
+  }
+
+  iapRequest(id: string, action: string, payload: string): void {
+    const requestId = String(id ?? '').slice(0, 64);
+    const name = String(action ?? '');
+    const reply = (text: string) => this.iapReplier?.(requestId, text);
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(requestId) || !IAP_ACTIONS.includes(name) || !this.iapGate?.()) {
+      reply('{"ok":false,"code":-5,"message":"not allowed"}');
+      return;
+    }
+    if (name === 'purchase') {
+      // 收银台一次只开一个。
+      if (this.iapPurchasing) {
+        reply('{"ok":false,"code":-6,"message":"busy"}');
+        return;
+      }
+      this.iapPurchasing = true;
+    }
+    void runIapRequest(this.context, name, String(payload ?? '')).then((text: string) => {
+      if (name === 'purchase') this.iapPurchasing = false;
+      reply(text);
+    });
   }
 
   getVersionCode(): number {
@@ -463,6 +498,10 @@ export class HarmonyJavaScriptProxy {
 
   openExternalUrl(url: string): void {
     activeHarmonyBridge?.openExternalUrl(url);
+  }
+
+  iapRequest(id: string, action: string, payload: string): void {
+    activeHarmonyBridge?.iapRequest(id, action, payload);
   }
 
   downloadAndInstallApk(url: string, fileName: string): boolean {

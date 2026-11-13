@@ -234,6 +234,17 @@ struct Index {
       this.openImagePreview(images, index);
     });
     this.bridge.setWebCacheClearer(() => this.controller.removeCache(true));
+    this.bridge.setIapChannel(() => {
+      try {
+        return isAppOrigin(this.controller.getUrl());
+      } catch (_) {
+        return false;
+      }
+    }, (id: string, reply: string) => {
+      void this.controller.runJavaScript(
+        `window.__cpuHarmonyIapResult && window.__cpuHarmonyIapResult(${JSON.stringify(id)}, ${JSON.stringify(reply)});`
+      ).catch(() => undefined);
+    });
     this.bridge.setWidgetConfigurationHandler((configured: boolean) => {
       this.widgetConfigured = configured;
       if (this.widgetPanelVisible) void this.loadWidgetPreview();
@@ -445,6 +456,7 @@ struct Index {
       'supportsNativeUpdatePrompt',
       'copyText',
       'openExternalUrl',
+      'iapRequest',
       'downloadAndInstallApk',
       'getStorageUsage',
       'clearStorage',

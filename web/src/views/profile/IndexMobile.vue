@@ -199,7 +199,7 @@
           </div>
           <el-button v-if="site.features.sponsor" type="primary" round @click="openNativeSponsor">去赞助</el-button>
         </div>
-        <p class="me-m-sponsor-copy">通过 App Store 付款，赞助后开通 VIP 并获得 AI 点数，也可以在赞助墙留下一句话。</p>
+        <p class="me-m-sponsor-copy">{{ nativeSponsorCopy }}</p>
       </div>
     </section>
 
@@ -566,6 +566,7 @@ const {
   vipStyleSaving,
   sponsorVisible,
   nativeSponsorVisible,
+  nativeSponsorCopy,
   openNativeSponsor,
   sponsorOptions,
   sponsorSubmitting,

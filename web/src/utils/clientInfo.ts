@@ -153,6 +153,23 @@ export function openNativeIosSponsor() {
   return true;
 }
 
+/** 鸿蒙 App 里赞助页的地址：界面是网页，付款走华为应用内支付。 */
+export const HARMONY_SPONSOR_PATH = "/sponsor/app";
+
+/**
+ * 鸿蒙 App 3.4.0 起带华为应用内支付桥（utils/harmonyIap.ts）。有桥时个人中心和 /sponsor 链接去应用内赞助页；
+ * 没有桥的旧版仍然不出现任何赞助入口。网页的易支付赞助在鸿蒙 App 里始终不出现。
+ */
+export function hasHarmonySponsor(ua = navigator.userAgent) {
+  if (!isHarmonyNativeApp(ua) || typeof window === "undefined") return false;
+  return typeof (window as any).CPUHarmony?.iapRequest === "function";
+}
+
+/** 这个客户端有没有走应用商店付款的赞助入口（iOS 原生页，或鸿蒙的应用内赞助页）。 */
+export function hasStoreSponsor(ua = navigator.userAgent) {
+  return hasNativeIosSponsor(ua) || hasHarmonySponsor(ua);
+}
+
 /**
  * 鸿蒙 App 里不出现“客户端下载”：AppGallery 审核（2026-10-23，3.0.9）不允许应用内引导下载安卓版、iOS 版
  * 或跳到其他应用市场。入口都隐藏，下载页本身在路由里改回校园服务。

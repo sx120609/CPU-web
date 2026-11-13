@@ -15,7 +15,7 @@ import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUploa
 import { preloadAvatar } from "@/utils/avatarPreview";
 import { withMediaRevision } from "@/utils/cdnMedia";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
-import { hasNativeIosSponsor, hidesNativeCommerce, openNativeIosSponsor, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
+import { HARMONY_SPONSOR_PATH, hasHarmonySponsor, hasStoreSponsor, hidesNativeCommerce, openNativeIosSponsor, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
 
 interface ProfileViewCache {
   topics: any[];
@@ -153,9 +153,16 @@ export function useProfilePage() {
   const anonymousBoards = computed(() => boards.value.filter((board) => board.anonymousEnabled));
   const profileCacheKey = computed(() => user.value?.id ? `cpu-profile-view-v1:user-${user.value.id}` : "");
   const sponsorVisible = computed(() => !commerceHidden && (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0));
-  /** iOS App 的原生赞助（Apple 内购）：网页赞助表单不出现，只放一个打开原生页的入口。 */
-  const nativeSponsorVisible = computed(() => hasNativeIosSponsor() && (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0));
-  const openNativeSponsor = () => { openNativeIosSponsor(); };
+  /** iOS App 的原生赞助（Apple 内购）和鸿蒙 App 的应用内赞助页（华为应用内支付）：网页赞助表单不出现，只放一个入口。 */
+  const nativeSponsorVisible = computed(() => hasStoreSponsor() && (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0));
+  const openNativeSponsor = () => {
+    if (hasHarmonySponsor()) void router.push(HARMONY_SPONSOR_PATH);
+    else openNativeIosSponsor();
+  };
+  /** 入口下面的一句说明。鸿蒙里不能出现别的应用市场或支付方式的名字。 */
+  const nativeSponsorCopy = hasHarmonySponsor()
+    ? "赞助后开通 VIP 并获得 AI 点数，也可以在赞助墙留下一句话。"
+    : "通过 App Store 付款，赞助后开通 VIP 并获得 AI 点数，也可以在赞助墙留下一句话。";
   const anonymousStatusText = computed(() => {
     const state = user.value?.anonymousState;
     if (!state) return "—";
@@ -607,6 +614,7 @@ export function useProfilePage() {
     anonymousBoardsOpen,
     sponsorVisible,
     nativeSponsorVisible,
+    nativeSponsorCopy,
     openNativeSponsor,
     sponsorOptions,
     sponsorSubmitting,

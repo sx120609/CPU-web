@@ -1,20 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
-import { PLATFORM_BRAND } from "../schools/registry";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import { isFeatureOn } from "../services/siteSettings";
 import { amountCentsToMoney } from "../services/epay";
-import {
-  buildSponsorPaidUserUpdate,
-  formatSponsorOrder,
-  getSponsorCategoriesWithStats,
-  getSponsorConfig,
-  isSponsorCategoryAccepting,
-} from "../services/sponsor";
-import { awardSponsorAssistantPoints, calculateSponsorAssistantPoints } from "../services/campusAssistantPoints";
+import { formatSponsorOrder, getSponsorCategoriesWithStats, getSponsorConfig } from "../services/sponsor";
+import { calculateSponsorAssistantPoints } from "../services/campusAssistantPoints";
+import { findStoreSponsorOrder, recordStoreSponsorOrder, refundStoreSponsorOrder } from "../services/storeSponsor";
 import {
   APPLE_IAP_POINTS_RATIO,
   APPLE_SPONSOR_PRODUCTS,
@@ -103,104 +97,24 @@ appleSponsorRouter.post("/sponsor/transactions", authRequired, validate(transact
       throw Errors.forbidden("这笔购买不属于当前登录的账号");
     }
     const outTradeNo = iapOutTradeNo(transactionId);
-    const existing = await prisma.sponsorOrder.findUnique({ where: { outTradeNo } });
-    if (existing) {
-      if (existing.userId !== userId) throw Errors.forbidden("这笔购买不属于当前登录的账号");
-      return ok(res, { order: formatSponsorOrder(existing), created: false });
-    }
+    const existing = await findStoreSponsorOrder(outTradeNo, userId);
+    if (existing) return ok(res, { order: formatSponsorOrder(existing), created: false });
     if (transaction.revocationDate) throw Errors.badRequest("这笔购买已退款");
 
-    const config = await getSponsorConfig();
-    const accepting = (id: string | undefined) => config.categories.find((category) => category.id === id && isSponsorCategoryAccepting(category));
-    // 钱已经付了：选的类别刚好结束时记到默认类别，不让交易卡住。
-    const category = accepting(req.body.categoryId)
-      ?? config.categories.find((item) => item.featured && isSponsorCategoryAccepting(item))
-      ?? config.categories.find((item) => isSponsorCategoryAccepting(item))
-      ?? config.categories[0];
-    const paidAt = transaction.purchaseDate ? new Date(transaction.purchaseDate) : new Date();
-
-    let order: any = null;
-    let created = false;
-    let awardedPoints = 0;
-    await prisma.$transaction(async (tx) => {
-      const already = await tx.sponsorOrder.findUnique({ where: { outTradeNo } });
-      if (already) {
-        order = already;
-        return;
-      }
-      order = await tx.sponsorOrder.create({
-        data: {
-          userId,
-          outTradeNo,
-          tradeNo: transactionId,
-          payType: sandbox ? "iap_sandbox" : "iap",
-          amountCents: product.amountCents,
-          categoryId: category?.id ?? "general",
-          categoryTitle: category?.title ?? `支持${PLATFORM_BRAND}`,
-          message: config.allowMessage ? (req.body.message ?? "") : "",
-          displayMode: sandbox ? "hidden" : (req.body.displayMode ?? "public"),
-          status: sandbox ? "sandbox" : "paid",
-          paidAt,
-        },
-      });
-      created = true;
-      await tx.user.update({
-        where: { id: userId },
-        data: sandbox ? { isVip: true } : buildSponsorPaidUserUpdate(product.amountCents),
-      });
-      awardedPoints = await awardSponsorAssistantPoints(tx, {
-        orderId: order.id,
-        userId,
-        amountCents: appleIapPointsAmountCents(product.amountCents),
-        pointsPerYuan: config.assistantPointsPerYuan,
-      });
-      order.assistantPointsAwarded = awardedPoints;
-    }).catch(async (error: any) => {
-      // 两次提交撞在一起：唯一键冲突时读回先写进去的那张。
-      if (error?.code !== "P2002") throw error;
-      order = await prisma.sponsorOrder.findUnique({ where: { outTradeNo } });
-      if (!order || order.userId !== userId) throw Errors.forbidden("这笔购买不属于当前登录的账号");
-      created = false;
+    const { order, created } = await recordStoreSponsorOrder({
+      userId,
+      outTradeNo,
+      tradeNo: transactionId,
+      payType: sandbox ? "iap_sandbox" : "iap",
+      sandbox,
+      amountCents: product.amountCents,
+      pointsAmountCents: appleIapPointsAmountCents(product.amountCents),
+      paidAt: transaction.purchaseDate ? new Date(transaction.purchaseDate) : new Date(),
+      categoryId: req.body.categoryId,
+      message: req.body.message,
+      displayMode: req.body.displayMode,
+      storeName: "App Store",
     });
-
-    if (created && order) {
-      await prisma.notification.create({
-        data: {
-          userId,
-          category: "system",
-          level: "normal",
-          title: "赞助已到账",
-          content: `感谢为“${order.categoryTitle || PLATFORM_BRAND}”赞助 ¥${amountCentsToMoney(order.amountCents)}，你的支持已经记录在个人资料中${awardedPoints > 0 ? `，并获得 ${awardedPoints} 个 AI 点数` : ""}。`,
-          link: "/profile",
-          source: "赞助",
-          payload: JSON.stringify({
-            type: "sponsor-paid",
-            outTradeNo: order.outTradeNo,
-            amount: amountCentsToMoney(order.amountCents),
-            categoryId: order.categoryId,
-            categoryTitle: order.categoryTitle,
-            assistantPoints: awardedPoints,
-          }),
-        },
-      }).catch(() => {});
-      if (!sandbox) {
-        const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true } });
-        if (admins.length) {
-          await prisma.notification.createMany({
-            data: admins.map((admin) => ({
-              userId: admin.id,
-              category: "system",
-              level: "weak",
-              title: "收到一笔赞助",
-              content: `App Store 订单 ${order.outTradeNo} 已为“${order.categoryTitle || PLATFORM_BRAND}”支付 ¥${amountCentsToMoney(order.amountCents)}。`,
-              link: "/admin",
-              source: "赞助",
-              payload: JSON.stringify({ type: "sponsor-admin", outTradeNo: order.outTradeNo, categoryId: order.categoryId }),
-            })),
-          }).catch(() => {});
-        }
-      }
-    }
     ok(res, { order: formatSponsorOrder(order), created });
   } catch (e) { next(e); }
 });
@@ -220,37 +134,7 @@ appleSponsorRouter.post("/notifications", async (req, res, next) => {
       return res.status(400).json({ code: 4000, message: "通知无法验证" });
     }
     if (!notice) return ok(res, { handled: false });
-    const outTradeNo = iapOutTradeNo(notice.transactionId);
-    await prisma.$transaction(async (tx) => {
-      const order = await tx.sponsorOrder.findUnique({ where: { outTradeNo } });
-      if (!order || order.status === "refunded") return;
-      const claimed = await tx.sponsorOrder.updateMany({
-        where: { id: order.id, status: { not: "refunded" } },
-        data: { status: "refunded", closedAt: new Date() },
-      });
-      if (claimed.count !== 1) return;
-      const user = await tx.user.findUnique({ where: { id: order.userId }, select: { assistantPoints: true, sponsorTotalCents: true } });
-      if (!user) return;
-      const revoke = Math.max(0, Math.min(order.assistantPointsAwarded, Math.floor(Number(user.assistantPoints) || 0)));
-      const data: any = {};
-      if (order.payType === "iap") data.sponsorTotalCents = Math.max(0, (user.sponsorTotalCents ?? 0) - order.amountCents);
-      if (revoke > 0) data.assistantPoints = { decrement: revoke };
-      if (!Object.keys(data).length) return;
-      const updated = await tx.user.update({ where: { id: order.userId }, data, select: { assistantPoints: true } });
-      if (revoke > 0) {
-        await tx.campusAssistantPointLedger.create({
-          data: {
-            userId: order.userId,
-            delta: -revoke,
-            balanceAfter: updated.assistantPoints,
-            source: "sponsor_refund",
-            reason: "App Store 赞助退款",
-            referenceType: "sponsor_order",
-            referenceId: String(order.id),
-          },
-        });
-      }
-    });
+    await refundStoreSponsorOrder({ outTradeNo: iapOutTradeNo(notice.transactionId), livePayType: "iap", reason: "App Store 赞助退款" });
     ok(res, { handled: true });
   } catch (e) { next(e); }
 });
