@@ -111,6 +111,8 @@ sealed interface ScheduleSheet {
     data object Share : ScheduleSheet
     /** 上课闹钟. */
     data object Alarms : ScheduleSheet
+    /** 课表怎么用. */
+    data object Guide : ScheduleSheet
 }
 
 /** What the timetable bodies need besides the store: how to draw and where taps go. */
@@ -128,6 +130,12 @@ private class ScheduleBodyContext(
     val display: ScheduleDisplayOptions,
     /** The partner's timetable while the couple timetable is drawn. */
     val couple: CoupleLayer?,
+    /** How the week view draws [couple]: the two-column day strip or the one week grid. */
+    val coupleLayout: CoupleWeekLayout,
+    /** The day strip still owes its one-time hint. */
+    val stripHint: Boolean,
+    val onMergeLayout: () -> Unit,
+    val onCloseStripHint: () -> Unit,
     val onLogin: () -> Unit,
     val onCourse: (PlacedBlock, String) -> Unit,
     val onOffWeek: (PlacedBlock) -> Unit,
@@ -386,6 +394,21 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         return actions
     }
 
+    // 课表怎么用 opens by itself once, over the user's own timetable with nothing else in the way.
+    // The sample timetable of a debug launch keeps quiet unless it asks for the first run.
+    val guided = !activity.debugFixture || DebugScheduleFixture.firstRun
+    val together = ScheduleGuideRules.showsTogether(couple?.active != null, overlayShared != null)
+    if (!store.readOnly && guided) {
+        val hasData = store.result != null
+        val busy = sheet != null || overlap != null || activity.updateSheetOpen || activity.updates.justUpdated != null ||
+            activity.shell.requiresLogin || !activity.welcomeSeen
+        LaunchedEffect(hasData, busy, style.guideSeen) {
+            if (!ScheduleGuideRules.opensGuide(style.guideSeen, store.readOnly, hasData, busy)) return@LaunchedEffect
+            style.markGuideSeen()
+            sheet = ScheduleSheet.Guide
+        }
+    }
+
     val context = ScheduleBodyContext(
         palette = style.palette,
         translucent = style.background != null,
@@ -397,6 +420,13 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
         rowScale = style.rowHeight / 100f,
         display = style.displayOptions,
         couple = layer,
+        coupleLayout = style.coupleWeekLayout,
+        stripHint = (!activity.debugFixture || DebugScheduleFixture.stripHint) && !style.stripHintSeen,
+        onMergeLayout = {
+            style.selectCoupleWeekLayout(CoupleWeekLayout.Merged)
+            style.markStripHintSeen()
+        },
+        onCloseStripHint = { style.markStripHintSeen() },
         onLogin = { activity.openAcademicAuthorization() },
         onCourse = ::openCourse,
         onOffWeek = { sheet = ScheduleSheet.QuickLook(it.block, offWeek = true) },
@@ -551,7 +581,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
             sheet = ScheduleSheet.QuickLook(it)
         }
         ScheduleSheet.WeekPicker -> WeekPickerSheet(store, onDismiss = { sheet = null })
-        ScheduleSheet.Settings -> ScheduleSettingsSheet(activity, store.readOnly,
+        ScheduleSheet.Settings -> ScheduleSettingsSheet(activity, store.readOnly, together = together,
             onWidgets = { sheet = ScheduleSheet.Widgets }, onDismiss = { sheet = null })
         ScheduleSheet.Widgets -> WidgetSettingsSheet(activity, onDismiss = { sheet = null })
         ScheduleSheet.Editor -> CourseEditorSheet(editor, onDismiss = {
@@ -597,6 +627,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
                     "外观与设置" to listOf(
                         tool(ScheduleToolStyle.settings, "课表设置", "风格、配色、背景和显示", action = { sheet = ScheduleSheet.Settings }),
                         tool(ScheduleToolStyle.widgets, "桌面课表小组件", action = { sheet = ScheduleSheet.Widgets }.takeIf { own }),
+                        tool(ScheduleToolStyle.guide, "使用指引", action = { sheet = ScheduleSheet.Guide }.takeIf { own }),
                     ),
                 ),
                 onDismiss = { if (sheet == ScheduleSheet.Tools) sheet = null },
@@ -621,6 +652,7 @@ fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: 
             )
         }
         ScheduleSheet.Alarms -> RoutineAlarmSheet(activity, onDismiss = { sheet = null })
+        ScheduleSheet.Guide -> ScheduleGuideSheet(style, together, onDismiss = { if (sheet == ScheduleSheet.Guide) sheet = null })
         ScheduleSheet.CommonFree -> CommonFreeSheet(
             activity, store,
             onAgenda = if (activity.agenda.available) ({ date, start -> sheet = ScheduleSheet.AgendaEdit(newAgendaDraft(date, start)) }) else null,
@@ -990,11 +1022,16 @@ private fun SchedulePages(store: ScheduleStore, context: ScheduleBodyContext) {
         return
     }
     val layer = context.couple
-    if (store.viewMode == "week" && layer != null && store.result != null && store.calendar?.weeks?.isNotEmpty() == true) {
+    if (ScheduleGuideRules.usesStrip(store.viewMode, layer != null, context.coupleLayout) && layer != null &&
+        store.result != null && store.calendar?.weeks?.isNotEmpty() == true) {
         // Somebody else's courses beside the user's: days side by side, two columns each.
+        // With 合并 chosen the week grid below draws both people's courses, as it did before the strip.
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val height = maxHeight
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
+                if (ScheduleGuideRules.showsStripHint(stripShown = true, hintSeen = !context.stripHint)) {
+                    StripHintBar(onMerge = context.onMergeLayout, onClose = context.onCloseStripHint)
+                }
                 OverlayStrip(
                     store, layer, height, context.rowScale, context.now,
                     onCourse = { block, week -> context.onCourse(block, week) },

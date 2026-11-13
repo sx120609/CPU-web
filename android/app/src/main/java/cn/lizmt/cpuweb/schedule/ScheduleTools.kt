@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Alarm
@@ -69,6 +70,7 @@ internal object ScheduleToolStyle {
     val alarm = Icons.Rounded.Alarm to Color(0xFFE5484D)
     val settings = Icons.Rounded.Settings to Color(0xFF8E8E93)
     val widgets = Icons.Rounded.Widgets to Color(0xFF8E59D9)
+    val guide = Icons.AutoMirrored.Rounded.HelpOutline to Color(0xFF13887A)
 }
 
 /**

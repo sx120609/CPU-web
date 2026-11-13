@@ -41,6 +41,12 @@ object DebugScheduleFixture {
     /** The fixture has two courses in one period on purpose; its screenshots stay free of the notice unless asked for. */
     var suppressesOverlapNotice = false
         private set
+    /** `--ez debugFirstRun true`: 课表怎么用 and the strip's hint as on a first run (the sample timetable otherwise keeps quiet). */
+    var firstRun = false
+        private set
+    /** `--ez debugStripHint true`: the one-time line over the two-column day strip. */
+    var stripHint = false
+        private set
     private var sheet = ""
     private var published = false
     private var coupleState = "none"
@@ -68,6 +74,7 @@ object DebugScheduleFixture {
         "share" -> ScheduleSheet.Share
         "alarms" -> ScheduleSheet.Alarms
         "overlay" -> ScheduleSheet.Overlay
+        "guide" -> ScheduleSheet.Guide
         "agendaNew" -> ScheduleSheet.AgendaEdit(newAgendaDraft(java.time.LocalDate.now().toString(), "14:00"))
         // 截图识别 with the fixture's sample reading (needs debugAgenda for the frozen remote).
         "agendaExtract" -> ScheduleSheet.AgendaEdit(newAgendaDraft(""), AgendaSource.Text("debug"))
@@ -125,6 +132,11 @@ object DebugScheduleFixture {
             }
         }
         sheet = intent.getStringExtra("debugSheet").orEmpty()
+        // "debugCoupleLayout merged|split": the week view with somebody else's courses (absent: left as it is).
+        intent.getStringExtra("debugCoupleLayout")?.let { activity.style.selectCoupleWeekLayout(CoupleWeekLayout.fromId(it)) }
+        firstRun = intent.getBooleanExtra("debugFirstRun", false)
+        stripHint = firstRun || intent.getBooleanExtra("debugStripHint", false)
+        if (stripHint) activity.style.resetGuide(guide = firstRun, stripHint = true)
         // Display settings for a screenshot, e.g. "sundayFirst,offWeek,teacher,rows=140".
         intent.getStringExtra("debugDisplay")?.split(',')?.map { it.trim() }?.let { flags ->
             val style = activity.style

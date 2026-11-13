@@ -133,7 +133,7 @@ fun SettingsSegmented(options: List<Pair<String, String>>, selected: String, onS
  * timetable being viewed ([readOnly]) keeps only the style and the layout.
  */
 @Composable
-fun ScheduleSettingsSheet(activity: MainActivity, readOnly: Boolean, onWidgets: () -> Unit, onDismiss: () -> Unit) {
+fun ScheduleSettingsSheet(activity: MainActivity, readOnly: Boolean, together: Boolean = false, onWidgets: () -> Unit, onDismiss: () -> Unit) {
     val style = activity.style
     ScheduleSheetContainer(onDismiss) {
         SheetTitle("课表设置")
@@ -205,6 +205,12 @@ fun ScheduleSettingsSheet(activity: MainActivity, readOnly: Boolean, onWidgets: 
             TextButton(onClick = { style.resetDisplay() }, modifier = Modifier.padding(top = 2.dp)) { Text("课程格子和网格恢复默认") }
         }
 
+        // Only somebody who looks at two timetables has this choice to make.
+        if (!readOnly && together) {
+            SettingsSection("一起看")
+            CoupleWeekLayoutChoice(style)
+        }
+
         if (!readOnly) {
             SettingsSection("应用外观")
             AppearancePicker(activity.appearance)
@@ -213,6 +219,15 @@ fun ScheduleSettingsSheet(activity: MainActivity, readOnly: Boolean, onWidgets: 
             SettingsNavRow("桌面课表小组件", onClick = onWidgets)
         }
     }
+}
+
+/** 一起看的周视图: 并排 (the two-column day strip) or 合并 (one week grid), with a line on what each is. */
+@Composable
+fun CoupleWeekLayoutChoice(style: ScheduleStyleSettings) {
+    SettingsValueRow(CoupleWeekLayout.SETTING_TITLE) {
+        SettingsSegmented(CoupleWeekLayout.OPTIONS, style.coupleWeekLayout.id) { style.selectCoupleWeekLayout(CoupleWeekLayout.fromId(it)) }
+    }
+    Text(CoupleWeekLayout.SETTING_DETAIL, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /**

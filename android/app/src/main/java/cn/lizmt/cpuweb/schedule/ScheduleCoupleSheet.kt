@@ -170,7 +170,7 @@ fun ScheduleCoupleSheet(activity: MainActivity, minute: Int, onDismiss: () -> Un
                 Text("正在读取绑定状态…", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             is CoupleStatus.Active -> BoundContent(
-                couple, status, minute, busy,
+                couple, activity.style, status, minute, busy,
                 onColor = { color -> perform(if (color == status.partner.color) "已和 TA 互换颜色" else "颜色已保存") { couple.setColor(color) } },
                 onAnniversary = { pickDate = true },
                 onUnbind = { confirmUnbind = true },
@@ -202,6 +202,7 @@ fun ScheduleCoupleSheet(activity: MainActivity, minute: Int, onDismiss: () -> Un
 @Composable
 private fun BoundContent(
     couple: ScheduleCouple,
+    style: ScheduleStyleSettings,
     status: CoupleStatus.Active,
     minute: Int,
     busy: Boolean,
@@ -260,12 +261,16 @@ private fun BoundContent(
     CoupleLine("在课表里显示 TA 的课") {
         Switch(checked = couple.visible, onCheckedChange = couple::updateVisible)
     }
+    CoupleLine(CoupleWeekLayout.SETTING_TITLE) {
+        SettingsSegmented(CoupleWeekLayout.OPTIONS, style.coupleWeekLayout.id) { style.selectCoupleWeekLayout(CoupleWeekLayout.fromId(it)) }
+    }
     CoupleLine("纪念日") {
         TextButton(onClick = onAnniversary, enabled = !busy) {
             Text(status.anniversary.ifEmpty { "未设置" }.replace('-', '.'))
         }
     }
     CoupleFootnote("一人一种颜色，选 TA 正在用的就是互换。")
+    CoupleFootnote(CoupleWeekLayout.SETTING_DETAIL)
     Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onUnbind, enabled = !busy) { Text("解除绑定", color = MaterialTheme.colorScheme.error) }

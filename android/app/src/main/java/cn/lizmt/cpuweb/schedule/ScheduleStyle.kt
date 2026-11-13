@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
@@ -80,6 +81,15 @@ class ScheduleStyleSettings(private val context: Context) {
     /** Marks the current time on today's column and the in-class / next-up states of the day view. */
     var showNowIndicator by mutableStateOf(prefs.getBoolean("showNowIndicator", true))
         private set
+    /** The week view with somebody else's courses beside the user's: the two-column day strip or the one week grid. */
+    var coupleWeekLayout by mutableStateOf(CoupleWeekLayout.fromId(prefs.getString(KEY_COUPLE_WEEK_LAYOUT, null)))
+        private set
+    /** The version of 课表怎么用 that opened by itself on this device; 0 before the first. */
+    var guideSeen by mutableIntStateOf(prefs.getInt(KEY_GUIDE_SEEN, 0))
+        private set
+    /** The line over the day strip that says how it works was seen. */
+    var stripHintSeen by mutableStateOf(prefs.getBoolean(KEY_STRIP_HINT_SEEN, false))
+        private set
 
     init {
         if (file.exists()) lightBackground = decode(file, lightCrop)
@@ -152,6 +162,33 @@ class ScheduleStyleSettings(private val context: Context) {
         updateShowSaturday(true)
         updateShowSunday(true)
         updateSundayFirst(false)
+    }
+
+    fun selectCoupleWeekLayout(value: CoupleWeekLayout) {
+        coupleWeekLayout = value
+        prefs.edit().putString(KEY_COUPLE_WEEK_LAYOUT, value.id).apply()
+    }
+
+    fun markGuideSeen() {
+        if (guideSeen >= ScheduleGuideRules.VERSION) return
+        guideSeen = ScheduleGuideRules.VERSION
+        prefs.edit().putInt(KEY_GUIDE_SEEN, guideSeen).apply()
+    }
+
+    fun markStripHintSeen() {
+        if (stripHintSeen) return
+        stripHintSeen = true
+        prefs.edit().putBoolean(KEY_STRIP_HINT_SEEN, true).apply()
+    }
+
+    /** A debug launch looking at the first run again: the guide and the strip's hint as if never seen. */
+    fun resetGuide(guide: Boolean, stripHint: Boolean) {
+        if (guide) guideSeen = 0
+        if (stripHint) stripHintSeen = false
+        prefs.edit().apply {
+            if (guide) remove(KEY_GUIDE_SEEN)
+            if (stripHint) remove(KEY_STRIP_HINT_SEEN)
+        }.apply()
     }
 
     fun updateShowNowIndicator(value: Boolean) {
@@ -245,6 +282,9 @@ class ScheduleStyleSettings(private val context: Context) {
 
     companion object {
         private const val KEY_MINIMAL_PROMOTED = "visualStyleMinimalPromoted"
+        private const val KEY_COUPLE_WEEK_LAYOUT = "coupleWeekLayout"
+        private const val KEY_GUIDE_SEEN = "guideSeen"
+        private const val KEY_STRIP_HINT_SEEN = "stripHintSeen"
         const val DEFAULT_VISIBILITY = 0.76f
         const val MIN_VISIBILITY = 0.22f
         const val MAX_VISIBILITY = 0.88f
