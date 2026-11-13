@@ -20,6 +20,8 @@
 - **与 iOS 对齐的 NapTable 功能**（iOS 4.18 (81)、4.19 (82) 那一批）：
   - **点课程**（`ScheduleCourseMenu.kt`、`ScheduleOccurrences.kt`）：课程卡片没有长按，所有地方都是点一下打开课程速览，课程的操作都在速览底部：自己的课是「编辑整门课」（主按钮）和「调整这一次」「这次停课」（红色，先确认）；调过的课有「调」标记，速览里是「再调整这一次」「恢复原安排」；停课的那节留在原位变淡、标「已停课」，点开速览是「恢复这节课」；TA 的课、共享课表和本周不上的课只读，没有操作。这节课的日程和「＋ 添加」在速览的日程一栏。「调整这一次」选学期内的日期（放假、补班日不行）、先点开始再点结束的节次、教室和备注，和别的课冲突只提示。站点在快照里下发 `occurrenceChanges` 和每门课的 `editKeys`，保存走随包编辑桥 `CPUAndroidEditor` 的 `occurrence` 动作（只替换这一节的几条，其余保留，见 `server/src/shared/scheduleOccurrences.ts`）；快照没有这个列表时两项不出现。
   - **叠加到我的课表**（`ScheduleOverlay.kt`）：把任意一份已保存的共享课表叠在自己的课表上（代替情侣课表），周次标题下第二行写「叠加了 某某 的课」和对方学校，带关闭按钮。别的学校的课按钟点放到自己的节次上，保留真实时间（`OverlayTiming`）；共享课表和情侣快照带上学校名和对方自己的作息。叠加或情侣课表打开时，周视图换成几天并排的双栏日条：左边自己（实心卡片）、右边对方（空心描边卡片），节次轴固定、按天吸附滑动，最左那天跟着周次和选中的日子走；半栏里重叠的课合成一张带「+N」的卡，一起上的课有小爱心。
+  - **一起看的周视图：并排或合并**（`ScheduleGuide.kt`）：双栏日条是「并排」（默认）；选「合并」后周视图回到原来那张周课表，两人的课排在同一张表里（`ScheduleGuideRules.usesStrip`），情侣课表和叠加的课表都一样，周次标题下那一行照旧。在「课表设置 › 一起看」（绑定了情侣或正在叠加时才有这一项）和情侣课表管理页里选，存在这台设备上（`coupleWeekLayout`，缺省或认不出的值是并排）。双栏日条第一次显示时上方有一条提示「两人的课并排显示，左右滑动换天。」，带「改回合并」和关闭，看过一次不再出现。
+  - **使用指引**（`ScheduleGuideSheet`）：底部弹窗「课表怎么用」，每台设备自动弹一次（`guideSeen` 记下看过的指引版本，改了指引就把 `ScheduleGuideRules.VERSION` 加一）：原生课表第一次带着数据显示出来、上面没有别的弹窗、不在登录页和欢迎页时弹，只读的共享课表不弹。条目是点一下课程、课表风格（当前是简约时带「换回经典」）、和 TA 一起看（绑定了情侣或有叠加时才有，带「改回合并」）、更多；「更多 › 外观与设置 › 使用指引」随时能再打开。
   - **找共同空闲**（`ScheduleCommonFreeSheet.kt`、`ScheduleMeetings.kt`）：和情侣、保存的共享课表比，选日期、至少空出多久（30 分钟–3 小时）和白天／晚上／全天，按天列出空闲时段和当天的忙闲条，可以一键建日程。各自按自己的校历和作息（调休、停课、调课都算）按钟点比较。
   - **速览与月视图里的日程**：课程速览列出「这节课的日程」（当天在这节课时间里、或标题／备注提到课名的），可勾选、可添加；月视图点一天在下面显示「当天安排」（课程和日程、添加日程、日视图）。和课程同一时段的日程改成课程右边框上的细条，不再盖住课名。
   - **背景**：「课表设置 → 背景图片」分浅色模式和深色模式，深色没有单独设置时沿用浅色；「调整范围」按屏幕比例拖动、双指缩放（最多 5 倍）、三分线、还原，选的范围按原图比例保存，原图留在本机可以重新调整。
@@ -93,7 +95,7 @@ adb shell am start -n cn.lizmt.cpuweb/cn.lizmt.cpuweb.schedule.MainActivity --ez
 | `--ei debugDay 4` | 选中星期几（1–7） |
 | `--es debugNow 09:00` | 固定“现在”，查看正在上、下一节等状态 |
 | `--es debugPriority 体育（羽毛球）` | 设置优先显示的课程，多个用逗号分隔，靠前的在上 |
-| `--es debugSheet sharing` | 启动后打开弹窗：`settings`（课表设置；旧的 `visual`、`display`、`style` 也打开它）、`sharing`（共享课表）、`couple`（情侣课表）、`widgets`（桌面小组件）、`dorm`（宿舍课表，配合 `--es debugDorm active` 显示示例宿舍）、`agenda`（日程与待办）、`agendaNew`（新建日程）、`agendaExtract`（截图识别读出两条示例日程，配合 `--ez debugAgenda true`）、`tools`（更多）、`overlay`（叠加到我的课表）、`commonFree`（找共同空闲）、`share`（分享）、`alarms`（上课闹钟） |
+| `--es debugSheet sharing` | 启动后打开弹窗：`settings`（课表设置；旧的 `visual`、`display`、`style` 也打开它）、`sharing`（共享课表）、`couple`（情侣课表）、`widgets`（桌面小组件）、`dorm`（宿舍课表，配合 `--es debugDorm active` 显示示例宿舍）、`agenda`（日程与待办）、`agendaNew`（新建日程）、`agendaExtract`（截图识别读出两条示例日程，配合 `--ez debugAgenda true`）、`tools`（更多）、`overlay`（叠加到我的课表）、`commonFree`（找共同空闲）、`share`（分享）、`alarms`（上课闹钟）、`guide`（课表怎么用） |
 | `--es debugUpdate updated` | 显示更新弹窗的示例：`available`（发现新版）、`ready`（已下载好）、`updated`（更新完成）；`check` 打开更新面板并向 `-PappUrl` 指向的站点真实检查一次，`auto` 走网站触发的后台检查（只在需要用户操作时打开面板） |
 | `--es debugCouple active` | 情侣课表的假接口状态：`active`（已绑定，TA 的课表和自己的有重合、有撞课、有各自的课）、`pending`（邀请码等待接受），不传为未绑定 |
 | `--ez debugOverlapNotice true` | 示例课表里周三有两门课排在同一时段；带上它才弹「同一时间排了两门课」的提示（每处只弹一次，清数据后再看） |
@@ -104,6 +106,9 @@ adb shell am start -n cn.lizmt.cpuweb/cn.lizmt.cpuweb.schedule.MainActivity --ez
 | `--ez debugAgenda true` | 课表里画一组示例日程（不连站点，勾选只改本机显示）；其中一条和周三的课同时段 |
 | `--ez debugOccurrences true` | 本周一第一门课停课、周二第一门课调到周四第 9–10 节；停课、调整、恢复都在本机生效 |
 | `--es debugOverlay njmu` | 叠加一份南医作息的示例共享课表（`same` 用本校作息） |
+| `--es debugCoupleLayout merged` | 一起看的周视图：`merged`（合并成一张周课表）或 `split`（并排的双栏日条）；不传保持上次的选择 |
+| `--ez debugStripHint true` | 双栏日条上方的一次性提示（示例课表默认不显示它） |
+| `--ez debugFirstRun true` | 当作第一次使用：自动弹出「课表怎么用」，并显示双栏日条的提示（示例课表默认两样都不出现） |
 | `--es debugBackground <设备上的图片路径>` | 设浅色背景（`debugBackgroundDark` 设深色），加 `--ez debugBackgroundFrame true` 打开「调整范围」 |
 | `--es debugHolidayGreeting 国庆快乐` | 没课的日子都当作这个节日：问候和烟花 |
 | `--es debugWidgetBackground <设备上的图片路径>` | 设小组件背景；示例课表也会写进小组件的本地课表 |
