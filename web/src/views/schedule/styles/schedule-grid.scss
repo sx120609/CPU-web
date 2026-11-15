@@ -1,6 +1,6 @@
 .day-timeline {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
   touch-action: pan-y;
 }
@@ -86,7 +86,7 @@
 }
 .week-overview {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   // 显示设置里的格子高度：100% 时刚好铺满一屏。
   min-height: calc(100% * var(--sd-row-scale, 1));
   margin: 0 auto;

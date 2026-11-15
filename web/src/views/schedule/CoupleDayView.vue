@@ -171,7 +171,7 @@ const nowLine = computed(() => {
   --cd-axis: 46px;
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
   padding: 2px 0 8px;
   color: var(--cd-ink);

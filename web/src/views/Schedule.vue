@@ -18,8 +18,9 @@
   }"
   :style="[pageStyle, displayStyle]"
 >
-    <IosAppRecommendation style="--ios-app-recommendation-max-width: 720px" />
-    <header class="top">
+    <IosAppRecommendation style="--ios-app-recommendation-max-width: var(--schedule-content-width, 720px)" />
+  <header class="schedule-heading">
+    <div class="top">
       <el-select
         v-if="parsed"
         v-model="semester"
@@ -348,25 +349,13 @@
           </div>
         </el-popover>
       </div>
-    </header>
+    </div>
 
     <!-- 显示着缓存课表、但静默恢复确实失败了：给一个能就地恢复的入口，不跳页。 -->
     <div v-if="parsed && jwxt.needsReauthorization && auth.isLoggedIn" class="jwxt-reauth-bar" role="status">
       <span>教务授权已失效，课表停在上次同步的内容</span>
       <button type="button" @click="reauthOpen = true">恢复授权</button>
     </div>
-
-    <!-- 按设备分流的安装引导：移动端安装/加主屏，桌面端下载原生客户端 -->
-    <OpenBrowserPromptDialog ref="openBrowserPromptRef" />
-    <InstallPromptDialog ref="installPromptRef" />
-    <ScheduleUsageNotice />
-    <input
-      ref="backgroundImageInputRef"
-      type="file"
-      accept="image/*"
-      class="hidden-file-input"
-      @change="onScheduleBackgroundPicked"
-    />
 
     <section v-if="parsed && viewMode === 'month'" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeMonth(-1)" @click="changeMonth(-1)">
@@ -429,6 +418,19 @@
         <el-icon><ArrowRight /></el-icon>
       </button>
     </section>
+  </header>
+
+    <!-- 按设备分流的安装引导：移动端安装/加主屏，桌面端下载原生客户端 -->
+    <OpenBrowserPromptDialog ref="openBrowserPromptRef" />
+    <InstallPromptDialog ref="installPromptRef" />
+    <ScheduleUsageNotice />
+    <input
+      ref="backgroundImageInputRef"
+      type="file"
+      accept="image/*"
+      class="hidden-file-input"
+      @change="onScheduleBackgroundPicked"
+    />
 
     <section v-if="parsed && viewMode === 'day'" class="week-strip">
       <button
@@ -1255,8 +1257,6 @@ import IosAppRecommendation from "@/components/install/IosAppRecommendation.vue"
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
 import {
   DEFAULT_SCHEDULE_THEME,
-  getColorGlassCourseTone,
-  getScheduleThemePalette,
   normalizeScheduleTheme,
   scheduleThemeOptions,
   scheduleThemeCssVars,
@@ -1311,7 +1311,7 @@ import { buildDateIndex, buildMonthDays, calendarMonths, monthKeyOf } from "@/vi
 import { blockScheduleLine, classroomOnly, courseCardNote, formatClock, nowRowPosition, shanghaiMinutes } from "@/views/schedule/nowIndicator";
 import {
   DEFAULT_SCHEDULE_STYLE,
-  hueCourseTone,
+  classicCourseTone,
   readStoredScheduleStyle,
   rgbToCss,
   scheduleStyleCanvas,
@@ -3535,18 +3535,7 @@ function nextWeekValue(delta: number) {
 }
 
 function toneFor(name: string): CourseTone {
-  const hueOverride = courseHueOverride(name);
-  if (hueOverride !== null) return hueCourseTone(hueOverride, appearance.isDark);
-  if (scheduleTheme.value === "color-glass") return getColorGlassCourseTone(name, appearance.isDark);
-  const theme = getScheduleThemePalette(scheduleTheme.value);
-  if (appearance.isDark) {
-    return {
-      bg: "var(--schedule-course-bg)",
-      border: "var(--schedule-course-border)",
-      text: "var(--schedule-course-text)",
-    };
-  }
-  return { bg: theme.courseBg, border: theme.courseBorder, text: theme.courseText };
+  return classicCourseTone(name, scheduleTheme.value, appearance.isDark);
 }
 
 function hasScheduleEditAuth() {

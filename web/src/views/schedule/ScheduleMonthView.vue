@@ -241,7 +241,7 @@ function dayLabel(item: MonthDay) {
   --sm-row-height: 92px;
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
   border: 1px solid var(--ss-cell-border);
   border-radius: 20px;

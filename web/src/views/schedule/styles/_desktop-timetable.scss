@@ -1,0 +1,85 @@
+// Shared by the standalone timetable and the academic portal's inline timetable.
+@mixin desktop-timetable {
+  --schedule-content-width: 1200px;
+
+  .view-switch {
+    border-radius: 999px;
+    padding-inline: 4px;
+  }
+  .view-switch button, .icon-btn {
+    border-radius: 999px;
+  }
+
+  .week-switcher {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .week-btn, .week-title:not(.coupled) {
+    background: transparent;
+    box-shadow: none;
+    border: 0;
+    color: var(--schedule-text);
+  }
+  .week-btn {
+    min-width: 42px;
+    padding-inline: 8px;
+    border-radius: 999px;
+  }
+  .week-btn:disabled { color: var(--schedule-text-muted); }
+  .week-title b {
+    font-family: var(--ss-font, inherit);
+    font-size: 1rem;
+    line-height: 1.25;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .week-title > span {
+    color: var(--schedule-text-secondary);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .week-title.clickable:hover, .week-btn:enabled:hover {
+    background: var(--schedule-accent-soft-hover);
+  }
+  .week-day-head:not(.today), .day-pill:not(.active):not(.today) {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  .week-day-head, .day-pill {
+    font-variant-numeric: tabular-nums;
+  }
+  .week-grid-head { background: transparent; }
+  .week-grid-head, .week-grid-body {
+    grid-template-columns: 54px repeat(var(--sd-columns, 7), minmax(0, 1fr));
+    column-gap: 5px;
+  }
+  .week-day-head span, .slot-axis b {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .week-day-head b, .slot-axis span {
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .day-slot-cell, .week-slot-cell {
+    border-color: color-mix(in srgb, var(--schedule-cell-border) 65%, transparent);
+    box-shadow: none;
+  }
+  .day-course-block, .week-course {
+    border-width: 1px;
+    box-shadow: none;
+  }
+  .week-course { border-radius: 9px; }
+  .week-course strong {
+    font-size: clamp(12px, 1vw, 15px);
+    font-weight: 600;
+  }
+  .week-course span, .day-course-meta {
+    font-weight: 500;
+  }
+  .week-course span { font-size: clamp(10px, 0.85vw, 12px); }
+  .week-course em { font-size: 10px; }
+  .day-course-name { font-weight: 650; }
+}

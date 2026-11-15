@@ -488,7 +488,7 @@ const nowPlacement = computed(() => {
   box-sizing: border-box;
   display: grid;
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   min-height: calc(100% * var(--sd-row-scale, 1));
   margin: 0 auto;
   padding: var(--ss-panel-padding);

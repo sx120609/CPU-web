@@ -1,3 +1,11 @@
+@use "../../../views/schedule/styles/desktop-timetable" as timetable;
+
+@media (min-width: 761px) {
+  .schedule-pane {
+    @include timetable.desktop-timetable;
+  }
+}
+
 @media (max-width: 760px) {
   .summary { display: none; }
 

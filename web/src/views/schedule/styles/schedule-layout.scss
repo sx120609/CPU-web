@@ -2,13 +2,13 @@
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   gap: 10px;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto 12px;
 }
 .week-switcher {
   flex: 0 0 auto;
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto 12px;
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) 96px;
@@ -70,7 +70,7 @@
 .week-strip {
   flex: 0 0 auto;
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto 14px;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -110,7 +110,7 @@
 }
 .cache-status-strip {
   flex: 0 0 auto;
-  width: min(100%, 720px);
+  width: min(100%, var(--schedule-content-width, 720px));
   margin: -4px auto 10px;
   padding: 8px 12px;
   border: 1px solid var(--schedule-accent-border);
@@ -136,7 +136,7 @@
 }
 .content,
 .state-card {
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
 }
 .content {
@@ -198,7 +198,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   width: 100%;
   margin: 0 auto 8px;
   padding: 6px 6px 6px 12px;

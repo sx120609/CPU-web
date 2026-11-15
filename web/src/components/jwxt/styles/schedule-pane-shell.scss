@@ -10,7 +10,7 @@
   justify-content: space-between;
   gap: 8px;
   margin: 0 auto 14px;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
 }
 
 .top-placeholder {
@@ -130,7 +130,7 @@
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
 .week-switcher {
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto 12px;
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) 96px;
@@ -199,7 +199,7 @@
 }
 
 .week-strip {
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto 14px;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

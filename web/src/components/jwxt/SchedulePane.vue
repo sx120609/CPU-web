@@ -1,7 +1,9 @@
 <template>
 <div
-  class="schedule-pane"
+  class="schedule-pane schedule-style-classic"
   :class="{
+    'theme-color-glass': scheduleTheme === 'color-glass',
+    'is-dark': appearance.isDark,
     'is-native-app': isNativeScheduleApp,
     'is-static-week-swipe': useStaticWeekSwipe,
     'view-day': viewMode === 'day',
@@ -356,11 +358,12 @@ import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { detectClientPlatform } from "@/utils/clientInfo";
 import {
-  getScheduleThemePalette,
+  normalizeScheduleTheme,
   scheduleThemeCssVars,
   scheduleThemeDarkCssVars,
-  type CourseTone,
 } from "./scheduleTheme";
+import { SCHEDULE_THEME_STORAGE_KEY, scheduleSurfaceCssVars } from "@/views/schedule/pageVars";
+import { classicCourseTone, scheduleStyleCssVars } from "@/views/schedule/scheduleStyle";
 import {
   applyScheduleEditsToCells,
   courseEditKey,
@@ -439,6 +442,21 @@ const props = withDefaults(defineProps<{
 });
 const jwxt = useJwxtStore();
 const appearance = useAppearanceStore();
+const scheduleTheme = ref(readScheduleTheme());
+
+function readScheduleTheme() {
+  try {
+    return normalizeScheduleTheme(localStorage.getItem(SCHEDULE_THEME_STORAGE_KEY));
+  } catch {
+    return normalizeScheduleTheme();
+  }
+}
+
+function syncScheduleTheme(event: StorageEvent) {
+  if (event.key === SCHEDULE_THEME_STORAGE_KEY || event.key === null) {
+    scheduleTheme.value = readScheduleTheme();
+  }
+}
 
 const graduateSourceMeta = ref<{
   mode?: "live" | "debug" | "debug-fallback";
@@ -603,6 +621,7 @@ onMounted(async () => {
   disposed = false;
   updateViewportHeight();
   window.addEventListener("resize", updateViewportHeight);
+  window.addEventListener("storage", syncScheduleTheme);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("scroll", updateViewportHeight);
   restoreLastState();
@@ -634,6 +653,7 @@ onBeforeUnmount(() => {
   foregroundScheduleLoadSeq = scheduleLoadSeq;
   loading.value = false;
   window.removeEventListener("resize", updateViewportHeight);
+  window.removeEventListener("storage", syncScheduleTheme);
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
   clearDragTimers();
@@ -667,31 +687,10 @@ const isViewingToday = computed(() => {
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
 const pageStyle = computed(() => ({
-  ...scheduleThemeCssVars("green"),
-  ...(appearance.isDark ? {
-    ...scheduleThemeDarkCssVars("green"),
-    "--schedule-surface-bg": "rgba(26, 41, 37, 0.94)",
-    "--schedule-surface-bg-soft": "rgba(32, 49, 44, 0.88)",
-    "--schedule-text": "#eef8f5",
-    "--schedule-text-secondary": "#abc5be",
-    "--schedule-text-muted": "#819d95",
-    "--schedule-border": "rgba(163, 186, 179, 0.28)",
-    "--schedule-cell-bg": "rgba(30, 48, 43, 0.52)",
-    "--schedule-cell-bg-strong": "rgba(38, 58, 52, 0.68)",
-    "--schedule-cell-border": "rgba(163, 186, 179, 0.20)",
-    "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.22)",
-  } : {
-    "--schedule-surface-bg": "#ffffff",
-    "--schedule-surface-bg-soft": "#f9fafb",
-    "--schedule-text": "#172033",
-    "--schedule-text-secondary": "#667085",
-    "--schedule-text-muted": "#8a94a6",
-    "--schedule-border": "#dde4ee",
-    "--schedule-cell-bg": "rgba(255, 255, 255, 0.36)",
-    "--schedule-cell-bg-strong": "rgba(255, 255, 255, 0.56)",
-    "--schedule-cell-border": "rgba(218, 227, 239, 0.82)",
-    "--schedule-panel-shadow": "0 10px 24px rgba(24, 34, 51, 0.08)",
-  }),
+  ...scheduleThemeCssVars(scheduleTheme.value),
+  ...(appearance.isDark ? scheduleThemeDarkCssVars(scheduleTheme.value) : {}),
+  ...scheduleSurfaceCssVars({ dark: appearance.isDark }),
+  ...scheduleStyleCssVars({ style: "classic", palette: scheduleTheme.value, dark: appearance.isDark }),
   ...(viewportHeight.value ? { "--schedule-vh": `${viewportHeight.value / 100}px` } : {}),
 }));
 const useStaticWeekSwipe = computed(() => false);
@@ -1946,18 +1945,6 @@ function selectedScheduleDiffers(data: ScheduleResult) {
   return semesterDiffers || weekDiffers;
 }
 
-function toneFor(name: string): CourseTone {
-  const theme = getScheduleThemePalette("green");
-  if (appearance.isDark) {
-    return {
-      bg: "var(--schedule-course-bg)",
-      border: "var(--schedule-course-border)",
-      text: "var(--schedule-course-text)",
-    };
-  }
-  return { bg: theme.courseBg, border: theme.courseBorder, text: theme.courseText };
-}
-
 function normalizeSlotRange(bigSlot: number, course: ScheduleCourse) {
   const fallbackStart = Math.max(1, Math.min(MAX_SMALL_SLOT, bigSlot * 2 - 1));
   const fallbackEnd = Math.max(fallbackStart, Math.min(MAX_SMALL_SLOT, bigSlot * 2));
@@ -2017,7 +2004,7 @@ function normalizeKeyPart(value?: string) {
 }
 
 function courseBlockStyle(block: WeekCourseBlock) {
-  const colors = toneFor(block.course.name);
+  const colors = classicCourseTone(block.course.name, scheduleTheme.value, appearance.isDark);
   return {
     gridColumn: `${block.day + 1} / ${block.day + 2}`,
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
@@ -2028,7 +2015,7 @@ function courseBlockStyle(block: WeekCourseBlock) {
 }
 
 function dayCourseBlockStyle(block: WeekCourseBlock) {
-  const colors = toneFor(block.course.name);
+  const colors = classicCourseTone(block.course.name, scheduleTheme.value, appearance.isDark);
   return {
     gridColumn: "2 / 3",
     gridRow: `${block.startSlot} / ${block.endSlot + 1}`,

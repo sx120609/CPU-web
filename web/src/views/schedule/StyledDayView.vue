@@ -444,7 +444,7 @@ const boardRemaining = computed(() => boardCurrent.value.length + boardUpcoming.
 .sd-board {
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
   color: var(--ss-ink);
   font-family: var(--ss-font);

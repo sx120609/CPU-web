@@ -1,5 +1,5 @@
 .content {
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
@@ -145,7 +145,7 @@
 
 .day-timeline {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
   touch-action: pan-y;
 }
@@ -273,7 +273,7 @@
 
 .week-overview {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
   touch-action: pan-y;
 }
@@ -381,7 +381,11 @@
 }
 
 .week-slot-cell.today {
-  background: rgba(232, 246, 243, 0.48);
+  background: color-mix(in srgb, var(--schedule-accent) 9%, var(--schedule-cell-bg));
+}
+
+.schedule-pane.is-dark .week-slot-cell.today {
+  background: color-mix(in srgb, var(--schedule-accent) 14%, var(--schedule-cell-bg));
 }
 
 .week-course {

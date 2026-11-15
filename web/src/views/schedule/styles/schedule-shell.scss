@@ -95,7 +95,7 @@
   justify-content: space-between;
   gap: 8px;
   margin: 0 auto 14px;
-  max-width: 720px;
+  max-width: var(--schedule-content-width, 720px);
 }
 .sem-select {
   flex: 1;
