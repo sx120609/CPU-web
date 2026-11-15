@@ -1,7 +1,7 @@
 <template>
   <!-- 月视图不画节次网格，而是一张日历：每天一格，格子里是公历日、农历或节日，
        下面直接列出当天的课，一门一行，放不下的收成「+N」。点一天进入那天的日视图。 -->
-  <section class="sm" :class="[`sm-${visualStyle}`, { 'sm-dark': dark, 'sm-coupled': coupled }]">
+  <section class="sm" :class="[`sm-${visualStyle}`, { 'sm-dark': dark, 'sm-coupled': coupled, 'sm-person-colors': ownTone }]">
     <div class="sm-calendar">
       <h3 v-if="visualStyle === 'paper'" class="sm-month-title">{{ paperTitle }}</h3>
       <div class="sm-weekdays">
@@ -39,7 +39,12 @@
           <b class="sm-number">{{ item.number }}</b>
           <small class="sm-subtitle">{{ item.subtitle }}</small>
           <span class="sm-courses">
-            <i v-for="entry in courseLines(item).shown" :key="entry.name" :style="{ color: entry.accent, background: entry.fill }">{{ entry.name }}</i>
+            <i
+              v-for="entry in courseLines(item).shown"
+              :key="entry.name"
+              class="sm-course"
+              :style="{ '--sm-course-accent': entry.accent, '--sm-course-fill': entry.fill }"
+            >{{ entry.name }}</i>
             <u v-if="courseLines(item).more">+{{ courseLines(item).more }}</u>
             <!-- 情侣课表：TA 这一天有几门课，单独一行，用 TA 的颜色。 -->
             <i v-if="partnerCounts[item.date]" class="sm-ta" :style="partnerStyle"><b>TA</b>{{ partnerCounts[item.date] }} 门</i>
@@ -231,6 +236,8 @@ function dayLabel(item: MonthDay) {
 </script>
 
 <style scoped lang="scss">
+@use "./styles/desktop-dark-course";
+
 .sm {
   --sm-ink: var(--ss-ink);
   --sm-meta: var(--ss-meta);
@@ -393,6 +400,15 @@ function dayLabel(item: MonthDay) {
   line-height: 14px;
   text-align: left;
   white-space: nowrap;
+}
+.sm-course {
+  color: var(--sm-course-accent);
+  background: var(--sm-course-fill);
+}
+@media (min-width: 761px), (hover: hover) and (pointer: fine) {
+  .sm-classic.sm-dark:not(.sm-person-colors) .sm-course {
+    @include desktop-dark-course.surface(var(--sm-course-accent));
+  }
 }
 // TA 的那一行排在最下面，和上面我的课隔开一点。
 .sm-courses .sm-ta {

@@ -322,3 +322,15 @@
     font-size: 7px;
   }
 }
+
+.schedule-page {
+  @include timetable.desktop-night;
+}
+@media (min-width: 761px), (hover: hover) and (pointer: fine) {
+  .schedule-page.is-dark.schedule-style-classic:not(.has-custom-background)::after {
+    background:
+      radial-gradient(ellipse at 15% 0%, rgba(87, 120, 172, 0.13), transparent 55%),
+      radial-gradient(ellipse at 95% 12%, rgba(76, 140, 131, 0.08), transparent 48%),
+      linear-gradient(165deg, #171e28, #141a22 65%, #111820);
+  }
+}

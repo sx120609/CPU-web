@@ -83,3 +83,55 @@
   .week-course em { font-size: 10px; }
   .day-course-name { font-weight: 650; }
 }
+
+// Roomy screens and narrow desktop windows share the same dark artwork. Keep
+// sizing in desktop-timetable so a narrow window retains its compact layout.
+@mixin desktop-night {
+  @media (min-width: 761px), (hover: hover) and (pointer: fine) {
+    &.is-dark {
+      --night-selected-bg: color-mix(in srgb, var(--ss-theme-text) 13%, #1c2530);
+      --night-selected-line: color-mix(in srgb, var(--ss-theme-text) 35%, #27313e);
+      --night-cell-line: rgba(153, 179, 203, 0.11);
+
+      .week-switcher .week-title:not(.coupled) {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        text-shadow: none;
+        color: var(--schedule-text);
+      }
+      .week-switcher .week-title.clickable:not(.coupled):enabled:hover {
+        background: var(--schedule-accent-soft-hover);
+      }
+
+      // The same single accent marks today and the active view. Qualify by
+      // control group so the old colour-glass gradients can't override it.
+      .week-grid-head .week-day-head.today,
+      .week-strip .day-pill.today,
+      .week-strip .day-pill.active,
+      .top-actions .view-switch button.active,
+      .top-actions .icon-btn.active {
+        background: var(--night-selected-bg);
+        border: 1px solid var(--night-selected-line);
+        color: color-mix(in srgb, var(--ss-theme-text) 66%, #f1f4fa);
+        box-shadow: none;
+        text-shadow: none;
+      }
+      .week-strip .day-pill.today:not(.active) {
+        background: transparent;
+      }
+
+      &.schedule-style-classic {
+        .day-slot-cell, .week-slot-cell {
+          background: rgba(150, 176, 201, 0.035);
+          border-color: var(--night-cell-line);
+          box-shadow: none;
+        }
+        .week-slot-cell.today {
+          background: color-mix(in srgb, var(--ss-theme-text) 8%, rgba(28, 38, 48, 0.65));
+        }
+        .week-grid-head { background: transparent; }
+      }
+    }
+  }
+}

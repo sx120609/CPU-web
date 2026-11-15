@@ -475,6 +475,8 @@ const nowPlacement = computed(() => {
 </script>
 
 <style scoped lang="scss">
+@use "./styles/desktop-dark-course";
+
 .ss-week {
   --ss-axis-width: 42px;
   --ss-header-height: 48px;
@@ -962,6 +964,11 @@ const nowPlacement = computed(() => {
 .ss-classic .ss-tile {
   border-color: var(--tile-border);
   padding: 5px 3px;
+}
+@media (min-width: 761px), (hover: hover) and (pointer: fine) {
+  .ss-classic.ss-dark .ss-tile {
+    @include desktop-dark-course.surface(var(--tile-border));
+  }
 }
 .ss-classic .ss-tile strong {
   font-size: 10px;

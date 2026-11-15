@@ -28,7 +28,7 @@ export function useScheduleBackground(options: { isDark?: () => boolean } = {}) 
   const backgroundPreviewStyle = computed(() => (
     hasScheduleBackground.value
       ? {
-          backgroundImage: `linear-gradient(180deg, rgba(248, 251, 255, ${scheduleBackground.overlayOpacity}) 0%, rgba(248, 251, 255, ${Math.min(0.92, scheduleBackground.overlayOpacity + 0.1)}) 100%), url("${scheduleBackground.imageDataUrl}")`,
+          backgroundImage: `linear-gradient(var(--schedule-bg-overlay), var(--schedule-bg-overlay)), url("${scheduleBackground.imageDataUrl}")`,
           filter: `blur(${scheduleBackground.blur}px)`,
         }
       : {}

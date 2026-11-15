@@ -1,0 +1,34 @@
+// Classic uses a course's border colour for both an automatic hue and a saved
+// override. Remove its alpha before mixing so a photo behind the grid cannot
+// change the contrast between the course caption and its surface.
+@mixin surface($accent) {
+  --course-tint: #{$accent};
+  @supports (color: rgb(from red r g b / 1)) {
+    --course-tint: rgb(from #{$accent} r g b / 1);
+  }
+  background: #242a34;
+  background: color-mix(in srgb, var(--course-tint) 24%, #242a34);
+  color: color-mix(in srgb, var(--course-tint) 34%, #f1f4fa);
+  border-color: color-mix(in srgb, var(--course-tint) 48%, #343c48);
+  text-shadow: none;
+}
+
+@mixin cards {
+  @media (min-width: 761px), (hover: hover) and (pointer: fine) {
+    &.is-dark.schedule-style-classic {
+      .week-course, .day-course-block {
+        @include surface(var(--course-border));
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+
+      // Partner badges retain their colours and off-week cards stay dimmed.
+      .week-course > strong, .week-course > span, .week-course > em,
+      .day-course-name, .day-course-meta, .day-course-note {
+        color: inherit;
+        text-shadow: none;
+      }
+    }
+  }
+}

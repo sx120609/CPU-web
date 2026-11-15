@@ -1,3 +1,5 @@
+@use "../../../views/schedule/styles/desktop-dark-course";
+
 .content {
   max-width: var(--schedule-content-width, 720px);
   margin: 0 auto;
@@ -499,5 +501,9 @@ html[data-theme="dark"] .day-course-note {
 
 .day-pane {
   will-change: transform, opacity;
+}
+
+.schedule-pane {
+  @include desktop-dark-course.cards;
 }
 

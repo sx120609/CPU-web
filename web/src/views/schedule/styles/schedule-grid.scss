@@ -1,3 +1,5 @@
+@use "./desktop-dark-course";
+
 .day-timeline {
   width: 100%;
   max-width: var(--schedule-content-width, 720px);
@@ -658,4 +660,8 @@ body[data-cpu-native-app="1"] .schedule-page .week-grid-head {
   margin: 2px auto 0;
   border-radius: 50%;
   background: var(--schedule-accent);
+}
+
+.schedule-page {
+  @include desktop-dark-course.cards;
 }
