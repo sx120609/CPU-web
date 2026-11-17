@@ -218,32 +218,131 @@
   }
 }
 
-// The native tablet header keeps the week navigator centered between the term
-// and the view controls, even when the term name changes length.
+// The desktop toolbar reads like a calendar app: the week (or month), its arrows and 本周 on the left,
+// the term and the view controls on the right. Every control gets its own column, so a control that is
+// not rendered (本周 can be switched off, 退出 only shows without the site header) leaves no hole.
 @media (min-width: 960px) {
   .schedule-heading {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 360px) minmax(0, 1fr);
-    gap: 0 12px;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto auto;
+    gap: 0 8px;
     align-items: center;
     margin-bottom: 12px;
   }
-  .schedule-heading .top { display: contents; }
-  .schedule-heading .sem-select {
-    grid-area: 1 / 1;
-    width: 100%;
+  .schedule-heading .top,
+  .schedule-heading .top-actions {
+    display: contents;
   }
   .schedule-heading .week-switcher {
-    grid-area: 1 / 2;
+    grid-area: 1 / 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    max-width: none;
     margin: 0;
   }
-  .schedule-heading .top-actions {
-    grid-area: 1 / 3;
-    justify-self: end;
+  .schedule-heading .today-btn { grid-area: 1 / 2; }
+  .schedule-heading .schedule-exit-btn { grid-area: 1 / 4; }
+  .schedule-heading .sem-select {
+    grid-area: 1 / 5;
+    width: 232px;
   }
+  .schedule-heading .view-switch { grid-area: 1 / 6; }
+  .schedule-heading .more-btn { grid-area: 1 / 7; }
   .schedule-heading .jwxt-reauth-bar {
     grid-column: 1 / -1;
     margin: 8px 0 0;
+  }
+
+  .schedule-heading .week-title {
+    order: -1;
+    margin-right: 4px;
+  }
+  .schedule-heading .week-title:not(.coupled) {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 10px;
+    height: auto;
+    margin-left: -10px;
+    padding: 6px 12px 6px 10px;
+    border-radius: 12px;
+  }
+  .schedule-heading .week-title:not(.coupled) b {
+    font-size: 1.375rem;
+    font-weight: 650;
+  }
+  .schedule-heading .week-title:not(.coupled) > span {
+    font-size: 0.8125rem;
+  }
+  // 绑定情侣课表时周次和 TA 的状态排成一行，仍在同一块里。
+  .schedule-heading .week-title.coupled {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    height: 40px;
+    padding: 0 6px 0 14px;
+    border-radius: 999px;
+  }
+  .schedule-heading .week-title-main {
+    height: auto;
+    gap: 8px;
+  }
+  .schedule-heading .week-title-main b {
+    font-size: 1.125rem;
+  }
+  .schedule-heading .couple-line {
+    width: auto;
+    height: 28px;
+  }
+  .schedule-heading .week-btn,
+  .schedule-heading .today-btn {
+    height: 34px;
+  }
+  // 本周按钮在看的就是本周时保留各主题原有的选中样式。
+  .schedule-heading .week-btn,
+  .schedule-heading .today-btn:not(.active) {
+    border: 1px solid var(--schedule-border);
+    background: var(--schedule-surface-bg-soft);
+  }
+  .schedule-heading .today-btn:not(.active):enabled:hover {
+    background: var(--schedule-accent-soft-hover);
+  }
+  .schedule-heading .week-btn {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+  .schedule-heading .week-btn-label {
+    display: none;
+  }
+  .schedule-heading .today-btn {
+    width: auto;
+    padding: 0 14px;
+    font-size: var(--cpu-fs-s);
+    font-weight: 600;
+  }
+  .schedule-heading .today-btn .el-icon {
+    display: none;
+  }
+  .schedule-heading .today-btn-label {
+    display: inline;
+    line-height: 1;
+  }
+  // 设了背景图时工具栏有自己的底色：留出内边距，文字和按钮不贴着圆角。
+  .schedule-page.has-custom-background .schedule-heading {
+    padding: 6px 10px 6px 18px;
+  }
+}
+
+// On a computer the site header sits above the timetable (MainLayout). The page lines up with the
+// header's 1280px column, and the header's navigation replaces the 退出 button.
+@media (min-width: 761px) {
+  .schedule-page.has-site-header {
+    padding: 14px 20px calc(env(safe-area-inset-bottom) + 12px);
+  }
+  .schedule-page.has-site-header:not(.view-day) {
+    --schedule-content-width: 1240px;
   }
 }
 

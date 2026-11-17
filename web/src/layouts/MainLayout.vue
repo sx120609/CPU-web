@@ -6,6 +6,7 @@
       'keyboard-geometry-open': keyboardGeometryOpen,
       'layout-root--full-width': fullWidthContent && !hideChrome,
       'layout-root--full-height': fullHeightContent && !hideChrome,
+      'layout-root--bare-header': bareHeader,
       'layout-root--assistant': route.name === 'search' || chatPage,
       'layout-root--native-shell': useFlutterShell,
       'layout-root--ios-next': useIosNextShell,
@@ -17,7 +18,7 @@
     :style="layoutStyle"
   >
     <!-- Native shells supply their own navigation; detail pages own theirs. -->
-    <header v-if="!hideChrome && !useNativeShell && !mobileTopicChrome && !mobileChatChrome && !immersivePage" class="topbar">
+    <header v-if="(!hideChrome || bareHeader) && !useNativeShell && !mobileTopicChrome && !mobileChatChrome && !immersivePage" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
           <img
@@ -426,7 +427,7 @@ import { celebrationYears } from "@/utils/celebration";
 import { iosRouteTransitionEnabled } from "@/router";
 import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
 import { canOfferDesktopClient, hidesClientDownloads, isAndroidNativeApp, isCampusAssistantDestination, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
-import { useFormFactor } from "@/utils/formFactor";
+import { keepsSiteHeaderOnBarePages, useFormFactor } from "@/utils/formFactor";
 import {
   assumesKeyboardOnFocus,
   closeKeyboardAfterBlur,
@@ -509,6 +510,10 @@ const messageAriaLabel = computed(() => {
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome)
   || (useIosNextShell.value && route.meta?.nativeChrome === "page"));
+// 课表这类裸壳页面在电脑上没有底部标签栏：仍显示站点顶栏，可以直接切到其他功能页面。
+const bareHeader = computed(() => hideChrome.value
+  && Boolean(route.meta?.desktopHeader)
+  && keepsSiteHeaderOnBarePages(ff.value));
 // 铺满全屏的页面（小游戏）不渲染站点顶栏：页面本来就盖住了它，而鸿蒙壳是按网页里有没有这条顶栏
 // 来决定显不显示自己的顶栏和底栏的，不渲染它，游戏在鸿蒙里才是全屏。
 const immersivePage = computed(() => Boolean(route.meta?.immersive));

@@ -7,6 +7,7 @@
     'is-dark': appearance.isDark,
     'is-native-app': isNativeScheduleApp,
     'is-android-native-app': isAndroidScheduleApp,
+    'has-site-header': hasSiteHeader,
     'is-static-week-swipe': useStaticWeekSwipe,
     'view-day': viewMode === 'day',
     'view-week': viewMode === 'week',
@@ -51,7 +52,7 @@
         <button
           v-if="parsed && display.showBackToWeek"
           type="button"
-          class="icon-btn"
+          class="icon-btn today-btn"
           :class="{ active: isViewingToday }"
           :disabled="loading"
           :aria-label="todayButtonLabel"
@@ -59,6 +60,7 @@
           @click="jumpToToday"
         >
           <el-icon><Aim /></el-icon>
+          <span class="today-btn-label">{{ viewMode === "week" ? "本周" : "今天" }}</span>
         </button>
         <el-popover
           v-model:visible="moreMenuOpen"
@@ -74,7 +76,7 @@
           <template #reference>
             <button
               type="button"
-              class="icon-btn"
+              class="icon-btn more-btn"
               aria-label="更多"
               title="更多"
               @click="openMoreMenu"
@@ -358,16 +360,16 @@
     </div>
 
     <section v-if="parsed && viewMode === 'month'" class="week-switcher">
-      <button type="button" class="week-btn" :disabled="!canChangeMonth(-1)" @click="changeMonth(-1)">
+      <button type="button" class="week-btn" aria-label="上一月" :disabled="!canChangeMonth(-1)" @click="changeMonth(-1)">
         <el-icon><ArrowLeft /></el-icon>
-        上一月
+        <span class="week-btn-label">上一月</span>
       </button>
       <div class="week-title">
         <b>{{ monthTitle }}</b>
         <span v-if="monthWeekRange">{{ monthWeekRange }}</span>
       </div>
-      <button type="button" class="week-btn" :disabled="!canChangeMonth(1)" @click="changeMonth(1)">
-        下一月
+      <button type="button" class="week-btn" aria-label="下一月" :disabled="!canChangeMonth(1)" @click="changeMonth(1)">
+        <span class="week-btn-label">下一月</span>
         <el-icon><ArrowRight /></el-icon>
       </button>
     </section>
@@ -1247,7 +1249,7 @@ import {
   isIosStandalone,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
-import { useFormFactor } from "@/utils/formFactor";
+import { keepsSiteHeaderOnBarePages, useFormFactor } from "@/utils/formFactor";
 import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
 import { copyText, openUserGroup, useUserGroupQq } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
@@ -2477,7 +2479,9 @@ const isViewingToday = computed(() => {
 // MainLayout shows its web tab bar exactly on compact layouts, and native shells (always compact) own
 // the chrome. The Flutter shell has no tab bar over /schedule, so it keeps the 退出 button.
 const scheduleHasBottomTabbar = computed(() => !isFlutterNativeShell() && formFactor.value.compact);
-const showScheduleExitButton = computed(() => !scheduleHasBottomTabbar.value);
+// On a computer MainLayout keeps the site header above the timetable, and its navigation is the way out.
+const hasSiteHeader = computed(() => keepsSiteHeaderOnBarePages(formFactor.value));
+const showScheduleExitButton = computed(() => !scheduleHasBottomTabbar.value && !hasSiteHeader.value);
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
   ...(appearance.isDark ? scheduleThemeDarkCssVars(scheduleTheme.value) : {}),

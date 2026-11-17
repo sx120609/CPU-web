@@ -134,6 +134,16 @@ export function classifyFormFactor(env: FormFactorEnv): FormFactor {
   };
 }
 
+/**
+ * Bare pages (the timetable) hide the site chrome and draw their own. In a desktop browser, an installed
+ * web app window and the desktop client there is no tab bar either, so those keep the site header and its
+ * navigation. Mobile app shells are left alone: some decide their own bars by whether this header exists.
+ */
+export function keepsSiteHeaderOnBarePages(formFactor: Pick<FormFactor, "compact" | "shell">) {
+  return !formFactor.compact
+    && (formFactor.shell === "browser" || formFactor.shell === "standalone" || formFactor.shell === "desktop-native");
+}
+
 export function sameFormFactor(a: FormFactor, b: FormFactor) {
   return a.appleTouch === b.appleTouch
     && a.isIpad === b.isIpad

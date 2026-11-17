@@ -21,6 +21,12 @@
   padding: 0 !important;
 }
 
+// 电脑上课表上方保留站点顶栏：内容区只占顶栏以下的高度。
+:global(body.schedule-scroll-lock .layout-root--bare-header .main--bare) {
+  flex: 1 1 0;
+  height: auto;
+}
+
 .schedule-page {
   --schedule-bg-image: none;
   --schedule-bg-overlay: rgba(248, 251, 255, 0.84);
@@ -51,6 +57,10 @@
     radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
     var(--schedule-page-bg);
   color: var(--schedule-text);
+}
+.schedule-page.has-site-header {
+  height: 100%;
+  min-height: 0;
 }
 .schedule-page > * {
   position: relative;
@@ -193,6 +203,10 @@
 }
 .schedule-exit-btn span {
   line-height: 1;
+}
+// 电脑宽度的工具栏把这个按钮显示成文字（见 schedule-responsive.scss），其余布局只显示图标。
+.today-btn-label {
+  display: none;
 }
 .theme-color-glass {
   --schedule-colorful-control-ring: linear-gradient(135deg, rgba(244, 63, 94, 0.58) 0%, rgba(249, 115, 22, 0.50) 22%, rgba(34, 197, 94, 0.45) 48%, rgba(59, 130, 246, 0.54) 74%, rgba(139, 92, 246, 0.52) 100%);

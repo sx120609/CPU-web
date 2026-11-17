@@ -12,7 +12,7 @@ import {
 import { isFlutterNativeShell, isStandaloneMode } from "./clientInfo";
 
 export type { FormFactor, FormFactorDevice, FormFactorLayout, FormFactorShell } from "./formFactorCore";
-export { PHONE_MAX_QUERY, TABLET_COMPACT_QUERY, TABLET_MIN_SHORT_SIDE } from "./formFactorCore";
+export { keepsSiteHeaderOnBarePages, PHONE_MAX_QUERY, TABLET_COMPACT_QUERY, TABLET_MIN_SHORT_SIDE } from "./formFactorCore";
 
 type FormFactorListener = (next: FormFactor, previous: FormFactor) => void;
 
