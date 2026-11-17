@@ -1,13 +1,13 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.3.30",
+  "version": "0.3.31",
   "description": "药大拾间桌面客户端",
   "main": "dist/electron/main.js",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "clean": "rimraf dist release",
-    "build": "rimraf dist && tsc -p tsconfig.json && node scripts/build-zhihuishu.mjs",
+    "build": "rimraf dist && tsc -p tsconfig.json && esbuild electron/site-preload.ts --bundle --platform=browser --format=cjs --target=chrome132 --external:electron --loader:.css=text --outfile=dist/electron/site-preload.js && node scripts/build-zhihuishu.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "assets:installer": "electron scripts/build-installer-assets.cjs",
     "vendor:deps": "node scripts/vendor-deps.mjs",
@@ -15,6 +15,7 @@
     "refresh:multiplatform": "node scripts/refresh-multiplatform-addons.cjs",
     "test": "npm run build && node scripts/assistant-update-test.cjs && node scripts/policy-test.cjs && node scripts/multiplatform-test.cjs && node scripts/campus-net-test.cjs && node scripts/oauth-user-test.cjs && node scripts/userscript-update-test.cjs && node scripts/script-config-test.cjs && node scripts/ai-request-size-test.cjs && node scripts/learning-access-test.cjs && node scripts/session-persistence-test.cjs && node scripts/shell-style-test.cjs && node scripts/portable-ui-test.cjs && node scripts/install-files-test.cjs && node scripts/vendor-deps.mjs --verify",
     "test:smoke": "npm run build && node scripts/smoke-test.mjs",
+    "test:schedule": "electron schedule-smoke.cjs",
     "test:package": "node scripts/package-check.cjs",
     "start": "npm run build && electron .",
     "dist:win": "npm run build && node scripts/prepare-nsis.cjs && electron-builder --win --publish never",

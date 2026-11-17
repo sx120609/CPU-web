@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { installDesktopSchedule } from "../src/site/schedule";
 
 // 主站内容视图的原生桥，全局名 CPUDesktop。
 // 沿用 web/src/utils/nativeBridge.ts 对 CPUAndroid / CPUHarmony 的约定：
@@ -36,3 +37,7 @@ contextBridge.exposeInMainWorld("CPUDesktop", {
   openLearning: (platformId?: string) => ipcRenderer.invoke("learning:open", platformId),
   getAuthStatus: () => ipcRenderer.invoke("oauth:status")
 });
+
+if (process.isMainFrame && window.top === window && location.origin === "https://cputime.cn") {
+  installDesktopSchedule();
+}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>桌面课表测试</title>
+<style>
+  :root { --cpu-card: #ffffff; --cpu-text: #222222; --cpu-text-secondary: #444444; --cpu-bg: #f5f5f5; --cpu-border-soft: #eeeeee; }
+  :root.dark { --cpu-card: #202020; --cpu-text: #eeeeee; --cpu-text-secondary: #cccccc; --cpu-bg: #181818; --cpu-border-soft: #444444; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--cpu-bg); color: var(--cpu-text); }
+  .layout-root { display: flex; flex-direction: column; height: 100dvh; }
+  .main--bare, .schedule-page { height: 100dvh; }
+  .schedule-heading .top, .top-actions, .week-switcher { display: flex; }
+  .mobile-tabbar { display: none; }
+  @media (max-width: 768px) { .mobile-tabbar { display: block; } }
+</style>
+<div id="app"><div class="layout-root"></div></div>
+<template id="timetable">
+  <main class="main main--bare"><main class="schedule-page view-week">
+    <header class="schedule-heading">
+      <div class="top"><select class="sem-select" aria-label="学期"><option>秋季学期</option></select>
+        <div class="top-actions">
+          <button class="icon-btn schedule-exit-btn" aria-label="退出课表">退出</button>
+          <div class="view-switch"><button>日</button><button class="active">周</button><button>月</button></div>
+          <button class="icon-btn" aria-label="回到本周" title="回到本周"><i class="el-icon"></i></button>
+          <button class="icon-btn" aria-label="更多" title="更多"><i class="el-icon"></i></button>
+        </div>
+      </div>
+      <section class="week-switcher">
+        <button class="week-btn" aria-label="上一周"><i class="el-icon"></i><span class="week-btn-label">上一周</span></button>
+        <button class="week-title clickable"><b>第 12 周</b></button>
+        <button class="week-btn" aria-label="下一周"><span class="week-btn-label">下一周</span><i class="el-icon"></i></button>
+      </section>
+    </header>
+  </main></main>
+  <nav class="mobile-tabbar"><a href="/home">首页</a></nav>
+</template>
+<script>
+  const root = document.querySelector('.layout-root');
+  function render() {
+    const schedule = location.pathname === '/schedule';
+    document.body.classList.toggle('schedule-scroll-lock', schedule);
+    root.replaceChildren();
+    if (schedule) {
+      root.append(document.querySelector('#timetable').content.cloneNode(true));
+    } else {
+      root.innerHTML = '<header class="topbar"><div class="topbar-inner"><nav class="top-nav"><a href="/home">首页</a><a href="/schedule">课表</a><a href="/services">服务</a></nav></div></header><main class="main"></main>';
+    }
+  }
+  function visit(path) {
+    history.pushState(null, '', path);
+    render();
+  }
+  document.addEventListener('click', event => {
+    const anchor = event.target.closest('a[href]');
+    if (anchor && anchor.origin === location.origin && !event.defaultPrevented) {
+      event.preventDefault();
+      visit(anchor.pathname + anchor.search);
+      return;
+    }
+    if (event.target.matches('.view-switch button') && event.target.textContent === '月') {
+      const page = document.querySelector('.schedule-page');
+      page.classList.replace('view-week', 'view-month');
+      const today = page.querySelector('button[aria-label="回到本周"]');
+      today.title = '回到今天';
+      today.setAttribute('aria-label', '回到今天');
+      page.querySelector('.week-switcher').innerHTML =
+        '<button class="week-btn"><i class="el-icon"></i>上一月</button><div class="week-title"><b>11 月</b></div><button class="week-btn">下一月<i class="el-icon"></i></button>';
+    }
+    if (event.target.closest('button[aria-label="回到今天"]')) {
+      document.querySelector('.week-title b').textContent = '本月';
+    }
+  });
+  addEventListener('popstate', render);
+  render();
+</script>
+</html>

@@ -48,6 +48,9 @@ jobs:
       - name: Unit and policy tests
         run: npm test
 
+      - name: Desktop timetable navigation and theme
+        run: npm run test:schedule
+
       - name: Wisdom Tree desktop IPC and verification smoke tests
         run: npm run test:zhihuishu
 
@@ -108,6 +111,9 @@ jobs:
 
       - name: Unit and policy tests
         run: npm test
+
+      - name: Desktop timetable navigation and theme
+        run: npm run test:schedule
 
       - name: Wisdom Tree desktop IPC and verification smoke tests
         run: npm run test:zhihuishu
@@ -236,10 +242,8 @@ jobs:
 
           ### 本次更新
 
-          - 网课助手支持独立更新：每次打开时轻量检查，只下载有变化的组件，短时间重复检查会合并。
-          - 智慧树界面与 Python 业务脚本拆分为小组件包，复用内置运行环境，无需每次下载完整客户端。
-          - 更新包由企业云盘直接分发，包含发布签名、哈希、兼容检查和失败回退；正在运行的任务保持原版本。
-          - 用户需要先安装本版以启用组件更新器，客户端底层和运行环境升级仍随完整安装包发布。
+          - Windows 和 macOS 客户端的课表新增顶部导航，可以从课表直接前往首页、公告和教务等页面。
+          - 宽窗口下，周次和日期切换靠左排列，学期和日、周、月视图靠右排列。课表工具栏随当前浅色或深色外观显示。
 
           ### 下载
 
