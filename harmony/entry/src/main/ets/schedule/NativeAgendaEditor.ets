@@ -621,8 +621,8 @@ export struct NativeAgendaEditor {
             .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
           if (this.model.start) {
             Row({ space: 8 }) {
-              this.timeField('开始', this.model.start, false)
-              this.timeField('结束（选填）', this.model.end, true)
+              this.timeField('开始', false)
+              this.timeField('结束（选填）', true)
             }.width('100%').padding({ left: 14, right: 14, top: 10, bottom: 12 })
               .border({ width: { top: 0.5 }, color: $r('app.color.app_divider') })
           }
@@ -864,16 +864,18 @@ export struct NativeAgendaEditor {
       .onClick(() => action())
   }
 
+  // The time is read from the model here, not passed in: a @Builder's plain arguments keep their first value,
+  // so a passed-in time stayed on what the field first showed and the picker kept reopening on it.
   @Builder
-  private timeField(title: string, value: string, end: boolean) {
+  private timeField(title: string, end: boolean) {
     Column({ space: 2 }) {
       Text(title).fontSize(12).fontColor($r('app.color.app_text_secondary'))
-      Text(value || '不设').fontSize(16).fontWeight(FontWeight.Medium)
-        .fontColor(value ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
+      Text((end ? this.model.end : this.model.start) || '不设').fontSize(16).fontWeight(FontWeight.Medium)
+        .fontColor((end ? this.model.end : this.model.start) ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
     }.layoutWeight(1).alignItems(HorizontalAlign.Start).padding({ left: 12, right: 12, top: 8, bottom: 8 })
       .borderRadius(10).backgroundColor($r('app.color.app_surface')).border({ width: 1, color: $r('app.color.app_divider'), radius: 10 })
-      .accessibilityText(`${title}，${value || '不设'}`)
-      .onClick(() => this.pickTime(value, end))
+      .accessibilityText(`${title}，${(end ? this.model.end : this.model.start) || '不设'}`)
+      .onClick(() => this.pickTime(end))
   }
 
   private upcoming(): AgendaDay[] {
@@ -905,8 +907,9 @@ export struct NativeAgendaEditor {
       } });
   }
 
-  private pickTime(value: string, end: boolean): void {
+  private pickTime(end: boolean): void {
     if (this.model.busy) return;
+    const value = end ? this.model.end : this.model.start;
     const base = value || (end ? this.model.start : '09:00') || '09:00';
     const selected = new Date();
     selected.setHours(Number(base.substring(0, 2)) + (end && !value ? 1 : 0), Number(base.substring(3, 5)), 0, 0);
