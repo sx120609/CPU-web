@@ -701,7 +701,6 @@ export const DEFAULT_TOP_NAVIGATION: TopNavigationItem[] = [
   { id: "jwxt", label: "教务", fullLabel: "教务数据", to: "/jwxt", icon: "academic", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
   { id: "schedule", label: "课表", fullLabel: "课表", to: "/schedule", icon: "schedule", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
   { id: "services", label: "服务", fullLabel: "校园服务", to: "/services", icon: "service", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
-  { id: "coursereview", label: "课评", fullLabel: "课程点评", to: "/coursereview", icon: "course", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "coursereview", requireForumAccess: true, openInNewTab: false },
   { id: "market", label: "二手", fullLabel: "二手交流", to: "/forum/b/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
 ];
 export const DEFAULT_ANONYMOUS_MIN_REPUTATION = 0;
@@ -1209,6 +1208,10 @@ function normalizeNavigationTarget(value: unknown): string {
   throw new Error("导航链接仅支持站内路径、http(s)、mailto 或页内锚点");
 }
 
+function isCourseReviewNavigationTarget(to: string) {
+  return /^\/coursereview(?:[/?#]|$)/i.test(to);
+}
+
 function normalizeTopNavigation(value: unknown, fallback = DEFAULT_TOP_NAVIGATION): TopNavigationItem[] {
   if (!Array.isArray(value)) return fallback.map((item) => ({ ...item }));
   const seen = new Set<string>();
@@ -1230,6 +1233,8 @@ function normalizeTopNavigation(value: unknown, fallback = DEFAULT_TOP_NAVIGATIO
       : "link";
     const rawTo = normalizeNavigationTarget(item.to);
     const to = id === "market" && rawTo === "/market" ? "/forum/b/market" : rawTo;
+    // 课程点评放在「校园小工具」里，不再单独占一个导航项；已存的旧配置读出来时去掉。
+    if (isCourseReviewNavigationTarget(to)) continue;
     let fullLabel = String(item.fullLabel ?? label).trim().slice(0, 30) || label;
     if (id === "market") {
       if (label === "商城" || label === "校园商城") label = "二手";

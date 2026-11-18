@@ -35,6 +35,10 @@ export function useServiceTools() {
     toolAccessMap.value[tool.slug]?.isVisible !== false
     && site.toolEnabled(tool.slug)
     && !(tool.slug === "mini_games" && shouldHideNativeMiniGames(auth.isLoggedIn, auth.user?.username))
+    // 课程点评跟随站点「课程点评」开关、本校模块和论坛可见性（与原导航项的条件一致）。
+    && !(tool.slug === "coursereview" && !(
+      site.features.coursereview && site.pathEnabled("/coursereview") && auth.canAccessForum && !auth.forumHidden
+    ))
   )).map(localizeTool));
 
   onMounted(() => {

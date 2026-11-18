@@ -680,6 +680,8 @@ const drawerItems = computed(() => {
 
 function navigationItemVisible(item: TopNavigationItem) {
   if (!site.pathEnabled(item.to)) return false;
+  // 课程点评在「校园小工具」里打开，不再单独占导航项（旧缓存或旧服务端给的也不显示）。
+  if (/^\/coursereview(?:[/?#]|$)/i.test(item.to)) return false;
   if (auth.forumHidden && (isForumDestination(item.to) || item.requireForumAccess
     || ["forum", "market", "coursereview"].includes(item.feature || ""))) return false;
   if (!item.enabled) return false;

@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, ChatLineRound, MapLocation, Compass, DataLine, Document, DocumentChecked, FolderOpened, KnifeFork, Microphone, Monitor, OfficeBuilding, Phone, Search, Tools, Trophy } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, ChatLineRound, MapLocation, Compass, DataLine, Document, DocumentChecked, FolderOpened, KnifeFork, Microphone, Monitor, OfficeBuilding, Phone, Reading, Search, Tools, Trophy } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda" | "treehole" | "canteen_picker" | "compound_lookup";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "campus_3d" | "venue_reservation" | "lost_found" | "voicehub" | "mini_games" | "assessment_form" | "workshop" | "agenda" | "treehole" | "canteen_picker" | "compound_lookup" | "coursereview";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -232,6 +232,21 @@ export const serviceTools: ServiceTool[] = [
     iconComponent: KnifeFork,
     badge: "随机干饭",
     badgeType: "success",
+  },
+  {
+    slug: "coursereview",
+    name: "课程点评",
+    summary: "选课前看看同学对课程和老师的评价，上完课也来写一篇",
+    description: "按课程名、课程代码或老师查找课程，查看评分和点评；登录后可以从教务导入上过的课并写点评。",
+    icon: "course",
+    status: "ready",
+    category: "学习查询",
+    routeName: "coursereview",
+    componentKey: "coursereview",
+    accent: "#b45309",
+    iconComponent: Reading,
+    badge: "同学评价",
+    badgeType: "info",
   },
   {
     slug: "compound_lookup",

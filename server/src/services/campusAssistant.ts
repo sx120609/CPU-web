@@ -376,10 +376,10 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   {
     id: "course-review",
     label: "课程点评",
-    description: "查看课程和教师评价",
+    description: "查看课程和教师评价，入口在「服务」的校园小工具里",
     url: "/coursereview",
     icon: "📚",
-    owner: "校园社区",
+    owner: "校园小工具",
     requireLogin: false,
     feature: "coursereview",
     requireForumAccess: true,
