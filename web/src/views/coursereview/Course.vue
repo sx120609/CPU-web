@@ -120,7 +120,7 @@
             </span>
           </div>
           <h4 class="crd-review-title">{{ item.topic.title }}</h4>
-          <div class="crd-review-body" :class="{ collapsed: !expanded.has(item.topic.id) && isLong(item) }">
+          <div v-if="item.topic.content" class="crd-review-body" :class="{ collapsed: !expanded.has(item.topic.id) && isLong(item) }">
             <MarkdownView :content="item.topic.content" />
           </div>
           <footer class="crd-review-foot">

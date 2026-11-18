@@ -554,7 +554,8 @@ topicRouter.post("/:id/ai-answer/regenerate", authRequired, securityRateLimit("f
 const createSchema = z.object({
   boardSlug: z.string().min(1),
   title: z.string().min(2).max(120),
-  content: z.string().min(1).max(20000),
+  // 课评可以只打分不写正文；其他板块的正文必填，在拿到板块后检查。
+  content: z.string().max(20000).default(""),
   metadata: z.record(z.any()).optional(),
   tags: z.array(z.string().max(20)).optional(),
   anonymous: z.boolean().optional(),
@@ -624,6 +625,8 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
 
     if (board.type === "coursereview") {
       await assertCourseReviewSubmission({ schoolId: board.schoolId, authorId: userId, metadata: effectiveMetadata });
+    } else if (!content) {
+      throw Errors.badRequest("请填写正文");
     }
     const keywordReview = reviewContentKeywords({ title, content, metadata: { ...effectiveMetadata, tags } });
     const now = new Date();

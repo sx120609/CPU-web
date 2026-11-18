@@ -99,7 +99,7 @@
         </section>
 
         <section class="crw-card">
-          <div class="crw-label">点评</div>
+          <div class="crw-label">点评 <span class="crw-optional">正文选填</span></div>
           <el-input v-model="form.title" maxlength="60" show-word-limit :placeholder="defaultTitle" />
           <div class="crw-prompts">
             <button v-for="p in prompts" :key="p" type="button" @click="appendPrompt(p)">+ {{ p }}</button>
@@ -139,8 +139,6 @@ import { topicApi } from "@/api/topic";
 import { boardApi } from "@/api/board";
 import { createForumSubmissionId, getForumRequestMessage } from "@/utils/forumSubmission";
 import { courseMetaLine, RATING_FIELDS, type RatingKey } from "./courseReviewText";
-
-const CONTENT_MIN = 15;
 
 const route = useRoute();
 const router = useRouter();
@@ -189,7 +187,6 @@ const missing = computed(() => {
   const list: string[] = [];
   if (!selectedTeacherName.value) list.push("选择老师");
   if (RATING_FIELDS.some((f) => !form.ratings[f.key])) list.push("打完四项分");
-  if (form.content.trim().length < CONTENT_MIN) list.push(`正文至少 ${CONTENT_MIN} 个字`);
   return list;
 });
 const canSubmit = computed(() => Boolean(course.value) && !missing.value.length && !submitting.value);
