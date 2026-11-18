@@ -77,6 +77,8 @@ async function pm2Present(name) {
   return processes.some(item => item.name === name && item.pm2_env?.status === 'online')
 }
 
+const VOICEHUB_NODE_OPTIONS = '--max-old-space-size=640'
+
 async function startProcess(script, name, cwd, env, memory, args = [], killTimeout = 125000) {
   await run('pm2', ['start', script, '--name', name, '--cwd', cwd,
     '--interpreter', process.execPath, '--time', '--kill-timeout', String(killTimeout),
@@ -551,6 +553,8 @@ export async function deploy() {
       await startProcess(path.join(voiceDir, 'scripts/cpu-runner.mjs'), voiceName, voiceDir, {
         NODE_ENV: 'production', VOICEHUB_PORT: String(voicePort), NITRO_PORT: String(voicePort),
         NITRO_HOST: '127.0.0.1', CPU_WEB_ORIGIN: process.env.DEPLOY_INTERNAL_ORIGIN || 'https://cputime.cn', VOICEHUB_AUTO_MIGRATE: 'false',
+        // VoiceHub runs in the PM2 process (cpu-runner serve); cap its heap below the 900M restart.
+        NODE_OPTIONS: VOICEHUB_NODE_OPTIONS,
       }, '900M', ['--', 'serve'])
       voiceStarted = true
       await probe(`http://127.0.0.1:${voicePort}/voicehub/`)

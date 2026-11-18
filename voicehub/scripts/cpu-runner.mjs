@@ -2,7 +2,7 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { config as loadEnv } from 'dotenv'
 
@@ -93,21 +93,27 @@ if (action === 'migrate') {
   process.exit(0)
 }
 
-let executable = process.execPath
-let args = []
 if (action === 'start' || action === 'serve') {
-  args = [path.join(voiceHubDir, '.output', 'server', 'index.mjs')]
+  // Production runs the Nitro server inside this process. PM2 watches this PID, so its
+  // --max-memory-restart (and any NODE_OPTIONS heap limit) applies to the server itself;
+  // a child process escaped both and grew to 1.28 GB on 2026-11-18.
+  Object.assign(process.env, env)
+  process.chdir(voiceHubDir)
+  await import(pathToFileURL(path.join(voiceHubDir, '.output', 'server', 'index.mjs')).href)
 } else {
   const nuxtCli = path.join(voiceHubDir, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs')
-  args = [nuxtCli, action]
+  const args = [nuxtCli, action]
   if (action === 'dev') args.push('--host', '127.0.0.1', '--port', port)
+  runChild(args)
 }
 
-const child = spawn(executable, args, { cwd: voiceHubDir, env, stdio: 'inherit' })
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => child.kill(signal))
+function runChild(args) {
+  const child = spawn(process.execPath, args, { cwd: voiceHubDir, env, stdio: 'inherit' })
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => child.kill(signal))
+  }
+  child.on('exit', (code, signal) => {
+    if (signal) process.kill(process.pid, signal)
+    process.exit(code ?? 1)
+  })
 }
-child.on('exit', (code, signal) => {
-  if (signal) process.kill(process.pid, signal)
-  process.exit(code ?? 1)
-})

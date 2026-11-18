@@ -2122,6 +2122,7 @@ do_voicehub_start() {
       NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
       NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" \
       VOICEHUB_PORT="$VOICEHUB_PORT" NITRO_PORT="$VOICEHUB_PORT" \
+      NODE_OPTIONS="--max-old-space-size=640" \
       NODE_ENV=production pm2 start scripts/cpu-runner.mjs \
         --interpreter node \
         --name "$VOICEHUB_SERVICE_NAME" \
