@@ -162,6 +162,7 @@ import {
   markdownNeedsMathLoading,
   normalizeSafeBlankTargets,
   renderMarkdown,
+  stripForeignContentClasses,
 } from "@/utils/markdown";
 type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
@@ -489,7 +490,7 @@ function contentLooksLikeHtml(value: string) {
 }
 
 function sanitizeEditorHtml(value: string) {
-  return normalizeSafeBlankTargets(DOMPurify.sanitize(value, {
+  return stripForeignContentClasses(normalizeSafeBlankTargets(DOMPurify.sanitize(value, {
     ADD_ATTR: [
       "class",
       "href",
@@ -512,7 +513,7 @@ function sanitizeEditorHtml(value: string) {
       "data-media-kind",
     ],
     ADD_TAGS: ["video", "source"],
-  }));
+  })));
 }
 
 function syncEditorContent() {
@@ -1011,7 +1012,8 @@ function serializeEditorHtml(root: HTMLElement) {
   });
   normalizeEditorStructure(clone);
   normalizeAlignmentAttributes(clone);
-  return normalizeEditorHtml(clone.innerHTML);
+  // 从页面复制粘贴来的站点类名不进正文（相册类名载入时会重新加上）。
+  return normalizeEditorHtml(stripForeignContentClasses(clone.innerHTML));
 }
 
 function normalizeEditorStructure(root: HTMLElement) {

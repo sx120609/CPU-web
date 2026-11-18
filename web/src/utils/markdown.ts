@@ -190,6 +190,34 @@ function normalizeFormulaTokens(value: string) {
   return normalized.replace(/e\^\(([^)]+)\)/g, "e^{$1}");
 }
 
+// 正文只认内容自己的类名：编辑器图片/视频、QQ 转发卡片、图片审核占位、代码高亮和 KaTeX。
+// 从页面上复制粘贴进来的站点类名（如 reply-author-line）会吃到站点布局样式，把正文叠到别处去。
+const CONTENT_CLASS_PATTERN = /^(?:md-|qq-|image-review-|video-review-|language-|katex)/;
+
+function filterContentClasses(root: ParentNode) {
+  root.querySelectorAll<HTMLElement>("*").forEach((element) => {
+    // Vue 作用域属性（data-v-xxxx）同样会让站点组件的样式命中正文。
+    Array.from(element.attributes).forEach(({ name }) => {
+      if (name.startsWith("data-v-")) element.removeAttribute(name);
+    });
+    if (!element.hasAttribute("class")) return;
+    // KaTeX 排版结果内部有大量自有类名（mord、vlist 等），整棵保留。
+    if (element.parentElement?.closest(".katex")) return;
+    const kept = Array.from(element.classList).filter((name) => CONTENT_CLASS_PATTERN.test(name));
+    if (kept.length) element.setAttribute("class", kept.join(" "));
+    else element.removeAttribute("class");
+  });
+}
+
+/** 去掉用户正文里不属于内容本身的类名。 */
+export function stripForeignContentClasses(html: string) {
+  if (!html || typeof document === "undefined" || !/\b(?:class|data-v-)/.test(html)) return html;
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  filterContentClasses(container);
+  return container.innerHTML;
+}
+
 export function normalizeSafeBlankTargets(html: string) {
   if (!html || typeof document === "undefined") return html;
   const container = document.createElement("div");
@@ -235,5 +263,6 @@ function normalizeRenderedMarkup(html: string) {
     }
     element.removeAttribute("align");
   });
+  filterContentClasses(container);
   return normalizeSafeBlankTargets(container.innerHTML);
 }
