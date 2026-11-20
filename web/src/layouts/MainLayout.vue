@@ -1771,7 +1771,10 @@ html[data-theme="dark"] .assistant-widget {
   padding-bottom: var(--cpu-ios-bottom-clearance, 96px) !important;
 }
 .layout-root--ios-next:has(.main--bare) .main--bare {
-  padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  /* The shell sets the clearance to 0 only on routes where it hides its tab bar
+     (NativePageChrome.pageRoutePrefixes). A bare Web page outside that list,
+     such as /coursereview/write, still sits above the tab bar and needs it. */
+  padding-bottom: max(12px, env(safe-area-inset-bottom), var(--cpu-ios-bottom-clearance, 0px)) !important;
 }
 .layout-root--ios-next .main:not(.main--bare):not(.main--full-width):not(.main--mobile-topic) {
   padding-top: 14px !important;
