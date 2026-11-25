@@ -10,12 +10,13 @@ export interface HomeSummary {
   services: any[];
 }
 
-export type HomeFeedStream = "all" | "forum" | "market";
+export type HomeFeedStream = "all" | "forum" | "market" | "lost-found";
 
-function filterHomeStreamTopics<T extends { board?: { type?: string } }>(items: T[], stream?: HomeFeedStream) {
+function filterHomeStreamTopics<T extends { board?: { slug?: string; type?: string } }>(items: T[], stream?: HomeFeedStream) {
   if (!stream || stream === "all") return items;
   if (stream === "market") return items.filter((item) => item.board?.type === "market");
-  return items.filter((item) => item.board?.type !== "market" && item.board?.type !== "announce");
+  if (stream === "lost-found") return items.filter((item) => item.board?.slug === "lost-found");
+  return items.filter((item) => item.board?.type !== "market" && item.board?.type !== "announce" && item.board?.slug !== "lost-found");
 }
 
 export const homeApi = {

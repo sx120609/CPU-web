@@ -12,9 +12,15 @@
   root.dataset.appearanceMode = mode;
   root.classList.toggle("dark", resolved === "dark");
   root.style.colorScheme = resolved;
-  // 站点主题（校庆等）：上次网页拿到学校信息后实际用的那个，stores/siteTheme.ts 写入。
+  // 站点主题：用户选过的全站配色（stores/siteTheme.ts 写入）；旧校庆主题键值自动归并到丹霞红。
   try {
-    if (localStorage.getItem("cpu-site-theme-active-v1") === "anniversary") root.dataset.cpuTheme = "anniversary";
+    let siteTheme = localStorage.getItem("cpu-site-theme-v1");
+    if (siteTheme === "anniversary") siteTheme = "crimson";
+    if (siteTheme === "crimson" || siteTheme === "ocean" || siteTheme === "emerald" || siteTheme === "violet" || siteTheme === "amber") {
+      root.dataset.cpuTheme = siteTheme;
+    } else {
+      delete root.dataset.cpuTheme;
+    }
   } catch {}
   const themeColor = document.querySelector("meta[name='theme-color']");
   if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#0e1012" : "#f8fafc");

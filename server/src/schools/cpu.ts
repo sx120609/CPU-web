@@ -54,7 +54,5 @@ export const cpuSchool: SchoolProfile = {
   featuredLinks: [
     { name: "CPU Date", summary: "校园交友平台", icon: "user", tone: "#d13a5e", url: "https://cpudate.com", hiddenInStoreApps: true },
   ],
-  // 2026-11-16 建校 90 周年；校庆主题用到年底。
-  celebration: { founded: 1936, date: "2026-11-16", motto: "九秩华章 铸梦健康", until: "2027-01-01" },
   defaultModules: SCHOOL_MODULE_KEYS,
 };

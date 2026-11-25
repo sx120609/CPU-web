@@ -33,7 +33,6 @@
             <span class="brand-name">{{ site.brandName }}</span>
             <span v-if="site.brandTagline" class="brand-sub">{{ site.brandTagline }}</span>
           </span>
-          <span v-if="anniversaryYears" class="brand-anniversary">{{ anniversaryYears }} 周年</span>
         </router-link>
 
         <nav class="top-nav" aria-label="主导航">
@@ -80,8 +79,8 @@
               <el-icon size="20"><Refresh /></el-icon>
             </el-button>
           </el-tooltip>
-          <el-dropdown trigger="click" @command="setAppearanceMode">
-            <button data-cpu-button="icon" type="button" class="appearance-cycle-btn" :aria-label="`外观：${appearance.modeLabel}`">
+          <el-dropdown trigger="click" @command="setAppearanceMode" @visible-change="onAppearanceMenuVisible">
+            <button data-cpu-button="icon" type="button" class="appearance-cycle-btn" :aria-label="`外观：${appearance.modeLabel}，主题：${siteTheme.themeLabel}`">
               <el-icon size="20"><component :is="appearanceIcon" /></el-icon>
             </button>
             <template #dropdown>
@@ -95,18 +94,16 @@
                   <el-icon><component :is="item.icon" /></el-icon>
                   <span>{{ item.label }}</span>
                 </el-dropdown-item>
-                <template v-if="siteTheme.anniversaryAvailable">
-                  <el-dropdown-item
-                    v-for="(item, index) in siteThemeOptions"
-                    :key="item.value"
-                    :command="`theme:${item.value}`"
-                    :divided="index === 0"
-                    :class="{ 'is-current-appearance': siteTheme.theme === item.value }"
-                  >
-                    <span class="theme-swatch" :data-swatch="item.value" aria-hidden="true"></span>
-                    <span>{{ item.label }}主题</span>
-                  </el-dropdown-item>
-                </template>
+                <el-dropdown-item
+                  v-for="(item, index) in siteThemeOptions"
+                  :key="item.value"
+                  :command="`theme:${item.value}`"
+                  :divided="index === 0"
+                  :class="{ 'is-current-appearance': siteTheme.theme === item.value }"
+                >
+                  <span class="theme-swatch" :style="{ background: item.swatch }" aria-hidden="true"></span>
+                  <span>{{ item.label }}</span>
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -315,23 +312,21 @@
             <span>{{ item.label }}</span>
           </button>
         </div>
-        <template v-if="siteTheme.anniversaryAvailable">
-          <span>主题</span>
-          <div class="appearance-segmented is-two" role="radiogroup" aria-label="站点主题">
-            <button data-cpu-button="option"
-              v-for="item in siteThemeOptions"
-              :key="item.value"
-              type="button"
-              :class="{ active: siteTheme.theme === item.value }"
-              :aria-checked="siteTheme.theme === item.value"
-              role="radio"
-              @click="siteTheme.setTheme(item.value)"
-            >
-              <span class="theme-swatch" :data-swatch="item.value" aria-hidden="true"></span>
-              <span>{{ item.label }}</span>
-            </button>
-          </div>
-        </template>
+        <span>主题</span>
+        <div class="appearance-segmented" role="radiogroup" aria-label="站点主题">
+          <button data-cpu-button="option"
+            v-for="item in siteThemeOptions"
+            :key="item.value"
+            type="button"
+            :class="{ active: siteTheme.theme === item.value }"
+            :aria-checked="siteTheme.theme === item.value"
+            role="radio"
+            @click="siteTheme.setTheme(item.value)"
+          >
+            <span class="theme-swatch" :style="{ background: item.swatch }" aria-hidden="true"></span>
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
       </div>
       <div class="drawer-account">
         <template v-if="auth.isLoggedIn">
@@ -422,8 +417,7 @@ import { useMessageStore } from "@/stores/message";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
-import { siteThemeOptions, useSiteThemeStore } from "@/stores/siteTheme";
-import { celebrationYears } from "@/utils/celebration";
+import { preloadSiteThemeStyles, siteThemeOptions, useSiteThemeStore } from "@/stores/siteTheme";
 import { iosRouteTransitionEnabled } from "@/router";
 import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
 import { canOfferDesktopClient, hidesClientDownloads, isAndroidNativeApp, isCampusAssistantDestination, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
@@ -451,10 +445,6 @@ const msg = useMessageStore();
 const site = useSiteStore();
 const appearance = useAppearanceStore();
 const siteTheme = useSiteThemeStore();
-/** 校庆主题下品牌名旁边的「90 周年」。 */
-const anniversaryYears = computed(() => (
-  siteTheme.theme === "anniversary" && site.celebration ? celebrationYears(site.celebration) : 0
-));
 const router = useRouter();
 const route = useRoute();
 const ff = useFormFactor();
@@ -1100,12 +1090,20 @@ async function performLogout() {
 
 function setAppearanceMode(command: string | number | object) {
   const mode = String(command);
-  if (mode === "theme:anniversary" || mode === "theme:classic") {
-    siteTheme.setTheme(mode === "theme:anniversary" ? "anniversary" : "classic");
+  if (mode.startsWith("theme:")) {
+    siteTheme.setTheme(mode.slice(6));
     return;
   }
   if (mode === "system" || mode === "light" || mode === "dark") appearance.setMode(mode);
 }
+
+function onAppearanceMenuVisible(visible: boolean) {
+  if (visible) preloadSiteThemeStyles();
+}
+
+watch(mobileMenuOpen, (open) => {
+  if (open) preloadSiteThemeStyles();
+});
 
 function freezeRoutePage(element: Element) {
   // The native iOS shell keeps the shared WKWebView mounted while its native
@@ -1326,9 +1324,13 @@ function releaseRoutePage(element: Element) {
   color: var(--cpu-primary);
 }
 
-/* 主题切换和「90 周年」标记的样式在 styles/anniversary.scss，有校庆的学校才加载。 */
-.appearance-segmented.is-two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+:global(.el-dropdown-menu__item .theme-swatch) {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  border-radius: 50%;
 }
 
 .mobile-actions {
@@ -2014,9 +2016,17 @@ html[data-theme="dark"] .assistant-widget {
 .appearance-segmented {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
   padding: 2px;
   border-radius: var(--cpu-radius-m);
   background: var(--cpu-track);
+}
+
+.appearance-segmented .theme-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
 }
 
 .appearance-segmented button {

@@ -1,6 +1,5 @@
 <template>
   <div class="home">
-    <AnniversaryBanner class="home-anniversary" />
     <section class="intro" aria-label="首页功能入口">
       <div class="intro-copy">
         <h1>{{ site.brandName }}</h1>
@@ -78,8 +77,8 @@
             <router-link to="/forum/latest" class="more">查看全部<el-icon><ArrowRight /></el-icon></router-link>
           </div>
           <div class="group">
-            <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" time-mode="published" />
-            <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
+            <TopicListItem v-for="t in latestDiscussionTopics" :key="'new-' + t.id" :topic="t" variant="simple" time-mode="published" />
+            <el-empty v-if="!latestDiscussionTopics.length" description="暂无内容" />
           </div>
         </section>
 
@@ -93,6 +92,20 @@
             <nav class="second-hand-actions" aria-label="发布二手内容">
               <router-link to="/post?board=market&kind=sell">发布闲置</router-link>
               <router-link to="/post?board=market&kind=wanted">发布求购</router-link>
+            </nav>
+          </div>
+        </section>
+
+        <section class="home-block" v-if="site.pathEnabled('/lost-found')">
+          <div class="block-head">
+            <h3>失物招领</h3>
+            <router-link to="/lost-found" class="more">进入专区<el-icon><ArrowRight /></el-icon></router-link>
+          </div>
+          <div class="group second-hand">
+            <p>校园寻物与招领互助，认领信息仅双方私下核验。</p>
+            <nav class="second-hand-actions" aria-label="发布失物招领">
+              <router-link to="/lost-found?publish=found">发布招领</router-link>
+              <router-link to="/lost-found?publish=lost">发布寻物</router-link>
             </nav>
           </div>
         </section>
@@ -179,7 +192,6 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
-import AnniversaryBanner from "@/components/common/AnniversaryBanner.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
@@ -206,7 +218,11 @@ const pinnedAds = ref<ForumAd[]>([]);
 const hotAds = ref<ForumAd[]>([]);
 // 服务入口没有固定板块，按顺序轮流取色
 const serviceHues = ["brand", "blue", "green", "violet", "orange"];
-const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
+const hotPreview = computed(() => (summary.value?.hotTopics ?? [])
+  .filter((topic: any) => topic.board?.type !== "market" && topic.board?.slug !== "lost-found")
+  .slice(0, 3));
+const latestDiscussionTopics = computed(() => (summary.value?.latestTopics ?? [])
+  .filter((topic: any) => topic.board?.type !== "market" && topic.board?.slug !== "lost-found"));
 const visibleServices = computed(() => (summary.value?.services ?? [])
   .filter((service) => !auth.forumHidden || !isForumDestination(String(service?.url || "")))
   .filter((service) => assistantEntryVisible.value || !isCampusAssistantDestination(service?.url))
@@ -379,7 +395,6 @@ function normalizeHomeError(error: unknown) {
 /* 桌面首页：简短的站点介绍，下面两栏白色分组。分组标题在分组外，像设置页的小标题。 */
 .home { display: flex; max-width: 1120px; margin: 0 auto; flex-direction: column; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
 
-.home-anniversary { margin-bottom: 20px; }
 .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
 .intro h1 { margin: 0; font-size: var(--cpu-fs-xxl); font-weight: 700; line-height: 1.3; }
 .intro p { margin: 2px 0 0; color: var(--cpu-text-secondary); }

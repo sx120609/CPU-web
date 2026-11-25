@@ -104,7 +104,7 @@ import {
 } from "@/utils/forumCache";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 
-type ChannelId = "latest" | "hot" | "question" | "market" | "freshman";
+type ChannelId = "latest" | "hot" | "question" | "market" | "lost-found" | "freshman";
 type Channel = { id: ChannelId; label: string; icon: string; description: string; feedTitle: string; feedHint: string; board?: string };
 type MobileFeedRestoreState = {
   scrollY: number;
@@ -122,9 +122,14 @@ const baseChannels: Channel[] = [
   { id: "hot", label: "热榜", icon: "hot", description: "近 24 小时新发布且互动活跃的内容。", feedTitle: "热榜", feedHint: "新帖优先，综合互动热度" },
   { id: "question", label: "求助", icon: "question", description: "提问、咨询和同学互助。", feedTitle: "求助答疑", feedHint: "来自提问广场", board: "question" },
   { id: "market", label: "二手", icon: "market", description: "闲置、求购和二手经验交流。", feedTitle: "二手交流", feedHint: "仅提供信息发布与公开交流", board: "market" },
+  { id: "lost-found", label: "失物", icon: "lost-found", description: "寻物、招领和认领互助。", feedTitle: "失物招领", feedHint: "认领信息请点进详情填写", board: "lost-found" },
   { id: "freshman", label: "新生", icon: "school", description: "入学攻略和新生常见问题。", feedTitle: "新生入学", feedHint: "学长学姐经验分享", board: "freshman" },
 ];
-const channels = computed(() => baseChannels.filter((channel) => channel.id !== "market" || site.features.market));
+const channels = computed(() => baseChannels.filter((channel) => {
+  if (channel.id === "market") return site.features.market;
+  if (channel.id === "lost-found") return site.pathEnabled("/lost-found");
+  return true;
+}));
 const selectedChannel = computed<ChannelId>(() => {
   const requested = typeof route.query.channel === "string" ? route.query.channel : "latest";
   return channels.value.some((channel) => channel.id === requested) ? requested as ChannelId : "latest";
@@ -354,7 +359,9 @@ async function loadAd() {
 
 function openBoard(board: Board) {
   boardsOpen.value = false;
-  void router.push(board.type === "market" ? { name: "forum", query: { channel: "market" } } : `/forum/b/${board.slug}`);
+  if (board.type === "market") void router.push({ name: "forum", query: { channel: "market" } });
+  else if (board.slug === "lost-found") void router.push({ name: "forum", query: { channel: "lost-found" } });
+  else void router.push(`/forum/b/${board.slug}`);
 }
 
 function requestMessage(requestError: unknown) {

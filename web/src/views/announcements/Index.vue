@@ -192,7 +192,17 @@ const error = ref("");
 let loadSeq = 0;
 let ready = false;
 
-const boards = computed(() => allBoards.value.filter(isVisibleSource));
+function sanitizeBoard(board: Board): Board {
+  const cleanName = board.name.replace(/["']?\s*>\s*<meta\b[\s\S]*$/iu, "").replace(/<[^>]*>?/gu, "").trim() || board.name;
+  const cleanDesc = board.description
+    ? board.description.replace(/["']?\s*>\s*<meta\b[\s\S]*?(?=发布的通知|$)/iu, "").replace(/<[^>]*>?/gu, "").trim()
+    : board.description;
+  return cleanName === board.name && cleanDesc === board.description
+    ? board
+    : { ...board, name: cleanName, description: cleanDesc };
+}
+
+const boards = computed(() => allBoards.value.filter(isVisibleSource).map(sanitizeBoard));
 const activeSlug = computed(() => {
   const slug = typeof route.query.source === "string" ? route.query.source : "";
   return boards.value.some((b) => b.slug === slug) ? slug : "";

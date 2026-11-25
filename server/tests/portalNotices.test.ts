@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   announcementOverridesFor,
+  cleanPortalLabel,
   isDefaultAnnouncementDepartment,
   parsePortalNoticeResponse,
   PORTAL_RELOGIN_MIN_INTERVAL_MS,
@@ -54,6 +55,21 @@ test("门户资讯列表丢弃缺部门、缺地址或地址不是网页的条�
     article({ id: 4, articleUrl: "", linkUrl: "https://ist.cpu.edu.cn/info/1075/26351.htm" }),
   ]));
   assert.deepEqual(page.notices.map((notice) => notice.id), [4]);
+});
+
+test("门户资讯列表剥离未闭合引号带入的 META 标签残片", () => {
+  const polluted = '科协讲座"><META Name="keywords" Content="中国药科大学,科协讲座';
+  assert.equal(cleanPortalLabel(polluted, 40), "科协讲座");
+  assert.equal(cleanPortalLabel('<span>教务处</span>', 40), "教务处");
+  assert.equal(cleanPortalLabel('<META Name="keywords">', 40), "");
+
+  const page = parsePortalNoticeResponse(body([
+    article({ id: 10, from: polluted, phColName: '学术讲座"><META Name="description" Content="测试' }),
+    article({ id: 11, from: '<META Name="keywords" Content="空部门">' }),
+  ]));
+  assert.equal(page.notices.length, 1);
+  assert.equal(page.notices[0].department, "科协讲座");
+  assert.equal(page.notices[0].column, "学术讲座");
 });
 
 test("登录态失效时门户返回登录页，解析报错而不是当成空列表", () => {

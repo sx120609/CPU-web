@@ -17,6 +17,7 @@ import { fetchSchoolFeedDetails } from "./schoolCrawlerTransport";
 import { SCHOOL_FEED_DETAIL_BATCH, type SchoolFeedDetail } from "./schoolCrawlerCore";
 import { DEFAULT_SCHOOL_ID } from "../schools/registry";
 import {
+  cleanPortalLabel,
   isDefaultAnnouncementDepartment,
   PORTAL_NOTICE_HOMEPAGE,
   PORTAL_NOTICE_LIST_URL,
@@ -76,7 +77,123 @@ function departmentSlug(department: string) {
   return `dept-${crypto.createHash("sha1").update(department).digest("hex").slice(0, 10)}`;
 }
 
-async function departmentBoard(department: string, cache: Map<string, Board>) {
+function departmentDisplayName(department: string) {
+  return department === "中国药科大学" ? "学校通知" : department;
+}
+
+function departmentDescription(department: string) {
+  return `${department}发布的通知，同步自学校融合门户`;
+}
+
+/**
+ * 修复早期已入库的被 `<META ...>` 等 HTML 残片污染的门户部门板块（如 `科协讲座"><META Name="keywords"...`）。
+ * 若清理后的部门已有正式板块则合并帖子并重算计数，否则直接修正原板块的名称、简介、slug 与帖子来源元数据。
+ */
+export async function repairPortalDepartmentBoards() {
+  const candidates = await prisma.board.findMany({
+    where: { type: "announce", feedDepartment: { not: null } },
+  });
+  let repaired = 0;
+  for (const board of candidates) {
+    const rawDept = board.feedDepartment ?? "";
+    const cleaned = cleanPortalLabel(rawDept, 40);
+    const cleanName = cleanPortalLabel(board.name, 40);
+    if (!cleaned || (cleaned === rawDept && cleanName === board.name)) continue;
+
+    await prisma.$transaction(async (tx) => {
+      const target = await tx.board.findFirst({
+        where: {
+          schoolId: board.schoolId,
+          id: { not: board.id },
+          type: "announce",
+          OR: [
+            { feedDepartment: cleaned },
+            { feedDepartment: null, feedSourceId: { not: null }, name: { startsWith: cleaned } },
+          ],
+        },
+      });
+
+      const topics = await tx.topic.findMany({
+        where: { boardId: board.id },
+        select: { id: true, metadata: true },
+      });
+      for (const topic of topics) {
+        if (!topic.metadata || !topic.metadata.includes(rawDept)) continue;
+        try {
+          const parsed = JSON.parse(topic.metadata);
+          if (parsed && typeof parsed === "object" && parsed.sourceName === rawDept) {
+            parsed.sourceName = cleaned;
+            await tx.topic.update({ where: { id: topic.id }, data: { metadata: JSON.stringify(parsed) } });
+          }
+        } catch {
+          /* 非 JSON 元数据保持原样 */
+        }
+      }
+
+      const nextSlug = departmentSlug(cleaned);
+      let finalSlug = board.slug;
+      if (target) {
+        await tx.topic.updateMany({ where: { boardId: board.id }, data: { boardId: target.id } });
+        await tx.board.delete({ where: { id: board.id } });
+        const count = await tx.topic.count({ where: { boardId: target.id, hidden: false } });
+        await tx.board.update({
+          where: { id: target.id },
+          data: {
+            topicCount: count,
+            ...(target.feedDepartment ? {} : { feedDepartment: cleaned }),
+          },
+        });
+        finalSlug = target.slug;
+      } else {
+        const slugTaken = board.slug !== nextSlug && Boolean(await tx.board.findFirst({
+          where: { schoolId: board.schoolId, slug: nextSlug, id: { not: board.id } },
+          select: { id: true },
+        }));
+        finalSlug = board.slug.startsWith("dept-") && !slugTaken ? nextSlug : board.slug;
+        await tx.board.update({
+          where: { id: board.id },
+          data: {
+            slug: finalSlug,
+            name: departmentDisplayName(cleaned),
+            description: departmentDescription(cleaned),
+            feedDepartment: cleaned,
+            announceDefault: isDefaultAnnouncementDepartment(cleaned),
+          },
+        });
+      }
+
+      if (finalSlug !== board.slug) {
+        const prefs = await tx.announcementPreference.findMany({
+          where: { OR: [{ include: { contains: board.slug } }, { exclude: { contains: board.slug } }] },
+        });
+        const replaceSlug = (rawList: string) => {
+          try {
+            const arr = JSON.parse(rawList);
+            if (!Array.isArray(arr)) return rawList;
+            return JSON.stringify([...new Set(arr.map((s) => (s === board.slug ? finalSlug : s)))]);
+          } catch {
+            return rawList;
+          }
+        };
+        for (const pref of prefs) {
+          await tx.announcementPreference.update({
+            where: { userId: pref.userId },
+            data: { include: replaceSlug(pref.include), exclude: replaceSlug(pref.exclude) },
+          });
+        }
+      }
+    });
+    repaired += 1;
+  }
+  if (repaired > 0) {
+    await invalidateBoardCaches();
+    await invalidateForumCaches();
+  }
+  return repaired;
+}
+
+async function departmentBoard(rawDepartment: string, cache: Map<string, Board>) {
+  const department = cleanPortalLabel(rawDepartment, 40) || rawDepartment.trim();
   const cached = cache.get(department);
   if (cached) return cached;
   // 融合门户是药大的系统，部门板块都建在药大名下。
@@ -95,8 +212,8 @@ async function departmentBoard(department: string, cache: Map<string, Board>) {
           schoolId: DEFAULT_SCHOOL_ID,
           slug: departmentSlug(department),
           // 学校主站的通知在门户里署名是校名，当标签不好认。
-          name: department === "中国药科大学" ? "学校通知" : department,
-          description: `${department}发布的通知，同步自学校融合门户`,
+          name: departmentDisplayName(department),
+          description: departmentDescription(department),
           icon: "📢",
           color: "#1d4d8a",
           order: (last._max.order ?? 0) + 1,
@@ -122,6 +239,7 @@ function noticeContent(notice: PortalNotice, detail: SchoolFeedDetail | undefine
 const network = { listNotices: getPortalNotices, fetchDetails: fetchSchoolFeedDetails, login: loginWithPassword };
 
 export async function importPortalNotices(source: SchoolFeedSource, opts: { dryRun?: boolean } = {}, deps = network) {
+  if (!opts.dryRun) await repairPortalDepartmentBoards().catch(() => 0);
   const session = readSession(source);
   if (!session) throw new Error("还没有绑定门户登录态，请在后台用自己的账号登录教务后绑定");
 

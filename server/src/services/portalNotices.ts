@@ -34,6 +34,22 @@ function cleanText(value: unknown, max: number) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
 }
 
+/**
+ * 清理门户资讯的发布部门与栏目名。
+ * 学校站群偶有未闭合引号导致 `<META Name="keywords" Content="...">` 等标签残片串进 `from` 字段，
+ * 遇到 `"><`、`'><` 或 HTML 标签时截掉后面的残片。
+ */
+export function cleanPortalLabel(value: unknown, max: number) {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/["']?\s*>\s*<(?:meta|script|style|link|title|head|body|div|span|p|br|!--)\b[\s\S]*$/iu, "")
+    .replace(/<[^>]*>?/gu, "")
+    .replace(/["']+\s*$/u, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, max);
+}
+
 function publicHttpUrl(value: unknown) {
   if (typeof value !== "string") return "";
   try {
@@ -63,7 +79,7 @@ export function parsePortalNoticeResponse(text: string): PortalNoticePage {
   for (const raw of articles as any[]) {
     const id = Number(raw?.id);
     const title = cleanText(raw?.title, 300);
-    const department = cleanText(raw?.from, 40);
+    const department = cleanPortalLabel(raw?.from, 40);
     const url = publicHttpUrl(raw?.articleUrl) || publicHttpUrl(raw?.linkUrl);
     const timestamp = Number(raw?.publishTimestamp);
     if (!Number.isSafeInteger(id) || id <= 0 || !title || !department || !url) continue;
@@ -72,7 +88,7 @@ export function parsePortalNoticeResponse(text: string): PortalNoticePage {
       id,
       title,
       department,
-      column: cleanText(raw?.phColName, 60),
+      column: cleanPortalLabel(raw?.phColName, 60),
       url,
       publishedAt: new Date(timestamp).toISOString(),
       summary: cleanText(raw?.summary || raw?.content, 400),

@@ -325,6 +325,10 @@ const mine = reactive<{ published: LostFoundItem[]; claims: LostFoundClaim[] }>(
 
 onMounted(async () => {
   await Promise.all([loadItems(), loadMeta()]);
+  if (route.query.publish === "found" || route.query.publish === "lost") {
+    openPublish(route.query.publish);
+    return;
+  }
   const itemId = Number(route.query.item || 0);
   if (itemId) {
     await openDetail(itemId);

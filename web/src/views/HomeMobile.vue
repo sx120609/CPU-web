@@ -1,6 +1,5 @@
 <template>
   <div class="home-stream">
-    <AnniversaryBanner compact />
     <section class="home-entry" aria-label="首页快捷入口">
       <SiteSearchBar
         :placeholder="showForumContent ? '搜索帖子或校园服务' : '搜索校园服务'"
@@ -76,6 +75,7 @@
       <nav class="feed-tabs" role="tablist" aria-label="校园动态分流">
         <button data-cpu-button="surface" type="button" role="tab" :aria-selected="activeFeedStream === 'forum'" :class="{ active: activeFeedStream === 'forum' }" @click="selectFeedStream('forum')">论坛</button>
         <button data-cpu-button="surface" v-if="marketFeedEnabled" type="button" role="tab" :aria-selected="activeFeedStream === 'market'" :class="{ active: activeFeedStream === 'market' }" @click="selectFeedStream('market')">二手</button>
+        <button data-cpu-button="surface" v-if="lostFoundFeedEnabled" type="button" role="tab" :aria-selected="activeFeedStream === 'lost-found'" :class="{ active: activeFeedStream === 'lost-found' }" @click="selectFeedStream('lost-found')">失物</button>
       </nav>
       <div v-if="activeFeed.error && !latestTopics.length" class="feed-state">
         <el-empty :description="activeFeed.error"><el-button type="primary" @click="loadFeedPages(activeFeedStream)">重试</el-button></el-empty>
@@ -103,7 +103,6 @@ import { ElMessage } from "element-plus";
 import type { Topic } from "@/api/topic";
 import { homeApi, type HomeFeedStream, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
-import AnniversaryBanner from "@/components/common/AnniversaryBanner.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
@@ -123,6 +122,7 @@ type HomeFeedRestoreState = {
   stream?: MobileHomeFeedStream;
   forumPage?: number;
   marketPage?: number;
+  lostFoundPage?: number;
   savedAt: number;
 };
 
@@ -153,6 +153,7 @@ const activeFeedStream = ref<MobileHomeFeedStream>("forum");
 const feedStates = reactive<Record<MobileHomeFeedStream, HomeFeedState>>({
   forum: createFeedState(),
   market: createFeedState(),
+  "lost-found": createFeedState(),
 });
 const feedPageSize = 10;
 const loadMoreSentinelRef = ref<HTMLElement | null>(null);
@@ -160,14 +161,33 @@ const showForumContent = computed(() => site.features.forum
   && auth.canAccessForum
   && !isNativeForumIntranetOnlyAccount(auth.user?.username));
 const marketFeedEnabled = computed(() => site.features.market && showForumContent.value);
-const hotPreview = computed(() => (summary.value?.hotTopics || []).slice(0, 3) as Topic[]);
+const lostFoundFeedEnabled = computed(() => site.pathEnabled("/lost-found") && showForumContent.value);
+const hotPreview = computed(() => ((summary.value?.hotTopics || []) as Topic[])
+  .filter((topic) => topic.board?.type !== "market" && topic.board?.slug !== "lost-found")
+  .slice(0, 3));
 const activeFeed = computed(() => feedStates[activeFeedStream.value]);
 const latestTopics = computed(() => activeFeed.value.list);
 const canLoadMore = computed(() => showForumContent.value && latestTopics.value.length < activeFeed.value.total);
-const activeFeedDescription = computed(() => activeFeedStream.value === "market" ? "闲置转让、求购与二手交流" : "最近发布的讨论与校园内容");
-const activeFeedEmptyText = computed(() => activeFeedStream.value === "market" ? "暂时还没有二手信息" : "校园里暂时还没有新动态");
-const activeFeedLink = computed(() => activeFeedStream.value === "market" ? "/forum?channel=market" : "/forum");
-const activeFeedLinkLabel = computed(() => activeFeedStream.value === "market" ? "进入二手" : "进入论坛");
+const activeFeedDescription = computed(() => {
+  if (activeFeedStream.value === "market") return "闲置转让、求购与二手交流";
+  if (activeFeedStream.value === "lost-found") return "寻物与招领互助，认领信息私下核验";
+  return "最近发布的讨论与校园内容";
+});
+const activeFeedEmptyText = computed(() => {
+  if (activeFeedStream.value === "market") return "暂时还没有二手信息";
+  if (activeFeedStream.value === "lost-found") return "暂时还没有失物招领信息";
+  return "校园里暂时还没有新动态";
+});
+const activeFeedLink = computed(() => {
+  if (activeFeedStream.value === "market") return "/forum?channel=market";
+  if (activeFeedStream.value === "lost-found") return "/lost-found";
+  return "/forum";
+});
+const activeFeedLinkLabel = computed(() => {
+  if (activeFeedStream.value === "market") return "进入二手";
+  if (activeFeedStream.value === "lost-found") return "进入失物";
+  return "进入论坛";
+});
 const nativeForumRestricted = computed(() => isNativeForumIntranetOnlyAccount(auth.user?.username));
 const assistantEntryVisible = computed(() => site.features.assistantEntry
   && !shouldHideHarmonyAssistant(auth.isLoggedIn, auth.user?.username));
@@ -203,7 +223,7 @@ const homeCacheScope = computed(() => {
   return `${identity}:forum-${showForumContent.value ? "on" : "off"}`;
 });
 let loadSequence = 0;
-const feedSequences: Record<MobileHomeFeedStream, number> = { forum: 0, market: 0 };
+const feedSequences: Record<MobileHomeFeedStream, number> = { forum: 0, market: 0, "lost-found": 0 };
 let adSequence = 0;
 let mounted = false;
 let disposed = false;
@@ -211,6 +231,7 @@ let loadObserver: IntersectionObserver | null = null;
 let pendingRestoreState: HomeFeedRestoreState | null = readForumListRestoreState<HomeFeedRestoreState>(route.fullPath);
 
 if (pendingRestoreState?.stream === "market" && marketFeedEnabled.value) activeFeedStream.value = "market";
+else if (pendingRestoreState?.stream === "lost-found" && lostFoundFeedEnabled.value) activeFeedStream.value = "lost-found";
 
 onMounted(() => {
   mounted = true;
@@ -232,6 +253,12 @@ watch(marketFeedEnabled, (enabled) => {
   if (!feedStates.forum.loaded && !feedStates.forum.loading) void loadFeedPages("forum");
 });
 
+watch(lostFoundFeedEnabled, (enabled) => {
+  if (enabled || activeFeedStream.value !== "lost-found") return;
+  activeFeedStream.value = "forum";
+  if (!feedStates.forum.loaded && !feedStates.forum.loading) void loadFeedPages("forum");
+});
+
 watch(canLoadMore, () => void nextTick(observeLoadMore));
 
 onBeforeUnmount(() => {
@@ -239,6 +266,7 @@ onBeforeUnmount(() => {
   loadSequence += 1;
   feedSequences.forum += 1;
   feedSequences.market += 1;
+  feedSequences["lost-found"] += 1;
   adSequence += 1;
   loadObserver?.disconnect();
 });
@@ -251,6 +279,7 @@ onBeforeRouteLeave((to) => {
     stream: activeFeedStream.value,
     forumPage: feedStates.forum.page,
     marketPage: feedStates.market.page,
+    lostFoundPage: feedStates["lost-found"].page,
   });
 });
 
@@ -258,10 +287,15 @@ async function loadHomeScope() {
   const scope = homeCacheScope.value;
   const cached = readHomeSummaryCache(scope);
   summary.value = cached;
-  if (!marketFeedEnabled.value) activeFeedStream.value = "forum";
-  for (const stream of ["forum", "market"] as const) {
+  if (activeFeedStream.value === "market" && !marketFeedEnabled.value) activeFeedStream.value = "forum";
+  if (activeFeedStream.value === "lost-found" && !lostFoundFeedEnabled.value) activeFeedStream.value = "forum";
+  for (const stream of ["forum", "market", "lost-found"] as const) {
     const state = feedStates[stream];
-    const restoredPage = stream === "forum" ? pendingRestoreState?.forumPage : pendingRestoreState?.marketPage;
+    const restoredPage = stream === "forum"
+      ? pendingRestoreState?.forumPage
+      : stream === "market"
+        ? pendingRestoreState?.marketPage
+        : pendingRestoreState?.lostFoundPage;
     state.page = Math.max(1, Number(restoredPage || (pendingRestoreState?.stream === stream ? pendingRestoreState.page : 1) || 1));
     const cachedFeed = showForumContent.value ? readForumLatestFeed(forumCacheScope(auth.user), stream) : null;
     state.list = cachedFeed?.list.slice(0, state.page * feedPageSize) || [];
@@ -274,7 +308,7 @@ async function loadHomeScope() {
   }
   if (showForumContent.value && !feedStates.forum.list.length && cached?.latestTopics?.length) {
     feedStates.forum.list = (cached.latestTopics as Topic[])
-      .filter((topic) => topic.board?.type !== "market")
+      .filter((topic) => topic.board?.type !== "market" && topic.board?.slug !== "lost-found")
       .slice(0, feedPageSize);
     feedStates.forum.total = feedStates.forum.list.length;
   }
@@ -327,7 +361,7 @@ async function loadSummary(options: { scope?: string; fallback?: HomeSummary | n
     summary.value = result;
     if (showForumContent.value && !feedStates.forum.list.length && !feedStates.forum.loaded) {
       feedStates.forum.list = ((result.latestTopics || []) as Topic[])
-        .filter((topic) => topic.board?.type !== "market")
+        .filter((topic) => topic.board?.type !== "market" && topic.board?.slug !== "lost-found")
         .slice(0, feedPageSize);
       feedStates.forum.total = feedStates.forum.list.length;
     }
@@ -342,7 +376,11 @@ async function loadSummary(options: { scope?: string; fallback?: HomeSummary | n
 }
 
 async function loadFeedPages(stream: MobileHomeFeedStream) {
-  if (!showForumContent.value || (stream === "market" && !marketFeedEnabled.value)) return;
+  if (
+    !showForumContent.value
+    || (stream === "market" && !marketFeedEnabled.value)
+    || (stream === "lost-found" && !lostFoundFeedEnabled.value)
+  ) return;
   const state = feedStates[stream];
   const sequence = ++feedSequences[stream];
   const targetPage = state.page;
@@ -478,6 +516,7 @@ function dedupeTopics(items: Topic[]) {
 
 function selectFeedStream(stream: MobileHomeFeedStream) {
   if (stream === "market" && !marketFeedEnabled.value) return;
+  if (stream === "lost-found" && !lostFoundFeedEnabled.value) return;
   if (activeFeedStream.value === stream) return;
   activeFeedStream.value = stream;
   loadObserver?.disconnect();

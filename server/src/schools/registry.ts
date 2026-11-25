@@ -70,8 +70,6 @@ export type SchoolProfile = {
   /** 服务页顶部的站外推荐入口，在新页面打开；没有就不显示。 */
   featuredLinks?: ReadonlyArray<SchoolFeaturedLink>;
   defaultPeriods: readonly SchoolPeriod[];
-  /** 校庆：在 until 之前网页提供校庆主题并默认使用，首页显示校庆横幅。没有校庆的学校不填。 */
-  celebration?: SchoolCelebration;
   /** 这所学校默认开着哪些功能；没列出的功能默认关闭。 */
   defaultModules: readonly string[];
 };
@@ -86,25 +84,6 @@ export type SchoolFeaturedLink = {
   /** iOS、鸿蒙 App 内不给游客和内网限制账号看（和小游戏同一条判断），其他账号照常显示。 */
   hiddenInStoreApps?: boolean;
 };
-
-export type SchoolCelebration = {
-  /** 建校年份，周年数按 date 的年份减它算。 */
-  founded: number;
-  /** 校庆日，北京时间的日期，YYYY-MM-DD。 */
-  date: string;
-  /** 校庆主题口号，例如「九秩华章 铸梦健康」。 */
-  motto: string;
-  /** 校庆主题停止提供的日期（北京时间零点），YYYY-MM-DD。 */
-  until: string;
-};
-
-/** 校庆主题还在提供期内（按北京时间）就返回校庆信息，过了 until 返回 null。 */
-export function activeCelebration(school: SchoolProfile, now = new Date()): SchoolCelebration | null {
-  const celebration = school.celebration;
-  if (!celebration) return null;
-  const ends = Date.parse(`${celebration.until}T00:00:00+08:00`);
-  return Number.isFinite(ends) && now.getTime() < ends ? celebration : null;
-}
 
 /** School 表里一行能改的部分。 */
 export type SchoolRow = {

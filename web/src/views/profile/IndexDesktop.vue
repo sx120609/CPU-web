@@ -117,12 +117,12 @@
       </div>
     </div>
 
-    <div v-if="siteTheme.anniversaryAvailable" class="cpu-card appearance-card">
+    <div class="cpu-card appearance-card">
       <div class="appearance-copy">
         <h3 class="cpu-section-title">站点主题</h3>
-        <p>校庆期间默认使用校庆主题，浅色和深色都适用；也可以换回经典的青绿配色。</p>
+        <p>当前为{{ siteTheme.themeLabel }}配色，浅色和深色界面都会同步应用。</p>
       </div>
-      <div class="appearance-options is-two" role="radiogroup" aria-label="站点主题">
+      <div class="appearance-options" role="radiogroup" aria-label="站点主题">
         <button data-cpu-button="option"
           v-for="item in siteThemeOptions"
           :key="item.value"
@@ -132,7 +132,7 @@
           role="radio"
           @click="siteTheme.setTheme(item.value)"
         >
-          <span class="theme-swatch" :data-swatch="item.value" aria-hidden="true"></span>
+          <span class="theme-swatch" :style="{ background: item.swatch }" aria-hidden="true"></span>
           <span>{{ item.label }}</span>
         </button>
       </div>
@@ -526,7 +526,7 @@ import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { isWechatBrowser } from "@/utils/wechatBridge";
 import WechatFollowDialog from "./components/WechatFollowDialog.vue";
-import { siteThemeOptions, useSiteThemeStore } from "@/stores/siteTheme";
+import { preloadSiteThemeStyles, siteThemeOptions, useSiteThemeStore } from "@/stores/siteTheme";
 import {
   appearanceOptions,
   formatMoney,
@@ -539,6 +539,7 @@ import {
 } from "./profilePage";
 
 const siteTheme = useSiteThemeStore();
+preloadSiteThemeStyles();
 const {
   commerceHidden,
   nativeSponsorVisible,
@@ -859,19 +860,12 @@ const inWechat = isWechatBrowser();
   color: var(--cpu-primary);
   background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
 }
-.appearance-options.is-two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
 .theme-swatch {
   flex: none;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
-  background: linear-gradient(135deg, #086f63 0%, #2a9d8c 100%);
-}
-.theme-swatch[data-swatch="anniversary"] {
-  background: linear-gradient(135deg, #b8232b 0%, #b8232b 55%, #d9a441 100%);
 }
 
 .sponsor-card {

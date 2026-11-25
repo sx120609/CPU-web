@@ -9,7 +9,7 @@ import { getFormFactor, subscribeFormFactor } from "./formFactor";
 export const FORUM_LIST_LAYOUT_ROUTES: ReadonlySet<string> = new Set(["forum", "forum-hot", "forum-latest", "market"]);
 
 /** Phone channels that are ordinary boards on the desktop layout. */
-const CHANNEL_BOARD_SLUGS: Readonly<Record<string, string>> = { question: "question", freshman: "freshman" };
+const CHANNEL_BOARD_SLUGS: Readonly<Record<string, string>> = { question: "question", "lost-found": "lost-found", freshman: "freshman" };
 
 export type ForumListRouteInput = {
   name?: unknown;

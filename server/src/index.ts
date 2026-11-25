@@ -6,6 +6,7 @@ import { waitForBackgroundOwnership } from "./utils/deploymentWorkers";
 import { config } from "./config";
 import { ensureBuiltinBoards } from "./services/defaultBoards";
 import { ensureCollegeFeedSources } from "./services/collegeFeedSources";
+import { repairPortalDepartmentBoards } from "./services/portalNoticeCrawler";
 import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
 import { loadSchoolModuleOverrides } from "./schools/modules";
@@ -47,6 +48,13 @@ async function start() {
   });
   if (createdColleges.length) {
     console.log(`🕷️  已补充学院通知源: ${createdColleges.map((college) => college.name).join("、")}`);
+  }
+  const repairedPortalBoards = await repairPortalDepartmentBoards().catch((e) => {
+    console.warn("repairPortalDepartmentBoards failed:", e?.message);
+    return 0;
+  });
+  if (repairedPortalBoards > 0) {
+    console.log(`🧹  已清理门户部门名称异常板块: ${repairedPortalBoards} 个`);
   }
   // 补不上只是树洞提醒暂时不转发到 QQ／微信，不影响启动，下次启动再试。
   await backfillTreeholeNotifyCategories().catch((e) => {

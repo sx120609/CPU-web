@@ -39,11 +39,13 @@ export function topicBackLabel(from: unknown, isAnnouncement = false): string {
   if (path === "/forum/latest") return "返回最新";
   if (path === "/forum/hot") return "返回热榜";
   if (path === "/forum/b/market" || path === "/market") return "返回二手";
+  if (path === "/forum/b/lost-found" || path === "/lost-found") return "返回失物";
   if (path.startsWith("/forum/b/")) return "返回板块";
   if (path === "/forum") {
     // The phone forum shows its lists as channels of one page.
     if (channel === "hot") return "返回热榜";
     if (channel === "market") return "返回二手";
+    if (channel === "lost-found") return "返回失物";
     if (channel === "question" || channel === "freshman") return "返回板块";
     return "返回论坛";
   }

@@ -112,8 +112,8 @@ onBeforeUnmount(() => {
   boardLoadSeq += 1;
 });
 
-const general = computed(() => all.value.filter((b) => b.type === "normal"));
-const ugc = computed(() => all.value.filter((b) => ["market", "question", "coursereview"].includes(b.type)));
+const general = computed(() => all.value.filter((b) => b.type === "normal" && b.slug !== "lost-found"));
+const ugc = computed(() => all.value.filter((b) => ["market", "question", "coursereview"].includes(b.type) || b.slug === "lost-found"));
 
 async function loadBoards() {
   if (disposed) return;
@@ -144,6 +144,10 @@ function normalizeBoardListError(error: unknown) {
 }
 
 function openBoard(slug: string) {
+  if (slug === "lost-found") {
+    router.push("/lost-found");
+    return;
+  }
   const board = all.value.find((item) => item.slug === slug);
   if (board?.type === "market") {
     router.push("/market");

@@ -1,0 +1,165 @@
+@use "sass:color";
+
+// 全站非默认主题色表（stores/siteTheme.ts 在 <html> 上写 data-cpu-theme="<key>"）。
+// 默认「经典青绿」（classic）已在 styles/index.scss 与 styles/buttons.scss 中定义；
+// 这份样式表不进首屏包，选中非默认主题或展开主题面板时按需加载。
+// 每套配色的浅色主色在白底/页面底上、深色主色在深色卡片底与反色文字上均满足 WCAG AA (>= 4.5:1)。
+
+@mixin site-theme-light(
+  $primary,
+  $primary-light,
+  $primary-dark,
+  $primary-soft,
+  $bg,
+  $surface-soft,
+  $surface-subtle,
+  $border,
+  $border-soft,
+  $hue-bg,
+  $hue-ink
+) {
+  --cpu-primary: #{$primary};
+  --cpu-primary-light: #{$primary-light};
+  --cpu-primary-dark: #{$primary-dark};
+  --cpu-primary-soft: #{$primary-soft};
+  --cpu-on-primary: #ffffff;
+  --cpu-bg: #{$bg};
+  --cpu-surface-soft: #{$surface-soft};
+  --cpu-surface-subtle: #{$surface-subtle};
+  --cpu-border: #{$border};
+  --cpu-border-soft: #{$border-soft};
+  --cpu-track: #{$border-soft};
+  --cpu-hue-brand-bg: #{$hue-bg};
+  --cpu-hue-brand-ink: #{$hue-ink};
+  --cpu-button-primary: #{$primary};
+  --cpu-button-on-primary: #ffffff;
+  --el-color-primary: #{$primary};
+  --el-color-primary-light-3: #{color.mix(#ffffff, $primary, 30%)};
+  --el-color-primary-light-5: #{color.mix(#ffffff, $primary, 50%)};
+  --el-color-primary-light-7: #{color.mix(#ffffff, $primary, 70%)};
+  --el-color-primary-light-8: #{color.mix(#ffffff, $primary, 80%)};
+  --el-color-primary-light-9: #{color.mix(#ffffff, $primary, 90%)};
+  --el-color-primary-dark-2: #{color.mix(#000000, $primary, 20%)};
+}
+
+@mixin site-theme-dark(
+  $primary,
+  $primary-light,
+  $primary-dark,
+  $on-primary,
+  $bg,
+  $surface-soft,
+  $surface-subtle,
+  $border,
+  $border-soft,
+  $hue-bg,
+  $hue-ink
+) {
+  --cpu-primary: #{$primary};
+  --cpu-primary-light: #{$primary-light};
+  --cpu-primary-dark: #{$primary-dark};
+  --cpu-primary-soft: #{color.change($primary, $alpha: 0.14)};
+  --cpu-on-primary: #{$on-primary};
+  --cpu-bg: #{$bg};
+  --cpu-surface-soft: #{$surface-soft};
+  --cpu-surface-subtle: #{$surface-subtle};
+  --cpu-border: #{$border};
+  --cpu-border-soft: #{$border-soft};
+  --cpu-track: #{$surface-soft};
+  --cpu-hue-brand-bg: #{$hue-bg};
+  --cpu-hue-brand-ink: #{$hue-ink};
+  --cpu-button-primary: #{$primary};
+  --cpu-button-on-primary: #{$on-primary};
+  --el-color-primary: #{$primary};
+  --el-color-primary-light-3: #{color.mix(#1a1d21, $primary, 14%)};
+  --el-color-primary-light-5: #{color.mix(#1a1d21, $primary, 34%)};
+  --el-color-primary-light-7: color-mix(in srgb, var(--cpu-primary) 24%, transparent);
+  --el-color-primary-light-8: color-mix(in srgb, var(--cpu-primary) 16%, transparent);
+  --el-color-primary-light-9: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  --el-color-primary-dark-2: #{color.mix(#ffffff, $primary, 26%)};
+}
+
+// 1. 丹霞红（原校庆红配色）
+html[data-cpu-theme="crimson"] {
+  @include site-theme-light(
+    #b8232b, #d23b43, #8f1a21, #fbe8e7,
+    #f5f2ef, #f8f5f2, #efe9e5, #dcd4ce, #e8e1dc,
+    #fbe3e1, #9e1d25
+  );
+}
+
+html[data-cpu-theme="crimson"][data-theme="dark"] {
+  @include site-theme-dark(
+    #f0727a, #f7979d, #b8232b, #3a070b,
+    #100e0e, #25211f, #2d2826, #423a37, #302a28,
+    #3d181b, #ff9ca1
+  );
+}
+
+// 2. 晴空蓝
+html[data-cpu-theme="ocean"] {
+  @include site-theme-light(
+    #1a56c4, #2f6ee0, #134199, #e5eeff,
+    #f0f3f8, #f4f7fb, #e8edf5, #d1d9e6, #dfe6f0,
+    #dce8ff, #1546a6
+  );
+}
+
+html[data-cpu-theme="ocean"][data-theme="dark"] {
+  @include site-theme-dark(
+    #6ea8fe, #93bfff, #1a56c4, #061c3d,
+    #0d1015, #20252e, #272e39, #394250, #29303b,
+    #16294a, #9bc2ff
+  );
+}
+
+// 3. 松石绿
+html[data-cpu-theme="emerald"] {
+  @include site-theme-light(
+    #1b7346, #288f5b, #135734, #e3f4eb,
+    #f0f4f1, #f4f8f5, #e7efe9, #d0dcd3, #dee8e1,
+    #daf1e4, #155e38
+  );
+}
+
+html[data-cpu-theme="emerald"][data-theme="dark"] {
+  @include site-theme-dark(
+    #52d18c, #7be0a8, #1b7346, #052916,
+    #0d110e, #1f2621, #262f29, #37443b, #28322b,
+    #143322, #85e3af
+  );
+}
+
+// 4. 藤萝紫
+html[data-cpu-theme="violet"] {
+  @include site-theme-light(
+    #6538c9, #7c50de, #4e27a3, #ede7fc,
+    #f3f1f7, #f6f5fa, #ece9f4, #d7d2e4, #e4e0ef,
+    #e8e0fb, #5429b3
+  );
+}
+
+html[data-cpu-theme="violet"][data-theme="dark"] {
+  @include site-theme-dark(
+    #b092ff, #c7b2ff, #6538c9, #1d0b4a,
+    #0f0e14, #23202c, #2b2736, #3e394d, #2d2938,
+    #281d4a, #cbb8ff
+  );
+}
+
+// 5. 琥珀橙
+html[data-cpu-theme="amber"] {
+  @include site-theme-light(
+    #a84708, #c75a14, #853604, #fdeddf,
+    #f6f2ee, #f9f6f2, #f0eae3, #ded5cb, #eae2da,
+    #fde5d0, #8f3b05
+  );
+}
+
+html[data-cpu-theme="amber"][data-theme="dark"] {
+  @include site-theme-dark(
+    #f59b4c, #f9b578, #a84708, #331500,
+    #110f0d, #26221e, #2f2924, #443b34, #322b26,
+    #3d2410, #ffc085
+  );
+}
