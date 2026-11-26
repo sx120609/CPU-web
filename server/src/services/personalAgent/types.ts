@@ -101,13 +101,14 @@ export const personalAgentProposalSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("lostfound.post"),
     kind: z.enum(["lost", "found"]),
-    itemName: z.string().trim().min(2).max(80),
+    // 除了物品名，其余缺了也给出卡片，由用户在卡片里补齐（卡片发布前会检查）。
+    itemName: z.string().trim().min(1).max(80),
     description: z.string().trim().max(1_000).default(""),
-    campus: z.string().trim().min(2).max(40),
-    location: z.string().trim().min(2).max(100),
-    happenedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2})?$/u),
+    campus: z.string().trim().max(40).default(""),
+    location: z.string().trim().max(100).default(""),
+    happenedAt: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2})?$/u), z.literal("")]).default(""),
     storageLocation: z.string().trim().max(160).default(""),
-    contact: z.string().trim().min(2).max(120),
+    contact: z.string().trim().max(120).default(""),
   }),
   z.object({
     type: z.literal("dm.send"),

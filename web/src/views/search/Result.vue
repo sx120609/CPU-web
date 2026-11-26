@@ -686,7 +686,7 @@ async function runQuery(keyword: string) {
   if (!auth.isLoggedIn) return;
   const history = messages.value
     .slice(-MAX_MESSAGES_PER_SESSION)
-    .map(({ role, content }) => ({ role, content }));
+    .map(toHistoryEntry);
   ensureActiveConversation(keyword);
   messages.value.push({ id: ++messageSeq, role: "user", content: keyword });
   persistActiveConversation();
@@ -789,6 +789,41 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[], 
   }
 }
 
+const PROPOSAL_LABELS: Record<string, string> = {
+  "agenda.create": "新建日程",
+  "agenda.update": "修改日程",
+  "agenda.complete": "完成日程",
+  "agenda.delete": "删除日程",
+  "forum.post": "发帖",
+  "forum.reply": "回帖",
+  "lostfound.post": "失物招领",
+  "dm.send": "私信",
+  "messages.readAll": "全部已读",
+};
+const PROPOSAL_STATE_LABELS = { applied: "已确认", dismissed: "已放弃", pending: "未处理" } as const;
+
+/**
+ * 发给服务端的历史只有正文。回答里给过的卡片后来被确认还是放弃了，模型看不到，
+ * 会以为日程还没加、提醒用户别重复确认；这里在正文后附一行卡片状态。
+ */
+function toHistoryEntry(message: ConversationMessage): CampusAssistantMessage {
+  const cards = (message.proposals || [])
+    .map((proposal, index) => {
+      const label = PROPOSAL_LABELS[proposal.type];
+      if (!label) return "";
+      const title = "title" in proposal && proposal.title
+        ? proposal.title
+        : "item" in proposal ? proposal.item.title : "itemName" in proposal ? proposal.itemName : "";
+      const state = PROPOSAL_STATE_LABELS[message.proposalStates?.[index] ?? "pending"];
+      return `${label}${title ? `「${title}」` : ""}：${state}`;
+    })
+    .filter(Boolean);
+  const content = cards.length
+    ? `${message.content}\n\n[卡片状态] ${cards.join("；")}`.slice(0, 4000)
+    : message.content;
+  return { role: message.role, content };
+}
+
 async function loadPersonalAgentState() {
   if (!auth.isLoggedIn) return;
   try {
@@ -804,6 +839,10 @@ async function loadPersonalAgentState() {
     // 读不到时不显示个人模式入口，提问仍按服务器上的设置处理
   }
 }
+
+watch(() => permissionsOpen.value || memoriesOpen.value, (open) => {
+  if (open) void loadPersonalAgentState();
+});
 
 function updateMessageProposalState(
   message: ConversationMessage,
@@ -850,7 +889,7 @@ async function rerunTurnFor(messageId: number | null, retriedAfterRecover = fals
   const history = messages.value
     .slice(0, userIdx)
     .slice(-MAX_MESSAGES_PER_SESSION)
-    .map(({ role, content }) => ({ role, content }));
+    .map(toHistoryEntry);
   messages.value = messages.value.slice(0, userIdx + 1);
   persistActiveConversation();
   await askAssistant(keyword, history, retriedAfterRecover);
@@ -909,7 +948,7 @@ async function retryAssistant() {
   const history = messages.value
     .filter((item, index) => !(index === messages.value.length - 1 && item.role === "user"))
     .slice(-12)
-    .map(({ role, content }) => ({ role, content }));
+    .map(toHistoryEntry);
   await askAssistant(keyword, history);
 }
 

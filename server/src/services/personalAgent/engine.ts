@@ -6,6 +6,7 @@ import {
   attachCampusKnowledgeSources,
   buildCampusKnowledgeInstruction,
   containsRestrictedPublicTopic,
+  escapeControlCharactersInJsonStrings,
   extractPartialJsonStringValue,
   guardCampusAssistantResponse,
   isCampusAssistantModelIdentityQuestion,
@@ -74,6 +75,11 @@ const MAX_TOOL_ROUNDS = 4;
 const MAX_TOOLS_PER_ROUND = 4;
 const MAX_PROPOSALS = 6;
 const MAX_OUTPUT_TOKENS = 8_000;
+/**
+ * 历史里的回答只存了正文，模型续写时容易学着直接写散文、把卡片 JSON 写进正文，卡片就丢了。
+ * 有历史时在最新一句后面提醒一次输出格式。
+ */
+const JSON_ONLY_REMINDER = "（系统提示：照常只输出一个 JSON 对象，toolCalls 在最前；卡片写在 proposals 字段里，不要写进 answer。）";
 const DEFAULT_API_URL = "https://api.deepseek.com/chat/completions";
 
 const departmentContactsSchema = z.object({
@@ -215,6 +221,18 @@ const ACTION_TOOL_HINTS: Record<string, string[]> = {
   "department-contacts": ["campus_department_contacts"],
 };
 
+/** 已经调过的工具对应的站内入口：工具说“没绑定”“去某页看”时，模型要能给出入口按钮。 */
+export function actionsForExecutedTools(
+  available: CampusAssistantAction[],
+  toolNames: Iterable<string>,
+): CampusAssistantAction[] {
+  const wanted = new Set(toolNames);
+  const ids = Object.entries(ACTION_TOOL_HINTS)
+    .filter(([, tools]) => tools.some((tool) => wanted.has(tool)))
+    .map(([id]) => id);
+  return available.filter((action) => ids.includes(action.id)).slice(0, 4);
+}
+
 export function suggestedToolsFor(actions: Array<Pick<CampusAssistantAction, "id">>): string[] {
   const out: string[] = [];
   for (const action of actions) {
@@ -243,10 +261,193 @@ export function resolveToolName(raw: string): string | null {
   return scored[0].name;
 }
 
+/**
+ * 工具结果里带站内链接的条目（帖子、课程、失物招领）。回答里提到了它的标题，就作为参考来源附上，
+ * 用户能直接点过去。
+ */
+export function siteSourcesFromToolResults(
+  executedRounds: Array<{ results: Array<{ result: unknown }> }>,
+  answer: string,
+  limit = 5,
+): Array<{ title: string; url: string }> {
+  const found: Array<{ title: string; url: string }> = [];
+  const seen = new Set<string>();
+  const visit = (value: unknown, depth: number) => {
+    if (!value || typeof value !== "object" || depth > 6 || found.length >= limit) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    const url = typeof record.url === "string" ? record.url : "";
+    const title = [record.title, record.name, record.itemName].find((item) => typeof item === "string" && item.trim()) as string | undefined;
+    if (url.startsWith("/") && !url.startsWith("//") && title && !seen.has(url)) {
+      const key = title.trim().slice(0, 12);
+      if (key.length >= 4 && answer.includes(key)) {
+        seen.add(url);
+        found.push({ title: title.trim().slice(0, 120), url: url.slice(0, 300) });
+      }
+    }
+    for (const child of Object.values(record)) visit(child, depth + 1);
+  };
+  for (const round of executedRounds) for (const item of round.results) visit(item.result, 0);
+  return found;
+}
+
+/** “正在读取课表…”在完成后改成“读取课表”。 */
+export function finishedStepLabel(label: string) {
+  return String(label || "").replace(/^正在/u, "").replace(/[…．.。]+$/u, "").trim() || label;
+}
+
+const NOT_AVAILABLE_CODES = new Set([
+  "UNSUPPORTED", "FEATURE_CLOSED", "ELECTRIC_UNAVAILABLE", "NO_STUDENT_ID", "BOARD_NOT_READABLE", "FORUM_RESTRICTED", "NOT_FOUND",
+]);
+const AGENT_ARRAY_FIELDS = ["toolCalls", "proposals", "memoryOps", "actionIds", "suggestions"] as const;
+const PROPOSAL_TYPES = new Set([
+  "agenda.create", "agenda.update", "agenda.complete", "agenda.delete",
+  "forum.post", "forum.reply", "lostfound.post", "dm.send", "messages.readAll",
+]);
+
+/** 从 start（指向 [ 或 {）开始找配对的结束括号，跳过字符串里的括号。 */
+function balancedSlice(source: string, start: number): string | null {
+  const open = source[start];
+  const close = open === "[" ? "]" : open === "{" ? "}" : "";
+  if (!close) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < source.length; i += 1) {
+    const char = source[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      continue;
+    }
+    if (char === "\"") inString = true;
+    else if (char === "[" || char === "{") depth += 1;
+    else if (char === "]" || char === "}") {
+      depth -= 1;
+      if (depth === 0) return char === close ? source.slice(start, i + 1) : null;
+    }
+  }
+  return null;
+}
+
+function parseLooseJson(text: string): unknown {
+  const withoutTrailingCommas = text.replace(/,\s*([}\]])/gu, "$1");
+  for (const variant of [text, withoutTrailingCommas, escapeControlCharactersInJsonStrings(withoutTrailingCommas)]) {
+    try {
+      return JSON.parse(variant);
+    } catch {
+      // 再试下一种写法
+    }
+  }
+  return undefined;
+}
+
+/** 取原文里最后一个 "key": [...]（字段在 answer 之后，最后一个才是真正的字段）。 */
+function extractJsonArrayField(raw: string, key: string): unknown[] | null {
+  const pattern = new RegExp(`"${key}"\\s*:\\s*\\[`, "gu");
+  let match: RegExpExecArray | null;
+  let last: RegExpExecArray | null = null;
+  while ((match = pattern.exec(raw))) last = match;
+  if (!last) return null;
+  const slice = balancedSlice(raw, last.index + last[0].length - 1);
+  const value = slice ? parseLooseJson(slice) : undefined;
+  return Array.isArray(value) ? value : null;
+}
+
+/** answer 里的 ```json 代码块（模型把卡片写进了正文），挑出其中的卡片。 */
+function proposalsFromFencedBlocks(raw: string): unknown[] {
+  const found: unknown[] = [];
+  for (const block of raw.matchAll(/```(?:json)?\s*([\s\S]*?)```/giu)) {
+    const value = parseLooseJson(block[1].trim());
+    const items = Array.isArray(value) ? value : value && typeof value === "object" ? [value] : [];
+    for (const item of items) {
+      const record = item as Record<string, unknown>;
+      if (Array.isArray(record?.proposals)) found.push(...record.proposals);
+      else if (typeof record?.type === "string" && PROPOSAL_TYPES.has(record.type)) found.push(record);
+    }
+  }
+  return found;
+}
+
+/** 去掉正文里贴出来的 JSON 代码块和没写完的 ```json 尾巴。 */
+export function stripEmbeddedJsonFromAnswer(answer: string): string {
+  return String(answer || "")
+    .replace(/```(?:json)?\s*[{[][\s\S]*?```/giu, "")
+    .replace(/```(?:json)?\s*(?:[{[][\s\S]*)?$/iu, "")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+/**
+ * 模型偶尔不按“只输出一个 JSON 对象”来：把卡片写进 answer 里的代码块、字符串里夹了没转义的引号，
+ * 整段解析失败后只剩半截正文，卡片也丢了。这里先照常解析，再从原文把结构化字段捞回来，
+ * 并清掉正文里的 JSON 残片。
+ */
+export function parseAgentModelOutput(content: string, allowPlainText: boolean): unknown {
+  let parsed: unknown = null;
+  let parseError: unknown = null;
+  try {
+    parsed = parseAssistantJson(content, { allowPlainText });
+  } catch (error) {
+    parseError = error;
+  }
+  let result: Record<string, unknown> = parsed && typeof parsed === "object" ? { ...(parsed as Record<string, unknown>) } : {};
+  let recovered = false;
+  // 解析出来的是一张卡片本身（模型只在代码块里写了卡片），不是整个回复对象。
+  if (typeof result.type === "string" && PROPOSAL_TYPES.has(result.type)) {
+    result = { proposals: [result] };
+    recovered = true;
+  }
+  for (const key of AGENT_ARRAY_FIELDS) {
+    if (Array.isArray(result[key]) && (result[key] as unknown[]).length) continue;
+    const value = extractJsonArrayField(content, key);
+    if (value?.length) {
+      result[key] = value;
+      recovered = true;
+    }
+  }
+  if (!(Array.isArray(result.proposals) && result.proposals.length)) {
+    const fenced = proposalsFromFencedBlocks(content);
+    if (fenced.length) {
+      result.proposals = fenced;
+      recovered = true;
+    }
+  }
+  if (typeof result.answer !== "string" || !result.answer.trim()) {
+    const answer = extractPartialJsonStringValue(content, "answer");
+    // 没有 answer 字段时，代码块或 JSON 之前的那段文字就是正文。
+    const prose = String(content || "").split(/```|\{/u)[0]?.trim() || "";
+    if (answer?.trim()) {
+      result.answer = answer;
+      recovered = true;
+    } else if (recovered && prose) {
+      result.answer = prose;
+    }
+  }
+  if (typeof result.answer === "string") result.answer = stripEmbeddedJsonFromAnswer(result.answer);
+  if (!parsed && !recovered) throw parseError ?? new Error("拾间AI返回格式异常");
+  return result;
+}
+
 function hasToolCallField(parsed: unknown) {
   if (!parsed || typeof parsed !== "object") return false;
   const calls = (parsed as Record<string, unknown>).toolCalls;
   return Array.isArray(calls) && calls.length > 0;
+}
+
+/** 模型给了卡片、但内容不合格没能生成的张数（回答里要说明，不然用户看到“已准备好”却没有卡片）。 */
+export function countDroppedProposals(rawProposals: unknown, kept: PersonalAgentProposal[]) {
+  if (!Array.isArray(rawProposals)) return 0;
+  const offered = rawProposals.slice(0, 10).filter((item) => {
+    const type = item && typeof item === "object" ? (item as Record<string, unknown>).type : "";
+    return typeof type === "string" && PROPOSAL_TYPES.has(type);
+  }).length;
+  const produced = kept.filter((item) => PROPOSAL_TYPES.has(item.type)).length;
+  return Math.max(0, offered - produced);
 }
 
 export function sanitizePersonalAgentProposals(
@@ -274,7 +475,6 @@ export function sanitizePersonalAgentProposals(
       if ((item.type === "forum.reply" || item.type === "dm.send") && containsRestrictedPublicTopic(item.content)) continue;
       if (item.type === "lostfound.post") {
         if (containsRestrictedPublicTopic(`${item.itemName} ${item.description} ${item.location}`)) continue;
-        if (item.kind === "found" && item.storageLocation.trim().length < 2) continue;
       }
       out.push(item);
       if (out.length >= MAX_PROPOSALS) break;
@@ -429,12 +629,14 @@ export function buildPersonalAgentSystemPrompt(input: {
     "【个人记忆（memoryOps）】",
     '个人记忆开着时：用户透露了值得长期记住的背景、目标或习惯（校区、年级专业、保研/考研/出国打算、固定组会时间、常去的自习楼），或明确说“记住…”“忘掉…”，在最终回复的 memoryOps 里附最多 2 条：新增或更新 {"op":"upsert","category":"academic|goal|campus|schedule|preference|note","content":"简明事实（100 字以内）"}，删除 {"op":"delete","id":"已有记忆的 id"}。一次性的问题和具体成绩分数不要存。记忆关着时 memoryOps 始终为 []。',
     "【回答要求】",
-    "- 先给结论，再分点列明细；列课表、成绩、空课方案时层次清楚，不说空话套话，不要自称“Agent”或“智能体”。",
+    "- 先给结论，再分点列明细；列课表、成绩、空课方案时层次清楚，不说空话套话，不要自称“Agent”或“智能体”，不用表情符号。",
     "- 站内功能、入口和规则以 knowledge 为准，knowledge 没写的细节不要按别的产品补造。",
     "- 只有用户需要打开某个页面时才从 catalog 里挑最多 3 个 actionIds，不能编造 catalog 以外的 id。",
     "- 涉及数学、化学、药学公式时用标准 LaTeX：行内 $...$，独立 $$...$$。",
     "- 遵守中国法律法规；不提供违法违规内容，不讨论政治敏感议题和敏感历史事件。",
     "- 用户明确要你现在画、生成一张新图片时 generateImage 写 true，imagePrompt 写可以直接交给图像模型的完整中文描述；其他情况 generateImage 为 false、imagePrompt 为空。不要主动推荐生图。",
+    "- 卡片只写在 proposals 字段里，answer 正文里不要贴 JSON 或代码块，也不要复述卡片的字段清单，用一两句话说明准备了什么即可。",
+    "- 历史回答末尾的“[卡片状态]”是系统附注，说明那张卡片用户确认了还是放弃了；据此判断日程是否已经加过，自己的回答里不要写这行。",
     "- 只输出一个合法 JSON 对象，不要用 Markdown 代码块包裹；字段顺序固定，toolCalls 必须在最前：",
     '{"toolCalls":[],"answer":"中文答复（可用 Markdown）","proposals":[],"memoryOps":[],"generateImage":false,"imagePrompt":"","actionIds":[],"suggestions":["最多 3 个贴合当前情况的追问"]}',
     // 以下每个用户、每一轮都不同。
@@ -526,7 +728,14 @@ export async function streamCampusPersonalAgent(
   const availableActions = listCampusAssistantActions(input.assistantContext);
   const deterministicActions = searchCampusAssistantActions(message, input.assistantContext, 3);
   const promptActions = selectAssistantPromptActions(availableActions, message, deterministicActions, history);
-  const catalog = promptActions.map(({ id, label, description }) => ({ id, label, description }));
+  // 调过工具后补上相应的站内入口（如情侣课表），回答里才能给出入口按钮。
+  const currentPromptActions = () => {
+    const extra = actionsForExecutedTools(
+      availableActions,
+      executedRounds.flatMap((round) => round.results.map((item) => item.tool)),
+    ).filter((action) => !promptActions.some((item) => item.id === action.id));
+    return [...promptActions, ...extra];
+  };
   const siteKnowledge = listCampusAssistantKnowledgeEntries(promptActions.map((item) => item.id), school)
     .map(({ id, fact, source, verifiedAt }) => ({ id, fact, source, verifiedAt }));
   const [memories, knowledge] = await Promise.all([
@@ -587,7 +796,7 @@ export async function streamCampusPersonalAgent(
       schoolContext: input.assistantContext,
       ctx: input.toolContext,
       memories,
-      catalog,
+      catalog: currentPromptActions().map(({ id, label, description }) => ({ id, label, description })),
       siteKnowledge,
       suggestedTools,
       knowledgeText,
@@ -639,7 +848,7 @@ export async function streamCampusPersonalAgent(
           messages: [
             { role: "system", content: systemPrompt },
             ...history,
-            { role: "user", content: message },
+            { role: "user", content: history.length ? `${message}\n\n${JSON_ONLY_REMINDER}` : message },
           ],
           promptCacheKey: buildAiPromptCacheKey("personal-agent-v2", [model]),
           enablePromptCacheRetention: true,
@@ -672,7 +881,7 @@ export async function streamCampusPersonalAgent(
       }
 
       const activeModel = candidates[0] || "";
-      const parsed = parseAssistantJson(content, { allowPlainText: allowsPlainTextAssistantAnswer(activeModel) });
+      const parsed = parseAgentModelOutput(content, allowsPlainTextAssistantAnswer(activeModel));
       const split = allowMoreTools ? splitRequestedToolCalls(parsed) : { valid: [], unknown: [] as string[] };
       const requestedCalls = split.valid;
       const freshCalls = requestedCalls.filter((call) => {
@@ -727,6 +936,7 @@ export async function streamCampusPersonalAgent(
           if (!parsedArgs.success) {
             runningStep.status = "error";
             runningStep.detail = "查询条件不完整";
+            runningStep.label = finishedStepLabel(runningStep.label);
             await input.onStep?.({ ...runningStep });
             return {
               tool: call.tool,
@@ -741,12 +951,17 @@ export async function streamCampusPersonalAgent(
             if (outObj.ok === false && outObj.errorCode === "PERMISSION_DISABLED") {
               runningStep.status = "blocked";
               runningStep.detail = String(outObj.scopeTitle ? `需开启「${outObj.scopeTitle}」` : "需开启对应授权");
+            } else if (outObj.ok === false && NOT_AVAILABLE_CODES.has(String(outObj.errorCode || ""))) {
+              // 本校没有这项功能、功能关着、没有绑定：这是查询结果，不算失败。
+              runningStep.status = "done";
+              runningStep.detail = String(outObj.message || "").slice(0, 60) || undefined;
             } else if (outObj.ok === false) {
               runningStep.status = "error";
               runningStep.detail = String(outObj.message || "暂未取到数据").slice(0, 60);
             } else {
               runningStep.status = "done";
             }
+            runningStep.label = finishedStepLabel(runningStep.label);
             await input.onStep?.({ ...runningStep });
             return {
               tool: call.tool,
@@ -762,6 +977,7 @@ export async function streamCampusPersonalAgent(
             console.warn("[personal-agent] tool failed", call.tool, toolErr instanceof Error ? toolErr.message : toolErr);
             runningStep.status = "error";
             runningStep.detail = "暂时没查到";
+            runningStep.label = finishedStepLabel(runningStep.label);
             await input.onStep?.({ ...runningStep });
             return {
               tool: call.tool,
@@ -781,7 +997,7 @@ export async function streamCampusPersonalAgent(
 
       // 最终答复轮
       let base = attachCampusKnowledgeSources(
-        guardCampusAssistantResponse(normalizeAssistantResponse(parsed, promptActions)),
+        guardCampusAssistantResponse(normalizeAssistantResponse(parsed, currentPromptActions())),
         parsed,
         knowledge,
       );
@@ -793,9 +1009,25 @@ export async function streamCampusPersonalAgent(
 
       const rawObj = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
       const proposals = base.fallback ? [] : sanitizePersonalAgentProposals(rawObj.proposals, input.toolContext);
+      const dropped = base.fallback ? 0 : countDroppedProposals(rawObj.proposals, proposals);
+      if (dropped > 0) {
+        const note = `\n\n（有 ${dropped} 张卡片信息不完整，没能生成。请补充具体内容后再说一次。）`;
+        base = { ...base, answer: `${base.answer}${note}` };
+        await input.onAnswerDelta?.(note);
+      }
       const memoryChanges = !base.fallback && input.toolContext.permissions.memory
         ? await store.applyMemoryOperations(input.toolContext.userId, rawObj.memoryOps, input.toolContext.now)
         : [];
+
+      if (!base.fallback) {
+        const siteSources = siteSourcesFromToolResults(executedRounds, base.answer);
+        if (siteSources.length) {
+          const merged = [...(base.sources || []), ...siteSources]
+            .filter((item, index, list) => list.findIndex((other) => other.url === item.url) === index)
+            .slice(0, 5);
+          base = { ...base, sources: merged };
+        }
+      }
 
       const imagePrompt = base.fallback ? "" : resolveCampusAssistantImagePrompt(parsed, message);
       if (imagePrompt && !input.modelRunner) {

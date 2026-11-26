@@ -8,7 +8,7 @@ import {
   type PersonalAgentRecordRow,
   type PersonalAgentStorageAdapter,
 } from "../src/services/personalAgent/store";
-import { buildPersonalAgentSystemPrompt, coerceToolArgs, resolveToolName, shouldDelegateToCampusAssistant, splitRequestedToolCalls, streamCampusPersonalAgent } from "../src/services/personalAgent/engine";
+import { buildPersonalAgentSystemPrompt, coerceToolArgs, countDroppedProposals, finishedStepLabel, parseAgentModelOutput, sanitizePersonalAgentProposals, resolveToolName, siteSourcesFromToolResults, stripEmbeddedJsonFromAnswer, shouldDelegateToCampusAssistant, splitRequestedToolCalls, streamCampusPersonalAgent } from "../src/services/personalAgent/engine";
 import { JwxtReauthRequiredError, type PersonalAgentStepEvent, type PersonalAgentToolContext } from "../src/services/personalAgent/types";
 import { getFeatures } from "../src/services/siteSettings";
 
@@ -485,4 +485,46 @@ test("coerceToolArgs accepts numbers and booleans written as strings, drops null
   const coerced = coerceToolArgs(schema, { days: "7", includeMidterm: "false", keyword: 2026, semester: null, extra: 1 });
   assert.deepEqual(coerced, { days: 7, includeMidterm: false, keyword: "2026" });
   assert.equal(schema.safeParse(coerced).success, true);
+});
+
+test("parseAgentModelOutput recovers the card when the model pastes JSON into the answer", () => {
+  const card = '{"type":"agenda.create","item":{"kind":"event","title":"药物分析实验报告","date":"2026-11-27","start":"13:30","end":"15:10","remind":15,"repeat":"none"}}';
+  // answer 里夹了没转义的 JSON，整段不是合法 JSON
+  const raw = `{"toolCalls":[],"answer":"已经准备好一张日程卡片。\n\n\`\`\`json\n${card}\n\`\`\`","proposals":[${card}],"memoryOps":[],"actionIds":[],"suggestions":[]}`;
+  const parsed = parseAgentModelOutput(raw, true) as Record<string, any>;
+  assert.equal(parsed.proposals.length, 1);
+  assert.equal(parsed.proposals[0].item.title, "药物分析实验报告");
+  assert.doesNotMatch(parsed.answer, /```|\{/u);
+  assert.match(parsed.answer, /已经准备好一张日程卡片/u);
+
+  // 正文 + 代码块，没有 proposals 字段
+  const prose = `已经准备好了，确认后生效。\n\n\`\`\`json\n${card}\n\`\`\``;
+  const fromProse = parseAgentModelOutput(prose, true) as Record<string, any>;
+  assert.equal(fromProse.proposals?.[0]?.type, "agenda.create");
+  assert.equal(fromProse.answer, "已经准备好了，确认后生效。");
+
+  assert.equal(stripEmbeddedJsonFromAnswer("好的。\n\n```json"), "好的。");
+});
+
+test("siteSourcesFromToolResults links posts the answer mentions", () => {
+  const rounds = [{ results: [{ result: { ok: true, hot: [
+    { id: 1, title: "三只肥鸭排排游", url: "/forum/topic/1" },
+    { id: 2, title: "收空白实验报告册", url: "/forum/topic/2" },
+    { id: 3, title: "外链", url: "https://example.com" },
+  ] } }] }];
+  const sources = siteSourcesFromToolResults(rounds, "热帖有 **三只肥鸭排排游**，还有人在问别的。");
+  assert.deepEqual(sources, [{ title: "三只肥鸭排排游", url: "/forum/topic/1" }]);
+});
+
+test("finishedStepLabel and countDroppedProposals", () => {
+  assert.equal(finishedStepLabel("正在读取个人课表、调休安排与日程待办并检测冲突…"), "读取个人课表、调休安排与日程待办并检测冲突");
+  assert.equal(countDroppedProposals([{ type: "agenda.create" }, { type: "forum.post" }], []), 2);
+  assert.equal(countDroppedProposals([{ type: "nope" }], []), 0);
+});
+
+test("a lost-item card without contact or time is kept so the user can fill it in", () => {
+  const kept = sanitizePersonalAgentProposals([{
+    type: "lostfound.post", kind: "lost", itemName: "黑色保温杯", description: "", campus: "江宁校区", location: "图书馆三楼", contact: "",
+  }], baseToolContext());
+  assert.equal(kept.filter((item) => item.type === "lostfound.post").length, 1);
 });
