@@ -18,7 +18,11 @@ import { isDataRequestOnly, personalContextSchema, streamPersonalAssistant } fro
 import { streamCampusPersonalAgent } from "../services/personalAgent/engine";
 import {
   MEMORY_CATEGORIES,
-  personalAgentPermissionsSchema,
+  hasPersonalAgentConsent,
+  PERSONAL_AGENT_CONSENT_VERSION,
+  personalAgentActive,
+  personalAgentConsentSchema,
+  personalAgentPermissionsPatchSchema,
   personalAgentStore,
 } from "../services/personalAgent/store";
 import { JwxtReauthRequiredError } from "../services/personalAgent/types";
@@ -536,7 +540,11 @@ searchRouter.get("/assistant/personal/state", async (req, res, next) => {
       personalAgentStore.listMemories(userId),
     ]);
     res.setHeader("Cache-Control", "private, no-store");
-    ok(res, { permissions, memories });
+    ok(res, {
+      permissions,
+      memories,
+      consent: { version: PERSONAL_AGENT_CONSENT_VERSION, required: !hasPersonalAgentConsent(permissions) },
+    });
   } catch (error) {
     next(error);
   }
@@ -545,12 +553,33 @@ searchRouter.get("/assistant/personal/state", async (req, res, next) => {
 searchRouter.put(
   "/assistant/personal/permissions",
   securityRateLimit("campus-assistant-history", 60, 60_000),
-  validate(personalAgentPermissionsSchema.partial()),
+  validate(personalAgentPermissionsPatchSchema),
   async (req, res, next) => {
     try {
+      if (req.body.enabled === true) {
+        const current = await personalAgentStore.getPermissions(req.user!.userId);
+        if (!hasPersonalAgentConsent(current)) throw Errors.forbidden("请先阅读并同意个人模式说明");
+      }
       const permissions = await personalAgentStore.savePermissions(req.user!.userId, req.body);
       res.setHeader("Cache-Control", "private, no-store");
       ok(res, { permissions });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/** 首次使用个人模式时的同意：记录说明版本和同意时间，按用户的选择保存授权并开启。 */
+searchRouter.post(
+  "/assistant/personal/consent",
+  securityRateLimit("campus-assistant-history", 20, 60_000),
+  validate(personalAgentConsentSchema),
+  async (req, res, next) => {
+    try {
+      const { version: _version, ...choices } = req.body;
+      const permissions = await personalAgentStore.recordConsent(req.user!.userId, choices);
+      res.setHeader("Cache-Control", "private, no-store");
+      ok(res, { permissions, consent: { version: PERSONAL_AGENT_CONSENT_VERSION, required: false } });
     } catch (error) {
       next(error);
     }
@@ -683,7 +712,8 @@ searchRouter.post(
       };
 
       try {
-        if (!permissions.enabled) {
+        // 没开个人模式，或还没同意当前版本的说明：按普通问答处理，不读任何个人数据
+        if (!personalAgentActive(permissions)) {
           const basic = await streamCampusAssistant({
             message: req.body.message,
             history: req.body.history,

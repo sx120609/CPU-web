@@ -17,7 +17,7 @@
             <small>开启后，拾间AI 在你提问时按下面的授权读取本人数据，也能替你准备日程和帖子草稿。关闭后只回答公开问题。</small>
           </div>
           <el-switch
-            :model-value="permissions.enabled"
+            :model-value="effectiveOn"
             :loading="savingKey === 'enabled'"
             :disabled="Boolean(savingKey)"
             aria-labelledby="sj-perm-enabled"
@@ -27,7 +27,7 @@
       </div>
 
       <p class="sj-group-title">可以读取的数据</p>
-      <div class="sj-group" :class="{ 'is-disabled': !permissions.enabled }">
+      <div class="sj-group" :class="{ 'is-disabled': !effectiveOn }">
         <div v-for="scope in SCOPE_ITEMS" :key="scope.key" class="sj-row">
           <div class="sj-row-copy">
             <strong :id="`sj-perm-${scope.key}`">{{ scope.title }}</strong>
@@ -36,7 +36,7 @@
           <el-switch
             :model-value="permissions[scope.key]"
             :loading="savingKey === scope.key"
-            :disabled="!permissions.enabled || Boolean(savingKey)"
+            :disabled="!effectiveOn || Boolean(savingKey)"
             :aria-labelledby="`sj-perm-${scope.key}`"
             @change="(val: string | number | boolean) => togglePermission(scope.key, Boolean(val))"
           />
@@ -44,7 +44,7 @@
       </div>
 
       <p class="sj-group-title">个人记忆</p>
-      <div class="sj-group" :class="{ 'is-disabled': !permissions.enabled }">
+      <div class="sj-group" :class="{ 'is-disabled': !effectiveOn }">
         <div class="sj-row">
           <div class="sj-row-copy">
             <strong id="sj-perm-memory">记住我的情况</strong>
@@ -53,7 +53,7 @@
           <el-switch
             :model-value="permissions.memory"
             :loading="savingKey === 'memory'"
-            :disabled="!permissions.enabled || Boolean(savingKey)"
+            :disabled="!effectiveOn || Boolean(savingKey)"
             aria-labelledby="sj-perm-memory"
             @change="(val: string | number | boolean) => togglePermission('memory', Boolean(val))"
           />
@@ -129,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { ArrowRight, Delete, EditPen } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -145,6 +145,8 @@ const props = defineProps<{
   memoriesOpen: boolean;
   permissions: PersonalAgentPermissions;
   memories: PersonalAgentMemory[];
+  /** 还没同意个人模式说明：打开个人模式要先弹说明。 */
+  consentRequired?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -152,6 +154,7 @@ const emit = defineEmits<{
   "update:memoriesOpen": [value: boolean];
   "update:permissions": [value: PersonalAgentPermissions];
   "update:memories": [value: PersonalAgentMemory[]];
+  requestConsent: [];
 }>();
 
 const SCOPE_ITEMS: Array<{ key: PersonalAgentScopeKey; title: string; hint: string }> = [
@@ -179,6 +182,9 @@ const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABELS).map(([value, label]) =>
 
 const QUIET = { suppressErrorMessage: true } as const;
 
+/** 个人模式实际是否生效：开关开着且同意过说明。 */
+const effectiveOn = computed(() => props.permissions.enabled && !props.consentRequired);
+
 const savingKey = ref<keyof PersonalAgentPermissions | "">("");
 const savingMem = ref(false);
 const draftCategory = ref<PersonalAgentMemoryCategory>("academic");
@@ -193,6 +199,10 @@ function errorText(error: unknown, fallback: string) {
 
 async function togglePermission(key: keyof PersonalAgentPermissions, value: boolean) {
   if (savingKey.value) return;
+  if (key === "enabled" && value && props.consentRequired) {
+    emit("requestConsent");
+    return;
+  }
   savingKey.value = key;
   try {
     const res = await searchApi.savePersonalAgentPermissions({ [key]: value }, QUIET);

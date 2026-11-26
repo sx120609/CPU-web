@@ -45,7 +45,39 @@ export const personalAgentPermissionsSchema = z.object({
   messages: z.boolean().default(false),
   /** 跨会话个人记忆（记住校区、年级专业、升学目标与习惯偏好）。 */
   memory: z.boolean().default(true),
+  /** 用户同意的个人模式说明版本；不是当前版本时个人模式不生效。只能经 recordConsent 写入。 */
+  consentVersion: z.string().max(40).default(""),
+  /** 同意时间（服务器时间，毫秒）。 */
+  consentAt: z.number().int().min(0).default(0),
 }).strict();
+
+/**
+ * 个人模式说明的版本。说明内容（读取范围、发给谁、保存多久）有实质变化时改这个值，
+ * 所有用户下次使用都要重新同意。
+ */
+export const PERSONAL_AGENT_CONSENT_VERSION = "2026-11-26";
+
+/** 用户自己改授权时可以写的字段（同意记录不在其中）。 */
+export const personalAgentPermissionsPatchSchema = personalAgentPermissionsSchema
+  .omit({ consentVersion: true, consentAt: true })
+  .partial()
+  .strict();
+
+/** 同意时一并提交的授权选择。 */
+export const personalAgentConsentSchema = personalAgentPermissionsSchema
+  .pick({ schedule: true, academic: true, collab: true, campusLife: true, community: true, messages: true, memory: true })
+  .partial()
+  .extend({ version: z.literal(PERSONAL_AGENT_CONSENT_VERSION) })
+  .strict();
+
+export function hasPersonalAgentConsent(permissions: Pick<PersonalAgentPermissions, "consentVersion">) {
+  return permissions.consentVersion === PERSONAL_AGENT_CONSENT_VERSION;
+}
+
+/** 个人模式实际是否生效：开关打开且同意了当前版本的说明。 */
+export function personalAgentActive(permissions: PersonalAgentPermissions) {
+  return permissions.enabled && hasPersonalAgentConsent(permissions);
+}
 
 export type PersonalAgentPermissions = z.infer<typeof personalAgentPermissionsSchema>;
 
@@ -191,11 +223,13 @@ export function createPersonalAgentStore(storage: PersonalAgentStorageAdapter = 
 
   async function savePermissions(
     userId: number,
-    patch: Partial<PersonalAgentPermissions>,
+    patch: Partial<Omit<PersonalAgentPermissions, "consentVersion" | "consentAt">>,
     now = new Date(),
   ): Promise<PersonalAgentPermissions> {
     const current = await getPermissions(userId);
-    const next = personalAgentPermissionsSchema.parse({ ...current, ...patch });
+    // 同意记录只能经 recordConsent 写入
+    const { consentVersion: _version, consentAt: _at, ...allowed } = patch as Partial<PersonalAgentPermissions>;
+    const next = personalAgentPermissionsSchema.parse({ ...current, ...allowed });
     await storage.upsertRecord(
       userId,
       AGENT_PREFS_COLLECTION,
@@ -304,9 +338,28 @@ export function createPersonalAgentStore(storage: PersonalAgentStorageAdapter = 
     return applied;
   }
 
+  /** 记录用户同意当前版本的个人模式说明，按用户在说明里的选择保存授权并开启个人模式。 */
+  async function recordConsent(
+    userId: number,
+    choices: Partial<Pick<PersonalAgentPermissions, PersonalAgentScopeKey | "memory">>,
+    now = new Date(),
+  ): Promise<PersonalAgentPermissions> {
+    const current = await getPermissions(userId);
+    const next = personalAgentPermissionsSchema.parse({
+      ...current,
+      ...choices,
+      enabled: true,
+      consentVersion: PERSONAL_AGENT_CONSENT_VERSION,
+      consentAt: now.getTime(),
+    });
+    await storage.upsertRecord(userId, AGENT_PREFS_COLLECTION, AGENT_PREFS_RECORD_ID, JSON.stringify(next), now);
+    return next;
+  }
+
   return {
     getPermissions,
     savePermissions,
+    recordConsent,
     listMemories,
     upsertMemory,
     deleteMemory,

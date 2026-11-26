@@ -5,6 +5,11 @@ import { computeSharedFreeSlots } from "../src/services/personalAgent/scheduleTo
 import {
   createPersonalAgentStore,
   defaultPersonalAgentPermissions,
+  hasPersonalAgentConsent,
+  PERSONAL_AGENT_CONSENT_VERSION,
+  personalAgentActive,
+  personalAgentConsentSchema,
+  personalAgentPermissionsPatchSchema,
   type PersonalAgentRecordRow,
   type PersonalAgentStorageAdapter,
 } from "../src/services/personalAgent/store";
@@ -153,6 +158,38 @@ test("personalAgentStore manages permissions, deduplicates memories, blocks rest
 
   assert.equal(await store.clearMemories(42), 1);
   assert.equal((await store.listMemories(42)).length, 0);
+});
+
+test("个人模式要同意当前版本的说明才生效，同意记录只能经 recordConsent 写入", async () => {
+  const store = createPersonalAgentStore(createMemoryStorage());
+  const fresh = await store.getPermissions(7);
+  assert.equal(fresh.enabled, true);
+  assert.equal(hasPersonalAgentConsent(fresh), false);
+  assert.equal(personalAgentActive(fresh), false);
+
+  // 改授权的接口不能顺手写同意记录
+  assert.equal(personalAgentPermissionsPatchSchema.safeParse({ consentVersion: PERSONAL_AGENT_CONSENT_VERSION }).success, false);
+  const sneaky = await store.savePermissions(7, { schedule: false, consentVersion: PERSONAL_AGENT_CONSENT_VERSION } as any);
+  assert.equal(sneaky.schedule, false);
+  assert.equal(hasPersonalAgentConsent(sneaky), false);
+
+  // 同意时提交的版本必须是当前版本
+  assert.equal(personalAgentConsentSchema.safeParse({ version: "2020-01-01" }).success, false);
+  const body = personalAgentConsentSchema.parse({ version: PERSONAL_AGENT_CONSENT_VERSION, collab: false, academic: true });
+  const { version: _v, ...choices } = body;
+  const now = new Date("2026-11-26T12:00:00Z");
+  const consented = await store.recordConsent(7, choices, now);
+  assert.equal(consented.enabled, true);
+  assert.equal(consented.collab, false);
+  assert.equal(consented.academic, true);
+  assert.equal(consented.schedule, false); // 之前自己关掉的保持关闭
+  assert.equal(consented.consentAt, now.getTime());
+  assert.equal(personalAgentActive(await store.getPermissions(7)), true);
+
+  // 之后改授权不影响同意记录；关掉个人模式后不再生效
+  const off = await store.savePermissions(7, { enabled: false });
+  assert.equal(hasPersonalAgentConsent(off), true);
+  assert.equal(personalAgentActive(off), false);
 });
 
 test("streamCampusPersonalAgent enforces disabled scope gate and attaches one-click permission.enable proposal", async () => {

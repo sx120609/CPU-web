@@ -81,13 +81,13 @@
             v-if="auth.isLoggedIn && agentStateLoaded"
             type="button"
             class="sj-agent-pill"
-            :class="{ 'is-off': !agentPermissions.enabled }"
-            :aria-label="agentPermissions.enabled ? `个人模式已开，${enabledScopeCount} 项数据已授权，点按管理` : '个人模式已关，点按开启'"
-            :title="agentPermissions.enabled ? `个人模式已开 · ${enabledScopeCount} 项数据已授权` : '个人模式已关'"
-            @click="permissionsOpen = true"
+            :class="{ 'is-off': !personalModeOn }"
+            :aria-label="personalModeOn ? `个人模式已开，${enabledScopeCount} 项数据已授权，点按管理` : '个人模式已关，点按开启'"
+            :title="personalModeOn ? `个人模式已开 · ${enabledScopeCount} 项数据已授权` : '个人模式已关'"
+            @click="openPersonalMode"
           >
             <el-icon><User /></el-icon>
-            <span>{{ agentPermissions.enabled ? "个人模式" : "个人模式已关" }}</span>
+            <span>{{ personalModeOn ? "个人模式" : "个人模式已关" }}</span>
           </button>
           <span
             v-if="assistantQuota"
@@ -147,7 +147,7 @@
           </template>
           <template v-else-if="agentStateLoaded">
             个人模式已关，拾间AI不会读取你的课表、成绩等个人数据。
-            <button type="button" class="sj-privacy-btn" @click="permissionsOpen = true">开启个人模式</button>
+            <button type="button" class="sj-privacy-btn" @click="openPersonalMode">开启个人模式</button>
             ·
           </template>
           <a href="/privacy.html#ai" target="_blank" rel="noopener noreferrer">隐私说明</a>
@@ -343,8 +343,18 @@
       v-model:memories-open="memoriesOpen"
       :permissions="agentPermissions"
       :memories="agentMemories"
+      :consent-required="consentRequired"
       @update:permissions="agentPermissions = $event"
       @update:memories="agentMemories = $event"
+      @request-consent="requestConsent"
+    />
+
+    <PersonalAgentConsentDialog
+      v-if="auth.isLoggedIn"
+      v-model="consentOpen"
+      :permissions="agentPermissions"
+      :version="consentVersion"
+      @decided="handleConsentDecided"
     />
 
     <!-- 对话框要先挂上再打开：el-dialog 只在 modelValue 由假变真时触发 open，恢复流程靠它启动。 -->
@@ -402,6 +412,7 @@ import { useSiteStore } from "@/stores/site";
 import PersonalAgentCards from "@/views/search/PersonalAgentCards.vue";
 
 import PersonalAgentDrawers from "@/views/search/PersonalAgentDrawers.vue";
+import PersonalAgentConsentDialog from "@/views/search/PersonalAgentConsentDialog.vue";
 import JwxtReauthDialog from "@/components/jwxt/JwxtReauthDialog.vue";
 import { getFormFactor } from "@/utils/formFactor";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
@@ -476,7 +487,13 @@ const agentPermissions = ref<PersonalAgentPermissions>({
   memory: true,
 });
 const agentMemories = ref<PersonalAgentMemory[]>([]);
-const personalModeOn = computed(() => agentStateLoaded.value && agentPermissions.value.enabled);
+/** 还没同意当前版本的个人模式说明时，服务器不读个人数据，个人模式按关闭显示。 */
+const consentRequired = ref(false);
+const consentVersion = ref("");
+const consentOpen = ref(false);
+/** 这个页面里已经自动弹过一次说明，不再自动弹。 */
+let consentPrompted = false;
+const personalModeOn = computed(() => agentStateLoaded.value && agentPermissions.value.enabled && !consentRequired.value);
 const enabledScopeCount = computed(() => {
   const p = agentPermissions.value;
   return [p.schedule, p.academic, p.collab, p.campusLife, p.community, p.messages].filter(Boolean).length;
@@ -617,6 +634,9 @@ watch(() => auth.isLoggedIn, (loggedIn) => {
     historyOpen.value = false;
     permissionsOpen.value = false;
     memoriesOpen.value = false;
+    consentOpen.value = false;
+    consentRequired.value = false;
+    consentPrompted = false;
     cancelActiveAssistant();
     return;
   }
@@ -834,10 +854,34 @@ async function loadPersonalAgentState() {
     });
     agentPermissions.value = state.permissions;
     agentMemories.value = state.memories;
+    consentRequired.value = Boolean(state.consent?.required);
+    consentVersion.value = state.consent?.version || "";
     agentStateLoaded.value = true;
+    // 第一次用个人模式：先说明读什么、发给谁，同意后才开启。自己关掉过的不再自动弹。
+    if (consentRequired.value && consentVersion.value && state.permissions.enabled && !consentPrompted) {
+      consentPrompted = true;
+      consentOpen.value = true;
+    }
   } catch {
     // 读不到时不显示个人模式入口，提问仍按服务器上的设置处理
   }
+}
+
+function requestConsent() {
+  if (!consentVersion.value) return;
+  permissionsOpen.value = false;
+  consentOpen.value = true;
+}
+
+/** 顶部胶囊和欢迎页的“开启个人模式”：没同意过说明时先弹说明，否则打开授权面板。 */
+function openPersonalMode() {
+  if (consentRequired.value && consentVersion.value) requestConsent();
+  else permissionsOpen.value = true;
+}
+
+function handleConsentDecided(nextPerms: PersonalAgentPermissions, agreed: boolean) {
+  agentPermissions.value = nextPerms;
+  if (agreed) consentRequired.value = false;
 }
 
 watch(() => permissionsOpen.value || memoriesOpen.value, (open) => {

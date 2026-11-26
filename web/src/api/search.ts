@@ -65,7 +65,18 @@ export interface PersonalAgentPermissions {
   community: boolean;
   messages: boolean;
   memory: boolean;
+  /** 同意过的个人模式说明版本（服务器写入）。 */
+  consentVersion?: string;
+  consentAt?: number;
 }
+
+/** 个人模式说明的同意状态：required 为真时个人模式不生效，要先弹说明请用户同意。 */
+export interface PersonalAgentConsentState {
+  version: string;
+  required: boolean;
+}
+
+export type PersonalAgentConsentChoices = Partial<Pick<PersonalAgentPermissions, PersonalAgentScopeKey | "memory">>;
 
 export type PersonalAgentMemoryCategory =
   | "academic"
@@ -268,11 +279,20 @@ export const searchApi = {
   ) => streamAssistant(message, history, options),
   getPersonalAgentState: (options?: RequestOptions) =>
     // 授权和记忆刚改完就要读到新值，不走通用 GET 缓存（它先回旧值再后台刷新）。
-    request.get<{ permissions: PersonalAgentPermissions; memories: PersonalAgentMemory[] }>(
+    request.get<{ permissions: PersonalAgentPermissions; memories: PersonalAgentMemory[]; consent?: PersonalAgentConsentState }>(
       "/search/assistant/personal/state",
       undefined,
       { ...options, cacheTtlMs: 0 },
     ),
+  recordPersonalAgentConsent: (
+    version: string,
+    choices: PersonalAgentConsentChoices,
+    options?: RequestOptions,
+  ) => request.post<{ permissions: PersonalAgentPermissions; consent: PersonalAgentConsentState }>(
+    "/search/assistant/personal/consent",
+    { ...choices, version },
+    options,
+  ),
   savePersonalAgentPermissions: (
     patch: Partial<PersonalAgentPermissions>,
     options?: RequestOptions,
