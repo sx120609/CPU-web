@@ -8,7 +8,7 @@ import {
   type PersonalAgentRecordRow,
   type PersonalAgentStorageAdapter,
 } from "../src/services/personalAgent/store";
-import { buildPersonalAgentSystemPrompt, coerceToolArgs, shouldDelegateToCampusAssistant, streamCampusPersonalAgent } from "../src/services/personalAgent/engine";
+import { buildPersonalAgentSystemPrompt, coerceToolArgs, resolveToolName, shouldDelegateToCampusAssistant, splitRequestedToolCalls, streamCampusPersonalAgent } from "../src/services/personalAgent/engine";
 import { JwxtReauthRequiredError, type PersonalAgentStepEvent, type PersonalAgentToolContext } from "../src/services/personalAgent/types";
 import { getFeatures } from "../src/services/siteSettings";
 
@@ -377,7 +377,7 @@ test("streamCampusPersonalAgent hands delegated questions to the general assista
   assert.deepEqual(response.steps, []);
 });
 
-test("streamCampusPersonalAgent asks once more without tools when the model only repeats a finished tool call", async () => {
+test("streamCampusPersonalAgent tells the model the real tool names when it invents one, and lets it retry", async () => {
   const prompts: string[] = [];
   const response = await streamCampusPersonalAgent({
     message: "我这周的日程有哪些？",
@@ -397,11 +397,64 @@ test("streamCampusPersonalAgent asks once more without tools when the model only
       };
     },
   });
-  // 第一轮只写了不存在的工具，第二轮就不许再调工具
   assert.equal(prompts.length, 2);
-  assert.match(prompts[1], /本轮已到工具调用上限/u);
+  assert.match(prompts[1], /UNKNOWN_TOOL/u);
+  assert.match(prompts[1], /schedule_my_timetable_and_agenda/u);
+  assert.doesNotMatch(prompts[1], /本轮已到工具调用上限/u);
   assert.equal(response.answer, "这周没有日程。");
-  assert.equal(response.fallback, false);
+});
+
+test("streamCampusPersonalAgent asks once more without tools when the model only repeats a finished tool call", async () => {
+  const prompts: string[] = [];
+  const call = { tool: "campus_department_contacts", args: { query: "教务处" } };
+  const response = await streamCampusPersonalAgent({
+    message: "教务处电话多少",
+    history: [],
+    assistantContext: { features: getFeatures(), forumAccessEnabled: true, loggedIn: true, schoolId: "cpu" },
+    toolContext: baseToolContext(),
+    store: createPersonalAgentStore(createMemoryStorage()),
+    modelRunner: async ({ round, systemPrompt }) => {
+      prompts.push(systemPrompt);
+      if (round < 2) {
+        return { content: JSON.stringify({ toolCalls: [call], answer: "", proposals: [], memoryOps: [] }) };
+      }
+      return {
+        content: JSON.stringify({ toolCalls: [], answer: "教务处电话见上。", proposals: [], memoryOps: [], actionIds: [], suggestions: [] }),
+      };
+    },
+  });
+  assert.equal(prompts.length, 3);
+  assert.match(prompts[2], /本轮已到工具调用上限/u);
+  assert.equal(response.answer, "教务处电话见上。");
+  assert.equal(response.steps.length, 1);
+});
+
+test("resolveToolName and splitRequestedToolCalls accept near-miss tool names and {name, arguments}", () => {
+  assert.equal(resolveToolName("life_dorm_electric"), "life_dorm_electric");
+  assert.equal(resolveToolName("dorm_electric"), "life_dorm_electric");
+  assert.equal(resolveToolName("Dorm-Electric"), "life_dorm_electric");
+  assert.equal(resolveToolName("no_such_tool"), null);
+  const split = splitRequestedToolCalls({ toolCalls: [{ name: "dorm_electric", arguments: {} }, { tool: "weather" }] });
+  assert.deepEqual(split.valid, [{ tool: "life_dorm_electric", args: {} }]);
+  assert.deepEqual(split.unknown, ["weather"]);
+});
+
+test("questions about personal data without \"我\" stay in the agent and get a tool hint", async () => {
+  assert.equal(shouldDelegateToCampusAssistant("这周还有哪些课和日程？", "after-knowledge", {}), false);
+  assert.equal(shouldDelegateToCampusAssistant("宿舍电费还剩多少？", "after-knowledge", {}), false);
+  const prompts: string[] = [];
+  await streamCampusPersonalAgent({
+    message: "宿舍电费还剩多少？",
+    history: [],
+    assistantContext: { features: getFeatures(), forumAccessEnabled: true, loggedIn: true, schoolId: "cpu" },
+    toolContext: baseToolContext(),
+    store: createPersonalAgentStore(createMemoryStorage()),
+    modelRunner: async ({ systemPrompt }) => {
+      prompts.push(systemPrompt);
+      return { content: JSON.stringify({ toolCalls: [], answer: "好的。", proposals: [], memoryOps: [], actionIds: [], suggestions: [] }) };
+    },
+  });
+  assert.match(prompts[0], /【提示】这个问题多半要先调用：[^\n]*life_dorm_electric/u);
 });
 
 test("buildPersonalAgentSystemPrompt keeps the per-user and per-turn parts after the fixed rules", () => {

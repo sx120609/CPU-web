@@ -134,6 +134,8 @@ export interface PersonalAgentResponse extends CampusAssistantResponse {
 
 /** 说到自己：这类问题哪怕像客观事实，也可能要结合本人数据。 */
 const FIRST_PERSON_PATTERN = /我|咱|俺|本人|自己/u;
+/** 说到这些话题时多半要查本人数据（“宿舍电费还剩多少”“这周还有哪些课”），即使没说“我”。 */
+const PERSONAL_TOPIC_PATTERN = /课表|上课|几节课|早八|日程|待办|提醒|成绩|绩点|gpa|学分|挂科|重修|考试|考场|电费|借阅|借的书|还书|私信|未读|通知|情侣|室友|宿舍课表|空课|没课|空教室|培养方案|四六级|查分|问卷|收集/iu;
 /** 明确要本人数据、要代办或要记忆。 */
 const PERSONAL_DATA_PATTERN = /(?:我|咱|俺|本人|自己)(?:的|们)?.{0,8}(?:课|日程|待办|成绩|绩点|gpa|学分|考试|考场|电费|借|私信|消息|通知|帖|室友|对象|宿舍|空|培养方案|四六级)|(?:帮我|给我|替我).{0,6}(?:发|回|记|设|加|建|删|改|提醒|写|安排|算)|记住|忘掉/iu;
 
@@ -152,22 +154,93 @@ export function shouldDelegateToCampusAssistant(
     if (isCampusAssistantModelIdentityQuestion(text)) return true;
     return shouldUseCampusAssistantWebSearch(text) && !PERSONAL_DATA_PATTERN.test(text);
   }
-  if (FIRST_PERSON_PATTERN.test(text) || PERSONAL_DATA_PATTERN.test(text)) return false;
+  if (FIRST_PERSON_PATTERN.test(text) || PERSONAL_DATA_PATTERN.test(text) || PERSONAL_TOPIC_PATTERN.test(text)) return false;
   return shouldProactivelySearchWeb(text, input.deterministicActions ?? [], input.knowledge ?? []);
 }
 
 export function extractRequestedToolCalls(parsed: unknown): Array<{ tool: string; args: Record<string, unknown> }> {
-  if (!parsed || typeof parsed !== "object") return [];
-  const rawCalls = (parsed as Record<string, unknown>).toolCalls;
-  if (!Array.isArray(rawCalls) || !rawCalls.length) return [];
+  return splitRequestedToolCalls(parsed).valid;
+}
+
+export function splitRequestedToolCalls(parsed: unknown): {
+  valid: Array<{ tool: string; args: Record<string, unknown> }>;
+  unknown: string[];
+} {
   const valid: Array<{ tool: string; args: Record<string, unknown> }> = [];
+  const unknown: string[] = [];
+  if (!parsed || typeof parsed !== "object") return { valid, unknown };
+  const rawCalls = (parsed as Record<string, unknown>).toolCalls;
+  if (!Array.isArray(rawCalls) || !rawCalls.length) return { valid, unknown };
   for (const item of rawCalls.slice(0, MAX_TOOLS_PER_ROUND)) {
-    const check = rawToolCallSchema.safeParse(item);
+    const raw = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    // 也收 {name, arguments} 这种常见写法
+    const normalized = {
+      tool: raw.tool ?? raw.name,
+      args: raw.args ?? raw.arguments ?? raw.parameters ?? {},
+    };
+    const check = rawToolCallSchema.safeParse(normalized);
     if (!check.success) continue;
-    if (!TOOL_MAP.has(check.data.tool)) continue;
-    valid.push(check.data);
+    const resolved = resolveToolName(check.data.tool);
+    if (!resolved) {
+      unknown.push(check.data.tool.slice(0, 60));
+      continue;
+    }
+    valid.push({ tool: resolved, args: check.data.args });
   }
-  return valid;
+  return { valid, unknown };
+}
+
+/** 问题命中的站内入口对应哪个工具：写进提示词，免得模型不调工具或写错工具名。 */
+const ACTION_TOOL_HINTS: Record<string, string[]> = {
+  "dorm-electric": ["life_dorm_electric"],
+  "dorm-electric-official-details": ["life_dorm_electric"],
+  library: ["life_library_status"],
+  schedule: ["schedule_my_timetable_and_agenda"],
+  "schedule-overview-2026-10": ["schedule_my_timetable_and_agenda"],
+  "couple-schedule": ["schedule_collab_free_slots"],
+  "schedule-couple-2026-10": ["schedule_collab_free_slots"],
+  jwxt: ["academic_grades_analysis", "academic_exams_and_midterm"],
+  "jwxt-transcript-2026-10": ["academic_grades_analysis"],
+  "jwxt-progress-selection-2026-10": ["academic_graduation_audit"],
+  "jwxt-rooms-2026-10": ["schedule_free_rooms_smart"],
+  "grade-check": ["life_my_campus_tasks"],
+  "file-collect": ["life_my_campus_tasks"],
+  questionnaire: ["life_my_campus_tasks"],
+  messages: ["community_my_messages"],
+  "direct-messages": ["community_my_messages"],
+  "course-review": ["community_course_reviews"],
+  "lost-found": ["community_forum_and_lostfound"],
+  announcements: ["community_forum_and_lostfound"],
+  forum: ["community_forum_and_lostfound"],
+  "department-contacts": ["campus_department_contacts"],
+};
+
+export function suggestedToolsFor(actions: Array<Pick<CampusAssistantAction, "id">>): string[] {
+  const out: string[] = [];
+  for (const action of actions) {
+    for (const name of ACTION_TOOL_HINTS[action.id] ?? []) {
+      if (TOOL_MAP.has(name) && !out.includes(name)) out.push(name);
+    }
+  }
+  return out.slice(0, 4);
+}
+
+/**
+ * 模型偶尔把工具名写走样（“dorm_electric”“life_electricity”）。能唯一对上一个真实工具时就按它执行，
+ * 对不上返回 null，由调用方告诉模型有哪些工具。
+ */
+export function resolveToolName(raw: string): string | null {
+  const name = String(raw || "").trim().toLowerCase().replace(/[\s-]+/gu, "_");
+  if (TOOL_MAP.has(name)) return name;
+  const words = name.split("_").filter((word) => word.length >= 3);
+  if (!words.length) return null;
+  const scored = ALL_PERSONAL_AGENT_TOOLS
+    .map((tool) => ({ name: tool.name, score: words.filter((word) => tool.name.includes(word)).length }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[1].score === scored[0].score) return null;
+  return scored[0].name;
 }
 
 function hasToolCallField(parsed: unknown) {
@@ -311,6 +384,8 @@ export function buildPersonalAgentSystemPrompt(input: {
   knowledgeText: string;
   executedRounds: Array<{ round: number; results: Array<{ tool: string; args: unknown; result: unknown }> }>;
   allowMoreTools: boolean;
+  /** 问题命中的站内入口对应的工具。 */
+  suggestedTools?: string[];
 }) {
   const school = assistantSchoolOf(input.schoolContext);
   const nowInfo = shanghaiNowParts(input.ctx.now);
@@ -368,6 +443,9 @@ export function buildPersonalAgentSystemPrompt(input: {
     `【已保存的个人记忆】\n${memoryBlock}`,
     `knowledge=${JSON.stringify(input.siteKnowledge ?? [])}`,
     `catalog=${JSON.stringify(input.catalog)}`,
+    ...(input.allowMoreTools && input.suggestedTools?.length && !input.executedRounds.length
+      ? [`【提示】这个问题多半要先调用：${input.suggestedTools.join("、")}（查本人数据时不要不调工具就回答“查不到”）。`]
+      : []),
     `【本轮】${roundRule}`,
   ];
 
@@ -459,6 +537,7 @@ export async function streamCampusPersonalAgent(
     return delegate();
   }
   const knowledgeText = knowledge.length ? buildCampusKnowledgeInstruction(knowledge) : "";
+  const suggestedTools = suggestedToolsFor(deterministicActions);
 
   let providers: AiProviderCandidate[] = [];
   let candidates: string[] = ["mock-model"];
@@ -510,6 +589,7 @@ export async function streamCampusPersonalAgent(
       memories,
       catalog,
       siteKnowledge,
+      suggestedTools,
       knowledgeText,
       executedRounds,
       allowMoreTools,
@@ -593,7 +673,8 @@ export async function streamCampusPersonalAgent(
 
       const activeModel = candidates[0] || "";
       const parsed = parseAssistantJson(content, { allowPlainText: allowsPlainTextAssistantAnswer(activeModel) });
-      const requestedCalls = allowMoreTools ? extractRequestedToolCalls(parsed) : [];
+      const split = allowMoreTools ? splitRequestedToolCalls(parsed) : { valid: [], unknown: [] as string[] };
+      const requestedCalls = split.valid;
       const freshCalls = requestedCalls.filter((call) => {
         const sig = `${call.tool}:${JSON.stringify(call.args)}`;
         if (seenCalls.has(sig)) return false;
@@ -605,6 +686,22 @@ export async function streamCampusPersonalAgent(
         : "";
       // 只重复了已经做过的查询、或只写了不存在的工具，又没有给出答复：再问一次，这次不许调工具，
       // 否则用户会看到一句“没有找到合适的答案”。
+      if (allowMoreTools && !freshCalls.length && split.unknown.length && !parsedAnswer) {
+        // 写了不存在的工具：把可用工具名告诉模型，下一轮重来。
+        executedRounds.push({
+          round: round + 1,
+          results: split.unknown.map((tool) => ({
+            tool,
+            args: {},
+            result: {
+              ok: false,
+              errorCode: "UNKNOWN_TOOL",
+              message: `没有名为 ${tool} 的工具。只能用这些：${ALL_PERSONAL_AGENT_TOOLS.map((item) => item.name).join(", ")}`,
+            },
+          })),
+        });
+        continue;
+      }
       const askedForToolsOnly = allowMoreTools && !freshCalls.length && !parsedAnswer && hasToolCallField(parsed);
       if (askedForToolsOnly) {
         forceFinal = true;
