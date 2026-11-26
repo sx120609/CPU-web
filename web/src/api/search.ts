@@ -267,10 +267,11 @@ export const searchApi = {
     options: CampusAssistantStreamOptions,
   ) => streamAssistant(message, history, options),
   getPersonalAgentState: (options?: RequestOptions) =>
+    // 授权和记忆刚改完就要读到新值，不走通用 GET 缓存（它先回旧值再后台刷新）。
     request.get<{ permissions: PersonalAgentPermissions; memories: PersonalAgentMemory[] }>(
       "/search/assistant/personal/state",
       undefined,
-      options,
+      { ...options, cacheTtlMs: 0 },
     ),
   savePersonalAgentPermissions: (
     patch: Partial<PersonalAgentPermissions>,

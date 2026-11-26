@@ -75,29 +75,19 @@
         <div class="sj-head-title">
           <span class="sj-mark sj-mark--sm" aria-hidden="true"><SparkMark /></span>
           <h1>拾间AI</h1>
-          <span v-if="auth.isLoggedIn && agentPermissions.enabled" class="sj-agent-mode-badge">Agent</span>
         </div>
         <div class="sj-head-actions">
           <button
-            v-if="auth.isLoggedIn"
+            v-if="auth.isLoggedIn && agentStateLoaded"
             type="button"
             class="sj-agent-pill"
             :class="{ 'is-off': !agentPermissions.enabled }"
-            :title="agentPermissions.enabled ? `个人模式已开启（已授权 ${enabledScopeCount}/6 项数据域）` : '当前为普通模式，点击配置个人数据授权'"
+            :aria-label="agentPermissions.enabled ? `个人模式已开，${enabledScopeCount} 项数据已授权，点按管理` : '个人模式已关，点按开启'"
+            :title="agentPermissions.enabled ? `个人模式已开 · ${enabledScopeCount} 项数据已授权` : '个人模式已关'"
             @click="permissionsOpen = true"
           >
-            <el-icon><Setting /></el-icon>
-            <span>{{ agentPermissions.enabled ? `数据授权 ${enabledScopeCount}/6` : "个人模式已关" }}</span>
-          </button>
-          <button
-            v-if="auth.isLoggedIn && agentPermissions.enabled"
-            type="button"
-            class="sj-agent-pill sj-agent-pill--mem"
-            :title="`跨会话个人记忆（已存 ${agentMemories.length} 条）`"
-            @click="memoriesOpen = true"
-          >
-            <el-icon><Memo /></el-icon>
-            <span class="sj-mem-label">记忆{{ agentMemories.length ? ` ${agentMemories.length}` : "" }}</span>
+            <el-icon><User /></el-icon>
+            <span>{{ agentPermissions.enabled ? "个人模式" : "个人模式已关" }}</span>
           </button>
           <span
             v-if="assistantQuota"
@@ -132,7 +122,7 @@
       <div v-else-if="!messages.length" class="sj-stage sj-welcome">
         <span class="sj-mark sj-mark--lg" aria-hidden="true"><SparkMark /></span>
         <h2>{{ welcomeGreeting }}</h2>
-        <p>{{ agentPermissions.enabled ? "按你的授权深度处理个人课表、绩点学业、室友情侣共同空课、电费借阅与选课参谋。" : "问站内功能、校园服务和操作步骤，也可以开启个人模式处理本人数据。" }}</p>
+        <p>{{ personalModeOn ? "可以问课表、日程、成绩和校园生活，也能让我帮你记日程、写帖子草稿。" : "问站内功能、校园服务和操作步骤，也可以直接聊天。" }}</p>
         <div class="sj-prompts">
           <button
             v-for="prompt in welcomePrompts"
@@ -150,13 +140,13 @@
           </button>
         </div>
         <small class="sj-privacy">
-          <template v-if="agentPermissions.enabled">
-            已开启个人 Agent（授权 {{ enabledScopeCount }}/6 项数据域{{ agentMemories.length ? ` · ${agentMemories.length} 条个人记忆` : "" }}）：仅在当轮对话按授权实时取用并由代码精算，原始教务隐私不落盘。
-            <button type="button" class="sj-privacy-btn" @click="permissionsOpen = true">管理数据授权</button>
+          <template v-if="personalModeOn">
+            个人模式已开：只在你提问时读取你授权的 {{ enabledScopeCount }} 项数据，回答会随对话记录保存。
+            <button type="button" class="sj-privacy-btn" @click="permissionsOpen = true">管理授权</button>
             ·
           </template>
-          <template v-else>
-            当前已关闭个人模式，拾间AI不会读取你的课表、成绩等个人数据。
+          <template v-else-if="agentStateLoaded">
+            个人模式已关，拾间AI不会读取你的课表、成绩等个人数据。
             <button type="button" class="sj-privacy-btn" @click="permissionsOpen = true">开启个人模式</button>
             ·
           </template>
@@ -185,16 +175,10 @@
               <span class="sj-mark sj-mark--avatar" :class="{ 'is-busy': message.streaming }" aria-hidden="true"><SparkMark /></span>
               <div class="sj-answer">
                 <PersonalAgentCards
-                  v-if="message.steps?.length || message.proposals?.length || message.memoryChanges?.length"
+                  v-if="message.steps?.length"
+                  section="steps"
                   :steps="message.steps"
-                  :proposals="message.proposals"
-                  :proposal-states="message.proposalStates"
-                  :memory-changes="message.memoryChanges"
                   :streaming="message.streaming"
-                  @open-memories="memoriesOpen = true"
-                  @request-jwxt-reauth="reauthDialogOpen = true"
-                  @permissions-updated="handleInlinePermissionsUpdated"
-                  @update-proposal-state="(idx, st) => updateMessageProposalState(message, idx, st)"
                 />
                 <div v-if="!message.content && message.streaming" class="sj-thinking" aria-label="拾间AI正在回答">
                   {{ message.streamStatus || "正在思考…" }}
@@ -208,6 +192,21 @@
                 <div v-if="message.streaming && message.content && message.streamStatus?.startsWith('仍在')" class="sj-stream-note">
                   {{ message.streamStatus }}
                 </div>
+
+                <PersonalAgentCards
+                  v-if="!message.streaming && (message.proposals?.length || message.memoryChanges?.length)"
+                  section="actions"
+                  :proposals="message.proposals"
+                  :proposal-states="message.proposalStates"
+                  :drafts="message.drafts"
+                  :memory-changes="message.memoryChanges"
+                  :streaming="message.streaming"
+                  @open-memories="memoriesOpen = true"
+                  @request-jwxt-reauth="openJwxtReauthFor(message)"
+                  @permissions-updated="(perms, retry) => handleInlinePermissionsUpdated(perms, retry, message)"
+                  @update-proposal-state="(idx, st) => updateMessageProposalState(message, idx, st)"
+                  @update-draft="(idx, draft) => updateMessageDraft(message, idx, draft)"
+                />
 
                 <div v-if="message.images?.length" class="sj-images">
                   <button
@@ -339,7 +338,7 @@
     </section>
 
     <PersonalAgentDrawers
-      v-if="auth.isLoggedIn && (permissionsOpen || memoriesOpen)"
+      v-if="auth.isLoggedIn"
       v-model:permissions-open="permissionsOpen"
       v-model:memories-open="memoriesOpen"
       :permissions="agentPermissions"
@@ -348,8 +347,9 @@
       @update:memories="agentMemories = $event"
     />
 
+    <!-- 对话框要先挂上再打开：el-dialog 只在 modelValue 由假变真时触发 open，恢复流程靠它启动。 -->
     <JwxtReauthDialog
-      v-if="auth.isLoggedIn && reauthDialogOpen"
+      v-if="auth.isLoggedIn"
       v-model="reauthDialogOpen"
       @restored="handleJwxtDialogRestored"
     />
@@ -358,7 +358,7 @@
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
-import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ChatDotRound,
@@ -374,10 +374,9 @@ import {
   Headset,
   Lightning,
   Lock,
-  Memo,
   Right,
-  Setting,
   Top,
+  User,
   WarningFilled,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -402,8 +401,8 @@ import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
 import PersonalAgentCards from "@/views/search/PersonalAgentCards.vue";
 
-const PersonalAgentDrawers = defineAsyncComponent(() => import("@/views/search/PersonalAgentDrawers.vue"));
-const JwxtReauthDialog = defineAsyncComponent(() => import("@/components/jwxt/JwxtReauthDialog.vue"));
+import PersonalAgentDrawers from "@/views/search/PersonalAgentDrawers.vue";
+import JwxtReauthDialog from "@/components/jwxt/JwxtReauthDialog.vue";
 import { getFormFactor } from "@/utils/formFactor";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
 import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
@@ -427,6 +426,8 @@ type ConversationMessage = CampusAssistantMessage & {
   steps?: PersonalAgentStep[];
   proposals?: PersonalAgentProposal[];
   proposalStates?: Record<number, "pending" | "applied" | "dismissed">;
+  /** 用户在卡片里改过的草稿，按提案序号存。 */
+  drafts?: Record<number, unknown>;
   memoryChanges?: PersonalAgentMemoryChange[];
   streaming?: boolean;
   streamStatus?: string;
@@ -460,6 +461,10 @@ function visibleLinks<T extends { url: string }>(links?: T[]): T[] {
 const permissionsOpen = ref(false);
 const memoriesOpen = ref(false);
 const reauthDialogOpen = ref(false);
+/** 哪条回答下的卡片打开了教务登录框，登录成功后重问那一条。 */
+let reauthMessageId: number | null = null;
+/** 授权状态从服务器读到之前不显示个人模式相关的内容，免得先闪一下默认值。 */
+const agentStateLoaded = ref(false);
 const agentPermissions = ref<PersonalAgentPermissions>({
   enabled: true,
   schedule: true,
@@ -471,6 +476,7 @@ const agentPermissions = ref<PersonalAgentPermissions>({
   memory: true,
 });
 const agentMemories = ref<PersonalAgentMemory[]>([]);
+const personalModeOn = computed(() => agentStateLoaded.value && agentPermissions.value.enabled);
 const enabledScopeCount = computed(() => {
   const p = agentPermissions.value;
   return [p.schedule, p.academic, p.collab, p.campusLife, p.community, p.messages].filter(Boolean).length;
@@ -527,21 +533,18 @@ const dockedHistoryMedia = typeof window !== "undefined" && window.matchMedia
 const wideViewport = ref(Boolean(dockedHistoryMedia?.matches));
 const historyDocked = computed(() => !embedded && wideViewport.value);
 
-// 示例问题：个人 Agent 开启时优先推荐个人深度核算场景；关闭时回退到公开指南。
+// 示例问题只举本校开着的功能。个人模式开着时换成问本人数据的例子，最后一条固定讲 AI 额度。
 const site = useSiteStore();
 const welcomePrompts = computed(() => {
-  if (agentPermissions.value.enabled) {
+  if (personalModeOn.value) {
     return [
-      ...(site.moduleEnabled("academic")
-        ? [
-          { text: "帮我看看这周的课表、待办，以及和室友哪天晚上都没课", hint: "时间规划与协同", icon: Calendar },
-          { text: "精算我目前的总绩点、必修绩点，以及还差多少学分毕业", hint: "学业深度核算", icon: Coin },
-        ]
-        : []),
-      ...(site.moduleEnabled("dormElectric")
-        ? [{ text: "查一下我的宿舍剩余电费、在借图书和老师发的查分单", hint: "校园生活账本", icon: Lightning }]
-        : [{ text: "结合真实课程点评，帮我挑两门给分高口碑好的选修课", hint: "选课课评参谋", icon: ChatDotRound }]),
-    ].slice(0, 3);
+      ...[
+        ...(site.moduleEnabled("academic") ? [{ text: "这周还有哪些课和日程？", hint: "课表和日程", icon: Calendar }] : []),
+        ...(site.moduleEnabled("dormElectric") ? [{ text: "宿舍电费还剩多少？", hint: "校园服务", icon: Lightning }] : []),
+        { text: "明晚七点提醒我去开组会", hint: "记日程", icon: ChatDotRound },
+      ].slice(0, 2),
+      { text: "AI 额度怎么计算？", hint: "使用说明", icon: Coin },
+    ];
   }
   return [
     ...[
@@ -610,6 +613,7 @@ watch(() => auth.isLoggedIn, (loggedIn) => {
   if (!loggedIn) {
     assistantQuota.value = null;
     agentMemories.value = [];
+    agentStateLoaded.value = false;
     historyOpen.value = false;
     permissionsOpen.value = false;
     memoriesOpen.value = false;
@@ -795,8 +799,9 @@ async function loadPersonalAgentState() {
     });
     agentPermissions.value = state.permissions;
     agentMemories.value = state.memories;
+    agentStateLoaded.value = true;
   } catch {
-    // keep local defaults when offline
+    // 读不到时不显示个人模式入口，提问仍按服务器上的设置处理
   }
 }
 
@@ -812,30 +817,64 @@ function updateMessageProposalState(
   persistActiveConversation();
 }
 
-async function rerunLastUserTurn() {
-  if (assistantLoading.value || assistantQuotaExhausted.value) return;
-  const lastUserIdx = [...messages.value].map((m) => m.role).lastIndexOf("user");
-  if (lastUserIdx < 0) return;
-  const keyword = messages.value[lastUserIdx].content.trim();
-  if (!keyword) return;
-  const history = messages.value
-    .slice(0, lastUserIdx)
-    .slice(-12)
-    .map(({ role, content }) => ({ role, content }));
-  messages.value = messages.value.slice(0, lastUserIdx + 1);
+function updateMessageDraft(message: ConversationMessage, idx: number, draft: unknown) {
+  message.drafts = { ...(message.drafts || {}), [idx]: draft };
   persistActiveConversation();
-  await askAssistant(keyword, history, true);
 }
 
-function handleInlinePermissionsUpdated(nextPerms: PersonalAgentPermissions, retryCurrent: boolean) {
-  agentPermissions.value = nextPerms;
-  if (retryCurrent) {
-    void rerunLastUserTurn();
+/**
+ * 重问某条回答对应的问题。这条回答是最后一条时就地重答；更早的回答则在末尾重新问一遍，
+ * 不删掉之后的对话。开了授权后重问还允许服务端要求静默恢复教务登录；
+ * 刚在登录框里登录完（retriedAfterRecover）就不再恢复。
+ */
+async function rerunTurnFor(messageId: number | null, retriedAfterRecover = false) {
+  if (assistantLoading.value) {
+    ElMessage.info("等这条回答结束后再试");
+    return;
   }
+  if (assistantQuotaExhausted.value) {
+    ElMessage.warning("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
+    return;
+  }
+  const answerIdx = messageId == null ? -1 : messages.value.findIndex((item) => item.id === messageId);
+  const endIdx = answerIdx >= 0 ? answerIdx : messages.value.length;
+  const userIdx = messages.value.slice(0, endIdx).map((m) => m.role).lastIndexOf("user");
+  if (userIdx < 0) return;
+  const keyword = messages.value[userIdx].content.trim();
+  if (!keyword) return;
+  const isLatestTurn = answerIdx < 0 || answerIdx === messages.value.length - 1;
+  if (!isLatestTurn) {
+    await runQuery(keyword);
+    return;
+  }
+  const history = messages.value
+    .slice(0, userIdx)
+    .slice(-MAX_MESSAGES_PER_SESSION)
+    .map(({ role, content }) => ({ role, content }));
+  messages.value = messages.value.slice(0, userIdx + 1);
+  persistActiveConversation();
+  await askAssistant(keyword, history, retriedAfterRecover);
+}
+
+function handleInlinePermissionsUpdated(
+  nextPerms: PersonalAgentPermissions,
+  retryCurrent: boolean,
+  message: ConversationMessage,
+) {
+  agentPermissions.value = nextPerms;
+  agentStateLoaded.value = true;
+  if (retryCurrent) void rerunTurnFor(message.id);
+}
+
+function openJwxtReauthFor(message: ConversationMessage) {
+  reauthMessageId = message.id;
+  reauthDialogOpen.value = true;
 }
 
 function handleJwxtDialogRestored() {
-  void rerunLastUserTurn();
+  const target = reauthMessageId;
+  reauthMessageId = null;
+  void rerunTurnFor(target, true);
 }
 
 async function loadAssistantQuota() {
@@ -1206,6 +1245,7 @@ function cloneMessages(items: unknown[]): ConversationMessage[] {
       steps: Array.isArray(item.steps) ? item.steps.slice(0, 16).map((s) => ({ ...s })) : undefined,
       proposals: Array.isArray(item.proposals) ? item.proposals.slice(0, 8) : undefined,
       proposalStates: item.proposalStates && typeof item.proposalStates === "object" ? { ...item.proposalStates } : undefined,
+      drafts: item.drafts && typeof item.drafts === "object" ? { ...item.drafts } : undefined,
       memoryChanges: Array.isArray(item.memoryChanges) ? item.memoryChanges.slice(0, 4) : undefined,
     }));
 }
@@ -1275,6 +1315,33 @@ function markNewSession() {
   try { localStorage.setItem(currentActiveHistoryKey(), NEW_SESSION_SENTINEL); } catch { /* ignore */ }
 }
 
+/**
+ * 云端只同步对话文字；步骤、卡片和草稿只存在本机。合并云端记录后按同一角色、同一内容
+ * 把这些字段接回去，否则每次打开页面卡片都会消失。
+ */
+function restoreLocalOnlyMessageFields(merged: ConversationSession, local: ConversationSession | undefined): ConversationSession {
+  if (!local) return merged;
+  const pool = local.messages.filter((item) => item.steps || item.proposals || item.memoryChanges || item.drafts);
+  if (!pool.length) return merged;
+  const used = new Set<ConversationMessage>();
+  return {
+    ...merged,
+    messages: merged.messages.map((message) => {
+      const match = pool.find((item) => !used.has(item) && item.role === message.role && item.content === message.content);
+      if (!match) return message;
+      used.add(match);
+      return {
+        ...message,
+        steps: match.steps,
+        proposals: match.proposals,
+        proposalStates: match.proposalStates,
+        drafts: match.drafts,
+        memoryChanges: match.memoryChanges,
+      };
+    }),
+  };
+}
+
 async function hydrateCloudSessions() {
   cloudSyncState.value = "syncing";
   try {
@@ -1296,12 +1363,13 @@ async function hydrateCloudSessions() {
       .filter((item) => !item.deletedAt && !deletedIds.has(item.id))
       .map(normalizeConversationSession)
       .filter((item): item is ConversationSession => Boolean(item));
+    const localById = new Map(sessions.value.map((item) => [item.id, item]));
     sessions.value = mergeAssistantHistorySessions(
       localSessions.map(normalizeConversationSession).filter((item): item is ConversationSession => Boolean(item)),
       liveCloudSessions,
       deletedIds,
       MAX_SESSIONS,
-    );
+    ).map((item) => restoreLocalOnlyMessageFields(item, localById.get(item.id)));
     writeSessions();
 
     const activeMarker = readActiveSessionMarker();
@@ -1380,6 +1448,7 @@ function toCloudConversation(session: ConversationSession): CampusAssistantConve
         steps: _steps,
         proposals: _proposals,
         proposalStates: _proposalStates,
+        drafts: _drafts,
         memoryChanges: _memoryChanges,
         ...item
       }) => item),
@@ -2774,15 +2843,6 @@ html[data-theme="dark"] .sj-scrim {
   }
 }
 
-.sj-agent-mode-badge {
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--cpu-primary);
-  background: var(--cpu-primary-soft);
-}
 .sj-agent-pill {
   display: inline-flex;
   align-items: center;
@@ -2805,15 +2865,6 @@ html[data-theme="dark"] .sj-scrim {
   border-color: var(--cpu-border-soft);
   background: var(--cpu-surface-subtle);
   color: var(--cpu-text-secondary);
-}
-.sj-agent-pill--mem {
-  border-color: var(--cpu-border-soft);
-  background: var(--cpu-surface-subtle);
-  color: var(--cpu-text-secondary);
-}
-.sj-agent-pill--mem:hover {
-  color: var(--cpu-text);
-  background: var(--sj-hover);
 }
 .sj-privacy-btn {
   display: inline;

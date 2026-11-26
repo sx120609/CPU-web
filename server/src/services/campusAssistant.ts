@@ -2145,7 +2145,7 @@ function attachCampusAssistantWebSources(
   return sources.length ? { ...response, sources } : response;
 }
 
-async function attachCampusAssistantGeneratedImage(
+export async function attachCampusAssistantGeneratedImage(
   response: CampusAssistantResponse,
   imagePrompt: string,
   input: {
@@ -2762,7 +2762,7 @@ export function attachCampusKnowledgeSources(
   return { ...response, sources };
 }
 
-function selectAssistantPromptActions(
+export function selectAssistantPromptActions(
   availableActions: CampusAssistantAction[],
   message: string,
   prioritizedActions: CampusAssistantAction[] = [],

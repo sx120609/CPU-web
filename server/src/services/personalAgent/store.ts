@@ -50,30 +50,12 @@ export const personalAgentPermissionsSchema = z.object({
 export type PersonalAgentPermissions = z.infer<typeof personalAgentPermissionsSchema>;
 
 export const PERSONAL_AGENT_SCOPE_LABELS: Record<PersonalAgentScopeKey, { title: string; hint: string }> = {
-  schedule: {
-    title: "课表与个人日程",
-    hint: "读取本学期课表、调休与日程待办，检查时间冲突并结合空课找自习教室",
-  },
-  academic: {
-    title: "成绩与学业档案",
-    hint: "读取成绩单并精算绩点、期中与考试安排、毕业学分缺口、培养方案与等级考试",
-  },
-  collab: {
-    title: "多人协同课表",
-    hint: "读取已绑定的情侣课表或宿舍课表，计算共同空闲时间与上下课状态",
-  },
-  campusLife: {
-    title: "校园生活与待办",
-    hint: "查询宿舍电费、图书馆在借到期与借阅历史、老师发布的查分单及问卷/文件任务",
-  },
-  community: {
-    title: "社区、课评与代办",
-    hint: "检索论坛帖子、课程点评做选课参谋、失物招领匹配，以及拟定发帖/回帖草稿",
-  },
-  messages: {
-    title: "通知与站内私信",
-    hint: "汇总我的未读通知与私信会话摘要，支持全部标为已读或代拟私信草稿",
-  },
+  schedule: { title: "课表和日程", hint: "本学期课表、调课和你的日程，用来排时间、查冲突、找空教室" },
+  academic: { title: "成绩和学业", hint: "成绩单、绩点、考试安排、毕业学分和培养方案" },
+  collab: { title: "情侣和宿舍课表", hint: "已绑定的情侣课表、宿舍课表，用来找大家都没课的时间" },
+  campusLife: { title: "校园生活", hint: "宿舍电费、图书馆借阅、查分单、问卷和文件收集" },
+  community: { title: "论坛和课评", hint: "公告热帖、课程评价、失物招领，以及发帖回帖草稿" },
+  messages: { title: "通知和私信", hint: "未读通知、最近的私信，以及全部已读、私信草稿" },
 };
 
 export function defaultPersonalAgentPermissions(): PersonalAgentPermissions {

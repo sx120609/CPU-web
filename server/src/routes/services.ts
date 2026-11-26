@@ -6,7 +6,8 @@ import { authRequired } from "../middleware/auth";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { queryDormElectric } from "../services/dormElectric";
 import { isFeatureOn } from "../services/siteSettings";
-import { requestSchoolId } from "../schools/modules";
+import { isSchoolModuleEnabled, requestSchoolId } from "../schools/modules";
+import { resolveSchoolId } from "../schools/registry";
 
 export const servicesRouter = Router();
 
@@ -30,6 +31,10 @@ servicesRouter.get("/dorm-electric", authRequired, async (req, res, next) => {
   try {
     if (!isFeatureOn("electric")) {
       throw Errors.forbidden("宿舍电费查询当前未开放");
+    }
+    // 查的是本校电表系统，学号只在本校内唯一：按登录账号自己的学校判断，别校学号不能拿来查。
+    if (!isSchoolModuleEnabled(resolveSchoolId(req.user!.schoolId), "dormElectric")) {
+      throw Errors.notFound("本校暂未开放宿舍电费查询");
     }
     const studentNo = (req.user!.studentId || "").trim();
     if (!studentNo) throw Errors.badRequest("当前账号未关联学号");

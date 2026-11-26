@@ -8,7 +8,7 @@ import {
   type PersonalAgentRecordRow,
   type PersonalAgentStorageAdapter,
 } from "../src/services/personalAgent/store";
-import { streamCampusPersonalAgent } from "../src/services/personalAgent/engine";
+import { buildPersonalAgentSystemPrompt, coerceToolArgs, shouldDelegateToCampusAssistant, streamCampusPersonalAgent } from "../src/services/personalAgent/engine";
 import { JwxtReauthRequiredError, type PersonalAgentStepEvent, type PersonalAgentToolContext } from "../src/services/personalAgent/types";
 import { getFeatures } from "../src/services/siteSettings";
 
@@ -314,4 +314,122 @@ test("streamCampusPersonalAgent throws JwxtReauthRequiredError on first missing 
 
   assert.equal(afterRetry.fallback, false);
   assert.ok(afterRetry.proposals.some((p) => p.type === "jwxt.reauth"));
+});
+
+function baseToolContext(overrides: Partial<PersonalAgentToolContext> = {}): PersonalAgentToolContext {
+  return {
+    userId: 11,
+    username: "20240011",
+    nickname: "小拾",
+    studentSso: true,
+    role: "user",
+    schoolId: "cpu",
+    forumAccessEnabled: true,
+    permissions: defaultPersonalAgentPermissions(),
+    jwxtToken: "fake-token",
+    retriedAfterRecover: false,
+    blockedScopes: new Set(),
+    needsManualJwxtReauth: false,
+    now: new Date("2026-11-26T04:00:00Z"),
+    ...overrides,
+  };
+}
+
+test("shouldDelegateToCampusAssistant sends web lookups and model questions to the general assistant, keeps personal ones", () => {
+  assert.equal(shouldDelegateToCampusAssistant("你是什么模型？", "before-knowledge"), true);
+  assert.equal(shouldDelegateToCampusAssistant("帮我联网查一下明天南京天气", "before-knowledge"), true);
+  assert.equal(shouldDelegateToCampusAssistant("联网看看我的课表有没有冲突", "before-knowledge"), false);
+  assert.equal(shouldDelegateToCampusAssistant("帮我算一下现在的总绩点", "before-knowledge"), false);
+  assert.equal(shouldDelegateToCampusAssistant("南京有几所药科类大学？", "after-knowledge"), true);
+  assert.equal(shouldDelegateToCampusAssistant("我借的书有几本快到期了？", "after-knowledge"), false);
+  assert.equal(shouldDelegateToCampusAssistant("记住我在江宁校区", "after-knowledge"), false);
+});
+
+test("streamCampusPersonalAgent hands delegated questions to the general assistant without calling tools", async () => {
+  const deltas: string[] = [];
+  let modelCalls = 0;
+  const response = await streamCampusPersonalAgent({
+    message: "帮我联网查一下明天南京天气",
+    history: [],
+    assistantContext: { features: getFeatures(), forumAccessEnabled: true, loggedIn: true, schoolId: "cpu" },
+    toolContext: baseToolContext(),
+    store: createPersonalAgentStore(createMemoryStorage()),
+    onAnswerDelta: (d) => { deltas.push(d); },
+    modelRunner: async () => {
+      modelCalls += 1;
+      return { content: "{}" };
+    },
+    generalAssistant: async (_input, onDelta) => {
+      await onDelta("明天南京多云。");
+      return {
+        answer: "明天南京多云。",
+        actions: [],
+        suggestions: [],
+        fallback: false,
+        sources: [{ title: "天气网", url: "https://example.com/weather" }],
+      };
+    },
+  });
+  assert.equal(modelCalls, 0);
+  assert.equal(deltas.join(""), "明天南京多云。");
+  assert.equal(response.sources?.[0]?.url, "https://example.com/weather");
+  assert.deepEqual(response.proposals, []);
+  assert.deepEqual(response.steps, []);
+});
+
+test("streamCampusPersonalAgent asks once more without tools when the model only repeats a finished tool call", async () => {
+  const prompts: string[] = [];
+  const response = await streamCampusPersonalAgent({
+    message: "我这周的日程有哪些？",
+    history: [],
+    assistantContext: { features: getFeatures(), forumAccessEnabled: true, loggedIn: true, schoolId: "cpu" },
+    toolContext: baseToolContext(),
+    store: createPersonalAgentStore(createMemoryStorage()),
+    modelRunner: async ({ round, systemPrompt }) => {
+      prompts.push(systemPrompt);
+      if (round === 0) {
+        return {
+          content: JSON.stringify({ toolCalls: [{ tool: "no_such_tool", args: {} }], answer: "", proposals: [], memoryOps: [] }),
+        };
+      }
+      return {
+        content: JSON.stringify({ toolCalls: [], answer: "这周没有日程。", proposals: [], memoryOps: [], actionIds: [], suggestions: [] }),
+      };
+    },
+  });
+  // 第一轮只写了不存在的工具，第二轮就不许再调工具
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /本轮已到工具调用上限/u);
+  assert.equal(response.answer, "这周没有日程。");
+  assert.equal(response.fallback, false);
+});
+
+test("buildPersonalAgentSystemPrompt keeps the per-user and per-turn parts after the fixed rules", () => {
+  const ctx = baseToolContext();
+  const prompt = buildPersonalAgentSystemPrompt({
+    schoolContext: { schoolId: "cpu" },
+    ctx,
+    memories: [],
+    catalog: [],
+    knowledgeText: "",
+    executedRounds: [],
+    allowMoreTools: true,
+  });
+  const rulesEnd = prompt.indexOf("【当前用户】");
+  assert.ok(rulesEnd > 0);
+  assert.ok(prompt.indexOf("小拾") > rulesEnd);
+  assert.ok(prompt.indexOf("【当前北京时间】") > rulesEnd);
+  assert.ok(prompt.indexOf("【可用工具】") < rulesEnd);
+});
+
+test("coerceToolArgs accepts numbers and booleans written as strings, drops nulls and unknown keys", async () => {
+  const { z } = await import("zod");
+  const schema = z.object({
+    days: z.number().int().min(1).max(14).optional(),
+    includeMidterm: z.boolean().default(true),
+    keyword: z.string().optional(),
+  }).strict();
+  const coerced = coerceToolArgs(schema, { days: "7", includeMidterm: "false", keyword: 2026, semester: null, extra: 1 });
+  assert.deepEqual(coerced, { days: 7, includeMidterm: false, keyword: "2026" });
+  assert.equal(schema.safeParse(coerced).success, true);
 });
