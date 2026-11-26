@@ -15,6 +15,14 @@ import {
   streamCampusAssistant,
 } from "../services/campusAssistant";
 import { isDataRequestOnly, personalContextSchema, streamPersonalAssistant } from "../services/personalAssistant";
+import { streamCampusPersonalAgent } from "../services/personalAgent/engine";
+import {
+  MEMORY_CATEGORIES,
+  personalAgentPermissionsSchema,
+  personalAgentStore,
+} from "../services/personalAgent/store";
+import { JwxtReauthRequiredError } from "../services/personalAgent/types";
+import { scheduleWidgetSessions } from "../services/scheduleWidgetSession";
 import { extractAgendaFromContent } from "../services/agendaExtract";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { authRequired } from "../middleware/auth";
@@ -503,6 +511,269 @@ searchRouter.post(
         if (!res.writableEnded) writeAssistantEvent(res, "done", response);
         streamCompleted = true;
         res.end();
+      } finally {
+        clearInterval(heartbeat);
+      }
+    } catch (error) {
+      if (quotaReservation) {
+        await refundCampusAssistantQuota(req.user!.userId, quotaReservation).catch(() => {});
+      }
+      if (clientDisconnected) return;
+      if (!streamStarted) return next(error);
+      if (!res.writableEnded) writeAssistantEvent(res, "error", { message: "拾间AI暂时不可用，请稍后再试" });
+      streamCompleted = true;
+      if (!res.writableEnded) res.end();
+    }
+  },
+);
+
+/** 拾间AI 深度个人 Agent：权限与跨会话记忆管理接口 */
+searchRouter.get("/assistant/personal/state", async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const [permissions, memories] = await Promise.all([
+      personalAgentStore.getPermissions(userId),
+      personalAgentStore.listMemories(userId),
+    ]);
+    res.setHeader("Cache-Control", "private, no-store");
+    ok(res, { permissions, memories });
+  } catch (error) {
+    next(error);
+  }
+});
+
+searchRouter.put(
+  "/assistant/personal/permissions",
+  securityRateLimit("campus-assistant-history", 60, 60_000),
+  validate(personalAgentPermissionsSchema.partial()),
+  async (req, res, next) => {
+    try {
+      const permissions = await personalAgentStore.savePermissions(req.user!.userId, req.body);
+      res.setHeader("Cache-Control", "private, no-store");
+      ok(res, { permissions });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const upsertMemoryBodySchema = z.object({
+  id: z.string().regex(/^[a-z0-9]{6,24}$/u).optional(),
+  category: z.enum(MEMORY_CATEGORIES).default("note"),
+  content: z.string().trim().min(1, "记忆内容不能为空").max(240, "单条记忆最多 240 字"),
+}).strict();
+
+searchRouter.post(
+  "/assistant/personal/memories",
+  securityRateLimit("campus-assistant-history", 60, 60_000),
+  validate(upsertMemoryBodySchema),
+  async (req, res, next) => {
+    try {
+      const memory = await personalAgentStore.upsertMemory(req.user!.userId, {
+        id: req.body.id,
+        category: req.body.category,
+        content: req.body.content,
+        source: "user",
+      });
+      if (!memory) throw Errors.badRequest("记忆内容不合法或包含受限话题");
+      res.setHeader("Cache-Control", "private, no-store");
+      ok(res, { memory });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+searchRouter.delete(
+  "/assistant/personal/memories/:id",
+  securityRateLimit("campus-assistant-history", 60, 60_000),
+  async (req, res, next) => {
+    try {
+      const id = String(req.params.id || "").trim();
+      const deleted = await personalAgentStore.deleteMemory(req.user!.userId, id);
+      res.setHeader("Cache-Control", "private, no-store");
+      ok(res, { deleted });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+searchRouter.delete(
+  "/assistant/personal/memories",
+  securityRateLimit("campus-assistant-history", 20, 60_000),
+  async (req, res, next) => {
+    try {
+      const cleared = await personalAgentStore.clearMemories(req.user!.userId);
+      res.setHeader("Cache-Control", "private, no-store");
+      ok(res, { cleared });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const personalAgentStreamBodySchema = assistantSchema.extend({
+  message: z.string().trim().min(1).max(1000),
+  retriedAfterRecover: z.boolean().optional().default(false),
+}).strict();
+
+/**
+ * Web 与全平台共用的拾间AI 深度个人 Agent 流式问答：
+ * 按用户分项授权在服务端实时调取教务/课表/生活/社区工具并执行确定性精算，单轮提问仅扣 1 次拾间AI 额度。
+ */
+searchRouter.post(
+  "/assistant/personal/stream",
+  securityRateLimit("campus-assistant", 20, 60_000),
+  validate(personalAgentStreamBodySchema),
+  async (req: any, res, next) => {
+    let streamStarted = false;
+    let streamCompleted = false;
+    let clientDisconnected = false;
+    let quotaReservation: CampusAssistantQuotaReservation | null = null;
+    const controller = new AbortController();
+    const abortForClientDisconnect = () => {
+      if (streamCompleted || clientDisconnected) return;
+      clientDisconnected = true;
+      controller.abort(new Error("客户端已断开连接，AI 请求已取消"));
+    };
+    req.on("aborted", abortForClientDisconnect);
+    res.on("close", abortForClientDisconnect);
+
+    try {
+      const userId = req.user!.userId;
+      const role = req.user!.role;
+      const schoolId = requestSchoolId(req);
+      const [forumAccessEnabled, permissions, userRow] = await Promise.all([
+        resolveForumAccess(userId, role),
+        personalAgentStore.getPermissions(userId),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { username: true, nickname: true, studentSso: true, schoolId: true },
+        }),
+      ]);
+      if (!userRow) throw Errors.unauthorized("账号不存在或已失效");
+
+      quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+      streamStarted = true;
+      writeAssistantEvent(res, "status", { status: "connected", elapsedMs: 0 });
+
+      const startedAt = Date.now();
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) {
+          writeAssistantEvent(res, "heartbeat", {
+            status: "generating",
+            elapsedMs: Date.now() - startedAt,
+          });
+        }
+      }, 5_000);
+      heartbeat.unref?.();
+
+      const assistantContext = {
+        features: applySchoolToSiteFeatures(getFeatures(), schoolId),
+        forumAccessEnabled,
+        loggedIn: true,
+        schoolId,
+      };
+
+      try {
+        if (!permissions.enabled) {
+          const basic = await streamCampusAssistant({
+            message: req.body.message,
+            history: req.body.history,
+            context: assistantContext,
+            usage: { createdById: userId, pointCost: quotaReservation?.source === "points" ? 1 : 0 },
+            signal: controller.signal,
+          }, (delta) => {
+            if (!delta || res.writableEnded) return;
+            writeAssistantEvent(res, "delta", { delta });
+          });
+          if (basic.fallback && quotaReservation) {
+            await refundCampusAssistantQuota(userId, quotaReservation);
+            quotaReservation = null;
+          }
+          if (!res.writableEnded) {
+            writeAssistantEvent(res, "done", {
+              ...basic,
+              proposals: [],
+              steps: [],
+              memoryChanges: [],
+            });
+          }
+          streamCompleted = true;
+          res.end();
+          return;
+        }
+
+        const headerJwxt = String(req.headers["x-jwxt-token"] || "").trim();
+        const directToken = req.browserSession?.jwxtToken
+          || (headerJwxt && headerJwxt !== "cookie-session" ? headerJwxt : "")
+          || null;
+        const rememberedToken = directToken
+          ? null
+          : (await scheduleWidgetSessions.latest(userId).catch(() => null))?.token || null;
+
+        const response = await streamCampusPersonalAgent({
+          message: req.body.message,
+          history: req.body.history,
+          assistantContext,
+          toolContext: {
+            userId,
+            username: userRow.username,
+            nickname: userRow.nickname,
+            studentSso: userRow.studentSso,
+            role,
+            schoolId: userRow.schoolId || schoolId,
+            forumAccessEnabled,
+            permissions,
+            jwxtToken: directToken || rememberedToken,
+            retriedAfterRecover: Boolean(req.body.retriedAfterRecover),
+            blockedScopes: new Set(),
+            needsManualJwxtReauth: false,
+            signal: controller.signal,
+            now: new Date(),
+          },
+          usage: {
+            createdById: userId,
+            pointCost: quotaReservation?.source === "points" ? 1 : 0,
+          },
+          onStep: (step) => {
+            if (res.writableEnded) return;
+            writeAssistantEvent(res, "step", step);
+          },
+          onAnswerDelta: (delta) => {
+            if (!delta || res.writableEnded) return;
+            writeAssistantEvent(res, "delta", { delta });
+          },
+        });
+
+        if (response.fallback && quotaReservation) {
+          await refundCampusAssistantQuota(userId, quotaReservation);
+          quotaReservation = null;
+        }
+        if (!res.writableEnded) writeAssistantEvent(res, "done", response);
+        streamCompleted = true;
+        res.end();
+      } catch (innerErr) {
+        if (innerErr instanceof JwxtReauthRequiredError) {
+          if (quotaReservation) {
+            await refundCampusAssistantQuota(userId, quotaReservation).catch(() => {});
+            quotaReservation = null;
+          }
+          if (!res.writableEnded) {
+            writeAssistantEvent(res, "jwxt_reauth_needed", { message: innerErr.message });
+          }
+          streamCompleted = true;
+          if (!res.writableEnded) res.end();
+          return;
+        }
+        throw innerErr;
       } finally {
         clearInterval(heartbeat);
       }

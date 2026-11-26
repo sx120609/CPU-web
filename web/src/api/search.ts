@@ -5,6 +5,7 @@ import {
   request,
   type RequestOptions,
 } from "./request";
+import { getJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "./jwxt";
 import { detectAnalyticsClient } from "@/utils/clientInfo";
 
 export interface SearchResult {
@@ -47,6 +48,149 @@ export interface CampusAssistantResponse {
   sources?: CampusAssistantSource[];
 }
 
+export type PersonalAgentScopeKey =
+  | "schedule"
+  | "academic"
+  | "collab"
+  | "campusLife"
+  | "community"
+  | "messages";
+
+export interface PersonalAgentPermissions {
+  enabled: boolean;
+  schedule: boolean;
+  academic: boolean;
+  collab: boolean;
+  campusLife: boolean;
+  community: boolean;
+  messages: boolean;
+  memory: boolean;
+}
+
+export type PersonalAgentMemoryCategory =
+  | "academic"
+  | "goal"
+  | "campus"
+  | "schedule"
+  | "preference"
+  | "note";
+
+export interface PersonalAgentMemory {
+  id: string;
+  category: PersonalAgentMemoryCategory;
+  content: string;
+  source: "user" | "agent";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PersonalAgentStep {
+  id: string;
+  tool: string;
+  label: string;
+  status: "running" | "done" | "blocked" | "error";
+  detail?: string;
+}
+
+export type PersonalAgentProposal =
+  | {
+      type: "agenda.create";
+      item: {
+        kind: "event" | "todo";
+        title: string;
+        date: string;
+        start: string;
+        end: string;
+        location: string;
+        note: string;
+        remind: number;
+        repeat: "none" | "daily" | "weekdays" | "weekly" | "monthly";
+      };
+      conflictHint?: string;
+    }
+  | {
+      type: "agenda.update";
+      id: string;
+      title: string;
+      changes: Record<string, any>;
+    }
+  | {
+      type: "agenda.complete";
+      id: string;
+      title: string;
+      date: string;
+    }
+  | {
+      type: "agenda.delete";
+      id: string;
+      title: string;
+    }
+  | {
+      type: "forum.post";
+      board: string;
+      boardName?: string;
+      title: string;
+      content: string;
+      anonymous: boolean;
+    }
+  | {
+      type: "forum.reply";
+      topicId: number;
+      topicTitle?: string;
+      content: string;
+      parentReplyId?: number;
+      anonymous: boolean;
+    }
+  | {
+      type: "lostfound.post";
+      kind: "lost" | "found";
+      itemName: string;
+      description: string;
+      campus: string;
+      location: string;
+      happenedAt: string;
+      storageLocation: string;
+      contact: string;
+    }
+  | {
+      type: "dm.send";
+      userId: number;
+      name?: string;
+      content: string;
+    }
+  | {
+      type: "messages.readAll";
+    }
+  | {
+      type: "permission.enable";
+      scope: PersonalAgentScopeKey;
+      title: string;
+      hint: string;
+    }
+  | {
+      type: "jwxt.reauth";
+      reason: string;
+    };
+
+export interface PersonalAgentMemoryChange {
+  op: "saved" | "deleted";
+  id: string;
+  memory?: PersonalAgentMemory;
+}
+
+export interface PersonalAgentResponse extends CampusAssistantResponse {
+  proposals: PersonalAgentProposal[];
+  steps: PersonalAgentStep[];
+  memoryChanges: PersonalAgentMemoryChange[];
+}
+
+export class JwxtSilentReauthSignal extends Error {
+  constructor(message = "需要恢复教务授权") {
+    super(message);
+    this.name = "JwxtSilentReauthSignal";
+  }
+}
+
 export interface CampusAssistantQuota {
   level: number;
   levelName: string;
@@ -82,6 +226,15 @@ export interface CampusAssistantStreamOptions {
   onDone?: (response: CampusAssistantResponse) => void;
 }
 
+export interface PersonalAgentStreamOptions {
+  signal?: AbortSignal;
+  retriedAfterRecover?: boolean;
+  onStep?: (step: PersonalAgentStep) => void;
+  onDelta: (delta: string) => void;
+  onHeartbeat?: (elapsedMs: number) => void;
+  onDone?: (response: PersonalAgentResponse) => void;
+}
+
 export const searchApi = {
   search: (q: string, params?: { scope?: "services" }, options?: RequestOptions) =>
     request.get<SearchResult>("/search", { q, ...params }, options),
@@ -113,13 +266,43 @@ export const searchApi = {
     history: CampusAssistantMessage[],
     options: CampusAssistantStreamOptions,
   ) => streamAssistant(message, history, options),
+  getPersonalAgentState: (options?: RequestOptions) =>
+    request.get<{ permissions: PersonalAgentPermissions; memories: PersonalAgentMemory[] }>(
+      "/search/assistant/personal/state",
+      undefined,
+      options,
+    ),
+  savePersonalAgentPermissions: (
+    patch: Partial<PersonalAgentPermissions>,
+    options?: RequestOptions,
+  ) => request.put<{ permissions: PersonalAgentPermissions }>(
+    "/search/assistant/personal/permissions",
+    patch,
+    options,
+  ),
+  upsertPersonalAgentMemory: (
+    payload: { id?: string; category: PersonalAgentMemoryCategory; content: string },
+    options?: RequestOptions,
+  ) => request.post<{ memory: PersonalAgentMemory }>(
+    "/search/assistant/personal/memories",
+    payload,
+    options,
+  ),
+  deletePersonalAgentMemory: (id: string, options?: RequestOptions) =>
+    request.delete<{ deleted: boolean }>(
+      `/search/assistant/personal/memories/${encodeURIComponent(id)}`,
+      options,
+    ),
+  clearPersonalAgentMemories: (options?: RequestOptions) =>
+    request.delete<{ cleared: number }>("/search/assistant/personal/memories", options),
+  streamPersonalAgent: (
+    message: string,
+    history: CampusAssistantMessage[],
+    options: PersonalAgentStreamOptions,
+  ) => streamPersonalAgent(message, history, options),
 };
 
-async function streamAssistant(
-  message: string,
-  history: CampusAssistantMessage[],
-  options: CampusAssistantStreamOptions,
-) {
+function buildSseHeaders() {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
@@ -128,23 +311,20 @@ async function streamAssistant(
   };
   const token = getToken();
   if (token && token !== COOKIE_SESSION_MARKER) headers.Authorization = `Bearer ${token}`;
+  const jwxtToken = getJwxtToken();
+  if (jwxtToken && jwxtToken !== JWXT_COOKIE_SESSION_MARKER) {
+    headers["X-Jwxt-Token"] = jwxtToken;
+  }
   const csrf = getCsrfToken();
   if (csrf) headers["X-CSRF-Token"] = csrf;
+  return headers;
+}
 
-  const response = await fetch("/api/search/assistant/stream", {
-    method: "POST",
-    credentials: "include",
-    headers,
-    body: JSON.stringify({ message, history }),
-    signal: options.signal,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { message?: string } | null;
-    throw new Error(payload?.message || `请求失败（${response.status}）`);
-  }
-
-  const completed: { value: CampusAssistantResponse | null } = { value: null };
-  const consumeEvent = (block: string) => {
+async function consumeSseResponse(
+  response: Response,
+  onEvent: (event: string, payload: any) => void,
+) {
+  const consumeBlock = (block: string) => {
     if (!block.trim() || block.trimStart().startsWith(":")) return;
     let event = "message";
     const dataLines: string[] = [];
@@ -154,6 +334,49 @@ async function streamAssistant(
     }
     if (!dataLines.length) return;
     const payload = JSON.parse(dataLines.join("\n"));
+    onEvent(event, payload);
+  };
+
+  if (!response.body) {
+    for (const block of (await response.text()).split(/\r?\n\r?\n/)) consumeBlock(block);
+    return;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() || "";
+    for (const block of blocks) consumeBlock(block);
+    if (done) {
+      buffer += decoder.decode();
+      break;
+    }
+  }
+  if (buffer.trim()) consumeBlock(buffer);
+}
+
+async function streamAssistant(
+  message: string,
+  history: CampusAssistantMessage[],
+  options: CampusAssistantStreamOptions,
+) {
+  const response = await fetch("/api/search/assistant/stream", {
+    method: "POST",
+    credentials: "include",
+    headers: buildSseHeaders(),
+    body: JSON.stringify({ message, history }),
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(payload?.message || `请求失败（${response.status}）`);
+  }
+
+  const completed: { value: CampusAssistantResponse | null } = { value: null };
+  await consumeSseResponse(response, (event, payload) => {
     if (event === "delta" && typeof payload?.delta === "string") {
       options.onDelta(payload.delta);
       return;
@@ -169,27 +392,60 @@ async function streamAssistant(
       return;
     }
     if (event === "error") throw new Error(payload?.message || "拾间AI暂时不可用");
-  };
+  });
 
-  if (!response.body) {
-    for (const block of (await response.text()).split(/\r?\n\r?\n/)) consumeEvent(block);
-  } else {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (value) buffer += decoder.decode(value, { stream: true });
-      const blocks = buffer.split(/\r?\n\r?\n/);
-      buffer = blocks.pop() || "";
-      for (const block of blocks) consumeEvent(block);
-      if (done) {
-        buffer += decoder.decode();
-        break;
-      }
-    }
-    if (buffer.trim()) consumeEvent(buffer);
+  const result = completed.value;
+  if (!result) throw new Error("拾间AI响应未完成，请重试");
+  return result;
+}
+
+async function streamPersonalAgent(
+  message: string,
+  history: CampusAssistantMessage[],
+  options: PersonalAgentStreamOptions,
+) {
+  const response = await fetch("/api/search/assistant/personal/stream", {
+    method: "POST",
+    credentials: "include",
+    headers: buildSseHeaders(),
+    body: JSON.stringify({
+      message,
+      history,
+      retriedAfterRecover: Boolean(options.retriedAfterRecover),
+    }),
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(payload?.message || `请求失败（${response.status}）`);
   }
+
+  const completed: { value: PersonalAgentResponse | null } = { value: null };
+  await consumeSseResponse(response, (event, payload) => {
+    if (event === "step" && payload && typeof payload.id === "string") {
+      options.onStep?.(payload as PersonalAgentStep);
+      return;
+    }
+    if (event === "delta" && typeof payload?.delta === "string") {
+      options.onDelta(payload.delta);
+      return;
+    }
+    if (event === "status" || event === "heartbeat") {
+      const elapsedMs = Number(payload?.elapsedMs);
+      options.onHeartbeat?.(Number.isFinite(elapsedMs) && elapsedMs >= 0 ? elapsedMs : 0);
+      return;
+    }
+    if (event === "jwxt_reauth_needed") {
+      throw new JwxtSilentReauthSignal(payload?.message || "需要恢复教务授权");
+    }
+    if (event === "done") {
+      completed.value = payload as PersonalAgentResponse;
+      options.onDone?.(completed.value);
+      return;
+    }
+    if (event === "error") throw new Error(payload?.message || "拾间AI暂时不可用");
+  });
+
   const result = completed.value;
   if (!result) throw new Error("拾间AI响应未完成，请重试");
   return result;

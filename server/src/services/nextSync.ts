@@ -202,7 +202,7 @@ export async function listNextSyncChanges(userId: number, cursorValue: unknown, 
   const rows = await prisma.nextSyncRecord.findMany({
     where: {
       userId,
-      ...(collections ? { collection: { in: collections } } : {}),
+      collection: { in: collections ?? (Object.keys(NEXT_SYNC_COLLECTIONS) as NextSyncCollection[]) },
       ...(cursor ? {
         OR: [
           { updatedAt: { gt: cursor.at } },

@@ -75,8 +75,30 @@
         <div class="sj-head-title">
           <span class="sj-mark sj-mark--sm" aria-hidden="true"><SparkMark /></span>
           <h1>拾间AI</h1>
+          <span v-if="auth.isLoggedIn && agentPermissions.enabled" class="sj-agent-mode-badge">Agent</span>
         </div>
         <div class="sj-head-actions">
+          <button
+            v-if="auth.isLoggedIn"
+            type="button"
+            class="sj-agent-pill"
+            :class="{ 'is-off': !agentPermissions.enabled }"
+            :title="agentPermissions.enabled ? `个人模式已开启（已授权 ${enabledScopeCount}/6 项数据域）` : '当前为普通模式，点击配置个人数据授权'"
+            @click="permissionsOpen = true"
+          >
+            <el-icon><Setting /></el-icon>
+            <span>{{ agentPermissions.enabled ? `数据授权 ${enabledScopeCount}/6` : "个人模式已关" }}</span>
+          </button>
+          <button
+            v-if="auth.isLoggedIn && agentPermissions.enabled"
+            type="button"
+            class="sj-agent-pill sj-agent-pill--mem"
+            :title="`跨会话个人记忆（已存 ${agentMemories.length} 条）`"
+            @click="memoriesOpen = true"
+          >
+            <el-icon><Memo /></el-icon>
+            <span class="sj-mem-label">记忆{{ agentMemories.length ? ` ${agentMemories.length}` : "" }}</span>
+          </button>
           <span
             v-if="assistantQuota"
             class="sj-quota"
@@ -110,7 +132,7 @@
       <div v-else-if="!messages.length" class="sj-stage sj-welcome">
         <span class="sj-mark sj-mark--lg" aria-hidden="true"><SparkMark /></span>
         <h2>{{ welcomeGreeting }}</h2>
-        <p>问站内功能、校园服务和操作步骤，也可以直接聊天。</p>
+        <p>{{ agentPermissions.enabled ? "按你的授权深度处理个人课表、绩点学业、室友情侣共同空课、电费借阅与选课参谋。" : "问站内功能、校园服务和操作步骤，也可以开启个人模式处理本人数据。" }}</p>
         <div class="sj-prompts">
           <button
             v-for="prompt in welcomePrompts"
@@ -128,7 +150,16 @@
           </button>
         </div>
         <small class="sj-privacy">
-          拾间AI不会读取你的课表、成绩等个人数据，涉及本人数据时会引导你到对应页面查看。
+          <template v-if="agentPermissions.enabled">
+            已开启个人 Agent（授权 {{ enabledScopeCount }}/6 项数据域{{ agentMemories.length ? ` · ${agentMemories.length} 条个人记忆` : "" }}）：仅在当轮对话按授权实时取用并由代码精算，原始教务隐私不落盘。
+            <button type="button" class="sj-privacy-btn" @click="permissionsOpen = true">管理数据授权</button>
+            ·
+          </template>
+          <template v-else>
+            当前已关闭个人模式，拾间AI不会读取你的课表、成绩等个人数据。
+            <button type="button" class="sj-privacy-btn" @click="permissionsOpen = true">开启个人模式</button>
+            ·
+          </template>
           <a href="/privacy.html" target="_blank" rel="noopener noreferrer">隐私说明</a>
         </small>
       </div>
@@ -153,6 +184,18 @@
             <template v-else>
               <span class="sj-mark sj-mark--avatar" :class="{ 'is-busy': message.streaming }" aria-hidden="true"><SparkMark /></span>
               <div class="sj-answer">
+                <PersonalAgentCards
+                  v-if="message.steps?.length || message.proposals?.length || message.memoryChanges?.length"
+                  :steps="message.steps"
+                  :proposals="message.proposals"
+                  :proposal-states="message.proposalStates"
+                  :memory-changes="message.memoryChanges"
+                  :streaming="message.streaming"
+                  @open-memories="memoriesOpen = true"
+                  @request-jwxt-reauth="reauthDialogOpen = true"
+                  @permissions-updated="handleInlinePermissionsUpdated"
+                  @update-proposal-state="(idx, st) => updateMessageProposalState(message, idx, st)"
+                />
                 <div v-if="!message.content && message.streaming" class="sj-thinking" aria-label="拾间AI正在回答">
                   {{ message.streamStatus || "正在思考…" }}
                 </div>
@@ -294,12 +337,28 @@
         <p class="sj-footnote">内容由 AI 生成，请注意甄别</p>
       </div>
     </section>
+
+    <PersonalAgentDrawers
+      v-if="auth.isLoggedIn && (permissionsOpen || memoriesOpen)"
+      v-model:permissions-open="permissionsOpen"
+      v-model:memories-open="memoriesOpen"
+      :permissions="agentPermissions"
+      :memories="agentMemories"
+      @update:permissions="agentPermissions = $event"
+      @update:memories="agentMemories = $event"
+    />
+
+    <JwxtReauthDialog
+      v-if="auth.isLoggedIn && reauthDialogOpen"
+      v-model="reauthDialogOpen"
+      @restored="handleJwxtDialogRestored"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ChatDotRound,
@@ -315,12 +374,15 @@ import {
   Headset,
   Lightning,
   Lock,
+  Memo,
   Right,
+  Setting,
   Top,
   WarningFilled,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import {
+  JwxtSilentReauthSignal,
   searchApi,
   type CampusAssistantAction,
   type CampusAssistantConversation,
@@ -328,9 +390,20 @@ import {
   type CampusAssistantMessage,
   type CampusAssistantQuota,
   type CampusAssistantSource,
+  type PersonalAgentMemory,
+  type PersonalAgentMemoryChange,
+  type PersonalAgentPermissions,
+  type PersonalAgentProposal,
+  type PersonalAgentStep,
 } from "@/api/search";
+import { useAgendaStore } from "@/stores/agenda";
 import { useAuthStore } from "@/stores/auth";
+import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
+import PersonalAgentCards from "@/views/search/PersonalAgentCards.vue";
+
+const PersonalAgentDrawers = defineAsyncComponent(() => import("@/views/search/PersonalAgentDrawers.vue"));
+const JwxtReauthDialog = defineAsyncComponent(() => import("@/components/jwxt/JwxtReauthDialog.vue"));
 import { getFormFactor } from "@/utils/formFactor";
 import { isForumDestination } from "@/utils/nativeForumVisibility";
 import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
@@ -351,6 +424,10 @@ type ConversationMessage = CampusAssistantMessage & {
   suggestions?: string[];
   images?: CampusAssistantGeneratedImage[];
   sources?: CampusAssistantSource[];
+  steps?: PersonalAgentStep[];
+  proposals?: PersonalAgentProposal[];
+  proposalStates?: Record<number, "pending" | "applied" | "dismissed">;
+  memoryChanges?: PersonalAgentMemoryChange[];
   streaming?: boolean;
   streamStatus?: string;
 };
@@ -374,9 +451,30 @@ const MAX_LOCAL_TOMBSTONES = 500;
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const jwxtStore = useJwxtStore();
+const agendaStore = useAgendaStore();
 function visibleLinks<T extends { url: string }>(links?: T[]): T[] {
   return (links || []).filter((link) => !auth.forumHidden || !isForumDestination(link.url));
 }
+
+const permissionsOpen = ref(false);
+const memoriesOpen = ref(false);
+const reauthDialogOpen = ref(false);
+const agentPermissions = ref<PersonalAgentPermissions>({
+  enabled: true,
+  schedule: true,
+  academic: false,
+  collab: true,
+  campusLife: true,
+  community: true,
+  messages: false,
+  memory: true,
+});
+const agentMemories = ref<PersonalAgentMemory[]>([]);
+const enabledScopeCount = computed(() => {
+  const p = agentPermissions.value;
+  return [p.schedule, p.academic, p.collab, p.campusLife, p.community, p.messages].filter(Boolean).length;
+});
 const q = ref(embedded ? "" : ((route.query.q as string) ?? ""));
 const keywordInput = ref("");
 const assistantLoading = ref(false);
@@ -429,16 +527,31 @@ const dockedHistoryMedia = typeof window !== "undefined" && window.matchMedia
 const wideViewport = ref(Boolean(dockedHistoryMedia?.matches));
 const historyDocked = computed(() => !embedded && wideViewport.value);
 
-// 示例问题只举本校开着的功能，最后一条固定讲 AI 额度。
+// 示例问题：个人 Agent 开启时优先推荐个人深度核算场景；关闭时回退到公开指南。
 const site = useSiteStore();
-const welcomePrompts = computed(() => [
-  ...[
-    ...(site.moduleEnabled("dormElectric") ? [{ text: "宿舍电费在哪里查？", hint: "校园服务", icon: Lightning }] : []),
-    ...(site.moduleEnabled("voicehub") ? [{ text: "怎么打开药苑之声？", hint: "站内功能", icon: Headset }] : []),
-    ...(site.moduleEnabled("academic") ? [{ text: "课表怎么导出到手机日历？", hint: "课表", icon: Calendar }] : []),
-  ].slice(0, 2),
-  { text: "AI 额度怎么计算？", hint: "使用说明", icon: Coin },
-]);
+const welcomePrompts = computed(() => {
+  if (agentPermissions.value.enabled) {
+    return [
+      ...(site.moduleEnabled("academic")
+        ? [
+          { text: "帮我看看这周的课表、待办，以及和室友哪天晚上都没课", hint: "时间规划与协同", icon: Calendar },
+          { text: "精算我目前的总绩点、必修绩点，以及还差多少学分毕业", hint: "学业深度核算", icon: Coin },
+        ]
+        : []),
+      ...(site.moduleEnabled("dormElectric")
+        ? [{ text: "查一下我的宿舍剩余电费、在借图书和老师发的查分单", hint: "校园生活账本", icon: Lightning }]
+        : [{ text: "结合真实课程点评，帮我挑两门给分高口碑好的选修课", hint: "选课课评参谋", icon: ChatDotRound }]),
+    ].slice(0, 3);
+  }
+  return [
+    ...[
+      ...(site.moduleEnabled("dormElectric") ? [{ text: "宿舍电费在哪里查？", hint: "校园服务", icon: Lightning }] : []),
+      ...(site.moduleEnabled("voicehub") ? [{ text: "怎么打开药苑之声？", hint: "站内功能", icon: Headset }] : []),
+      ...(site.moduleEnabled("academic") ? [{ text: "课表怎么导出到手机日历？", hint: "课表", icon: Calendar }] : []),
+    ].slice(0, 2),
+    { text: "AI 额度怎么计算？", hint: "使用说明", icon: Coin },
+  ];
+});
 const welcomeGreeting = computed(() => {
   const name = auth.user?.nickname?.trim();
   return name ? `${name}，想了解点什么？` : "想了解点什么？";
@@ -474,9 +587,13 @@ const sessionGroups = computed(() => {
 });
 
 onMounted(() => {
+  jwxtStore.hydrate();
   if (auth.isLoggedIn) {
+    agendaStore.attach();
+    void agendaStore.sync();
     void hydrateCloudSessions();
     void loadAssistantQuota();
+    void loadPersonalAgentState();
   }
   window.visualViewport?.addEventListener("resize", handleComposerViewportChange);
   dockedHistoryMedia?.addEventListener("change", handleDockedHistoryMediaChange);
@@ -492,12 +609,18 @@ watch(keywordInput, () => {
 watch(() => auth.isLoggedIn, (loggedIn) => {
   if (!loggedIn) {
     assistantQuota.value = null;
+    agentMemories.value = [];
     historyOpen.value = false;
+    permissionsOpen.value = false;
+    memoriesOpen.value = false;
     cancelActiveAssistant();
     return;
   }
+  agendaStore.attach();
+  void agendaStore.sync();
   void hydrateCloudSessions();
   void loadAssistantQuota();
+  void loadPersonalAgentState();
 });
 
 watch(() => route.query.q, async (value) => {
@@ -567,7 +690,7 @@ async function runQuery(keyword: string) {
   await askAssistant(keyword, history);
 }
 
-async function askAssistant(keyword: string, history: CampusAssistantMessage[]) {
+async function askAssistant(keyword: string, history: CampusAssistantMessage[], retriedAfterRecover = false) {
   const seq = ++assistantSeq;
   assistantController?.abort();
   assistantController = new AbortController();
@@ -577,16 +700,30 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     id: assistantMessageId,
     role: "assistant",
     content: "",
+    steps: [],
     streaming: true,
-    streamStatus: "正在思考…",
+    streamStatus: retriedAfterRecover ? "已恢复教务连接，正在重新分析…" : "正在思考…",
   });
   const assistantMessage = messages.value.find((item) => item.id === assistantMessageId)!;
   scrollConversation();
   assistantLoading.value = true;
   assistantError.value = "";
   try {
-    const next = await searchApi.streamAssistant(keyword, history, {
+    const next = await searchApi.streamPersonalAgent(keyword, history, {
       signal: controller.signal,
+      retriedAfterRecover,
+      onStep: (step) => {
+        if (seq !== assistantSeq) return;
+        const list = assistantMessage.steps ? [...assistantMessage.steps] : [];
+        const existingIdx = list.findIndex((item) => item.id === step.id);
+        if (existingIdx >= 0) list[existingIdx] = step;
+        else list.push(step);
+        assistantMessage.steps = list;
+        if (step.status === "running") {
+          assistantMessage.streamStatus = step.label;
+        }
+        scrollConversation();
+      },
       onDelta: (delta) => {
         if (seq !== assistantSeq) return;
         assistantMessage.content += delta;
@@ -596,9 +733,9 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
       onHeartbeat: (elapsedMs) => {
         if (seq !== assistantSeq) return;
         const seconds = Math.floor(elapsedMs / 1000);
-        assistantMessage.streamStatus = seconds >= 5
-          ? `仍在生成，已等待 ${seconds} 秒…`
-          : "正在思考…";
+        if (seconds >= 5 && !assistantMessage.steps?.some((s) => s.status === "running")) {
+          assistantMessage.streamStatus = `仍在处理，已等待 ${seconds} 秒…`;
+        }
         scrollConversation();
       },
     });
@@ -608,11 +745,25 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     assistantMessage.suggestions = next.suggestions;
     assistantMessage.images = normalizeGeneratedImages(next.images);
     assistantMessage.sources = normalizeAssistantSources(next.sources);
+    assistantMessage.steps = next.steps?.length ? next.steps : assistantMessage.steps;
+    assistantMessage.proposals = next.proposals?.length ? next.proposals : undefined;
+    assistantMessage.memoryChanges = next.memoryChanges?.length ? next.memoryChanges : undefined;
     assistantMessage.streaming = false;
+    if (next.memoryChanges?.length) {
+      void loadPersonalAgentState();
+    }
     persistActiveConversation();
     scrollConversation();
   } catch (error) {
     if (seq !== assistantSeq) return;
+    if (error instanceof JwxtSilentReauthSignal && !retriedAfterRecover) {
+      assistantMessage.streamStatus = "正在静默恢复学校统一认证会话…";
+      await jwxtStore.recoverSession(undefined, { force: true }).catch(() => false);
+      if (seq !== assistantSeq || controller.signal.aborted) return;
+      messages.value = messages.value.filter((item) => item.id !== assistantMessage.id);
+      await askAssistant(keyword, history, true);
+      return;
+    }
     if (controller.signal.aborted) {
       // 用户主动停止：保留已经生成的部分，空回答直接撤掉
       assistantMessage.streaming = false;
@@ -632,6 +783,59 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
       void loadAssistantQuota();
     }
   }
+}
+
+async function loadPersonalAgentState() {
+  if (!auth.isLoggedIn) return;
+  try {
+    const state = await searchApi.getPersonalAgentState({
+      suppressErrorMessage: true,
+      suppressAuthMessage: true,
+      suppressAuthRedirect: true,
+    });
+    agentPermissions.value = state.permissions;
+    agentMemories.value = state.memories;
+  } catch {
+    // keep local defaults when offline
+  }
+}
+
+function updateMessageProposalState(
+  message: ConversationMessage,
+  idx: number,
+  state: "pending" | "applied" | "dismissed",
+) {
+  message.proposalStates = {
+    ...(message.proposalStates || {}),
+    [idx]: state,
+  };
+  persistActiveConversation();
+}
+
+async function rerunLastUserTurn() {
+  if (assistantLoading.value || assistantQuotaExhausted.value) return;
+  const lastUserIdx = [...messages.value].map((m) => m.role).lastIndexOf("user");
+  if (lastUserIdx < 0) return;
+  const keyword = messages.value[lastUserIdx].content.trim();
+  if (!keyword) return;
+  const history = messages.value
+    .slice(0, lastUserIdx)
+    .slice(-12)
+    .map(({ role, content }) => ({ role, content }));
+  messages.value = messages.value.slice(0, lastUserIdx + 1);
+  persistActiveConversation();
+  await askAssistant(keyword, history, true);
+}
+
+function handleInlinePermissionsUpdated(nextPerms: PersonalAgentPermissions, retryCurrent: boolean) {
+  agentPermissions.value = nextPerms;
+  if (retryCurrent) {
+    void rerunLastUserTurn();
+  }
+}
+
+function handleJwxtDialogRestored() {
+  void rerunLastUserTurn();
 }
 
 async function loadAssistantQuota() {
@@ -999,6 +1203,10 @@ function cloneMessages(items: unknown[]): ConversationMessage[] {
       suggestions: Array.isArray(item.suggestions) ? item.suggestions.slice(0, 3).map(String) : undefined,
       images: normalizeGeneratedImages(item.images),
       sources: normalizeAssistantSources(item.sources),
+      steps: Array.isArray(item.steps) ? item.steps.slice(0, 16).map((s) => ({ ...s })) : undefined,
+      proposals: Array.isArray(item.proposals) ? item.proposals.slice(0, 8) : undefined,
+      proposalStates: item.proposalStates && typeof item.proposalStates === "object" ? { ...item.proposalStates } : undefined,
+      memoryChanges: Array.isArray(item.memoryChanges) ? item.memoryChanges.slice(0, 4) : undefined,
     }));
 }
 
@@ -1166,7 +1374,15 @@ function toCloudConversation(session: ConversationSession): CampusAssistantConve
     messages: cloneMessages(session.messages)
       .filter((item) => item.content.trim())
       .slice(-MAX_MESSAGES_PER_SESSION)
-      .map(({ streaming: _streaming, ...item }) => item),
+      .map(({
+        streaming: _streaming,
+        streamStatus: _streamStatus,
+        steps: _steps,
+        proposals: _proposals,
+        proposalStates: _proposalStates,
+        memoryChanges: _memoryChanges,
+        ...item
+      }) => item),
   };
 }
 
@@ -2550,5 +2766,63 @@ html[data-theme="dark"] .sj-scrim {
   .sj-history--overlay {
     width: min(320px, 88%);
   }
+  .sj-agent-pill span {
+    display: none;
+  }
+  .sj-agent-pill {
+    padding: 0 8px;
+  }
+}
+
+.sj-agent-mode-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--cpu-primary);
+  background: var(--cpu-primary-soft);
+}
+.sj-agent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--cpu-radius-pill);
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, transparent);
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: filter 0.15s ease, background-color 0.15s ease;
+}
+.sj-agent-pill:hover {
+  filter: brightness(0.97);
+}
+.sj-agent-pill.is-off {
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text-secondary);
+}
+.sj-agent-pill--mem {
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text-secondary);
+}
+.sj-agent-pill--mem:hover {
+  color: var(--cpu-text);
+  background: var(--sj-hover);
+}
+.sj-privacy-btn {
+  display: inline;
+  padding: 0 2px;
+  color: var(--cpu-primary);
+  font-size: inherit;
+  text-decoration: none;
+}
+.sj-privacy-btn:hover {
+  text-decoration: underline;
 }
 </style>
