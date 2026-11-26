@@ -13,10 +13,11 @@ import { deleteCoupleDataForUser } from "./coupleSchedule";
 import { deleteDormDataForUser } from "./dormSchedule";
 import { eraseWorkshopAccountData, lockWorkshopAuthor, revokeWorkshopAccountWorks } from "./workshopAccountDeletion";
 import { removeWorkshopPackage } from "./workshopPackage";
+import { deleteTreeholeImageFile } from "./treehole";
 import { schoolDriverFor } from "../schools/drivers";
 
 export const ACCOUNT_DELETION_CONFIRMATION = "删除我的账户";
-type DeletionPayload = { username: string; schoolId?: string; tokens: string[]; sessionKeys: string[]; mediaPaths: string[]; receipt: string; workshopPackageKeys?: string[] };
+type DeletionPayload = { username: string; schoolId?: string; tokens: string[]; sessionKeys: string[]; mediaPaths: string[]; receipt: string; workshopPackageKeys?: string[]; treeholeImageKeys?: string[] };
 function receiptHash(receipt: string) { return createHash("sha256").update(receipt).digest("hex"); }
 function encryptPayload(userId: number, payload: DeletionPayload) { return encryptJwxtSensitiveJson("account-deletion", String(userId), payload); }
 function decodePayload(job: { userId: number; encryptedPayload: string | null }) {
@@ -113,13 +114,30 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   await tx.userBlock.deleteMany({ where: { OR: [{ ownerId: userId }, { targetId: userId }] } });
   await deleteCoupleDataForUser(tx, userId);
   await deleteDormDataForUser(tx, userId);
-  // 树洞会话按社团规定长期留存；账号匿名化后已无法关联到本人。这里只解除在任身份和群成员关系。
+  // 树洞会话按社团规定长期留存；账号匿名化后已无法关联到本人。
+  // 本人留下的联系方式、预约说明和上传的图片随账号删除，其余只解除在任身份和群成员关系。
+  await tx.treeholeSession.updateMany({ where: { visitorId: userId }, data: { contact: null, contactAt: null } });
+  await tx.treeholeBooking.updateMany({ where: { visitorId: userId }, data: { note: "" } });
+  const treeholeImages = await tx.treeholeImage.findMany({ where: { uploaderId: userId }, select: { id: true, storageKey: true } });
+  const treeholeImageIds = treeholeImages.map((image) => image.id);
+  if (treeholeImageIds.length) {
+    await tx.treeholeMessage.updateMany({ where: { imageId: { in: treeholeImageIds } }, data: { imageId: null, kind: "text", content: "（图片已随账号删除）" } });
+    await tx.treeholeRoomMessage.updateMany({ where: { imageId: { in: treeholeImageIds } }, data: { imageId: null, kind: "text", content: "（图片已随账号删除）" } });
+    await tx.treeholeImage.deleteMany({ where: { id: { in: treeholeImageIds } } });
+  }
   await tx.treeholeStaff.updateMany({ where: { userId }, data: { enabled: false, isAdmin: false, isHost: false, presenceOverride: null, presenceOverrideUntil: null } });
   await tx.treeholeConsent.deleteMany({ where: { userId } });
   await tx.treeholeRoomMember.updateMany({ where: { userId, status: "active" }, data: { status: "left", leftAt: new Date() } });
   await tx.treeholeRoomApplication.updateMany({ where: { visitorId: userId, status: "pending" }, data: { status: "cancelled" } });
   await tx.treeholeBooking.updateMany({ where: { visitorId: userId, status: { in: ["pending", "confirmed"] }, startAt: { gt: new Date() } }, data: { status: "cancelled", cancelledBy: "visitor", cancelledAt: new Date() } });
   await tx.forumReport.deleteMany({ where: { OR: [{ reporterId: userId }, { targetAuthorId: userId }] } });
+  // 公开分享的课表随账号删除，分享码随即失效
+  await tx.scheduleShare.deleteMany({ where: { ownerId: userId } });
+  await tx.courseRating.deleteMany({ where: { authorId: userId } });
+  await tx.learningAnswerAppeal.deleteMany({ where: { userId } });
+  // iOS 实时活动：推送令牌、推送计划（含情侣对方的课程）
+  await tx.liveActivityDevice.deleteMany({ where: { userId } });
+  await tx.liveActivityRegistration.deleteMany({ where: { userId } });
   await tx.canteenReview.deleteMany({ where: { userId } });
   // 已生效的门店纠错是公共目录的一部分，只解除关联；其余纠错和投票一并删除。
   await tx.canteenCorrectionVote.deleteMany({ where: { userId } });
@@ -181,7 +199,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
   } });
   await refreshBoardTopicCounts(topics.map((row) => row.boardId), tx);
   for (const topicId of new Set(replies.map((row) => row.topicId))) await refreshTopicReplyStats(topicId, tx);
-  return { ...payload, mediaPaths: [...mediaPaths], workshopPackageKeys };
+  return { ...payload, mediaPaths: [...mediaPaths], workshopPackageKeys, treeholeImageKeys: [...new Set([...(payload.treeholeImageKeys ?? []), ...treeholeImages.map((image) => image.storageKey)])] };
 }
 
 async function eraseVoiceHub(jobId: string, receipt: string) {
@@ -189,7 +207,7 @@ async function eraseVoiceHub(jobId: string, receipt: string) {
   if (!response.ok || !(await response.json() as { deleted?: boolean }).deleted) throw new Error("VoiceHub account cleanup not confirmed");
 }
 
-type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void>; deleteWorkshopPackage?: typeof removeWorkshopPackage; forgetSchoolDevice?: (username: string) => Promise<void> };
+type CleanupDependencies = { deleteMedia: typeof deleteMediaAsset; deleteSessions: typeof deleteAccountSessions; deleteVoiceHub: typeof eraseVoiceHub; purgeMedia?: (paths: string[]) => Promise<void>; deleteWorkshopPackage?: typeof removeWorkshopPackage; forgetSchoolDevice?: (username: string) => Promise<void>; deleteTreeholeImage?: (storageKey: string) => Promise<void> };
 export async function processAccountDeletion(id: string, dependencies: CleanupDependencies = { deleteMedia: deleteMediaAsset, deleteSessions: deleteAccountSessions, deleteVoiceHub: eraseVoiceHub, purgeMedia: purgeAccountMediaCaches }) {
   let job = await prisma.accountDeletionJob.findUnique({ where: { id } });
   if (!job || job.status === "completed") return;
@@ -215,6 +233,8 @@ export async function processAccountDeletion(id: string, dependencies: CleanupDe
     for (const packageKey of payload.workshopPackageKeys ?? []) {
       await (dependencies.deleteWorkshopPackage ?? removeWorkshopPackage)(packageKey);
     }
+    cleanupStep = "treehole-images";
+    for (const storageKey of payload.treeholeImageKeys ?? []) await (dependencies.deleteTreeholeImage ?? deleteTreeholeImageFile)(storageKey);
     cleanupStep = "media";
     for (const path of payload.mediaPaths) {
       await dependencies.deleteMedia(path);

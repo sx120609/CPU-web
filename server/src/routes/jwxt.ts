@@ -557,7 +557,8 @@ jwxtRouter.delete("/schedule-widget-tokens/:id", authRequired, async (req: any, 
     if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("无效的小组件 token");
     await prisma.scheduleWidgetToken.updateMany({
       where: { id, userId: req.user.userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+      // 撤销即清掉这把令牌带着的教务会话和课表缓存，只留撤销记录
+      data: { revokedAt: new Date(), jwxtToken: "", cachedPayload: null, cachedAt: null },
     });
     ok(res, { ok: true });
   } catch (e) { next(e); }

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import type { Prisma, TreeholeShift, TreeholeStaff } from "@prisma/client";
 import { prisma } from "../prisma";
@@ -311,6 +311,15 @@ export async function storeTreeholeImage(uploaderId: number, source: Buffer) {
       byteSize: output.data.length,
     },
   });
+}
+
+/** 删除图片文件（账号删除时用）；文件已经不在算删除成功。 */
+export async function deleteTreeholeImageFile(storageKey: string) {
+  try {
+    await unlink(storagePath(storageKey));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") throw error;
+  }
 }
 
 export async function readTreeholeImage(storageKey: string) {

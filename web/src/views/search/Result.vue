@@ -150,7 +150,7 @@
             <button type="button" class="sj-privacy-btn" @click="permissionsOpen = true">开启个人模式</button>
             ·
           </template>
-          <a href="/privacy.html" target="_blank" rel="noopener noreferrer">隐私说明</a>
+          <a href="/privacy.html#ai" target="_blank" rel="noopener noreferrer">隐私说明</a>
         </small>
       </div>
 

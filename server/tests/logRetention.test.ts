@@ -137,3 +137,42 @@ test("QQBot 日志清理失败不影响运行时会话清理，清理任务注�
   assert.deepEqual(result.runtimeSessions, { deleted: 0, batches: 0 });
   assert.match(appSource, /export function startAppWorkers\(\) \{[^}]*startLogRetentionSweeper\(\);[^}]*\}/);
 });
+
+test("AI 日志保留 180 天：过期的整行删除，过期的生图记录只清提示词、保留图片路径", async (t) => {
+  const { prisma } = await import("../src/prisma");
+  const { pruneAiReviewLogs } = await import("../src/services/logRetention");
+  const now = new Date("2026-11-26T00:00:00.000Z");
+  const old = new Date(now.getTime() - 181 * DAY_MS);
+  const fresh = new Date(now.getTime() - 10 * DAY_MS);
+  const rows = [
+    { id: 1, kind: "campus-assistant", startedAt: old, targetLabel: null, status: "success", requestSummary: "我的绩点", responseSummary: "3.4" },
+    { id: 2, kind: "campus-assistant", startedAt: fresh, targetLabel: null, status: "success", requestSummary: "今天", responseSummary: "好" },
+    { id: 3, kind: "direct-message", startedAt: old, targetLabel: null, status: "success", requestSummary: "私信原文", responseSummary: "pass" },
+    { id: 4, kind: "assistant-image", startedAt: old, targetLabel: "拾间AI 生图", status: "success", requestSummary: "画一只猫", responseSummary: "/media/assistant-generated/a.png" },
+    { id: 5, kind: "assistant-image", startedAt: old, targetLabel: "拾间AI 生图", status: "error", requestSummary: "画一只狗", responseSummary: "" },
+  ];
+  const matches = (row: any, where: any) => row.kind === where.kind && row.startedAt < where.startedAt.lt && row.id > where.id.gt
+    && !(row.targetLabel === where.NOT.targetLabel && row.requestSummary === where.NOT.requestSummary);
+  replace(t, prisma.aiReviewLog, "findFirst", async ({ where }: any) => {
+    const kinds = [...new Set(rows.map((row) => row.kind))].sort();
+    const kind = kinds.find((value) => where.kind?.gt === undefined || value > where.kind.gt);
+    return kind === undefined ? null : { kind };
+  });
+  replace(t, prisma.aiReviewLog, "findMany", async ({ where, take }: any) => rows.filter((row) => matches(row, where)).sort((a, b) => a.id - b.id).slice(0, take));
+  replace(t, prisma.aiReviewLog, "deleteMany", async ({ where }: any) => {
+    const before = rows.length;
+    rows.splice(0, rows.length, ...rows.filter((row) => !where.id.in.includes(row.id)));
+    return { count: before - rows.length };
+  });
+  replace(t, prisma.aiReviewLog, "updateMany", async ({ where, data }: any) => {
+    const hit = rows.filter((row) => where.id.in.includes(row.id));
+    for (const row of hit) Object.assign(row, data);
+    return { count: hit.length };
+  });
+  assert.deepEqual(await pruneAiReviewLogs(now), { deleted: 3, scrubbed: 1, batches: 3 });
+  assert.deepEqual(rows.map((row) => row.id), [2, 4]);
+  assert.equal(rows[1].requestSummary, "");
+  assert.equal(rows[1].responseSummary, "/media/assistant-generated/a.png");
+  // 已清过的生图记录不再被扫到
+  assert.deepEqual(await pruneAiReviewLogs(now), { deleted: 0, scrubbed: 0, batches: 0 });
+});

@@ -59,6 +59,56 @@ export async function pruneQqBotMessageLogs(
   return { deleted, batches };
 }
 
+export const AI_REVIEW_LOG_RETENTION_DAYS = 180;
+// 拾间AI 生图那一行的 responseSummary 是生成图的存放路径，账号删除时靠它找到图片，
+// 所以到期只清掉提示词原文，路径留着。
+const AI_IMAGE_LOG_LABEL = "拾间AI 生图";
+
+/**
+ * AI 调用日志（提问、回答、送审原文）保留 180 天。逐个 kind 走 (kind, startedAt) 索引分批删除，
+ * 单次运行限量，积压由后续运行继续。
+ */
+export async function pruneAiReviewLogs(
+  now = new Date(),
+  retentionDays = AI_REVIEW_LOG_RETENTION_DAYS,
+  { batchSize = LOG_RETENTION_BATCH_SIZE, maxBatches = LOG_RETENTION_MAX_BATCHES_PER_RUN }: PruneOptions = {},
+) {
+  const cutoff = new Date(now.getTime() - retentionDays * DAY_MS);
+  let deleted = 0;
+  let scrubbed = 0;
+  let batches = 0;
+  let previousKind: string | null = null;
+  while (batches < maxBatches) {
+    const next: { kind: string } | null = await prisma.aiReviewLog.findFirst({
+      where: previousKind === null ? {} : { kind: { gt: previousKind } },
+      orderBy: { kind: "asc" },
+      select: { kind: true },
+    });
+    if (!next) break;
+    const kind: string = next.kind;
+    previousKind = kind;
+    let afterId = 0;
+    while (batches < maxBatches) {
+      const rows = await prisma.aiReviewLog.findMany({
+        where: { kind, startedAt: { lt: cutoff }, id: { gt: afterId }, NOT: { targetLabel: AI_IMAGE_LOG_LABEL, requestSummary: "" } },
+        orderBy: { id: "asc" },
+        take: batchSize,
+        select: { id: true, targetLabel: true, status: true, requestSummary: true },
+      });
+      if (!rows.length) break;
+      batches += 1;
+      afterId = rows[rows.length - 1].id;
+      const keep = rows.filter((row) => row.targetLabel === AI_IMAGE_LOG_LABEL && row.status === "success");
+      const drop = rows.filter((row) => !keep.includes(row));
+      if (drop.length) deleted += (await prisma.aiReviewLog.deleteMany({ where: { id: { in: drop.map((row) => row.id) } } })).count;
+      const scrub = keep.filter((row) => row.requestSummary);
+      if (scrub.length) scrubbed += (await prisma.aiReviewLog.updateMany({ where: { id: { in: scrub.map((row) => row.id) } }, data: { requestSummary: "" } })).count;
+      if (rows.length < batchSize) break;
+    }
+  }
+  return { deleted, scrubbed, batches };
+}
+
 /** 分批删除已过期的持久化运行时会话（读取时本就视为不存在）。 */
 export async function pruneExpiredRuntimeSessions(
   now = new Date(),
@@ -94,7 +144,11 @@ export async function runLogRetentionSweep(now = new Date()) {
     console.warn("[log-retention] runtime session prune failed", error);
     return null;
   });
-  return { qqBotLogs, runtimeSessions };
+  const aiReviewLogs = await pruneAiReviewLogs(now).catch((error) => {
+    console.warn("[log-retention] AI review log prune failed", error);
+    return null;
+  });
+  return { qqBotLogs, runtimeSessions, aiReviewLogs };
 }
 
 export function startLogRetentionSweeper() {
