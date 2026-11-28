@@ -23,8 +23,9 @@ import {
 import { groundDepartmentContactResponse } from "../src/services/departmentContactsAssistant";
 import {
   buildForumAiAnswerMessages,
+  buildForumAiTriageMessages,
   isForumAiAnswerCandidate,
-  looksLikeForumQuestion,
+  resolveForumAiTriage,
   resolveForumAiAnswer,
   siteKnowledgeItems,
 } from "../src/services/forumAiAnswer";
@@ -298,22 +299,33 @@ test("phones and emails quoted from retrieved documents pass the contact groundi
   assert.equal(grounded.answer, response.answer);
 });
 
-test("only question-like posts on answerable boards get an AI answer", async () => {
+test("posts on answerable boards go to the model, which decides whether they are questions", async () => {
   const base = { hidden: false, author: { role: "user" } };
   assert.ok(isForumAiAnswerCandidate({ ...base, title: "研究生换导师要走什么流程", content: "", board: { type: "question", slug: "question" } }));
   assert.ok(isForumAiAnswerCandidate({ ...base, title: "宿舍空调坏了怎么报修", content: "", board: { type: "normal", slug: "life" } }));
-  assert.ok(!isForumAiAnswerCandidate({ ...base, title: "今天食堂的鸡腿真好吃", content: "分享一下", board: { type: "normal", slug: "life" } }));
+  // 不是提问由模型的 isQuestion 判断，这里不再按词表拦。
+  assert.ok(isForumAiAnswerCandidate({ ...base, title: "今天食堂的鸡腿真好吃", content: "分享一下", board: { type: "normal", slug: "life" } }));
+  assert.ok(!isForumAiAnswerCandidate({ ...base, title: "嗯", content: "", board: { type: "normal", slug: "life" } }));
   assert.ok(!isForumAiAnswerCandidate({ ...base, title: "有人和我一样难过吗", content: "", board: { type: "normal", slug: "treehole" } }));
   assert.ok(!isForumAiAnswerCandidate({ ...base, title: "出二手自行车，有人要吗", content: "", board: { type: "market", slug: "market" } }));
   assert.ok(!isForumAiAnswerCandidate({ ...base, hidden: true, title: "补考什么时候", content: "", board: { type: "question", slug: "question" } }));
   assert.ok(!isForumAiAnswerCandidate({ ...base, author: { role: "bot" }, title: "关于补考安排的通知？", content: "", board: { type: "normal", slug: "life" } }));
-  assert.ok(looksLikeForumQuestion("求问", "第二批预推免还能报名吗"));
   assert.ok(isForumAiAnswerCandidate({ ...base, title: "大一挂科会怎样啊😔😔", content: "大一挂科会怎样啊😔😔", board: { type: "normal", slug: "general" } }));
-  assert.ok(looksLikeForumQuestion("药学和中药学选哪个呢~", ""));
-  assert.ok(looksLikeForumQuestion("挂科了会不会影响保研", ""));
-  assert.ok(looksLikeForumQuestion("这门课到底在讲啥", ""));
-  assert.ok(looksLikeForumQuestion("周末图书馆开门么😂", ""));
-  assert.ok(!looksLikeForumQuestion("今天天气真好啊😊", "出去走走吧"));
+});
+
+test("forum triage output is validated before it steers retrieval", () => {
+  assert.equal(resolveForumAiTriage(null), null);
+  assert.equal(resolveForumAiTriage({ queries: ["x"] }), null);
+  assert.deepEqual(resolveForumAiTriage({ isQuestion: false, queries: [], reason: "分享" }), { isQuestion: false, queries: [], reason: "分享" });
+  const triage = resolveForumAiTriage({
+    isQuestion: true,
+    queries: ["本科生课程考核不及格  补考 重修", "本科生课程考核不及格  补考 重修", "", "本科生不及格 推荐免试", "本科生不及格 学士学位"],
+    reason: "问挂科后果",
+  });
+  assert.deepEqual(triage?.queries, ["本科生课程考核不及格 补考 重修", "本科生不及格 推荐免试", "本科生不及格 学士学位"]);
+  const messages = buildForumAiTriageMessages({ boardName: "灌水广场", title: "大一挂科会怎样啊😔😔", content: "大一挂科会怎样啊😔😔" });
+  assert.match(messages[0].content, /isQuestion/u);
+  assert.match(messages[1].content, /大一挂科会怎样啊/u);
 });
 
 test("course time questions get the jwxt course search as site knowledge", async () => {

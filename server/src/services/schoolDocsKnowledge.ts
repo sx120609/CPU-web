@@ -124,9 +124,10 @@ const DIVERSITY_MIN_SCORE = 0.6;
 const TOPIC_GROUPS: RegExp[] = [/推免|推荐免试|免试攻读|保研|直博|预推免|夏令营/u, /招生|考研|复试|调剂|报考|拟录取|录取/u];
 // 本科生和研究生的规定常同名同题。问题没说是哪一层时，结果里各层都要有，不能让
 // 几百段的研究生手册占满名额；说了就把另一层的压下去。
+// 学生常说“大一”“研二”，不说“本科生”“研究生”。
 const LEVELS = [
-  { name: "graduate", pattern: /研究生|硕士|博士/u },
-  { name: "undergraduate", pattern: /本科|学士/u },
+  { name: "graduate", pattern: /研究生|硕士|博士|研[一二三]/u },
+  { name: "undergraduate", pattern: /本科|学士|大[一二三四五]/u },
 ] as const;
 type Level = typeof LEVELS[number]["name"] | "general";
 
