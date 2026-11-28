@@ -1,5 +1,5 @@
 /**
- * 为 school-docs.json / school-regulations.json 的每一段算语义向量，写入
+ * 为 school-docs.json / school-regulations.json / school-guides.json 的每一段算语义向量，写入
  * assets/knowledge/school-vectors.{bin,json}。资料改了之后运行；已有向量按段落哈希复用，
  * 只给新增或改动的段落编码。
  *

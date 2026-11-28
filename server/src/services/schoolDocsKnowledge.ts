@@ -2,7 +2,8 @@
  * 学校事务资料（学生手册、推免办法与细则、招生简章、期刊目录、规章制度等）的检索。
  * 资料由 server/scripts/import-school-knowledge.mjs 从资料包整理成 assets/knowledge/school-docs.json，
  * 规章制度由 server/scripts/build-campus-regulations.py 从制度公开平台整理成 school-regulations.json；
- * 两份文件建成同一个索引一起排序。名单类资料和学号等个人信息在整理时已去掉。
+ * 各部门网站的办事指南由 server/scripts/build-school-guides.mjs 整理成 school-guides.json。
+ * 三份文件建成同一个索引一起排序。名单类资料和学号等个人信息在整理时已去掉。
  *
  * 检索分四步：
  * 1. 召回：关键词（字二元组 + idf）与语义向量（knowledgeEmbedding）各取前若干段。关键词擅长
@@ -88,7 +89,7 @@ export type SchoolDocHit = {
 };
 
 // 后面的文件可以用 replaces 替换前面文件里的同一份文档（红头原文替换资料包里的转录稿）。
-const SCHOOL_DOCS_FILES = ["school-docs.json", "school-regulations.json"];
+const SCHOOL_DOCS_FILES = ["school-docs.json", "school-regulations.json", "school-guides.json"];
 
 // --- 召回与融合 ---
 const RECALL_PER_CHANNEL = 60;

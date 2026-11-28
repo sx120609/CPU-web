@@ -32,6 +32,7 @@ import {
 
 const schoolDocsFile = path.resolve(__dirname, "../assets/knowledge/school-docs.json");
 const schoolRegulationsFile = path.resolve(__dirname, "../assets/knowledge/school-regulations.json");
+const schoolGuidesFile = path.resolve(__dirname, "../assets/knowledge/school-guides.json");
 
 function entry(title: string, body: string) {
   const titleKey = normalizeKnowledgeText(title);
@@ -228,7 +229,7 @@ test("near-duplicate passages from different files take one slot", async () => {
   }
 });
 
-for (const file of [schoolDocsFile, schoolRegulationsFile]) {
+for (const file of [schoolDocsFile, schoolRegulationsFile, schoolGuidesFile]) {
   test(`${path.basename(file)} carries no student numbers or name lists`, async () => {
     const data = JSON.parse(readFileSync(file, "utf8")) as {
       documents: Array<{ id: string; title: string }>;

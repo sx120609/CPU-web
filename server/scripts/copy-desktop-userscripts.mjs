@@ -14,7 +14,7 @@ const siteAssetDirectory = path.join(serverRoot, "dist", "assets", "site");
 // 拾间AI 检索用的学校事务资料，由 scripts/import-school-knowledge.mjs 生成。
 const knowledgeSourceDirectory = path.join(serverRoot, "assets", "knowledge");
 const knowledgeTargetDirectory = path.join(serverRoot, "dist", "assets", "knowledge");
-const knowledgeAssets = ["school-docs.json", "school-regulations.json", "school-vectors.bin", "school-vectors.json"];
+const knowledgeAssets = ["school-docs.json", "school-regulations.json", "school-guides.json", "school-vectors.bin", "school-vectors.json"];
 // 语义检索的向量模型，由 scripts/fetch-knowledge-model.mjs 在构建时下载。
 // 所有构建路径（build、build:compile、CI）都经过这里；已下载并校验通过就跳过，下载失败
 // 让构建失败，不发布缺模型的制品。

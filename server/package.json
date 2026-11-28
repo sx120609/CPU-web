@@ -47,6 +47,7 @@
     "test:yaoda-mines": "node --import tsx --test tests/yaodaMines.test.ts",
     "test:workshop": "node --import tsx --test tests/workshopPackage.test.ts tests/workshopPolicy.test.ts tests/workshopBridge.test.ts tests/workshopPlacements.test.ts tests/workshopAccountDeletion.test.ts",
     "knowledge:model": "node scripts/fetch-knowledge-model.mjs",
+    "knowledge:guides": "node scripts/build-school-guides.mjs",
     "knowledge:vectors": "tsx scripts/build-knowledge-vectors.ts"
   },
   "prisma": {
