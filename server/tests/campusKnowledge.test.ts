@@ -308,6 +308,12 @@ test("only question-like posts on answerable boards get an AI answer", async () 
   assert.ok(!isForumAiAnswerCandidate({ ...base, hidden: true, title: "补考什么时候", content: "", board: { type: "question", slug: "question" } }));
   assert.ok(!isForumAiAnswerCandidate({ ...base, author: { role: "bot" }, title: "关于补考安排的通知？", content: "", board: { type: "normal", slug: "life" } }));
   assert.ok(looksLikeForumQuestion("求问", "第二批预推免还能报名吗"));
+  assert.ok(isForumAiAnswerCandidate({ ...base, title: "大一挂科会怎样啊😔😔", content: "大一挂科会怎样啊😔😔", board: { type: "normal", slug: "general" } }));
+  assert.ok(looksLikeForumQuestion("药学和中药学选哪个呢~", ""));
+  assert.ok(looksLikeForumQuestion("挂科了会不会影响保研", ""));
+  assert.ok(looksLikeForumQuestion("这门课到底在讲啥", ""));
+  assert.ok(looksLikeForumQuestion("周末图书馆开门么😂", ""));
+  assert.ok(!looksLikeForumQuestion("今天天气真好啊😊", "出去走走吧"));
 });
 
 test("course time questions get the jwxt course search as site knowledge", async () => {

@@ -54,10 +54,15 @@ const POLL_INTERVAL_MS = 5 * 60_000;
 const POLL_LOCK_TTL_MS = 4 * 60_000;
 const STALE_PENDING_MS = 5 * 60_000;
 const FAILED_RETRY_MS = 30 * 60_000;
-const QUESTION_PATTERN = /[?？]|吗|么$|怎么|咋|如何|哪里|哪儿|哪个|哪些|哪家|几点|几号|多少|什么时候|什么时间|是否|有没有|能不能|可不可以|可以.{0,8}吗|求问|请问|求助|求推荐|求解|谁知道|有人知道|有无/u;
+const QUESTION_PATTERN = /[?？]|吗|[么呢]$|怎么|怎样|咋|如何|为什么|为啥|干嘛|啥|哪里|哪儿|哪个|哪些|哪家|几点|几号|多少|什么时候|什么时间|是否|能否|有没有|能不能|会不会|要不要|是不是|该不该|值不值得?|可不可以|可以.{0,8}吗|求问|请问|求助|求推荐|求解|谁知道|有人知道|有无/u;
+// 句末的表情、语气词和标点不影响判断：「大一挂科会怎样啊😔😔」「选哪个呢~」
+const TRAILING_NOISE = /[\s\p{Extended_Pictographic}\u{FE0F}\u{200D}\p{P}\p{S}啊呀哇吧嘛哈]+$/u;
 
 export function looksLikeForumQuestion(title: string, content: string) {
-  return QUESTION_PATTERN.test(`${title}\n${knowledgePlainText(content).slice(0, 240)}`);
+  return [title, knowledgePlainText(content).slice(0, 240)].some((part) => {
+    const text = part.trim();
+    return QUESTION_PATTERN.test(text) || QUESTION_PATTERN.test(text.replace(TRAILING_NOISE, ""));
+  });
 }
 
 export function isForumAiAnswerCandidate(topic: {
