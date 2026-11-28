@@ -63,7 +63,7 @@ npm --prefix server run knowledge:vectors
 1. 召回：关键词（字二元组 + idf，`knowledgeText.ts`）和语义向量（bge-small-zh-v1.5，`knowledgeEmbedding.ts`）各取前 60 段；口语先按 `expandCampusQuery` 补上规定写法（挂科→不及格、综测→综合素质测评……）。
 2. 融合：两路分数各自归一化后加权（语义 0.4），乘时效、适用人群、专题、本科/研究生层次、点名文件等先验。
 3. 选段：默认 5 段短摘录，每份文件限额、近似重复留原文和新版、各层次各有代表；由生成模型自己挑对题的段落。
-4. 扩展：前 3 段附同一文件和关联文件的相关条款，文件的适用与衔接条款在 note 里。
+4. 扩展：前 3 段附同一文件和关联文件的相关条款，以及条款里用书名号点名、库里也有的文件中最相关的一条（“按《学业预警工作管理办法》执行”就附上该办法的分级标准，合计最多 2 条），文件的适用与衔接条款在 note 里。
 
 `school-vectors.bin` / `school-vectors.json` 是每段的语义向量（int8，按段落内容哈希对齐）。资料改了以后要重算，否则改过的段落只走关键词检索，`tests/knowledgeRetrievalEval.test.ts` 也会报未对齐：
 

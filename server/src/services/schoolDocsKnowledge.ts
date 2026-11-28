@@ -143,6 +143,9 @@ const RELATED_EXCERPT_CHARS = 320;
 const RELATED_MIN_COVERAGE = 0.5;
 // 关联文件已经由文号关系确认相关，门槛放低。
 const LINKED_MIN_COVERAGE = 0.3;
+// 条款里用书名号点名、库里也有的另一份文件（“按《学业预警工作管理办法》执行”）：附上那份文件
+// 最相关的一条，否则模型只能回答“具体见某某办法，资料里没有”。点名本身说明相关，不设门槛。
+const CITED_TOTAL = 2;
 const RELATED_MIN_SIMILARITY = 0.55;
 // 整理脚本生成的状态段已经在 note 里，不必再作为相关条款重复。
 const STATUS_HEADING = "文件状态与适用范围";
@@ -151,7 +154,18 @@ type Corpus = {
   source: string;
   chunks: IndexedChunk[];
   byDoc: Map<string, IndexedChunk[]>;
+  /** 归一化的文件标题 → 文档 id，同名多版时取现行、较新的一份。 */
+  byTitle: Map<string, string>;
 };
+
+/** 书名号里的标题和文件标题对齐：去掉校名、“（2021年修订）”这类版本说明、空白和标点。 */
+export function citationTitleKey(title: string) {
+  return normalizeKnowledgeText(title)
+    .replace(/[《》]/gu, "")
+    .replace(/^中国药科大学/u, "")
+    .replace(/[（(][^（）()]*(?:修订|修正|试行|暂行|版)[^（）()]*[）)]/gu, "")
+    .replace(/[\s《》“”"'（）()、，,。.·]/gu, "");
+}
 
 let corpus: Corpus | null | undefined;
 
@@ -186,7 +200,27 @@ function buildCorpus(files: SchoolDocsFile[]): Corpus | null {
     if (group) group.push(chunk);
     else byDoc.set(chunk.doc.id, [chunk]);
   }
-  return { source: files.map((file) => file.source).join("；"), chunks, byDoc };
+  const byTitle = new Map<string, string>();
+  const rank = (doc: SchoolDocument) => `${doc.status === "historical" ? 0 : 1}${doc.date || ""}`;
+  for (const group of byDoc.values()) {
+    const doc = group[0].doc;
+    const key = citationTitleKey(doc.title);
+    if (key.length < 4) continue;
+    const current = byTitle.get(key);
+    const existing = current ? byDoc.get(current)?.[0].doc : undefined;
+    if (!existing || rank(doc) > rank(existing)) byTitle.set(key, doc.id);
+  }
+  return { source: files.map((file) => file.source).join("；"), chunks, byDoc, byTitle };
+}
+
+/** 条款正文里用书名号点名的、库里有的其他文件。 */
+function citedDocumentIds(loaded: Corpus, chunk: IndexedChunk) {
+  const ids: string[] = [];
+  for (const match of chunk.text.matchAll(/《([^《》]{4,60})》/gu)) {
+    const id = loaded.byTitle.get(citationTitleKey(match[1]));
+    if (id && id !== chunk.doc.id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 function loadCorpus() {
@@ -411,7 +445,7 @@ export async function searchSchoolDocs(query: string, options: {
     .filter((clause) => clause.trim().length >= 6
       && !keptText.some((kept) => overlapRatio(shingles(clause), kept) >= NEAR_DUPLICATE_OVERLAP))
     .join("");
-  const pick = (pool: IndexedChunk[], count: number, diffOnly: boolean, minCoverage: number) => {
+  const pick = (pool: IndexedChunk[], count: number, diffOnly: boolean, minCoverage: number, minSimilarity = RELATED_MIN_SIMILARITY) => {
     const usable = pool.filter((chunk) => !taken.has(chunk.index) && chunk.heading !== STATUS_HEADING);
     if (!usable.length) return [];
     // 在一份文件里挑条款时按全库词频打分：文件内只出现一两次的词正是区分条款的词。
@@ -423,7 +457,7 @@ export async function searchSchoolDocs(query: string, options: {
     }
     usable
       .map((chunk) => ({ chunk, similarity: similarityOf(semantic, chunk) }))
-      .filter((item): item is { chunk: IndexedChunk; similarity: number } => item.similarity !== null && item.similarity >= RELATED_MIN_SIMILARITY)
+      .filter((item): item is { chunk: IndexedChunk; similarity: number } => item.similarity !== null && item.similarity >= minSimilarity)
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, count * 4)
       .forEach(({ chunk }, rank) => scores.set(chunk, (scores.get(chunk) || 0) + 1 / (RRF_K + rank + 1)));
@@ -439,6 +473,7 @@ export async function searchSchoolDocs(query: string, options: {
     }
     return picked;
   };
+  let citedLeft = CITED_TOTAL;
   return selected.map(({ entry, coverage }, position) => {
     const hit = toHit(entry, coverage);
     // 排名靠后的补位段只给正文，控制送进提示词的总长度。
@@ -447,9 +482,27 @@ export async function searchSchoolDocs(query: string, options: {
     // 已经单独列出的文件不再作为关联附上。
     const linked = (entry.doc.links || []).filter((id) => !shown.has(id))
       .flatMap((id) => pick(loaded.byDoc.get(id) || [], LINKED_PER_HIT, true, LINKED_MIN_COVERAGE)).slice(0, LINKED_TOTAL);
+    const cited: Array<{ chunk: IndexedChunk; excerpt: string }> = [];
+    // 点名常出现在附带的同文件条款里（学分制办法第四条“因学籍预警……按《学业预警工作管理办法》执行”）。
+    const citing = [entry, ...own.map(({ chunk }) => chunk)];
+    for (const id of [...new Set(citing.flatMap((chunk) => citedDocumentIds(loaded, chunk)))]) {
+      if (citedLeft <= 0) break;
+      if (shown.has(id) || (entry.doc.links || []).includes(id)) continue;
+      // 没有向量时按关键词挑；连关键词也对不上就取正文第一条（通常是定义或分级标准）。
+      const pool = (loaded.byDoc.get(id) || []).filter((chunk) => chunk.heading !== STATUS_HEADING && !/印发通知|^附件/u.test(chunk.heading));
+      const best = pick(pool, 1, true, 0, 0)[0]
+        ?? pool.filter((chunk) => !taken.has(chunk.index)).map((chunk) => {
+          taken.add(chunk.index);
+          return { chunk, excerpt: focusedExcerpt(chunk.text, terms, RELATED_EXCERPT_CHARS) };
+        })[0];
+      if (!best) continue;
+      shown.add(id);
+      citedLeft -= 1;
+      cited.push(best);
+    }
     const related = [
       ...own.map(({ chunk, excerpt }) => ({ heading: chunk.heading, excerpt })),
-      ...linked.map(({ chunk, excerpt }) => ({
+      ...[...linked, ...cited].map(({ chunk, excerpt }) => ({
         heading: `关联文件《${chunk.doc.title}》（${chunk.doc.docNo || chunk.doc.id}，${chunk.doc.date || "日期不详"}）› ${chunk.heading}`,
         excerpt,
       })),

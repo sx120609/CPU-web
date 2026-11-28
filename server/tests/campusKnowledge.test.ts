@@ -9,7 +9,7 @@ import {
   normalizeKnowledgeText,
   rankKnowledgeEntries,
 } from "../src/services/knowledgeText";
-import { searchSchoolDocs, setSchoolDocsForTests } from "../src/services/schoolDocsKnowledge";
+import { citationTitleKey, searchSchoolDocs, setSchoolDocsForTests } from "../src/services/schoolDocsKnowledge";
 import { readCampusKnowledgeRefs, type CampusKnowledgeItem } from "../src/services/campusKnowledge";
 import {
   attachCampusKnowledgeSources,
@@ -224,6 +224,31 @@ test("near-duplicate passages from different files take one slot", async () => {
   ]);
   try {
     assert.equal((await searchSchoolDocs("学生请假审批 辅导员 学院")).length, 1);
+  } finally {
+    setSchoolDocsForTests();
+  }
+});
+
+test("a document named in 《》 by a hit is attached, so the answer is not just \"see that rule\"", async () => {
+  assert.equal(citationTitleKey("中国药科大学学业预警工作管理办法(2021 年修订)"), citationTitleKey("中国药科大学学业预警工作管理办法"));
+  assert.equal(citationTitleKey("《中国药科大学本科生转专业实施办法（试行）》"), citationTitleKey("中国药科大学本科生转专业实施办法"));
+  const doc = (id: string, title: string, docNo: string) => ({ id, title, docNo, category: "测试", status: "current" as const, date: "2023-01-01", sourceUrl: null, extracted: null });
+  setSchoolDocsForTests([{
+    version: 1,
+    source: "t",
+    documents: [doc("R1", "中国药科大学全日制本科生学分制管理办法", "药大教〔2023〕211号"), doc("R2", "中国药科大学学业预警工作管理办法", "药大教〔2021〕80号")],
+    chunks: [
+      { d: 0, h: "第十一条", t: "第十一条必修课程考核总评成绩不及格的，安排一次补考；补考仍不及格的必须重修。因学籍预警留级的，按《中国药科大学学业预警工作管理办法(2021 年修订)》执行。" },
+      { d: 1, h: "第三条", t: "第三条学业预警分为黄色预警、橙色预警、红色预警和退学警示：必修课程未获学分累计≥5学分给予黄色预警。" },
+      { d: 1, h: "第七条", t: "第七条各院系定期检查学业预警工作。" },
+    ],
+  }]);
+  try {
+    const hits = await searchSchoolDocs("补考仍不及格 重修");
+    assert.ok(!hits.some((hit) => hit.documentId === "R2"), "R2 must come in through the citation");
+    assert.equal(hits[0]?.docNo, "药大教〔2023〕211号");
+    const cited = hits[0].related?.find((item) => item.heading.includes("学业预警工作管理办法"));
+    assert.ok(cited, JSON.stringify(hits[0].related));
   } finally {
     setSchoolDocsForTests();
   }
